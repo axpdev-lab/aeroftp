@@ -26,8 +26,9 @@ type FtpTransfer = TransferStream<AsyncRustlsStream>;
 
 use super::checksum_matrix;
 use super::multi_thread::{
-    aerotmp_path_for, parallel_refused, range_source_changed_through, read_range_source_through,
-    run_concurrent_range_download, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+    parallel_refused, range_source_changed_through, read_range_source_through,
+    run_concurrent_range_download, segmented_temp_path_for, source_changed, ConcurrentRangeConfig,
+    ConcurrentRangeOutcome,
 };
 use super::{
     ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
@@ -208,7 +209,7 @@ impl FtpProvider {
         self.download_intra_file_pooled(&resolved, local_path, total_size, on_progress)
             .await?;
 
-        let temp = aerotmp_path_for(Path::new(local_path));
+        let temp = segmented_temp_path_for(Path::new(local_path));
         if let Some(what) = range_source_changed_through(self, &resolved, &before).await {
             let _ = tokio::fs::remove_file(&temp).await;
             tracing::warn!("{}", source_changed("FTP intra-file", &resolved, &what));
@@ -231,7 +232,7 @@ impl FtpProvider {
     /// PD-FTP-1: split one large file into N gap-free windows, each
     /// downloaded over its **own** independent FTP connection (REST+RETR,
     /// the exact connection model of the FTP session pool and PD-SFTP-2),
-    /// assembled into a pre-allocated `.aerotmp`, which the caller publishes
+    /// assembled into a pre-allocated `.aerosegtmp`, which the caller publishes
     /// once it has read the object again.
     /// Reuses the shared [`run_concurrent_range_download`] orchestrator so
     /// HTTP, SFTP and FTP share one engine, not a fourth implementation.
@@ -307,14 +308,15 @@ impl FtpProvider {
         .await;
 
         match outcome {
-            // The windows are in `<local>.aerotmp` and the file is not
+            // The windows are in `<local>.aerosegtmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
             Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
             Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                 // Unreachable for FTP: REST+RETR cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
-                let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
+                let _ =
+                    tokio::fs::remove_file(segmented_temp_path_for(Path::new(local_path))).await;
                 Err(ProviderError::TransferFailed(
                     "FTP intra-file: unexpected ServerIgnoredRange (REST/RETR has no HTTP-200 analogue)"
                         .to_string(),

@@ -2796,7 +2796,7 @@ where
 {
     use reqwest::StatusCode;
 
-    let mut resumable = atomic_write::ResumableFile::open(local_path)
+    let mut resumable = atomic_write::ResumableFile::open_resume(local_path)
         .await
         .map_err(ProviderError::IoError)?;
 

@@ -3601,7 +3601,7 @@ impl S3Provider {
     ///
     /// Splits the object into N contiguous byte ranges and downloads them
     /// concurrently via independent `GET` requests with `Range: bytes=start-end`.
-    /// Each task seeks to its offset on a pre-allocated `.aerotmp` file, so the
+    /// Each task seeks to its offset on a pre-allocated `.aerosegtmp` file, so the
     /// final file is assembled in place: no concatenation step.
     ///
     /// Equivalent to rclone `--multi-thread-streams N`.
@@ -3629,14 +3629,10 @@ impl S3Provider {
             ));
         }
 
-        // Compute temp path matching `AtomicFile::temp_path_for` so existing
-        // cleanup tooling and the resume path stay consistent.
+        // The pre-sized temporary has holes until every range lands: it has
+        // its own name, never the `.aerotmp` a resumable download goes on from.
         let final_pathbuf = PathBuf::from(local_path);
-        let temp_path: PathBuf = {
-            let mut p = final_pathbuf.as_os_str().to_owned();
-            p.push(".aerotmp");
-            PathBuf::from(p)
-        };
+        let temp_path = crate::providers::multi_thread::segmented_temp_path_for(&final_pathbuf);
 
         if let Some(parent) = final_pathbuf.parent() {
             if !parent.as_os_str().is_empty() {
@@ -3647,7 +3643,24 @@ impl S3Provider {
         }
 
         // Pre-allocate the temp file. `set_len` reserves the full size up front so
-        // that concurrent seek+writes don't race on file extension.
+        // that concurrent seek+writes don't race on file extension. On Unix it
+        // is claimed for the whole run, as the shared engine claims its own
+        // (see `atomic_write::temp_claim`): a second segmented download of the
+        // file is refused instead of truncating this one's windows.
+        #[cfg(unix)]
+        let _claim = {
+            let temp = temp_path.clone();
+            let file = tokio::task::spawn_blocking(move || {
+                super::atomic_write::temp_claim::create_fresh(&temp)
+            })
+            .await
+            .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
+            .map_err(ProviderError::IoError)?;
+            file.set_len(total_size).map_err(ProviderError::IoError)?;
+            file.sync_all().map_err(ProviderError::IoError)?;
+            file
+        };
+        #[cfg(not(unix))]
         {
             let f = tokio::fs::OpenOptions::new()
                 .write(true)
@@ -3662,7 +3675,7 @@ impl S3Provider {
             f.sync_all().await.map_err(ProviderError::IoError)?;
         }
 
-        // RAII guard: remove the .aerotmp on early return unless we mark it committed.
+        // RAII guard: remove the temporary on early return unless we mark it committed.
         struct TempGuard {
             path: PathBuf,
             committed: bool,
@@ -3783,7 +3796,7 @@ impl S3Provider {
             )));
         }
 
-        // All ranges committed: atomic rename .aerotmp → final path.
+        // All ranges committed: atomic rename of the temporary onto the final path.
         tokio::fs::rename(&temp_path, &final_pathbuf)
             .await
             .map_err(ProviderError::IoError)?;
@@ -4756,7 +4769,7 @@ impl StorageProvider for S3Provider {
             StatusCode::PARTIAL_CONTENT => {
                 let content_len = response.content_length().unwrap_or(0);
                 let total_size = offset + content_len;
-                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                let mut resumable = super::atomic_write::ResumableFile::open_resume(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
                 super::stream_response_to_resumable(
@@ -4785,9 +4798,10 @@ impl StorageProvider for S3Provider {
                 Ok(())
             }
             StatusCode::RANGE_NOT_SATISFIABLE => {
-                // Discard stale .aerotmp to prevent infinite 416 loop on next attempt
+                // Discard stale .aerotmp to prevent infinite 416 loop on next
+                // attempt, unless another download is writing it.
                 let tmp = format!("{}.aerotmp", local_path);
-                let _ = tokio::fs::remove_file(&tmp).await;
+                let _ = super::atomic_write::remove_temp_unless_live(std::path::Path::new(&tmp));
                 Err(ProviderError::TransferFailed(
                     "Range not satisfiable: file may have changed on server".to_string(),
                 ))

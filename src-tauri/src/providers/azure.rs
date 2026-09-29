@@ -1586,7 +1586,7 @@ impl StorageProvider for AzureProvider {
             reqwest::StatusCode::PARTIAL_CONTENT => {
                 let content_len = resp.content_length().unwrap_or(0);
                 let total_size = offset + content_len;
-                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
+                let mut resumable = super::atomic_write::ResumableFile::open_resume(local_path)
                     .await
                     .map_err(ProviderError::IoError)?;
                 super::stream_response_to_resumable(resp, &mut resumable, total_size, progress)
@@ -1609,8 +1609,9 @@ impl StorageProvider for AzureProvider {
                 Ok(())
             }
             reqwest::StatusCode::RANGE_NOT_SATISFIABLE => {
+                // A stale part goes; another download's is left alone.
                 let tmp = format!("{}.aerotmp", local_path);
-                let _ = tokio::fs::remove_file(&tmp).await;
+                let _ = super::atomic_write::remove_temp_unless_live(std::path::Path::new(&tmp));
                 Err(ProviderError::TransferFailed(
                     "Range not satisfiable: file may have changed on server".to_string(),
                 ))

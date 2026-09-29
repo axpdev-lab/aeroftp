@@ -3482,9 +3482,9 @@ pub async fn provider_download_file(
     };
 
     // GTC-2: opportunistic intra-file range parallelism on the single-file
-    // path. Gated on no-resume (`partial_offset == 0`) because the segmented
-    // engine pre-allocates and overwrites its own `.aerotmp`; a partial
-    // legacy resume must not be silently dropped. On hard failure we fall
+    // path. Gated on no-resume (`partial_offset == 0`): a partial `.aerotmp`
+    // goes on through the legacy resume, which the segmented engine (writing
+    // its own pre-sized `.aerosegtmp`) would start over. On hard failure we fall
     // through to the legacy single-stream branch below.
     let mut segmented_result: Option<Result<(), String>> = None;
     // Auto and SFTP presets retain the GUI's 250 MiB fan-out cutoff. An

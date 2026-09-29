@@ -2856,7 +2856,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
     const DOCUMENTED: [(&str, usize); 4] = [
         ("acl_fs.rs", 5),
         ("delta_transport_impl.rs", 3),
-        ("streaming_writer.rs", 1),
+        ("streaming_writer.rs", 3),
         ("xattr_fs.rs", 10),
     ];
 
@@ -2916,7 +2916,7 @@ fn production_unsafe_surface_matches_the_documented_count() {
     );
 
     let total: usize = found.iter().map(|(_, n)| n).sum();
-    assert_eq!(total, 19, "documented total in the parity docs is 19");
+    assert_eq!(total, 21, "documented total in the parity docs is 21");
 }
 
 /// The module imports nothing from the application. That is the end state

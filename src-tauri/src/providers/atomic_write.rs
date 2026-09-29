@@ -36,7 +36,537 @@ pub fn readahead_temp_path_for(final_path: &Path) -> PathBuf {
 
 /// True for local download sidecars that filesystem watchers must hide.
 pub fn is_download_temp_path(path: &str) -> bool {
-    path.ends_with(".aerotmp") || path.ends_with(".aeroardtmp")
+    path.ends_with(".aerotmp") || path.ends_with(".aeroardtmp") || path.ends_with(".aerosegtmp")
+}
+
+/// How a download claims its temporary.
+///
+/// `AtomicFile` and `ResumableFile` write `<final>.aerotmp`, and so does the
+/// delta writer (`aerorsync`, which keeps its own copy of these rules because
+/// it may not name app code). Each holds an exclusive lock on the temporary it
+/// writes for as long as it writes; the lock goes with the handle, so it ends
+/// with the writer however the writer ends. A temporary found at the name is
+/// then a live writer's while its lock is held, and stale otherwise (a
+/// download killed, or dropped while its create was on its way): a live one is
+/// left alone and the new download fails on it, a stale one is replaced.
+///
+/// Linux only, on a local filesystem. Windows locks are mandatory, and a second
+/// handle of the same process could no longer write the file; Linux turns
+/// flock on a CIFS/SMB mount into a whole-file SMB lock, mandatory the same
+/// way on Windows servers and most NAS shares; on NFS `flock` can block even
+/// when asked not to (which is why Cargo skips it there too); and on other
+/// Unix systems a mount's kind is not read, so a share there could be either.
+/// In all those places, and where the filesystem cannot lock at all (some
+/// FUSE and VM shared folders), the temporary stays unlocked and is handled as
+/// before these locks. Locks are per machine: two machines writing one path on
+/// a shared mount (sshfs, NFS or SMB) do not see each other's.
+pub(crate) mod temp_claim {
+    use std::io::{Error, ErrorKind, Result};
+    use std::path::Path;
+
+    /// What was found at a temporary's name.
+    #[derive(Debug, PartialEq, Eq)]
+    enum Found {
+        /// Nothing holds it: removed.
+        Stale,
+        /// A writer holds its lock: left alone.
+        Live,
+        /// This filesystem cannot say: left alone.
+        Unknown,
+    }
+
+    /// Create the temporary at `temp` and claim it. One already there is
+    /// replaced when stale, and refused otherwise.
+    pub(crate) fn create(temp: &Path) -> Result<std::fs::File> {
+        create_with(temp, try_lock)
+    }
+
+    /// Open the temporary at `temp` to go on writing it (a resume), and claim
+    /// it: refused while another writer holds it.
+    pub(crate) fn open_to_append(temp: &Path) -> Result<std::fs::File> {
+        let file = std::fs::OpenOptions::new().append(true).open(temp)?;
+        claim(&file, temp, try_lock)?;
+        Ok(file)
+    }
+
+    /// Create the temporary of a download that starts over (a fresh resumable
+    /// part, a segmented run): a stale one is replaced, a live one refused;
+    /// where the locks are not used, one found there is discarded, as before
+    /// them.
+    pub(crate) fn create_fresh(temp: &Path) -> Result<std::fs::File> {
+        create_fresh_with(temp, try_lock, locks_usable)
+    }
+
+    fn create_fresh_with(
+        temp: &Path,
+        lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
+        usable: impl Fn(&Path) -> bool,
+    ) -> Result<std::fs::File> {
+        if usable(temp) {
+            return create_with(temp, lock);
+        }
+        // Where nothing can tell a live writer's part from a stale one, the
+        // part is discarded and created again, as before these locks: the one
+        // an interrupted resumable download keeps would otherwise fail every
+        // later fresh download of the file until removed by hand. A file open
+        // elsewhere on Windows cannot be removed, and the create then fails.
+        if let Err(e) = std::fs::remove_file(temp) {
+            if e.kind() != ErrorKind::NotFound {
+                tracing::debug!("could not discard {}: {e}", temp.display());
+            }
+        }
+        std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(temp)
+    }
+
+    /// Remove the temporary at `temp` unless a live writer holds it: a stale
+    /// one is removed while this call holds its lock, a live one is refused.
+    /// Where locks are not used it is removed by name, as before them.
+    pub(crate) fn remove_unless_live(temp: &Path) -> Result<()> {
+        match take_if_stale(temp, try_lock) {
+            Ok(Found::Stale) => Ok(()),
+            Ok(Found::Live) => Err(in_use(temp)),
+            Ok(Found::Unknown) => match std::fs::remove_file(temp) {
+                Err(gone) if gone.kind() == ErrorKind::NotFound => Ok(()),
+                removed => removed,
+            },
+            Err(gone) if gone.kind() == ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn create_with(
+        temp: &Path,
+        lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
+    ) -> Result<std::fs::File> {
+        let mut probed = false;
+        loop {
+            match std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(temp)
+            {
+                Ok(file) => {
+                    // A lock this filesystem cannot take keeps the file, as
+                    // before these locks: the file this call made is never
+                    // left behind by a failed claim.
+                    claim(&file, temp, &lock)?;
+                    return Ok(file);
+                }
+                Err(taken) if taken.kind() == ErrorKind::AlreadyExists && !probed => {
+                    probed = true;
+                    match take_if_stale(temp, &lock) {
+                        Ok(Found::Stale) => continue,
+                        Ok(Found::Live) => return Err(in_use(temp)),
+                        Ok(Found::Unknown) => return Err(cannot_tell(temp)),
+                        // The other writer committed or removed it meanwhile.
+                        Err(gone) if gone.kind() == ErrorKind::NotFound => continue,
+                        Err(e) => return Err(e),
+                    }
+                }
+                Err(taken) if taken.kind() == ErrorKind::AlreadyExists => return Err(in_use(temp)),
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Lock `file`, opened at `path`, for this writer. Refused when another
+    /// writer holds it, or when the name no longer points at this file (it
+    /// was replaced between the open and the lock); a lock this filesystem
+    /// cannot take is not an error.
+    fn claim(
+        file: &std::fs::File,
+        path: &Path,
+        lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
+    ) -> Result<()> {
+        if !locks_usable(path) {
+            return Ok(());
+        }
+        match lock(file) {
+            Ok(()) if same_file(file, path) => Ok(()),
+            Ok(()) => Err(Error::new(
+                ErrorKind::AlreadyExists,
+                format!(
+                    "{} was replaced by another download while it was opened",
+                    path.display()
+                ),
+            )),
+            Err(std::fs::TryLockError::WouldBlock) => Err(in_use(path)),
+            Err(std::fs::TryLockError::Error(_)) => Ok(()),
+        }
+    }
+
+    /// Remove the temporary at `temp` if nothing holds it. It is removed
+    /// while this call holds its lock, and only if the name still points at
+    /// the file that was locked: two calls that find the same stale file
+    /// cannot remove the one the first of them then created.
+    fn take_if_stale(
+        temp: &Path,
+        lock: impl Fn(&std::fs::File) -> std::result::Result<(), std::fs::TryLockError>,
+    ) -> Result<Found> {
+        if !locks_usable(temp) {
+            return Ok(Found::Unknown);
+        }
+        let meta = std::fs::symlink_metadata(temp)?;
+        if meta.file_type().is_symlink() {
+            // Removed as a link, never followed.
+            std::fs::remove_file(temp)?;
+            return Ok(Found::Stale);
+        }
+        if !meta.file_type().is_file() {
+            return Ok(Found::Unknown);
+        }
+        let existing = std::fs::OpenOptions::new().write(true).open(temp)?;
+        match lock(&existing) {
+            Ok(()) if same_file(&existing, temp) => {
+                std::fs::remove_file(temp)?;
+                Ok(Found::Stale)
+            }
+            Ok(()) => Ok(Found::Live),
+            Err(std::fs::TryLockError::WouldBlock) => Ok(Found::Live),
+            Err(std::fs::TryLockError::Error(_)) => Ok(Found::Unknown),
+        }
+    }
+
+    fn try_lock(file: &std::fs::File) -> std::result::Result<(), std::fs::TryLockError> {
+        file.try_lock()
+    }
+
+    fn in_use(temp: &Path) -> Error {
+        Error::new(
+            ErrorKind::AlreadyExists,
+            format!(
+                "another download of this file is writing {}",
+                temp.display()
+            ),
+        )
+    }
+
+    fn cannot_tell(temp: &Path) -> Error {
+        Error::new(
+            ErrorKind::AlreadyExists,
+            format!(
+                "{} already exists: another download may be writing it, and this filesystem cannot say; remove it if none is running",
+                temp.display()
+            ),
+        )
+    }
+
+    /// Whether the name still points at the file this handle has open.
+    #[cfg(unix)]
+    fn same_file(file: &std::fs::File, path: &Path) -> bool {
+        use std::os::unix::fs::MetadataExt;
+        match (file.metadata(), std::fs::symlink_metadata(path)) {
+            (Ok(open), Ok(named)) => open.dev() == named.dev() && open.ino() == named.ino(),
+            _ => false,
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn same_file(_file: &std::fs::File, _path: &Path) -> bool {
+        true
+    }
+
+    /// Whether locks are used at all where `path` lives (see the module doc).
+    #[cfg(target_os = "linux")]
+    fn locks_usable(path: &Path) -> bool {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = match path.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => Path::new("."),
+        };
+        let Ok(dir) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else {
+            return false;
+        };
+        let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
+        // SAFETY: `dir` is a NUL-terminated path, and `stat` is a writable
+        // buffer of the size `statfs` fills.
+        if unsafe { libc::statfs(dir.as_ptr(), stat.as_mut_ptr()) } != 0 {
+            // The lock itself will say what it can do.
+            return true;
+        }
+        // SAFETY: `statfs` returned 0, so it filled the buffer.
+        let kind = unsafe { stat.assume_init() }.f_type;
+        // A filesystem magic is 32 bits, whatever the width of `f_type`.
+        locks_usable_on(kind as u32)
+    }
+
+    /// Whether a filesystem of this `statfs` type takes the locks: not
+    // NFS, where `flock` can block even when asked not to (Cargo skips it
+    // there too), and CIFS/SMB, where Linux 5.5 and later turn it into a
+    // whole-file SMB lock that is mandatory on Windows servers and most NAS
+    // shares: a second handle of the same process could no longer write, and
+    // the segmented engine writes its windows through handles of their own.
+    #[cfg(target_os = "linux")]
+    fn locks_usable_on(kind: u32) -> bool {
+        const CIFS_MAGIC_NUMBER: u32 = 0xFF53_4D42;
+        const SMB2_MAGIC_NUMBER: u32 = 0xFE53_4D42;
+        const SMB_SUPER_MAGIC: u32 = 0x517B;
+        ![
+            libc::NFS_SUPER_MAGIC as u32,
+            CIFS_MAGIC_NUMBER,
+            SMB2_MAGIC_NUMBER,
+            SMB_SUPER_MAGIC,
+        ]
+        .contains(&kind)
+    }
+
+    /// Where the locks are not used, on every platform.
+    #[cfg(test)]
+    mod fresh_tests {
+        use super::*;
+
+        /// CodeRabbit on 15a1e76d (#951): a download that starts over (open_fresh,
+        /// RESUME-01, and a segmented run) discards the part an interrupted one
+        /// left, which a resumable download keeps on purpose. Where the locks
+        /// are not used (Windows, NFS, SMB) the claim could not tell that part
+        /// from a live writer's and refused it, so every later fresh download of
+        /// the file failed until the part was removed by hand. There it is
+        /// discarded, as before the locks.
+        #[test]
+        fn a_fresh_download_where_locks_are_not_used_discards_an_interrupted_part() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            std::fs::write(&temp, b"an interrupted part").unwrap();
+            let fresh = create_fresh_with(&temp, try_lock, |_| false);
+            assert!(
+                fresh.is_ok(),
+                "a fresh download was refused over an interrupted part: {:?}",
+                fresh.err()
+            );
+            drop(fresh);
+            assert_eq!(
+                std::fs::read(&temp).unwrap(),
+                b"",
+                "the interrupted part was kept under the fresh download"
+            );
+        }
+    }
+
+    /// Only Linux says what a mount is here: elsewhere a network share could
+    /// turn the lock into a mandatory one (macOS smbfs maps flock onto SMB
+    /// locks), so the temporaries go unlocked, as before these locks.
+    #[cfg(all(unix, not(target_os = "linux")))]
+    fn locks_usable(_path: &Path) -> bool {
+        false
+    }
+
+    #[cfg(not(unix))]
+    fn locks_usable(_path: &Path) -> bool {
+        false
+    }
+
+    #[cfg(all(test, target_os = "linux"))]
+    mod tests {
+        use super::*;
+
+        fn failing_lock(_file: &std::fs::File) -> std::result::Result<(), std::fs::TryLockError> {
+            Err(std::fs::TryLockError::Error(Error::from_raw_os_error(
+                libc::EOPNOTSUPP,
+            )))
+        }
+
+        /// Verification of round 4 of #951 (F1): a filesystem that cannot
+        /// lock (some SMB, FUSE and VM shared folders) failed the create after
+        /// it had made the file, and the empty temporary it left failed every
+        /// later download of the file for good. The file stays, unlocked, and
+        /// the writer goes on; a temporary found there is never taken.
+        #[test]
+        fn a_filesystem_without_locks_writes_as_before() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let file = create_with(&temp, failing_lock).expect("the create must go on unlocked");
+            drop(file);
+            let again = create_with(&temp, failing_lock);
+            assert_eq!(
+                again.err().map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists),
+                "a temporary found where locks do not work was taken"
+            );
+            assert!(temp.exists());
+        }
+
+        /// F3: a name that no longer points at the file a handle has open is
+        /// told apart, so a stale temporary is removed only while it is the
+        /// one that was locked.
+        #[test]
+        fn a_replaced_temporary_is_not_the_one_that_was_opened() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            std::fs::write(&temp, b"first").unwrap();
+            let opened = std::fs::File::open(&temp).unwrap();
+            assert!(same_file(&opened, &temp));
+            let other = dir.path().join("other");
+            std::fs::write(&other, b"second").unwrap();
+            std::fs::rename(&other, &temp).unwrap();
+            assert!(!same_file(&opened, &temp));
+        }
+
+        /// Mutation of the final round of #951: `claim` took a file whose name
+        /// had been taken over between its open and its lock (a probe removed
+        /// it as stale and another download made a new one) for its own. The
+        /// replacement is made inside the lock call.
+        #[test]
+        fn a_claim_on_a_replaced_temporary_is_refused() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let other = dir.path().join("other");
+            let file = std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&temp)
+                .unwrap();
+            let replaced_then_locked = |_: &std::fs::File| {
+                std::fs::write(&other, b"second").unwrap();
+                std::fs::rename(&other, &temp).unwrap();
+                Ok(())
+            };
+            assert_eq!(
+                claim(&file, &temp, replaced_then_locked)
+                    .err()
+                    .map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists)
+            );
+        }
+
+        /// The same between a probe's open and its lock: the file now at the
+        /// name is another writer's, and the probe leaves it.
+        #[test]
+        fn a_probe_leaves_a_temporary_replaced_before_its_lock() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let other = dir.path().join("other");
+            std::fs::write(&temp, b"stale").unwrap();
+            let replaced_then_locked = |_: &std::fs::File| {
+                std::fs::write(&other, b"second").unwrap();
+                std::fs::rename(&other, &temp).unwrap();
+                Ok(())
+            };
+            assert_eq!(
+                take_if_stale(&temp, replaced_then_locked).unwrap(),
+                Found::Live
+            );
+            assert_eq!(std::fs::read(&temp).unwrap(), b"second");
+        }
+
+        /// Verification of 15a1e76d (#951), Major: on a CIFS/SMB mount Linux
+        /// (5.5 and later) turns flock into a whole-file SMB lock, mandatory
+        /// on Windows servers and most NAS shares, and the segmented engine's
+        /// windows, which write through handles of their own, were refused
+        /// (EACCES). SMB and CIFS take no locks, as NFS takes none.
+        #[cfg(target_os = "linux")]
+        #[test]
+        fn smb_and_nfs_mounts_take_no_locks() {
+            for (kind, usable) in [
+                (0xFF53_4D42_u32, false),
+                (0xFE53_4D42, false),
+                (0x517B, false),
+                (0x6969, false),
+                (0xEF53, true),
+                (0x0102_1994, true),
+                (0x9123_683E, true),
+            ] {
+                assert_eq!(locks_usable_on(kind), usable, "{kind:#x}");
+            }
+        }
+
+        /// The other side of the fresh create: where the locks are used it
+        /// keeps the claim's rules, a live writer's part refused and a stale
+        /// one replaced, so discarding without looking is not the fix.
+        #[test]
+        fn a_fresh_download_where_locks_are_used_keeps_the_claim_rules() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let live = create(&temp).unwrap();
+            assert_eq!(
+                create_fresh(&temp).err().map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists),
+                "a fresh download took a live writer's part"
+            );
+            drop(live);
+            std::fs::write(&temp, b"a stale part").unwrap();
+            let fresh = create_fresh(&temp);
+            assert!(
+                fresh.is_ok(),
+                "a fresh download was refused over a stale part: {:?}",
+                fresh.err()
+            );
+            drop(fresh);
+            assert_eq!(
+                std::fs::read(&temp).unwrap(),
+                b"",
+                "the stale part was kept under the fresh download"
+            );
+        }
+
+        /// The paths that discard or publish a part by name (`get --partial`,
+        /// a 416 answer, an interrupted delta attempt) remove a stale part,
+        /// leave a live writer's alone, and publish only a part nobody writes.
+        #[test]
+        fn a_part_discarded_or_published_by_name_is_not_a_live_writers() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let live = create(&temp).unwrap();
+            assert_eq!(
+                super::super::remove_temp_unless_live(&temp)
+                    .err()
+                    .map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists)
+            );
+            assert_eq!(
+                super::super::claim_temp_to_publish(&temp)
+                    .err()
+                    .map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists)
+            );
+            assert!(temp.exists(), "a live writer's part was removed");
+            drop(live);
+            let claim = super::super::claim_temp_to_publish(&temp).expect("a stale part");
+            drop(claim);
+            super::super::remove_temp_unless_live(&temp).expect("a stale part goes");
+            assert!(!temp.exists());
+            super::super::remove_temp_unless_live(&temp).expect("nothing there is fine");
+        }
+
+        /// A live writer's temporary is refused by a resume, which would
+        /// otherwise append into it.
+        #[test]
+        fn a_resume_does_not_append_into_a_live_writers_temporary() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join("f.bin.aerotmp");
+            let _live = create(&temp).unwrap();
+            assert_eq!(
+                open_to_append(&temp).err().map(|e| e.kind()),
+                Some(ErrorKind::AlreadyExists)
+            );
+        }
+    }
+}
+
+/// Remove the download temporary at `temp` unless a live writer holds it (see
+/// [`temp_claim`]). For the paths that discard a part by name: a stale part
+/// goes, another download's is left alone and refused.
+pub fn remove_temp_unless_live(temp: &Path) -> std::io::Result<()> {
+    temp_claim::remove_unless_live(temp)
+}
+
+/// Open the download temporary at `temp` to publish it by name, claimed:
+/// refused while another download writes it. The claim is held until the
+/// returned handle is dropped, which the caller does after its rename.
+pub fn claim_temp_to_publish(temp: &Path) -> std::io::Result<std::fs::File> {
+    temp_claim::open_to_append(temp)
+}
+
+/// Run a claim, which is filesystem work, off the async runtime.
+async fn claimed(
+    claim: impl FnOnce() -> std::io::Result<std::fs::File> + Send + 'static,
+) -> std::io::Result<fs::File> {
+    let file = tokio::task::spawn_blocking(claim)
+        .await
+        .map_err(std::io::Error::other)??;
+    Ok(fs::File::from_std(file))
 }
 
 /// A guard that writes to a temp file and renames on commit.
@@ -75,11 +605,8 @@ impl AtomicFile {
                 .open(&temp_path)
                 .await?
         } else {
-            fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&temp_path)
-                .await?
+            let temp = temp_path.clone();
+            claimed(move || temp_claim::create(&temp)).await?
         };
 
         Ok(Self {
@@ -150,11 +677,36 @@ pub struct ResumableFile {
 }
 
 impl ResumableFile {
-    /// Open a resumable file writer.
-    /// In inplace mode, writes directly to the final path (no .aerotmp).
+    /// Open the writer of a plain download. Out of place it goes on from the
+    /// download's own `.aerotmp`, left by an interrupted one. In place it
+    /// starts from zero and truncates the destination: a file already there
+    /// is the user's, not a part of this download, and taking it for one
+    /// reported a file as long as the remote one complete with its old
+    /// content, and appended the remote's tail to a shorter one.
     pub async fn open(final_path: &str) -> Result<Self, std::io::Error> {
+        Self::open_in(final_path, inplace_active()).await
+    }
+
+    /// Open the writer of an explicit resume (`resume_download`, which the
+    /// CLI calls for `--partial`): out of place the `.aerotmp`, in place the
+    /// destination itself, which the caller measured as the part to go on
+    /// from.
+    pub async fn open_resume(final_path: &str) -> Result<Self, std::io::Error> {
+        Self::open_resume_in(final_path, inplace_active()).await
+    }
+
+    /// [`Self::open`] with the in-place mode given rather than read from the
+    /// process-wide flag, which a test cannot set without racing the others.
+    async fn open_in(final_path: &str, inplace: bool) -> Result<Self, std::io::Error> {
+        if inplace {
+            return Self::open_fresh_in(final_path, true).await;
+        }
+        Self::open_resume_in(final_path, false).await
+    }
+
+    /// [`Self::open_resume`] with the in-place mode given.
+    async fn open_resume_in(final_path: &str, inplace: bool) -> Result<Self, std::io::Error> {
         let final_path = PathBuf::from(final_path);
-        let inplace = inplace_active();
         let temp_path = if inplace {
             final_path.clone()
         } else {
@@ -166,25 +718,46 @@ impl ResumableFile {
             fs::create_dir_all(parent).await?;
         }
 
-        let (file, offset) = if temp_path.exists() {
-            let symlink_meta = fs::symlink_metadata(&temp_path).await?;
-            if symlink_meta.file_type().is_symlink() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "refusing to resume through symlinked .aerotmp file",
-                ));
+        // A part another writer commits between the look and the open is gone
+        // by then: the download starts fresh instead of failing on NotFound.
+        let resumed = match fs::symlink_metadata(&temp_path).await {
+            Ok(symlink_meta) => {
+                if symlink_meta.file_type().is_symlink() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "refusing to resume through symlinked .aerotmp file",
+                    ));
+                }
+                if !symlink_meta.is_file() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "resume target is not a regular file",
+                    ));
+                }
+                // Resume: open existing file in append mode.
+                let opened = if inplace {
+                    // The destination itself, which the caller measured.
+                    fs::OpenOptions::new().append(true).open(&temp_path).await
+                } else {
+                    // The part is claimed before its length is read: while
+                    // another writer holds it, it is refused, not appended to.
+                    let temp = temp_path.clone();
+                    claimed(move || temp_claim::open_to_append(&temp)).await
+                };
+                match opened {
+                    Ok(file) => {
+                        let offset = file.metadata().await?.len();
+                        Some((file, offset))
+                    }
+                    Err(gone) if gone.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => return Err(e),
+                }
             }
-            // Resume: open existing file in append mode
-            let meta = fs::metadata(&temp_path).await?;
-            if !meta.is_file() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "resume target is not a regular file",
-                ));
-            }
-            let offset = meta.len();
-            let file = fs::OpenOptions::new().append(true).open(&temp_path).await?;
-            (file, offset)
+            Err(gone) if gone.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        };
+        let (file, offset) = if let Some(resumed) = resumed {
+            resumed
         } else {
             // Fresh: create new file
             let file = if inplace {
@@ -195,11 +768,8 @@ impl ResumableFile {
                     .open(&temp_path)
                     .await?
             } else {
-                fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open(&temp_path)
-                    .await?
+                let temp = temp_path.clone();
+                claimed(move || temp_claim::create(&temp)).await?
             };
             (file, 0)
         };
@@ -216,8 +786,12 @@ impl ResumableFile {
 
     /// Create a fresh resumable file, discarding any existing partial data.
     pub async fn open_fresh(final_path: &str) -> Result<Self, std::io::Error> {
+        Self::open_fresh_in(final_path, inplace_active()).await
+    }
+
+    /// [`Self::open_fresh`] with the in-place mode given.
+    async fn open_fresh_in(final_path: &str, inplace: bool) -> Result<Self, std::io::Error> {
         let final_path_buf = PathBuf::from(final_path);
-        let inplace = inplace_active();
         let temp_path = if inplace {
             final_path_buf.clone()
         } else {
@@ -239,15 +813,10 @@ impl ResumableFile {
             // RESUME-01: open_fresh's contract is to discard any existing partial
             // data. A stale `.aerotmp` from a previous interrupted download would
             // otherwise make create_new fail with AlreadyExists, wedging every
-            // retry until the user removes it by hand. Remove it first (best
-            // effort), then create the fresh temp so the create_new race guard is
-            // preserved for genuinely concurrent writers.
-            let _ = fs::remove_file(&temp_path).await;
-            fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&temp_path)
-                .await?
+            // retry until the user removes it by hand: the claim replaces a
+            // stale one, and refuses one another writer still holds.
+            let temp = temp_path.clone();
+            claimed(move || temp_claim::create_fresh(&temp)).await?
         };
 
         Ok(Self {
@@ -323,7 +892,206 @@ mod tests {
     fn local_classifier_recognizes_serial_and_readahead_sidecars() {
         assert!(is_download_temp_path("file.bin.aerotmp"));
         assert!(is_download_temp_path("file.bin.aeroardtmp"));
+        assert!(is_download_temp_path("file.bin.aerosegtmp"));
         assert!(!is_download_temp_path("file.bin"));
         assert!(!is_download_temp_path("file.bin.aerardtmp"));
+    }
+
+    /// Verification of round 3 of #951: two downloads to one local path. The
+    /// second must not take the first's `.aerotmp`: that let the first's
+    /// commit publish the second's half-written file as complete. It fails
+    /// while the first lives, and goes ahead once the first is gone.
+    #[tokio::test]
+    async fn a_live_writers_temporary_is_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let first = AtomicFile::new(path).await.expect("the first writer");
+        let second = AtomicFile::new(path).await;
+        assert_eq!(
+            second.err().map(|e| e.kind()),
+            Some(std::io::ErrorKind::AlreadyExists),
+            "a live writer's temporary was taken"
+        );
+        drop(first);
+        let mut third = AtomicFile::new(path)
+            .await
+            .expect("once the first writer is gone");
+        third.write_all(b"new").await.unwrap();
+        third.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"new");
+    }
+
+    /// Review of round 2 of #951: a `.aerotmp` left by a download that was
+    /// killed, or dropped while its create was on its way, made every later
+    /// atomic download of the file fail until it was removed by hand. Nothing
+    /// holds its lock: it is stale, and replaced.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn an_atomic_download_replaces_a_stale_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let temp = dir.path().join("f.bin.aerotmp");
+        std::fs::write(&temp, b"stale").unwrap();
+        let mut file = AtomicFile::new(path.to_str().unwrap())
+            .await
+            .expect("a stale temporary must not block the download");
+        file.write_all(b"new").await.unwrap();
+        file.commit().await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"new");
+        assert!(!temp.exists());
+    }
+
+    /// Review of 04b35bac (#951): a resume opened the `.aerotmp` a live
+    /// download was still writing and appended to it, and its commit then
+    /// published the first writer's half, followed by its own bytes, as the
+    /// complete file. The resume is refused while the first writer lives, and
+    /// the first publishes what it wrote, whole.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_resume_does_not_publish_a_live_writers_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let mut first = AtomicFile::new(path).await.expect("the first writer");
+        first.write_all(b"first half").await.unwrap();
+        let resumed = ResumableFile::open_in(path, false).await;
+        assert_eq!(
+            resumed.err().map(|e| e.kind()),
+            Some(std::io::ErrorKind::AlreadyExists),
+            "a resume took a live writer's temporary"
+        );
+        first.write_all(b", second half").await.unwrap();
+        first.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"first half, second half");
+    }
+
+    /// Verification of round 4 of #951 (F2): the writers of `.aerotmp` that
+    /// took no lock looked stale, and an atomic download removed a resumable
+    /// download's part while it was being written. Every writer claims it.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_resumable_part_being_written_is_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let mut part = ResumableFile::open_in(path, false).await.unwrap();
+        part.write_all(b"first part").await.unwrap();
+        assert_eq!(
+            AtomicFile::new(path).await.err().map(|e| e.kind()),
+            Some(std::io::ErrorKind::AlreadyExists),
+            "a live part was taken"
+        );
+        drop(part);
+        assert_eq!(
+            std::fs::read(dir.path().join("f.bin.aerotmp")).unwrap(),
+            b"first part"
+        );
+    }
+
+    /// F2 with the delta writer, which keeps its own copy of the rules: it
+    /// truncated a temporary another download was still writing, and an
+    /// atomic download removed the delta writer's.
+    #[cfg(all(target_os = "linux", feature = "aerorsync"))]
+    #[tokio::test]
+    async fn the_delta_writer_and_an_atomic_download_leave_each_other_alone() {
+        use crate::aerorsync::streaming_writer::StreamingAtomicWriter;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let atomic = AtomicFile::new(path.to_str().unwrap()).await.unwrap();
+        assert_eq!(
+            StreamingAtomicWriter::new(&path)
+                .await
+                .err()
+                .map(|e| e.kind()),
+            Some(std::io::ErrorKind::AlreadyExists),
+            "the delta writer truncated a live download's temporary"
+        );
+        drop(atomic);
+        let delta = StreamingAtomicWriter::new(&path).await.unwrap();
+        assert_eq!(
+            AtomicFile::new(path.to_str().unwrap())
+                .await
+                .err()
+                .map(|e| e.kind()),
+            Some(std::io::ErrorKind::AlreadyExists),
+            "an atomic download took the delta writer's temporary"
+        );
+        drop(delta);
+    }
+
+    /// Pre-existing Major (verification of round 2 of #951): the segmented
+    /// engine pre-sizes its temporary to the whole length, with holes until
+    /// every window lands, and named it `.aerotmp`: one left at full size (a
+    /// crash, a kill, a second Ctrl-C) was taken for a complete part by the
+    /// next resumable download, and published with its holes. It has a name
+    /// of its own, which a resumable download never reads.
+    #[tokio::test]
+    async fn a_segmented_temporary_is_not_a_resumable_part() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let segmented = crate::providers::multi_thread::segmented_temp_path_for(&path);
+        std::fs::File::create(&segmented)
+            .unwrap()
+            .set_len(4096)
+            .unwrap();
+        let part = ResumableFile::open_in(path.to_str().unwrap(), false)
+            .await
+            .unwrap();
+        assert_eq!(
+            part.offset(),
+            0,
+            "the engine's temporary was taken for a part"
+        );
+        assert!(is_download_temp_path(&segmented.to_string_lossy()));
+    }
+
+    /// An in-place download over a file the user already has: that file is
+    /// the destination, not a part of this download. It was taken for one: a
+    /// file as long as the remote one was reported complete with its old
+    /// content, and a shorter one had the remote's tail appended to it.
+    #[tokio::test]
+    async fn an_inplace_download_starts_over_an_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, b"old content").unwrap();
+        let path = path.to_str().unwrap();
+        let mut file = ResumableFile::open_in(path, true).await.unwrap();
+        assert_eq!(file.offset(), 0, "the user's file was taken for a part");
+        file.write_all(b"new").await.unwrap();
+        file.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"new");
+    }
+
+    /// An explicit resume in place goes on from the destination: the caller
+    /// asked for it, and measured the part there.
+    #[tokio::test]
+    async fn an_inplace_resume_goes_on_from_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, b"first part").unwrap();
+        let path = path.to_str().unwrap();
+        let mut file = ResumableFile::open_resume_in(path, true).await.unwrap();
+        assert_eq!(file.offset(), 10);
+        file.write_all(b", the rest").await.unwrap();
+        file.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"first part, the rest");
+    }
+
+    /// Out of place, a plain download still goes on from its own `.aerotmp`,
+    /// and leaves a file already at the destination alone until it commits.
+    #[tokio::test]
+    async fn a_plain_download_goes_on_from_its_own_temporary() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, b"old content").unwrap();
+        std::fs::write(dir.path().join("f.bin.aerotmp"), b"first part").unwrap();
+        let path = path.to_str().unwrap();
+        let mut file = ResumableFile::open_in(path, false).await.unwrap();
+        assert_eq!(file.offset(), 10);
+        file.write_all(b", the rest").await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"old content");
+        file.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"first part, the rest");
     }
 }

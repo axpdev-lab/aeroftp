@@ -172,7 +172,7 @@ pub enum ConcurrentRangeOutcome {
 
 /// Configuration for [`download_via_concurrent_range`].
 pub struct ConcurrentRangeConfig {
-    /// Final destination path (used only to derive the `.aerotmp` sibling).
+    /// Final destination path (used only to derive the `.aerosegtmp` sibling).
     pub final_path: PathBuf,
     pub provider_type: super::ProviderType,
     /// Canonical remote authority held for the entire segmented job. Keeping
@@ -185,7 +185,7 @@ pub struct ConcurrentRangeConfig {
     pub max_parallel: usize,
 }
 
-/// RAII guard: removes the `.aerotmp` file on drop unless `commit()` is
+/// RAII guard: removes the `.aerosegtmp` file on drop unless `commit()` is
 /// called. Guarantees no partial temp survives an error, a fallback, or a
 /// cancellation (the F-1 lesson: every new transfer path is cancellable and
 /// leaves no debris).
@@ -490,10 +490,22 @@ pub fn aerotmp_path_for(final_path: &Path) -> PathBuf {
     PathBuf::from(p)
 }
 
+/// The temporary the concurrent range engine writes: pre-sized to the whole
+/// length, with holes until every window has landed. It has a name of its
+/// own because `<final>.aerotmp` is the part a resumable download goes on
+/// from, by its length: an engine temporary left at full size (a crash, a
+/// kill, a second Ctrl-C) was taken for a complete part, and the next download
+/// published it, holes included, as the file.
+pub fn segmented_temp_path_for(final_path: &Path) -> PathBuf {
+    let mut p = final_path.as_os_str().to_owned();
+    p.push(".aerosegtmp");
+    PathBuf::from(p)
+}
+
 /// Transport-agnostic concurrent range download orchestrator (PD-SFTP-2).
 ///
 /// This is the single shared engine for splitting a large file into N
-/// gap-free windows downloaded in parallel into a pre-allocated `.aerotmp`.
+/// gap-free windows downloaded in parallel into a pre-allocated `.aerosegtmp`.
 /// Everything that is *not* transport-specific lives here exactly once: the
 /// range plan, the temp pre-allocation, the [`TempFileGuard`] RAII cleanup
 /// (the F-1 lesson), bounded concurrency, progress aggregation, cooperative
@@ -529,7 +541,7 @@ where
         ));
     }
 
-    let temp_path = aerotmp_path_for(&config.final_path);
+    let temp_path = segmented_temp_path_for(&config.final_path);
     // DAG-P2-01b: a segmented transfer remains one foreground job for the
     // global governor. The lease covers pre-allocation, every range and the
     // final atomic commit; range fan-out must not multiply endpoint permits.
@@ -549,6 +561,26 @@ where
     }
 
     // Pre-allocate so concurrent seek+writes never race on file extension.
+    // On Unix the temporary is claimed for the whole run (see
+    // `atomic_write::temp_claim`): a second segmented download of the same
+    // file is refused instead of truncating this one's windows, and a stale
+    // one is replaced. The windows write through handles of their own, which
+    // an advisory lock leaves alone; Windows locks are not advisory, so there
+    // the temporary is created as before.
+    #[cfg(unix)]
+    let _claim = {
+        let temp = temp_path.clone();
+        let file = tokio::task::spawn_blocking(move || {
+            crate::providers::atomic_write::temp_claim::create_fresh(&temp)
+        })
+        .await
+        .map_err(|e| ProviderError::IoError(std::io::Error::other(e)))?
+        .map_err(ProviderError::IoError)?;
+        file.set_len(config.total_size)
+            .map_err(ProviderError::IoError)?;
+        file
+    };
+    #[cfg(not(unix))]
     {
         let f = tokio::fs::OpenOptions::new()
             .write(true)
@@ -1099,7 +1131,7 @@ async fn read_part_from_disk(path: &Path, offset: u64, len: u64) -> Result<Vec<u
 /// `fetch_range(start, end)` must issue a single `Range: bytes=start-end`
 /// request and return the raw `reqwest::Response`. The helper enforces the
 /// strict gate, writes each window at its absolute offset in a pre-allocated
-/// `.aerotmp`, aggregates progress, and cleans up on every non-success exit.
+/// `.aerosegtmp`, aggregates progress, and cleans up on every non-success exit.
 ///
 /// Returns [`ConcurrentRangeOutcome::ServerIgnoredRange`] (no bytes
 /// committed, temp removed) the moment any task observes `200 OK`, so the
@@ -1479,7 +1511,7 @@ pub(crate) async fn try_http_concurrent_range_download(
         .await
     {
         Ok(ConcurrentRangeOutcome::Completed) => {
-            let temp = aerotmp_path_for(Path::new(&req.local_path));
+            let temp = segmented_temp_path_for(Path::new(&req.local_path));
             if let Some(what) =
                 http_range_source_moved(&req, validator.as_deref(), last_modified.as_deref(), total)
                     .await
@@ -2033,8 +2065,8 @@ mod tests {
 
         let dir = scratch_dir("identical");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
-        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        let temp_a = segmented_temp_path_for(&dir.join("a.bin"));
+        let temp_b = segmented_temp_path_for(&dir.join("b.bin"));
         prealloc(&temp_a, total).await;
         prealloc(&temp_b, total).await;
 
@@ -2093,7 +2125,7 @@ mod tests {
 
         let dir = scratch_dir("metrics");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp = aerotmp_path_for(&dir.join("m.bin"));
+        let temp = segmented_temp_path_for(&dir.join("m.bin"));
         prealloc(&temp, total).await;
 
         let (outcome, summary) = run_ranges_via_graph(
@@ -2150,7 +2182,7 @@ mod tests {
 
         let dir = scratch_dir("ttfb");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp = aerotmp_path_for(&dir.join("t.bin"));
+        let temp = segmented_temp_path_for(&dir.join("t.bin"));
         prealloc(&temp, total).await;
 
         let writer = Arc::new(
@@ -2225,8 +2257,8 @@ mod tests {
 
         let dir = scratch_dir("sir");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
-        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        let temp_a = segmented_temp_path_for(&dir.join("a.bin"));
+        let temp_b = segmented_temp_path_for(&dir.join("b.bin"));
         prealloc(&temp_a, total).await;
         prealloc(&temp_b, total).await;
 
@@ -2291,8 +2323,8 @@ mod tests {
 
         let dir = scratch_dir("err");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
-        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        let temp_a = segmented_temp_path_for(&dir.join("a.bin"));
+        let temp_b = segmented_temp_path_for(&dir.join("b.bin"));
         prealloc(&temp_a, total).await;
         prealloc(&temp_b, total).await;
 
@@ -2366,7 +2398,7 @@ mod tests {
         let ranges = vec![(0, 0), (1, 1)];
         let dir = scratch_dir(tag);
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp = aerotmp_path_for(&dir.join("cancel.bin"));
+        let temp = segmented_temp_path_for(&dir.join("cancel.bin"));
         prealloc(&temp, 2).await;
 
         let both_started = Arc::new(Barrier::new(2));
@@ -2459,8 +2491,8 @@ mod tests {
 
         let dir = scratch_dir("progress");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
-        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        let temp_a = segmented_temp_path_for(&dir.join("a.bin"));
+        let temp_b = segmented_temp_path_for(&dir.join("b.bin"));
         prealloc(&temp_a, total).await;
         prealloc(&temp_b, total).await;
 
@@ -2588,8 +2620,8 @@ mod tests {
         for (tag, total, ranges) in cases {
             let dir = scratch_dir(&format!("boundary-{tag}"));
             tokio::fs::create_dir_all(&dir).await.unwrap();
-            let temp_a = aerotmp_path_for(&dir.join("a.bin"));
-            let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+            let temp_a = segmented_temp_path_for(&dir.join("a.bin"));
+            let temp_b = segmented_temp_path_for(&dir.join("b.bin"));
             prealloc(&temp_a, total).await;
             prealloc(&temp_b, total).await;
             let writer = Arc::new(deterministic_writer());
@@ -2636,8 +2668,8 @@ mod tests {
         let ranges = vec![(0, 0)];
         let dir = scratch_dir("panic");
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp_a = aerotmp_path_for(&dir.join("a.bin"));
-        let temp_b = aerotmp_path_for(&dir.join("b.bin"));
+        let temp_a = segmented_temp_path_for(&dir.join("a.bin"));
+        let temp_b = segmented_temp_path_for(&dir.join("b.bin"));
         prealloc(&temp_a, 1).await;
         prealloc(&temp_b, 1).await;
         let writer = Arc::new(
@@ -2692,7 +2724,7 @@ mod tests {
         let dir = scratch_dir("promoted-default");
         tokio::fs::create_dir_all(&dir).await.unwrap();
         let final_path = dir.join("result.bin");
-        let temp_path = aerotmp_path_for(&final_path);
+        let temp_path = segmented_temp_path_for(&final_path);
         let config = ConcurrentRangeConfig {
             final_path,
             provider_type: super::super::ProviderType::S3,
@@ -2728,7 +2760,7 @@ mod tests {
         let ranges = vec![(0, 0), (1, 1), (2, 2), (3, 3)];
         let dir = scratch_dir(tag);
         tokio::fs::create_dir_all(&dir).await.unwrap();
-        let temp = aerotmp_path_for(&dir.join("cap.bin"));
+        let temp = segmented_temp_path_for(&dir.join("cap.bin"));
         prealloc(&temp, 4).await;
 
         let active = Arc::new(AtomicUsize::new(0));
@@ -3170,7 +3202,7 @@ mod tests {
                 vec![7u8; SIZE as usize]
             );
         }
-        assert!(!aerotmp_path_for(&local).exists());
+        assert!(!segmented_temp_path_for(&local).exists());
     }
 
     /// This is the path WebDAV and Koofr take, and it holds a validator from

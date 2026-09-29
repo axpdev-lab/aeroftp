@@ -2025,7 +2025,7 @@ It also emits the transfer-scheduler surface: a `protocol_transfer_capabilities`
 | `--min-age <duration>` | Skip files newer than duration (e.g., `7d`, `24h`) |
 | `--max-age <duration>` | Skip files older than duration (e.g., `30d`) |
 | `--max-transfer <size>` | Abort session after transferring N bytes (e.g., `10G`). Exit code 8, the code for "stopped at a limit and nothing failed". On `sync` that code means this budget specifically: a timeout there fails transfers and is reported as a failure (exit 4) instead. With `--json` the budget is named by an `over_budget` count of the files it left behind |
-| `--retries <n>` | Retry failed transfers N times (default: 3). Auth/usage errors not retried |
+| `--retries <n>` | Retry failed transfers N times (default: 3). Auth/usage errors not retried, and neither is a transfer stopped by Ctrl+C: a Ctrl+C after a failed attempt, or during `--retries-sleep`, ends the command with 130 |
 | `--retries-sleep <dur>` | Delay between retries (e.g., `5s`, `1m`, `500ms`). Default: 1s |
 | `--max-backlog <n>` | Max queued transfer tasks for parallel operations (default: 10000) |
 | `--files-from <file>` | Transfer only files listed in file (one per line, `#` comments). Works with get -r, put -r, sync |
@@ -2368,6 +2368,8 @@ ON_ERROR CONTINUE
 # Stop on first error
 ON_ERROR FAIL
 ```
+
+A line stopped by Ctrl+C ends the script with exit 130 under either policy: `ON_ERROR CONTINUE` is for failures, and Ctrl+C asks the whole script to stop. A script that finds Ctrl+C pressed between two lines exits 130 too.
 
 ### Running Batch Scripts
 

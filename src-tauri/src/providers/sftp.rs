@@ -31,9 +31,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, parallel_refused, run_concurrent_range_download, share_progress,
-    source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
-    AFTER_TRANSFER_READ_RETRY,
+    aerotmp_path_for, parallel_refused, run_concurrent_range_download, segmented_temp_path_for,
+    share_progress, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+    RangeSourceFingerprint, AFTER_TRANSFER_READ_RETRY,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -756,6 +756,11 @@ pub struct SftpProvider {
     /// Production never sets it. Per-instance so parallel tests do not share
     /// one process-wide flag.
     fail_readahead_write: Arc<AtomicBool>,
+    /// Set by `resume_download` for the download it runs, and taken by that
+    /// download as it starts, so it never outlives the call: in place, an
+    /// explicit resume goes on from the destination, where a plain download
+    /// starts from zero (see `ResumableFile::open`).
+    resume_in_place: bool,
 }
 
 impl SftpProvider {
@@ -783,6 +788,7 @@ impl SftpProvider {
             posix_rename: PosixRenameSupport::Unasked,
             transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
             fail_readahead_write: Arc::new(AtomicBool::new(false)),
+            resume_in_place: false,
         }
     }
 
@@ -959,7 +965,7 @@ impl SftpProvider {
                 }
             }
         };
-        let temp = aerotmp_path_for(Path::new(local_path));
+        let temp = segmented_temp_path_for(Path::new(local_path));
         if let Some(what) = changed {
             let _ = tokio::fs::remove_file(&temp).await;
             tracing::warn!("{}", source_changed("SFTP intra-file", remote_path, &what));
@@ -983,7 +989,7 @@ impl SftpProvider {
     /// windows, each streamed over its **own independent SSH connection**
     /// (the exact connection model of the file-level pool: spec re-dial with
     /// host-key pin, no shared SSH handle/channel), assembled into a
-    /// pre-allocated `.aerotmp`, which the caller publishes once it has read
+    /// pre-allocated `.aerosegtmp`, which the caller publishes once it has read
     /// the object again. Reuses the shared
     /// [`run_concurrent_range_download`] orchestrator (plan / temp / RAII
     /// cleanup / bounded concurrency / progress / cancel) so HTTP and SFTP
@@ -1086,14 +1092,15 @@ impl SftpProvider {
         .await;
 
         match outcome {
-            // The windows are in `<local>.aerotmp` and the file is not
+            // The windows are in `<local>.aerosegtmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
             Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
             Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
                 // Unreachable for SFTP: seek+read cannot "ignore" a range.
                 // Never silently re-download (it would double the bytes).
-                let _ = tokio::fs::remove_file(aerotmp_path_for(Path::new(local_path))).await;
+                let _ =
+                    tokio::fs::remove_file(segmented_temp_path_for(Path::new(local_path))).await;
                 Err(ProviderError::TransferFailed(
                     "SFTP intra-file: unexpected range-ignored outcome".to_string(),
                 ))
@@ -2119,6 +2126,7 @@ impl StorageProvider for SftpProvider {
         size_hint: Option<u64>,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let resume_in_place = std::mem::take(&mut self.resume_in_place);
         self.ensure_connected().await?;
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
@@ -2409,11 +2417,14 @@ impl StorageProvider for SftpProvider {
             async move {
                 // Resumable local file: writes to `.aerotmp`, KEEPS the partial on
                 // cancel/error (drop) so a later re-download resumes, renames on commit.
-                let mut resumable = super::atomic_write::ResumableFile::open(local_path)
-                    .await
-                    .map_err(|e| {
-                        ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
-                    })?;
+                let opened = if resume_in_place {
+                    super::atomic_write::ResumableFile::open_resume(local_path).await
+                } else {
+                    super::atomic_write::ResumableFile::open(local_path).await
+                };
+                let mut resumable = opened.map_err(|e| {
+                    ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
+                })?;
 
                 let mut resume_offset = resumable.offset();
                 // A partial larger than the current remote file is stale (the remote
@@ -2804,6 +2815,7 @@ impl StorageProvider for SftpProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.resume_in_place = true;
         self.download(remote_path, local_path, on_progress).await
     }
 

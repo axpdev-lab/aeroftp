@@ -711,8 +711,8 @@ pub async fn execute_single_file_dag(
     // its `download` / `upload` against this token so a user Stop
     // (`cancel_transfer` -> `ProviderState::request_cancel`) drops the in-flight
     // future promptly (russh is async, so dropping tears the SFTP stream down)
-    // instead of running the current file to completion. `None` = no cancel
-    // wrapping (the CLI path keeps its own Ctrl+C handling).
+    // instead of running the current file to completion. The CLI passes one
+    // that its Ctrl+C flag raises. `None` = no cancel wrapping.
     cancel_token: Option<CancellationToken>,
     // Where durable multipart checkpoints are journaled, and therefore which
     // orphan records this run is allowed to scavenge and abort. `None` means

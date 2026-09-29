@@ -14,7 +14,6 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
 
 use super::{
     sanitize_api_error, send_with_retry, FileVersion, HttpRetryConfig, MultipartHandle,
@@ -1554,8 +1553,10 @@ impl B2Provider {
             return Err(map_b2_status(status, &body, "b2_download_file_by_name"));
         }
         let total = resp.content_length().unwrap_or(0);
-        let temp_path = local_path.with_extension("aerotmp");
-        let mut file = tokio::fs::File::create(&temp_path)
+        // `<final>.aerotmp`, claimed (see `atomic_write::temp_claim`): the
+        // extension used to be replaced, so an extensionless `x` wrote `x.aerotmp`
+        // unclaimed, over the temporary of another download of `x`.
+        let mut file = super::atomic_write::AtomicFile::new(&local_path.to_string_lossy())
             .await
             .map_err(|e| ProviderError::Other(format!("create temp: {}", e)))?;
         let mut downloaded: u64 = 0;
@@ -1576,9 +1577,7 @@ impl B2Provider {
                 p(downloaded, total);
             }
         }
-        file.flush().await.ok();
-        drop(file);
-        tokio::fs::rename(&temp_path, local_path)
+        file.commit()
             .await
             .map_err(|e| ProviderError::Other(format!("atomic rename: {}", e)))?;
         Ok(())
@@ -1590,7 +1589,7 @@ impl B2Provider {
     /// independent cloned workers (each its own pooled `reqwest` connection +
     /// the already-minted auth token) and reassembled in place by the shared
     /// [`crate::providers::multi_thread::run_concurrent_range_download`]
-    /// orchestrator: pre-allocated `.aerotmp`, RAII cleanup, bounded
+    /// orchestrator: pre-allocated `.aerosegtmp`, RAII cleanup, bounded
     /// concurrency, progress aggregation, cooperative cancellation. Equivalent
     /// to rclone `--multi-thread-streams N`.
     ///
@@ -1693,6 +1692,14 @@ impl B2Provider {
                                     _ => ProviderError::TransferFailed(text),
                                 }
                             })?;
+                        // Charged here, not in `read_range`, which like every
+                        // other provider's leaves the limiter to its caller
+                        // (pget charged it a second time).
+                        crate::transfer_dag::throttle::charge(
+                            crate::transfer_dag::governor::TransferDirection::Download,
+                            data.len() as u64,
+                        )
+                        .await;
                         if data.is_empty() {
                             return Err(ProviderError::TransferFailed(format!(
                                 "b2 multi-thread: short read at offset {} ({} of {} bytes)",
@@ -1727,7 +1734,7 @@ impl B2Provider {
         .await;
 
         match outcome {
-            // The windows are in `<local>.aerotmp` and the file is not
+            // The windows are in `<local>.aerosegtmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
             Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
@@ -1754,8 +1761,8 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<bool, ProviderError> {
         use super::multi_thread::{
-            aerotmp_path_for, parallel_refused, range_source_changed_through,
-            read_range_source_through, source_changed,
+            parallel_refused, range_source_changed_through, read_range_source_through,
+            segmented_temp_path_for, source_changed,
         };
         use std::path::Path;
 
@@ -1788,7 +1795,7 @@ impl B2Provider {
             Err(e) => return Err(e),
         }
 
-        let temp = aerotmp_path_for(Path::new(local_path));
+        let temp = segmented_temp_path_for(Path::new(local_path));
         if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
             let _ = tokio::fs::remove_file(&temp).await;
             tracing::warn!("{}", source_changed("b2 multi-thread", remote_path, &what));
@@ -1995,8 +2002,10 @@ impl B2Provider {
             return Err(map_b2_status(status, &body, "b2_download_file_by_id"));
         }
         let total = resp.content_length().unwrap_or(0);
-        let temp_path = local_path.with_extension("aerotmp");
-        let mut file = tokio::fs::File::create(&temp_path)
+        // `<final>.aerotmp`, claimed (see `atomic_write::temp_claim`): the
+        // extension used to be replaced, so an extensionless `x` wrote `x.aerotmp`
+        // unclaimed, over the temporary of another download of `x`.
+        let mut file = super::atomic_write::AtomicFile::new(&local_path.to_string_lossy())
             .await
             .map_err(|e| ProviderError::Other(format!("create temp: {}", e)))?;
         let mut downloaded: u64 = 0;
@@ -2017,9 +2026,7 @@ impl B2Provider {
                 p(downloaded, total);
             }
         }
-        file.flush().await.ok();
-        drop(file);
-        tokio::fs::rename(&temp_path, local_path)
+        file.commit()
             .await
             .map_err(|e| ProviderError::Other(format!("atomic rename: {}", e)))?;
         Ok(())
@@ -3626,11 +3633,6 @@ impl StorageProvider for B2Provider {
             .bytes()
             .await
             .map_err(|e| ProviderError::Other(format!("read_range body: {}", e)))?;
-        crate::transfer_dag::throttle::charge(
-            crate::transfer_dag::governor::TransferDirection::Download,
-            bytes.len() as u64,
-        )
-        .await;
         match super::multi_thread::ranged_answer(
             status,
             answered.as_deref(),

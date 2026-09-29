@@ -80,6 +80,118 @@ pub(crate) const TEMP_SUFFIX: &str = ".aerotmp";
 /// same path do not contend on the same `.aerotmp` filename.
 static TEMP_SUFFIX_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// Open the temporary at `temp` for this writer, claimed, and empty it.
+///
+/// AeroFTP's other download writers use the same `<target>.aerotmp` and
+/// the same rules; this module keeps its own copy because it may not name
+/// the application's code. The writer holds an exclusive lock on the file for
+/// as long as it writes (it goes with the handle): one whose lock is held is
+/// a live writer's, and is refused with `AlreadyExists` instead of being
+/// truncated under it; one whose lock is free is stale, and is reused. The
+/// name must still point at the file the lock was taken on, or another
+/// writer replaced it in between. Linux only, on a local filesystem (see
+/// `locks_usable`); elsewhere, and where the filesystem cannot lock, the file
+/// is opened as before these locks.
+fn claim_temp(temp: &Path) -> io::Result<std::fs::File> {
+    claim_temp_with(temp, |file| file.try_lock())
+}
+
+/// [`claim_temp`] with the lock given, so a test can act between the open and
+/// the lock.
+fn claim_temp_with(
+    temp: &Path,
+    lock: impl Fn(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+) -> io::Result<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(temp)?;
+    // Windows takes no lock (see above).
+    #[cfg(not(unix))]
+    let _ = &lock;
+    #[cfg(unix)]
+    if locks_usable(temp) {
+        match lock(&file) {
+            Ok(()) => {
+                use std::os::unix::fs::MetadataExt;
+                let (open, named) = (file.metadata()?, std::fs::symlink_metadata(temp)?);
+                if open.dev() != named.dev() || open.ino() != named.ino() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::AlreadyExists,
+                        format!(
+                            "{} was replaced by another download while it was opened",
+                            temp.display()
+                        ),
+                    ));
+                }
+            }
+            Err(std::fs::TryLockError::WouldBlock) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!(
+                        "another download of this file is writing {}",
+                        temp.display()
+                    ),
+                ));
+            }
+            Err(std::fs::TryLockError::Error(_)) => {}
+        }
+    }
+    file.set_len(0)?;
+    Ok(file)
+}
+
+/// Whether locks are used where `path` lives (see `locks_usable_on`).
+#[cfg(target_os = "linux")]
+fn locks_usable(path: &Path) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
+    let Ok(dir) = std::ffi::CString::new(dir.as_os_str().as_bytes()) else {
+        return false;
+    };
+    let mut stat = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `dir` is a NUL-terminated path, and `stat` is a writable buffer
+    // of the size `statfs` fills.
+    if unsafe { libc::statfs(dir.as_ptr(), stat.as_mut_ptr()) } != 0 {
+        return true;
+    }
+    // SAFETY: `statfs` returned 0, so it filled the buffer.
+    let kind = unsafe { stat.assume_init() }.f_type;
+    // A filesystem magic is 32 bits, whatever the width of `f_type`.
+    locks_usable_on(kind as u32)
+}
+
+/// Whether a filesystem of this `statfs` type takes the locks: not
+// NFS, where `flock` can block even when asked not to (Cargo skips it
+// there too), and CIFS/SMB, where Linux 5.5 and later turn it into a
+// whole-file SMB lock that is mandatory on Windows servers and most NAS
+// shares: a second handle of the same process could no longer write, and
+// the segmented engine writes its windows through handles of their own.
+#[cfg(target_os = "linux")]
+fn locks_usable_on(kind: u32) -> bool {
+    const CIFS_MAGIC_NUMBER: u32 = 0xFF53_4D42;
+    const SMB2_MAGIC_NUMBER: u32 = 0xFE53_4D42;
+    const SMB_SUPER_MAGIC: u32 = 0x517B;
+    ![
+        libc::NFS_SUPER_MAGIC as u32,
+        CIFS_MAGIC_NUMBER,
+        SMB2_MAGIC_NUMBER,
+        SMB_SUPER_MAGIC,
+    ]
+    .contains(&kind)
+}
+
+/// Only Linux says what a mount is (see the application's copy of these
+/// rules): elsewhere the temporary goes unlocked, as before the locks.
+#[cfg(all(unix, not(target_os = "linux")))]
+fn locks_usable(_path: &Path) -> bool {
+    false
+}
+
 /// Append `TEMP_SUFFIX` to `target` preserving the original extension.
 /// `data.tar.gz` becomes `data.tar.gz.aerotmp`, not `data.tar.aerotmp`.
 fn temp_path_for_streaming(target: &Path) -> PathBuf {
@@ -396,18 +508,18 @@ impl StreamingAtomicWriter {
     /// Open `<target>.aerotmp` for writing. If a stale `.aerotmp` from a
     /// previous (crashed) session is in the way, it is truncated rather
     /// than erroring out: this is the idempotent recovery path the W2.3
-    /// acceptance test 7 pins.
+    /// acceptance test 7 pins. One another writer is still writing is
+    /// refused, not truncated (see [`claim_temp`]).
     ///
     /// The original `target` is **not** opened, modified, or even
     /// stat'd by `new`.
     pub async fn new(target: &Path) -> io::Result<Self> {
         let temp = temp_path_for_streaming(target);
-        let file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&temp)
-            .await?;
+        let claimed = temp.clone();
+        let file = tokio::task::spawn_blocking(move || claim_temp(&claimed))
+            .await
+            .map_err(io::Error::other)??;
+        let file = tokio::fs::File::from_std(file);
         Ok(Self {
             target: target.to_path_buf(),
             temp,
@@ -584,12 +696,12 @@ async fn finalize_steps(
         }
     }
 
-    // Drop the live handle before rename. Mirrors the comment in
-    // `write_atomic_chunked`: some Linux kernels exhibit cache-coherency
-    // oddities when renaming a path with an open writer pinned to its
-    // inode. Cheap to drop explicitly.
-    drop(file);
-    finalize_after_acl(
+    // The handle, and with it the claim on the temporary, is held until the
+    // rename: dropped before the time, the extended attributes and the
+    // rename, it let another download take the temporary as stale in between,
+    // and this writer then published that one's half-written file
+    // (verification of #951).
+    let finalized = finalize_after_acl(
         target,
         temp,
         mtime,
@@ -598,7 +710,9 @@ async fn finalize_steps(
         committed,
         warnings,
     )
-    .await
+    .await;
+    drop(file);
+    finalized
 }
 
 async fn finalize_after_acl(
@@ -677,6 +791,50 @@ impl AsyncWrite for StreamingAtomicWriter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Verification of 15a1e76d (#951), Major: on a CIFS/SMB mount Linux
+    /// (5.5 and later) turns flock into a whole-file SMB lock, mandatory
+    /// on Windows servers and most NAS shares, and the segmented engine's
+    /// windows, which write through handles of their own, were refused
+    /// (EACCES). SMB and CIFS take no locks, as NFS takes none.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn smb_and_nfs_mounts_take_no_locks() {
+        for (kind, usable) in [
+            (0xFF53_4D42_u32, false),
+            (0xFE53_4D42, false),
+            (0x517B, false),
+            (0x6969, false),
+            (0xEF53, true),
+            (0x0102_1994, true),
+            (0x9123_683E, true),
+        ] {
+            assert_eq!(locks_usable_on(kind), usable, "{kind:#x}");
+        }
+    }
+
+    /// Mutation of the final round of #951: the delta writer's claim took a
+    /// temporary whose name had been taken over between its open and its lock
+    /// for its own, and emptied another writer's file.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_claim_on_a_replaced_temporary_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join("f.bin.aerotmp");
+        let other = dir.path().join("other");
+        let replaced_then_locked = |_: &std::fs::File| {
+            std::fs::write(&other, b"second").unwrap();
+            std::fs::rename(&other, &temp).unwrap();
+            Ok(())
+        };
+        assert_eq!(
+            claim_temp_with(&temp, replaced_then_locked)
+                .err()
+                .map(|e| e.kind()),
+            Some(io::ErrorKind::AlreadyExists)
+        );
+        assert_eq!(std::fs::read(&temp).unwrap(), b"second");
+    }
     use crate::aerorsync::engine_adapter::{apply_delta_streaming, EngineDeltaOp, MemoryBaseline};
     use std::time::Duration;
     use tempfile::TempDir;
