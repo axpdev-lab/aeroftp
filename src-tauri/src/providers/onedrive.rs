@@ -871,28 +871,35 @@ impl OneDriveProvider {
         Ok(())
     }
 
-    /// Look up an item in the recycle bin by basename. Pages through up to
-    /// `MAX_PAGES` of results and returns the id of the first match.
+    /// Look up the items in the recycle bin of the exact name `basename`
+    /// that were deleted from the folder `parent_id`. Pages through up to
+    /// `MAX_PAGES` of results and returns the id of every match. By name
+    /// alone the first match from any folder was taken, so a purge of
+    /// `/new/a.txt` hard-deleted a trashed `/old/a.txt`. An item whose
+    /// `parentReference` names no folder is not a match: nothing can tell it
+    /// to be this path.
     ///
     /// Microsoft Graph does NOT expose a documented endpoint for the OneDrive
     /// Personal recycle bin: `/me/drive/special/deleted/children` is the
     /// shape used by `list_trash` but most personal tenants reject it with
     /// `invalidRequest: The special folder identifier isn't valid`. When
-    /// that happens we fall back to `Ok(None)` (no match) so `delete_permanent`
+    /// that happens we fall back to no match so `delete_permanent`
     /// becomes a no-op rather than a hard failure: the benchmark wiring
     /// already accepts that and surfaces it as `trash_purged: false`. Tenants
     /// where the endpoint does work (some Business accounts) keep the search
     /// behaviour. Microsoft auto-purges OneDrive recycle bins after 30 days.
-    async fn find_trashed_by_basename(
+    async fn find_trashed_in(
         &mut self,
         basename: &str,
-    ) -> Result<Option<String>, ProviderError> {
+        parent_id: &str,
+    ) -> Result<Vec<String>, ProviderError> {
         const MAX_PAGES: usize = 5;
         let mut url = format!(
             "{}/me/drive/special/deleted/children?$top=200",
             self.graph_api()
         );
         let mut pages = 0;
+        let mut matches = Vec::new();
         loop {
             let response = self
                 .client
@@ -908,7 +915,7 @@ impl OneDriveProvider {
                 // this account type. Treat as "no match" so the caller does
                 // not abort the run with a misleading error.
                 if status.as_u16() == 400 || status.as_u16() == 404 {
-                    return Ok(None);
+                    return Ok(Vec::new());
                 }
                 return Err(ProviderError::Other(format!(
                     "Recycle bin search failed: {}",
@@ -919,15 +926,14 @@ impl OneDriveProvider {
                 .json()
                 .await
                 .map_err(|e| ProviderError::Other(format!("Recycle bin parse error: {}", e)))?;
-            for item in result.value {
-                if item.name == basename {
-                    return Ok(Some(item.id));
-                }
-            }
+            matches.extend(result.value.into_iter().filter_map(|item| {
+                let from = item.parent_reference.as_ref()?.id.as_deref()?;
+                (item.name == basename && from == parent_id).then_some(item.id)
+            }));
             pages += 1;
             match result.next_link {
                 Some(next) if pages < MAX_PAGES => url = next,
-                _ => return Ok(None),
+                _ => return Ok(matches),
             }
         }
     }
@@ -1612,31 +1618,44 @@ impl StorageProvider for OneDriveProvider {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
 
-        let item_id = self.resolve_path(&full_path).await?;
-        let url = self.api_item(&item_id);
-
-        let response = self
-            .client
-            .delete(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        // 204 No Content is success, 404 is also acceptable
-        if !response.status().is_success() && response.status().as_u16() != 404 {
-            return Err(ProviderError::Other(format!(
-                "Delete failed: {}",
-                response.status()
-            )));
+        // A 404 says the id is gone, not the path. The id may be cached from
+        // before another client trashed the item and made a new one under
+        // the same path: read as done, that 404 left the live item in place
+        // and logged "Deleted". The path is resolved again once, by Graph and
+        // not by the cache, and only a lookup that finds nothing there, or a
+        // second 404, makes this NotFound.
+        let mut item_id = self.resolve_path(&full_path).await?;
+        let mut resolved_again = false;
+        loop {
+            let url = self.api_item(&item_id);
+            let sent = self
+                .client
+                .delete(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await;
+            // Whatever the answer, the ids cached for the item and everything
+            // under it, under any capitalization, point into the recycle bin
+            // or at nothing.
+            super::forget_cached_subtree_ignoring_case(
+                &mut self.path_cache,
+                full_path.trim_matches('/'),
+            );
+            let response = sent.map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            let status = response.status();
+            if status.as_u16() == 404 {
+                if resolved_again {
+                    return Err(ProviderError::NotFound(path.to_string()));
+                }
+                resolved_again = true;
+                item_id = self.resolve_path(&full_path).await?;
+                continue;
+            }
+            if !status.is_success() {
+                return Err(ProviderError::Other(format!("Delete failed: {}", status)));
+            }
+            break;
         }
-
-        // The ids cached for the deleted item and everything under it now
-        // point into the recycle bin.
-        super::forget_cached_subtree_ignoring_case(
-            &mut self.path_cache,
-            full_path.trim_matches('/'),
-        );
 
         info!("Deleted: {}", path);
         Ok(())
@@ -1651,16 +1670,33 @@ impl StorageProvider for OneDriveProvider {
         self.delete(path).await
     }
 
+    /// The recycle-bin item of the exact name trashed from the path's
+    /// folder, purged by id. The folder is looked up by Graph, not by the
+    /// cache (a folder made again under the same path has another id), and
+    /// when it is no longer there nothing in the recycle bin can be told to
+    /// be this path: Ok(false). Several items of the name trashed from it are
+    /// refused, see [`super::the_one_trashed_item`].
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        let basename = path
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .unwrap_or(path);
+        let full_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), path)
+        };
+        let trimmed = full_path.trim_matches('/');
+        let (parent_path, basename) = match trimmed.rfind('/') {
+            Some(pos) => (&trimmed[..pos], &trimmed[pos + 1..]),
+            None => ("", trimmed),
+        };
         if basename.is_empty() {
             return Ok(false);
         }
-        match self.find_trashed_by_basename(basename).await? {
+        let parent_id = match self.get_item(parent_path).await {
+            Ok(folder) => folder.id,
+            Err(ProviderError::NotFound(_)) => return Ok(false),
+            Err(e) => return Err(e),
+        };
+        let matches = self.find_trashed_in(basename, &parent_id).await?;
+        match super::the_one_trashed_item(path, matches)? {
             Some(id) => {
                 self.permanent_delete(&id).await?;
                 Ok(true)
@@ -3156,6 +3192,152 @@ mod tests {
         );
         let kept: Vec<_> = p.path_cache.keys().cloned().collect();
         assert_eq!(kept, ["dirx"], "a sibling sharing the prefix stays cached");
+        server.abort();
+    }
+
+    /// Another client trashed `/docs/a.txt` and made a new one: the id cached
+    /// here names the trashed item, Graph answers its DELETE 404, and delete
+    /// read that as done while the live file stayed. The 404 now forgets the
+    /// cached subtree and deletes the item a fresh lookup of the path finds.
+    #[tokio::test]
+    async fn a_delete_on_a_stale_cached_id_deletes_the_live_item() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/docs/a.txt") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "NEW", "name": "a.txt", "size": 3, "file": {} }),
+            ),
+            (&Method::DELETE, "/v1.0/me/drive/items/NEW") => {
+                (StatusCode::NO_CONTENT, serde_json::Value::Null)
+            }
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        p.path_cache.insert("docs/a.txt".into(), "OLD".into());
+        p.path_cache.insert("Docs/A.txt".into(), "OLD".into());
+        p.delete("/docs/a.txt")
+            .await
+            .expect("the live item is deleted");
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "DELETE /v1.0/me/drive/items/OLD",
+                "GET /v1.0/me/drive/root:/docs/a.txt",
+                "DELETE /v1.0/me/drive/items/NEW",
+            ]
+        );
+        assert!(p.path_cache.is_empty(), "{:?}", p.path_cache);
+        server.abort();
+    }
+
+    /// The same 404 when the path is really gone: NotFound, which the fresh
+    /// lookup says, and never a "Deleted" for an item nobody removed.
+    #[tokio::test]
+    async fn a_delete_whose_path_is_gone_is_not_found() {
+        let (mut p, requests, server) = graph_fixture(|_, _| {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            )
+        })
+        .await;
+        p.path_cache.insert("docs/a.txt".into(), "OLD".into());
+        let outcome = p.delete("/docs/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "DELETE /v1.0/me/drive/items/OLD",
+                "GET /v1.0/me/drive/root:/docs/a.txt",
+            ]
+        );
+        server.abort();
+    }
+
+    /// The purge after a delete took the first recycle-bin item of that
+    /// name, from any folder: `delete_permanent(/new/a.txt)` hard-deleted a
+    /// trashed `/old/a.txt`. It takes the item trashed from the path's own
+    /// folder, of the exact name, and nothing when that folder is gone.
+    #[tokio::test]
+    async fn a_permanent_delete_takes_the_trashed_item_of_its_own_folder() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root:/new") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "NEWDIR", "name": "new", "size": 0, "folder": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                StatusCode::OK,
+                serde_json::json!({ "value": [
+                    { "id": "T-OLD", "name": "a.txt", "parentReference": { "id": "OLDDIR" } },
+                    { "id": "T-CASE", "name": "A.txt", "parentReference": { "id": "NEWDIR" } },
+                    { "id": "T-NEW", "name": "a.txt", "parentReference": { "id": "NEWDIR" } },
+                ] }),
+            ),
+            (&Method::DELETE, _) => (StatusCode::NO_CONTENT, serde_json::Value::Null),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        assert!(p.delete_permanent("/new/a.txt").await.expect("purge"));
+        assert!(!p.delete_permanent("/gone/a.txt").await.expect("no folder"));
+        let deletes: Vec<String> = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.starts_with("DELETE"))
+            .cloned()
+            .collect();
+        assert_eq!(deletes, ["DELETE /v1.0/me/drive/items/T-NEW"]);
+        server.abort();
+    }
+
+    /// Two generations of `a.txt` trashed from the same folder: the recycle
+    /// bin cannot tell which one the path was, and neither is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_items_of_one_name() {
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/root") => (
+                StatusCode::OK,
+                serde_json::json!({ "id": "ROOT", "name": "root", "size": 0, "folder": {} }),
+            ),
+            (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                StatusCode::OK,
+                serde_json::json!({ "value": [
+                    { "id": "T1", "name": "a.txt", "parentReference": { "id": "ROOT" } },
+                    { "id": "T2", "name": "a.txt", "parentReference": { "id": "ROOT" } },
+                ] }),
+            ),
+            (&Method::DELETE, _) => (StatusCode::NO_CONTENT, serde_json::Value::Null),
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({ "error": { "code": "itemNotFound" } }),
+            ),
+        })
+        .await;
+        let outcome = p.delete_permanent("/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r.starts_with("DELETE")),
+            "{:?}",
+            requests.lock().unwrap()
+        );
         server.abort();
     }
 
