@@ -344,10 +344,10 @@ aeroftp-cli agent -p xai -m "Compute SHA-256 of /var/www/app.js" -y --json
 |-------|----------|
 | `--auto-approve safe` | Local read-only tools only (default) |
 | `--auto-approve medium` | Also remote listings and metadata, local writes, and remote writes that delete nothing (upload, download, mkdir, rename, edit) |
-| `--auto-approve high` | Everything, including remote reads, `server_exec`, delete and shell: today the same as `all` |
-| `--auto-approve all` or `-y` | Everything, including remote reads, `server_exec`, delete and shell |
+| `--auto-approve high` | Also remote reads (`remote_read`, `server_exec`, file content sent to the model); never a delete, a trash, a sync control or the shell |
+| `--auto-approve all` or `-y` | Everything, including delete, trash, sync control and shell |
 
-A tool the level does not cover is asked for in an interactive terminal and refused in a non-interactive run.
+A tool the level does not cover is asked for in an interactive terminal and refused in a non-interactive run. Before 4.2.1 `high` was the same level as `all`.
 
 ### Security
 

@@ -27712,7 +27712,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "hash_algorithms": ["md5", "sha1", "sha256", "sha512", "blake3"],
             "serve_protocols": ["http", "webdav", "ftp", "sftp"],
             "agent_safety_model": {
-                "danger_levels": ["safe", "medium", "high"],
+                "danger_levels": ["safe", "medium", "high", "destructive"],
                 "categories": [
                     "local-readonly",
                     "remote-metadata",
@@ -67175,10 +67175,13 @@ fn build_agent_system_prompt(custom_system: &Option<String>) -> String {
     )
 }
 
-/// Parse auto-approve level
+/// Parse auto-approve level. `high` and `all` were one level (3) while the
+/// guide gave `high` "writes and uploads" and `all` "everything including
+/// shell and delete" (L15, 4.2.1 review): `high` is now its own level, every
+/// tool but the destructive ones and the shell.
 fn parse_approve_level(s: &str) -> u8 {
     match s.to_lowercase().as_str() {
-        "all" => 3,
+        "all" => 4,
         "high" => 3,
         "medium" => 2,
         "safe" | "low" => 1,
@@ -67260,7 +67263,8 @@ fn tool_data_egress(tool: &str) -> &'static str {
     }
 }
 
-/// Get tool danger level (0=safe, 1=medium, 2=high)
+/// Get tool danger level (0=safe, 1=medium, 2=high, 3=destructive or shell).
+/// Level 3 is what `--auto-approve high` leaves to the user and `all` covers.
 fn tool_danger_level(tool: &str) -> u8 {
     // Content-reading local tools are medium (data sent to AI model)
     if matches!(
@@ -67281,10 +67285,10 @@ fn tool_danger_level(tool: &str) -> u8 {
         ToolExposureKind::RemoteMetadata
         | ToolExposureKind::LocalModify
         | ToolExposureKind::RemoteModify => 1,
-        ToolExposureKind::RemotePreview
-        | ToolExposureKind::RemoteBulkRead
-        | ToolExposureKind::Destructive
-        | ToolExposureKind::Execution => 2,
+        ToolExposureKind::RemotePreview | ToolExposureKind::RemoteBulkRead => 2,
+        // A delete, a trash, a sync control and the shell: the tools no
+        // level below `all` approves on its own.
+        ToolExposureKind::Destructive | ToolExposureKind::Execution => 3,
     }
 }
 
@@ -67292,7 +67296,8 @@ fn tool_danger_name(tool: &str) -> &'static str {
     match tool_danger_level(tool) {
         0 => "safe",
         1 => "medium",
-        _ => "high",
+        2 => "high",
+        _ => "destructive",
     }
 }
 
@@ -68422,7 +68427,8 @@ fn prompt_tool_approval(tool_name: &str, args: &serde_json::Value) -> bool {
     let level_str = match danger {
         0 => "\x1b[32mSAFE\x1b[0m",
         1 => "\x1b[33mMEDIUM\x1b[0m",
-        _ => "\x1b[1;31mHIGH\x1b[0m",
+        2 => "\x1b[1;31mHIGH\x1b[0m",
+        _ => "\x1b[1;31mDESTRUCTIVE\x1b[0m",
     };
     eprintln!();
     eprintln!(
@@ -68463,14 +68469,16 @@ fn prompt_tool_approval(tool_name: &str, args: &serde_json::Value) -> bool {
 }
 
 /// Check if a tool call should be auto-approved based on approve_level.
-/// approve_level: 0=none(ask all), 1=auto-approve safe, 2=auto-approve safe+medium, 3=auto-approve all
+/// approve_level: 0=none (ask all), 1=safe, 2=safe+medium, 3=high (everything
+/// but a delete, a trash, a sync control and the shell), 4=all.
 fn is_auto_approved(tool_name: &str, approve_level: u8) -> bool {
     let danger = tool_danger_level(tool_name);
     match approve_level {
         0 => false,
         1 => danger == 0,
         2 => danger <= 1,
-        3 => true,
+        3 => danger <= 2,
+        4 => true,
         _ => false,
     }
 }
@@ -68717,7 +68725,9 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         } else if is_tty && io::stdin().is_terminal() {
             prompt_tool_approval(&tc.name, &tc.arguments)
         } else {
-            cfg.approve_level >= 3
+            // No terminal to ask: the level decides alone, and a tool it does
+            // not cover is refused, `high` included for a delete or a shell.
+            is_auto_approved(&tc.name, cfg.approve_level)
         };
 
         ftp_client_gui_lib::ai_core::runner::check_cancelled(cancel)?;
@@ -69221,7 +69231,8 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
         0 => "Manual (approve all tools)",
         1 => "Safe (auto-approve safe tools)",
         2 => "Medium (auto-approve safe + medium)",
-        3 => "Auto (auto-approve all tools)",
+        3 => "High (auto-approve all but delete, trash and shell)",
+        4 => "Auto (auto-approve all tools)",
         _ => "Unknown",
     };
     eprintln!("  \x1b[36mMode:\x1b[0m      {}", mode_str);
@@ -78490,6 +78501,53 @@ mod tests {
         assert_eq!(tool_danger_level("remote_list"), 1);
         assert_eq!(tool_danger_level("remote_read"), 2);
         assert_eq!(tool_danger_level("server_exec"), 2);
+    }
+
+    /// L15 (4.2.1 review): `--auto-approve high` behaved exactly as `all`
+    /// while AGENTS.md gave `high` "writes and uploads" and kept shell and
+    /// delete for `all`. `high` now approves everything but a delete, a
+    /// trash, a sync control and the shell; `all` and `-y` approve those too.
+    #[test]
+    fn auto_approve_high_leaves_delete_and_shell_to_the_user() {
+        let high = parse_approve_level("high");
+        let all = parse_approve_level("all");
+        assert_ne!(high, all);
+        for tool in [
+            "local_list",
+            "remote_list",
+            "remote_read",
+            "server_exec",
+            "remote_upload",
+            "local_write",
+        ] {
+            assert!(is_auto_approved(tool, high), "{tool} under high");
+            assert!(is_auto_approved(tool, all), "{tool} under all");
+        }
+        for tool in [
+            "local_delete",
+            "local_trash",
+            "remote_delete",
+            "sync_control",
+            "shell_execute",
+        ] {
+            assert!(!is_auto_approved(tool, high), "{tool} under high");
+            assert!(is_auto_approved(tool, all), "{tool} under all");
+            assert_eq!(tool_danger_name(tool), "destructive");
+        }
+        // The levels below keep their reach.
+        assert!(is_auto_approved(
+            "remote_upload",
+            parse_approve_level("medium")
+        ));
+        assert!(!is_auto_approved(
+            "remote_read",
+            parse_approve_level("medium")
+        ));
+        assert!(!is_auto_approved(
+            "remote_list",
+            parse_approve_level("safe")
+        ));
+        assert!(!is_auto_approved("local_list", parse_approve_level("none")));
     }
 
     #[test]
