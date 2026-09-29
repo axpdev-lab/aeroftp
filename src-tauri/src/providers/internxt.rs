@@ -2329,7 +2329,8 @@ impl StorageProvider for InternxtProvider {
         // The match is by exact name among the items trashed from the
         // path's folder (resolved by exact names): by name alone, a purge of
         // `/new/a.txt` could take a trashed `/old/a.txt`. Ok(false) when
-        // the folder is no longer there to tell which item is this path.
+        // the folder is no longer there to tell which item is this path;
+        // refused when several items of that name were trashed from it.
         let resolved = self.resolve_path(path);
         let (parent_path, basename) = Self::split_path(&resolved);
         let (parent_path, basename) = (parent_path.to_string(), basename.to_string());
@@ -2343,19 +2344,20 @@ impl StorageProvider for InternxtProvider {
         };
         let trashed = self.list_trash().await?;
         let from_parent = |e: &&RemoteEntry| e.metadata.get("parent_uuid") == Some(&parent_uuid);
-        let target = trashed
+        let matches: Vec<(String, bool)> = trashed
             .iter()
             .filter(from_parent)
-            .find(|e| e.name == basename)
-            .and_then(|e| {
+            .filter(|e| e.name == basename)
+            .filter_map(|e| {
                 let uuid = e.path.strip_prefix("[Trash]/")?.to_string();
                 if uuid.is_empty() {
                     None
                 } else {
                     Some((uuid, e.is_dir))
                 }
-            });
-        let (uuid, is_dir) = match target {
+            })
+            .collect();
+        let (uuid, is_dir) = match super::the_one_trashed_item(path, matches)? {
             Some(t) => t,
             None => return Ok(false),
         };
@@ -3347,6 +3349,25 @@ mod tests {
             .await
             .expect("no folder of that case"));
         assert_eq!(changes.lock().unwrap().len(), 1);
+    }
+
+    /// Two generations of `a.txt` trashed from `/dst`: the purge took the
+    /// first one listed, which the trash cannot tell to be this path. It is
+    /// refused, as Proton refuses it, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_items_of_one_name() {
+        let (mut provider, _, changes) =
+            provider_on_drive(&[("T1", "a.txt", "trash:D"), ("T2", "a.txt", "trash:D")]).await;
+        let outcome = provider.delete_permanent("/dst/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
     }
 
     /// `cd /docs` beside only `Docs` resolved to `Docs` through the case

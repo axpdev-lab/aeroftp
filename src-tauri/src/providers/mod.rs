@@ -1822,6 +1822,26 @@ pub fn stat_cannot_describe(error: &ProviderError) -> bool {
     )
 }
 
+/// The one trashed item a `delete_permanent` of `path` may purge, among
+/// `matches`: the items of the path's exact name trashed from the path's
+/// folder. That trash can hold several generations of one name, and nothing
+/// in the listing tells which of them was this path, so purging the first one
+/// listed could hard-delete an item nobody named. That is refused, as Proton
+/// refuses it: the item stays in the trash, which the provider empties on its
+/// own schedule.
+pub(crate) fn the_one_trashed_item<T>(
+    path: &str,
+    mut matches: Vec<T>,
+) -> Result<Option<T>, ProviderError> {
+    if matches.len() > 1 {
+        return Err(ProviderError::ServerError(format!(
+            "Not purged: {} items in the trash were deleted from the folder of {path} under its name, and the trash cannot tell which one it is",
+            matches.len()
+        )));
+    }
+    Ok(matches.pop())
+}
+
 fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
     ProviderError::DirectoryNotEmpty(format!(
         "{path} holds {entries} entr{}; delete it recursively to remove it with its content",

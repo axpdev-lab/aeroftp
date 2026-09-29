@@ -2137,7 +2137,8 @@ impl StorageProvider for BoxProvider {
         // the items trashed from the path's folder and dispatch to the
         // existing inherent helper: by name alone, a purge of `/new/a.txt`
         // could take a trashed `/old/a.txt`. Ok(false) when nothing matches,
-        // or the folder is no longer there to tell which item is this path.
+        // or the folder is no longer there to tell which item is this path;
+        // refused when several items of that name were trashed from it.
         let normalized = Self::normalize_path(path);
         let (parent_path, basename) = match normalized.rfind('/') {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
@@ -2153,16 +2154,17 @@ impl StorageProvider for BoxProvider {
         };
         let trashed = self.list_trash().await?;
         let from_parent = |e: &&RemoteEntry| e.metadata.get("parent_id") == Some(&parent_id);
-        let target = trashed
+        let matches: Vec<(String, String)> = trashed
             .iter()
             .filter(from_parent)
-            .find(|e| e.name == basename)
-            .and_then(|e| {
+            .filter(|e| e.name == basename)
+            .filter_map(|e| {
                 let id = e.metadata.get("id")?;
                 let kind = e.metadata.get("item_type")?;
                 Some((id.clone(), kind.clone()))
-            });
-        match target {
+            })
+            .collect();
+        match super::the_one_trashed_item(path, matches)? {
             Some((id, kind)) => {
                 self.permanent_delete_from_trash(&id, &kind).await?;
                 Ok(true)
@@ -3620,6 +3622,29 @@ mod tests {
         // No folder to tell which trashed `a.txt` is this path: none.
         assert!(!p.delete_permanent("/gone/a.txt").await.expect("no folder"));
         assert_eq!(changes.lock().unwrap().len(), 1);
+    }
+
+    /// Two generations of `a.txt` trashed from `/new`: the purge took the
+    /// first one listed, which the trash cannot tell to be this path. It is
+    /// refused, as Proton refuses it, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_items_of_one_name() {
+        let (mut p, _, changes) = provider_on_box(&[
+            ("2", "new", "0", "folder"),
+            ("11", "a.txt", "trash:2", "file"),
+            ("12", "a.txt", "trash:2", "file"),
+        ])
+        .await;
+        let outcome = p.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
     }
 
     /// A one-byte local file to upload.

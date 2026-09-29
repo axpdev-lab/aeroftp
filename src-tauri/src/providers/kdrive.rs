@@ -1470,7 +1470,8 @@ impl StorageProvider for KDriveProvider {
         // dispatch to the inherent permanently_delete_trash helper: by name
         // alone, a purge of `/new/a.txt` could take a trashed `/old/a.txt`.
         // Ok(false) when nothing matches, or the folder is no longer there
-        // to tell which item is this path.
+        // to tell which item is this path; refused when several items of
+        // that name were trashed from it.
         let resolved = self.resolve_path(path);
         let (parent_path, basename) = Self::split_path(&resolved);
         if basename.is_empty() {
@@ -1482,12 +1483,13 @@ impl StorageProvider for KDriveProvider {
             Err(e) => return Err(e),
         };
         let trashed = self.list_trash().await?;
-        let id = trashed
+        let matches: Vec<String> = trashed
             .iter()
             .filter(|e| e.metadata.get("parent_id") == Some(&parent_id))
-            .find(|e| e.name == basename)
-            .and_then(|e| e.metadata.get("file_id").cloned());
-        match id {
+            .filter(|e| e.name == basename)
+            .filter_map(|e| e.metadata.get("file_id").cloned())
+            .collect();
+        match super::the_one_trashed_item(path, matches)? {
             Some(file_id) => {
                 self.permanently_delete_trash(&file_id).await?;
                 Ok(true)
@@ -2820,6 +2822,25 @@ mod tests {
             .await
             .expect("no folder of that case"));
         assert_eq!(purges.lock().unwrap().len(), 1);
+    }
+
+    /// Two generations of `a.txt` trashed from `/new`: the purge took the
+    /// first one listed, which the trash cannot tell to be this path. It is
+    /// refused, as Proton refuses it, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_items_of_one_name() {
+        let (mut provider, purges) =
+            provider_on_kdrive_trash(&[(22, "new")], &[(31, "a.txt", 22), (32, "a.txt", 22)]).await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            purges.lock().unwrap().is_empty(),
+            "{:?}",
+            purges.lock().unwrap()
+        );
     }
 
     /// One item of [`provider_on_kdrive_tree`]: id, name, parent id, `dir`

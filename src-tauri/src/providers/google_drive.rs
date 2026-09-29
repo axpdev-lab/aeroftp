@@ -1256,7 +1256,7 @@ impl GoogleDriveProvider {
         &mut self,
         name: &str,
         parent_id: &str,
-    ) -> Result<Option<String>, ProviderError> {
+    ) -> Result<Vec<String>, ProviderError> {
         // Escape single quotes per Drive query syntax (\').
         let escaped = name.replace('\\', "\\\\").replace('\'', "\\'");
         let q = format!(
@@ -1284,12 +1284,15 @@ impl GoogleDriveProvider {
             .map_err(|e| ProviderError::Other(format!("Trash search parse error: {}", e)))?;
         // The search ignores letter case (see `find_by_name`): a trashed
         // `A.txt` is not the `a.txt` the caller trashed, and this id is
-        // deleted for good.
+        // deleted for good. Every hit of the exact name is returned: Drive
+        // keeps several of one name in a folder, and the caller refuses to
+        // choose among them.
         Ok(list
             .files
             .into_iter()
-            .find(|f| f.name == name)
-            .map(|f| f.id))
+            .filter(|f| f.name == name)
+            .map(|f| f.id)
+            .collect())
     }
 
     /// Permanently delete a file by file ID (bypasses trash)
@@ -2006,7 +2009,9 @@ impl StorageProvider for GoogleDriveProvider {
         // and call `permanent_delete` by file id. If nothing matches the path
         // is treated as already purged (Ok(false)) rather than an error so
         // the caller can continue; so is a folder that is no longer there,
-        // since nothing in the trash can then be told to be this path.
+        // since nothing in the trash can then be told to be this path. Two
+        // trashed files of that name in that folder are refused: neither can
+        // be told to be this path either.
         let path_is_absolute = path.starts_with('/');
         let trimmed = path.trim_matches('/');
         let (parent_path, basename) = match trimmed.rfind('/') {
@@ -2021,7 +2026,8 @@ impl StorageProvider for GoogleDriveProvider {
             Err(ProviderError::NotFound(_)) => return Ok(false),
             Err(e) => return Err(e),
         };
-        match self.find_trashed_in(basename, &parent_id).await? {
+        let matches = self.find_trashed_in(basename, &parent_id).await?;
+        match super::the_one_trashed_item(path, matches)? {
             Some(id) => {
                 self.permanent_delete(&id).await?;
                 Ok(true)
@@ -3468,6 +3474,29 @@ mod tests {
         .await;
         assert!(p.delete_permanent("/new/a.txt").await.expect("purge"));
         assert_eq!(*changes.lock().unwrap(), ["DELETE TN"]);
+    }
+
+    /// Drive keeps two trashed `a.txt` of one folder side by side, and the
+    /// purge took the one modified last, which the trash cannot tell to be
+    /// this path. It is refused, as Proton refuses it, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_files_of_one_name() {
+        let (mut p, changes) = provider_on_drive(&[
+            ("N", "new", "root"),
+            ("T1", "a.txt", "trash:N"),
+            ("T2", "a.txt", "trash:N"),
+        ])
+        .await;
+        let outcome = p.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
     }
 
     /// The folder cache keeps each spelling a lookup used, so a folder whose
