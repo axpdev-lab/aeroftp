@@ -250,6 +250,7 @@ fn onedrive_takes_the_current_folder_as_a_parent_only_where_allowed() {
             "upload",
             "mkdir",
             "delete",
+            "delete_permanent",
             "patch_into_place",
             "stat",
             "create_share_link",
