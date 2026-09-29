@@ -1839,6 +1839,10 @@ impl StorageProvider for DrimeCloudProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(path).await?;
         self.delete(path).await
     }
 

@@ -1643,7 +1643,79 @@ impl StorageProvider for OneDriveProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.delete(path).await
+        // Round 2 of the 4.2.1 review: Graph's DELETE sends a folder to the
+        // recycle bin with everything in it. The folder is read first
+        // (`folder.childCount`, its eTag): one that holds anything is
+        // refused, and the DELETE carries `If-Match` with the eTag read, so a
+        // folder Graph changed in between (OneDrive updates a folder's eTag
+        // with its children) is refused with 412 instead of taken.
+        let full_path = if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("{}/{}", self.current_path.trim_end_matches('/'), path)
+        };
+        let item_id = self.resolve_path(&full_path).await?;
+        let url = format!("{}?$select=id,eTag,folder", self.api_item(&item_id));
+        let response = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if response.status().as_u16() == 404 {
+            return Err(ProviderError::NotFound(path.to_string()));
+        }
+        if !response.status().is_success() {
+            return Err(ProviderError::Other(format!(
+                "Reading the folder failed: {}",
+                response.status()
+            )));
+        }
+        let item: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let Some(folder) = item.get("folder") else {
+            return Err(ProviderError::InvalidPath(format!(
+                "{path} is not a folder"
+            )));
+        };
+        match folder.get("childCount").and_then(|c| c.as_u64()) {
+            Some(0) => {}
+            Some(count) => return Err(super::directory_not_empty(path, count as usize)),
+            // A folder facet without a count: the listing decides.
+            None => self.refuse_non_empty_dir(path).await?,
+        }
+        let mut request = self
+            .client
+            .delete(self.api_item(&item_id))
+            .header(AUTHORIZATION, self.auth_header().await?);
+        if let Some(etag) = item.get("eTag").and_then(|e| e.as_str()) {
+            request = request.header(reqwest::header::IF_MATCH, etag);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        match response.status().as_u16() {
+            412 => {
+                return Err(ProviderError::DirectoryNotEmpty(format!(
+                    "{path} changed between the check and the delete; it stays"
+                )))
+            }
+            404 => {}
+            status if !response.status().is_success() => {
+                return Err(ProviderError::Other(format!("Delete failed: {status}")))
+            }
+            _ => {}
+        }
+        super::forget_cached_subtree_ignoring_case(
+            &mut self.path_cache,
+            full_path.trim_matches('/'),
+        );
+        info!("Removed empty folder: {}", path);
+        Ok(())
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -3098,6 +3170,81 @@ mod tests {
         p.api_origin_override = Some(format!("http://{addr}"));
         p.test_access_token = Some("fixture".into());
         (p, requests, server)
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` was `delete`, and Graph's DELETE
+    /// sends a folder to the recycle bin with everything in it. The folder is
+    /// read first: `folder.childCount` above zero refuses it, with no DELETE
+    /// sent; an empty one is deleted.
+    #[tokio::test]
+    async fn rmdir_reads_the_folder_and_refuses_one_that_holds_anything() {
+        fn full(
+            method: &axum::http::Method,
+            path: &str,
+        ) -> (axum::http::StatusCode, serde_json::Value) {
+            graph_folder_answer(method, path, 2)
+        }
+        fn empty(
+            method: &axum::http::Method,
+            path: &str,
+        ) -> (axum::http::StatusCode, serde_json::Value) {
+            graph_folder_answer(method, path, 0)
+        }
+        let (mut p, requests, server) = graph_fixture(full).await;
+        let refused = p.rmdir("/d").await;
+        assert!(
+            matches!(refused, Err(ProviderError::DirectoryNotEmpty(_))),
+            "{refused:?}"
+        );
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r.starts_with("DELETE ")),
+            "{:?}",
+            requests.lock().unwrap()
+        );
+        server.abort();
+
+        let (mut p, requests, server) = graph_fixture(empty).await;
+        p.rmdir("/d").await.expect("an empty folder goes");
+        assert!(
+            requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r == "DELETE /v1.0/me/drive/items/D"),
+            "{:?}",
+            requests.lock().unwrap()
+        );
+        server.abort();
+    }
+
+    /// Graph for a folder `d` (id `D`) with `children` children.
+    fn graph_folder_answer(
+        method: &axum::http::Method,
+        path: &str,
+        children: u64,
+    ) -> (axum::http::StatusCode, serde_json::Value) {
+        use axum::http::StatusCode;
+        match (method.as_str(), path) {
+            ("GET", "/v1.0/me/drive/root:/d") | ("GET", "/v1.0/me/drive/items/D") => (
+                StatusCode::OK,
+                serde_json::json!({
+                    "id": "D", "name": "d", "eTag": "\"etag-1\"",
+                    "folder": { "childCount": children },
+                    "parentReference": { "path": "/drive/root:" },
+                }),
+            ),
+            ("DELETE", "/v1.0/me/drive/items/D") => {
+                (StatusCode::NO_CONTENT, serde_json::Value::Null)
+            }
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error":{"code":"itemNotFound"}}),
+            ),
+        }
     }
 
     // Pre-existing, found by the #960 review: delete dropped only the exact
