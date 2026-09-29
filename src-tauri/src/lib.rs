@@ -8167,14 +8167,11 @@ where
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
-    let name = out_path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "entry".to_string());
-    let tmp_path = parent.join(format!(
-        ".{name}.aeroftp-part-{}",
-        &uuid::Uuid::new_v4().simple().to_string()[..8]
-    ));
+    // A fixed prefix and a random suffix only (46 bytes), never the entry's
+    // name: built from it, the temporary was 23 bytes longer than the entry,
+    // and an entry within 23 bytes of the file system's name limit (255 on
+    // ext4, about 143 on eCryptfs) could not be extracted at all.
+    let tmp_path = parent.join(format!(".aeroftp-part-{}", uuid::Uuid::new_v4().simple()));
     // create_new: never reuse or follow something already at the temporary path.
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -21661,6 +21658,48 @@ mod sevenz_mhe_tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
         let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o755, "mode after replace: {mode:o}");
+    }
+
+    // The temporary was named after the entry plus 23 bytes, so any entry with
+    // a name longer than 232 bytes failed with "File name too long" and the
+    // whole extraction stopped, where writing the final path directly worked.
+    // 255 bytes is NAME_MAX on ext4, btrfs and APFS.
+    #[test]
+    fn an_entry_with_a_name_at_the_file_system_limit_is_written() {
+        let dir = tempfile::tempdir().unwrap();
+        for (len, existing) in [(240, true), (255, false)] {
+            let target = dir.path().join("a".repeat(len));
+            if existing {
+                std::fs::write(&target, b"old").unwrap();
+            }
+            let result = super::write_entry_atomically(&target, |f| {
+                use std::io::Write;
+                f.write_all(b"new")?;
+                Ok(3)
+            });
+            assert!(result.is_ok(), "{len}-byte name: {:?}", result.err());
+            assert_eq!(std::fs::read(&target).unwrap(), b"new");
+            std::fs::remove_file(&target).unwrap();
+        }
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert!(left.is_empty(), "temporary files left behind: {left:?}");
+    }
+
+    // A failed entry with a long name still leaves the file already there as
+    // it was, and no temporary beside it.
+    #[test]
+    fn a_failed_entry_with_a_long_name_leaves_the_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("b".repeat(250));
+        std::fs::write(&target, b"old").unwrap();
+        let result = super::write_entry_atomically(&target, |f| {
+            use std::io::Write;
+            f.write_all(b"partial")?;
+            Err(std::io::Error::other("stream ended"))
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"old");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     // The dialog's Fast/Normal/Maximum buttons (and the CLI's --level) must
