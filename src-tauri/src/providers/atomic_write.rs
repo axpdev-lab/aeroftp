@@ -209,6 +209,21 @@ pub(crate) mod temp_claim {
             return e;
         }
         let bytes = temp.file_name().map_or(0, |name| name.len());
+        // A name within the folder's own name limit was not refused for its
+        // length: the whole path was (a fixed-length temporary in a deep
+        // folder), and "shorten the file name" would not help.
+        #[cfg(unix)]
+        if name_fits_its_folder(temp, bytes) {
+            return Error::new(
+                ErrorKind::InvalidFilename,
+                format!(
+                    "Cannot create the download temporary {}: the path is {} bytes, \
+                     too long for this file system; download into a shorter folder ({e})",
+                    temp.display(),
+                    temp.as_os_str().len()
+                ),
+            );
+        }
         Error::new(
             ErrorKind::InvalidFilename,
             format!(
@@ -218,6 +233,24 @@ pub(crate) mod temp_claim {
                 temp.display()
             ),
         )
+    }
+
+    /// Whether a name of `bytes` bytes fits the name limit of the folder that
+    /// holds `temp` (`pathconf(_PC_NAME_MAX)`). False when the limit cannot be
+    /// read, so the name is then assumed to be what was too long.
+    #[cfg(unix)]
+    fn name_fits_its_folder(temp: &Path, bytes: usize) -> bool {
+        use std::os::unix::ffi::OsStrExt;
+        let Some(parent) = temp.parent().filter(|p| !p.as_os_str().is_empty()) else {
+            return false;
+        };
+        let Ok(parent) = std::ffi::CString::new(parent.as_os_str().as_bytes()) else {
+            return false;
+        };
+        // SAFETY: `parent` is a valid NUL-terminated C string that outlives
+        // the call; pathconf only reads it.
+        let limit = unsafe { libc::pathconf(parent.as_ptr(), libc::_PC_NAME_MAX) };
+        limit > 0 && bytes <= limit as usize
     }
 
     /// `name_too_long` on the raw codes of each platform: only the codes that
@@ -275,6 +308,20 @@ pub(crate) mod temp_claim {
             assert!(told.to_string().contains("shorten"));
             let other = name_too_long(Error::from_raw_os_error(libc::EACCES), &over_long_temp());
             assert_eq!(other.raw_os_error(), Some(libc::EACCES));
+        }
+
+        /// CodeRabbit on #987: a short temporary name in a real folder was
+        /// told to shorten its file name when ENAMETOOLONG came from the
+        /// whole path. It says the path is too long.
+        #[cfg(unix)]
+        #[test]
+        fn on_unix_a_short_name_in_a_long_path_blames_the_path() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join(".aeroftp-readahead-0123456789");
+            let told =
+                name_too_long(Error::from_raw_os_error(libc::ENAMETOOLONG), &temp).to_string();
+            assert!(told.contains("the path is"), "{told}");
+            assert!(!told.contains("shorten the local file name"), "{told}");
         }
     }
 
