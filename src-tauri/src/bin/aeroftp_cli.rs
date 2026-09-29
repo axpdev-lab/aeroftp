@@ -52402,7 +52402,9 @@ async fn cmd_sync(
             {
                 Ok(()) => dirs_deleted += 1,
                 Err(ProviderError::NotFound(_)) => {}
-                Err(e) => {
+                // Kept on purpose: the directory holds what the plan did not
+                // have (an excluded or unlisted entry).
+                Err(e @ ProviderError::DirectoryNotEmpty(_)) => {
                     if !quiet {
                         eprintln!("Note: kept remote directory {dir}: {e}");
                     }
@@ -52411,20 +52413,41 @@ async fn cmd_sync(
                         reason: e.to_string(),
                     });
                 }
+                // Any other refusal (permissions, a timeout, a server error)
+                // is a failure of the run, not a directory kept by design.
+                Err(e) => errors.push(format!("remove remote directory {dir}: {e}")),
             }
         } else {
             let local_dir = Path::new(local).join(dir);
             if sync_backup_dir_holds(backup_dir, &local_dir) {
                 continue;
             }
-            let empty = std::fs::read_dir(&local_dir).is_ok_and(|mut it| it.next().is_none());
-            if !empty {
+            let held = match std::fs::read_dir(&local_dir) {
+                Ok(entries) => entries.count(),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    errors.push(format!("read local directory {dir}: {e}"));
+                    continue;
+                }
+            };
+            if held > 0 {
+                let reason = format!(
+                    "{dir} holds {held} entr{} the plan did not have",
+                    if held == 1 { "y" } else { "ies" }
+                );
+                if !quiet {
+                    eprintln!("Note: kept local directory {dir}: {reason}");
+                }
+                dirs_kept.push(CliSyncKeptDir {
+                    path: dir.clone(),
+                    reason,
+                });
                 continue;
             }
             match std::fs::remove_dir(&local_dir) {
                 Ok(()) => dirs_deleted += 1,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
+                Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
                     if !quiet {
                         eprintln!("Note: kept local directory {dir}: {e}");
                     }
@@ -52433,6 +52456,7 @@ async fn cmd_sync(
                         reason: e.to_string(),
                     });
                 }
+                Err(e) => errors.push(format!("remove local directory {dir}: {e}")),
             }
         }
     }
@@ -81093,6 +81117,8 @@ mod tests {
         /// still sees them: a directory that holds one is refused, as the
         /// server refuses it.
         hidden: std::collections::HashSet<String>,
+        /// Opt-in: every `rmdir` is refused for want of permission.
+        rmdir_denied: bool,
     }
 
     impl MemTreeProvider {
@@ -81230,6 +81256,11 @@ mod tests {
             if !self.mutable {
                 return Err(ProviderError::NotSupported("rmdir".to_string()));
             }
+            if self.rmdir_denied {
+                return Err(ProviderError::PermissionDenied(format!(
+                    "{path}: 550 Permission denied"
+                )));
+            }
             // The contract of every backend since round 2 of the 4.2.1
             // review: a directory that holds anything, listed or not, is
             // refused. A backend that lists first says so in words
@@ -81248,8 +81279,11 @@ mod tests {
                             if listed == 1 { "y" } else { "ies" }
                         ))
                     } else {
-                        ProviderError::ServerError(format!(
-                            "550 {path}: Remove directory operation failed."
+                        // What the FTP provider answers since it looks into a
+                        // directory whose RMD the server refused without
+                        // saying why (vsftpd's bare 550).
+                        ProviderError::DirectoryNotEmpty(format!(
+                            "550 {path}: Remove directory operation failed. ({path} holds hidden entries)"
                         ))
                     });
                 }
@@ -86393,6 +86427,75 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             vec!["old"],
             "RMD refused the directory the listing showed empty"
         );
+    }
+
+    /// CodeRabbit on #979: a directory the backend refused for another reason
+    /// than holding entries (permissions here) was listed as kept and the run
+    /// exited 0. Only a refusal for content is a kept directory; any other is
+    /// an error of the run.
+    #[test]
+    fn a_directory_whose_removal_is_denied_fails_the_run() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir_all(Path::new(&local).join("keep")).unwrap();
+        fixture.local_file("keep/a.txt", 1);
+        let mut remote = MemTreeProvider::tree(&[("keep/a.txt", 1), ("old/x.txt", 1)]);
+        remote.mutable = true;
+        remote.rmdir_denied = true;
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = run_sync_rule(
+            remote,
+            &local,
+            "upload",
+            false,
+            true,
+            &[],
+            SOURCE_WINS,
+            &cli,
+        );
+        assert!(
+            stats.dirs_kept.is_empty(),
+            "a denied removal is not a kept directory"
+        );
+        assert_ne!(stats.exit_code, 0, "a denied removal fails the run");
+    }
+
+    /// CodeRabbit on #979: a local directory a download emptied of what the
+    /// plan had, but that still holds an excluded file, was skipped without a
+    /// word. It is listed as kept, with the count.
+    #[test]
+    fn a_local_directory_holding_an_excluded_file_is_listed_as_kept() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir_all(Path::new(&local).join("keep")).unwrap();
+        std::fs::create_dir_all(Path::new(&local).join("old")).unwrap();
+        fixture.local_file("keep/a.txt", 1);
+        fixture.local_file("old/x.txt", 1);
+        fixture.local_file("old/.env", 1);
+        let mut remote = MemTreeProvider::tree(&[("keep/a.txt", 1)]);
+        remote.mutable = true;
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let excludes = vec![".env".to_string()];
+        let stats = run_sync_rule(
+            remote,
+            &local,
+            "download",
+            false,
+            true,
+            &excludes,
+            SOURCE_WINS,
+            &cli,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert!(Path::new(&local).join("old/.env").exists());
+        let kept: Vec<&str> = stats.dirs_kept.iter().map(|d| d.path.as_str()).collect();
+        assert_eq!(kept, vec!["old"]);
     }
 
     /// A dry run removes no directory: it lists the candidates and stops.
