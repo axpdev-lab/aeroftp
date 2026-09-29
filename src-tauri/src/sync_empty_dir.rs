@@ -7,20 +7,25 @@
 //! it. The folder can still hold what the plan never removed: a file whose
 //! move into the versioned-backup folder failed, and a file the compare
 //! excluded (`docs/.env`), which has no row of its own. A recursive delete
-//! took both along. This removal never recurses: a folder that lists any
-//! entry is kept, and a folder the removal is refused for and that is still
-//! there afterwards is kept too.
+//! took both along. This removal never recurses: it is `StorageProvider::rmdir`,
+//! which since the 4.2.1 review refuses a folder that holds anything on every
+//! backend (`ProviderError::DirectoryNotEmpty`), and the local `remove_dir`,
+//! which the operating system refuses the same way.
 //!
-//! What "empty" rests on differs by backend, and the difference is the limit:
+//! What the answer says, and why:
 //!
-//! - local disk: `remove_dir` refuses a folder that is not empty, always;
-//! - FTP and SFTP: `RMD` / `rmdir` refuse it by protocol, so a file the
-//!   listing did not show (an FTP `LIST` that hides dot files) still keeps it;
-//! - other providers: several remove a folder with its content on `rmdir`,
-//!   so the listing taken right before it is the only check, and a stored
-//!   object that listing leaves out goes with the folder. `aeroftp-cli sync`
-//!   removes no folder at all on those backends
-//!   (`sync_rmdir_refuses_non_empty`).
+//! - `removed`: the folder was empty and is gone;
+//! - `kept:entries`: the folder holds entries the plan did not have (an
+//!   excluded file, a file written since the scan): the listing shows them;
+//! - `kept:server`: the server refused the folder as not empty while its
+//!   listing shows nothing (an FTP `LIST` that hides dot files); the folder
+//!   stays with what it hides;
+//! - an error: the removal was refused for any other reason (a permission,
+//!   a lost connection) on a folder that lists empty. That is not a skip: the
+//!   folder should have gone and did not, and the run must say so.
+//!
+//! How each backend refuses a folder that is not empty is in the table at
+//! [`crate::providers::StorageProvider::rmdir`].
 
 use std::path::Path;
 
@@ -28,14 +33,22 @@ use async_trait::async_trait;
 
 use crate::providers::{ProviderError, StorageProvider};
 
+/// Why a folder stayed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeptReason {
+    /// The listing shows entries the plan did not have.
+    HoldsEntries,
+    /// The server refused the folder as not empty; the listing shows nothing.
+    RefusedByServer,
+}
+
 /// What a removal did to the folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EmptyDirRemoval {
     /// The folder was empty and is gone.
     Removed,
-    /// The folder holds something, or refused the removal and is still
-    /// there: it stays, with whatever is in it.
-    Kept,
+    /// The folder holds something: it stays, with whatever is in it.
+    Kept(KeptReason),
 }
 
 impl EmptyDirRemoval {
@@ -43,7 +56,8 @@ impl EmptyDirRemoval {
     pub fn as_str(self) -> &'static str {
         match self {
             EmptyDirRemoval::Removed => "removed",
-            EmptyDirRemoval::Kept => "kept",
+            EmptyDirRemoval::Kept(KeptReason::HoldsEntries) => "kept:entries",
+            EmptyDirRemoval::Kept(KeptReason::RefusedByServer) => "kept:server",
         }
     }
 }
@@ -60,7 +74,7 @@ pub fn remove_local_dir_if_empty(path: &Path) -> std::io::Result<EmptyDirRemoval
                     .map(|mut entries| entries.next().is_some())
                     .unwrap_or(false);
             if holds_entry {
-                Ok(EmptyDirRemoval::Kept)
+                Ok(EmptyDirRemoval::Kept(KeptReason::HoldsEntries))
             } else {
                 Err(e)
             }
@@ -68,35 +82,41 @@ pub fn remove_local_dir_if_empty(path: &Path) -> std::io::Result<EmptyDirRemoval
     }
 }
 
-/// The three operations the removal needs from a remote, so a provider and
-/// the GUI's own FTP session run the same code.
+/// The two operations the removal needs from a remote, so a provider and the
+/// GUI's own FTP session run the same code.
 #[async_trait]
 pub trait EmptyDirRemote: Send {
+    /// Remove the folder `path` if it is empty, refusing one that is not with
+    /// `DirectoryNotEmpty` where the backend tells the two apart (a bare
+    /// refusal, as an FTP 550, is any other error).
+    async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError>;
     /// How many entries a listing of `path` shows.
     async fn entry_count(&mut self, path: &str) -> Result<usize, ProviderError>;
-    /// Remove the folder `path`, which the last listing showed empty.
-    async fn remove_listed_empty(&mut self, path: &str) -> Result<(), ProviderError>;
-    /// Whether a file or folder is at `path`. An error means "could not
-    /// tell", never "no".
-    async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError>;
 }
 
-/// Remove the remote folder `path` if it is empty: list it, keep it when the
-/// listing shows anything, and otherwise remove it. A removal that fails
-/// while the folder is still there is `Kept` (the server refused it, most
-/// often because it holds what the listing did not show); any other failure
-/// is returned.
+/// Remove the remote folder `path` if it is empty, through the backend's own
+/// non-recursive `rmdir`. A refusal as not empty keeps the folder, with the
+/// listing saying whether it shows the entries (`HoldsEntries`) or not
+/// (`RefusedByServer`). Any other refusal keeps the folder too when the
+/// listing shows entries, since a backend whose refusal is a bare status (FTP
+/// `RMD`) says no more than that; on a folder that lists empty it is the
+/// error it is.
 pub async fn remove_remote_dir_if_empty<R: EmptyDirRemote + ?Sized>(
     remote: &mut R,
     path: &str,
 ) -> Result<EmptyDirRemoval, ProviderError> {
-    if remote.entry_count(path).await? > 0 {
-        return Ok(EmptyDirRemoval::Kept);
-    }
-    match remote.remove_listed_empty(path).await {
+    match remote.rmdir(path).await {
         Ok(()) => Ok(EmptyDirRemoval::Removed),
-        Err(e) => match remote.path_exists(path).await {
-            Ok(true) => Ok(EmptyDirRemoval::Kept),
+        Err(ProviderError::DirectoryNotEmpty(_)) => {
+            let reason = if remote.entry_count(path).await? > 0 {
+                KeptReason::HoldsEntries
+            } else {
+                KeptReason::RefusedByServer
+            };
+            Ok(EmptyDirRemoval::Kept(reason))
+        }
+        Err(e) => match remote.entry_count(path).await {
+            Ok(n) if n > 0 => Ok(EmptyDirRemoval::Kept(KeptReason::HoldsEntries)),
             _ => Err(e),
         },
     }
@@ -107,21 +127,36 @@ pub struct ProviderDirRemote<'a>(pub &'a mut dyn StorageProvider);
 
 #[async_trait]
 impl EmptyDirRemote for ProviderDirRemote<'_> {
+    async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.0.rmdir(path).await
+    }
     async fn entry_count(&mut self, path: &str) -> Result<usize, ProviderError> {
         Ok(self.0.list(path).await?.len())
     }
-    async fn remove_listed_empty(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.0.rmdir(path).await
-    }
-    async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        self.0.exists(path).await
-    }
+}
+
+/// Whether an FTP server's refusal names a folder that is not empty. Servers
+/// that say so (ProFTPD, Pure-FTPd, IIS) do it in these words; vsftpd answers
+/// a bare "Remove directory operation failed.", which says no more than that.
+fn ftp_refusal_names_not_empty(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("not empty") || lower.contains("notempty")
 }
 
 /// The GUI's FTP session: `LIST` needs the working directory, which is put
 /// back afterwards; `RMD` refuses a folder that is not empty.
 #[async_trait]
 impl EmptyDirRemote for crate::ftp::FtpManager {
+    async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.remove_dir(path).await.map_err(|e| {
+            let message = e.to_string();
+            if ftp_refusal_names_not_empty(&message) {
+                ProviderError::DirectoryNotEmpty(message)
+            } else {
+                ProviderError::ServerError(message)
+            }
+        })
+    }
     async fn entry_count(&mut self, path: &str) -> Result<usize, ProviderError> {
         let original = self.current_path();
         self.change_dir(path)
@@ -135,16 +170,6 @@ impl EmptyDirRemote for crate::ftp::FtpManager {
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         listed
             .map(|entries| entries.len())
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
-    }
-    async fn remove_listed_empty(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.remove_dir(path)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
-    }
-    async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        self.exists(path)
-            .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))
     }
 }
@@ -163,7 +188,7 @@ mod tests {
 
         assert_eq!(
             remove_local_dir_if_empty(&docs).unwrap(),
-            EmptyDirRemoval::Kept
+            EmptyDirRemoval::Kept(KeptReason::HoldsEntries)
         );
         assert_eq!(std::fs::read(docs.join(".env")).unwrap(), b"SECRET=1");
     }
@@ -176,7 +201,7 @@ mod tests {
 
         assert_eq!(
             remove_local_dir_if_empty(&a).unwrap(),
-            EmptyDirRemoval::Kept
+            EmptyDirRemoval::Kept(KeptReason::HoldsEntries)
         );
         assert!(a.join("b").is_dir());
     }
@@ -200,15 +225,28 @@ mod tests {
         assert!(remove_local_dir_if_empty(&tmp.path().join("nope")).is_err());
     }
 
+    /// How a fake server refuses a folder that is not empty.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+    enum Refusal {
+        /// The typed answer of a provider that lists first, or of an API
+        /// with a code for it (Box, pCloud, SFTP).
+        #[default]
+        Typed,
+        /// A bare status, as vsftpd's `550 Remove directory operation failed.`
+        Bare,
+    }
+
     /// A remote of folders and files. `hidden` entries exist but are not
-    /// listed (an FTP `LIST` without dot files); `recursive_rmdir` removes a
-    /// folder with its content, as several cloud APIs do, while otherwise
-    /// `rmdir` refuses a folder that holds anything.
+    /// listed (an FTP `LIST` without dot files); `rmdir` refuses a folder
+    /// that holds anything, listed or hidden, the way every backend does now,
+    /// and `refuses_all` a folder the server will not remove at all (a
+    /// permission).
     #[derive(Default)]
     struct FakeRemote {
         paths: BTreeSet<String>,
         hidden: BTreeSet<String>,
-        recursive_rmdir: bool,
+        refusal: Refusal,
+        refuses_all: bool,
         list_fails: bool,
         rmdir_calls: Vec<String>,
     }
@@ -231,6 +269,29 @@ mod tests {
 
     #[async_trait]
     impl EmptyDirRemote for FakeRemote {
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.rmdir_calls.push(path.to_string());
+            if !self.paths.contains(path) {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            if self.refuses_all {
+                return Err(ProviderError::PermissionDenied(
+                    "550 Permission denied".into(),
+                ));
+            }
+            if !self.children(path).is_empty() {
+                return Err(match self.refusal {
+                    Refusal::Typed => {
+                        ProviderError::DirectoryNotEmpty(format!("{path} holds entries"))
+                    }
+                    Refusal::Bare => {
+                        ProviderError::ServerError("550 Remove directory operation failed.".into())
+                    }
+                });
+            }
+            self.paths.remove(path);
+            Ok(())
+        }
         async fn entry_count(&mut self, path: &str) -> Result<usize, ProviderError> {
             if self.list_fails {
                 return Err(ProviderError::ServerError("503".into()));
@@ -241,45 +302,68 @@ mod tests {
                 .filter(|p| !self.hidden.contains(*p))
                 .count())
         }
-        async fn remove_listed_empty(&mut self, path: &str) -> Result<(), ProviderError> {
-            self.rmdir_calls.push(path.to_string());
-            let children: Vec<String> = self.children(path).into_iter().cloned().collect();
-            if !children.is_empty() && !self.recursive_rmdir {
-                return Err(ProviderError::ServerError("550 Directory not empty".into()));
-            }
-            for child in children {
-                self.paths.remove(&child);
-            }
-            self.paths.remove(path);
-            Ok(())
-        }
-        async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-            Ok(self.paths.contains(path))
-        }
     }
 
     #[tokio::test]
-    async fn a_remote_folder_with_an_excluded_file_is_kept_and_never_removed() {
+    async fn a_remote_folder_with_an_excluded_file_is_kept_with_it() {
         let mut remote = FakeRemote::with(&["/r/docs", "/r/docs/.env"]);
-        remote.recursive_rmdir = true;
         let got = remove_remote_dir_if_empty(&mut remote, "/r/docs")
             .await
             .unwrap();
-        assert_eq!(got, EmptyDirRemoval::Kept);
-        assert!(remote.rmdir_calls.is_empty());
+        assert_eq!(got, EmptyDirRemoval::Kept(KeptReason::HoldsEntries));
         assert!(remote.paths.contains("/r/docs/.env"));
     }
 
+    /// The same folder on a server whose refusal is a bare status: the
+    /// listing says why the folder stayed.
     #[tokio::test]
-    async fn a_folder_the_listing_shows_empty_but_the_server_refuses_is_kept() {
+    async fn a_bare_refusal_of_a_folder_the_listing_shows_full_is_kept() {
+        let mut remote = FakeRemote::with(&["/r/docs", "/r/docs/a.txt"]);
+        remote.refusal = Refusal::Bare;
+        let got = remove_remote_dir_if_empty(&mut remote, "/r/docs")
+            .await
+            .unwrap();
+        assert_eq!(got, EmptyDirRemoval::Kept(KeptReason::HoldsEntries));
+        assert!(remote.paths.contains("/r/docs/a.txt"));
+    }
+
+    #[tokio::test]
+    async fn a_folder_the_listing_shows_empty_but_the_server_refuses_as_not_empty_is_kept() {
         let mut remote = FakeRemote::with(&["/r/docs", "/r/docs/.env"]);
         remote.hidden.insert("/r/docs/.env".into());
         let got = remove_remote_dir_if_empty(&mut remote, "/r/docs")
             .await
             .unwrap();
-        assert_eq!(got, EmptyDirRemoval::Kept);
+        assert_eq!(got, EmptyDirRemoval::Kept(KeptReason::RefusedByServer));
         assert_eq!(remote.rmdir_calls, vec!["/r/docs".to_string()]);
         assert!(remote.paths.contains("/r/docs/.env"));
+    }
+
+    /// Round 2 of the 4.2.1 review: a refusal that is not "not empty", on a
+    /// folder that lists empty, read as kept, so a permission error on an
+    /// empty remote folder showed as skipped. It is the error.
+    #[tokio::test]
+    async fn a_refusal_on_a_folder_that_lists_empty_is_an_error_not_a_skip() {
+        let mut remote = FakeRemote::with(&["/r/empty"]);
+        remote.refuses_all = true;
+        let got = remove_remote_dir_if_empty(&mut remote, "/r/empty").await;
+        assert!(
+            matches!(got, Err(ProviderError::PermissionDenied(_))),
+            "{got:?}"
+        );
+        assert!(
+            remote.paths.contains("/r/empty"),
+            "the folder is still there"
+        );
+
+        // A bare refusal of a folder that hides what it holds reads the same
+        // way: the run says the folder did not go, instead of a skip nobody
+        // reads.
+        let mut hidden = FakeRemote::with(&["/r/docs", "/r/docs/.env"]);
+        hidden.hidden.insert("/r/docs/.env".into());
+        hidden.refusal = Refusal::Bare;
+        let got = remove_remote_dir_if_empty(&mut hidden, "/r/docs").await;
+        assert!(matches!(got, Err(ProviderError::ServerError(_))), "{got:?}");
     }
 
     #[tokio::test]
@@ -293,39 +377,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_listing_that_fails_removes_nothing() {
+    async fn a_listing_that_fails_after_a_refusal_is_the_error() {
         let mut remote = FakeRemote::with(&["/r/docs", "/r/docs/a.txt"]);
-        remote.recursive_rmdir = true;
         remote.list_fails = true;
         assert!(remove_remote_dir_if_empty(&mut remote, "/r/docs")
             .await
             .is_err());
-        assert!(remote.rmdir_calls.is_empty());
         assert!(remote.paths.contains("/r/docs/a.txt"));
     }
 
     #[tokio::test]
-    async fn a_refused_removal_of_a_folder_that_is_gone_is_the_error() {
-        struct Gone;
-        #[async_trait]
-        impl EmptyDirRemote for Gone {
-            async fn entry_count(&mut self, _p: &str) -> Result<usize, ProviderError> {
-                Ok(0)
-            }
-            async fn remove_listed_empty(&mut self, _p: &str) -> Result<(), ProviderError> {
-                Err(ProviderError::PermissionDenied("no".into()))
-            }
-            async fn path_exists(&mut self, _p: &str) -> Result<bool, ProviderError> {
-                Ok(false)
-            }
-        }
-        let got = remove_remote_dir_if_empty(&mut Gone, "/r/x").await;
-        assert!(matches!(got, Err(ProviderError::PermissionDenied(_))));
+    async fn a_folder_that_is_gone_is_the_error() {
+        let mut remote = FakeRemote::with(&[]);
+        let got = remove_remote_dir_if_empty(&mut remote, "/r/x").await;
+        assert!(matches!(got, Err(ProviderError::NotFound(_))), "{got:?}");
     }
 
     #[test]
     fn the_answers_are_the_words_the_runner_reads() {
         assert_eq!(EmptyDirRemoval::Removed.as_str(), "removed");
-        assert_eq!(EmptyDirRemoval::Kept.as_str(), "kept");
+        assert_eq!(
+            EmptyDirRemoval::Kept(KeptReason::HoldsEntries).as_str(),
+            "kept:entries"
+        );
+        assert_eq!(
+            EmptyDirRemoval::Kept(KeptReason::RefusedByServer).as_str(),
+            "kept:server"
+        );
+    }
+
+    #[test]
+    fn an_ftp_refusal_is_read_for_the_words_not_empty() {
+        assert!(ftp_refusal_names_not_empty(
+            "550 /docs: Directory not empty"
+        ));
+        assert!(ftp_refusal_names_not_empty(
+            "Operation failed: 550 Directory not empty."
+        ));
+        assert!(!ftp_refusal_names_not_empty(
+            "550 Remove directory operation failed."
+        ));
+        assert!(!ftp_refusal_names_not_empty("550 Permission denied"));
     }
 }

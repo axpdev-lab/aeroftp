@@ -15595,10 +15595,12 @@ async fn sync_backup_archive_remote(
 }
 
 /// Remove a folder a sync emptied, only if it is empty (`sync_empty_dir`):
-/// `"removed"`, or `"kept"` when it still holds something. `target` is
-/// `local` (the local disk, also both sides of a local pair), `provider` (the
-/// provider session) or `ftp` (the GUI's FTP session). Never recursive: a
-/// folder that holds an excluded file, or a file whose backup failed, stays.
+/// `"removed"`, `"kept:entries"` when its listing shows something, or
+/// `"kept:server"` when the server refused it as not empty while its listing
+/// shows nothing. Any other refusal is an error. `target` is `local` (the
+/// local disk, also both sides of a local pair), `provider` (the provider
+/// session) or `ftp` (the GUI's FTP session). Never recursive: a folder that
+/// holds an excluded file, or a file whose backup failed, stays.
 #[tauri::command]
 async fn sync_remove_empty_dir(
     app_state: State<'_, AppState>,
