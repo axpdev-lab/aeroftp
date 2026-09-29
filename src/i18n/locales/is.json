@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (úr afriti)",
             "keystorePreviewLocalFromVault": "Ekki tókst að lesa lista þessa tækis yfir netþjónasnið, svo samanburðurinn notar netþjónalistann sem geymdur er í hvelfingunni.",
             "keystoreDecisionsFailed": "Innflutningi er lokið, en ekki tókst að beita vali þínu á netþjónasniðunum: {error}",
+            "keystoreListMergeFailed": "Innflutningi er lokið, en ekki tókst að sameina netþjónalista öryggisafritsins við lista þessa tækis: {error}",
+            "keystorePartitionSkipped": "Ekki er hægt að aflæsa reikningasneið afritsins á þessu tæki og henni var sleppt. Flyttu inn með Yfirskrifa til að endurheimta sneiðina í heild.",
             "exportKeystoreDesc": "Flytðu öll dulkóðuð skilríki út í öryggisafritsskrá",
             "importKeystoreDesc": "Flytðu inn skilríki úr öryggisafritsskrá",
             "keystoreExported": "Lyklageymsla flutt út ({count} færslur)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Hreinsa yfirskrifanir",
             "uiTokensApplied": "Beittar yfirskrifanir: {count}",
             "uiTokensRejected": "Hafnaðar færslur: {count}",
-            "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}"
+            "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}",
+            "keystorePreviewBackupUnreadable": "Ekki er hægt að lesa netþjónalista þessa afrits á þessu tæki, svo samanburðurinn notar listann sem er geymdur í hvelfingu afritsins. Innflutningurinn kemur samt í stað netþjónalista þessa tækis."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Hlaðið upp",
             "reportDownloaded": "Sótt",
             "reportSkipped": "Sleppt",
+            "keptDirs": "Möppur sem haldið var",
+            "keptDirUnfinished": "inniheldur skrár sem voru ekki samstilltar",
+            "keptDirEntries": "inniheldur útilokaðar eða óskráðar færslur",
+            "keptDirServer": "ekki tóm á netþjóninum",
             "reportTransferred": "Flutt",
             "reportDuration": "Tímalengd",
             "reportDirsCreated": "Möppur búnar til",

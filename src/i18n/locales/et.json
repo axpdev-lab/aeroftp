@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (varukoopiast)",
             "keystorePreviewLocalFromVault": "Selle seadme serveriprofiilide loendit ei õnnestunud lugeda, seega kasutab võrdlus hoidlasse salvestatud serverite loendit.",
             "keystoreDecisionsFailed": "Import lõppes, kuid sinu valikuid serveriprofiilide kohta ei õnnestunud rakendada: {error}",
+            "keystoreListMergeFailed": "Import lõppes, kuid varukoopia serverite loendit ei õnnestunud selle seadme loendiga ühendada: {error}",
+            "keystorePartitionSkipped": "Varukoopia kontode partitsiooni ei saa selles seadmes avada ja see jäeti välja. Kogu partitsiooni taastamiseks impordi valikuga Kirjuta üle.",
             "exportKeystoreDesc": "Eksportida kõik krüpteeritud mandaadid varukoopiafaili",
             "importKeystoreDesc": "Importida mandaadid varukoopiafailist",
             "keystoreExported": "Võtmehoidla edukalt eksporditud ({count} kirjet)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Tühjenda alistused",
             "uiTokensApplied": "Rakendatud asendused: {count}",
             "uiTokensRejected": "Tagasi lükatud kirjed: {count}",
-            "keystorePreferencesFailed": "Import lõppes, kuid sinu rakenduse eelistusi ei õnnestunud taastada: {error}"
+            "keystorePreferencesFailed": "Import lõppes, kuid sinu rakenduse eelistusi ei õnnestunud taastada: {error}",
+            "keystorePreviewBackupUnreadable": "Selle varukoopia serverite loendit ei saa selles seadmes lugeda, seega kasutab võrdlus varukoopia hoidlasse salvestatud loendit. Importimine asendab siiski selle seadme serverite loendi."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Üles laaditud",
             "reportDownloaded": "Alla laaditud",
             "reportSkipped": "Vahele jäetud",
+            "keptDirs": "Alles jäetud kaustad",
+            "keptDirUnfinished": "sisaldab faile, mida ei sünkroonitud",
+            "keptDirEntries": "sisaldab välistatud või loendist puuduvaid kirjeid",
+            "keptDirServer": "serveris pole tühi",
             "reportTransferred": "Üle kantud",
             "reportDuration": "Kestus",
             "reportDirsCreated": "Kausta loodud",

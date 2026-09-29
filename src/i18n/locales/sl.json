@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (iz varnostne kopije)",
             "keystorePreviewLocalFromVault": "Seznama profilov strežnikov te naprave ni bilo mogoče prebrati, zato primerjava uporablja seznam strežnikov, shranjen v trezorju.",
             "keystoreDecisionsFailed": "Uvoz je končan, vendar vaših izbir za profile strežnikov ni bilo mogoče uveljaviti: {error}",
+            "keystoreListMergeFailed": "Uvoz je končan, vendar seznama strežnikov iz varnostne kopije ni bilo mogoče združiti s seznamom te naprave: {error}",
+            "keystorePartitionSkipped": "Particije računov iz varnostne kopije na tej napravi ni mogoče odkleniti in je bila izpuščena. Za obnovitev celotne particije uvozite z možnostjo Prepiši.",
             "exportKeystoreDesc": "Izvozite vse šifrirane poverilnice v datoteko varnostne kopije",
             "importKeystoreDesc": "Uvozite poverilnice iz datoteke varnostne kopije",
             "keystoreExported": "Shramba ključev uspešno izvožena ({count} vnosov)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Počisti preglasitve",
             "uiTokensApplied": "Uporabljene preglasitve: {count}",
             "uiTokensRejected": "Zavrnjeni vnosi: {count}",
-            "keystorePreferencesFailed": "Uvoz je končan, vendar vaših nastavitev aplikacije ni bilo mogoče obnoviti: {error}"
+            "keystorePreferencesFailed": "Uvoz je končan, vendar vaših nastavitev aplikacije ni bilo mogoče obnoviti: {error}",
+            "keystorePreviewBackupUnreadable": "Seznama strežnikov v tej varnostni kopiji ni mogoče prebrati na tej napravi, zato primerjava uporablja seznam, shranjen v trezorju varnostne kopije. Uvoz kljub temu zamenja seznam strežnikov na tej napravi."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Naloženo",
             "reportDownloaded": "Preneseno",
             "reportSkipped": "Preskočeno",
+            "keptDirs": "Ohranjene mape",
+            "keptDirUnfinished": "vsebuje datoteke, ki niso bile sinhronizirane",
+            "keptDirEntries": "vsebuje izključene ali neizpisane vnose",
+            "keptDirServer": "na strežniku ni prazna",
             "reportTransferred": "Preneseno",
             "reportDuration": "Trajanje",
             "reportDirsCreated": "Map ustvarjenih",

@@ -81,5 +81,8 @@ if verb == "filesystem" and sub in (
     "upload", "trash", "delete", "rename", "create-folder", "copy", "move"
 ):
     sys.exit(0)
+if verb == "sharing" and sub == "set-url":
+    print(json.dumps({"url": "https://drive.proton.me/urls/SHIM#key"}))
+    sys.exit(0)
 print("unhandled", args, file=sys.stderr)
 sys.exit(1)

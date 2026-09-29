@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (uit back-up)",
             "keystorePreviewLocalFromVault": "De lijst met serverprofielen van dit apparaat kon niet worden gelezen, dus de vergelijking gebruikt de serverlijst in de kluis.",
             "keystoreDecisionsFailed": "De import is voltooid, maar je keuzes voor de serverprofielen konden niet worden toegepast: {error}",
+            "keystoreListMergeFailed": "De import is voltooid, maar de serverlijst uit de back-up kon niet worden samengevoegd met de lijst van dit apparaat: {error}",
+            "keystorePartitionSkipped": "De accountpartitie van de back-up kan op dit apparaat niet worden ontgrendeld en is overgeslagen. Importeer met Overschrijven om die partitie volledig terug te zetten.",
             "exportKeystoreDesc": "Alle versleutelde inloggegevens exporteren naar een back-upbestand",
             "importKeystoreDesc": "Inloggegevens importeren vanuit een back-upbestand",
             "keystoreExported": "Sleutelhanger succesvol geëxporteerd ({count} items)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Overschrijvingen wissen",
             "uiTokensApplied": "Toegepaste overschrijvingen: {count}",
             "uiTokensRejected": "Afgewezen vermeldingen: {count}",
-            "keystorePreferencesFailed": "De import is voltooid, maar je app-voorkeuren konden niet worden hersteld: {error}"
+            "keystorePreferencesFailed": "De import is voltooid, maar je app-voorkeuren konden niet worden hersteld: {error}",
+            "keystorePreviewBackupUnreadable": "De serverlijst in deze back-up kan niet worden gelezen op dit apparaat, dus de vergelijking gebruikt de lijst die is opgeslagen in de kluis van de back-up. De import vervangt de serverlijst op dit apparaat desondanks."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Geüpload",
             "reportDownloaded": "Gedownload",
             "reportSkipped": "Overgeslagen",
+            "keptDirs": "Behouden mappen",
+            "keptDirUnfinished": "bevat bestanden die niet zijn gesynchroniseerd",
+            "keptDirEntries": "bevat uitgesloten of niet-vermelde items",
+            "keptDirServer": "niet leeg op de server",
             "reportTransferred": "Overgedragen",
             "reportDuration": "Duur",
             "reportDirsCreated": "Mappen aangemaakt",

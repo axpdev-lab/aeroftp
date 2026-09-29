@@ -111,8 +111,12 @@ impl UploadProgress {
     }
 
     /// Report `(0, total)` before the first byte, for a provider whose bar
-    /// has always opened at zero.
+    /// has always opened at zero. Nothing for an empty file: `(0, 0)` is the
+    /// completed report, which only [`Self::complete`] may give.
     pub fn start(&self) {
+        if self.total == 0 {
+            return;
+        }
         if let Some(callback) = &self.callback {
             let callback = callback.lock().unwrap_or_else(|e| e.into_inner());
             callback(0, self.total);
@@ -296,6 +300,22 @@ mod tests {
         assert_eq!(*updates.lock().unwrap(), [(10, 30), (20, 30)]);
         progress.complete();
         assert_eq!(*updates.lock().unwrap(), [(10, 30), (20, 30), (30, 30)]);
+    }
+
+    /// An empty upload opened with `(0, 0)`, which reads as completed before
+    /// the server has answered; it reports nothing until `complete`.
+    #[test]
+    fn an_empty_upload_reports_nothing_before_it_is_accepted() {
+        let (callback, updates) = recorder();
+        let progress = UploadProgress::new(Some(callback), 0);
+        progress.start();
+        assert!(
+            updates.lock().unwrap().is_empty(),
+            "{:?}",
+            updates.lock().unwrap()
+        );
+        progress.complete();
+        assert_eq!(*updates.lock().unwrap(), [(0, 0)]);
     }
 
     /// An error chunk is passed on and counted as nothing.

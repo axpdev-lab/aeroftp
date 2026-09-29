@@ -1421,8 +1421,21 @@ pub async fn export_bridge_config(
                     }
                     injected_entry = e;
                     &injected_entry
-                } else {
+                } else if include_credentials {
                     entry
+                } else {
+                    // Review L10: a secret an older import left in `options`
+                    // (the load-time crypt migration refuses a profile whose
+                    // crypt password is empty, and keeps its salt there) is
+                    // still a credential, and this export has none.
+                    let mut e = entry.clone();
+                    if let Some(o) =
+                        crate::rclone_import::options_without_secrets(e.get("options"))
+                    {
+                        e["options"] = o;
+                    }
+                    injected_entry = e;
+                    &injected_entry
                 };
                 let one: $ty = serde_json::from_value(entry.clone())
                     .map_err(|e| format!("Invalid server data: {e}"))?;
@@ -2251,5 +2264,55 @@ mod tests {
         assert!(serde_json::from_value::<rclone_import::RcloneExportServer>(entry.clone()).is_ok());
         assert!(serde_json::from_value::<winscp_import::WinScpExportServer>(entry.clone()).is_ok());
         assert!(serde_json::from_value::<filezilla_import::FileZillaExportServer>(entry).is_ok());
+    }
+
+    /// L10 (4.2.1 review): an rclone-crypt salt the load-time migration left
+    /// in `options` (it refuses a profile whose crypt password is empty) must
+    /// not reach a file exported without credentials.
+    #[tokio::test]
+    async fn an_export_without_credentials_leaves_out_secrets_left_in_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("rclone.conf");
+        let servers = json!([{
+            "id": "srv_nas",
+            "name": "My NAS",
+            "host": "192.168.1.10",
+            "port": 22,
+            "username": "admin",
+            "protocol": "sftp",
+            "options": {
+                "rcloneCryptEnabled": true,
+                "rcloneCryptRemote": "mynas:/encrypted",
+                "rcloneCryptOverlayName": "vault",
+                "rcloneCryptPassword": "",
+                "rcloneCryptPassword2": "saltsecret",
+                "private_key_path": "/home/admin/.ssh/id_ed25519",
+                "key_passphrase": "keysecret",
+            },
+        }]);
+        export_bridge_config(
+            "rclone".to_string(),
+            servers.to_string(),
+            false,
+            out.to_string_lossy().into_owned(),
+        )
+        .await
+        .unwrap();
+        let conf = std::fs::read_to_string(&out).unwrap();
+        assert!(conf.contains("type = crypt"), "crypt section:\n{conf}");
+        assert!(
+            !conf.contains("password2"),
+            "a crypt salt was exported without credentials:\n{conf}"
+        );
+        // The SFTP key passphrase is a credential too (review of #980); the
+        // key file path is not, and still goes out.
+        assert!(
+            !conf.contains("key_file_pass"),
+            "an SFTP key passphrase was exported without credentials:\n{conf}"
+        );
+        assert!(
+            conf.contains("key_file = /home/admin/.ssh/id_ed25519"),
+            "{conf}"
+        );
     }
 }

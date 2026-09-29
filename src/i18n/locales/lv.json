@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (no dublējuma)",
             "keystorePreviewLocalFromVault": "Šīs ierīces serveru profilu sarakstu neizdevās nolasīt, tāpēc salīdzinājums izmanto glabātavā saglabāto serveru sarakstu.",
             "keystoreDecisionsFailed": "Importēšana ir pabeigta, bet neizdevās piemērot jūsu serveru profilu izvēles: {error}",
+            "keystoreListMergeFailed": "Importēšana ir pabeigta, bet neizdevās apvienot dublējuma serveru sarakstu ar šīs ierīces sarakstu: {error}",
+            "keystorePartitionSkipped": "Dublējuma kontu nodalījumu šajā ierīcē nevar atbloķēt, un tas tika izlaists. Lai atjaunotu visu nodalījumu, importējiet ar opciju Pārrakstīt.",
             "exportKeystoreDesc": "Eksportēt visus šifrētos akreditācijas datus dublējuma failā",
             "importKeystoreDesc": "Importēt akreditācijas datus no dublējuma faila",
             "keystoreExported": "Atslēgu glabātuve veiksmīgi eksportēta ({count} ieraksti)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Notīrīt aizstājumus",
             "uiTokensApplied": "Lietotie aizstājumi: {count}",
             "uiTokensRejected": "Noraidītie ieraksti: {count}",
-            "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}"
+            "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}",
+            "keystorePreviewBackupUnreadable": "Šī dublējuma serveru sarakstu nevar nolasīt šajā ierīcē, tāpēc salīdzinājumā tiek izmantots dublējuma glabātavā saglabātais saraksts. Importēšana tomēr aizstāj šīs ierīces serveru sarakstu."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Augšupielādēts",
             "reportDownloaded": "Lejupielādēts",
             "reportSkipped": "Izlaists",
+            "keptDirs": "Saglabātās mapes",
+            "keptDirUnfinished": "satur failus, kas netika sinhronizēti",
+            "keptDirEntries": "satur izslēgtus vai neuzskaitītus ierakstus",
+            "keptDirServer": "serverī nav tukša",
             "reportTransferred": "Pārsūtīts",
             "reportDuration": "Ilgums",
             "reportDirsCreated": "Mapes izveidotas",

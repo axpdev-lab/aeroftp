@@ -920,12 +920,14 @@ impl TwakeProvider {
         Ok(docs)
     }
 
-    /// Stream a local file as a request body, reporting progress and hashing
-    /// what was sent so the result can be checked against the server's md5sum.
+    /// Stream a local file as a request body, counted by `progress` (the
+    /// shared contract: steps below the total while the bytes go out, never
+    /// back after a retry, the total only once the server's answer is
+    /// checked) and hashing what was sent so the result can be checked
+    /// against the server's md5sum.
     async fn upload_body(
         local_path: &str,
-        total: u64,
-        progress: Option<tokio::sync::mpsc::UnboundedSender<(u64, u64)>>,
+        progress: &super::upload_progress::UploadProgress,
         hasher: std::sync::Arc<std::sync::Mutex<md5::Md5>>,
     ) -> Result<reqwest::Body, ProviderError> {
         use futures_util::StreamExt;
@@ -933,22 +935,14 @@ impl TwakeProvider {
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let mut sent: u64 = 0;
-        let stream = crate::transfer_dag::throttle::throttle_stream(
+        let paced = crate::transfer_dag::throttle::throttle_stream(
             tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024),
             crate::transfer_dag::governor::TransferDirection::Upload,
-        )
-        .map(move |chunk| {
-            if let Ok(bytes) = &chunk {
-                sent += bytes.len() as u64;
-                if let Ok(mut h) = hasher.lock() {
-                    h.update(bytes);
-                }
-                if let Some(tx) = &progress {
-                    let _ = tx.send((sent, total));
-                }
+        );
+        let stream = progress.track(paced).inspect(move |chunk| {
+            if let (Ok(bytes), Ok(mut h)) = (chunk, hasher.lock()) {
+                h.update(bytes);
             }
-            chunk
         });
         Ok(reqwest::Body::wrap_stream(stream))
     }
@@ -1173,18 +1167,13 @@ impl StorageProvider for TwakeProvider {
             None
         };
 
-        let progress_tx = on_progress.map(|cb| {
-            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(u64, u64)>();
-            tokio::spawn(async move {
-                while let Some((sent, t)) = rx.recv().await {
-                    cb(sent, t);
-                }
-            });
-            tx
-        });
-        if let Some(tx) = &progress_tx {
-            let _ = tx.send((0, total));
-        }
+        // The total is reported once, after the md5 check below: reported
+        // with the last chunk, a refused upload showed a completed one. A
+        // retry (401, 409) sends the file again and the bar holds where the
+        // first attempt stopped: restarted at 0, a summing reducer counted
+        // the file twice.
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total);
+        progress.start();
 
         let mut refreshed = false;
         let mut conflict_seen = false;
@@ -1230,8 +1219,7 @@ impl StorageProvider for TwakeProvider {
 
             // The body is a stream, so every retry reopens the file.
             let hasher = std::sync::Arc::new(std::sync::Mutex::new(md5::Md5::new()));
-            let body =
-                Self::upload_body(local_path, total, progress_tx.clone(), hasher.clone()).await?;
+            let body = Self::upload_body(local_path, &progress, hasher.clone()).await?;
             let builder = if existing.is_some() {
                 self.client.put(&url)
             } else {
@@ -1292,9 +1280,7 @@ impl StorageProvider for TwakeProvider {
                 )));
             }
         }
-        if let Some(tx) = &progress_tx {
-            let _ = tx.send((total, total));
-        }
+        progress.complete();
         Ok(())
     }
 
@@ -1855,6 +1841,101 @@ mod tests {
         );
         assert_eq!(latest_timestamp(None, Some(updated)), Some(updated));
         assert_eq!(latest_timestamp(None, Some("garbage")), None);
+    }
+
+    /// A Twake double over the root: the create of `f.bin` answers
+    /// `create_status`, the metadata lookup finds it as `F1`, and the
+    /// overwrite of `F1` answers 200 with the md5 of `content`. Returns a
+    /// connected provider on it.
+    async fn provider_on_twake(
+        create_status: u16,
+        content: &[u8],
+    ) -> (TwakeProvider, tokio::task::JoinHandle<()>) {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        use md5::Digest;
+        let md5 = base64::engine::general_purpose::STANDARD.encode(md5::Md5::digest(content));
+        let stored = format!(
+            r#"{{"data":{{"id":"F1","attributes":{{"type":"file","name":"f.bin","md5sum":"{md5}"}}}}}}"#
+        );
+        let (base, server) = serve(vec![
+            Route::post(
+                "/files/io.cozy.files.root-dir",
+                create_status,
+                stored.clone(),
+            ),
+            Route::get(
+                "/files/metadata",
+                200,
+                r#"{"data":{"id":"F1","attributes":{"type":"file","name":"f.bin","created_at":"2020-01-01T00:00:00Z"}}}"#,
+            ),
+            Route {
+                method: axum::http::Method::PUT,
+                path: "/files/F1",
+                status: 200,
+                body: stored,
+                busy_first: false,
+            },
+        ])
+        .await;
+        let mut p = TwakeProvider::new(TwakeConfig {
+            credentials: TwakeCredentials {
+                instance: base,
+                client_id: "cid".into(),
+                client_secret: "s".into(),
+                registration_access_token: "r".into(),
+                refresh_token: "t".into(),
+            },
+            initial_path: None,
+        });
+        p.connected = true;
+        p.access_token = SecretString::from("live-token".to_string());
+        (p, server)
+    }
+
+    /// The upload reported `(total, total)` as the last chunk left, before
+    /// any answer was read, so a refused upload showed a completed one.
+    #[tokio::test]
+    async fn a_refused_upload_never_reports_the_total() {
+        use crate::providers::upload_progress::fixture::{
+            assert_real_progress, recorder, temp_file,
+        };
+        let file = temp_file(600_000);
+        let (mut p, server) = provider_on_twake(500, &[]).await;
+        let (callback, updates) = recorder();
+        let outcome = p
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_real_progress(&updates.lock().unwrap(), 600_000, false);
+        server.abort();
+    }
+
+    /// A create answered 409 is sent again as an overwrite, and the count
+    /// started again at 0: a reducer summing the steps counted the file
+    /// twice. It holds where the first attempt stopped, and the total comes
+    /// once, after the md5 check.
+    #[tokio::test]
+    async fn an_upload_sent_again_after_a_conflict_counts_the_file_once() {
+        use crate::providers::upload_progress::fixture::{
+            assert_real_progress, recorder, temp_file,
+        };
+        let file = temp_file(600_000);
+        let content = std::fs::read(file.path()).unwrap();
+        let (mut p, server) = provider_on_twake(409, &content).await;
+        let (callback, updates) = recorder();
+        p.upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await
+            .expect("the overwrite after the conflict");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let updates = updates.lock().unwrap();
+        assert_real_progress(&updates, 600_000, true);
+        assert_eq!(
+            updates.iter().filter(|&&(sent, _)| sent == 600_000).count(),
+            1,
+            "the total once, last"
+        );
+        server.abort();
     }
 
     #[test]

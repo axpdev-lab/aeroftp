@@ -5,9 +5,15 @@
 //! destination file, move the destination copy to
 //! `<destination root>/<backup dir>/<run stamp>/<relative path>`.
 //!
-//! One implementation for every caller: the AeroSync Plan tab (through the
-//! `sync_backup_*` Tauri commands) and `aeroftp-cli sync --backup-dir`. The
-//! rules are the same on both sides:
+//! The archive has one caller, the AeroSync Plan tab, through the
+//! `sync_backup_*` Tauri commands; the compare reads [`is_backup_path`] and
+//! [`is_backup_ancestor`]. `aeroftp-cli sync --backup-dir` is a different
+//! mechanism that
+//! does not use this module: it copies a local file into a local folder
+//! (`std::fs::copy`) before a local `--delete` removes it, and backs up no
+//! overwritten file and no remote file. No CLI or MCP surface offers this
+//! remote versioned backup yet, which is why the Plan offers no CLI line
+//! while it is on. The rules here:
 //!
 //! - the backup folder is a relative path inside the destination root, with
 //!   no `..` and no absolute or drive prefix ([`BackupDir::parse`]);

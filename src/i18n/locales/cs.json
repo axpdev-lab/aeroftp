@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (ze zálohy)",
             "keystorePreviewLocalFromVault": "Seznam profilů serverů tohoto zařízení se nepodařilo přečíst, proto se porovnání opírá o seznam serverů uložený v trezoru.",
             "keystoreDecisionsFailed": "Import skončil, ale vaše volby pro profily serverů se nepodařilo použít: {error}",
+            "keystoreListMergeFailed": "Import skončil, ale seznam serverů ze zálohy se nepodařilo sloučit se seznamem tohoto zařízení: {error}",
+            "keystorePartitionSkipped": "Oddíl účtů v záloze nelze na tomto zařízení odemknout a byl vynechán. Pro obnovení celého oddílu importujte s volbou Přepsat.",
             "exportKeystoreDesc": "Exportovat všechny šifrované přihlašovací údaje do souboru zálohy",
             "importKeystoreDesc": "Importovat přihlašovací údaje ze souboru zálohy",
             "keystoreExported": "Trezor úspěšně exportován ({count} záznamů)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Vymazat přepsání",
             "uiTokensApplied": "Použitá přepsání: {count}",
             "uiTokensRejected": "Odmítnuté položky: {count}",
-            "keystorePreferencesFailed": "Import skončil, ale vaše předvolby aplikace se nepodařilo obnovit: {error}"
+            "keystorePreferencesFailed": "Import skončil, ale vaše předvolby aplikace se nepodařilo obnovit: {error}",
+            "keystorePreviewBackupUnreadable": "Seznam serverů v této záloze nelze na tomto zařízení přečíst, proto porovnání používá seznam uložený v trezoru zálohy. Import přesto nahradí seznam serverů na tomto zařízení."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Nahráno",
             "reportDownloaded": "Staženo",
             "reportSkipped": "Přeskočeno",
+            "keptDirs": "Ponechané složky",
+            "keptDirUnfinished": "obsahuje soubory, které nebyly synchronizovány",
+            "keptDirEntries": "obsahuje vyloučené nebo nevypsané položky",
+            "keptDirServer": "na serveru není prázdná",
             "reportTransferred": "Přeneseno",
             "reportDuration": "Doba trvani",
             "reportDirsCreated": "Vytvořených složek",

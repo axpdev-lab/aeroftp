@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    readEmptyDirAnswer,
     runRemoteSync,
     groupErrorsByKind,
     filesFromJournal,
@@ -230,19 +231,6 @@ describe('remoteSyncRunner — orphan deletes', () => {
         expect(calls.some((c) => c.cmd === 'delete_remote_file'
             && c.args?.path === '/srv/data/stale.txt')).toBe(true);
     });
-
-    it('passes the isDir hint for directory deletes', async () => {
-        const { invoke, calls } = makeInvoke();
-        await runRemoteSync(
-            [file('stale-dir', 'delete-remote', { isDir: true })],
-            noDirs,
-            baseConfig(),
-            {},
-            noWaitDeps(invoke),
-        );
-        const del = calls.find((c) => c.cmd === 'delete_remote_file');
-        expect(del?.args).toEqual({ path: '/srv/data/stale-dir', isDir: true });
-    });
 });
 
 describe('remoteSyncRunner: versioned backup', () => {
@@ -305,8 +293,8 @@ describe('remoteSyncRunner: versioned backup', () => {
         expect(calls.some((c) => c.cmd.startsWith('sync_backup_'))).toBe(false);
     });
 
-    it('turns a file delete into the move, on either side, and leaves folders to the delete', async () => {
-        const { invoke, calls } = stampedInvoke();
+    it('turns a file delete into the move, on either side, and leaves folders to the empty-folder removal', async () => {
+        const { invoke, calls } = stampedInvoke({ sync_remove_empty_dir: () => 'removed' });
         const report = await runRemoteSync(
             [
                 file('gone.txt', 'delete-remote'),
@@ -323,9 +311,11 @@ describe('remoteSyncRunner: versioned backup', () => {
             .toMatchObject({ useProvider: true, rel: 'gone.txt' });
         expect(calls.find((c) => c.cmd === 'sync_backup_archive_local')?.args)
             .toMatchObject({ root: '/home/u/work', rel: 'old.txt' });
-        // The move replaced both file deletes; the folder is still deleted.
-        const deletes = calls.filter((c) => c.cmd === 'provider_delete_file' || c.cmd === 'delete_local_file');
-        expect(deletes.map((c) => c.args?.path)).toEqual(['/srv/data/empty-dir']);
+        // The move replaced both file deletes; the folder is still removed,
+        // and only as an empty folder.
+        expect(calls.some((c) => c.cmd === 'provider_delete_file' || c.cmd === 'delete_local_file')).toBe(false);
+        expect(calls.filter((c) => c.cmd === 'sync_remove_empty_dir').map((c) => c.args))
+            .toEqual([{ target: 'provider', path: '/srv/data/empty-dir' }]);
     });
 
     it('asks for one stamp per run however many copies it keeps', async () => {
@@ -465,6 +455,153 @@ describe('remoteSyncRunner: versioned backup', () => {
         );
         expect(calls.some((c) => c.cmd.startsWith('sync_backup_'))).toBe(false);
         expect(calls.some((c) => c.cmd === 'delete_local_file')).toBe(true);
+    });
+});
+
+/**
+ * A folder row is removed only once it is empty, and never when something
+ * under it stayed this run (B2, H6 of the 4.2.1 pre-release review). The
+ * recursive delete used to take along a file whose move into the backup
+ * folder had failed, and a file the compare excluded (`docs/.env`), which has
+ * no row of its own.
+ */
+describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
+    const backup = { versionedBackup: { dir: '.aeroftp-versions' } };
+    /** Every call that could remove the folder at `path`, whatever the command. */
+    const folderRemovals = (calls: Call[], path: string) =>
+        calls.filter((c) =>
+            ['delete_remote_file', 'delete_local_file', 'provider_delete_file', 'provider_delete_dir', 'sync_remove_empty_dir']
+                .includes(c.cmd) && c.args?.path === path);
+
+    it('keeps the folder of a file whose backup failed, and removes nothing of it (B2)', async () => {
+        const { invoke, calls } = makeInvoke({
+            sync_backup_run_stamp: () => '20260929T070000Z',
+            sync_backup_archive_remote: () => {
+                throw new Error('move refused');
+            },
+            sync_remove_empty_dir: () => 'removed',
+        });
+        const statuses = new Map<string, string>();
+        const report = await runRemoteSync(
+            [file('docs/only-copy.txt', 'delete-remote'), file('docs', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(backup),
+            { onFileStatus: (path, status) => statuses.set(path, status) },
+            noWaitDeps(invoke),
+        );
+        expect(folderRemovals(calls, '/srv/data/docs')).toEqual([]);
+        expect(report.errors.map((e) => e.file_path)).toEqual(['docs/only-copy.txt']);
+        expect(report.deleted).toBe(0);
+        expect(report.skipped).toBe(1);
+        expect(statuses.get('docs')).toBe('skipped');
+        expect(lastSavedJournal(calls)?.entries.find((e) => e.relative_path === 'docs')?.status).toBe('skipped');
+    });
+
+    it('keeps every folder above a folder that stayed', async () => {
+        const { invoke, calls } = makeInvoke({
+            sync_remove_empty_dir: (args) => (args?.path === '/srv/data/a/b' ? 'kept:entries' : 'removed'),
+        });
+        const report = await runRemoteSync(
+            [file('a/b', 'delete-remote', { isDir: true }), file('a', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(folderRemovals(calls, '/srv/data/a')).toEqual([]);
+        expect(report.skipped).toBe(2);
+        expect(report.errors).toEqual([]);
+        // Round 2: each kept folder says why. The lower one holds entries the
+        // plan did not have; the upper one holds a row that did not complete.
+        expect(report.keptDirs).toEqual([
+            { file_path: 'a/b', reason: 'entries' },
+            { file_path: 'a', reason: 'unfinished_rows' },
+        ]);
+    });
+
+    it('removes a folder with versioned backup on only by the non-recursive removal (B2)', async () => {
+        const { invoke, calls } = makeInvoke({
+            sync_backup_run_stamp: () => '20260929T070000Z',
+            sync_backup_archive_remote: (args) => `/srv/data/.aeroftp-versions/S/${String(args?.rel)}`,
+            sync_remove_empty_dir: () => 'removed',
+        });
+        const report = await runRemoteSync(
+            [file('docs/a.txt', 'delete-remote'), file('docs', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(folderRemovals(calls, '/srv/data/docs').map((c) => c.cmd)).toEqual(['sync_remove_empty_dir']);
+        expect(report.deleted).toBe(2);
+        expect(report.errors).toEqual([]);
+    });
+
+    it('keeps a folder that still holds an excluded file, as kept and not as an error (H6)', async () => {
+        // docs/.env is excluded, so the compare gave it no row: only the
+        // folder row says anything about docs.
+        const { invoke, calls } = makeInvoke({ sync_remove_empty_dir: () => 'kept:entries' });
+        const report = await runRemoteSync(
+            [file('docs', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(folderRemovals(calls, '/srv/data/docs')).toEqual([
+            { cmd: 'sync_remove_empty_dir', args: { target: 'ftp', path: '/srv/data/docs' } },
+        ]);
+        expect(report.deleted).toBe(0);
+        expect(report.skipped).toBe(1);
+        expect(report.errors).toEqual([]);
+        expect(report.keptDirs).toEqual([{ file_path: 'docs', reason: 'entries' }]);
+    });
+
+    it('says when the server, not the listing, is what keeps a folder', async () => {
+        // An FTP LIST that hides dot files: RMD refuses, the listing shows
+        // nothing, and the run says so instead of a bare "skipped".
+        const { invoke } = makeInvoke({ sync_remove_empty_dir: () => 'kept:server' });
+        const report = await runRemoteSync(
+            [file('docs', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.skipped).toBe(1);
+        expect(report.keptDirs).toEqual([{ file_path: 'docs', reason: 'server' }]);
+        // The old bare answer is not read as anything.
+        expect(() => readEmptyDirAnswer('kept')).toThrow(/unexpected answer/);
+    });
+
+    it.each([
+        ['a provider remote', { isProvider: true }, 'delete-remote', 'provider', '/srv/data/d'],
+        ['the right folder of a local pair', { isLocalLocal: true }, 'delete-remote', 'local', '/srv/data/d'],
+        ['the local side', {}, 'delete-local', 'local', '/home/u/work/d'],
+    ] as const)('removes a folder on %s without recursing', async (_label, over, action, target, path) => {
+        const { invoke, calls } = makeInvoke({ sync_remove_empty_dir: () => 'removed' });
+        const report = await runRemoteSync(
+            [file('d', action, { isDir: true })],
+            noDirs,
+            baseConfig(over),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(folderRemovals(calls, path)).toEqual([{ cmd: 'sync_remove_empty_dir', args: { target, path } }]);
+        expect(report.deleted).toBe(1);
+    });
+
+    it('fails a folder whose removal gives no clear answer', async () => {
+        const { invoke } = makeInvoke({ sync_remove_empty_dir: () => undefined });
+        const report = await runRemoteSync(
+            [file('d', 'delete-remote', { isDir: true })],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.deleted).toBe(0);
+        expect(report.errors.map((e) => e.file_path)).toEqual(['d']);
     });
 });
 

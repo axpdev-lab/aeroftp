@@ -3868,6 +3868,39 @@ impl S3Provider {
         self.list_keys_with_prefix_up_to(prefix, None).await
     }
 
+    /// Whether the object at `key` (a directory's name without the slash) is
+    /// a gateway's zero-byte directory marker, by its HEAD. A HEAD the
+    /// bucket refuses (GetObject permission is independent of DeleteObject)
+    /// answers false with a warning: an inconclusive probe cannot authorize
+    /// the deletion of a key that may be a file.
+    async fn slashless_key_is_directory_marker(&self, key: &str) -> Result<bool, ProviderError> {
+        let response = self.s3_request(Method::HEAD, key, None, None).await?;
+        match response.status() {
+            StatusCode::OK => {
+                let content_type = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or("");
+                Ok(is_s3_directory_content_type(content_type)
+                    && response
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        == Some("0"))
+            }
+            StatusCode::NOT_FOUND => Ok(false),
+            status => {
+                tracing::warn!(
+                    "Directory marker HEAD returned {} for '{}'; preserving the slashless key",
+                    status,
+                    key
+                );
+                Ok(false)
+            }
+        }
+    }
+
     /// Whether `key` is an object, or a folder with at least one object under
     /// `key/`, in at most two listings of one key each. The rename check used
     /// to page through every key that merely starts with `key`: in a large
@@ -5022,10 +5055,37 @@ impl StorageProvider for S3Provider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        // In S3, directories are virtual (just key prefixes). MinIO and some
-        // S3-compatible providers may not create/delete marker objects reliably.
-        // Use rmdir_recursive to clean up the marker AND any lingering objects.
-        self.rmdir_recursive(path).await
+        // Round 2 of the 4.2.1 review: this used to be `rmdir_recursive`, so
+        // an object the caller's listing had left out went with the "empty"
+        // directory. A directory is virtual (a key prefix): the prefix is
+        // listed, anything under it but the directory marker refuses the
+        // removal, and only the marker keys go: `prefix/` and, when HEAD
+        // says the slashless key is a gateway's directory marker, that one.
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        self.ensure_fresh_credentials().await?;
+        if path.trim_matches('/').is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to remove the root '/'.".into(),
+            ));
+        }
+        let prefix = format!("{}/", path.trim_matches('/'));
+        // Two keys are enough to tell "only the marker" from "anything
+        // else": S3 lists keys in order and the marker is the shortest.
+        let keys = self.list_keys_with_prefix_up_to(&prefix, Some(2)).await?;
+        let content: Vec<&String> = keys.iter().filter(|k| **k != prefix).collect();
+        if !content.is_empty() {
+            return Err(super::directory_not_empty(path, content.len()));
+        }
+        let mut markers = vec![prefix.clone()];
+        let no_slash = path.trim_matches('/').to_string();
+        if self.slashless_key_is_directory_marker(&no_slash).await? {
+            markers.push(no_slash);
+        }
+        let objects: Vec<(String, Option<String>)> =
+            markers.into_iter().map(|k| (k, None)).collect();
+        self.batch_delete_objects(&objects).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -5055,36 +5115,8 @@ impl StorageProvider for S3Provider {
         // HEAD positively identifies a gateway's directory marker; otherwise
         // deleting `reports/` would also erase the unrelated file `reports`.
         let no_slash = path.trim_matches('/').to_string();
-        let response = self.s3_request(Method::HEAD, &no_slash, None, None).await?;
-        match response.status() {
-            StatusCode::OK => {
-                let content_type = response
-                    .headers()
-                    .get(reqwest::header::CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                if is_s3_directory_content_type(content_type)
-                    && response
-                        .headers()
-                        .get(reqwest::header::CONTENT_LENGTH)
-                        .and_then(|v| v.to_str().ok())
-                        == Some("0")
-                    && !keys.contains(&no_slash)
-                {
-                    keys.push(no_slash);
-                }
-            }
-            StatusCode::NOT_FOUND => {}
-            status => {
-                // GetObject/HEAD permission is independent of DeleteObject.
-                // An inconclusive probe cannot authorize deletion of the
-                // slashless key, but must not block deletion inside the prefix.
-                tracing::warn!(
-                    "Directory marker HEAD returned {} for '{}'; preserving the slashless key",
-                    status,
-                    no_slash
-                );
-            }
+        if !keys.contains(&no_slash) && self.slashless_key_is_directory_marker(&no_slash).await? {
+            keys.push(no_slash);
         }
 
         tracing::info!(
@@ -8906,6 +8938,68 @@ mod tests {
             assert!(bodies[0].contains("<Key>folder/</Key>"));
             assert!(bodies[0].contains("<Key>folder/child</Key>"));
             assert_eq!(bodies[0].contains("<Key>folder</Key>"), include_bare);
+            server.abort();
+        }
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` was `rmdir_recursive`, so an
+    /// object the caller's listing had left out went with the "empty"
+    /// directory. The prefix is listed first: anything under it but the
+    /// directory marker refuses the removal, and an empty prefix loses only
+    /// its marker keys.
+    #[tokio::test]
+    async fn rmdir_refuses_a_prefix_with_content_and_removes_only_the_marker() {
+        use std::sync::{Arc, Mutex};
+        for (listing, expect_refusal) in [
+            ("<ListBucketResult><Contents><Key>folder/</Key></Contents><Contents><Key>folder/child</Key></Contents></ListBucketResult>", true),
+            ("<ListBucketResult><Contents><Key>folder/child</Key></Contents></ListBucketResult>", true),
+            ("<ListBucketResult><Contents><Key>folder/</Key></Contents></ListBucketResult>", false),
+            ("<ListBucketResult/>", false),
+        ] {
+            let bodies = Arc::new(Mutex::new(Vec::new()));
+            let captured = Arc::clone(&bodies);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let captured = Arc::clone(&captured);
+                    async move {
+                        match *req.method() {
+                            Method::HEAD => axum::http::Response::builder()
+                                .status(404)
+                                .body(axum::body::Body::empty())
+                                .unwrap(),
+                            Method::GET => axum::http::Response::new(axum::body::Body::from(listing)),
+                            Method::POST => {
+                                let bytes = axum::body::to_bytes(req.into_body(), 8192).await.unwrap();
+                                captured.lock().unwrap().push(String::from_utf8(bytes.to_vec()).unwrap());
+                                axum::http::Response::new(axum::body::Body::from("<DeleteResult/>"))
+                            }
+                            _ => panic!("unexpected request"),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            let outcome = provider.rmdir("/folder/").await;
+            let bodies = bodies.lock().unwrap();
+            if expect_refusal {
+                assert!(
+                    matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
+                    "{listing}: {outcome:?}"
+                );
+                assert!(bodies.is_empty(), "{listing}: nothing is deleted");
+            } else {
+                outcome.expect("an empty prefix loses its marker");
+                assert_eq!(bodies.len(), 1, "{listing}");
+                assert!(bodies[0].contains("<Key>folder/</Key>"));
+                assert!(!bodies[0].contains("child"));
+                assert!(!bodies[0].contains("<Key>folder</Key>"));
+            }
             server.abort();
         }
     }

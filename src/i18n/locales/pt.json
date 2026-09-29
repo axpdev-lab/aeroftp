@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (do backup)",
             "keystorePreviewLocalFromVault": "Não foi possível ler a lista de perfis de servidor deste dispositivo, então a comparação usa a lista de servidores guardada no cofre.",
             "keystoreDecisionsFailed": "A importação terminou, mas suas escolhas para os perfis de servidor não puderam ser aplicadas: {error}",
+            "keystoreListMergeFailed": "A importação terminou, mas a lista de servidores do backup não pôde ser mesclada com a lista deste dispositivo: {error}",
+            "keystorePartitionSkipped": "A partição de contas da cópia de segurança não pode ser desbloqueada neste dispositivo e foi deixada de fora. Importe com Sobrescrever para restaurar essa partição por inteiro.",
             "exportKeystoreDesc": "Exportar todas as credenciais criptografadas para um arquivo de backup",
             "importKeystoreDesc": "Importar credenciais de um arquivo de backup",
             "keystoreExported": "Cofre exportado com sucesso ({count} entradas)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Limpar substituições",
             "uiTokensApplied": "Substituições aplicadas: {count}",
             "uiTokensRejected": "Entradas rejeitadas: {count}",
-            "keystorePreferencesFailed": "A importação terminou, mas suas preferências do aplicativo não puderam ser restauradas: {error}"
+            "keystorePreferencesFailed": "A importação terminou, mas suas preferências do aplicativo não puderam ser restauradas: {error}",
+            "keystorePreviewBackupUnreadable": "A lista de servidores deste backup não pode ser lida neste dispositivo, então a comparação usa a lista guardada no cofre do backup. A importação mesmo assim substitui a lista de servidores neste dispositivo."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Enviados",
             "reportDownloaded": "Baixados",
             "reportSkipped": "Ignorados",
+            "keptDirs": "Pastas mantidas",
+            "keptDirUnfinished": "contém arquivos que não foram sincronizados",
+            "keptDirEntries": "contém entradas excluídas ou não listadas",
+            "keptDirServer": "não está vazia no servidor",
             "reportTransferred": "Transferidos",
             "reportDuration": "Duração",
             "reportDirsCreated": "Pastas criadas",

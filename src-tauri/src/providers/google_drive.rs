@@ -1256,40 +1256,62 @@ impl GoogleDriveProvider {
         &mut self,
         name: &str,
         parent_id: &str,
-    ) -> Result<Option<String>, ProviderError> {
+    ) -> Result<Vec<String>, ProviderError> {
         // Escape single quotes per Drive query syntax (\').
         let escaped = name.replace('\\', "\\\\").replace('\'', "\\'");
         let q = format!(
             "name='{}' and '{}' in parents and trashed=true",
             escaped, parent_id
         );
-        let url = format!(
-            "{}/files?q={}&orderBy=modifiedTime+desc&fields=files(id,name,mimeType,modifiedTime),nextPageToken&pageSize=10",
-            self.drive_api(),
-            urlencoding::encode(&q)
-        );
-        let response = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-        if !response.status().is_success() {
-            return Err(drive_error_from_response(response, "Trash search failed:").await);
-        }
-        let list: DriveFileList = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::Other(format!("Trash search parse error: {}", e)))?;
         // The search ignores letter case (see `find_by_name`): a trashed
         // `A.txt` is not the `a.txt` the caller trashed, and this id is
-        // deleted for good.
-        Ok(list
-            .files
-            .into_iter()
-            .find(|f| f.name == name)
-            .map(|f| f.id))
+        // deleted for good. Every hit of the exact name is returned: Drive
+        // keeps several of one name in a folder, and the caller refuses to
+        // choose among them. Every page is read before that: a second item
+        // of the name on a page never read would make the first look like
+        // the only one, and it would be purged. A search that does not end
+        // within `MAX_PAGES` is refused rather than read as complete.
+        const MAX_PAGES: usize = 20;
+        let mut ids = Vec::new();
+        let mut page_token: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let mut url = format!(
+                "{}/files?q={}&fields=files(id,name),nextPageToken&pageSize=100",
+                self.drive_api(),
+                urlencoding::encode(&q)
+            );
+            if let Some(token) = &page_token {
+                url.push_str("&pageToken=");
+                url.push_str(&urlencoding::encode(token));
+            }
+            let response = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            if !response.status().is_success() {
+                return Err(drive_error_from_response(response, "Trash search failed:").await);
+            }
+            let list: DriveFileList = response
+                .json()
+                .await
+                .map_err(|e| ProviderError::Other(format!("Trash search parse error: {}", e)))?;
+            ids.extend(
+                list.files
+                    .into_iter()
+                    .filter(|f| f.name == name)
+                    .map(|f| f.id),
+            );
+            match list.next_page_token {
+                Some(token) => page_token = Some(token),
+                None => return Ok(ids),
+            }
+        }
+        Err(ProviderError::ServerError(format!(
+            "Not purged: the trash search for {name} did not end within {MAX_PAGES} pages, so a second item of the name cannot be ruled out"
+        )))
     }
 
     /// Permanently delete a file by file ID (bypasses trash)
@@ -1992,6 +2014,10 @@ impl StorageProvider for GoogleDriveProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(path).await?;
         self.delete(path).await
     }
 
@@ -2006,7 +2032,9 @@ impl StorageProvider for GoogleDriveProvider {
         // and call `permanent_delete` by file id. If nothing matches the path
         // is treated as already purged (Ok(false)) rather than an error so
         // the caller can continue; so is a folder that is no longer there,
-        // since nothing in the trash can then be told to be this path.
+        // since nothing in the trash can then be told to be this path. Two
+        // trashed files of that name in that folder are refused: neither can
+        // be told to be this path either.
         let path_is_absolute = path.starts_with('/');
         let trimmed = path.trim_matches('/');
         let (parent_path, basename) = match trimmed.rfind('/') {
@@ -2021,7 +2049,8 @@ impl StorageProvider for GoogleDriveProvider {
             Err(ProviderError::NotFound(_)) => return Ok(false),
             Err(e) => return Err(e),
         };
-        match self.find_trashed_in(basename, &parent_id).await? {
+        let matches = self.find_trashed_in(basename, &parent_id).await?;
+        match super::the_one_trashed_item(path, matches)? {
             Some(id) => {
                 self.permanent_delete(&id).await?;
                 Ok(true)
@@ -3273,6 +3302,18 @@ mod tests {
         GoogleDriveProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_on_drive_paged(tree, usize::MAX).await
+    }
+
+    /// [`provider_on_drive`] answering a search `page_size` files at a time,
+    /// with a `nextPageToken` while files remain.
+    async fn provider_on_drive_paged(
+        tree: &'static [(&'static str, &'static str, &'static str)],
+        page_size: usize,
+    ) -> (
+        GoogleDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use std::sync::{Arc, Mutex};
         let patches: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&patches);
@@ -3348,7 +3389,18 @@ mod tests {
                             .collect(),
                         None => Vec::new(),
                     };
-                    axum::Json(serde_json::json!({ "files": files })).into_response()
+                    let from: usize = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "pageToken")
+                        .and_then(|(_, v)| v.parse().ok())
+                        .unwrap_or(0);
+                    let to = files.len().min(from.saturating_add(page_size));
+                    let next = (to < files.len()).then(|| to.to_string());
+                    axum::Json(serde_json::json!({
+                        "files": files[from.min(files.len())..to],
+                        "nextPageToken": next,
+                    }))
+                    .into_response()
                 }
             }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -3468,6 +3520,55 @@ mod tests {
         .await;
         assert!(p.delete_permanent("/new/a.txt").await.expect("purge"));
         assert_eq!(*changes.lock().unwrap(), ["DELETE TN"]);
+    }
+
+    /// Drive keeps two trashed `a.txt` of one folder side by side, and the
+    /// purge took the one modified last, which the trash cannot tell to be
+    /// this path. It is refused, as Proton refuses it, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_files_of_one_name() {
+        let (mut p, changes) = provider_on_drive(&[
+            ("N", "new", "root"),
+            ("T1", "a.txt", "trash:N"),
+            ("T2", "a.txt", "trash:N"),
+        ])
+        .await;
+        let outcome = p.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
+    }
+
+    /// The trash search read its first page only: with the two generations
+    /// of `a.txt` on two pages, the first looked like the only one and was
+    /// purged. Every page is read before the purge is decided.
+    #[tokio::test]
+    async fn a_permanent_delete_reads_every_trash_page_before_it_decides() {
+        let (mut p, changes) = provider_on_drive_paged(
+            &[
+                ("N", "new", "root"),
+                ("T1", "a.txt", "trash:N"),
+                ("T2", "a.txt", "trash:N"),
+            ],
+            1,
+        )
+        .await;
+        let outcome = p.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
     }
 
     /// The folder cache keeps each spelling a lookup used, so a folder whose

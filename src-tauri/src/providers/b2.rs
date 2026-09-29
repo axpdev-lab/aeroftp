@@ -2896,6 +2896,30 @@ impl StorageProvider for B2Provider {
         if !key.ends_with('/') {
             key.push('/');
         }
+        // Round 2 of the 4.2.1 review: this answered Ok on a folder that
+        // still held files, which stayed behind an "empty" folder. Two names
+        // under the prefix are enough to tell "only the placeholder" from
+        // "anything else".
+        let placeholder = format!("{key}{PLACEHOLDER_NAME}");
+        let listed = match self.list_file_names(&key, None, None, 2).await {
+            Ok(r) => r,
+            Err(e) if is_b2_token_failure(&e) => {
+                if self.maybe_reauth(&e).await {
+                    self.list_file_names(&key, None, None, 2).await?
+                } else {
+                    return Err(e);
+                }
+            }
+            Err(e) => return Err(e),
+        };
+        let content = listed
+            .files
+            .iter()
+            .filter(|f| f.file_name != placeholder)
+            .count();
+        if content > 0 {
+            return Err(super::directory_not_empty(path, content));
+        }
         key.push_str(PLACEHOLDER_NAME);
         // 404 means there was no placeholder (vacuous success); other failures
         // from do_hide_file already carry the right ProviderError variant.
@@ -5033,6 +5057,80 @@ mod tests {
         provider.multi_thread_streams = 4;
         provider.multi_thread_cutoff = 1024 * 1024;
         provider
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` hid the `.bzEmpty` placeholder
+    /// and answered Ok whatever was under the prefix, so an "empty" folder
+    /// stayed in the bucket with its files. The prefix is listed first:
+    /// anything under it but the placeholder refuses the removal.
+    #[tokio::test]
+    async fn rmdir_refuses_a_prefix_with_content_and_hides_only_the_placeholder() {
+        use std::sync::{Arc, Mutex};
+        for (files, expect_refusal) in [
+            (
+                r#"[{"fileName":"d/.bzEmpty","action":"upload","contentLength":0,"uploadTimestamp":1},{"fileName":"d/x.txt","action":"upload","contentLength":1,"uploadTimestamp":1}]"#,
+                true,
+            ),
+            (
+                r#"[{"fileName":"d/x.txt","action":"upload","contentLength":1,"uploadTimestamp":1}]"#,
+                true,
+            ),
+            (
+                r#"[{"fileName":"d/.bzEmpty","action":"upload","contentLength":0,"uploadTimestamp":1}]"#,
+                false,
+            ),
+            ("[]", false),
+        ] {
+            let hidden: Arc<Mutex<Vec<String>>> = Arc::default();
+            let seen = Arc::clone(&hidden);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        let path = req.uri().path().to_string();
+                        let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                            .await
+                            .unwrap();
+                        let json: serde_json::Value =
+                            serde_json::from_slice(&body).unwrap_or_default();
+                        let reply = if path.ends_with("b2_list_file_names") {
+                            format!(r#"{{"files":{files},"nextFileName":null}}"#)
+                        } else if path.ends_with("b2_hide_file") {
+                            seen.lock()
+                                .unwrap()
+                                .push(json["fileName"].as_str().unwrap_or("").to_string());
+                            r#"{"fileId":"h","fileName":"x","action":"hide"}"#.to_string()
+                        } else {
+                            panic!("unexpected request {path}")
+                        };
+                        axum::response::Response::builder()
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(reply))
+                            .unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = empty_provider();
+            provider.api_url = format!("http://{addr}");
+            provider.auth_token = SecretString::new("token".to_string().into());
+            provider.bucket_id = "bucket".into();
+            provider.connected = true;
+            let outcome = provider.rmdir("/d").await;
+            let hidden = hidden.lock().unwrap();
+            if expect_refusal {
+                assert!(
+                    matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
+                    "{files}: {outcome:?}"
+                );
+                assert!(hidden.is_empty(), "{files}: nothing is hidden");
+            } else {
+                outcome.expect("an empty prefix loses its placeholder");
+                assert_eq!(*hidden, ["d/.bzEmpty"], "{files}");
+            }
+        }
     }
 
     /// A B2 API double for `rename("/a.txt", "/b.txt")`: `a.txt` exists,

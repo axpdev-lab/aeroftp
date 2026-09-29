@@ -3564,6 +3564,11 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.refuse_another_path_in_single_file_mode(path)?;
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(path).await?;
         // WebDAV DELETE works for both files and directories, but a
         // directory DELETE without a trailing slash triggers the same
         // scheme-downgrading 301 that strips auth (see `collection_path`).
@@ -5663,6 +5668,73 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         (format!("http://{addr}/"), depths)
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` was a DELETE of the collection,
+    /// which RFC 4918 runs with `Depth: infinity`, so a member the caller's
+    /// listing had left out went with the "empty" collection. The collection
+    /// is listed first (PROPFIND `Depth: 1`): one that holds anything is
+    /// refused, with no DELETE sent.
+    #[tokio::test]
+    async fn rmdir_lists_the_collection_and_refuses_one_that_holds_anything() {
+        use std::sync::{Arc, Mutex};
+        for (member, expect_refusal) in [(true, true), (false, false)] {
+            let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+            let seen = Arc::clone(&calls);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        let method = req.method().to_string();
+                        let path = req.uri().path().to_string();
+                        seen.lock().unwrap().push(format!("{method} {path}"));
+                        if method == "PROPFIND" {
+                            let child = if member {
+                                "<d:response><d:href>/d/a.txt</d:href><d:propstat><d:prop>\
+                                 <d:resourcetype/><d:getcontentlength>1</d:getcontentlength>\
+                                 </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
+                            } else {
+                                ""
+                            };
+                            let body = format!(
+                                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+                                 <d:multistatus xmlns:d=\"DAV:\"><d:response><d:href>/d/</d:href>\
+                                 <d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype>\
+                                 </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>\
+                                 </d:response>{child}</d:multistatus>"
+                            );
+                            return axum::response::Response::builder()
+                                .status(207)
+                                .header("content-type", "application/xml; charset=utf-8")
+                                .body(axum::body::Body::from(body))
+                                .unwrap();
+                        }
+                        axum::response::Response::builder()
+                            .status(if method == "DELETE" { 204 } else { 405 })
+                            .body(axum::body::Body::empty())
+                            .unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut p =
+                WebDavProvider::new(test_config(&format!("http://{addr}/"))).expect("provider");
+            p.connected = true;
+            let outcome = p.rmdir("/d").await;
+            let calls = calls.lock().unwrap();
+            if expect_refusal {
+                assert!(
+                    matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
+                    "{outcome:?}"
+                );
+                assert!(!calls.iter().any(|c| c.starts_with("DELETE ")), "{calls:?}");
+            } else {
+                outcome.expect("an empty collection goes");
+                assert!(calls.iter().any(|c| c == "DELETE /d/"), "{calls:?}");
+            }
+        }
     }
 
     /// Renaming a file failed with 400 on every server built on

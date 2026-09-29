@@ -782,6 +782,10 @@ impl StorageProvider for MegaCmdProvider {
     }
 
     async fn rmdir(&mut self, p: &str) -> Result<(), ProviderError> {
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(p).await?;
         // Soft delete, exactly like `delete()` does for files. This used to be
         // `mega-rm -r -f`, which bypasses the Rubbish Bin, so deleting a file
         // was recoverable but deleting a folder was not — on the same account,
