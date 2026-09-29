@@ -84,7 +84,10 @@ pub(crate) mod temp_claim {
     /// Open the temporary at `temp` to go on writing it (a resume), and claim
     /// it: refused while another writer holds it.
     pub(crate) fn open_to_append(temp: &Path) -> Result<std::fs::File> {
-        let file = std::fs::OpenOptions::new().append(true).open(temp)?;
+        let file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(temp)
+            .map_err(|e| name_too_long(e, temp))?;
         claim(&file, temp, try_lock)?;
         Ok(file)
     }
@@ -119,6 +122,7 @@ pub(crate) mod temp_claim {
             .create_new(true)
             .write(true)
             .open(temp)
+            .map_err(|e| name_too_long(e, temp))
     }
 
     /// Remove the temporary at `temp` unless a live writer holds it: a stale
@@ -167,9 +171,39 @@ pub(crate) mod temp_claim {
                     }
                 }
                 Err(taken) if taken.kind() == ErrorKind::AlreadyExists => return Err(in_use(temp)),
-                Err(e) => return Err(e),
+                Err(e) => return Err(name_too_long(e, temp)),
             }
         }
+    }
+
+    /// `e`, from creating or opening the temporary at `temp`, told plainly
+    /// when the file system refused the name as too long. The temporary is
+    /// the local name plus a suffix of up to 11 bytes (`.aerosegtmp`), so a
+    /// name that fits the file system on its own can still leave no room for
+    /// it, and the bare "File name too long" reads as if the name were
+    /// refused. The name cannot be shortened here: a resumed download finds
+    /// its part again by this exact name.
+    pub(crate) fn name_too_long(e: Error, temp: &Path) -> Error {
+        #[cfg(unix)]
+        let too_long = e.raw_os_error() == Some(libc::ENAMETOOLONG);
+        // ERROR_FILENAME_EXCED_RANGE
+        #[cfg(windows)]
+        let too_long = e.raw_os_error() == Some(206);
+        #[cfg(not(any(unix, windows)))]
+        let too_long = false;
+        if !too_long {
+            return e;
+        }
+        let bytes = temp.file_name().map_or(0, |name| name.len());
+        Error::new(
+            ErrorKind::InvalidFilename,
+            format!(
+                "Cannot create the download temporary {}: its name is {bytes} bytes, \
+                 too long for this file system once the suffix is added to the file \
+                 name; shorten the local file name ({e})",
+                temp.display()
+            ),
+        )
     }
 
     /// Lock `file`, opened at `path`, for this writer. Refused when another
@@ -754,7 +788,7 @@ impl ResumableFile {
                 }
             }
             Err(gone) if gone.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e),
+            Err(e) => return Err(temp_claim::name_too_long(e, &temp_path)),
         };
         let (file, offset) = if let Some(resumed) = resumed {
             resumed
@@ -1093,5 +1127,42 @@ mod tests {
         assert_eq!(std::fs::read(path).unwrap(), b"old content");
         file.commit().await.unwrap();
         assert_eq!(std::fs::read(path).unwrap(), b"first part, the rest");
+    }
+
+    /// Pre-release review of 4.2.1 (B4 sweep): a local name that fits the
+    /// file system but leaves no room for the temporary's suffix failed with
+    /// the bare "File name too long", which reads as if the name itself were
+    /// refused. Every writer names the temporary and the way out.
+    #[tokio::test]
+    async fn a_name_with_no_room_for_the_suffix_fails_with_a_clear_error() {
+        let dir = tempfile::tempdir().unwrap();
+        // 250 bytes fits NAME_MAX (255); 250 + ".aerotmp" does not.
+        let path = dir.path().join("n".repeat(250));
+        let path = path.to_str().unwrap();
+        let clear = |e: std::io::Error, suffix: &str| {
+            let text = e.to_string();
+            assert!(
+                text.contains(suffix) && text.contains("shorten"),
+                "unclear error: {text}"
+            );
+        };
+        clear(AtomicFile::new(path).await.err().unwrap(), ".aerotmp");
+        clear(
+            ResumableFile::open_in(path, false).await.err().unwrap(),
+            ".aerotmp",
+        );
+        clear(
+            ResumableFile::open_fresh_in(path, false)
+                .await
+                .err()
+                .unwrap(),
+            ".aerotmp",
+        );
+        let segmented = crate::providers::multi_thread::segmented_temp_path_for(Path::new(path));
+        clear(
+            temp_claim::create_fresh(&segmented).err().unwrap(),
+            ".aerosegtmp",
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 }
