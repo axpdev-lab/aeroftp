@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { withoutComments } from './jsxTag';
 
 // Every source file under src, as text. Tests are left out: they may name the
 // web API on purpose.
@@ -20,14 +21,9 @@ const WEB_CLIPBOARD = [
     /['"`]@tauri-apps\/plugin-clipboard-manager['"`]/g,
 ];
 
-/** `text` with its comments blanked, line numbers kept: a comment may name the API. */
-function withoutComments(text: string): string {
-    return text
-        .replace(/\/\*[\s\S]*?\*\//g, block => block.replace(/[^\n]/g, ' '))
-        .replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
-}
-
-/** The lines of `text` that use the web clipboard. */
+/** The lines of `text` that use the web clipboard. Comments are blanked by the
+ *  shared, string-aware `withoutComments`: a comment may name the API, and a
+ *  regex that hunts for `//` finds it inside a literal. Line numbers are kept. */
 function webClipboardLines(text: string): number[] {
     const code = withoutComments(text);
     return WEB_CLIPBOARD.flatMap(pattern =>

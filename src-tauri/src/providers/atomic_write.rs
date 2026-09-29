@@ -186,12 +186,23 @@ pub(crate) mod temp_claim {
     pub(crate) fn name_too_long(e: Error, temp: &Path) -> Error {
         #[cfg(unix)]
         let too_long = e.raw_os_error() == Some(libc::ENAMETOOLONG);
-        // ERROR_INVALID_NAME or ERROR_FILENAME_EXCED_RANGE: a name with no
-        // room for the suffix fails there with either, never ENAMETOOLONG
-        // (#987: the bare 123 reads "The filename, directory name, or volume
-        // label syntax is incorrect", which says nothing about the name).
+        // ERROR_FILENAME_EXCED_RANGE (206) is only a length error.
+        // ERROR_INVALID_NAME (123) is a syntax error too: a short name with a
+        // character Windows forbids (`?`, `*`, `:`) fails with it, and
+        // "shorten the name" is wrong there, so 123 is a length error only
+        // for a name past the 255 UTF-16 unit component limit (#987: the bare
+        // 123 reads "The filename, directory name, or volume label syntax is
+        // incorrect", which says nothing about the name).
         #[cfg(windows)]
-        let too_long = matches!(e.raw_os_error(), Some(123) | Some(206));
+        let too_long = match e.raw_os_error() {
+            Some(206) => true,
+            Some(123) => {
+                use std::os::windows::ffi::OsStrExt;
+                temp.file_name()
+                    .is_some_and(|name| name.encode_wide().count() > 255)
+            }
+            _ => false,
+        };
         #[cfg(not(any(unix, windows)))]
         let too_long = false;
         if !too_long {
@@ -215,15 +226,19 @@ pub(crate) mod temp_claim {
     mod name_too_long_tests {
         use super::*;
 
+        /// The temporary of a 250-character name: with ".aerotmp" it is 258
+        /// UTF-16 units, past the 255-unit component limit.
         fn over_long_temp() -> std::path::PathBuf {
-            Path::new("dir").join("n".repeat(250))
+            Path::new("dir").join(format!("{}.aerotmp", "n".repeat(250)))
         }
 
         /// Windows CI of #987: a name with no room for the temporary's suffix
         /// fails there with ERROR_INVALID_NAME (123) or
         /// ERROR_FILENAME_EXCED_RANGE (206), never ENAMETOOLONG, and only 206
         /// was read: the download failed with the bare "The filename,
-        /// directory name, or volume label syntax is incorrect".
+        /// directory name, or volume label syntax is incorrect". 123 is a
+        /// syntax error too, so a short name keeps it: a `?` in the file name
+        /// is what is wrong there, not the length.
         #[cfg(windows)]
         #[test]
         fn on_windows_a_too_long_name_is_read_from_either_code() {
@@ -234,12 +249,19 @@ pub(crate) mod temp_claim {
                     "os error {code} was not read as a name too long"
                 );
             }
-            let other = name_too_long(Error::from_raw_os_error(5), &over_long_temp());
-            assert_eq!(
-                other.raw_os_error(),
-                Some(5),
-                "an unrelated error was rewritten"
-            );
+            let short = Path::new("dir").join("report?.txt.aerotmp");
+            // 206 is only a length error: a long path under a short name is
+            // still told as too long.
+            let told = name_too_long(Error::from_raw_os_error(206), &short);
+            assert!(told.to_string().contains("shorten"));
+            for code in [5, 123] {
+                let other = name_too_long(Error::from_raw_os_error(code), &short);
+                assert_eq!(
+                    other.raw_os_error(),
+                    Some(code),
+                    "os error {code} on a short name was rewritten"
+                );
+            }
         }
 
         /// Only ENAMETOOLONG is rewritten: another error passes through as is.
