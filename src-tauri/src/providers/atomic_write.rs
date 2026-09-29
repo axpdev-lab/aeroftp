@@ -186,9 +186,12 @@ pub(crate) mod temp_claim {
     pub(crate) fn name_too_long(e: Error, temp: &Path) -> Error {
         #[cfg(unix)]
         let too_long = e.raw_os_error() == Some(libc::ENAMETOOLONG);
-        // ERROR_FILENAME_EXCED_RANGE
+        // ERROR_INVALID_NAME or ERROR_FILENAME_EXCED_RANGE: a name with no
+        // room for the suffix fails there with either, never ENAMETOOLONG
+        // (#987: the bare 123 reads "The filename, directory name, or volume
+        // label syntax is incorrect", which says nothing about the name).
         #[cfg(windows)]
-        let too_long = e.raw_os_error() == Some(206);
+        let too_long = matches!(e.raw_os_error(), Some(123) | Some(206));
         #[cfg(not(any(unix, windows)))]
         let too_long = false;
         if !too_long {
@@ -204,6 +207,53 @@ pub(crate) mod temp_claim {
                 temp.display()
             ),
         )
+    }
+
+    /// `name_too_long` on the raw codes of each platform: only the codes that
+    /// mean a name too long are rewritten, everything else passes through.
+    #[cfg(all(test, any(unix, windows)))]
+    mod name_too_long_tests {
+        use super::*;
+
+        fn over_long_temp() -> std::path::PathBuf {
+            Path::new("dir").join("n".repeat(250))
+        }
+
+        /// Windows CI of #987: a name with no room for the temporary's suffix
+        /// fails there with ERROR_INVALID_NAME (123) or
+        /// ERROR_FILENAME_EXCED_RANGE (206), never ENAMETOOLONG, and only 206
+        /// was read: the download failed with the bare "The filename,
+        /// directory name, or volume label syntax is incorrect".
+        #[cfg(windows)]
+        #[test]
+        fn on_windows_a_too_long_name_is_read_from_either_code() {
+            for code in [123, 206] {
+                let told = name_too_long(Error::from_raw_os_error(code), &over_long_temp());
+                assert!(
+                    told.to_string().contains("shorten"),
+                    "os error {code} was not read as a name too long"
+                );
+            }
+            let other = name_too_long(Error::from_raw_os_error(5), &over_long_temp());
+            assert_eq!(
+                other.raw_os_error(),
+                Some(5),
+                "an unrelated error was rewritten"
+            );
+        }
+
+        /// Only ENAMETOOLONG is rewritten: another error passes through as is.
+        #[cfg(unix)]
+        #[test]
+        fn on_unix_only_a_name_too_long_is_rewritten() {
+            let told = name_too_long(
+                Error::from_raw_os_error(libc::ENAMETOOLONG),
+                &over_long_temp(),
+            );
+            assert!(told.to_string().contains("shorten"));
+            let other = name_too_long(Error::from_raw_os_error(libc::EACCES), &over_long_temp());
+            assert_eq!(other.raw_os_error(), Some(libc::EACCES));
+        }
     }
 
     /// Lock `file`, opened at `path`, for this writer. Refused when another
