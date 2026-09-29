@@ -1,6 +1,6 @@
 # AeroFTP CLI - Agent Integration Guide
 
-> _Last updated: 2026-09-04_
+> _Last updated: 2026-09-29_
 
 > This file is for AI coding agents (Claude Code, Cursor, Codex, Devin, OpenClaw).
 > It describes how to use AeroFTP CLI for remote operations without credentials.
@@ -115,7 +115,12 @@ hides who the account is (host, username) and not how the connection is shaped.
 | `put glob` | `aeroftp-cli put --profile NAME "./*.json" /remote/` | Upload matching files |
 | `sync` | `aeroftp-cli sync --profile NAME ./local/ /remote/` | Bidirectional sync |
 | `sync --dry-run` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --dry-run` | Preview sync |
-| `sync --immutable` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --immutable` | Never overwrite existing files |
+| `sync --immutable` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --immutable` | Never overwrite existing files: a same-size destination is skipped, one of another size (a cut upload's partial) is refused with exit 4 |
+| `sync --update` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --direction upload --update` | One-way only: leave a destination copy that is newer than the source |
+| `sync --conflict-mode` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --conflict-mode skip` | How a changed pair the dates cannot order is settled: `source` (default) or `skip` one way; `newer` (default), `older`, `larger`, `smaller`, `rename` or `skip` with `--direction both`. Pairs left alone are listed under `conflicts_open` |
+| `sync --modify-window` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --modify-window 60` | Seconds within which two times are the same instant (default 2, raised to the backend's precision) |
+| `sync --checksum` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --checksum --dry-run` | Compare same-size files by server-side checksum instead of time |
+| `sync --size-only` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --size-only` | Skip on size alone (alias `--skip-matching`); cannot be combined with `--checksum` |
 | `sync --files-from` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --files-from list.txt` | Transfer only listed files |
 | `sync --fast-list` | `aeroftp-cli sync --profile NAME ./local/ /remote/ --fast-list` | S3 recursive listing (fewer API calls) |
 | `cleanup` | `aeroftp-cli cleanup --profile NAME /path/ [--force]` | Find/delete orphaned .aerotmp files |
@@ -189,7 +194,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 | 2 | Not found | Check path spelling |
 | 3 | Permission denied | Report to user |
 | 4 | Transfer failed or partial | Read the JSON `status` and errors before retrying: a partial run can also mean a scan did not read the whole tree |
-| 5 | Invalid usage | Fix command syntax |
+| 5 | Invalid usage | Fix command syntax (an invalid `--exclude` pattern or `--multi-thread-cutoff` value is one). Also a file over the provider's per-file size limit: do not retry the same file |
 | 6 | Auth failed | Ask user to re-authorize |
 | 7 | Not supported | Use alternative approach |
 | 8 | Stopped at a limit, nothing failed | Raise the limit: a timeout on most commands, the `--max-transfer` budget on `sync` (JSON `over_budget`) |
@@ -197,7 +202,7 @@ aeroftp-cli ls --profile "Server" / --json 2>/dev/null | jq '.entries[].name'
 | 10 | Server/parse error | Check server status |
 | 11 | I/O error | Check disk space/permissions |
 | 99 | Unknown | Report to user |
-| 130 | Interrupted (SIGINT) | Stop: the run was cancelled |
+| 130 | Interrupted (SIGINT) | Stop: the user cancelled the run, also when it stopped a batch or a `sync` part way (JSON `"status": "interrupted"`). Do not retry |
 
 ## Safety Guidelines
 
@@ -337,10 +342,12 @@ aeroftp-cli agent -p xai -m "Compute SHA-256 of /var/www/app.js" -y --json
 
 | Level | Behavior |
 |-------|----------|
-| `--auto-approve safe` | Read-only tools only (default) |
-| `--auto-approve medium` | Read + local writes |
-| `--auto-approve high` | Read + writes + uploads |
-| `--auto-approve all` or `-y` | Everything including shell and delete |
+| `--auto-approve safe` | Local read-only tools only (default) |
+| `--auto-approve medium` | Also remote listings and metadata, local writes, and remote writes that delete nothing (upload, download, mkdir, rename, edit) |
+| `--auto-approve high` | Everything, including remote reads, `server_exec`, delete and shell: today the same as `all` |
+| `--auto-approve all` or `-y` | Everything, including remote reads, `server_exec`, delete and shell |
+
+A tool the level does not cover is asked for in an interactive terminal and refused in a non-interactive run.
 
 ### Security
 
@@ -377,8 +384,8 @@ External MCP clients can now connect directly through AeroFTP without wrapping C
 aeroftp-cli agent --mcp
 ```
 
-Current MCP mode (v4.0.x) exposes:
-- 34 curated tools across safe / medium / destructive tiers: file ops, batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree`), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`)
+Current MCP mode exposes:
+- 39 primary tools across safe / medium / destructive tiers, plus 38 compatibility aliases (77 names in `tools/list`, counted in `docs/COMMAND-INVENTORY.json`): file ops, batch (`aeroftp_delete_many`, `aeroftp_upload_many`), tree sync (`aeroftp_sync_tree` with `delta_files[]` + `plan[]`), tree diff (`aeroftp_check_tree` two-sided checksum + per-group caps + `omit_match`), preflight (`aeroftp_sync_doctor`, `aeroftp_reconcile`, `aeroftp_dedupe`), cross-profile copy (`aeroftp_transfer`, `aeroftp_transfer_tree`), agent ergonomics (`aeroftp_agent_connect`, `aeroftp_speed`, `aeroftp_touch`, `aeroftp_cleanup`)
 - resources for saved profiles, status, capabilities, and pooled connections
 - prompt templates for deploy, backup, sync, and clean workflows
 - async stdio transport, connection pooling, request cancellation, rate limiting, and audit logging
@@ -414,7 +421,9 @@ Saved profiles cover both direct-auth and browser-authorized providers.
 
 **Direct auth / token auth**: FTP, FTPS, SFTP, WebDAV, WebDAVS, S3, Backblaze B2, Swift (OpenStack), Azure Blob, GitHub, GitLab, MEGA (Native + MEGAcmd), Filen, Internxt, kDrive, Koofr, Jottacloud, FileLu, OpenDrive, Yandex Disk, Immich, ImageKit, Uploadcare, Cloudinary, Drime Cloud, SourceForge (SFTP preset)
 
-**Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared
+**Browser-authorized or profile-backed API providers**: Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Twake Drive (OAuth2 with PKCE on the user's own instance)
+
+**Through the vendor's own CLI**: Proton Drive (the official `proton-drive` CLI, signed in with `proton-drive auth login`; its session stays in Proton's keyring and AeroFTP never sees it)
 
 `df` and quota fields are provider-dependent. For several object-storage providers, `about` and `df` may omit quota data because the upstream API does not expose `storage_info`.
 

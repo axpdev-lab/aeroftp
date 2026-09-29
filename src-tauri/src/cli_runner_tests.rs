@@ -23,6 +23,11 @@ fn config(base_url: String) -> AgentConfig {
 }
 
 async fn read_request(socket: &mut tokio::net::TcpStream) -> Value {
+    read_request_with_head(socket).await.1
+}
+
+/// The request's head (request line and headers, as sent) and its body.
+async fn read_request_with_head(socket: &mut tokio::net::TcpStream) -> (String, Value) {
     let mut bytes = vec![];
     let end = loop {
         let mut buf = [0; 4096];
@@ -34,7 +39,7 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Value {
         }
         assert!(bytes.len() < 1_048_576);
     };
-    let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+    let headers = std::str::from_utf8(&bytes[..end]).unwrap().to_string();
     let length: usize = headers
         .lines()
         .find_map(|line| {
@@ -49,7 +54,10 @@ async fn read_request(socket: &mut tokio::net::TcpStream) -> Value {
         assert_ne!(n, 0);
         bytes.extend_from_slice(&buf[..n]);
     }
-    serde_json::from_slice(&bytes[end..end + length]).unwrap()
+    (
+        headers,
+        serde_json::from_slice(&bytes[end..end + length]).unwrap(),
+    )
 }
 
 async fn respond(socket: &mut tokio::net::TcpStream, status: &str, body: &str) {
@@ -89,6 +97,50 @@ async fn cli_runner_replays_denied_tool_and_accounts_real_stream_usage() {
         let usage = cfg.usage.lock().unwrap();
         assert_eq!((usage.input_tokens, usage.output_tokens, usage.total_tokens), (30, 5, 35));
     }).await.unwrap();
+}
+
+/// L16 (4.2.1 review): the GUI trims an API key before a request (#912), the
+/// CLI agent sent the key as the environment or the vault held it. A key
+/// saved with a trailing newline worked in the app and failed in
+/// `aeroftp-cli agent`: a newline cannot go in a header at all.
+#[tokio::test]
+async fn cli_agent_sends_the_api_key_trimmed() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut cfg = config(format!("http://{}", listener.local_addr().unwrap()));
+    cfg.api_key = "  local-fixture \n".into();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let (head, _) = read_request_with_head(&mut socket).await;
+        let done = json!({"choices":[{"delta":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]});
+        respond(
+            &mut socket,
+            "200 OK",
+            &format!("data: {done}\n\ndata: [DONE]\n\n"),
+        )
+        .await;
+        head
+    });
+    let mut messages =
+        vec![serde_json::from_value(json!({"role":"user","content":"fixture"})).unwrap()];
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        agent_tool_loop(&cfg, &mut messages, false),
+    )
+    .await
+    .expect("the agent run did not end");
+    match result {
+        Ok(text) => assert_eq!(text, "ok"),
+        Err(e) => panic!("the request was not sent: {e}"),
+    }
+    let head = tokio::time::timeout(std::time::Duration::from_secs(5), server)
+        .await
+        .expect("the fixture got no request")
+        .unwrap();
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("authorization: bearer local-fixture\r\n"),
+        "{head}"
+    );
 }
 
 #[tokio::test]

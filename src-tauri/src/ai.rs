@@ -203,7 +203,7 @@ pub struct ChatMessage {
 /// An API key as a provider expects it: no key contains whitespace, and a
 /// pasted one can carry a trailing newline or space that makes the provider
 /// reject it. An empty key is no key.
-pub(crate) fn clean_api_key(key: Option<String>) -> Option<String> {
+pub fn clean_api_key(key: Option<String>) -> Option<String> {
     key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
 }
 

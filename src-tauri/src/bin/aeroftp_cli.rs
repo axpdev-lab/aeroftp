@@ -7623,6 +7623,28 @@ fn immutable_size_mismatch(
     })
 }
 
+/// `sync --immutable` for an upload whose destination the remote listing
+/// holds: [`immutable_size_mismatch`] on the sizes of the two listings. A
+/// listing carries no mark for a size FTP could not read (it reads 0), so a 0
+/// there is not compared, which leans toward the skip as the rule does.
+fn sync_immutable_refusal(
+    cli: &Cli,
+    provider: &dyn StorageProvider,
+    target: &str,
+    remote_size: u64,
+    local_size: Option<u64>,
+) -> Option<String> {
+    let name = target.rsplit('/').next().unwrap_or(target).to_string();
+    let entry = RemoteEntry::file(name, target.to_string(), remote_size);
+    let ftp_zero = remote_size == 0
+        && matches!(
+            provider.provider_type(),
+            ProviderType::Ftp | ProviderType::Ftps
+        );
+    let exact = !ftp_zero && remote_size_is_exact(provider, &entry);
+    immutable_size_mismatch(cli, target, &entry, local_size, exact)
+}
+
 /// Whether the size `provider` reports for `entry` is the file's exact size.
 /// Not when the provider says its sizes are not (`reports_exact_size`: the
 /// AeroCrypt v1/v2 and compress overlays), not on Proton Drive (a file
@@ -8634,11 +8656,13 @@ impl MaxDeleteCap {
         }
     }
 
-    /// The number of deletions the cap allows over `total` counted files.
+    /// The number of deletions the cap allows over `total` counted files. A
+    /// percentage is a ceiling, rounded down: "more than half" of one file is
+    /// that file, so a cap under 100% never lets every file go.
     fn limit(self, total: usize) -> usize {
         match self {
             Self::Count(n) => n,
-            Self::Percent(pct) => ((pct / 100.0) * total as f64).ceil() as usize,
+            Self::Percent(pct) => (pct * total as f64 / 100.0).floor() as usize,
         }
     }
 }
@@ -10731,6 +10755,12 @@ async fn interrupted_inplace_exit(
 async fn close_after_interrupt(provider: &mut dyn StorageProvider) {
     let _ = tokio::time::timeout(INTERRUPTED_DISCONNECT_GRACE, provider.disconnect()).await;
 }
+
+/// The JSON `status` of a batch or a `sync` that Ctrl-C stopped part way,
+/// which ends with exit 130: the counters say what was done before it. An
+/// agent reads 4 ("partial") as a failure to retry, and the user asked for
+/// the opposite.
+const INTERRUPTED_STATUS: &str = "interrupted";
 
 fn report_interrupted(format: OutputFormat, what: &str) -> i32 {
     print_error(format, &format!("Interrupted (Ctrl+C): {what}"), 130);
@@ -34696,6 +34726,7 @@ async fn cmd_get_recursive(
     }
 
     let elapsed = start.elapsed();
+    let interrupted = cancelled.load(Ordering::Relaxed) && downloaded < total_files as u32;
     match format {
         OutputFormat::Text => {
             if !cli.quiet {
@@ -34713,7 +34744,13 @@ async fn cmd_get_recursive(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() { "ok" } else { "partial" },
+                status: if interrupted {
+                    INTERRUPTED_STATUS
+                } else if errors.is_empty() {
+                    "ok"
+                } else {
+                    "partial"
+                },
                 uploaded: 0,
                 downloaded,
                 deleted: 0,
@@ -34745,6 +34782,8 @@ async fn cmd_get_recursive(
 
     if downloaded == total_files as u32 {
         0
+    } else if interrupted {
+        130
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
         // The deficit is an intentional, signalled --max-transfer cap
         // (honest note already emitted), not a transfer failure: the
@@ -34970,6 +35009,8 @@ async fn cmd_get_glob(
     }
 
     let elapsed = start.elapsed();
+    let interrupted =
+        cancelled.load(Ordering::Relaxed) && downloaded + immutable_skipped < total as u32;
 
     match format {
         OutputFormat::Text => {
@@ -34984,7 +35025,13 @@ async fn cmd_get_glob(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() { "ok" } else { "partial" },
+                status: if interrupted {
+                    INTERRUPTED_STATUS
+                } else if errors.is_empty() {
+                    "ok"
+                } else {
+                    "partial"
+                },
                 uploaded: 0,
                 downloaded,
                 deleted: 0,
@@ -35016,6 +35063,8 @@ async fn cmd_get_glob(
         // --immutable skips are intentional (honest note emitted), not a
         // deficit: counted toward success like `get -r` / `cmd_put_recursive`.
         0
+    } else if interrupted {
+        130
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
         // Intentional --max-transfer cap (honest note already emitted),
         // not a transfer failure: the dedicated exit code, consistent
@@ -35843,6 +35892,7 @@ async fn cmd_put_recursive(
     put_run_note_failures(&errors);
 
     let elapsed = start.elapsed();
+    let interrupted = cancelled.load(Ordering::Relaxed) && uploaded + skipped < total_files as u32;
 
     match format {
         OutputFormat::Text => {
@@ -35874,7 +35924,13 @@ async fn cmd_put_recursive(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() { "ok" } else { "partial" },
+                status: if interrupted {
+                    INTERRUPTED_STATUS
+                } else if errors.is_empty() {
+                    "ok"
+                } else {
+                    "partial"
+                },
                 uploaded,
                 downloaded: 0,
                 deleted: 0,
@@ -35907,6 +35963,8 @@ async fn cmd_put_recursive(
         } else {
             0
         }
+    } else if interrupted {
+        130
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
         // Intentional --max-transfer cap (honest note already emitted),
         // not a transfer failure: the dedicated exit code, consistent
@@ -36521,9 +36579,9 @@ async fn run_rm_dry_run(
                     "'{}' is a directory with {} entries; the real run would fail. Use --recursive (or `purge`).",
                     path, children
                 ),
-                1,
+                9,
             );
-            return 1;
+            return 9;
         }
         Err(e) => {
             // `--force` makes the real delete idempotent over a missing path;
@@ -36636,9 +36694,9 @@ async fn run_filtered_rm(
                     "'{}' is a directory with {} entries. Use --recursive (or `purge`).",
                     path, children
                 ),
-                1,
+                9,
             );
-            return 1;
+            return 9;
         }
         Err(e) => {
             // `--force` keeps the delete idempotent over a missing path.
@@ -51158,21 +51216,42 @@ async fn cmd_sync(
         }
     }
 
-    // --immutable: remove uploads that would overwrite existing remote files
+    // --immutable: a planned transfer whose destination exists is not made.
+    // An upload over a remote file of another size is refused, as `put -r
+    // --immutable` refuses it: most often it is the partial a cut upload
+    // left, and dropping it in silence reported the run as done. The rest is
+    // a skip, and counted as one.
+    let mut immutable_refusals: Vec<String> = Vec::new();
     if cli.immutable {
-        let before = to_upload.len();
-        to_upload.retain(|path| !remote_map.contains_key(path));
-        let removed = before - to_upload.len();
+        let mut removed: u32 = 0;
+        let mut kept: Vec<&str> = Vec::with_capacity(to_upload.len());
+        for path in to_upload.drain(..) {
+            let Some((remote_size, _)) = remote_map.get(path) else {
+                kept.push(path);
+                continue;
+            };
+            let target = format!("{}/{}", remote.trim_end_matches('/'), path);
+            let local_size = local_map.get(path).map(|(size, _)| *size);
+            match sync_immutable_refusal(cli, provider.as_ref(), &target, *remote_size, local_size)
+            {
+                Some(refusal) => immutable_refusals.push(refusal),
+                None => removed += 1,
+            }
+        }
+        to_upload = kept;
+        skipped += removed;
         if removed > 0 && !quiet {
             eprintln!(
                 "Note: --immutable skipped {} file(s) that already exist on remote",
                 removed
             );
         }
-        // Also prevent downloads that would overwrite local files
+        // Also prevent downloads that would overwrite local files. A download
+        // lands through a temporary file, so a local file is never a partial.
         let before_dl = to_download.len();
         to_download.retain(|path| !local_map.contains_key(path));
         let removed_dl = before_dl - to_download.len();
+        skipped += removed_dl as u32;
         if removed_dl > 0 && !quiet {
             eprintln!(
                 "Note: --immutable skipped {} download(s) that already exist locally",
@@ -51452,6 +51531,12 @@ async fn cmd_sync(
                 for (orig, conflict) in &to_conflict_upload {
                     println!("  CONFLICT-RENAME  {} -> {}", orig, conflict);
                 }
+                for refusal in &immutable_refusals {
+                    let reason = refusal
+                        .strip_prefix(UPLOAD_REFUSED_PREFIX)
+                        .unwrap_or(refusal);
+                    println!("  REFUSED  {}", reason);
+                }
                 println!("\n(dry run - no changes made)");
             }
             OutputFormat::Json => {
@@ -51540,7 +51625,7 @@ async fn cmd_sync(
                         error_correction_pct.is_some(),
                         0,
                     ),
-                    errors: vec![],
+                    errors: immutable_refusals.clone(),
                     elapsed_secs: start.elapsed().as_secs_f64(),
                     plan,
                     skipped_links: reported_links.clone(),
@@ -51559,8 +51644,13 @@ async fn cmd_sync(
         }
         let _ = provider.disconnect().await;
         return SyncCycleStats {
-            // SCAN-01: a dry-run computed from a partial listing is itself partial.
-            exit_code: if scan_incomplete { 4 } else { 0 },
+            // SCAN-01: a dry-run computed from a partial listing is itself
+            // partial, and one the real run would refuse files in fails too.
+            exit_code: if scan_incomplete || !immutable_refusals.is_empty() {
+                4
+            } else {
+                0
+            },
             uploaded: to_upload.len() as u32,
             downloaded: to_download.len() as u32,
             deleted: (to_delete_remote.len() + to_delete_local.len()) as u32,
@@ -51573,7 +51663,7 @@ async fn cmd_sync(
             ec_generate_failed: 0,
             ec_sidecar_deleted: 0,
             ec_sidecar_delete_failed: 0,
-            error_count: 0,
+            error_count: immutable_refusals.len() as u32,
             conflicts_open,
             dirs_kept: Vec::new(),
         };
@@ -51595,7 +51685,7 @@ async fn cmd_sync(
     let mut uploaded: u32 = 0;
     let mut downloaded: u32 = 0;
     let mut deleted: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
+    let mut errors: Vec<String> = immutable_refusals;
     // What each download left on disk, read when it completed (relative
     // path): the bisync snapshot records that, not the file as it is when
     // the run ends, which a later edit may already have changed.
@@ -52473,6 +52563,14 @@ async fn cmd_sync(
             dirs_deleted
         );
     }
+    // Ctrl-C stops every phase above: the transfers record the files they
+    // did not move, the renames, deletes and directory removals stop where
+    // they are. Whichever phase it stopped, the run ends as interrupted
+    // (exit 130), not as a success or a failure to retry.
+    let interrupted = cancelled.load(Ordering::Relaxed);
+    if interrupted && !quiet {
+        eprintln!("Interrupted (Ctrl+C): the sync stopped before the end of its plan");
+    }
 
     // Save bisync snapshot after successful sync (--direction both)
     if direction == "both" && errors.is_empty() && !dry_run {
@@ -52548,7 +52646,11 @@ async fn cmd_sync(
             print_json(&CliSyncResult {
                 // G102: a run that left files behind is not "ok", whichever
                 // reason left them behind. The counters below say which.
-                status: sync_status_word(!errors.is_empty(), scan_incomplete, hit_max_transfer),
+                status: if interrupted {
+                    INTERRUPTED_STATUS
+                } else {
+                    sync_status_word(!errors.is_empty(), scan_incomplete, hit_max_transfer)
+                },
                 uploaded,
                 downloaded,
                 deleted,
@@ -52610,7 +52712,11 @@ async fn cmd_sync(
     // last because nothing went wrong at all. Whichever wins, the JSON
     // reports every fact that was true, so the exit code narrows the answer
     // and never replaces it.
-    let exit_code = sync_exit_code(!errors.is_empty(), scan_incomplete, hit_max_transfer);
+    let exit_code = if interrupted {
+        130
+    } else {
+        sync_exit_code(!errors.is_empty(), scan_incomplete, hit_max_transfer)
+    };
 
     SyncCycleStats {
         exit_code,
@@ -59850,6 +59956,7 @@ async fn cmd_put_glob(
     put_run_note_failures(&errors);
 
     let elapsed = start.elapsed();
+    let interrupted = cancelled.load(Ordering::Relaxed) && uploaded + skipped < total as u32;
 
     match format {
         OutputFormat::Text => {
@@ -59882,7 +59989,13 @@ async fn cmd_put_glob(
         }
         OutputFormat::Json => {
             print_json(&CliSyncResult {
-                status: if errors.is_empty() { "ok" } else { "partial" },
+                status: if interrupted {
+                    INTERRUPTED_STATUS
+                } else if errors.is_empty() {
+                    "ok"
+                } else {
+                    "partial"
+                },
                 uploaded,
                 downloaded: 0,
                 deleted: 0,
@@ -59915,6 +60028,8 @@ async fn cmd_put_glob(
         } else {
             0
         }
+    } else if interrupted {
+        130
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
         // Intentional --max-transfer cap (honest note already emitted),
         // not a transfer failure: the dedicated exit code, consistent
@@ -66432,8 +66547,26 @@ DISCONNECT\n";
         for bad in ["", "0.5", "50pct", "half", "150%", "-1", "-5%", "NaN%", "%"] {
             assert!(MaxDeleteCap::parse(bad).is_err(), "{bad:?} was accepted");
         }
-        assert_eq!(MaxDeleteCap::Percent(50.0).limit(7), 4);
         assert_eq!(MaxDeleteCap::Count(3).limit(100), 3);
+    }
+
+    /// L1 (4.2.1 review): a percentage cap rounded up, so `--max-delete 50%`
+    /// let a one-file destination be emptied (1 is not more than ceil(0.5))
+    /// and let 2 of 3 files go, while the batch guide promises that a run
+    /// deleting more than half of a side stops. The cap allows at most that
+    /// share of the files, rounded down, so a cap under 100% never lets every
+    /// file of a side go.
+    #[test]
+    fn a_percentage_cap_never_rounds_up() {
+        let half = MaxDeleteCap::Percent(50.0);
+        assert_eq!(half.limit(1), 0, "one file of one is more than half");
+        assert_eq!(half.limit(3), 1, "two of three is more than half");
+        assert_eq!(half.limit(7), 3);
+        assert_eq!(half.limit(8), 4, "exactly half is allowed");
+        assert_eq!(MaxDeleteCap::Percent(99.0).limit(10), 9);
+        assert_eq!(MaxDeleteCap::Percent(100.0).limit(10), 10);
+        assert_eq!(MaxDeleteCap::Percent(0.0).limit(10), 0);
+        assert_eq!(MaxDeleteCap::Percent(29.0).limit(100), 29, "no float drift");
     }
 
     #[test]
@@ -66826,10 +66959,8 @@ fn detect_ai_provider() -> Option<(String, String, String)> {
         ),
     ];
     for (name, env_key, base_url) in &providers {
-        if let Ok(key) = std::env::var(env_key) {
-            if !key.is_empty() {
-                return Some((name.to_string(), key, base_url.to_string()));
-            }
+        if let Some(key) = ftp_client_gui_lib::ai::clean_api_key(std::env::var(env_key).ok()) {
+            return Some((name.to_string(), key, base_url.to_string()));
         }
     }
     // Check Ollama (no API key needed)
@@ -66952,11 +67083,11 @@ fn resolve_vault_ai_provider(
     let ai_key_uid = active_credential_user_id(store);
     for (ptype, id, url, _) in &candidates {
         let vault_key = format!("ai_apikey_{}", id);
-        if let Some(key) = read_server_cred(store, ai_key_uid, &vault_key) {
-            if !key.is_empty() {
-                eprintln!("Using AI provider '{}' from AeroFTP vault.", ptype);
-                return Some((ptype.clone(), key, url.clone()));
-            }
+        if let Some(key) =
+            ftp_client_gui_lib::ai::clean_api_key(read_server_cred(store, ai_key_uid, &vault_key))
+        {
+            eprintln!("Using AI provider '{}' from AeroFTP vault.", ptype);
+            return Some((ptype.clone(), key, url.clone()));
         }
     }
 
@@ -68723,7 +68854,7 @@ async fn agent_run(
         reasoning_effort: None,
         provider_type: cfg.provider_type.clone(),
         model: cfg.model.clone(),
-        api_key: Some(cfg.api_key.clone()),
+        api_key: ftp_client_gui_lib::ai::clean_api_key(Some(cfg.api_key.clone())),
         base_url: cfg.base_url.clone(),
         messages: vec![ChatMessage {
             native_turn: None,
@@ -68790,7 +68921,8 @@ async fn cmd_agent(
     // Detect provider
     let (prov_name, api_key, base_url) = if let Some(ref name) = provider_name {
         let env_key = format!("{}_API_KEY", name.to_uppercase());
-        let key = std::env::var(&env_key).unwrap_or_default();
+        let key =
+            ftp_client_gui_lib::ai::clean_api_key(std::env::var(&env_key).ok()).unwrap_or_default();
         let url = match name.as_str() {
             "anthropic" => "https://api.anthropic.com/v1",
             "openai" => "https://api.openai.com/v1",
@@ -82391,6 +82523,8 @@ mod tests {
         /// Clone-backed, like the FTP connection pool: batches go through the
         /// shared executor, which enforces `--max-transfer` by count.
         pooled: bool,
+        /// Runs with the remote path after each delete went through.
+        after_delete: Option<AfterDownload>,
     }
 
     impl SharedTreeProvider {
@@ -82531,8 +82665,11 @@ mod tests {
                 .lock()
                 .expect("tree")
                 .remove(path)
-                .map(|_| ())
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+            if let Some(hook) = &self.after_delete {
+                hook(path);
+            }
+            Ok(())
         }
         async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -82795,6 +82932,57 @@ mod tests {
             "{result:?}"
         );
         assert_eq!(served.calls, ["delete", "stat"]);
+    }
+
+    /// L8 (4.2.1 review): `rm --dry-run` and a filtered `rm` on a directory
+    /// that is not empty, without `-r`, exited 1 ("connection error"), while
+    /// the real run refuses the same directory with 9, the code the guide
+    /// gives a directory that is not empty.
+    #[tokio::test]
+    async fn rm_preview_of_a_non_empty_directory_exits_9() {
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let filter = RmFilter::new(&cli, "/d");
+        let non_empty_dir = || {
+            let mut provider = DeleteFallbackProvider::new(
+                || Err(ProviderError::NotSupported("delete".to_string())),
+                || Ok(RemoteEntry::directory("d".to_string(), "/d".to_string())),
+            );
+            provider.list = || {
+                Ok(vec![RemoteEntry::file(
+                    "f".to_string(),
+                    "/d/f".to_string(),
+                    1,
+                )])
+            };
+            Box::new(provider) as Box<dyn StorageProvider>
+        };
+        let mut provider = non_empty_dir();
+        let code = run_rm_dry_run(
+            &mut provider,
+            "/d",
+            false,
+            false,
+            &filter,
+            &cli,
+            OutputFormat::Json,
+        )
+        .await;
+        assert_eq!(code, 9, "rm --dry-run");
+        let mut provider = non_empty_dir();
+        let code = run_filtered_rm(
+            &mut provider,
+            "/d",
+            false,
+            false,
+            &filter,
+            &cli,
+            OutputFormat::Json,
+        )
+        .await;
+        assert_eq!(code, 9, "filtered rm");
     }
 
     /// `import rclone` printed section names, types and reasons from the file
@@ -83068,6 +83256,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         /// `(connection id, path, transfers served before it)` for every
         /// `mkdir`.
         mkdirs: Vec<(usize, String, usize)>,
+        /// Raised when a transfer starts, as Ctrl-C raises it: the batch is
+        /// stopped while its first file is in flight.
+        cancel_on_transfer: Option<Arc<AtomicBool>>,
     }
 
     /// A provider without a transfer pool (SFTP type, no `clone_for_transfer`),
@@ -83132,6 +83323,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             let mut st = self.state.lock().unwrap();
             let first_here = !st.served.iter().any(|(id, _)| *id == self.id);
             st.served.push((self.id, remote_path.to_string()));
+            if let Some(flag) = &st.cancel_on_transfer {
+                flag.store(true, Ordering::Relaxed);
+            }
             if first_here && st.kill_first_on == Some(self.id) {
                 st.kill_first_on = None;
                 self.alive = false;
@@ -84688,6 +84882,90 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(st.served.len(), 5);
         assert!(st.dials <= 2, "get glob dials: {}", st.dials);
         assert_eq!(local_files(&dir.path().join("globbed")), 5);
+    }
+
+    /// H4 (4.2.1 review): Ctrl-C during `get -r`, `put -r` or a glob `get` /
+    /// `put` exited 4, "partial, retry", so an agent following the exit
+    /// table re-ran the transfer the user had stopped. It exits 130, as a
+    /// single-file `get` and `put` do.
+    #[test]
+    fn ctrl_c_during_a_batch_exits_130() {
+        let _session = SESSION_TRANSFER_TEST_LOCK.blocking_lock();
+        let dir = tempfile::tempdir().expect("temp dir");
+        let (local_dir, cli) = local_batch(&dir, 1);
+        let interrupted = |remote_files: bool| {
+            let state = WorkerFake::state();
+            if remote_files {
+                remote_batch(&state);
+            }
+            let cancelled = Arc::new(AtomicBool::new(false));
+            state.lock().unwrap().cancel_on_transfer = Some(Arc::clone(&cancelled));
+            (state, cancelled)
+        };
+
+        let (state, cancelled) = interrupted(true);
+        let into = dir.path().join("got-r").to_string_lossy().into_owned();
+        let code = run_on_fake(&state, || {
+            cmd_get_recursive(
+                "memory://",
+                "/root",
+                Some(&into),
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+        });
+        assert!(local_files(Path::new(&into)) < 5, "get -r was stopped");
+        assert_eq!(code, 130, "get -r");
+
+        let (state, cancelled) = interrupted(true);
+        let into = dir.path().join("got-glob").to_string_lossy().into_owned();
+        let code = run_on_fake(&state, || {
+            cmd_get_glob(
+                "memory://",
+                "/root/*.txt",
+                Some(&into),
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+        });
+        assert!(local_files(Path::new(&into)) < 5, "get glob was stopped");
+        assert_eq!(code, 130, "get glob");
+
+        let (state, cancelled) = interrupted(false);
+        let code = run_on_fake(&state, || {
+            cmd_put_recursive(
+                "memory://",
+                &local_dir,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+        });
+        assert!(state.lock().unwrap().files.len() < 5, "put -r was stopped");
+        assert_eq!(code, 130, "put -r");
+
+        let (state, cancelled) = interrupted(false);
+        let pattern = format!("{local_dir}/*.txt");
+        let code = run_on_fake(&state, || {
+            cmd_put_glob(
+                "memory://",
+                &pattern,
+                Some("/root"),
+                false,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+        });
+        assert!(
+            state.lock().unwrap().files.len() < 5,
+            "put glob was stopped"
+        );
+        assert_eq!(code, 130, "put glob");
     }
 
     /// `-n` or `--immutable` on a held connection whose session ended between
@@ -86622,6 +86900,57 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         rule: SyncPairRule<'static>,
         cli: &Cli,
     ) -> SyncCycleStats {
+        run_sync_shared_with(
+            remote,
+            local,
+            SharedSyncRun {
+                dry_run,
+                rule,
+                ..SharedSyncRun::default()
+            },
+            cli,
+        )
+    }
+
+    /// The `sync` arguments [`run_sync_shared_with`] varies.
+    struct SharedSyncRun {
+        direction: &'static str,
+        dry_run: bool,
+        delete: bool,
+        max_delete: Option<&'static str>,
+        rule: SyncPairRule<'static>,
+        /// The Ctrl-C flag the run is given.
+        cancelled: Arc<AtomicBool>,
+    }
+
+    impl Default for SharedSyncRun {
+        fn default() -> Self {
+            Self {
+                direction: "both",
+                dry_run: false,
+                delete: false,
+                max_delete: None,
+                rule: SOURCE_WINS,
+                cancelled: Arc::new(AtomicBool::new(false)),
+            }
+        }
+    }
+
+    /// [`run_sync_shared`] with the arguments of `run`.
+    fn run_sync_shared_with(
+        remote: &SharedTreeProvider,
+        local: &str,
+        run: SharedSyncRun,
+        cli: &Cli,
+    ) -> SyncCycleStats {
+        let SharedSyncRun {
+            direction,
+            dry_run,
+            delete,
+            max_delete,
+            rule,
+            cancelled,
+        } = run;
         let tree = remote.clone();
         std::thread::scope(|scope| {
             std::thread::Builder::new()
@@ -86645,14 +86974,14 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                                 "memory://",
                                 local,
                                 "/root",
-                                "both",
+                                direction,
                                 dry_run,
-                                false,
+                                delete,
                                 &[],
                                 None,
                                 0,
                                 false,
-                                None,
+                                max_delete,
                                 None,
                                 "",
                                 false,
@@ -86663,7 +86992,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                                 false,
                                 cli,
                                 OutputFormat::Json,
-                                Arc::new(AtomicBool::new(false)),
+                                cancelled,
                                 None,
                                 false,
                             )
@@ -86717,6 +87046,130 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             vec![b'x'; 5000],
             "the local edit is still there"
         );
+    }
+
+    /// H3 (4.2.1 review): Ctrl-C during the delete phase of `sync --delete`
+    /// stopped the deletes and the run exited 0 with `"status": "ok"`, a
+    /// `deleted` count short of the plan, and nothing that said why. The
+    /// exit table reserves 130 for a cancelled run.
+    #[test]
+    fn ctrl_c_during_the_sync_deletes_exits_130() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("keep.txt", 4);
+        let local = fixture.local();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&cancelled);
+        let remote = SharedTreeProvider {
+            after_delete: Some(Arc::new(move |_| flag.store(true, Ordering::Relaxed))),
+            ..SharedTreeProvider::with_files(&[
+                ("keep.txt", b"xxxx"),
+                ("old1.txt", b"1"),
+                ("old2.txt", b"2"),
+            ])
+        };
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = run_sync_shared_with(
+            &remote,
+            &local,
+            SharedSyncRun {
+                direction: "upload",
+                delete: true,
+                max_delete: Some("100"),
+                cancelled,
+                ..SharedSyncRun::default()
+            },
+            &cli,
+        );
+        assert_eq!(stats.deleted, 1, "the second delete is not attempted");
+        assert_eq!(stats.exit_code, 130, "a cancelled run is not a success");
+    }
+
+    /// H4 (4.2.1 review): Ctrl-C during the transfers of a `sync` exited 4,
+    /// the code an agent reads as "partial, retry", so it re-ran the sync the
+    /// user had stopped.
+    #[test]
+    fn ctrl_c_during_the_sync_transfers_exits_130() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&cancelled);
+        let remote = SharedTreeProvider {
+            after_download: Some(Arc::new(move |_| flag.store(true, Ordering::Relaxed))),
+            ..SharedTreeProvider::with_files(&[("a.txt", b"a"), ("b.txt", b"b"), ("c.txt", b"c")])
+        };
+        let cli = Cli {
+            quiet: true,
+            parallel: 1,
+            ..test_cli()
+        };
+        let stats = run_sync_shared_with(
+            &remote,
+            &local,
+            SharedSyncRun {
+                direction: "download",
+                cancelled,
+                ..SharedSyncRun::default()
+            },
+            &cli,
+        );
+        assert!(stats.downloaded < 3, "the cancel stopped the batch");
+        assert_eq!(stats.exit_code, 130, "Ctrl-C is not a retryable failure");
+    }
+
+    /// H5 (4.2.1 review): `sync --immutable` dropped every planned upload
+    /// whose destination existed, at any size and uncounted, so the partial
+    /// a cut upload left stayed in place and the run exited 0. A destination
+    /// of another size is refused, as `put -r --immutable` does (exit 4), and
+    /// one of the same size is a skip, counted as one.
+    #[test]
+    fn sync_immutable_refuses_a_destination_of_another_size() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        let newer = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_790_510_400);
+        for (name, bytes) in [
+            ("partial.txt", &b"complete"[..]),
+            ("same.txt", &b"same"[..]),
+            ("new.txt", &b"new"[..]),
+        ] {
+            let path = Path::new(&local).join(name);
+            std::fs::write(&path, bytes).unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|file| file.set_modified(newer))
+                .unwrap();
+        }
+        let remote = SharedTreeProvider {
+            precision: Some(std::time::Duration::from_secs(1)),
+            ..SharedTreeProvider::with_files(&[("partial.txt", b"comp"), ("same.txt", b"SAME")])
+        };
+        let cli = Cli {
+            quiet: true,
+            immutable: true,
+            ..test_cli()
+        };
+        let stats = run_sync_shared_with(
+            &remote,
+            &local,
+            SharedSyncRun {
+                direction: "upload",
+                ..SharedSyncRun::default()
+            },
+            &cli,
+        );
+        let held = remote.files.lock().unwrap().clone();
+        assert_eq!(held["/root/partial.txt"], b"comp", "not overwritten");
+        assert_eq!(held["/root/same.txt"], b"SAME", "not overwritten");
+        assert_eq!(held["/root/new.txt"], b"new");
+        assert_eq!(
+            (stats.uploaded, stats.skipped, stats.error_count),
+            (1, 1, 1),
+            "one upload, one skip, one refusal"
+        );
+        assert_eq!(stats.exit_code, 4, "the refusal fails the run");
     }
 
     /// Critical 1, second half: after a download the snapshot kept the local
