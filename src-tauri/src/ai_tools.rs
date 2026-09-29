@@ -2099,8 +2099,8 @@ pub async fn grant_ai_tool_approval(
 struct TurnTools {
     token: CancellationToken,
     /// Calls of this turn still running: the entry goes when the last one
-    /// ends, unless the turn was cancelled, so a late call of a stopped turn
-    /// still finds the flipped token.
+    /// ends, cancelled or not, so a late call of a stopped turn finds the
+    /// flipped token while any call of the turn is still up.
     running: usize,
 }
 
@@ -2121,13 +2121,13 @@ async fn enter_turn_tool(turn_id: &str) -> CancellationToken {
     entry.token.clone()
 }
 
-/// Leave a tool call of `turn_id`: the last call of a turn that was not
-/// cancelled drops the entry, so the map holds only live turns.
+/// Leave a tool call of `turn_id`: the last call of the turn drops the
+/// entry, cancelled or not, so the map holds only live turns.
 async fn leave_turn_tool(turn_id: &str) {
     let mut turns = AI_TOOL_TURNS.lock().await;
     if let Some(entry) = turns.get_mut(turn_id) {
         entry.running = entry.running.saturating_sub(1);
-        if entry.running == 0 && !entry.token.is_cancelled() {
+        if entry.running == 0 {
             turns.remove(turn_id);
         }
     }
@@ -2137,16 +2137,13 @@ async fn leave_turn_tool(turn_id: &str) {
 /// until the last running call of the turn leaves, then goes with it.
 pub(crate) async fn cancel_turn_tools(turn_id: &str) {
     let mut turns = AI_TOOL_TURNS.lock().await;
-    match turns.get_mut(turn_id) {
-        Some(entry) => {
-            entry.token.cancel();
-            if entry.running == 0 {
-                turns.remove(turn_id);
-            }
+    // Nothing of the turn is running: nothing to stop, and a token left
+    // behind for a turn that never calls again would only leak.
+    if let Some(entry) = turns.get_mut(turn_id) {
+        entry.token.cancel();
+        if entry.running == 0 {
+            turns.remove(turn_id);
         }
-        // Nothing of the turn is running: nothing to stop, and a token left
-        // behind for a turn that never calls again would only leak.
-        None => {}
     }
 }
 
