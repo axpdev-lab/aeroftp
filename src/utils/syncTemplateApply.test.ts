@@ -8,7 +8,9 @@ import {
     settingsFromLegacyScript,
     settingsFromTemplate,
     readSyncExcludePatterns,
+    readScriptExcludePatterns,
 } from './syncTemplateApply';
+import { AEROSYNC_DEFAULT_EXCLUDES } from './aeroSyncExcludes';
 import { createTabStateStore } from '../components/AeroSync/tabStateStore';
 import type { AerosyncImportScriptResult, SyncScriptMeta, SyncTemplate } from '../types';
 import fixture420 from '../../src-tauri/tests/fixtures/aerosync/mirror-turbo-4.2.0.aerosync?raw';
@@ -192,6 +194,43 @@ describe('AeroSync template import application', () => {
             'plan.preset': 'bisync',
             'plan.direction': 'left-to-right',
         });
+    });
+});
+
+/**
+ * B3 of the 4.2.1 pre-release review: an exported script runs
+ * `aeroftp-cli sync`, which adds no exclusion of its own, so the script has to
+ * carry the ones the compare always applied or its Mirror uploads `.env` and
+ * `node_modules/` and deletes destination files the Plan never showed.
+ */
+describe('the exclusions an exported script carries', () => {
+    it('writes the compare defaults first, then the user patterns, then the backup folder', () => {
+        const store = createTabStateStore();
+        store.set('sync.exclude', 'cache/**, .env');
+        expect(readScriptExcludePatterns(store, [])).toEqual([...AEROSYNC_DEFAULT_EXCLUDES, 'cache/**', '.aeroftp-versions']);
+    });
+
+    it('still writes the defaults and the backup folder when the user cleared the field', () => {
+        const store = createTabStateStore();
+        store.set('sync.exclude', '');
+        expect(readScriptExcludePatterns(store, ['*.log'])).toEqual([...AEROSYNC_DEFAULT_EXCLUDES, '.aeroftp-versions']);
+        expect(readScriptExcludePatterns(null, [])).toEqual([...AEROSYNC_DEFAULT_EXCLUDES, '.aeroftp-versions']);
+    });
+
+    it('writes the backup folder the Plan names, which every compare leaves out, on or off', () => {
+        // A Mirror script without it would delete the copies earlier runs kept.
+        const store = createTabStateStore();
+        store.set('plan.versionedBackup', { enabled: false, backupDir: 'history/versions' });
+        const patterns = readScriptExcludePatterns(store, []);
+        expect(patterns[patterns.length - 1]).toBe('history/versions');
+    });
+
+    it('imports an exported script back into the user field without the defaults', () => {
+        const settings = {
+            localPath: '/l', remotePath: '/r', direction: 'local_to_remote' as const,
+            deleteOrphans: true, excludePatterns: [...AEROSYNC_DEFAULT_EXCLUDES, 'cache/**'],
+        };
+        expect(buildAeroSyncTabStatePatch(settings, 'local-remote')['sync.exclude']).toBe('cache/**');
     });
 });
 

@@ -31,6 +31,31 @@ export function compareExcludePatterns(userPatterns: readonly string[]): string[
 }
 
 /**
+ * What `aeroftp-cli sync --exclude` needs to leave alone everything the
+ * compare left out: the defaults, the user's patterns, then the backup
+ * folder, which every compare drops whether versioned backup is on or not.
+ * The CLI adds none of them itself, so a Mirror line or an exported script
+ * without them would upload `.env` and delete the copies earlier runs kept.
+ * The CLI matcher takes the folder as a pattern, which excludes that name at
+ * any depth: more than the compare, never less.
+ */
+export function cliExcludePatterns(userPatterns: readonly string[], backupDir: string): string[] {
+    const out = compareExcludePatterns(userPatterns);
+    const dir = backupDir.trim().replace(/^\/+|\/+$/g, '');
+    if (dir && !out.includes(dir)) out.push(dir);
+    return out;
+}
+
+/**
+ * The user's own patterns out of a full list: the inverse of
+ * [`compareExcludePatterns`], for a list read back from an exported script.
+ * A default dropped here still applies, because every compare adds it.
+ */
+export function userExcludePatterns(patterns: readonly string[]): string[] {
+    return patterns.filter((pattern) => !AEROSYNC_DEFAULT_EXCLUDES.includes(pattern));
+}
+
+/**
  * True when two user pattern lists exclude the same things for the compare.
  * Order and repeats do not change what a pattern set matches, so they do not
  * count as a difference.

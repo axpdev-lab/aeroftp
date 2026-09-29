@@ -29,6 +29,7 @@ import {
     settingsFromAerosyncScript,
     settingsFromLegacyScript,
     settingsFromTemplate,
+    readScriptExcludePatterns,
     readSyncExcludePatterns,
     type ImportedSyncSettings,
     type LivePlanExport,
@@ -81,6 +82,10 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     const modalDrag = useDraggableModal();
     const tabState = React.useContext(TabStateStoreContext);
     const liveExcludes = () => readSyncExcludePatterns(tabState, excludePatterns);
+    // A script runs `aeroftp-cli sync`, which knows nothing of the compare's
+    // defaults, so it carries them; a template goes back into the GUI, which
+    // adds them itself.
+    const liveScriptExcludes = () => readScriptExcludePatterns(tabState, excludePatterns);
 
     const livePlanFromStore = (): LivePlanExport => {
         const canaryOn = tabState?.get<boolean>('plan.canaryMode', false) === true;
@@ -214,8 +219,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     local_path: localPath,
                     remote_path: remotePath,
                     connect_profile: serverProfileName || null,
-                    exclude_patterns_override:
-                        liveExcludes(),
+                    exclude_patterns_override: liveScriptExcludes(),
                     dry_run: false,
                     conflict_mode: 'newer',
                     track_renames: false,
@@ -256,8 +260,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 template_description: templateDesc,
                 local_path: localPath,
                 remote_path: remotePath,
-                exclude_patterns:
-                    liveExcludes(),
+                exclude_patterns: liveScriptExcludes(),
                 format,
             },
         });

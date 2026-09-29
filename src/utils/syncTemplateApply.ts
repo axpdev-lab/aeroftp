@@ -8,9 +8,10 @@ import type {
     VerifyPolicy,
 } from '../types';
 import type { AeroSyncPairKind, AeroSyncVerifyPolicy } from '../components/AeroSync/types';
-import type { ConflictPolicy, PresetDirection, SyncPreset } from './syncPresets';
+import type { ConflictPolicy, PresetDirection, SyncPreset, VersionedBackupConfig } from './syncPresets';
 import type { TabStateStore } from '../components/AeroSync/tabStateStore';
 import { presetForTemplate } from './syncDirectionLabels';
+import { AEROSYNC_DEFAULT_BACKUP_DIR, cliExcludePatterns, userExcludePatterns } from './aeroSyncExcludes';
 
 export const parseSyncExcludePatterns = (text: string): string[] =>
     text.split(/[\n,]/).map(pattern => pattern.trim()).filter(Boolean);
@@ -18,6 +19,20 @@ export const parseSyncExcludePatterns = (text: string): string[] =>
 /** Read at export time, including an explicitly cleared field and unmounted tabs. */
 export const readSyncExcludePatterns = (store: TabStateStore | null, fallback: string[]): string[] =>
     parseSyncExcludePatterns(store?.get('sync.exclude', fallback.join(', ')) ?? fallback.join(', '));
+
+/**
+ * What an exported script hands to `aeroftp-cli sync --exclude`
+ * ([`cliExcludePatterns`]): the compare's defaults, the user's patterns and
+ * the Plan's backup folder. Since the shared matcher the CLI excludes at least
+ * what the compare excludes for the same list, so the script does what the
+ * Plan showed.
+ */
+export const readScriptExcludePatterns = (store: TabStateStore | null, fallback: string[]): string[] =>
+    cliExcludePatterns(
+        readSyncExcludePatterns(store, fallback),
+        store?.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined)?.backupDir
+            ?? AEROSYNC_DEFAULT_BACKUP_DIR,
+    );
 
 export interface ImportedSyncSettings {
     localPath: string;
@@ -197,7 +212,9 @@ export function buildAeroSyncTabStatePatch(
     const patch: AeroSyncTabStatePatch = {
         'sync.source': settings.localPath,
         'sync.destination': settings.remotePath,
-        'sync.exclude': settings.excludePatterns.join(', '),
+        // An exported script carries the compare defaults too; the field holds
+        // only the user's own, since the compare adds the defaults anyway.
+        'sync.exclude': userExcludePatterns(settings.excludePatterns).join(', '),
         'plan.preset': planPreset(settings),
         'plan.direction': planDirection(settings.direction, pairKind),
     };
