@@ -916,8 +916,53 @@ pub trait StorageProvider: Send + Sync {
     /// Delete a file
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError>;
 
-    /// Delete a directory (must be empty for most providers)
+    /// Remove an empty directory. A directory that holds anything is refused
+    /// with [`ProviderError::DirectoryNotEmpty`] and stays with its content;
+    /// a directory is removed with its content only by [`Self::rmdir_recursive`].
+    ///
+    /// Before the 4.2.1 review most backends removed the directory whole
+    /// here, so a caller that had listed it empty could still take along an
+    /// object the listing left out, or one written in between. How each
+    /// backend keeps the promise now (the round 2 audit of #979):
+    ///
+    /// | Backend | How `rmdir` refuses a directory that is not empty |
+    /// |---|---|
+    /// | FTP, FTPS | `RMD`, refused by the server; a reply that says "not empty" is `DirectoryNotEmpty`, a bare 550 stays a server error |
+    /// | SFTP | `SSH_FXP_RMDIR`, refused by the server; a reply that says "not empty" is `DirectoryNotEmpty` |
+    /// | Local, MTP mounted | `remove_dir`, refused by the operating system (`ENOTEMPTY`) |
+    /// | MTP (WPD) | `Delete` with `PORTABLE_DEVICE_DELETE_NO_RECURSION`, refused by the device |
+    /// | Box | `DELETE /folders/{id}?recursive=false`, refused with `folder_not_empty` |
+    /// | pCloud | `deletefolder` (not `deletefolderrecursive`), refused with result 2006 |
+    /// | Cloudinary | `DELETE /folders/{path}`, refused by the API |
+    /// | S3 | lists the prefix and refuses when any object but the directory marker is under it; removes the marker only |
+    /// | Azure Blob | lists the prefix and refuses when any blob but the markers is under it; removes the `<path>/` marker and the `hdi_isfolder` stub (`If-Match`) only |
+    /// | Swift | lists the prefix and refuses; removes the pseudo-folder marker only |
+    /// | Backblaze B2 | lists the prefix and refuses; hides the `.bzEmpty` placeholder only |
+    /// | OneDrive | reads the folder (`childCount`) and refuses; deletes with `If-Match` on the eTag read |
+    /// | Twake Drive | lists every page and refuses; then `DELETE /files/{id}` |
+    /// | Google Drive, Dropbox, WebDAV, Filen, Drime, 4shared, FileLu, Jottacloud, kDrive, Koofr, Zoho WorkDrive, Yandex Disk, OpenDrive, Proton Drive, Internxt, ImageKit, MEGA (MEGAcmd and native), GitHub, GitLab, Immich | lists the directory ([`Self::refuse_non_empty_dir`]) and refuses; then the API's own delete, which takes the content along and so is sent only to a directory that listed empty |
+    /// | AeroCrypt / rclone-crypt overlay | lists through the overlay and refuses; removes its own sentinels, then the inner backend's `rmdir` |
+    /// | Compress overlay | the inner backend's `rmdir` |
+    /// | Uploadcare, Google Photos, peer, vault | not supported or read only |
+    ///
+    /// Where the check is a listing, an object written between the listing
+    /// and the delete goes with the directory: the API offers no delete that
+    /// refuses on its own, and the window is one round trip.
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError>;
+
+    /// The listing check of [`Self::rmdir`] for a backend whose own delete
+    /// takes a directory's content along: lists `path` and refuses it with
+    /// [`ProviderError::DirectoryNotEmpty`] when the listing shows anything,
+    /// dotfiles included. A listing that fails is that failure, with nothing
+    /// removed.
+    async fn refuse_non_empty_dir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let children = self.list(path).await?;
+        if children.is_empty() {
+            Ok(())
+        } else {
+            Err(directory_not_empty(path, children.len()))
+        }
+    }
 
     /// Delete a directory recursively (with all contents)
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError>;
@@ -1822,7 +1867,9 @@ pub fn stat_cannot_describe(error: &ProviderError) -> bool {
     )
 }
 
-fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
+/// The refusal of a directory that holds `entries` entries, as every backend
+/// whose `rmdir` lists first says it.
+pub fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
     ProviderError::DirectoryNotEmpty(format!(
         "{path} holds {entries} entr{}; delete it recursively to remove it with its content",
         if entries == 1 { "y" } else { "ies" }
