@@ -52423,7 +52423,26 @@ async fn cmd_sync(
                 continue;
             }
             let held = match std::fs::read_dir(&local_dir) {
-                Ok(entries) => entries.count(),
+                Ok(entries) => {
+                    // An entry that fails to read is an error of the run, not
+                    // one more entry that keeps the directory.
+                    let mut held = 0usize;
+                    let mut unreadable = None;
+                    for entry in entries {
+                        match entry {
+                            Ok(_) => held += 1,
+                            Err(e) => {
+                                unreadable = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(e) = unreadable {
+                        errors.push(format!("read local directory {dir}: {e}"));
+                        continue;
+                    }
+                    held
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => {
                     errors.push(format!("read local directory {dir}: {e}"));
