@@ -1129,9 +1129,19 @@ impl StorageProvider for CryptOverlayProvider {
         // config and a name the overlay cannot decrypt keep it, since the
         // inner backend's `rmdir` refuses whatever is left.
         self.refuse_non_empty_dir(path).await?;
-        let raw = self.inner.list(&enc).await?;
-        for entry in raw {
-            if matches!(self.keys, OverlayKeys::Rclone(_)) && self.keys.is_sentinel(&entry.name) {
+        if matches!(self.keys, OverlayKeys::Rclone(_)) {
+            // The sentinel goes only once nothing else is on the wire: a name
+            // the overlay hides (foreign, or one it cannot decrypt) would
+            // make the inner rmdir refuse after the sentinel was gone, and
+            // the folder would stay without the dirIV its names need.
+            let raw = self.inner.list(&enc).await?;
+            if let Some(other) = raw.iter().find(|entry| !self.keys.is_sentinel(&entry.name)) {
+                return Err(ProviderError::DirectoryNotEmpty(format!(
+                    "{path} holds {} on the remote, which the encrypted view does not show",
+                    other.name
+                )));
+            }
+            for entry in raw {
                 self.inner.delete(&entry.path).await?;
             }
         }
@@ -3243,6 +3253,33 @@ mod tests {
 
     /// Strictly-below entries are decrypted; sentinels are hidden; plaintext at
     /// anchor level would pass but we test inside decrypt path.
+    /// #979 review: an rclone folder holding its dirIV and a name the overlay
+    /// cannot decrypt is refused before the dirIV is deleted, so the folder
+    /// never stays behind without the sentinel its names need.
+    #[tokio::test]
+    async fn rmdir_keeps_the_dir_iv_of_a_folder_holding_a_hidden_name() {
+        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
+        let enc_dir = keys.encode_name("sub", true).unwrap();
+        let wire_dir = format!("/AeroCryptTest/{enc_dir}");
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/AeroCryptTest");
+        mem.seed_raw_dir(&wire_dir);
+        mem.seed_raw_file(&format!("{wire_dir}/dirIV"), b"sentinel");
+        mem.seed_raw_file(&format!("{wire_dir}/foreign.txt"), b"not ours");
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/AeroCryptTest");
+
+        let refused = provider.rmdir("/AeroCryptTest/sub").await;
+        assert!(
+            matches!(refused, Err(ProviderError::DirectoryNotEmpty(_))),
+            "a hidden name must refuse the removal: {refused:?}"
+        );
+        let listed = provider.inner.list(&wire_dir).await.unwrap();
+        assert!(
+            listed.iter().any(|entry| entry.name == "dirIV"),
+            "the dirIV must survive a refused removal: {listed:?}"
+        );
+    }
+
     #[tokio::test]
     async fn list_decrypts_strictly_below_anchor_and_hides_sentinels() {
         let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
