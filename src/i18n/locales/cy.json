@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (o'r copi)",
             "keystorePreviewLocalFromVault": "Nid oedd modd darllen rhestr proffiliau gweinydd y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr gweinyddion yn y gladdgell.",
             "keystoreDecisionsFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd rhoi eich dewisiadau ar gyfer proffiliau gweinydd ar waith: {error}",
+            "keystoreListMergeFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd cyfuno rhestr gweinyddion y copi wrth gefn â rhestr y ddyfais hon: {error}",
+            "keystorePartitionSkipped": "Ni ellir datgloi rhaniad cyfrifon y copi wrth gefn ar y ddyfais hon ac fe'i gadawyd allan. Mewnforiwch gyda Trosysgrifo i adfer y rhaniad hwnnw'n gyfan.",
             "exportKeystoreDesc": "Allforio'r holl fanylion adnabod amgryptiedig i ffeil wrth gefn",
             "importKeystoreDesc": "Mewnforio manylion adnabod o ffeil wrth gefn",
             "keystoreExported": "Coffor allweddi wedi'i allforio'n llwyddiannus ({count} cofnod)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Clirio'r diysgrifiadau",
             "uiTokensApplied": "Diysgrifiadau a gymhwyswyd: {count}",
             "uiTokensRejected": "Cofnodion a wrthodwyd: {count}",
-            "keystorePreferencesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer eich dewisiadau ar gyfer y rhaglen: {error}"
+            "keystorePreferencesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer eich dewisiadau ar gyfer y rhaglen: {error}",
+            "keystorePreviewBackupUnreadable": "Ni ellir darllen rhestr gweinyddion y copi hwn ar y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr sydd wedi'i chadw yng nghladdgell y copi. Mae'r mewnforio'n dal i ddisodli rhestr gweinyddion y ddyfais hon."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Wedi lanlwytho",
             "reportDownloaded": "Wedi lawrlwytho",
             "reportSkipped": "Wedi hepgor",
+            "keptDirs": "Ffolderi a gadwyd",
+            "keptDirUnfinished": "yn dal ffeiliau na chafodd eu cysoni",
+            "keptDirEntries": "yn dal cofnodion a eithriwyd neu heb eu rhestru",
+            "keptDirServer": "ddim yn wag ar y gweinydd",
             "reportTransferred": "Wedi trosglwyddo",
             "reportDuration": "Hyd",
             "reportDirsCreated": "Ffolderi wedi'u creu",

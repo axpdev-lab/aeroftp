@@ -916,8 +916,53 @@ pub trait StorageProvider: Send + Sync {
     /// Delete a file
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError>;
 
-    /// Delete a directory (must be empty for most providers)
+    /// Remove an empty directory. A directory that holds anything is refused
+    /// with [`ProviderError::DirectoryNotEmpty`] and stays with its content;
+    /// a directory is removed with its content only by [`Self::rmdir_recursive`].
+    ///
+    /// Before the 4.2.1 review most backends removed the directory whole
+    /// here, so a caller that had listed it empty could still take along an
+    /// object the listing left out, or one written in between. How each
+    /// backend keeps the promise now (the round 2 audit of #979):
+    ///
+    /// | Backend | How `rmdir` refuses a directory that is not empty |
+    /// |---|---|
+    /// | FTP, FTPS | `RMD`, refused by the server; a reply that says "not empty" is `DirectoryNotEmpty`, a bare 550 stays a server error |
+    /// | SFTP | `SSH_FXP_RMDIR`, refused by the server; a reply that says "not empty" is `DirectoryNotEmpty` |
+    /// | Local, MTP mounted | `remove_dir`, refused by the operating system (`ENOTEMPTY`) |
+    /// | MTP (WPD) | `Delete` with `PORTABLE_DEVICE_DELETE_NO_RECURSION`, refused by the device |
+    /// | Box | `DELETE /folders/{id}?recursive=false`, refused with `folder_not_empty` |
+    /// | pCloud | `deletefolder` (not `deletefolderrecursive`), refused with result 2006 |
+    /// | Cloudinary | `DELETE /folders/{path}`, refused by the API |
+    /// | S3 | lists the prefix and refuses when any object but the directory marker is under it; removes the marker only |
+    /// | Azure Blob | lists the prefix and refuses when any blob but the markers is under it; removes the `<path>/` marker and the `hdi_isfolder` stub (`If-Match`) only |
+    /// | Swift | lists the prefix and refuses; removes the pseudo-folder marker only |
+    /// | Backblaze B2 | lists the prefix and refuses; hides the `.bzEmpty` placeholder only |
+    /// | OneDrive | reads the folder (`childCount`) and refuses; deletes with `If-Match` on the eTag read |
+    /// | Twake Drive | lists every page and refuses; then `DELETE /files/{id}` |
+    /// | Google Drive, Dropbox, WebDAV, Filen, Drime, 4shared, FileLu, Jottacloud, kDrive, Koofr, Zoho WorkDrive, Yandex Disk, OpenDrive, Proton Drive, Internxt, ImageKit, MEGA (MEGAcmd and native), GitHub, GitLab, Immich | lists the directory ([`Self::refuse_non_empty_dir`]) and refuses; then the API's own delete, which takes the content along and so is sent only to a directory that listed empty |
+    /// | AeroCrypt / rclone-crypt overlay | lists through the overlay and refuses; removes its own sentinels, then the inner backend's `rmdir` |
+    /// | Compress overlay | the inner backend's `rmdir` |
+    /// | Uploadcare, Google Photos, peer, vault | not supported or read only |
+    ///
+    /// Where the check is a listing, an object written between the listing
+    /// and the delete goes with the directory: the API offers no delete that
+    /// refuses on its own, and the window is one round trip.
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError>;
+
+    /// The listing check of [`Self::rmdir`] for a backend whose own delete
+    /// takes a directory's content along: lists `path` and refuses it with
+    /// [`ProviderError::DirectoryNotEmpty`] when the listing shows anything,
+    /// dotfiles included. A listing that fails is that failure, with nothing
+    /// removed.
+    async fn refuse_non_empty_dir(&mut self, path: &str) -> Result<(), ProviderError> {
+        let children = self.list(path).await?;
+        if children.is_empty() {
+            Ok(())
+        } else {
+            Err(directory_not_empty(path, children.len()))
+        }
+    }
 
     /// Delete a directory recursively (with all contents)
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError>;
@@ -1822,30 +1867,44 @@ pub fn stat_cannot_describe(error: &ProviderError) -> bool {
     )
 }
 
-fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
+/// The one trashed item a `delete_permanent` of `path` may purge, among
+/// `matches`: the items of the path's exact name trashed from the path's
+/// folder. That trash can hold several generations of one name, and nothing
+/// in the listing tells which of them was this path, so purging the first one
+/// listed could hard-delete an item nobody named. That is refused, as Proton
+/// refuses it: the item stays in the trash, which the provider empties on its
+/// own schedule.
+pub(crate) fn the_one_trashed_item<T>(
+    path: &str,
+    mut matches: Vec<T>,
+) -> Result<Option<T>, ProviderError> {
+    if matches.len() > 1 {
+        return Err(ProviderError::ServerError(format!(
+            "Not purged: {} items in the trash were deleted from the folder of {path} under its name, and the trash cannot tell which one it is",
+            matches.len()
+        )));
+    }
+    Ok(matches.pop())
+}
+
+/// The refusal of a directory that holds `entries` entries, as every backend
+/// whose `rmdir` lists first says it.
+pub fn directory_not_empty(path: &str, entries: usize) -> ProviderError {
     ProviderError::DirectoryNotEmpty(format!(
         "{path} holds {entries} entr{}; delete it recursively to remove it with its content",
         if entries == 1 { "y" } else { "ies" }
     ))
 }
 
-/// Remove `path` only if it is an empty directory.
-///
-/// `rmdir` removes a directory with everything in it on several backends
-/// (S3 and Azure delete every key under the prefix, Google Drive, OneDrive,
-/// Dropbox, pCloud, Box, MEGA, Filen, kDrive, Koofr, Jottacloud and WebDAV
-/// remove the folder whole), so every caller that means "an empty directory"
-/// (`rm` without `-r`, the served FTP RMD and SFTP RMDIR, the mount's
-/// rmdir, MCP and AeroAgent deletes without `recursive`) lists it first and
-/// refuses one that still holds anything, dotfiles included.
+/// Remove `path` only if it is an empty directory: [`StorageProvider::rmdir`],
+/// which refuses a directory that holds anything on every backend. The one
+/// primitive behind `rm` without `-r`, the served FTP RMD and SFTP RMDIR, the
+/// mount's rmdir, MCP and AeroAgent deletes without `recursive`, the CLI's
+/// `rmdir` and `sync --delete`, and the GUI sync's empty-folder removal.
 pub async fn remove_empty_directory(
     provider: &mut dyn StorageProvider,
     path: &str,
 ) -> Result<(), ProviderError> {
-    let children = provider.list(path).await?;
-    if !children.is_empty() {
-        return Err(directory_not_empty(path, children.len()));
-    }
     provider.rmdir(path).await
 }
 
@@ -1860,9 +1919,9 @@ fn listing_says_no_folder(error: &ProviderError) -> bool {
 
 /// Delete `path` without recursing: a file, a link, or an empty directory.
 ///
-/// `delete` of a folder removes it with its content on the backends listed
-/// at [`remove_empty_directory`], so a non-recursive delete asks `stat`
-/// first and sends a directory through that check. A directory `stat` cannot
+/// `delete` of a folder removes it with its content on most backends, so a
+/// non-recursive delete asks `stat` first and sends a directory through
+/// `rmdir`, which refuses one that holds anything. A directory `stat` cannot
 /// describe (see [`stat_cannot_describe`]) is found by listing it: a listing
 /// with entries is refused the same way, an empty one is removed with
 /// `rmdir` (an object-store directory marker) and, when that fails, `delete`
@@ -3216,8 +3275,14 @@ mod non_recursive_delete_tests {
             self.calls.push("delete");
             (self.delete)()
         }
-        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
             self.calls.push("rmdir");
+            // The contract every backend keeps now: a directory that lists
+            // anything is refused, and only an empty one reaches the delete.
+            let children = (self.list)()?;
+            if !children.is_empty() {
+                return Err(directory_not_empty(path, children.len()));
+            }
             (self.rmdir)()
         }
         async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -3256,14 +3321,14 @@ mod non_recursive_delete_tests {
             matches!(result, Err(ProviderError::DirectoryNotEmpty(ref m)) if m.contains("1 entry")),
             "{result:?}"
         );
-        assert_eq!(p.calls, ["stat", "list"]);
+        assert_eq!(p.calls, ["stat", "rmdir"]);
     }
 
     #[tokio::test]
     async fn an_empty_directory_is_removed_with_rmdir() {
         let mut p = Scripted::new(dir, no_child);
         delete_non_recursive(&mut p, "/d").await.expect("rm");
-        assert_eq!(p.calls, ["stat", "list", "rmdir"]);
+        assert_eq!(p.calls, ["stat", "rmdir"]);
     }
 
     #[tokio::test]
@@ -3407,26 +3472,53 @@ mod non_recursive_delete_tests {
     }
 
     /// RMD, SFTP RMDIR, the mount's rmdir and the GUI's non-recursive
-    /// folder delete: `rmdir` recurses on several backends.
+    /// folder delete: one call, the backend's own `rmdir`, which refuses a
+    /// directory that holds anything (round 2 of the 4.2.1 review).
     #[tokio::test]
-    async fn remove_empty_directory_lists_before_rmdir() {
+    async fn remove_empty_directory_is_the_backends_rmdir() {
         let mut full = Scripted::new(dir, one_child);
         let result = remove_empty_directory(&mut full, "/d").await;
         assert!(
             matches!(result, Err(ProviderError::DirectoryNotEmpty(_))),
             "{result:?}"
         );
-        assert_eq!(full.calls, ["list"]);
+        assert_eq!(full.calls, ["rmdir"]);
 
         let mut empty = Scripted::new(dir, no_child);
         remove_empty_directory(&mut empty, "/d")
             .await
             .expect("rmdir");
-        assert_eq!(empty.calls, ["list", "rmdir"]);
+        assert_eq!(empty.calls, ["rmdir"]);
 
         let mut unreadable = Scripted::new(dir, || Err(ProviderError::Timeout));
         assert!(remove_empty_directory(&mut unreadable, "/d").await.is_err());
-        assert_eq!(unreadable.calls, ["list"]);
+        assert_eq!(unreadable.calls, ["rmdir"]);
+    }
+
+    /// The shared check a backend whose delete takes a directory's content
+    /// along runs inside its `rmdir`: dotfiles count, a failed listing
+    /// removes nothing.
+    #[tokio::test]
+    async fn refuse_non_empty_dir_counts_every_entry() {
+        let mut full = Scripted::new(dir, || {
+            Ok(vec![RemoteEntry::file(
+                ".env".to_string(),
+                "/d/.env".to_string(),
+                1,
+            )])
+        });
+        let result = full.refuse_non_empty_dir("/d").await;
+        assert!(
+            matches!(result, Err(ProviderError::DirectoryNotEmpty(ref m)) if m.contains("1 entry")),
+            "{result:?}"
+        );
+        let mut empty = Scripted::new(dir, no_child);
+        empty.refuse_non_empty_dir("/d").await.expect("empty");
+        let mut unreadable = Scripted::new(dir, || Err(ProviderError::Timeout));
+        assert!(matches!(
+            unreadable.refuse_non_empty_dir("/d").await,
+            Err(ProviderError::Timeout)
+        ));
     }
 }
 

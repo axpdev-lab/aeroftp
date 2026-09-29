@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (de la copia)",
             "keystorePreviewLocalFromVault": "No se pudo leer la lista de perfiles de servidor de este dispositivo, así que la comparación usa la lista de servidores guardada en la bóveda.",
             "keystoreDecisionsFailed": "La importación terminó, pero no se pudieron aplicar tus elecciones para los perfiles de servidor: {error}",
+            "keystoreListMergeFailed": "La importación terminó, pero la lista de servidores de la copia de seguridad no se pudo combinar con la de este dispositivo: {error}",
+            "keystorePartitionSkipped": "La partición de cuentas de la copia de seguridad no se puede desbloquear en este dispositivo y se dejó fuera. Importa con Sobrescribir para restaurar esa partición completa.",
             "exportKeystoreDesc": "Exportar todas las credenciales cifradas a un archivo de respaldo",
             "importKeystoreDesc": "Importar credenciales desde un archivo de respaldo",
             "keystoreExported": "Almacén exportado correctamente ({count} entradas)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Borrar anulaciones",
             "uiTokensApplied": "Sobrescrituras aplicadas: {count}",
             "uiTokensRejected": "Entradas rechazadas: {count}",
-            "keystorePreferencesFailed": "La importación terminó, pero no se pudieron restaurar tus preferencias de la aplicación: {error}"
+            "keystorePreferencesFailed": "La importación terminó, pero no se pudieron restaurar tus preferencias de la aplicación: {error}",
+            "keystorePreviewBackupUnreadable": "La lista de servidores de esta copia de seguridad no se puede leer en este dispositivo, así que la comparación usa la que está guardada en la bóveda de la copia de seguridad. La importación igualmente reemplaza la lista de servidores en este dispositivo."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Subidos",
             "reportDownloaded": "Descargados",
             "reportSkipped": "Omitidos",
+            "keptDirs": "Carpetas conservadas",
+            "keptDirUnfinished": "contiene archivos que no se sincronizaron",
+            "keptDirEntries": "contiene entradas excluidas o no listadas",
+            "keptDirServer": "no está vacía en el servidor",
             "reportTransferred": "Transferidos",
             "reportDuration": "Duración",
             "reportDirsCreated": "Carpetas creadas",

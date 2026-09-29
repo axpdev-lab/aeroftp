@@ -1040,6 +1040,8 @@ export interface AerosyncScriptProfile {
   skip_matching: boolean;
   resync: boolean;
   watch: boolean;
+  /** The Plan's versioned-backup folder at export time (#979). */
+  backup_dir?: string | null;
 }
 
 export interface AerosyncImportScriptResult {
@@ -1245,6 +1247,8 @@ export interface SyncScriptMeta {
   exclude_patterns: string[];
   retries: number | null;
   retries_sleep: string | null;
+  /** The Plan's versioned-backup folder at export time (#979). */
+  backup_dir?: string | null;
 }
 
 // Sync Templates (#153)

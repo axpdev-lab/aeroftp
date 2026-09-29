@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (kutoka nakala)",
             "keystorePreviewLocalFromVault": "Orodha ya wasifu wa seva ya kifaa hiki haikuweza kusomwa, kwa hivyo ulinganisho unatumia orodha ya seva iliyohifadhiwa kwenye hifadhi salama.",
             "keystoreDecisionsFailed": "Uingizaji umekamilika, lakini chaguo zako za wasifu wa seva hazikuweza kutumika: {error}",
+            "keystoreListMergeFailed": "Uingizaji umekamilika, lakini orodha ya seva ya nakala rudufu haikuweza kuunganishwa na orodha ya kifaa hiki: {error}",
+            "keystorePartitionSkipped": "Kizio cha akaunti cha nakala rudufu hakiwezi kufunguliwa kwenye kifaa hiki na kiliachwa nje. Leta ukitumia Andika Juu ili kurejesha kizio hicho chote.",
             "exportKeystoreDesc": "Hamisha vitambulisho vyote vilivyosimbwa kwenye faili ya hifadhi rudufu",
             "importKeystoreDesc": "Ingiza vitambulisho kutoka faili ya hifadhi rudufu",
             "keystoreExported": "Hazina imehamishwa kwa mafanikio (vipengele {count})",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Futa mabadiliko",
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
             "uiTokensRejected": "Maingizo yaliyokataliwa: {count}",
-            "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}"
+            "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}",
+            "keystorePreviewBackupUnreadable": "Orodha ya seva katika nakala hii haiwezi kusomwa kwenye kifaa hiki, kwa hivyo ulinganisho unatumia orodha iliyohifadhiwa kwenye hifadhi salama ya nakala hiyo. Uingizaji bado unachukua nafasi ya orodha ya seva kwenye kifaa hiki."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Imepakiwa",
             "reportDownloaded": "Imepakuliwa",
             "reportSkipped": "Imerukwa",
+            "keptDirs": "Folda zilizobaki",
+            "keptDirUnfinished": "ina faili ambazo hazikusawazishwa",
+            "keptDirEntries": "ina vipengee vilivyotengwa au visivyoorodheshwa",
+            "keptDirServer": "si tupu kwenye seva",
             "reportTransferred": "Imehamishwa",
             "reportDuration": "Muda",
             "reportDirsCreated": "Folda zimeundwa",

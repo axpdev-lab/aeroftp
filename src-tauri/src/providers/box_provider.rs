@@ -487,6 +487,44 @@ impl BoxProvider {
             .map_err(|e| ProviderError::Other(format!("Invalid Bearer header: {}", e)))
     }
 
+    /// `DELETE /folders/{id}?recursive=` with `recursive` as given: false
+    /// refuses a folder that is not empty with `folder_not_empty`
+    /// ([`ProviderError::DirectoryNotEmpty`]), true sends it to the trash
+    /// with everything in it.
+    async fn delete_folder(&mut self, path: &str, recursive: bool) -> Result<(), ProviderError> {
+        let folder_id = self.resolve_folder_id(path).await?;
+        let token = self.get_token().await?;
+
+        let sent = self
+            .client
+            .delete(format!(
+                "{}/folders/{}?recursive={}",
+                self.api_base(),
+                folder_id,
+                recursive
+            ))
+            .header(AUTHORIZATION, Self::bearer_header(&token)?)
+            .send()
+            .await;
+        let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+        let status = resp.status();
+        if !status.is_success() && status.as_u16() != 204 {
+            let body = resp.text().await.unwrap_or_default();
+            if body.contains("folder_not_empty") {
+                return Err(ProviderError::DirectoryNotEmpty(format!(
+                    "{path} is not empty; delete it recursively to remove it with its content"
+                )));
+            }
+            return Err(ProviderError::Other(format!("rmdir failed: {status}")));
+        }
+        // Not only the folder's own id: every folder cached under it, under
+        // any capitalization, is in the trash with it.
+        super::forget_cached_subtree_ignoring_case(&mut self.id_cache, &Self::normalize_path(path));
+
+        Ok(())
+    }
+
     /// Resolve a path to a folder ID, using cache or API calls
     async fn resolve_folder_id(&mut self, path: &str) -> Result<String, ProviderError> {
         let normalized = Self::normalize_path(path);
@@ -2099,36 +2137,14 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        let folder_id = self.resolve_folder_id(path).await?;
-        let token = self.get_token().await?;
-
-        let sent = self
-            .client
-            .delete(format!(
-                "{}/folders/{}?recursive=true",
-                self.api_base(),
-                folder_id
-            ))
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .send()
-            .await;
-        // Not only the folder's own id: every folder cached under it, under
-        // any capitalization, is in the trash with it.
-        super::forget_cached_subtree_ignoring_case(&mut self.id_cache, &Self::normalize_path(path));
-        let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() && resp.status().as_u16() != 204 {
-            return Err(ProviderError::Other(format!(
-                "rmdir failed: {}",
-                resp.status()
-            )));
-        }
-
-        Ok(())
+        // Round 2 of the 4.2.1 review: `recursive=false` makes Box refuse a
+        // folder that holds anything (`folder_not_empty`) on the server, so
+        // nothing under it can go with it, listed or not.
+        self.delete_folder(path, false).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.rmdir(path).await // Box API handles recursive by default
+        self.delete_folder(path, true).await
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -2137,7 +2153,8 @@ impl StorageProvider for BoxProvider {
         // the items trashed from the path's folder and dispatch to the
         // existing inherent helper: by name alone, a purge of `/new/a.txt`
         // could take a trashed `/old/a.txt`. Ok(false) when nothing matches,
-        // or the folder is no longer there to tell which item is this path.
+        // or the folder is no longer there to tell which item is this path;
+        // refused when several items of that name were trashed from it.
         let normalized = Self::normalize_path(path);
         let (parent_path, basename) = match normalized.rfind('/') {
             Some(pos) if pos > 0 => (&normalized[..pos], &normalized[pos + 1..]),
@@ -2153,16 +2170,17 @@ impl StorageProvider for BoxProvider {
         };
         let trashed = self.list_trash().await?;
         let from_parent = |e: &&RemoteEntry| e.metadata.get("parent_id") == Some(&parent_id);
-        let target = trashed
+        let matches: Vec<(String, String)> = trashed
             .iter()
             .filter(from_parent)
-            .find(|e| e.name == basename)
-            .and_then(|e| {
+            .filter(|e| e.name == basename)
+            .filter_map(|e| {
                 let id = e.metadata.get("id")?;
                 let kind = e.metadata.get("item_type")?;
                 Some((id.clone(), kind.clone()))
-            });
-        match target {
+            })
+            .collect();
+        match super::the_one_trashed_item(path, matches)? {
             Some((id, kind)) => {
                 self.permanent_delete_from_trash(&id, &kind).await?;
                 Ok(true)
@@ -3346,6 +3364,7 @@ mod tests {
                 async move {
                     let method = req.method().as_str().to_string();
                     let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
                     let body = axum::body::to_bytes(req.into_body(), 1 << 20)
                         .await
                         .unwrap();
@@ -3502,6 +3521,17 @@ mod tests {
                         }
                         ("DELETE", [endpoint @ ("folders" | "files"), id]) => {
                             let kind = endpoint.trim_end_matches('s');
+                            // As Box answers `recursive=false` on a folder
+                            // that holds anything.
+                            if kind == "folder"
+                                && query.contains("recursive=false")
+                                && items.iter().any(|i| i.2 == *id)
+                            {
+                                seen.lock()
+                                    .unwrap()
+                                    .push(format!("refuse folder {id} not empty"));
+                                return error(StatusCode::BAD_REQUEST, "folder_not_empty");
+                            }
                             seen.lock().unwrap().push(format!("delete {kind} {id}"));
                             let mut gone = vec![id.to_string()];
                             while let Some(at) = items.iter().position(|i| gone.contains(&i.2)) {
@@ -3548,6 +3578,42 @@ mod tests {
         provider.api_base_override = Some(format!("http://{addr}"));
         provider.upload_base_override = Some(format!("http://{addr}"));
         (provider, store, changes)
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` sent `recursive=true`, so a
+    /// folder that still held a file went to the trash with it after a
+    /// listing that had shown nothing. It sends `recursive=false`, which Box
+    /// refuses with `folder_not_empty` on the server, and only
+    /// `rmdir_recursive` takes the content along.
+    #[tokio::test]
+    async fn rmdir_is_refused_by_box_on_a_folder_that_holds_anything() {
+        let (mut p, store, changes) = provider_on_box(&[
+            ("1", "A", "0", "folder"),
+            ("11", "f.txt", "1", "file"),
+            ("2", "E", "0", "folder"),
+        ])
+        .await;
+        let refused = p.rmdir("/A").await;
+        assert!(
+            matches!(refused, Err(ProviderError::DirectoryNotEmpty(_))),
+            "{refused:?}"
+        );
+        assert!(
+            store.lock().unwrap().iter().any(|i| i.0 == "11"),
+            "the file under A stayed"
+        );
+        p.rmdir("/E").await.expect("an empty folder goes");
+        p.rmdir_recursive("/A")
+            .await
+            .expect("recursive takes the content");
+        assert_eq!(
+            *changes.lock().unwrap(),
+            [
+                "refuse folder 1 not empty",
+                "delete folder 2",
+                "delete folder 1"
+            ]
+        );
     }
 
     /// The file lookup matched the name alone, so for a folder it found the
@@ -3622,6 +3688,29 @@ mod tests {
         assert_eq!(changes.lock().unwrap().len(), 1);
     }
 
+    /// Two generations of `a.txt` trashed from `/new`: the purge took the
+    /// first one listed, which the trash cannot tell to be this path. It is
+    /// refused, as Proton refuses it, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_items_of_one_name() {
+        let (mut p, _, changes) = provider_on_box(&[
+            ("2", "new", "0", "folder"),
+            ("11", "a.txt", "trash:2", "file"),
+            ("12", "a.txt", "trash:2", "file"),
+        ])
+        .await;
+        let outcome = p.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            changes.lock().unwrap().is_empty(),
+            "{:?}",
+            changes.lock().unwrap()
+        );
+    }
+
     /// A one-byte local file to upload.
     fn local_file() -> tempfile::NamedTempFile {
         let file = tempfile::NamedTempFile::new().unwrap();
@@ -3671,7 +3760,7 @@ mod tests {
             if trash {
                 p.trash_files(&["/a".to_string()]).await.expect("trash /a");
             } else {
-                p.rmdir("/a").await.expect("rmdir /a");
+                p.rmdir_recursive("/a").await.expect("rmdir /a");
             }
             p.mkdir("/A").await.expect("mkdir /A");
             p.mkdir("/A/sub").await.expect("mkdir /A/sub");

@@ -23,6 +23,7 @@ import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import { RollbackDialog } from '../Sync/RollbackDialog';
 import { TabStateStoreContext, createTabStateStore } from './tabStateStore';
 import { buildAeroSyncTabStatePatch, type ImportedSyncSettings } from '../../utils/syncTemplateApply';
+import type { VersionedBackupConfig } from '../../utils/syncPresets';
 import { aeroSyncTabsFor, effectiveAeroSyncTab, type AeroSyncDialogProps, type AeroSyncTab } from './types';
 import type { TransferOptimizationHints } from '../../types';
 import { limitsFromHints, type ProviderFileLimits } from '../../utils/providerFileLimits';
@@ -75,7 +76,11 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     // a fresh store anyway.
     const tabState = React.useRef(createTabStateStore()).current;
     const applyImportedSettings = React.useCallback((settings: ImportedSyncSettings) => {
-        const patch = buildAeroSyncTabStatePatch(settings, context.pairKind);
+        const patch = buildAeroSyncTabStatePatch(
+            settings,
+            context.pairKind,
+            tabState.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined),
+        );
         Object.entries(patch).forEach(([key, value]) => tabState.set(key, value));
         setShowTemplates(false);
         // Plan summarizes the imported direction/preset. Sync is populated in

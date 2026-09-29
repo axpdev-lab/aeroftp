@@ -522,9 +522,17 @@ impl StorageProvider for MtpFsProvider {
             ));
         }
         let fs = self.resolve_existing(&vpath)?;
-        tokio::fs::remove_dir(&fs)
-            .await
-            .map_err(ProviderError::IoError)?;
+        // `remove_dir` never recurses: the operating system refuses a
+        // directory that is not empty, which is said as such.
+        tokio::fs::remove_dir(&fs).await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+                ProviderError::DirectoryNotEmpty(format!(
+                    "{path} holds entries; delete it recursively to remove it with its content ({e})"
+                ))
+            } else {
+                ProviderError::IoError(e)
+            }
+        })?;
         Ok(())
     }
 

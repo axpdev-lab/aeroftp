@@ -4891,6 +4891,11 @@ pub struct SyncScriptMeta {
     pub retries: Option<u32>,
     #[serde(default)]
     pub retries_sleep: Option<String>,
+    /// The Plan's versioned-backup folder at export time. The exclude list
+    /// carries it too (so the CLI leaves the kept copies alone); an import
+    /// takes it from here, back to the Plan, and out of the user's patterns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_dir: Option<String>,
 }
 
 const SYNC_SCRIPT_META_PREFIX: &str = "AEROFTP-META: ";
@@ -4905,6 +4910,7 @@ pub struct SyncScriptExportOptions<'a> {
     pub local_path: &'a str,
     pub remote_path: &'a str,
     pub exclude_patterns: &'a [String],
+    pub backup_dir: Option<&'a str>,
     pub format: SyncScriptFormat,
 }
 
@@ -4960,6 +4966,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         local_path,
         remote_path,
         exclude_patterns,
+        backup_dir,
         format,
     } = opts;
     let (max_retries, retries_sleep) = retry_overrides(&profile.retry_policy);
@@ -4975,6 +4982,7 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         exclude_patterns: exclude_patterns.to_vec(),
         retries: max_retries,
         retries_sleep: retries_sleep.clone(),
+        backup_dir: backup_dir.map(str::to_string),
     };
     let meta_json = serde_json::to_string(&meta).map_err(|e| e.to_string())?;
 
@@ -5165,6 +5173,29 @@ mod sync_script_tests {
         p
     }
 
+    /// #979 review: the shell scripts keep the backup folder in their
+    /// metadata line too, for the same round trip as `.aeroftp-script`.
+    #[test]
+    fn a_shell_export_keeps_the_backup_folder_in_its_metadata() {
+        let profile = sample_profile();
+        for format in [SyncScriptFormat::Bash, SyncScriptFormat::PowerShell] {
+            let script = export_sync_script(SyncScriptExportOptions {
+                profile: &profile,
+                profile_display_name: "My Server",
+                template_name: "Daily Backup",
+                template_description: "Nightly mirror",
+                local_path: "/home/me/proj",
+                remote_path: "/backups/proj",
+                exclude_patterns: &profile.exclude_patterns,
+                backup_dir: Some("history/versions"),
+                format,
+            })
+            .unwrap();
+            let meta = import_sync_script(&script).unwrap();
+            assert_eq!(meta.backup_dir.as_deref(), Some("history/versions"));
+        }
+    }
+
     #[test]
     fn bash_export_round_trips_via_meta() {
         let profile = sample_profile();
@@ -5176,6 +5207,7 @@ mod sync_script_tests {
             local_path: "/home/me/proj",
             remote_path: "/backups/proj",
             exclude_patterns: &profile.exclude_patterns,
+            backup_dir: None,
             format: SyncScriptFormat::Bash,
         })
         .unwrap();
@@ -5206,6 +5238,7 @@ mod sync_script_tests {
             local_path: "C:\\Users\\Me\\proj",
             remote_path: "/backups/proj",
             exclude_patterns: &profile.exclude_patterns,
+            backup_dir: None,
             format: SyncScriptFormat::PowerShell,
         })
         .unwrap();

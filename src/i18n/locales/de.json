@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (aus Sicherung)",
             "keystorePreviewLocalFromVault": "Die Liste der Serverprofile dieses Geräts konnte nicht gelesen werden, daher vergleicht die Ansicht mit der im Tresor gespeicherten Serverliste.",
             "keystoreDecisionsFailed": "Der Import ist abgeschlossen, aber Ihre Auswahl für die Serverprofile konnte nicht angewendet werden: {error}",
+            "keystoreListMergeFailed": "Der Import ist abgeschlossen, aber die Serverliste der Sicherung konnte nicht mit der Liste dieses Geräts zusammengeführt werden: {error}",
+            "keystorePartitionSkipped": "Die Kontopartition der Sicherung kann auf diesem Gerät nicht entsperrt werden und wurde ausgelassen. Importiere mit Überschreiben, um diese Partition vollständig wiederherzustellen.",
             "exportKeystoreDesc": "Alle verschlüsselten Anmeldedaten in eine Sicherungsdatei exportieren",
             "importKeystoreDesc": "Anmeldedaten aus einer Sicherungsdatei importieren",
             "keystoreExported": "Schlüsselspeicher erfolgreich exportiert ({count} Einträge)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Überschreibungen löschen",
             "uiTokensApplied": "Angewendete Überschreibungen: {count}",
             "uiTokensRejected": "Abgelehnte Einträge: {count}",
-            "keystorePreferencesFailed": "Der Import ist abgeschlossen, aber Ihre App-Einstellungen konnten nicht wiederhergestellt werden: {error}"
+            "keystorePreferencesFailed": "Der Import ist abgeschlossen, aber Ihre App-Einstellungen konnten nicht wiederhergestellt werden: {error}",
+            "keystorePreviewBackupUnreadable": "Die Serverliste in dieser Sicherung kann auf diesem Gerät nicht gelesen werden, daher verwendet der Vergleich die im Tresor der Sicherung gespeicherte Liste. Der Import ersetzt trotzdem die Serverliste auf diesem Gerät."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Hochgeladen",
             "reportDownloaded": "Heruntergeladen",
             "reportSkipped": "Übersprungen",
+            "keptDirs": "Beibehaltene Ordner",
+            "keptDirUnfinished": "enthält Dateien, die nicht synchronisiert wurden",
+            "keptDirEntries": "enthält ausgeschlossene oder nicht aufgelistete Einträge",
+            "keptDirServer": "auf dem Server nicht leer",
             "reportTransferred": "Übertragen",
             "reportDuration": "Dauer",
             "reportDirsCreated": "Ordner erstellt",

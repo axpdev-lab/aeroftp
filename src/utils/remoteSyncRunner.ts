@@ -44,6 +44,34 @@ export type SyncRunFileStatus =
 export type SyncRunAction = 'upload' | 'download' | 'delete-remote' | 'delete-local';
 
 /**
+ * Why a folder a Mirror would have removed stayed (round 2 of the 4.2.1
+ * review): a folder read as "skipped" said nothing of what it still held.
+ */
+export type SyncKeptDirReason =
+    /** A row under it did not complete (failed, kept, skipped): it holds files that were not synced. */
+    | 'unfinished_rows'
+    /** Its listing shows entries the plan did not have: excluded or unlisted files. */
+    | 'entries'
+    /** The server refused it as not empty while its listing shows nothing. */
+    | 'server';
+
+/** A folder kept by the run, with the reason. */
+export interface SyncKeptDir {
+    file_path: string;
+    reason: SyncKeptDirReason;
+}
+
+/** What `sync_remove_empty_dir` answers, read into an outcome and a reason. */
+export function readEmptyDirAnswer(answer: unknown): { outcome: 'removed' } | { outcome: 'kept'; reason: 'entries' | 'server' } {
+    switch (answer) {
+        case 'removed': return { outcome: 'removed' };
+        case 'kept:entries': return { outcome: 'kept', reason: 'entries' };
+        case 'kept:server': return { outcome: 'kept', reason: 'server' };
+        default: throw new Error(`unexpected answer ${JSON.stringify(answer ?? null)}`);
+    }
+}
+
+/**
  * One file the runner must act on. `relativePath` is resolved against both
  * `localRoot` and `remoteRoot`; it may be a bare name (flat sync) or contain
  * `/` separators (recursive sync) — the runner pre-creates parent dirs either
@@ -65,8 +93,9 @@ export interface SyncRunFile {
     overwritesExisting?: boolean;
     /**
      * True for directory entries. Only meaningful for `delete-remote` /
-     * `delete-local`: directories skip the archive step and pass the
-     * `isDir` hint to the FTP delete command.
+     * `delete-local`: a directory skips the archive step and is removed only
+     * once it is empty (`sync_remove_empty_dir`), never recursively, and not
+     * at all when a row under it did not complete this run.
      */
     isDir?: boolean;
     /**
@@ -169,6 +198,8 @@ export interface SyncRunReport {
     durationMs: number;
     /** true iff the run stopped early on cancel or transfer budget. */
     cancelled: boolean;
+    /** The folders a delete row left in place, each with why (counted in `skipped`). */
+    keptDirs: SyncKeptDir[];
     /**
      * GAP-9a — present only when `postSyncVerification` ran (Maniac mode). The
      * counts feed the `syncPanel.maniacPostSyncReport` line in the result
@@ -549,6 +580,7 @@ export const runRemoteSync = async (
     let downloaded = 0;
     let deleted = 0;
     let skipped = 0;
+    const keptDirs: SyncKeptDir[] = [];
     let dirsCreated = 0;
     let retried = 0;
     let verifyFailed = 0;
@@ -715,6 +747,24 @@ export const runRemoteSync = async (
             setStatus(dir, 'skipped');
         }
     }
+
+    // ── Folders that hold a row which did not complete ─────────────────────
+    // Deletes run deepest first, so every row under a folder row comes before
+    // it. The rows are read once, in order, up to the folder row asking; a row
+    // whose journal entry is not `completed` (failed, kept, skipped) holds
+    // every folder above it.
+    const heldDirs = new Set<string>();
+    let heldScanned = 0;
+    const holdsUnfinishedRow = (dir: string, upTo: number): boolean => {
+        for (; heldScanned < upTo; heldScanned++) {
+            const path = files[heldScanned].relativePath;
+            const idx = journalEntryMap.get(path);
+            if (idx !== undefined && journal.entries[idx].status === 'completed') continue;
+            const parts = path.split('/').filter(Boolean);
+            for (let k = 1; k < parts.length; k++) heldDirs.add(parts.slice(0, k).join('/'));
+        }
+        return heldDirs.has(dir.split('/').filter(Boolean).join('/'));
+    };
 
     // ── Main per-file loop ─────────────────────────────────────────────────
     let completed = 0;
@@ -941,11 +991,58 @@ export const runRemoteSync = async (
                 errors.push(errInfo);
                 setStatus(item.relativePath, 'error');
             }
+        } else if ((item.action === 'delete-remote' || item.action === 'delete-local') && item.isDir) {
+            // A folder is removed only when it is empty, and not even tried
+            // when a row under it did not complete: a file whose move into the
+            // backup folder failed is still in it (B2), and so is a file the
+            // compare excluded, which has no row at all (H6). A recursive
+            // delete took both along. What stays keeps its folder, and every
+            // folder above it, as skipped rather than failed.
+            let outcome: 'removed' | 'kept' | 'failed' = 'kept';
+            let keptReason: SyncKeptDirReason = 'unfinished_rows';
+            if (!holdsUnfinishedRow(item.relativePath, i)) {
+                const side = item.action === 'delete-remote' ? 'remote' : 'local';
+                try {
+                    const answer = readEmptyDirAnswer(await invoke<unknown>('sync_remove_empty_dir', {
+                        target: side === 'local' || config.isLocalLocal
+                            ? 'local'
+                            : config.isProvider ? 'provider' : 'ftp',
+                        path: side === 'remote' ? remoteFilePath : localFilePath,
+                    }));
+                    outcome = answer.outcome;
+                    if (answer.outcome === 'kept') keptReason = answer.reason;
+                } catch (e) {
+                    outcome = 'failed';
+                    const errInfo: SyncErrorInfo = {
+                        kind: 'unknown',
+                        message: `Delete failed: ${item.relativePath} - ${(e as { toString?: () => string })?.toString?.() || 'unknown'}`,
+                        retryable: false,
+                        file_path: item.relativePath,
+                    };
+                    if (journalEntry) {
+                        journalEntry.status = 'failed';
+                        journalEntry.last_error = errInfo;
+                    }
+                    errors.push(errInfo);
+                    setStatus(item.relativePath, 'error');
+                }
+            }
+            if (outcome === 'removed') {
+                deleted++;
+                didTransfer = true;
+                if (journalEntry) journalEntry.status = 'completed';
+                setStatus(item.relativePath, 'success');
+            } else if (outcome === 'kept') {
+                skipped++;
+                keptDirs.push({ file_path: item.relativePath, reason: keptReason });
+                if (journalEntry) journalEntry.status = 'skipped';
+                setStatus(item.relativePath, 'skipped');
+            }
         } else if (item.action === 'delete-remote' || item.action === 'delete-local') {
             // Versioned backup: for a file the move into the backup folder IS
             // the delete. It fails the file on its own, without the delete
             // running, so the destination copy stays where it was.
-            if (config.versionedBackup && !item.isDir) {
+            if (config.versionedBackup) {
                 try {
                     await archiveBeforeMutation(item.action === 'delete-remote' ? 'remote' : 'local', item.relativePath);
                 } catch (e) {
@@ -961,20 +1058,18 @@ export const runRemoteSync = async (
             } else try {
                 if (item.action === 'delete-remote') {
                     if (config.isLocalLocal) {
-                        // GAP-10: the "remote" side is a local directory;
-                        // `delete_local_file` removes files and directories.
+                        // GAP-10: the "remote" side is a local directory,
+                        // so the file goes through `delete_local_file`.
                         await invoke('delete_local_file', { path: remoteFilePath });
+                    } else if (config.isProvider) {
+                        await invoke('provider_delete_file', { path: remoteFilePath });
                     } else {
-                        const cmd = config.isProvider ? 'provider_delete_file' : 'delete_remote_file';
-                        const args = config.isProvider
-                            ? { path: remoteFilePath }
-                            : { path: remoteFilePath, isDir: item.isDir === true };
-                        await invoke(cmd, args);
+                        await invoke('delete_remote_file', { path: remoteFilePath, isDir: false });
                     }
                     // Best-effort: remove the `.aerocorrect` EC parity sidecar alongside the
                     // deleted file so a removed backup never orphans its sidecar. The
                     // sidecar is excluded from comparison, so it is never its own action.
-                    if (!item.isDir) await deleteRemoteSidecar(remoteFilePath);
+                    await deleteRemoteSidecar(remoteFilePath);
                 } else {
                     await invoke('delete_local_file', { path: localFilePath });
                 }
@@ -1175,6 +1270,7 @@ export const runRemoteSync = async (
         totalBytes,
         durationMs: now() - startTime,
         cancelled: runCancelled,
+        keptDirs,
         postSyncVerification,
         delta_savings,
         delta_bytes_on_wire: delta_savings?.total_bytes_sent,

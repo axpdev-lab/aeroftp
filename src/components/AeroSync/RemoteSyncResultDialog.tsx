@@ -118,6 +118,15 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
     ];
     const visibleStats = stats.filter((s) => s.show);
 
+    // Round 2 of the 4.2.1 review: a folder read as "skipped" said nothing
+    // of what it still held.
+    const keptDirReason = (reason: string): string => ({
+        unfinished_rows: t('syncPanel.keptDirUnfinished'),
+        entries: t('syncPanel.keptDirEntries'),
+        server: t('syncPanel.keptDirServer'),
+    })[reason] ?? reason;
+    const keptDirs = report.keptDirs ?? [];
+
     const errorKindLabel = (kind: string): string => {
         const key = `syncPanel.errorKind.${kind}`;
         const val = t(key);
@@ -245,6 +254,31 @@ export const RemoteSyncResultDialog: React.FC<RemoteSyncResultDialogProps> = ({
                                     speedup: (report.delta_savings.average_speedup ?? 1).toFixed(1),
                                 })}
                             </span>
+                        </div>
+                    )}
+
+                    {keptDirs.length > 0 && (
+                        <div className="rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 dark:border-gray-700 dark:bg-gray-800/40">
+                            <div className="flex items-center justify-between text-[12px]">
+                                <span className="font-medium text-gray-700 dark:text-gray-200">
+                                    {t('syncPanel.keptDirs')}
+                                </span>
+                                <span className="tabular-nums text-gray-500 dark:text-gray-400">{keptDirs.length}</span>
+                            </div>
+                            <ul className="mt-1 space-y-0.5">
+                                {keptDirs.slice(0, 8).map((d, i) => (
+                                    <li
+                                        key={`${d.file_path}-${i}`}
+                                        className="truncate text-[11px] text-gray-600 dark:text-gray-300"
+                                        title={`${d.file_path}: ${keptDirReason(d.reason)}`}
+                                    >
+                                        {d.file_path}/: {keptDirReason(d.reason)}
+                                    </li>
+                                ))}
+                                {keptDirs.length > 8 && (
+                                    <li className="text-[11px] text-gray-500">+{keptDirs.length - 8}</li>
+                                )}
+                            </ul>
                         </div>
                     )}
 

@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (dari cadangan)",
             "keystorePreviewLocalFromVault": "Daftar profil server perangkat ini tidak dapat dibaca, jadi perbandingan memakai daftar server yang tersimpan di brankas.",
             "keystoreDecisionsFailed": "Impor selesai, tetapi pilihan Anda untuk profil server tidak dapat diterapkan: {error}",
+            "keystoreListMergeFailed": "Impor selesai, tetapi daftar server dari cadangan tidak dapat digabungkan dengan daftar perangkat ini: {error}",
+            "keystorePartitionSkipped": "Partisi akun cadangan tidak dapat dibuka di perangkat ini dan dilewati. Impor dengan Timpa untuk memulihkan partisi itu seutuhnya.",
             "exportKeystoreDesc": "Ekspor semua kredensial terenkripsi ke file cadangan",
             "importKeystoreDesc": "Impor kredensial dari file cadangan",
             "keystoreExported": "Keystore berhasil diekspor ({count} entri)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Hapus penggantian",
             "uiTokensApplied": "Penggantian diterapkan: {count}",
             "uiTokensRejected": "Entri ditolak: {count}",
-            "keystorePreferencesFailed": "Impor selesai, tetapi preferensi aplikasi Anda tidak dapat dipulihkan: {error}"
+            "keystorePreferencesFailed": "Impor selesai, tetapi preferensi aplikasi Anda tidak dapat dipulihkan: {error}",
+            "keystorePreviewBackupUnreadable": "Daftar server dalam cadangan ini tidak dapat dibaca di perangkat ini, jadi perbandingan menggunakan daftar yang tersimpan di brankas cadangan. Impor tetap mengganti daftar server di perangkat ini."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Diunggah",
             "reportDownloaded": "Diunduh",
             "reportSkipped": "Dilewati",
+            "keptDirs": "Folder yang dipertahankan",
+            "keptDirUnfinished": "berisi berkas yang tidak disinkronkan",
+            "keptDirEntries": "berisi entri yang dikecualikan atau tidak terdaftar",
+            "keptDirServer": "tidak kosong di server",
             "reportTransferred": "Ditransfer",
             "reportDuration": "Durasi",
             "reportDirsCreated": "Folder dibuat",

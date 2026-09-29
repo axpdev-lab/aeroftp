@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use suppaftp::tokio::{
-    AsyncRustlsConnector, AsyncRustlsFtpStream, AsyncRustlsStream, TransferStream,
+    AsyncDataStream, AsyncRustlsConnector, AsyncRustlsStream, AsyncTlsConnector,
+    ImplAsyncFtpStream, TokioTlsStream, TransferStream,
 };
 use suppaftp::types::FileType;
 use suppaftp::{FtpError, Status};
@@ -22,7 +23,124 @@ use tokio_util::sync::CancellationToken;
 /// The data connection of one transfer. It finishes itself: `finish()` closes
 /// it (TLS `close_notify`, then FIN) and reads the completion reply on the
 /// control channel.
-type FtpTransfer = TransferStream<AsyncRustlsStream>;
+type FtpTransfer = TransferStream<FtpsStream>;
+
+/// The control connection, plain or over TLS.
+type FtpControl = ImplAsyncFtpStream<FtpsStream>;
+
+/// suppaftp's rustls stream, except that a TLS close that fails is kept
+/// aside instead of returned.
+///
+/// suppaftp's `finish` closes the data connection, reads the server's reply,
+/// and for an upload returns a failed close ahead of the reply. A server that
+/// refuses the file once it has the data (`552`) and resets the data
+/// connection makes our close_notify fail with a reset or a broken pipe: that
+/// failure came back instead of the `552`, and the stale-session check reads
+/// those words as a session to redial, so `upload` sent the refused file a
+/// second time. With the failure kept here, `finish` returns the reply, and
+/// [`DataChannel::close_upload`] reports the kept failure only when the reply
+/// confirmed the file, which is what `finish` did on its own. A download
+/// never reported a failed close, and still does not.
+#[derive(Debug)]
+struct FtpsStream {
+    inner: AsyncRustlsStream,
+    close_failure: Arc<std::sync::Mutex<Option<std::io::Error>>>,
+}
+
+impl FtpsStream {
+    /// The slot where the data connection of `transfer` keeps a failed TLS
+    /// close; `None` for a plain connection, whose close `finish` reports as
+    /// before (a close after a reset is Ok there, and the reply is read).
+    fn close_failure_of(
+        transfer: &FtpTransfer,
+    ) -> Option<Arc<std::sync::Mutex<Option<std::io::Error>>>> {
+        match transfer.get_ref() {
+            AsyncDataStream::Ssl(tls) => Some(Arc::clone(&tls.close_failure)),
+            AsyncDataStream::Tcp(_) => None,
+        }
+    }
+}
+
+impl tokio::io::AsyncRead for FtpsStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for FtpsStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let this = self.get_mut();
+        match std::pin::Pin::new(&mut this.inner).poll_shutdown(cx) {
+            std::task::Poll::Ready(Err(failure)) => {
+                *this
+                    .close_failure
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(failure);
+                std::task::Poll::Ready(Ok(()))
+            }
+            other => other,
+        }
+    }
+}
+
+impl TokioTlsStream for FtpsStream {
+    type InnerStream = <AsyncRustlsStream as TokioTlsStream>::InnerStream;
+
+    fn tcp_stream(self) -> suppaftp::FtpResult<tokio::net::TcpStream> {
+        self.inner.tcp_stream()
+    }
+
+    fn get_ref(&self) -> &tokio::net::TcpStream {
+        self.inner.get_ref()
+    }
+
+    fn mut_ref(&mut self) -> &mut Self::InnerStream {
+        self.inner.mut_ref()
+    }
+}
+
+/// The rustls connector, handing out [`FtpsStream`]s.
+#[derive(Debug)]
+struct FtpsConnector(AsyncRustlsConnector);
+
+#[async_trait]
+impl AsyncTlsConnector for FtpsConnector {
+    type Stream = FtpsStream;
+
+    async fn connect(
+        &self,
+        domain: &str,
+        stream: tokio::net::TcpStream,
+    ) -> suppaftp::FtpResult<FtpsStream> {
+        let inner = self.0.connect(domain, stream).await?;
+        Ok(FtpsStream {
+            inner,
+            close_failure: Arc::default(),
+        })
+    }
+}
 
 use super::checksum_matrix;
 use super::multi_thread::{
@@ -66,7 +184,7 @@ const FTP_DOWNLOAD_BUFFER_DEFAULT: usize = 64 * 1024;
 /// FTP/FTPS Storage Provider
 pub struct FtpProvider {
     config: FtpConfig,
-    stream: Option<AsyncRustlsFtpStream>,
+    stream: Option<FtpControl>,
     current_path: String,
     /// Whether server supports MLSD/MLST (RFC 3659)
     mlsd_supported: bool,
@@ -101,6 +219,10 @@ pub struct FtpProvider {
     multi_thread_streams: usize,
     /// File size at/above which intra-file parallelism engages.
     multi_thread_cutoff: u64,
+    /// Whether this provider ever had a session. A redial by
+    /// `ensure_connected` puts a session that was dropped back in its
+    /// directory; a pool worker that never dialled has none to go back to.
+    has_dialled: bool,
 }
 
 impl FtpProvider {
@@ -120,11 +242,12 @@ impl FtpProvider {
             connection_spec: None,
             multi_thread_streams: 1,
             multi_thread_cutoff: FTP_MULTI_THREAD_CUTOFF_DEFAULT,
+            has_dialled: false,
         }
     }
 
     /// Get mutable reference to the FTP stream, returning error if not connected
-    fn stream_mut(&mut self) -> Result<&mut AsyncRustlsFtpStream, ProviderError> {
+    fn stream_mut(&mut self) -> Result<&mut FtpControl, ProviderError> {
         self.stream.as_mut().ok_or(ProviderError::NotConnected)
     }
 
@@ -149,8 +272,19 @@ impl FtpProvider {
             .connection_spec
             .clone()
             .ok_or(ProviderError::NotConnected)?;
+        // A session dropped by a refusal (a `553`, a refused data open, an
+        // ABOR after a local read error) is dialled again here, and `connect`
+        // lands in the login directory: a relative path would then name a
+        // file in another directory while `current_path` said otherwise. Put
+        // it back where the session was, as `redial_if_a_reply_is_pending`
+        // does.
+        let previous_path = self.has_dialled.then(|| self.current_path.clone());
         self.config = spec;
-        self.connect().await
+        self.connect().await?;
+        match previous_path {
+            Some(previous) => self.restore_working_directory(&previous).await,
+            None => Ok(()),
+        }
     }
 
     /// The path that the primary session and a freshly dialled worker both
@@ -764,7 +898,11 @@ impl FtpProvider {
     /// `from`. When the listing cannot be read (a write-only folder whose
     /// LIST is refused, a dropped data connection) SIZE asks for `to` alone
     /// and needs no listing: a server that answers it holds a file there,
-    /// the one item a Unix server's RNTO would overwrite. A look that still
+    /// the one item a Unix server's RNTO would overwrite. SIZE is asked when
+    /// the listing says NotFound too: that answer is the parent listing's,
+    /// which matches the exact name, and on a case-insensitive server that
+    /// lists with LIST alone `/README.txt` is not in a listing holding
+    /// `readme.txt`, the file RNTO would replace. A look that still
     /// cannot be made answers no: it is unknown, not occupied, and the rename
     /// goes out as it did before the look existed. Narrowed, not closed: a
     /// server that refuses both LIST and SIZE there overwrites a file the
@@ -779,7 +917,6 @@ impl FtpProvider {
         if from.to_lowercase() != to.to_lowercase() {
             return match self.stat(to).await {
                 Ok(_) => true,
-                Err(ProviderError::NotFound(_)) => false,
                 Err(_) => self.size(to).await.is_ok(),
             };
         }
@@ -801,8 +938,37 @@ impl FtpProvider {
         stream
             .rename(from, to)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            .map_err(|e| Self::rename_refusal(to, e))?;
         Ok(())
+    }
+
+    /// A refused RNFR/RNTO. A server that will not rename onto a taken name
+    /// says so in its reply (IIS: `550 Cannot create a file when that file
+    /// already exists.`): that is AlreadyExists, what the look before RNFR
+    /// answers when it can see the destination. It could not where LIST and
+    /// SIZE are both refused, and the reply came back as ServerError (exit
+    /// 10, retried). Any other refusal keeps ServerError.
+    fn rename_refusal(to: &str, err: FtpError) -> ProviderError {
+        if let FtpError::UnexpectedResponse(ref response) = err {
+            if matches!(
+                response.status,
+                Status::FileUnavailable | Status::BadFilename
+            ) && Self::reply_says_the_name_is_taken(&response.to_string())
+            {
+                return ProviderError::AlreadyExists(to.to_string());
+            }
+        }
+        ProviderError::ServerError(err.to_string())
+    }
+
+    /// Whether a refusal says the name is taken: "exists", and none of the
+    /// phrasings that say the opposite (an RNFR of a missing source).
+    fn reply_says_the_name_is_taken(reply: &str) -> bool {
+        let lower = reply.to_lowercase();
+        lower.contains("exists")
+            && !["not exist", "n't exist", "no such", "nonexist", "non-exist"]
+                .iter()
+                .any(|negation| lower.contains(negation))
     }
 
     /// CWD into `target`, returning where the SERVER says we were.
@@ -1168,10 +1334,22 @@ impl FtpProvider {
 
         let entries = self.list_inner(&parent).await?;
 
-        let mut entry = entries
-            .into_iter()
-            .find(|e| e.name == name)
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+        let found = match entries.into_iter().find(|e| e.name == name) {
+            Some(entry) => Some(entry),
+            // A bare LIST hides dotfiles on vsftpd and its kin, and a server
+            // with MLST never reaches this listing, so a dotfile that is
+            // there read as missing: a non-recursive delete then listed the
+            // path itself, got the file's own row, and refused a plain file
+            // as a directory holding one entry. `LIST -a` shows it. A listing
+            // that fails leaves the answer NotFound, as before.
+            None if name.starts_with('.') => self
+                .list_inner_opts(&parent, true)
+                .await
+                .ok()
+                .and_then(|entries| entries.into_iter().find(|e| e.name == name)),
+            None => None,
+        };
+        let mut entry = found.ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         // A LIST row can report 0 for a file that is not empty: the column may
         // be missing, unparseable, or simply absent in the server's dialect.
@@ -1244,25 +1422,25 @@ impl StorageProvider for FtpProvider {
         let mut stream = match self.config.tls_mode {
             FtpTlsMode::None => {
                 // Plain FTP - no TLS
-                AsyncRustlsFtpStream::connect(&addr)
+                FtpControl::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             }
             FtpTlsMode::Explicit => {
                 // Explicit TLS (AUTH TLS) - connect plain, then upgrade
-                let stream = AsyncRustlsFtpStream::connect(&addr)
+                let stream = FtpControl::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-                let connector = self.make_tls_connector()?;
+                let connector = FtpsConnector(self.make_tls_connector()?);
                 stream.into_secure(connector, &domain).await.map_err(|e| {
                     ProviderError::ConnectionFailed(format!("TLS upgrade failed: {}", e))
                 })?
             }
             FtpTlsMode::Implicit => {
                 // Implicit TLS - TLS from the start, no AUTH TLS (port 990)
-                let connector = self.make_tls_connector()?;
+                let connector = FtpsConnector(self.make_tls_connector()?);
                 #[allow(deprecated)]
-                AsyncRustlsFtpStream::connect_secure_implicit(&addr, connector, &domain)
+                FtpControl::connect_secure_implicit(&addr, connector, &domain)
                     .await
                     .map_err(|e| {
                         ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e))
@@ -1272,10 +1450,10 @@ impl StorageProvider for FtpProvider {
                 // A3-02: Try explicit TLS, but NEVER fall back to plaintext silently.
                 // Sending credentials over an unencrypted connection without user consent
                 // is a security risk. If TLS fails, return an error instead.
-                let stream = AsyncRustlsFtpStream::connect(&addr)
+                let stream = FtpControl::connect(&addr)
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-                let connector = self.make_tls_connector()?;
+                let connector = FtpsConnector(self.make_tls_connector()?);
                 match stream.into_secure(connector, &domain).await {
                     Ok(secure) => {
                         self.tls_downgraded = false;
@@ -1382,6 +1560,7 @@ impl StorageProvider for FtpProvider {
             .replace('\\', "/");
 
         self.stream = Some(stream);
+        self.has_dialled = true;
 
         // PD-FTP-1: capture the connection spec now so the shared transfer
         // engine can re-dial N independent FTP connections for intra-file
@@ -1775,12 +1954,29 @@ impl StorageProvider for FtpProvider {
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        stream
-            .rmdir(path)
-            .await
-            .map_err(|e| Self::classify_command_refusal("rmdir", path, e))?;
-        Ok(())
+        // `RMD` refuses a directory that is not empty on the server. A reply
+        // that says so (ProFTPD, Pure-FTPd, IIS: "Directory not empty") is
+        // `DirectoryNotEmpty`. vsftpd's bare "Remove directory operation
+        // failed." says no more than that, so the directory is looked into
+        // (dotfiles included): one that still holds entries is
+        // `DirectoryNotEmpty` too, and only a refusal of an empty or
+        // unreadable directory stays a server error (permissions, a lock).
+        let refused = self.stream_mut()?.rmdir(path).await;
+        let Err(error) = refused else {
+            return Ok(());
+        };
+        match Self::classify_command_refusal("rmdir", path, error) {
+            ProviderError::ServerError(text) if reply_names_not_empty(&text) => {
+                Err(ProviderError::DirectoryNotEmpty(text))
+            }
+            ProviderError::ServerError(text) => match self.list_for_delete(path).await {
+                Ok(entries) if !entries.is_empty() => Err(ProviderError::DirectoryNotEmpty(
+                    format!("{text} ({path} holds {} entries)", entries.len()),
+                )),
+                _ => Err(ProviderError::ServerError(text)),
+            },
+            other => Err(other),
+        }
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2128,7 +2324,7 @@ impl StorageProvider for FtpProvider {
         channel.flush().await?;
         // The end of data as `upload_single` signals it: `close` sends our
         // close_notify and FIN after the last byte, then reads the 226.
-        if let Err(e) = channel.close().await? {
+        if let Err(e) = channel.close_upload().await? {
             // The finalise is the last word on the transfer. A failure here
             // leaves the control channel mid-sentence, and the guard is already
             // settled, so nothing else would discard it: do it here.
@@ -3010,6 +3206,29 @@ impl<'p> DataChannel<'p> {
         self.settled = true;
         Ok(verdict)
     }
+
+    /// [`Self::close`] for an upload: the server's reply decides. Over TLS
+    /// our close can fail because the server refused the file and reset the
+    /// data connection; [`FtpsStream`] keeps that failure aside, so the
+    /// refusal is what the caller reads, and the kept failure is reported
+    /// only when the reply confirmed the file.
+    async fn close_upload(mut self) -> Result<suppaftp::FtpResult<()>, ProviderError> {
+        let data = self.data.take().ok_or(ProviderError::NotConnected)?;
+        let close_failure = FtpsStream::close_failure_of(&data);
+        let verdict = data.finish().await;
+        self.settled = true;
+        Ok(verdict.and_then(|()| {
+            let kept = close_failure.and_then(|slot| {
+                slot.lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .take()
+            });
+            match kept {
+                Some(failure) => Err(FtpError::ConnectionError(failure)),
+                None => Ok(()),
+            }
+        }))
+    }
 }
 
 /// The write half of the same channel, for the one transfer that sends instead
@@ -3821,17 +4040,16 @@ impl FtpProvider {
         // server's EOF and second shutdown kept harmless by a wrapper: under
         // suppaftp 12 a second shutdown of a socket closed on both sides
         // fails with "not connected", and `finish` reports that failure for
-        // an upload even after a 226. A shutdown error is still reported, as
-        // before. Over TLS it can hide the server's refusal (M3, suppaftp's
-        // own semantics): a server that rejects the file at the end (`552`)
-        // and resets the data connection makes our close_notify fail with a
-        // broken pipe, which is what `finish` returns, and the stale-session
-        // check then retries the upload against a permanent refusal. Plain
-        // TCP is not affected: a shutdown after a reset is Ok, and the `552`
-        // is read. The fix belongs in the fork or upstream: the reply first,
-        // the shutdown error only when the reply is Ok.
+        // an upload even after a 226. A shutdown error is still reported
+        // after a 226, as before. Over TLS it hid the server's refusal: a
+        // server that rejects the file at the end (`552`) and resets the data
+        // connection makes our close_notify fail with a broken pipe, which is
+        // what `finish` returned, and the stale-session check then sent the
+        // file again against a permanent refusal. `close_upload` reads the
+        // reply first (see `FtpsStream`). Plain TCP was not affected: a
+        // shutdown after a reset is Ok, and the `552` is read.
         channel
-            .close()
+            .close_upload()
             .await?
             .map_err(Self::transfer_verdict_error)?;
 
@@ -4064,6 +4282,15 @@ async fn ftp_download_one_range(
     }
 
     Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// Whether a server's refusal of `RMD` names a directory that is not empty.
+/// The words differ by server ("Directory not empty", "directory not
+/// empty."); the bare "Remove directory operation failed." of vsftpd, and a
+/// permission refusal, do not qualify.
+pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
+    let lower = reply.to_ascii_lowercase();
+    lower.contains("not empty") || lower.contains("notempty")
 }
 
 #[cfg(test)]
@@ -5927,6 +6154,14 @@ mod rename_contract_tests {
         mlst_without_size: bool,
         /// SIZE is refused.
         size_refused: bool,
+        /// No MLST/MLSD: listings go through LIST over a PASV data
+        /// connection, one Unix row per file.
+        list_only: bool,
+        /// A bare LIST hides dotfiles, as vsftpd does; `LIST -a` shows them.
+        hides_dotfiles: bool,
+        /// RNTO onto an existing file is refused with the reply IIS gives,
+        /// instead of renaming over it.
+        rnto_refuses_taken: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -5947,6 +6182,7 @@ mod rename_contract_tests {
         }
         let mut data: Option<TcpListener> = None;
         let mut rename_from = String::new();
+        let mut cwd = "/".to_string();
         while let Ok(Some(line)) = lines.next_line().await {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
             let cmd = cmd.to_uppercase();
@@ -5960,13 +6196,83 @@ mod rename_contract_tests {
             let reply = match cmd.as_str() {
                 "USER" => "331 password please\r\n".to_string(),
                 "PASS" => "230 logged in\r\n".to_string(),
-                "FEAT" if quirks.listing_denied => "211-Features:\r\n UTF8\r\n211 End\r\n".to_string(),
+                "FEAT" if quirks.listing_denied || quirks.list_only => {
+                    "211-Features:\r\n UTF8\r\n211 End\r\n".to_string()
+                }
+                "MLST" | "MLSD" if quirks.list_only => "500 Unknown command\r\n".to_string(),
                 "FEAT" => "211-Features:\r\n MLST type*;size*;modify*;\r\n MLSD\r\n211 End\r\n"
                     .to_string(),
                 "LIST" | "NLST" | "MLSD" | "MLST" if quirks.listing_denied => {
                     "550 Permission denied\r\n".to_string()
                 }
-                "PWD" => "257 \"/\" is current\r\n".to_string(),
+                "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                "CWD" => {
+                    let target = if argument.starts_with('/') {
+                        argument.clone()
+                    } else {
+                        format!("{}/{argument}", cwd.trim_end_matches('/'))
+                    };
+                    let is_dir = target == "/"
+                        || files
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .any(|f| f.starts_with(&format!("{target}/")));
+                    if is_dir {
+                        cwd = target;
+                        "250 Directory changed\r\n".to_string()
+                    } else {
+                        "550 Failed to change directory.\r\n".to_string()
+                    }
+                }
+                "RMD" => {
+                    log.lock().unwrap().push(format!("RMD {argument}"));
+                    let prefix = format!("{}/", argument.trim_end_matches('/'));
+                    if files.lock().unwrap().iter().any(|f| f.starts_with(&prefix)) {
+                        // vsftpd's reply: it does not say why.
+                        "550 Remove directory operation failed.\r\n".to_string()
+                    } else {
+                        "250 Remove directory operation successful.\r\n".to_string()
+                    }
+                }
+                "DELE" => {
+                    log.lock().unwrap().push(format!("DELE {argument}"));
+                    files.lock().unwrap().retain(|f| f != &argument);
+                    "250 Deleted\r\n".to_string()
+                }
+                "LIST" => {
+                    let (all, target) = match argument.strip_prefix("-a") {
+                        Some(_) => (true, cwd.clone()),
+                        None if argument.is_empty() => (false, cwd.clone()),
+                        None => (false, argument.clone()),
+                    };
+                    let row = |name: &str| format!("-rw-r--r-- 1 u g 3 Jan 01 2024 {name}\r\n");
+                    let held = files.lock().unwrap().clone();
+                    let listing: String = if held.contains(&target) {
+                        // LIST of a file: its own row, dotfile or not.
+                        row(target.rsplit('/').next().unwrap_or(&target))
+                    } else {
+                        let dir = target.trim_end_matches('/');
+                        held.iter()
+                            .filter_map(|f| {
+                                let (parent, name) = f.rsplit_once('/')?;
+                                (parent == dir
+                                    && (all || !quirks.hides_dotfiles || !name.starts_with('.')))
+                                .then(|| row(name))
+                            })
+                            .collect()
+                    };
+                    if write.write_all(b"150 Here comes the listing\r\n").await.is_err() {
+                        return;
+                    }
+                    if let Some(listener) = data.take() {
+                        if let Ok((mut socket, _)) = listener.accept().await {
+                            let _ = socket.write_all(listing.as_bytes()).await;
+                            let _ = socket.shutdown().await;
+                        }
+                    }
+                    "226 Transfer complete\r\n".to_string()
+                }
                 "MLST" if argument == "/" || argument.is_empty() => {
                     "250-Listing /\r\n type=dir; /\r\n250 End\r\n".to_string()
                 }
@@ -6017,6 +6323,10 @@ mod rename_contract_tests {
                     log.lock().unwrap().push(format!("RNFR {argument}"));
                     rename_from = argument;
                     "350 Ready for RNTO\r\n".to_string()
+                }
+                "RNTO" if quirks.rnto_refuses_taken && present(&argument) => {
+                    log.lock().unwrap().push(format!("RNTO {argument}"));
+                    "550 Cannot create a file when that file already exists.\r\n".to_string()
                 }
                 "RNTO" => {
                     log.lock().unwrap().push(format!("RNTO {argument}"));
@@ -6193,6 +6503,135 @@ mod rename_contract_tests {
             .await
             .expect("the rename goes out");
         assert_eq!(*log.lock().unwrap(), ["RNFR /a.txt", "RNTO /c.txt"]);
+    }
+
+    /// On a case-insensitive server that lists with LIST alone, the look
+    /// for `/README.txt` reads the parent listing, finds only `readme.txt`,
+    /// and answered "free": RNFR/RNTO then replaced `readme.txt`. SIZE asks
+    /// the server itself, which finds it under any case.
+    #[tokio::test]
+    async fn a_list_only_case_insensitive_server_refuses_a_taken_name_of_another_case() {
+        let quirks = Quirks {
+            case_insensitive: true,
+            list_only: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log) = provider_on_server_with(&["/readme.txt", "/a.txt"], quirks).await;
+        let outcome = provider.rename("/a.txt", "/README.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+    }
+
+    /// Where neither LIST nor SIZE can see the destination, a server that
+    /// refuses RNTO onto a taken name says so in its reply; that refusal was
+    /// a ServerError (exit 10, retried) instead of AlreadyExists (exit 9).
+    #[tokio::test]
+    async fn a_taken_name_the_server_reports_on_rnto_is_already_exists() {
+        let quirks = Quirks {
+            listing_denied: true,
+            size_refused: true,
+            rnto_refuses_taken: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log) = provider_on_server_with(&["/a.txt", "/b.txt"], quirks).await;
+        let outcome = provider.rename("/a.txt", "/b.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(*log.lock().unwrap(), ["RNFR /a.txt", "RNTO /b.txt"]);
+    }
+
+    /// Only a refusal that says the name is taken is AlreadyExists: a reply
+    /// saying the source is missing, or a bare "Rename failed", is not.
+    #[test]
+    fn only_a_reply_saying_the_name_is_taken_reads_as_taken() {
+        for taken in [
+            "550 Cannot create a file when that file already exists.",
+            "553 Rename failed: File exists",
+            "550 Destination exists",
+        ] {
+            assert!(FtpProvider::reply_says_the_name_is_taken(taken), "{taken}");
+        }
+        for other in [
+            "550 Rename failed.",
+            "550 No such file or directory",
+            "550 File does not exist",
+            "550 file not exists",
+            "553 Permission denied",
+        ] {
+            assert!(!FtpProvider::reply_says_the_name_is_taken(other), "{other}");
+        }
+    }
+
+    /// A dotfile a bare LIST hides, on a server without MLST: `stat` did not
+    /// find it in the parent listing, `LIST /d/.env` then answered with the
+    /// file's own row, and a non-recursive delete read that as a directory
+    /// holding one entry (exit 9) for a plain file. It is found with
+    /// `LIST -a` and deleted.
+    #[tokio::test]
+    async fn a_dotfile_a_bare_list_hides_is_deleted_as_a_file() {
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log) = provider_on_server_with(&["/d/.env", "/d/b.txt"], quirks).await;
+        crate::providers::delete_non_recursive(&mut provider, "/d/.env")
+            .await
+            .expect("a plain file is deleted");
+        assert_eq!(*log.lock().unwrap(), ["DELE /d/.env"]);
+    }
+
+    /// vsftpd refuses `RMD` of a directory that is not empty with a bare 550
+    /// that does not say why, and a bare LIST hides the dotfile that keeps
+    /// it: the refusal read as a server error (exit 10). The directory is
+    /// looked into with `LIST -a`, and one that holds entries is
+    /// `DirectoryNotEmpty` (exit 9), as on the servers that say so.
+    #[tokio::test]
+    async fn a_bare_rmd_refusal_of_a_directory_holding_a_dotfile_is_not_empty() {
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/.env", "/e/b.txt"], quirks).await;
+        for dir in ["/d", "/e"] {
+            let refused = provider.rmdir(dir).await;
+            assert!(
+                matches!(refused, Err(ProviderError::DirectoryNotEmpty(_))),
+                "{dir}: {refused:?}"
+            );
+        }
+    }
+
+    /// A refusal that drops the session (a `553`, a refused data open)
+    /// leaves the next transfer to redial, and the redial landed in the login
+    /// directory while `current_path` said otherwise: a relative path then
+    /// named a file in another directory. The redial goes back to where the
+    /// session was.
+    #[tokio::test]
+    async fn a_redial_after_a_dropped_session_restores_the_directory() {
+        let quirks = Quirks {
+            list_only: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/b.txt"], quirks).await;
+        provider.cd("/d").await.expect("cd");
+        provider.stream = None;
+        provider.ensure_connected().await.expect("the redial");
+        assert_eq!(provider.current_path, "/d");
+        let names: Vec<String> = provider
+            .list("")
+            .await
+            .expect("list")
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, ["b.txt"], "a relative listing reads /d");
     }
 
     /// Where the listing is refused, the look answered "unknown" and the
@@ -7302,6 +7741,124 @@ mod transfer_verdict_tests {
         assert_eq!(
             server.await.unwrap(),
             Some(rustls::ProtocolVersion::TLSv1_2)
+        );
+    }
+
+    /// An implicit-FTPS server that takes each STOR's data over TLS, reads
+    /// the `expected` bytes, resets the data connection and refuses the file
+    /// with `552`, as a server over its quota does once it has the data.
+    /// Every command line is logged.
+    async fn ftps_server_refusing_after_the_data(
+        expected: usize,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        let acceptor = loopback_tls_acceptor();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let server_log = Arc::clone(&log);
+        tokio::spawn(async move {
+            while let Ok((tcp, _)) = listener.accept().await {
+                let acceptor = acceptor.clone();
+                let log = Arc::clone(&server_log);
+                tokio::spawn(async move {
+                    let Ok(tls) = acceptor.accept(tcp).await else {
+                        return;
+                    };
+                    let data_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let data_port = data_listener.local_addr().unwrap().port();
+                    let (read, mut write) = tokio::io::split(tls);
+                    let mut lines = BufReader::new(read).lines();
+                    if write.write_all(b"220 ready\r\n").await.is_err() {
+                        return;
+                    }
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        log.lock().unwrap().push(line.clone());
+                        let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+                        let reply = match cmd.as_str() {
+                            "USER" => "331 password please\r\n".to_string(),
+                            "PASS" => "230 logged in\r\n".to_string(),
+                            "PWD" => "257 \"/\" is current\r\n".to_string(),
+                            "PASV" => format!(
+                                "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                                data_port / 256,
+                                data_port % 256
+                            ),
+                            "STOR" => {
+                                let (tcp, _) = data_listener.accept().await.unwrap();
+                                if write.write_all(b"150 send it\r\n").await.is_err() {
+                                    return;
+                                }
+                                let mut data = acceptor.accept(tcp).await.unwrap();
+                                let mut received = vec![0u8; expected];
+                                let _ = data.read_exact(&mut received).await;
+                                let (tcp, _) = data.into_inner();
+                                tcp.set_zero_linger().unwrap();
+                                drop(tcp);
+                                "552 Quota exceeded.\r\n".to_string()
+                            }
+                            "QUIT" => {
+                                let _ = write.write_all(b"221 bye\r\n").await;
+                                return;
+                            }
+                            _ => "200 ok\r\n".to_string(),
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (port, log)
+    }
+
+    /// FTPS, a file the server refuses once it has the data (`552`) and
+    /// resets the data connection: our TLS close then fails, and `finish`
+    /// reported that failure instead of the `552`. "Connection reset" /
+    /// "broken pipe" read as a stale session, so the upload redialled and
+    /// sent the whole file a second time. The refusal is the answer now,
+    /// and the file goes out once.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_ftps_upload_refused_after_the_data_is_sent_once() {
+        const SIZE: usize = 1000;
+        let (port, log) = ftps_server_refusing_after_the_data(SIZE).await;
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "localhost".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::Implicit,
+            verify_cert: false,
+            initial_path: None,
+        });
+        provider.connect().await.expect("the dial must succeed");
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, vec![7u8; SIZE]).unwrap();
+        // Hold the upload after its last byte, so the server's reset is in
+        // before our close_notify goes out: the order a server that checks
+        // its quota at the end produces on a real network.
+        let hold: Box<dyn Fn(u64, u64) + Send> = Box::new(|sent, total| {
+            if sent == total {
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        });
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(20),
+            provider.upload(local.to_str().unwrap(), "/f.bin", Some(hold)),
+        )
+        .await
+        .expect("the upload must end");
+        let stors = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("STOR"))
+            .count();
+        assert_eq!(stors, 1, "the refused file was sent again: {outcome:?}");
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("552")),
+            "{outcome:?}"
         );
     }
 

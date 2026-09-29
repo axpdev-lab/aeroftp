@@ -88,6 +88,9 @@ fn classify_pcloud_result(result: u32, error: Option<&str>) -> Option<ProviderEr
         2002 | 2005 | 2009 | 2010 => ProviderError::NotFound(with_code(msg)),
         2003 | 2028 => ProviderError::PermissionDenied(msg),
         2004 => ProviderError::AlreadyExists(msg),
+        // 2006: "Folder is not empty", the answer of `deletefolder` to a
+        // folder that holds anything: the non-recursive delete did its job.
+        2006 => ProviderError::DirectoryNotEmpty(with_code(msg)),
         // 4006: "Throttle limit reached", often inside HTTP 200 JSON.
         // Map through a stable rate-limit phrase so AIMD sees RateLimited.
         PCLOUD_RESULT_THROTTLE => pcloud_throttle_error("API", Some(msg.as_str())),
@@ -572,6 +575,28 @@ impl PCloudProvider {
             Some(e) => Err(e),
             None => Ok(()),
         }
+    }
+
+    /// `deletefolder` (refuses a folder that is not empty) or
+    /// `deletefolderrecursive` on `path`, with pCloud's own error.
+    async fn delete_folder_call(&mut self, call: &str, path: &str) -> Result<(), ProviderError> {
+        let resolved = self.resolve_path(path);
+        let url = format!(
+            "{}/{call}?path={}",
+            self.api_base(),
+            urlencoding::encode(&resolved)
+        );
+
+        let auth = self.auth_header().await?;
+        let resp: PCloudResponse = self
+            .get_with_retry(&url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+
+        Self::check_response(&resp)?;
+        Ok(())
     }
 
     /// `renamefile` or `renamefolder` from `from` to `to`, by the source's
@@ -1183,27 +1208,15 @@ impl StorageProvider for PCloudProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        let resolved = self.resolve_path(path);
-        let url = format!(
-            "{}/deletefolderrecursive?path={}",
-            self.api_base(),
-            urlencoding::encode(&resolved)
-        );
-
-        let auth = self.auth_header().await?;
-        let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
-            .await?
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        Self::check_response(&resp)?;
-        Ok(())
+        // Round 2 of the 4.2.1 review: `deletefolder` is pCloud's own
+        // non-recursive delete, refused on the server with result 2006 for a
+        // folder that holds anything; `deletefolderrecursive` stays with
+        // `rmdir_recursive`.
+        self.delete_folder_call("deletefolder", path).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.rmdir(path).await
+        self.delete_folder_call("deletefolderrecursive", path).await
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
@@ -2565,6 +2578,31 @@ mod tests {
         let mut provider = fixture_connected();
         provider.api_base_override = Some(format!("http://{addr}"));
         (provider, calls)
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` was `deletefolderrecursive`, so
+    /// a folder that still held a file went with it after a listing that
+    /// had shown nothing. It is `deletefolder` now, pCloud's own
+    /// non-recursive delete (result 2006 on a folder that holds anything),
+    /// and only `rmdir_recursive` takes the content along.
+    #[tokio::test]
+    async fn rmdir_is_pclouds_non_recursive_deletefolder() {
+        let (mut provider, calls) = provider_on_pcloud_tree(&["/d"], r#"{"result":0}"#).await;
+        provider.rmdir("/d").await.expect("empty folder");
+        provider.rmdir_recursive("/d").await.expect("recursive");
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/deletefolder?path=/d", "/deletefolderrecursive?path=/d"]
+        );
+    }
+
+    #[test]
+    fn a_folder_pcloud_refuses_as_not_empty_is_directory_not_empty() {
+        let refused = classify_pcloud_result(2006, Some("Folder is not empty."));
+        assert!(
+            matches!(refused, Some(ProviderError::DirectoryNotEmpty(ref m)) if m.contains("2006")),
+            "{refused:?}"
+        );
     }
 
     /// `renamefile` with `topath` overwrites a file already there (live on

@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (zo zálohy)",
             "keystorePreviewLocalFromVault": "Nepodarilo sa prečítať zoznam profilov serverov tohto zariadenia; porovnanie preto používa zoznam serverov uložený v trezore.",
             "keystoreDecisionsFailed": "Import sa skončil, ale vaše voľby pre profily serverov sa nepodarilo použiť: {error}",
+            "keystoreListMergeFailed": "Import sa skončil, ale zoznam serverov zo zálohy sa nepodarilo zlúčiť so zoznamom tohto zariadenia: {error}",
+            "keystorePartitionSkipped": "Oddiel účtov v zálohe sa na tomto zariadení nedá odomknúť a bol vynechaný. Na obnovenie celého oddielu importujte s voľbou Prepísať.",
             "exportKeystoreDesc": "Exportovať všetky šifrované prihlasovacie údaje do súboru zálohy",
             "importKeystoreDesc": "Importovať prihlasovacie údaje zo súboru zálohy",
             "keystoreExported": "Trezor úspešne exportovaný ({count} záznamov)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Vymazať prepísania",
             "uiTokensApplied": "Použité prepísania: {count}",
             "uiTokensRejected": "Odmietnuté položky: {count}",
-            "keystorePreferencesFailed": "Import sa skončil, ale vaše predvoľby aplikácie sa nepodarilo obnoviť: {error}"
+            "keystorePreferencesFailed": "Import sa skončil, ale vaše predvoľby aplikácie sa nepodarilo obnoviť: {error}",
+            "keystorePreviewBackupUnreadable": "Zoznam serverov v tejto zálohe sa na tomto zariadení nedá prečítať, preto porovnanie používa zoznam uložený v trezore zálohy. Import napriek tomu nahradí zoznam serverov na tomto zariadení."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Nahrané",
             "reportDownloaded": "Stiahnuté",
             "reportSkipped": "Preskočené",
+            "keptDirs": "Ponechané priečinky",
+            "keptDirUnfinished": "obsahuje súbory, ktoré neboli synchronizované",
+            "keptDirEntries": "obsahuje vylúčené alebo nevypísané položky",
+            "keptDirServer": "na serveri nie je prázdny",
             "reportTransferred": "Prenesene",
             "reportDuration": "Doba trvania",
             "reportDirsCreated": "Vytvorených priečinkov",

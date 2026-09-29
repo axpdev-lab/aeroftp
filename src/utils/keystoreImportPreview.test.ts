@@ -15,6 +15,7 @@ const preview: ProfilePreview = {
     source: 'partition',
     localSource: 'partition',
     replacesList: true,
+    backupUnreadable: false,
     unchanged: 2,
     fingerprint: 'f'.repeat(64),
     changes: [change('srv_a', 'added', 'accept'), change('srv_b', 'changed', 'accept'), change('srv_c', 'removed', 'accept')],

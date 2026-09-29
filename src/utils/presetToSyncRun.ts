@@ -187,14 +187,14 @@ export const buildRemoteSyncInput = (
         });
     }
 
-    // GAP-10 — deletes must run deepest-first. A recursive compare flags a
-    // pruned directory and every descendant inside it; if the directory is
-    // deleted before its children the child deletes strand as `NotFound`
-    // (the local `delete_local_file` and a recursive provider delete both
-    // remove the subtree). Sorting the delete entries by descending path
-    // depth — and moving them after the copies — guarantees a directory is
-    // only ever removed once it is already empty. The sort is stable, so
-    // entries at the same depth keep their bucket order.
+    // GAP-10: deletes must run deepest-first. A recursive compare flags a
+    // pruned directory and every descendant inside it, and the runner removes
+    // a directory only once it is empty (`sync_remove_empty_dir`), and not at
+    // all when a row under it did not complete. Sorting the delete entries by
+    // descending path depth, after the copies, puts every row under a
+    // directory before the directory row, so its children are gone (or known
+    // to have stayed) when it is reached. The sort is stable, so entries at
+    // the same depth keep their bucket order.
     const depthOf = (p: string): number => p.split('/').filter(Boolean).length;
     const copies = files.filter((f) => !isDelete(f));
     const deletes = files

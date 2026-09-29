@@ -35,6 +35,12 @@ export interface ProfilePreview {
     /** 'vault' when this device's partition could not be read. */
     localSource: 'partition' | 'vault' | 'none';
     replacesList: boolean;
+    /**
+     * The backup's partition cannot be read on this device: the comparison
+     * uses the list in the backup's vault, and the import still replaces the
+     * list here.
+     */
+    backupUnreadable: boolean;
     unchanged: number;
     changes: ProfileChange[];
     /** Sent back with the decisions; the import refuses them if it differs. */
