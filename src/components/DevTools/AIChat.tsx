@@ -23,6 +23,7 @@ import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentM
 import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError, isFailoverWorthy } from './aiChatUtils';
 import { resolveRoutedModels } from './aiChatModelRouting';
 import { appendAssistantTurn, appendToolResult, assertToolResultsComplete, hasStructuredTurn, nativeTurnMatches, requiresNativeTurn, type NativeTurn } from './aiChatNativeTurn';
+import { createChatRequests } from './aiChatCancellableChat';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
 import { ToolMacro, resolveMacroSteps, DEFAULT_MACROS, MAX_TOTAL_MACRO_STEPS, createMacroStepCounter, MacroStepCounter } from './aiChatToolMacros';
@@ -736,6 +737,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             invoke('ai_cancel_stream', { streamId: activeStreamIdRef.current }).catch(() => {});
             activeStreamIdRef.current = null;
         }
+        chatRequestsRef.current.cancel();
         if (streamUnlistenRef.current) {
             streamUnlistenRef.current();
             streamUnlistenRef.current = null;
@@ -847,6 +849,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     } | null>(null);
     const streamingMsgIdRef = useRef<string | null>(null);
     const activeStreamIdRef = useRef<string | null>(null);
+    // Non-streaming ai_chat calls in flight, cancelled in the backend by Stop.
+    const chatRequestsRef = useRef(createChatRequests(invoke));
     const streamUnlistenRef = useRef<(() => void) | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1967,8 +1971,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     messageHistory.push({ role: 'user', content: 'Continue with the next step based on the tool result above. If the task is complete, respond normally without calling a tool.' });
                 }
 
-                // Make another AI call
-                const response = await invoke<{
+                // Make another AI call, cancellable by Stop like the stream
+                const response = await chatRequestsRef.current.call<{
                     content: string;
                     model: string;
                     tokens_used?: number;
@@ -1978,11 +1982,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     cache_read_input_tokens?: number;
                     native_turn?: NativeTurn;
                     tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                }>('ai_chat', {
-                    request: { ...aiRequest, messages: messageHistory,
-                        ...(aiRequest.tools && toolExposureRef.current && toolExposureRef.current.scope === aiRequest.turn_scope
-                            ? { tools: toolExposureRef.current.definitions() } : {}),
-                    },
+                }>({
+                    ...aiRequest, messages: messageHistory,
+                    ...(aiRequest.tools && toolExposureRef.current && toolExposureRef.current.scope === aiRequest.turn_scope
+                        ? { tools: toolExposureRef.current.definitions() } : {}),
                 });
 
                 if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
@@ -2643,7 +2646,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 } else {
                     // Non-streaming mode: single response
                     const response = await withRetry(() =>
-                        invoke<{
+                        chatRequestsRef.current.call<{
                             content: string;
                             model: string;
                             tokens_used?: number;
@@ -2654,7 +2657,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             finish_reason?: string;
                             native_turn?: NativeTurn;
                             tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                        }>('ai_chat', { request: aiRequest })
+                        }>(aiRequest)
                     );
 
                     // Billed tokens are recorded before any check that can end the turn.
