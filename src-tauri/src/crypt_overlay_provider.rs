@@ -1122,6 +1122,19 @@ impl StorageProvider for CryptOverlayProvider {
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let enc = self.map(path, true, AccessKind::Write)?;
+        // Round 2 of the 4.2.1 review: the folder is judged through the
+        // overlay first, so a file it holds refuses the removal. On the wire
+        // it can still hold what the overlay hides: an rclone dirIV sentinel
+        // goes with the folder (it is the folder's own), while the AeroCrypt
+        // config and a name the overlay cannot decrypt keep it, since the
+        // inner backend's `rmdir` refuses whatever is left.
+        self.refuse_non_empty_dir(path).await?;
+        let raw = self.inner.list(&enc).await?;
+        for entry in raw {
+            if matches!(self.keys, OverlayKeys::Rclone(_)) && self.keys.is_sentinel(&entry.name) {
+                self.inner.delete(&entry.path).await?;
+            }
+        }
         self.inner.rmdir(&enc).await
     }
 
