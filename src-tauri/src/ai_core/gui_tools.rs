@@ -1026,7 +1026,7 @@ mod tests {
     /// files are `(content, mode)` and whose links point elsewhere. Every
     /// command is logged. PASV data connections carry LIST and STOR.
     mod legacy_ftp {
-        use std::collections::BTreeMap;
+        use std::collections::{BTreeMap, BTreeSet};
         use std::sync::{Arc, Mutex};
         use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
         use tokio::net::TcpListener;
@@ -1035,6 +1035,9 @@ mod tests {
         pub struct Remote {
             pub files: BTreeMap<String, (Vec<u8>, u32)>,
             pub links: BTreeMap<String, String>,
+            /// Links whose LIST row carries no ` -> ` target, the way a
+            /// dangling link arrives.
+            pub bare_links: BTreeSet<String>,
             pub log: Vec<String>,
         }
 
@@ -1101,7 +1104,13 @@ mod tests {
                                         t
                                     )
                                 });
-                                files.chain(links).collect()
+                                let bare = r.bare_links.iter().map(|p| {
+                                    format!(
+                                        "lrwxrwxrwx 1 u g 7 Jan 20 10:00 {}\r\n",
+                                        p.trim_start_matches('/')
+                                    )
+                                });
+                                files.chain(links).chain(bare).collect()
                             };
                             socket.write_all(rows.as_bytes()).await.unwrap();
                             socket.shutdown().await.unwrap();
@@ -1223,6 +1232,29 @@ mod tests {
             .unwrap()
             .links
             .insert("/t.txt".into(), "real.txt".into());
+        let mut manager = legacy_session(&remote).await;
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+
+        let outcome =
+            super::publish_remote_edit_on_ftp_manager(&mut manager, &local, "/t.txt", false).await;
+
+        let r = remote.lock().unwrap();
+        assert!(
+            !r.log.iter().any(|line| line.starts_with("STOR")),
+            "nothing may be stored over a link: {:?}",
+            r.log
+        );
+        assert!(outcome.unwrap_err().contains("symbolic link"));
+    }
+
+    /// The same refusal for a link whose LIST row carries no ` -> ` target:
+    /// the adapter derived `is_symlink` from the target, so a dangling link
+    /// read as a regular file and the edit staged and replaced through it.
+    #[tokio::test]
+    async fn remote_edit_on_the_legacy_ftp_session_refuses_a_link_without_a_target() {
+        let remote = std::sync::Arc::new(std::sync::Mutex::new(legacy_ftp::Remote::default()));
+        remote.lock().unwrap().bare_links.insert("/t.txt".into());
         let mut manager = legacy_session(&remote).await;
         let local = staged(b"new");
         let local = local.path().to_string_lossy().to_string();

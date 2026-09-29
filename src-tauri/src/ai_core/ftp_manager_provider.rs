@@ -79,7 +79,7 @@ impl StorageProvider for FtpManagerProvider {
                 permissions: file.permissions,
                 owner: None,
                 group: None,
-                is_symlink: file.link_target.is_some(),
+                is_symlink: file.is_symlink,
                 link_target: file.link_target,
                 mime_type: None,
                 metadata: Default::default(),
@@ -149,6 +149,15 @@ impl StorageProvider for FtpManagerProvider {
         self.0.rename(from, to).await.map_err(failed)
     }
 
+    /// RNFR/RNTO, whose answer to an occupied destination is the server's
+    /// (see [`FtpManager::replace`]): the Unix-like servers replace in one
+    /// `rename(2)`, the Windows ones refuse. That is why the inherited
+    /// `supports_atomic_replace` of `true` stands — "no known obstacle", not
+    /// "verified": no FTP answer (FEAT, SYST, the banner) names the semantics
+    /// ahead of time, and on a refusing server the publish fails after the
+    /// temporary is staged, with the temporary deleted and the original
+    /// untouched. Answering `false` would refuse every edit on this session
+    /// and send the agent back to the in-place write this path replaced.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.0.replace(from, to).await.map_err(failed)
     }

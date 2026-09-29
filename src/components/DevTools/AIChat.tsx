@@ -1844,6 +1844,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     };
 
     const executeTransferPlan = useCallback(async (messageId: string, plan: TransferPlan, selectedOperationIds: string[]) => {
+        if (isLoading) return;
         const selectedSet = new Set(selectedOperationIds);
         const selectedOperations = plan.operations.filter(op => op.category !== 'prepare' && selectedSet.has(op.id));
         if (selectedOperations.length === 0) {
@@ -1881,6 +1882,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 status: 'approved',
             }));
 
+        // A plan is its own turn (M9): without one its calls ran under
+        // whatever turn the chat was on, Stop could not reach them, and a
+        // later chat would have adopted the ones still queued.
+        const turnScope = crypto.randomUUID();
+        activeTurnRef.current = turnScope;
+        chatRequestsRef.current.setTurn(turnScope);
         setExecutingTransferPlanId(messageId);
         setIsLoading(true);
         try {
@@ -1892,12 +1899,18 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }]);
 
             const levels = buildExecutionLevels(plannedCalls);
-            await executePipeline(levels, executeTool);
+            await executePipeline(levels, tc => executeTool(tc, 0, undefined, { turnScope }));
         } finally {
             setExecutingTransferPlanId(null);
-            setIsLoading(false);
+            // Stop or a new chat owns the shared state when the scope is no
+            // longer active; clearing it here would end that turn's loading.
+            if (activeTurnRef.current === turnScope) {
+                activeTurnRef.current = null;
+                chatRequestsRef.current.setTurn(null);
+                setIsLoading(false);
+            }
         }
-    }, [executeTool]);
+    }, [executeTool, isLoading]);
 
     // PERF-02: stable callbacks for the memoized ChatMessageRow. The row's
     // comparator deliberately ignores callback identity, so these read the latest

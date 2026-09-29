@@ -41,6 +41,12 @@ pub struct RemoteFile {
     pub path: String,
     pub size: Option<u64>,
     pub is_dir: bool,
+    /// Whether the row is a symbolic link, read from the listing itself. A
+    /// link whose row carries no `name -> target` arrow (a dangling one, an
+    /// MLSD answer) has no [`link_target`](Self::link_target) to derive this
+    /// from, and an edit that cannot tell it is a link would replace through
+    /// it.
+    pub is_symlink: bool,
     pub modified: Option<String>,
     pub permissions: Option<String>,
     /// Where a symlink points. This side used to discard it and leave the
@@ -282,6 +288,7 @@ impl FtpManager {
                 path: entry.path,
                 size: Some(entry.size),
                 is_dir: entry.is_dir,
+                is_symlink: entry.is_symlink,
                 modified: entry.modified,
                 permissions: entry.permissions,
                 link_target: entry.link_target,
@@ -938,6 +945,7 @@ impl FtpManager {
             // shared type is queued to grow an explicit "unknown".
             size: Some(entry.size),
             is_dir: entry.is_dir,
+            is_symlink: entry.is_symlink,
             modified: entry.modified,
             permissions: entry.permissions,
             link_target: entry.link_target,
@@ -1014,6 +1022,40 @@ mod charac_tests {
             "\nthe legacy listing parser changed behaviour\n--- ACTUAL ---\n{actual}\n--- EXPECTED ---\n{}\n",
             CHARAC_BASELINE
         );
+    }
+
+    /// A link whose row carries no `name -> target` arrow (a dangling one)
+    /// is still a link: the AeroAgent edit refuses a symbolic link by this
+    /// flag, and deriving it from the target would miss the row that has
+    /// none.
+    #[test]
+    fn the_parser_symlink_flag_reaches_remote_file_with_or_without_a_target() {
+        let m = FtpManager::new();
+        let now =
+            chrono::NaiveDateTime::parse_from_str("2026-09-25 12:00", "%Y-%m-%d %H:%M").unwrap();
+        let link = m
+            .parse_ftp_listing_at(
+                "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 link -> target",
+                now,
+            )
+            .unwrap();
+        assert!(link.is_symlink);
+        assert_eq!(link.link_target.as_deref(), Some("target"));
+        let dangling = m
+            .parse_ftp_listing_at(
+                "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling",
+                now,
+            )
+            .unwrap();
+        assert!(dangling.is_symlink, "no arrow in the row, still a link");
+        assert_eq!(dangling.link_target, None);
+        let file = m
+            .parse_ftp_listing_at(
+                "-rw-r--r--    1 user     group         123 Jan 20 10:00 notes.txt",
+                now,
+            )
+            .unwrap();
+        assert!(!file.is_symlink);
     }
 
     const CHARAC_BASELINE: &str = r#"LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 projects"

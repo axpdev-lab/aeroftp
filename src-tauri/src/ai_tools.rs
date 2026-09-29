@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::LazyLock;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 use tokio::process::Command as TokioCommand;
 use tokio_util::sync::CancellationToken;
@@ -2102,20 +2102,43 @@ struct TurnTools {
     /// ends, cancelled or not, so a late call of a stopped turn finds the
     /// flipped token while any call of the turn is still up.
     running: usize,
+    /// When Stop reached the turn with no call up. The entry is kept so a
+    /// call already on its way finds the token flipped, and pruned after
+    /// [`CANCELLED_TURN_KEEP`] so a turn that never calls leaves nothing.
+    cancelled_at: Option<Instant>,
 }
 
 static AI_TOOL_TURNS: LazyLock<tokio::sync::Mutex<HashMap<String, TurnTools>>> =
     LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
 
+/// How long a turn Stop reached with no call up keeps its flipped token:
+/// long enough for a call already on its way to be refused, short enough
+/// that turns that never call do not pile entries up.
+const CANCELLED_TURN_KEEP: Duration = Duration::from_secs(5 * 60);
+
+/// Drop the entries Stop left for turns with no call up once they have sat
+/// idle past [`CANCELLED_TURN_KEEP`]. Runs inside the calls that already
+/// take the lock, so no timer is needed.
+fn prune_cancelled_idle_turns(turns: &mut HashMap<String, TurnTools>) {
+    turns.retain(|_, entry| {
+        entry.running > 0
+            || entry
+                .cancelled_at
+                .is_none_or(|since| since.elapsed() < CANCELLED_TURN_KEEP)
+    });
+}
+
 /// Enter a tool call of `turn_id`: the turn's token, shared by every call of
 /// the turn, created at the first.
 async fn enter_turn_tool(turn_id: &str) -> CancellationToken {
     let mut turns = AI_TOOL_TURNS.lock().await;
+    prune_cancelled_idle_turns(&mut turns);
     let entry = turns
         .entry(turn_id.to_string())
         .or_insert_with(|| TurnTools {
             token: CancellationToken::new(),
             running: 0,
+            cancelled_at: None,
         });
     entry.running += 1;
     entry.token.clone()
@@ -2134,16 +2157,24 @@ async fn leave_turn_tool(turn_id: &str) {
 }
 
 /// Stop every tool of `turn_id`, running or not yet started. The token stays
-/// until the last running call of the turn leaves, then goes with it.
+/// until the last running call of the turn leaves, then goes with it. A Stop
+/// that lands before the first call still records the turn: the entry, its
+/// token already flipped, is what a late call finds, and
+/// [`prune_cancelled_idle_turns`] drops it once it has sat idle — no call
+/// will ever leave an entry nothing entered.
 pub(crate) async fn cancel_turn_tools(turn_id: &str) {
     let mut turns = AI_TOOL_TURNS.lock().await;
-    // Nothing of the turn is running: nothing to stop, and a token left
-    // behind for a turn that never calls again would only leak.
-    if let Some(entry) = turns.get_mut(turn_id) {
-        entry.token.cancel();
-        if entry.running == 0 {
-            turns.remove(turn_id);
-        }
+    prune_cancelled_idle_turns(&mut turns);
+    let entry = turns
+        .entry(turn_id.to_string())
+        .or_insert_with(|| TurnTools {
+            token: CancellationToken::new(),
+            running: 0,
+            cancelled_at: None,
+        });
+    entry.token.cancel();
+    if entry.running == 0 {
+        entry.cancelled_at = Some(Instant::now());
     }
 }
 
@@ -2292,15 +2323,66 @@ mod turn_cancel_tests {
             "the last call of the turn drops the entry"
         );
 
-        // A turn that ends without a Stop is dropped by its last call, and
-        // a Stop for a turn with nothing running leaves nothing behind.
+        // A turn that ends without a Stop is dropped by its last call. A
+        // Stop that lands only now cannot tell "ended" from "not started",
+        // so it records the turn: a call that still comes is refused.
         let quiet = format!("turn-{}", Uuid::new_v4());
         let token = enter_turn_tool(&quiet).await;
         leave_turn_tool(&quiet).await;
         assert!(!token.is_cancelled());
         assert!(!AI_TOOL_TURNS.lock().await.contains_key(&quiet));
         cancel_turn_tools(&quiet).await;
+        assert!(enter_turn_tool(&quiet).await.is_cancelled());
+        leave_turn_tool(&quiet).await;
         assert!(!AI_TOOL_TURNS.lock().await.contains_key(&quiet));
+    }
+
+    /// Stop can land before the turn's first `execute_ai_tool` (the call is
+    /// already on its way). With no entry the Stop recorded nothing and the
+    /// queued call started; the Stop now leaves the flipped token behind,
+    /// and the call finds it.
+    #[tokio::test]
+    async fn stop_before_the_first_call_refuses_the_call_that_comes() {
+        let turn = format!("turn-{}", Uuid::new_v4());
+        cancel_turn_tools(&turn).await;
+        let token = enter_turn_tool(&turn).await;
+        assert!(
+            token.is_cancelled(),
+            "the queued call finds the flipped token"
+        );
+        leave_turn_tool(&turn).await;
+        assert!(
+            !AI_TOOL_TURNS.lock().await.contains_key(&turn),
+            "the refused call still takes the entry with it"
+        );
+    }
+
+    /// The entry a Stop leaves for a turn that never calls has no call to
+    /// drop it: it is pruned once it has sat idle past the keep, while a
+    /// fresh record stays.
+    #[tokio::test]
+    async fn an_idle_cancelled_turn_is_pruned_after_the_keep() {
+        let stale = format!("turn-{}", Uuid::new_v4());
+        let fresh = format!("turn-{}", Uuid::new_v4());
+        {
+            let mut turns = AI_TOOL_TURNS.lock().await;
+            let token = CancellationToken::new();
+            token.cancel();
+            turns.insert(
+                stale.clone(),
+                TurnTools {
+                    token,
+                    running: 0,
+                    cancelled_at: Some(
+                        Instant::now() - CANCELLED_TURN_KEEP - Duration::from_secs(1),
+                    ),
+                },
+            );
+        }
+        cancel_turn_tools(&fresh).await;
+        let turns = AI_TOOL_TURNS.lock().await;
+        assert!(!turns.contains_key(&stale), "sat past the keep");
+        assert!(turns.contains_key(&fresh), "the new Stop stays");
     }
 }
 

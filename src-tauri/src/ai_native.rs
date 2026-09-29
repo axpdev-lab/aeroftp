@@ -523,8 +523,12 @@ pub(crate) fn parse(request: &AIRequest, value: &Value) -> Result<AIResponse, AI
                         .as_str()
                         .ok_or_else(|| invalid("Missing tool name"))?
                         .to_owned(),
-                    arguments: tool_arguments(tool["function"]["arguments"].as_str().unwrap_or(""))
-                        .ok_or_else(|| invalid("Invalid tool arguments JSON"))?,
+                    arguments: tool_arguments(
+                        tool["function"]["arguments"]
+                            .as_str()
+                            .ok_or_else(|| invalid("Invalid tool arguments JSON"))?,
+                    )
+                    .ok_or_else(|| invalid("Invalid tool arguments JSON"))?,
                 });
             }
         }
