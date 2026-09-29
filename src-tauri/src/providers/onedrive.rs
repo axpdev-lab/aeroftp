@@ -1674,17 +1674,21 @@ impl StorageProvider for OneDriveProvider {
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         // Round 2 of the 4.2.1 review: Graph's DELETE sends a folder to the
         // recycle bin with everything in it. The folder is read first
-        // (`folder.childCount`, its eTag): one that holds anything is
-        // refused, and the DELETE carries `If-Match` with the eTag read, so a
-        // folder Graph changed in between (OneDrive updates a folder's eTag
-        // with its children) is refused with 412 instead of taken.
+        // (`folder.childCount`, its cTag and eTag): one that holds anything
+        // is refused, and the DELETE carries `If-Match` with the tag read
+        // ([`rmdir_condition`]). The cTag changes with the folder's content,
+        // so a child added in between is refused with 412 instead of taken.
+        // OneDrive for Business returns no cTag on folders: there the eTag is
+        // the condition, which a new child may leave unchanged, so the
+        // `childCount` read is the check and one round trip is the window, as
+        // on the backends that check with a listing.
         let full_path = if path.starts_with('/') {
             path.to_string()
         } else {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
         let item_id = self.resolve_path(&full_path).await?;
-        let url = format!("{}?$select=id,eTag,folder", self.api_item(&item_id));
+        let url = format!("{}?$select=id,eTag,cTag,folder", self.api_item(&item_id));
         let response = self
             .client
             .get(&url)
@@ -1719,11 +1723,7 @@ impl StorageProvider for OneDriveProvider {
         // The DELETE is sent only on the condition of the eTag read: without
         // one, Graph would take a child added after the read along with the
         // folder (CodeRabbit on #979).
-        let Some(etag) = item
-            .get("eTag")
-            .and_then(|e| e.as_str())
-            .filter(|e| !e.is_empty())
-        else {
+        let Some(etag) = rmdir_condition(&item) else {
             return Err(ProviderError::Other(format!(
                 "{path} was not removed: Graph gave no eTag to delete it on condition"
             )));
@@ -2784,6 +2784,18 @@ fn copy_destination(current_path: &str, to: &str) -> (String, String) {
     (parent_of_absolute(&absolute), name)
 }
 
+/// The tag an `rmdir` DELETE is sent on (`If-Match`): the folder's cTag,
+/// which Graph changes with its content, or, where Graph gives none (folders
+/// on OneDrive for Business), its eTag. None when the read carried neither:
+/// no condition, no DELETE.
+fn rmdir_condition(item: &serde_json::Value) -> Option<&str> {
+    ["cTag", "eTag"].iter().find_map(|key| {
+        item.get(*key)
+            .and_then(|v| v.as_str())
+            .filter(|v| !v.is_empty())
+    })
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -3309,6 +3321,19 @@ mod tests {
             requests.lock().unwrap()
         );
         server.abort();
+    }
+
+    /// CodeRabbit on #979: a folder's eTag need not change when a child is
+    /// added, its cTag does. The DELETE is conditioned on the cTag when Graph
+    /// gives one, on the eTag only where it gives none.
+    #[test]
+    fn rmdir_conditions_the_delete_on_the_ctag_first() {
+        let both = serde_json::json!({ "eTag": "\"e\"", "cTag": "\"c\"" });
+        assert_eq!(rmdir_condition(&both), Some("\"c\""));
+        let business = serde_json::json!({ "eTag": "\"e\"" });
+        assert_eq!(rmdir_condition(&business), Some("\"e\""));
+        let neither = serde_json::json!({ "eTag": "" });
+        assert_eq!(rmdir_condition(&neither), None);
     }
 
     /// Graph for a folder `d` (id `D`) with `children` children.
