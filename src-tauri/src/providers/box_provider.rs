@@ -3735,7 +3735,7 @@ mod tests {
             if trash {
                 p.trash_files(&["/a".to_string()]).await.expect("trash /a");
             } else {
-                p.rmdir("/a").await.expect("rmdir /a");
+                p.rmdir_recursive("/a").await.expect("rmdir /a");
             }
             p.mkdir("/A").await.expect("mkdir /A");
             p.mkdir("/A/sub").await.expect("mkdir /A/sub");

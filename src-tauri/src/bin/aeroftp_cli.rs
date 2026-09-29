@@ -81228,7 +81228,10 @@ mod tests {
                         .filter(|entry| !self.hidden.contains(&entry.path))
                         .count();
                     return Err(if listed > 0 {
-                        ProviderError::DirectoryNotEmpty(format!("{path} holds {listed} entries"))
+                        ProviderError::DirectoryNotEmpty(format!(
+                            "{path} holds {listed} entr{}",
+                            if listed == 1 { "y" } else { "ies" }
+                        ))
                     } else {
                         ProviderError::ServerError(format!(
                             "550 {path}: Remove directory operation failed."
@@ -86244,9 +86247,23 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 "/root/old/y.txt"
             ]
         );
+        // Round 2 of the 4.2.1 review: the folder that still holds the
+        // excluded `b.log` is offered to the backend's non-recursive rmdir
+        // too, which refuses it, and the run says why it stayed.
         assert_eq!(
             *rmdirs.lock().unwrap(),
-            vec!["/root/old/sub".to_string(), "/root/old".to_string()]
+            vec![
+                "/root/old/sub".to_string(),
+                "/root/mixed".to_string(),
+                "/root/old".to_string()
+            ]
+        );
+        assert_eq!(stats.dirs_kept.len(), 1);
+        assert_eq!(stats.dirs_kept[0].path, "mixed");
+        assert!(
+            stats.dirs_kept[0].reason.contains("holds 1 entry"),
+            "{}",
+            stats.dirs_kept[0].reason
         );
     }
 

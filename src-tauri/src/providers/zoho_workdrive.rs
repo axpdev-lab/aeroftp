@@ -3987,6 +3987,7 @@ mod tests {
         let listing = r#"{"data":[{"id":"A","attributes":{"name":"a","type":"folder"}}]}"#;
         let (base, _server) = serve(vec![
             Route::get("/workdrive/api/v1/files/ROOT/files", 200, listing),
+            Route::get("/workdrive/api/v1/files/A/files", 200, r#"{"data":[]}"#),
             Route {
                 method: axum::http::Method::PATCH,
                 path: "/workdrive/api/v1/files/A",

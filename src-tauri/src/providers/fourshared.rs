@@ -1011,6 +1011,32 @@ impl FourSharedProvider {
     }
 }
 
+impl FourSharedProvider {
+    /// The API's delete of a folder, which takes whatever the folder holds
+    /// along: `rmdir` reaches it only for a folder that listed empty,
+    /// `rmdir_recursive` for any.
+    async fn remove_folder_whole(&mut self, path: &str) -> Result<(), ProviderError> {
+        let normalized = self.resolve_path(path);
+        let folder_id = self.resolve_folder_id(&normalized).await?;
+        let url = format!("{}/folders/{}", self.api_base(), folder_id);
+        let sent = self.signed_delete(&url).await;
+        // Whatever the answer, not only the folder's own id: the files and
+        // folders cached under it went with it (a later `put /dir/sub/x`
+        // resolved `/dir/sub` to a deleted folder).
+        self.forget_path(&normalized);
+        let resp = sent?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Delete folder failed ({}): {}",
+                status, body
+            )));
+        }
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl StorageProvider for FourSharedProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1534,29 +1560,11 @@ impl StorageProvider for FourSharedProvider {
         // content along, so a folder that lists anything is refused here and
         // only one that listed empty reaches it.
         self.refuse_non_empty_dir(path).await?;
-        let normalized = self.resolve_path(path);
-        let folder_id = self.resolve_folder_id(&normalized).await?;
-        let url = format!("{}/folders/{}", self.api_base(), folder_id);
-        let sent = self.signed_delete(&url).await;
-        // Whatever the answer, not only the folder's own id: the files and
-        // folders cached under it went with it (a later `put /dir/sub/x`
-        // resolved `/dir/sub` to a deleted folder).
-        self.forget_path(&normalized);
-        let resp = sent?;
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Delete folder failed ({}): {}",
-                status, body
-            )));
-        }
-        Ok(())
+        self.remove_folder_whole(path).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        // 4shared DELETE /folders/{id} is recursive by default
-        self.rmdir(path).await
+        self.remove_folder_whole(path).await
     }
 
     /// A move to the new folder and/or a rename, by id. What 4shared does
@@ -2184,7 +2192,7 @@ mod tests {
         }
         provider.delete("/src/a.txt").await.expect("delete");
         assert!(!provider.folder_cache.contains_key("/src/a.txt/old"));
-        provider.rmdir("/src").await.expect("rmdir");
+        provider.rmdir_recursive("/src").await.expect("rmdir");
         let files: Vec<&str> = provider.file_cache.keys().map(String::as_str).collect();
         assert!(files.is_empty(), "{files:?}");
         let mut folders: Vec<&str> = provider.folder_cache.keys().map(String::as_str).collect();

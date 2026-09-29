@@ -3564,6 +3564,7 @@ impl StorageProvider for WebDavProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.refuse_another_path_in_single_file_mode(path)?;
         // Round 2 of the 4.2.1 review: the API's delete takes a folder's
         // content along, so a folder that lists anything is refused here and
         // only one that listed empty reaches it.
