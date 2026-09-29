@@ -1500,6 +1500,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     contextLocalPath: localPath || undefined,
                     sessionId: activeConversationId || undefined,
                     approvalGrantId,
+                    turnId: options.turnScope ?? chatRequestsRef.current.turnId() ?? undefined,
                 });
             } finally {
                 dispatchAIStatus('streaming');
@@ -2156,6 +2157,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         autoStopRef.current = false;
         const turnScope = crypto.randomUUID();
         activeTurnRef.current = turnScope;
+        // M9: the tools of this turn are sent with its id, so Stop can reach
+        // the one running and refuse the ones not started.
+        chatRequestsRef.current.setTurn(turnScope);
         toolExposureRef.current = new ToolExposure(turnScope, toolRegistryRef.current);
         multiStepContextRef.current = null;
         setPendingToolCalls([]);

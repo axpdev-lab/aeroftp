@@ -128,10 +128,32 @@ pub trait ToolCtx: Send + Sync {
     fn extreme_mode(&self) -> bool {
         false
     }
+    /// The token that stops this call's turn (4.2.1 review, M9). `None` on a
+    /// surface without one; a set token is checked by [`dispatch_tool`]
+    /// before the tool starts and by the long-running tools between their
+    /// items, through [`check_cancelled`].
+    fn cancel_token(&self) -> Option<&tokio_util::sync::CancellationToken> {
+        None
+    }
     /// La surface di questo contesto. Usata dal dispatcher per filtrare
     /// tool non disponibili su questa surface (es. `aeroftp_*` MCP-only
     /// chiamato da GUI → `ToolError::NotOnSurface`).
     fn surface(&self) -> Surfaces;
+}
+
+/// The text of [`ToolError::Cancelled`], what the chat shows for a tool the
+/// user stopped.
+pub const CANCELLED: &str = "Tool cancelled: the turn was stopped";
+
+/// The cancel point of a tool: `Err(Cancelled)` once the turn's token is
+/// flipped, `Ok` on a context without a token. Called before a tool starts and
+/// by the long-running tools between their items, so Stop ends an upload of
+/// many files after the current one instead of after the last.
+pub fn check_cancelled(ctx: &dyn ToolCtx) -> Result<(), ToolError> {
+    match ctx.cancel_token() {
+        Some(token) if token.is_cancelled() => Err(ToolError::Cancelled),
+        _ => Ok(()),
+    }
 }
 
 /// Errori del dispatcher. `thiserror` già presente in Cargo.
@@ -147,6 +169,10 @@ pub enum ToolError {
     Exec(String),
     #[error("denied: {0}")]
     Denied(String),
+    /// The turn the tool ran for was stopped (M9): the tool did not start, or
+    /// stopped between two of its items. What it had done stays done.
+    #[error("{CANCELLED}")]
+    Cancelled,
     /// Gate 1 marker: la migrazione Gate 2 non ha ancora fornito un
     /// handler per questo tool. Quando arriva un tool in questo ramo,
     /// i dispatcher legacy (GUI/CLI/MCP) restano autoritative.
@@ -2069,6 +2095,8 @@ pub async fn dispatch_tool(
             reason,
         }
     })?;
+    // M9: a tool of a turn the user already stopped does not start.
+    check_cancelled(ctx)?;
     match tool_name {
         // ─── Area A: local_* (T3 Gate 2) ─────────────────────────────
         "local_list" => local_tools::local_list(ctx, args).await,
@@ -2433,6 +2461,7 @@ mod tests {
         surface: Surfaces,
         sink: NoopSink,
         creds: MockCreds,
+        cancel: Option<tokio_util::sync::CancellationToken>,
     }
 
     struct MockCreds;
@@ -2469,6 +2498,37 @@ mod tests {
         fn surface(&self) -> Surfaces {
             self.surface
         }
+        fn cancel_token(&self) -> Option<&tokio_util::sync::CancellationToken> {
+            self.cancel.as_ref()
+        }
+    }
+
+    /// M9 (4.2.1 review): Stop cancelled the chat request and the stream, and
+    /// a tool that was still running ran on to its end. A tool of a stopped
+    /// turn does not start, and one already running stops at its next item.
+    #[tokio::test]
+    async fn a_tool_of_a_stopped_turn_does_not_start() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"a").unwrap();
+        let ctx = MockCtx {
+            cancel: Some(token.clone()),
+            ..mock_ctx(Surfaces::GUI)
+        };
+        let args = json!({"path": dir.path().to_string_lossy()});
+        // Before Stop the tool runs.
+        let listed = dispatch_tool(&ctx, "local_list", &args).await.unwrap();
+        assert!(listed.to_string().contains("a.txt"), "{listed}");
+        assert!(check_cancelled(&ctx).is_ok());
+        token.cancel();
+        // After Stop it does not start, and the cancel point says so.
+        assert!(matches!(check_cancelled(&ctx), Err(ToolError::Cancelled)));
+        let err = dispatch_tool(&ctx, "local_list", &args).await.unwrap_err();
+        assert!(matches!(err, ToolError::Cancelled), "{err}");
+        assert_eq!(err.to_string(), CANCELLED);
+        // A context without a token is never cancelled.
+        let plain = mock_ctx(Surfaces::GUI);
+        assert!(check_cancelled(&plain).is_ok());
     }
 
     fn mock_ctx(surface: Surfaces) -> MockCtx {
@@ -2476,6 +2536,7 @@ mod tests {
             surface,
             sink: NoopSink,
             creds: MockCreds,
+            cancel: None,
         }
     }
 

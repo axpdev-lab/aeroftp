@@ -17,6 +17,7 @@ use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 use tokio::process::Command as TokioCommand;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 /// Allowed tool names (whitelist)
@@ -2089,6 +2090,76 @@ pub async fn grant_ai_tool_approval(
     })
 }
 
+/// The tools running for a chat turn, keyed by the turn id the chat gives
+/// every `execute_ai_tool` call of one message (M9, 4.2.1 review). Stop
+/// cancelled the chat request and the stream only; a tool still running, an
+/// upload of many files or a tree search, ran on to its end. `ai_cancel_tool_turn`
+/// flips the turn's token: the running tool returns at its next cancel point
+/// and a later tool of the same turn does not start.
+struct TurnTools {
+    token: CancellationToken,
+    /// Calls of this turn still running: the entry goes when the last one
+    /// ends, unless the turn was cancelled, so a late call of a stopped turn
+    /// still finds the flipped token.
+    running: usize,
+}
+
+static AI_TOOL_TURNS: LazyLock<tokio::sync::Mutex<HashMap<String, TurnTools>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
+
+/// Enter a tool call of `turn_id`: the turn's token, shared by every call of
+/// the turn, created at the first.
+async fn enter_turn_tool(turn_id: &str) -> CancellationToken {
+    let mut turns = AI_TOOL_TURNS.lock().await;
+    let entry = turns
+        .entry(turn_id.to_string())
+        .or_insert_with(|| TurnTools {
+            token: CancellationToken::new(),
+            running: 0,
+        });
+    entry.running += 1;
+    entry.token.clone()
+}
+
+/// Leave a tool call of `turn_id`: the last call of a turn that was not
+/// cancelled drops the entry, so the map holds only live turns.
+async fn leave_turn_tool(turn_id: &str) {
+    let mut turns = AI_TOOL_TURNS.lock().await;
+    if let Some(entry) = turns.get_mut(turn_id) {
+        entry.running = entry.running.saturating_sub(1);
+        if entry.running == 0 && !entry.token.is_cancelled() {
+            turns.remove(turn_id);
+        }
+    }
+}
+
+/// Stop every tool of `turn_id`, running or not yet started. The token stays
+/// until the last running call of the turn leaves, then goes with it.
+pub(crate) async fn cancel_turn_tools(turn_id: &str) {
+    let mut turns = AI_TOOL_TURNS.lock().await;
+    match turns.get_mut(turn_id) {
+        Some(entry) => {
+            entry.token.cancel();
+            if entry.running == 0 {
+                turns.remove(turn_id);
+            }
+        }
+        // Nothing of the turn is running: nothing to stop, and a token left
+        // behind for a turn that never calls again would only leak.
+        None => {}
+    }
+}
+
+/// Stop the tools of a chat turn: the one running returns at its next cancel
+/// point (between two files of an upload, two folders of a search), a tool the
+/// chat still sends for that turn does not start. A no-op for a turn with no
+/// tool running.
+#[tauri::command]
+pub async fn ai_cancel_tool_turn(turn_id: String) -> Result<(), String> {
+    cancel_turn_tools(&turn_id).await;
+    Ok(())
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_ai_tool(
@@ -2103,9 +2174,51 @@ pub async fn execute_ai_tool(
     context_local_path: Option<String>,
     session_id: Option<String>,
     approval_grant_id: Option<String>,
+    turn_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     if !ALLOWED_TOOLS.contains(&tool_name.as_str()) {
         return Err(format!("Unknown or disallowed tool: {}", tool_name));
+    }
+    let cancel = match turn_id.as_deref() {
+        Some(turn) => Some(enter_turn_tool(turn).await),
+        None => None,
+    };
+    let result = execute_ai_tool_of_turn(
+        app,
+        state,
+        app_state,
+        tool_name,
+        args,
+        context_local_path,
+        session_id,
+        approval_grant_id,
+        cancel,
+    )
+    .await;
+    if let Some(turn) = turn_id.as_deref() {
+        leave_turn_tool(turn).await;
+    }
+    result
+}
+
+/// The body of [`execute_ai_tool`], with the turn's token entered and left by
+/// the caller whatever the outcome.
+#[allow(clippy::too_many_arguments)]
+async fn execute_ai_tool_of_turn(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    app_state: tauri::State<'_, crate::AppState>,
+    tool_name: String,
+    args: serde_json::Value,
+    context_local_path: Option<String>,
+    session_id: Option<String>,
+    approval_grant_id: Option<String>,
+    cancel: Option<CancellationToken>,
+) -> Result<serde_json::Value, String> {
+    // M9: a tool of a turn the user already stopped does not start, also not
+    // its approval.
+    if cancel.as_ref().is_some_and(|token| token.is_cancelled()) {
+        return Err(crate::ai_core::tools::CANCELLED.to_string());
     }
 
     if requires_backend_write_approval(&tool_name, &args) {
@@ -2138,10 +2251,60 @@ pub async fn execute_ai_tool(
         context_local_path,
         approval_grant_id,
         session_id,
+        cancel: cancel.clone(),
     };
-    crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args)
-        .await
-        .map_err(|e| e.to_string())
+    let dispatch = crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args);
+    match cancel {
+        // The cancel point inside the tool ends a loop between two items; a
+        // tool waiting on one request (a large remote read) ends here, the
+        // way a cancelled `ai_chat` ends: the request is dropped, and what
+        // the tool had done stays done. A blocking step that has started
+        // runs to its end on the blocking pool, and its result is discarded.
+        Some(token) => tokio::select! {
+            _ = token.cancelled() => Err(crate::ai_core::tools::CANCELLED.to_string()),
+            res = dispatch => res.map_err(|e| e.to_string()),
+        },
+        None => dispatch.await.map_err(|e| e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod turn_cancel_tests {
+    use super::*;
+
+    /// M9 (4.2.1 review): Stop reached the chat request and the stream, never
+    /// a tool. Every call of a turn shares one token; Stop flips it, a call
+    /// that comes later for the same turn finds it flipped, and a turn whose
+    /// calls all ended without a Stop leaves nothing behind.
+    #[tokio::test]
+    async fn stop_flips_the_token_every_call_of_the_turn_shares() {
+        let turn = format!("turn-{}", Uuid::new_v4());
+        let first = enter_turn_tool(&turn).await;
+        let second = enter_turn_tool(&turn).await;
+        assert!(!first.is_cancelled());
+        cancel_turn_tools(&turn).await;
+        assert!(first.is_cancelled(), "the running call's token");
+        assert!(second.is_cancelled(), "the same token for every call");
+        // A call the chat still sends for the stopped turn finds it flipped.
+        assert!(enter_turn_tool(&turn).await.is_cancelled());
+        leave_turn_tool(&turn).await;
+        leave_turn_tool(&turn).await;
+        leave_turn_tool(&turn).await;
+        assert!(
+            !AI_TOOL_TURNS.lock().await.contains_key(&turn),
+            "the last call of the turn drops the entry"
+        );
+
+        // A turn that ends without a Stop is dropped by its last call, and
+        // a Stop for a turn with nothing running leaves nothing behind.
+        let quiet = format!("turn-{}", Uuid::new_v4());
+        let token = enter_turn_tool(&quiet).await;
+        leave_turn_tool(&quiet).await;
+        assert!(!token.is_cancelled());
+        assert!(!AI_TOOL_TURNS.lock().await.contains_key(&quiet));
+        cancel_turn_tools(&quiet).await;
+        assert!(!AI_TOOL_TURNS.lock().await.contains_key(&quiet));
+    }
 }
 
 #[cfg(test)]

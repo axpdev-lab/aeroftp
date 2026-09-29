@@ -42,4 +42,28 @@ describe('non-streaming ai_chat cancellation', () => {
         chat.cancel();
         expect(backend.calls.some(c => c.cmd === 'ai_cancel_chat')).toBe(false);
     });
+
+    // M9, tool side: Stop cancelled the chat request and the stream, and a
+    // tool still running for the turn (an upload of many files, a tree
+    // search) ran on to its end in the backend.
+    it('stops the tools of the current turn, by the id they were sent with', () => {
+        const backend = pendingBackend();
+        const chat = createChatRequests(backend.invoke);
+        chat.setTurn('turn-1');
+        expect(chat.turnId()).toBe('turn-1');
+        chat.cancel();
+        const stopped = backend.calls.find(c => c.cmd === 'ai_cancel_tool_turn');
+        expect(stopped?.args).toEqual({ turnId: 'turn-1' });
+        // The turn is over: a second Stop, or one between turns, sends nothing.
+        expect(chat.turnId()).toBeNull();
+        chat.cancel();
+        expect(backend.calls.filter(c => c.cmd === 'ai_cancel_tool_turn')).toHaveLength(1);
+    });
+
+    it('sends nothing for the tools when no turn is running', () => {
+        const backend = pendingBackend();
+        const chat = createChatRequests(backend.invoke);
+        chat.cancel();
+        expect(backend.calls.some(c => c.cmd === 'ai_cancel_tool_turn')).toBe(false);
+    });
 });

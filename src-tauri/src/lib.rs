@@ -20009,6 +20009,7 @@ pub fn run() {
             ai_approval_window::ai_approval_prompt,
             ai_approval_window::ai_approval_decide,
             ai_tools::execute_ai_tool,
+            ai_tools::ai_cancel_tool_turn,
             ai_tools::clipboard_read_image,
             plugins::prepare_plugin_tool_approval,
             // Context Intelligence commands
