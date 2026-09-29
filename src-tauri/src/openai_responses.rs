@@ -291,7 +291,7 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
                         })?;
                     let arguments: Value = item["arguments"]
                         .as_str()
-                        .and_then(|arguments| serde_json::from_str(arguments).ok())
+                        .and_then(crate::ai_native::tool_arguments)
                         .filter(Value::is_object)
                         .ok_or_else(|| {
                             AIError::InvalidResponse("Invalid Responses tool arguments".into())
@@ -398,7 +398,8 @@ impl ResponsesStreamAccumulator {
             .map(|call| AIToolCall {
                 id: call.call_id.clone(),
                 name: call.name.clone(),
-                arguments: serde_json::from_str(&call.arguments).unwrap_or_else(|_| json!({})),
+                arguments: crate::ai_native::tool_arguments(&call.arguments)
+                    .unwrap_or_else(|| json!({})),
             })
             .collect::<Vec<_>>();
         (!calls.is_empty()).then_some(calls)
@@ -520,8 +521,8 @@ impl ResponsesStreamAccumulator {
                     if call.call_id.is_empty()
                         || call.name.is_empty()
                         || !ids.insert(&call.call_id)
-                        || !serde_json::from_str::<Value>(&call.arguments)
-                            .is_ok_and(|value| value.is_object())
+                        || !crate::ai_native::tool_arguments(&call.arguments)
+                            .is_some_and(|value| value.is_object())
                     {
                         return Err("Invalid completed Responses tool call".into());
                     }
@@ -736,6 +737,36 @@ mod tests {
             done.tool_calls.unwrap()[0].arguments,
             json!({"path":"b.txt"})
         );
+    }
+
+    /// M10 of the 4.2.1 review: a tool without parameters may arrive with
+    /// `arguments: ""`, which both the body parse and the stream check
+    /// refused. Empty or blank arguments are the empty object.
+    #[test]
+    fn empty_function_call_arguments_are_an_empty_object() {
+        for args in ["", "  "] {
+            let body = json!({
+                "model":"gpt-5.6-sol",
+                "status":"completed",
+                "output":[{"type":"function_call","call_id":"call_0","name":"app_info","arguments":args}]
+            });
+            let parsed = parse_response_body(&body.to_string(), "fallback")
+                .unwrap_or_else(|e| panic!("arguments {args:?} refused: {e}"));
+            assert_eq!(parsed.tool_calls.unwrap()[0].arguments, json!({}));
+
+            let mut state = ResponsesStreamAccumulator::default();
+            state
+                .ingest(&json!({
+                    "type":"response.output_item.added","output_index":0,
+                    "item":{"type":"function_call","call_id":"call_0","name":"app_info","arguments":args}
+                }))
+                .unwrap();
+            let done = state
+                .ingest(&json!({"type":"response.completed","response":{}}))
+                .unwrap_or_else(|e| panic!("stream arguments {args:?} refused: {e}"))
+                .unwrap();
+            assert_eq!(done.tool_calls.unwrap()[0].arguments, json!({}));
+        }
     }
 
     #[test]
