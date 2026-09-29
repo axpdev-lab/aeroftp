@@ -2096,6 +2096,13 @@ impl KDriveProvider {
 
             files.extend(page.data);
             match (page.has_more, page.cursor) {
+                // The same cursor again would read the same page for ever.
+                (Some(true), Some(next)) if cursor.as_deref() == Some(next.as_str()) => {
+                    return Err(ProviderError::ServerError(
+                        "The trash listing announced more items under the cursor just read"
+                            .to_string(),
+                    ));
+                }
                 (Some(true), Some(next)) => cursor = Some(next),
                 // More items announced with no way to reach them: not a
                 // complete listing either.
@@ -2105,9 +2112,16 @@ impl KDriveProvider {
                             .to_string(),
                     ));
                 }
-                _ => {
+                (Some(false), _) => {
                     complete = true;
                     break;
+                }
+                // The field is documented as always present: a page without
+                // it does not say whether the trash ends here.
+                (None, _) => {
+                    return Err(ProviderError::ServerError(
+                        "The trash listing did not say whether more items follow".to_string(),
+                    ));
                 }
             }
         }
@@ -2791,10 +2805,17 @@ mod tests {
         provider_on_kdrive_trash_paged(folders, trashed, usize::MAX).await
     }
 
+    /// The trash double's answer with `per_page` set to it: the envelope
+    /// without its `has_more`.
+    const NO_HAS_MORE: usize = usize::MAX - 1;
+    /// The trash double's answer with `per_page` set to it: `has_more` under
+    /// the cursor the request carried.
+    const SAME_CURSOR: usize = usize::MAX - 2;
+
     /// [`provider_on_kdrive_trash`] listing the trash `per_page` items at a
     /// time in the documented envelope (`data`, `has_more`, `cursor` at the
     /// top level). With `per_page` 0 the first item comes with `has_more`
-    /// and no cursor.
+    /// and no cursor; see [`NO_HAS_MORE`] and [`SAME_CURSOR`].
     async fn provider_on_kdrive_trash_paged(
         folders: &'static [(i64, &'static str)],
         trashed: &'static [(i64, &'static str, i64)],
@@ -2851,6 +2872,19 @@ mod tests {
                                 }))
                                 .into_response()
                             };
+                            if per_page == NO_HAS_MORE {
+                                // The envelope without its `has_more`.
+                                return axum::Json(serde_json::json!({
+                                    "result": "success",
+                                    "data": &items[..1],
+                                    "response_at": 1,
+                                }))
+                                .into_response();
+                            }
+                            if per_page == SAME_CURSOR {
+                                // More announced under the cursor just read.
+                                return page(&items[..1], true, Some("0".to_string()));
+                            }
                             if per_page >= items.len() {
                                 return page(&items, false, None);
                             }
@@ -2967,6 +3001,43 @@ mod tests {
             "{:?}",
             purges.lock().unwrap()
         );
+    }
+
+    /// A page without `has_more`, which the API documents as always
+    /// present, read as the end of the trash and the one item read was
+    /// purged. It is an error, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_a_trash_page_that_does_not_say_if_more_follows() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            NO_HAS_MORE,
+        )
+        .await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("more items follow")),
+            "{outcome:?}"
+        );
+        assert!(purges.lock().unwrap().is_empty());
+    }
+
+    /// A page announcing more items under the cursor just read was asked
+    /// again and again until the page limit. It is refused at once.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_a_trash_cursor_that_does_not_move() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            SAME_CURSOR,
+        )
+        .await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("cursor just read")),
+            "{outcome:?}"
+        );
+        assert!(purges.lock().unwrap().is_empty());
     }
 
     /// One item of [`provider_on_kdrive_tree`]: id, name, parent id, `dir`
