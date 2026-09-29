@@ -48,11 +48,18 @@ export function cliExcludePatterns(userPatterns: readonly string[], backupDir: s
 
 /**
  * The user's own patterns out of a full list: the inverse of
- * [`compareExcludePatterns`], for a list read back from an exported script.
- * A default dropped here still applies, because every compare adds it.
+ * [`cliExcludePatterns`], for a list read back from an exported script. A
+ * default dropped here still applies, because every compare adds it, and so
+ * does the backup folder (`backupDir`, the Plan's default when not given),
+ * which the compare and every export take from the Plan: kept as a user
+ * pattern it would outlive a change of the folder.
  */
-export function userExcludePatterns(patterns: readonly string[]): string[] {
-    return patterns.filter((pattern) => !AEROSYNC_DEFAULT_EXCLUDES.includes(pattern));
+export function userExcludePatterns(
+    patterns: readonly string[],
+    backupDir: string = AEROSYNC_DEFAULT_BACKUP_DIR,
+): string[] {
+    const dir = backupDir.trim().replace(/^\/+|\/+$/g, '');
+    return patterns.filter((pattern) => !AEROSYNC_DEFAULT_EXCLUDES.includes(pattern) && pattern !== dir);
 }
 
 /**

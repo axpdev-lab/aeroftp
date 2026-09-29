@@ -232,6 +232,22 @@ describe('the exclusions an exported script carries', () => {
         };
         expect(buildAeroSyncTabStatePatch(settings, 'local-remote')['sync.exclude']).toBe('cache/**');
     });
+
+    it('leaves the backup folder an exported script carries out of the user field', () => {
+        // Review of #979: the exported list ends with the Plan's backup folder.
+        // Stored as a user pattern, it stayed excluded after the folder was
+        // changed, in every compare, CLI line and later export.
+        const exported = (backupDir: string) => ({
+            localPath: '/l', remotePath: '/r', direction: 'local_to_remote' as const,
+            deleteOrphans: true, excludePatterns: [...AEROSYNC_DEFAULT_EXCLUDES, 'cache/**', backupDir],
+        });
+        expect(buildAeroSyncTabStatePatch(exported('.aeroftp-versions'), 'local-remote')['sync.exclude']).toBe('cache/**');
+        expect(buildAeroSyncTabStatePatch(exported('history/versions'), 'local-remote', 'history/versions')['sync.exclude'])
+            .toBe('cache/**');
+        // A folder the user excluded on purpose, which is not the Plan's, stays.
+        expect(buildAeroSyncTabStatePatch(exported('history/versions'), 'local-remote')['sync.exclude'])
+            .toBe('cache/**, history/versions');
+    });
 });
 
 describe('a template written by AeroFTP 4.2.0', () => {

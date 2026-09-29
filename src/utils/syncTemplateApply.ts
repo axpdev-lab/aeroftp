@@ -204,17 +204,26 @@ function planConflict(value: string | null | undefined): ConflictPolicy | undefi
     }
 }
 
-/** Convert every import format into the controls owned by AeroSync's tabs. */
+/**
+ * Convert every import format into the controls owned by AeroSync's tabs.
+ * `backupDir` is the Plan's versioned-backup folder at the time of the
+ * import: an exported script carries it as its last exclude pattern
+ * ([`cliExcludePatterns`]), and it must not land in the user's field, or a
+ * later change of the backup folder would leave the old one excluded from
+ * every compare and export (review of #979).
+ */
 export function buildAeroSyncTabStatePatch(
     settings: ImportedSyncSettings,
     pairKind: AeroSyncPairKind | null,
+    backupDir: string = AEROSYNC_DEFAULT_BACKUP_DIR,
 ): AeroSyncTabStatePatch {
     const patch: AeroSyncTabStatePatch = {
         'sync.source': settings.localPath,
         'sync.destination': settings.remotePath,
-        // An exported script carries the compare defaults too; the field holds
-        // only the user's own, since the compare adds the defaults anyway.
-        'sync.exclude': userExcludePatterns(settings.excludePatterns).join(', '),
+        // An exported script carries the compare defaults and the backup
+        // folder too; the field holds only the user's own, since the compare
+        // adds the rest anyway.
+        'sync.exclude': userExcludePatterns(settings.excludePatterns, backupDir).join(', '),
         'plan.preset': planPreset(settings),
         'plan.direction': planDirection(settings.direction, pairKind),
     };
