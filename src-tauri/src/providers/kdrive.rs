@@ -2103,6 +2103,18 @@ impl KDriveProvider {
                     files.extend(data);
                     cursor = Some(next);
                 }
+                // More items announced with no way to reach them: not a
+                // complete listing either.
+                TrashPayload::Paginated {
+                    has_more: Some(true),
+                    cursor: None,
+                    ..
+                } => {
+                    return Err(ProviderError::ServerError(
+                        "The trash listing announced more items without a cursor to read them"
+                            .to_string(),
+                    ));
+                }
                 TrashPayload::Paginated { data, .. } | TrashPayload::Flat(data) => {
                     files.extend(data);
                     complete = true;
@@ -2792,7 +2804,8 @@ mod tests {
 
     /// [`provider_on_kdrive_trash`] listing the trash `per_page` items at a
     /// time in the paginated shape (`data`, `has_more`, `cursor`) while items
-    /// remain, and the flat array when they fit in one answer.
+    /// remain, and the flat array when they fit in one answer. With
+    /// `per_page` 0 the first item comes with `has_more` and no cursor.
     async fn provider_on_kdrive_trash_paged(
         folders: &'static [(i64, &'static str)],
         trashed: &'static [(i64, &'static str, i64)],
@@ -2839,6 +2852,14 @@ mod tests {
                                 .collect();
                             if per_page >= items.len() {
                                 return ok(serde_json::json!(items));
+                            }
+                            if per_page == 0 {
+                                // More announced, no cursor to reach it.
+                                return ok(serde_json::json!({
+                                    "data": items[..1],
+                                    "has_more": true,
+                                    "cursor": serde_json::Value::Null,
+                                }));
                             }
                             let to = items.len().min(cursor.saturating_add(per_page));
                             ok(serde_json::json!({
@@ -2919,6 +2940,29 @@ mod tests {
         let outcome = provider.delete_permanent("/new/a.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            purges.lock().unwrap().is_empty(),
+            "{:?}",
+            purges.lock().unwrap()
+        );
+    }
+
+    /// A listing that announces more items without a cursor to reach them
+    /// read as complete, and the one item read was purged. It is an error,
+    /// and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_a_trash_announced_beyond_its_cursor() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            0,
+        )
+        .await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("cursor")),
             "{outcome:?}"
         );
         assert!(
