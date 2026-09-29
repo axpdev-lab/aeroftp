@@ -645,6 +645,41 @@ fn host_vault_outcome(src: &Path, dst: &Path) -> HostVault {
     }
 }
 
+/// A host-config import that stopped on an error, with what it had done
+/// before it. The files already copied stay in the sandbox and load at the
+/// next start; a report that dropped their count left the user with no idea
+/// that part of the configuration was already in place (4.2.1 review, L12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlatpakImportError {
+    /// Files copied into the sandbox before the error. Zero when the copy
+    /// never started (no host configuration to import).
+    pub copied: usize,
+    /// The error, which names the count too, for the callers that show text.
+    pub message: String,
+}
+
+impl std::fmt::Display for FlatpakImportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for FlatpakImportError {}
+
+impl FlatpakImportError {
+    /// The failure as `aeroftp-cli flatpak-import --json` prints it: the CLI
+    /// error object plus `copied`, so a script can tell a copy that stopped
+    /// half way from one that never started.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "status": "error",
+            "error": self.message,
+            "code": 1,
+            "copied": self.copied,
+        })
+    }
+}
+
 /// Outcome of an import decision.
 #[derive(Debug, Clone)]
 pub struct FlatpakImportReport {
@@ -750,7 +785,7 @@ fn import_offer(
 /// ([`HostVault`]), because the GUI creates this install's vault at the first
 /// start, before the offer, and a vault the copy left behind must not be
 /// announced as imported.
-pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, String> {
+pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, FlatpakImportError> {
     apply_flatpak_host_import(accept, host_config_dir_under_flatpak(), aeroftp_data_root())
 }
 
@@ -761,7 +796,7 @@ fn apply_flatpak_host_import(
     accept: bool,
     source: Option<PathBuf>,
     target: Option<PathBuf>,
-) -> Result<FlatpakImportReport, String> {
+) -> Result<FlatpakImportReport, FlatpakImportError> {
     let mut report = FlatpakImportReport {
         copied: 0,
         vault: HostVault::Absent,
@@ -775,16 +810,22 @@ fn apply_flatpak_host_import(
                 // Looked at before the copy: what this install already has is
                 // exactly what the copy leaves in place.
                 report.vault = host_vault_outcome(src, dst);
-                report.copied = copy_missing_tree(src, dst).map_err(|e| {
-                    format!(
+                report.copied = copy_missing_tree(src, dst).map_err(|e| FlatpakImportError {
+                    copied: e.copied,
+                    message: format!(
                         "Import host config from {} to {}: {e}",
                         src.display(),
                         dst.display()
-                    )
+                    ),
                 })?;
                 report.nothing_importable = report.copied == 0 && !has_importable_file(src);
             }
-            _ => return Err("No host configuration available to import".to_string()),
+            _ => {
+                return Err(FlatpakImportError {
+                    copied: 0,
+                    message: "No host configuration available to import".to_string(),
+                })
+            }
         }
     }
     if let Some(dst) = target.as_deref() {
@@ -1897,9 +1938,26 @@ mod tests {
 
         assert!(sandbox.join("servers.json").is_file());
         assert!(
-            error.contains("1 file copied before"),
+            error.message.contains("1 file copied before"),
             "the error lost the partial count: {error}"
         );
+        // The count travels as a number too: the CLI's JSON error carries it,
+        // so a script can tell a copy that stopped half way from one that
+        // never started.
+        assert_eq!(error.copied, 1);
+        assert_eq!(error.to_json()["copied"], 1);
+        assert_eq!(error.to_json()["code"], 1);
+    }
+
+    /// An import with nothing to copy from stopped before the copy: the
+    /// error says it copied nothing, so a caller never reads a stale count.
+    #[test]
+    fn an_import_without_a_host_config_reports_zero_copied() {
+        let (_tmp, _host, sandbox) = flatpak_import_fixture();
+        let error = apply_flatpak_host_import(true, None, Some(sandbox))
+            .expect_err("nothing to import from");
+        assert_eq!(error.copied, 0);
+        assert_eq!(error.to_json()["copied"], 0);
     }
 
     #[test]

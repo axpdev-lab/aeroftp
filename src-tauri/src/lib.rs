@@ -16899,7 +16899,9 @@ async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, 
 
 /// The body of `flatpak_config_import_apply`, kept synchronous and run on the blocking pool.
 fn flatpak_config_import_apply_blocking(accept: bool) -> Result<serde_json::Value, String> {
-    portable::flatpak_host_import_apply(accept).map(|report| report.to_json())
+    portable::flatpak_host_import_apply(accept)
+        .map(|report| report.to_json())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
