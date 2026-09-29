@@ -1095,7 +1095,13 @@ impl StorageProvider for KoofrProvider {
         // Round 2 of the 4.2.1 review: the API's delete takes a folder's
         // content along, so a folder that lists anything is refused here and
         // only one that listed empty reaches it.
-        self.refuse_non_empty_dir(path).await?;
+        // `list` moves this session into the listed folder; the check must
+        // not, or the delete and every later relative path would resolve
+        // from inside the folder being removed (CodeRabbit on #979).
+        let saved_current_path = self.current_path.clone();
+        let checked = self.refuse_non_empty_dir(path).await;
+        self.current_path = saved_current_path;
+        checked?;
         // Koofr uses the same remove endpoint for files and directories
         self.delete(path).await
     }

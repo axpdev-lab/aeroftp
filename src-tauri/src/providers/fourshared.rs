@@ -1559,7 +1559,15 @@ impl StorageProvider for FourSharedProvider {
         // Round 2 of the 4.2.1 review: the API's delete takes a folder's
         // content along, so a folder that lists anything is refused here and
         // only one that listed empty reaches it.
-        self.refuse_non_empty_dir(path).await?;
+        // `list` moves this session into the listed folder; the check must
+        // not, or the delete and every later relative path would resolve
+        // from inside the folder being removed (CodeRabbit on #979).
+        let saved_current_path = self.current_path.clone();
+        let saved_current_folder_id = self.current_folder_id.clone();
+        let checked = self.refuse_non_empty_dir(path).await;
+        self.current_path = saved_current_path;
+        self.current_folder_id = saved_current_folder_id;
+        checked?;
         self.remove_folder_whole(path).await
     }
 

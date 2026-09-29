@@ -1716,14 +1716,23 @@ impl StorageProvider for OneDriveProvider {
             // A folder facet without a count: the listing decides.
             None => self.refuse_non_empty_dir(path).await?,
         }
-        let mut request = self
+        // The DELETE is sent only on the condition of the eTag read: without
+        // one, Graph would take a child added after the read along with the
+        // folder (CodeRabbit on #979).
+        let Some(etag) = item
+            .get("eTag")
+            .and_then(|e| e.as_str())
+            .filter(|e| !e.is_empty())
+        else {
+            return Err(ProviderError::Other(format!(
+                "{path} was not removed: Graph gave no eTag to delete it on condition"
+            )));
+        };
+        let response = self
             .client
             .delete(self.api_item(&item_id))
-            .header(AUTHORIZATION, self.auth_header().await?);
-        if let Some(etag) = item.get("eTag").and_then(|e| e.as_str()) {
-            request = request.header(reqwest::header::IF_MATCH, etag);
-        }
-        let response = request
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .header(reqwest::header::IF_MATCH, etag)
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -3267,6 +3276,35 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|r| r == "DELETE /v1.0/me/drive/items/D"),
+            "{:?}",
+            requests.lock().unwrap()
+        );
+        server.abort();
+    }
+
+    /// CodeRabbit on #979: an empty folder whose read carried no eTag was
+    /// deleted without `If-Match`, so a child added after the read went with
+    /// it. No eTag, no DELETE.
+    #[tokio::test]
+    async fn rmdir_sends_no_delete_without_an_etag() {
+        fn no_etag(
+            method: &axum::http::Method,
+            path: &str,
+        ) -> (axum::http::StatusCode, serde_json::Value) {
+            let (status, mut body) = graph_folder_answer(method, path, 0);
+            if let Some(map) = body.as_object_mut() {
+                map.remove("eTag");
+            }
+            (status, body)
+        }
+        let (mut p, requests, server) = graph_fixture(no_etag).await;
+        assert!(p.rmdir("/d").await.is_err());
+        assert!(
+            !requests
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r.starts_with("DELETE ")),
             "{:?}",
             requests.lock().unwrap()
         );
