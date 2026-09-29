@@ -267,4 +267,42 @@ mod tests {
             .block_on(async { receiver.await.unwrap_or(REFUSED) });
         assert!(!answer.approved);
     }
+
+    /// L14 of the 4.2.1 review: Linux release builds load this window from
+    /// the local server (`app_page_url`), a remote origin for the ACL, and
+    /// the capability named no remote URL, so `start_dragging` from the
+    /// custom titlebar was refused and the undecorated window could not be
+    /// moved. The capability has to cover that origin as well as the bundled
+    /// page, for this window only and with nothing more than dragging.
+    #[test]
+    fn the_approval_capability_covers_the_page_on_every_build() {
+        use tauri::utils::acl::capability::Capability;
+        let capability: Capability =
+            serde_json::from_str(include_str!("../capabilities/ai-approval.json")).unwrap();
+        let linux_release = url::Url::parse("http://127.0.0.1:14321/ai-approval.html").unwrap();
+        let remote = capability
+            .remote
+            .as_ref()
+            .map(|r| r.urls.as_slice())
+            .unwrap_or(&[]);
+        assert!(
+            remote.iter().any(|pattern| pattern
+                .parse::<tauri::utils::acl::RemoteUrlPattern>()
+                .is_ok_and(|p| p.test(&linux_release))),
+            "no remote URL of the capability matches {linux_release}: {remote:?}"
+        );
+        assert!(
+            capability.local,
+            "the bundled page (dev, macOS, Windows) lost it"
+        );
+        assert_eq!(
+            serde_json::to_value(&capability.windows).unwrap(),
+            serde_json::json!(["ai-approval-*"])
+        );
+        assert_eq!(
+            serde_json::to_value(&capability.permissions).unwrap(),
+            serde_json::json!(["core:window:allow-start-dragging"])
+        );
+        assert!(capability.webviews.is_empty() && capability.platforms.is_none());
+    }
 }
