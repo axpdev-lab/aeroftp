@@ -3047,11 +3047,22 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Removing directory: {}", full_path);
 
+        // `SSH_FXP_RMDIR` refuses a directory that is not empty on the server.
+        // A reply that says so (OpenSSH: "Directory not empty", status
+        // SSH_FX_DIR_NOT_EMPTY on v6 servers) is `DirectoryNotEmpty`; a
+        // bare "Failure" says no more than that and stays a server error.
         until_sftp_ends(&sftp.ended, sftp.remove_dir(&full_path))
             .await
             .map_err(|e| {
                 classify_russh_err(e, |s| {
-                    ProviderError::ServerError(format!("Failed to remove directory: {}", s))
+                    if super::ftp::reply_names_not_empty(&s) {
+                        ProviderError::DirectoryNotEmpty(format!(
+                            "Failed to remove directory: {}",
+                            s
+                        ))
+                    } else {
+                        ProviderError::ServerError(format!("Failed to remove directory: {}", s))
+                    }
                 })
             })?;
 

@@ -1776,10 +1776,19 @@ impl StorageProvider for FtpProvider {
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
-        stream
-            .rmdir(path)
-            .await
-            .map_err(|e| Self::classify_command_refusal("rmdir", path, e))?;
+        // `RMD` refuses a directory that is not empty on the server. A reply
+        // that says so (ProFTPD, Pure-FTPd, IIS: "Directory not empty") is
+        // `DirectoryNotEmpty`; vsftpd's bare "Remove directory operation
+        // failed." says no more than that and stays a server error.
+        stream.rmdir(path).await.map_err(|e| {
+            let refusal = Self::classify_command_refusal("rmdir", path, e);
+            match refusal {
+                ProviderError::ServerError(ref text) if reply_names_not_empty(text) => {
+                    ProviderError::DirectoryNotEmpty(text.clone())
+                }
+                other => other,
+            }
+        })?;
         Ok(())
     }
 
@@ -4064,6 +4073,15 @@ async fn ftp_download_one_range(
     }
 
     Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// Whether a server's refusal of `RMD` names a directory that is not empty.
+/// The words differ by server ("Directory not empty", "directory not
+/// empty."); the bare "Remove directory operation failed." of vsftpd, and a
+/// permission refusal, do not qualify.
+pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
+    let lower = reply.to_ascii_lowercase();
+    lower.contains("not empty") || lower.contains("notempty")
 }
 
 #[cfg(test)]
