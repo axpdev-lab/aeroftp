@@ -89,6 +89,7 @@ const PROTOCOL_ICON: Record<string, React.ReactNode> = {
     API: methodIcon('API', { size: 14, className: 'text-emerald-500' }),
     WebDAV: methodIcon('WebDAV', { size: 14, className: 'text-cyan-500' }),
     E2E: methodIcon('E2E', { size: 14, className: 'text-violet-500' }),
+    CLI: methodIcon('CLI', { size: 14, className: 'text-slate-500' }),
     FTP: methodIcon('FTP', { size: 14, className: 'text-gray-500' }),
     FTPS: methodIcon('FTPS', { size: 14, className: 'text-sky-500' }),
     SFTP: methodIcon('SFTP', { size: 14, className: 'text-indigo-500' }),
