@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Felülbírálások törlése",
             "uiTokensApplied": "Alkalmazott felülírások: {count}",
             "uiTokensRejected": "Elutasított bejegyzések: {count}",
-            "keystorePreferencesFailed": "Az importálás befejeződött, de az alkalmazás beállításait nem sikerült visszaállítani: {error}"
+            "keystorePreferencesFailed": "Az importálás befejeződött, de az alkalmazás beállításait nem sikerült visszaállítani: {error}",
+            "keystorePreviewBackupUnreadable": "Ennek a mentésnek a kiszolgálólistája nem olvasható ezen az eszközön, ezért az összehasonlítás a mentés széfjében tárolt listát használja. Az importálás ennek ellenére lecseréli az eszköz kiszolgálólistáját."
         },
         "devtools": {
             "title": "AeroTools",

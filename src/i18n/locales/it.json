@@ -1615,7 +1615,8 @@
             "uiTokensReset": "Cancella override",
             "uiTokensApplied": "Sostituzioni applicate: {count}",
             "uiTokensRejected": "Voci rifiutate: {count}",
-            "keystorePreferencesFailed": "L'importazione è terminata, ma le tue preferenze dell'app non sono state ripristinate: {error}"
+            "keystorePreferencesFailed": "L'importazione è terminata, ma le tue preferenze dell'app non sono state ripristinate: {error}",
+            "keystorePreviewBackupUnreadable": "L'elenco dei server in questo backup non può essere letto su questo dispositivo, quindi il confronto usa la copia salvata nel vault del backup. L'importazione sostituisce comunque l'elenco dei server su questo dispositivo."
         },
         "appearance": {
             "patternCross": "Croce",

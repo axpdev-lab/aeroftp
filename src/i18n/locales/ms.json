@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Kosongkan gantian",
             "uiTokensApplied": "Tulis ganti yang digunakan: {count}",
             "uiTokensRejected": "Entri yang ditolak: {count}",
-            "keystorePreferencesFailed": "Import selesai, tetapi keutamaan aplikasi anda tidak dapat dipulihkan: {error}"
+            "keystorePreferencesFailed": "Import selesai, tetapi keutamaan aplikasi anda tidak dapat dipulihkan: {error}",
+            "keystorePreviewBackupUnreadable": "Senarai pelayan dalam sandaran ini tidak dapat dibaca pada peranti ini, jadi perbandingan menggunakan senarai yang disimpan dalam peti besi sandaran. Import tetap menggantikan senarai pelayan pada peranti ini."
         },
         "devtools": {
             "title": "AeroTools",

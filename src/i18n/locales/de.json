@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Überschreibungen löschen",
             "uiTokensApplied": "Angewendete Überschreibungen: {count}",
             "uiTokensRejected": "Abgelehnte Einträge: {count}",
-            "keystorePreferencesFailed": "Der Import ist abgeschlossen, aber Ihre App-Einstellungen konnten nicht wiederhergestellt werden: {error}"
+            "keystorePreferencesFailed": "Der Import ist abgeschlossen, aber Ihre App-Einstellungen konnten nicht wiederhergestellt werden: {error}",
+            "keystorePreviewBackupUnreadable": "Die Serverliste in dieser Sicherung kann auf diesem Gerät nicht gelesen werden, daher verwendet der Vergleich die im Tresor der Sicherung gespeicherte Liste. Der Import ersetzt trotzdem die Serverliste auf diesem Gerät."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Xóa ghi đè",
             "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
             "uiTokensRejected": "Các mục bị từ chối: {count}",
-            "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}"
+            "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}",
+            "keystorePreviewBackupUnreadable": "Không thể đọc danh sách máy chủ trong bản sao lưu này trên thiết bị này, nên việc so sánh dùng danh sách được lưu trong kho của bản sao lưu. Việc nhập vẫn thay thế danh sách máy chủ trên thiết bị này."
         },
         "devtools": {
             "title": "AeroTools",

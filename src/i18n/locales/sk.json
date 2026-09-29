@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Vymazať prepísania",
             "uiTokensApplied": "Použité prepísania: {count}",
             "uiTokensRejected": "Odmietnuté položky: {count}",
-            "keystorePreferencesFailed": "Import sa skončil, ale vaše predvoľby aplikácie sa nepodarilo obnoviť: {error}"
+            "keystorePreferencesFailed": "Import sa skončil, ale vaše predvoľby aplikácie sa nepodarilo obnoviť: {error}",
+            "keystorePreviewBackupUnreadable": "Zoznam serverov v tejto zálohe sa na tomto zariadení nedá prečítať, preto porovnanie používa zoznam uložený v trezore zálohy. Import napriek tomu nahradí zoznam serverov na tomto zariadení."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Borrar anulaciones",
             "uiTokensApplied": "Sobrescrituras aplicadas: {count}",
             "uiTokensRejected": "Entradas rechazadas: {count}",
-            "keystorePreferencesFailed": "La importación terminó, pero no se pudieron restaurar tus preferencias de la aplicación: {error}"
+            "keystorePreferencesFailed": "La importación terminó, pero no se pudieron restaurar tus preferencias de la aplicación: {error}",
+            "keystorePreviewBackupUnreadable": "La lista de servidores de esta copia de seguridad no se puede leer en este dispositivo, así que la comparación usa la que está guardada en la bóveda de la copia de seguridad. La importación igualmente reemplaza la lista de servidores en este dispositivo."
         },
         "devtools": {
             "title": "AeroTools",

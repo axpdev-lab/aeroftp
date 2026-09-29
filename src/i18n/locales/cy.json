@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Clirio'r diysgrifiadau",
             "uiTokensApplied": "Diysgrifiadau a gymhwyswyd: {count}",
             "uiTokensRejected": "Cofnodion a wrthodwyd: {count}",
-            "keystorePreferencesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer eich dewisiadau ar gyfer y rhaglen: {error}"
+            "keystorePreferencesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer eich dewisiadau ar gyfer y rhaglen: {error}",
+            "keystorePreviewBackupUnreadable": "Ni ellir darllen rhestr gweinyddion y copi hwn ar y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr sydd wedi'i chadw yng nghladdgell y copi. Mae'r mewnforio'n dal i ddisodli rhestr gweinyddion y ddyfais hon."
         },
         "devtools": {
             "title": "AeroTools",

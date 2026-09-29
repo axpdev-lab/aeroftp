@@ -1194,7 +1194,8 @@
             "uiTokensReset": "I-clear ang mga override",
             "uiTokensApplied": "Mga na-apply na override: {count}",
             "uiTokensRejected": "Mga tinanggihang entry: {count}",
-            "keystorePreferencesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga kagustuhan mo sa app: {error}"
+            "keystorePreferencesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga kagustuhan mo sa app: {error}",
+            "keystorePreviewBackupUnreadable": "Hindi mabasa ang listahan ng server sa backup na ito sa device na ito, kaya ang paghahambing ay gumagamit ng listahan na naka-save sa vault ng backup. Papalitan pa rin ng pag-import ang listahan ng server sa device na ito."
         },
         "devtools": {
             "title": "AeroTools",

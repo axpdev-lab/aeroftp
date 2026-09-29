@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Išvalyti perrašymus",
             "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
             "uiTokensRejected": "Atmesti įrašai: {count}",
-            "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}"
+            "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}",
+            "keystorePreviewBackupUnreadable": "Šios atsarginės kopijos serverių sąrašo nepavyksta perskaityti šiame įrenginyje, todėl palyginimui naudojamas sąrašas, išsaugotas atsarginės kopijos saugykloje. Importavimas vis tiek pakeičia šio įrenginio serverių sąrašą."
         },
         "devtools": {
             "title": "AeroTools",

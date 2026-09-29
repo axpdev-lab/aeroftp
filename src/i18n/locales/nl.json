@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Overschrijvingen wissen",
             "uiTokensApplied": "Toegepaste overschrijvingen: {count}",
             "uiTokensRejected": "Afgewezen vermeldingen: {count}",
-            "keystorePreferencesFailed": "De import is voltooid, maar je app-voorkeuren konden niet worden hersteld: {error}"
+            "keystorePreferencesFailed": "De import is voltooid, maar je app-voorkeuren konden niet worden hersteld: {error}",
+            "keystorePreviewBackupUnreadable": "De serverlijst in deze back-up kan niet worden gelezen op dit apparaat, dus de vergelijking gebruikt de lijst die is opgeslagen in de kluis van de back-up. De import vervangt de serverlijst op dit apparaat desondanks."
         },
         "devtools": {
             "title": "AeroTools",

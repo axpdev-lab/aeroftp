@@ -1194,7 +1194,8 @@
             "uiTokensReset": "オーバーライドを消去",
             "uiTokensApplied": "適用された上書き: {count}",
             "uiTokensRejected": "拒否されたエントリー: {count}",
-            "keystorePreferencesFailed": "インポートは完了しましたが、アプリの設定を復元できませんでした: {error}"
+            "keystorePreferencesFailed": "インポートは完了しましたが、アプリの設定を復元できませんでした: {error}",
+            "keystorePreviewBackupUnreadable": "このバックアップのサーバー一覧はこのデバイスで読み取れないため、比較にはバックアップの保管庫に保存された一覧を使用します。インポートは、それでもこのデバイスのサーバー一覧を置き換えます。"
         },
         "devtools": {
             "title": "AeroTools",

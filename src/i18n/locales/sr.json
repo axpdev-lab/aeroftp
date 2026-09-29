@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Обриши замене",
             "uiTokensApplied": "Примењене замене: {count}",
             "uiTokensRejected": "Одбијени уноси: {count}",
-            "keystorePreferencesFailed": "Увоз је завршен, али ваша подешавања апликације нису враћена: {error}"
+            "keystorePreferencesFailed": "Увоз је завршен, али ваша подешавања апликације нису враћена: {error}",
+            "keystorePreviewBackupUnreadable": "Листа сервера у овој копији не може да се прочита на овом уређају, па поређење користи листу сачувану у трезору копије. Увоз ипак замењује листу сервера на овом уређају."
         },
         "devtools": {
             "title": "AeroTools",

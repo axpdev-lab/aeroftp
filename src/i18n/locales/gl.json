@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Borrar as substitucións",
             "uiTokensApplied": "Substitucións aplicadas: {count}",
             "uiTokensRejected": "Entradas rexeitadas: {count}",
-            "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}"
+            "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}",
+            "keystorePreviewBackupUnreadable": "A lista de servidores desta copia non se pode ler neste dispositivo, así que a comparación usa a lista gardada na caixa forte da copia. A importación substitúe igualmente a lista de servidores neste dispositivo."
         },
         "devtools": {
             "title": "AeroTools",

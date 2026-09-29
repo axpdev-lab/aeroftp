@@ -1194,7 +1194,8 @@
             "uiTokensReset": "清除覆盖",
             "uiTokensApplied": "已应用的覆盖：{count}",
             "uiTokensRejected": "被拒绝的条目：{count}",
-            "keystorePreferencesFailed": "导入已完成，但未能恢复您的应用偏好设置：{error}"
+            "keystorePreferencesFailed": "导入已完成，但未能恢复您的应用偏好设置：{error}",
+            "keystorePreviewBackupUnreadable": "此备份中的服务器列表无法在此设备上读取，因此比较将使用保存在备份保管库中的列表。导入仍会替换此设备上的服务器列表。"
         },
         "devtools": {
             "title": "AeroTools",

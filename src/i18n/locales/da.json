@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Ryd tilsidesættelser",
             "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
             "uiTokensRejected": "Afviste poster: {count}",
-            "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}"
+            "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}",
+            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhedskopi kan ikke læses på denne enhed, så sammenligningen bruger den liste, der er gemt i sikkerhedskopiens boks. Importen erstatter stadig serverlisten på denne enhed."
         },
         "devtools": {
             "title": "AeroTools",

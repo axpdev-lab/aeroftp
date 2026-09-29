@@ -3313,6 +3313,7 @@
             "keystoreDecisionKeepBoth": "Keep both",
             "keystoreCopyName": "{name} (from backup)",
             "keystorePreviewLocalFromVault": "This device's server profile list could not be read, so the comparison uses the server list stored in the vault.",
+            "keystorePreviewBackupUnreadable": "The server list in this backup cannot be read on this device, so the comparison uses the copy stored in the backup's vault. The import still replaces the server list on this device.",
             "keystoreDecisionsFailed": "The import finished, but your choices for server profiles could not be applied: {error}",
             "keystorePreferencesFailed": "The import finished, but your app preferences could not be restored: {error}",
             "importKeystoreDesc": "Import credentials from a backup file",

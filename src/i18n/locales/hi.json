@@ -1194,7 +1194,8 @@
             "uiTokensReset": "ओवरराइड हटाएँ",
             "uiTokensApplied": "लागू किए गए ओवरराइड: {count}",
             "uiTokensRejected": "अस्वीकृत प्रविष्टियाँ: {count}",
-            "keystorePreferencesFailed": "आयात पूरा हुआ, लेकिन आपकी ऐप प्राथमिकताएँ पुनर्स्थापित नहीं हो सकीं: {error}"
+            "keystorePreferencesFailed": "आयात पूरा हुआ, लेकिन आपकी ऐप प्राथमिकताएँ पुनर्स्थापित नहीं हो सकीं: {error}",
+            "keystorePreviewBackupUnreadable": "इस बैकअप की सर्वर सूची इस डिवाइस पर पढ़ी नहीं जा सकती, इसलिए तुलना बैकअप के वॉल्ट में सहेजी गई सूची से की जाती है। आयात फिर भी इस डिवाइस की सर्वर सूची बदल देता है।"
         },
         "devtools": {
             "title": "AeroTools",

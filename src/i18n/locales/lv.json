@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Notīrīt aizstājumus",
             "uiTokensApplied": "Lietotie aizstājumi: {count}",
             "uiTokensRejected": "Noraidītie ieraksti: {count}",
-            "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}"
+            "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}",
+            "keystorePreviewBackupUnreadable": "Šī dublējuma serveru sarakstu nevar nolasīt šajā ierīcē, tāpēc salīdzinājumā tiek izmantots dublējuma glabātavā saglabātais saraksts. Importēšana tomēr aizstāj šīs ierīces serveru sarakstu."
         },
         "devtools": {
             "title": "AeroTools",

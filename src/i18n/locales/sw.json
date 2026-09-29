@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Futa mabadiliko",
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
             "uiTokensRejected": "Maingizo yaliyokataliwa: {count}",
-            "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}"
+            "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}",
+            "keystorePreviewBackupUnreadable": "Orodha ya seva katika nakala hii haiwezi kusomwa kwenye kifaa hiki, kwa hivyo ulinganisho unatumia orodha iliyohifadhiwa kwenye hifadhi salama ya nakala hiyo. Uingizaji bado unachukua nafasi ya orodha ya seva kwenye kifaa hiki."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Hreinsa yfirskrifanir",
             "uiTokensApplied": "Beittar yfirskrifanir: {count}",
             "uiTokensRejected": "Hafnaðar færslur: {count}",
-            "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}"
+            "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}",
+            "keystorePreviewBackupUnreadable": "Ekki er hægt að lesa netþjónalista þessa afrits á þessu tæki, svo samanburðurinn notar listann sem er geymdur í hvelfingu afritsins. Innflutningurinn kemur samt í stað netþjónalista þessa tækis."
         },
         "devtools": {
             "title": "AeroTools",

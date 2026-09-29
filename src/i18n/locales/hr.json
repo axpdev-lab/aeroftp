@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Očisti nadjačavanja",
             "uiTokensApplied": "Primijenjena nadjačavanja: {count}",
             "uiTokensRejected": "Odbijeni unosi: {count}",
-            "keystorePreferencesFailed": "Uvoz je završen, ali vaše postavke aplikacije nije bilo moguće vratiti: {error}"
+            "keystorePreferencesFailed": "Uvoz je završen, ali vaše postavke aplikacije nije bilo moguće vratiti: {error}",
+            "keystorePreviewBackupUnreadable": "Popis poslužitelja u ovoj kopiji ne može se pročitati na ovom uređaju, pa usporedba koristi popis pohranjen u trezoru kopije. Uvoz ipak zamjenjuje popis poslužitelja na ovom uređaju."
         },
         "devtools": {
             "title": "AeroTools",

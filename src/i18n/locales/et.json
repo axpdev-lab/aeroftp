@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Tühjenda alistused",
             "uiTokensApplied": "Rakendatud asendused: {count}",
             "uiTokensRejected": "Tagasi lükatud kirjed: {count}",
-            "keystorePreferencesFailed": "Import lõppes, kuid sinu rakenduse eelistusi ei õnnestunud taastada: {error}"
+            "keystorePreferencesFailed": "Import lõppes, kuid sinu rakenduse eelistusi ei õnnestunud taastada: {error}",
+            "keystorePreviewBackupUnreadable": "Selle varukoopia serverite loendit ei saa selles seadmes lugeda, seega kasutab võrdlus varukoopia hoidlasse salvestatud loendit. Importimine asendab siiski selle seadme serverite loendi."
         },
         "devtools": {
             "title": "AeroTools",

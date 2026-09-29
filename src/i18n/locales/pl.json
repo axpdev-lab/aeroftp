@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Wyczyść nadpisania",
             "uiTokensApplied": "Zastosowane nadpisania: {count}",
             "uiTokensRejected": "Odrzucone wpisy: {count}",
-            "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}"
+            "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}",
+            "keystorePreviewBackupUnreadable": "Listy serwerów z tej kopii nie można odczytać na tym urządzeniu, więc porównanie korzysta z listy zapisanej w sejfie kopii. Import mimo to zastępuje listę serwerów na tym urządzeniu."
         },
         "devtools": {
             "title": "AeroTools",

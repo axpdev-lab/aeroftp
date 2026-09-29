@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Geçersiz kılmaları temizle",
             "uiTokensApplied": "Uygulanan geçersiz kılmalar: {count}",
             "uiTokensRejected": "Reddedilen girdiler: {count}",
-            "keystorePreferencesFailed": "İçe aktarma tamamlandı ancak uygulama tercihleriniz geri yüklenemedi: {error}"
+            "keystorePreferencesFailed": "İçe aktarma tamamlandı ancak uygulama tercihleriniz geri yüklenemedi: {error}",
+            "keystorePreviewBackupUnreadable": "Bu yedekteki sunucu listesi bu cihazda okunamıyor, bu yüzden karşılaştırma yedeğin kasasında saklanan listeyi kullanır. İçe aktarma yine de bu cihazdaki sunucu listesinin yerini alır."
         },
         "devtools": {
             "title": "AeroTools",

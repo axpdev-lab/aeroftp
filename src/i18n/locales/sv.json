@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Rensa åsidosättningar",
             "uiTokensApplied": "Tillämpade åsidosättningar: {count}",
             "uiTokensRejected": "Avvisade poster: {count}",
-            "keystorePreferencesFailed": "Importen är klar, men dina appinställningar kunde inte återställas: {error}"
+            "keystorePreferencesFailed": "Importen är klar, men dina appinställningar kunde inte återställas: {error}",
+            "keystorePreviewBackupUnreadable": "Serverlistan i den här säkerhetskopian kan inte läsas på den här enheten, så jämförelsen använder listan som finns i säkerhetskopians valv. Importen ersätter ändå serverlistan på den här enheten."
         },
         "devtools": {
             "title": "AeroTools",

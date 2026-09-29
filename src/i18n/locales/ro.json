@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Șterge suprascrierile",
             "uiTokensApplied": "Suprascrieri aplicate: {count}",
             "uiTokensRejected": "Intrări respinse: {count}",
-            "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}"
+            "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}",
+            "keystorePreviewBackupUnreadable": "Lista de servere din această copie nu poate fi citită pe acest dispozitiv, așa că comparația folosește lista salvată în seiful copiei. Importul înlocuiește totuși lista de servere de pe acest dispozitiv."
         },
         "devtools": {
             "title": "AeroTools",

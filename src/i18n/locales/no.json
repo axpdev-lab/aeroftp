@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Fjern overstyringer",
             "uiTokensApplied": "Brukte overstyringer: {count}",
             "uiTokensRejected": "Avviste oppføringer: {count}",
-            "keystorePreferencesFailed": "Importen er ferdig, men appinnstillingene dine kunne ikke gjenopprettes: {error}"
+            "keystorePreferencesFailed": "Importen er ferdig, men appinnstillingene dine kunne ikke gjenopprettes: {error}",
+            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhetskopien kan ikke leses på denne enheten, så sammenligningen bruker listen som er lagret i hvelvet til sikkerhetskopien. Importen erstatter likevel serverlisten på denne enheten."
         },
         "devtools": {
             "title": "AeroTools",

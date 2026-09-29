@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Tyhjennä ohitukset",
             "uiTokensApplied": "Käytetyt ohitukset: {count}",
             "uiTokensRejected": "Hylätyt kohteet: {count}",
-            "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}"
+            "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}",
+            "keystorePreviewBackupUnreadable": "Tämän varmuuskopion palvelinluetteloa ei voida lukea tällä laitteella, joten vertailussa käytetään varmuuskopion holviin tallennettua luetteloa. Tuonti korvaa silti tämän laitteen palvelinluettelon."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,8 @@
             "uiTokensReset": "Hapus penggantian",
             "uiTokensApplied": "Penggantian diterapkan: {count}",
             "uiTokensRejected": "Entri ditolak: {count}",
-            "keystorePreferencesFailed": "Impor selesai, tetapi preferensi aplikasi Anda tidak dapat dipulihkan: {error}"
+            "keystorePreferencesFailed": "Impor selesai, tetapi preferensi aplikasi Anda tidak dapat dipulihkan: {error}",
+            "keystorePreviewBackupUnreadable": "Daftar server dalam cadangan ini tidak dapat dibaca di perangkat ini, jadi perbandingan menggunakan daftar yang tersimpan di brankas cadangan. Impor tetap mengganti daftar server di perangkat ini."
         },
         "devtools": {
             "title": "AeroTools",
