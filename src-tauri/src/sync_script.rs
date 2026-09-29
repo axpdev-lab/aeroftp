@@ -34,6 +34,7 @@ const KNOWN_META_FIELDS: &[&str] = &[
     "compare_size",
     "compare_checksum",
     "conflict_mode",
+    "backup_dir",
 ];
 
 const CONFLICT_MODES: &[&str] = &["newer", "older", "larger", "smaller", "rename", "skip"];
@@ -152,6 +153,11 @@ pub struct AerosyncScriptProfile {
     pub resync: bool,
     #[serde(default)]
     pub watch: bool,
+    /// The Plan's versioned-backup folder at export time, kept in the
+    /// metadata block. The SYNC line excludes it too; an import restores it
+    /// to the Plan and leaves it out of the user's patterns.
+    #[serde(default)]
+    pub backup_dir: Option<String>,
 }
 
 /// Outcome of `parse_script`. `unmapped_fields` lists metadata keys
@@ -585,6 +591,11 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
         skip_matching: parsed_sync.skip_matching,
         resync: parsed_sync.resync,
         watch: parsed_sync.watch,
+        backup_dir: metadata_json
+            .get("backup_dir")
+            .and_then(|v| v.as_str())
+            .filter(|dir| !dir.is_empty())
+            .map(str::to_string),
     };
 
     Ok(ParsedScript {
@@ -749,6 +760,12 @@ fn build_metadata_json(profile: &AerosyncScriptProfile, app_version: &str) -> se
         map.insert(
             "conflict_mode".to_string(),
             serde_json::Value::String(mode.to_string()),
+        );
+    }
+    if let Some(dir) = profile.backup_dir.as_deref().filter(|dir| !dir.is_empty()) {
+        map.insert(
+            "backup_dir".to_string(),
+            serde_json::Value::String(dir.to_string()),
         );
     }
     serde_json::Value::Object(map)
@@ -1240,7 +1257,35 @@ mod tests {
             skip_matching: false,
             resync: false,
             watch: false,
+            backup_dir: None,
         }
+    }
+
+    /// #979 review: the backup folder rides in the metadata block, so an
+    /// import can give it back to the Plan instead of reading it as one of
+    /// the user's exclusions.
+    #[test]
+    fn the_backup_folder_round_trips_in_the_metadata() {
+        let mut original = sample(SyncProfile::mirror());
+        original.backup_dir = Some("history/versions".to_string());
+        let text = generate_script(&original, "4.2.1-test");
+        let parsed = parse_script(&text).expect("must parse");
+        assert_eq!(
+            parsed.profile.backup_dir.as_deref(),
+            Some("history/versions")
+        );
+        assert!(
+            parsed.unmapped_fields.is_empty(),
+            "{:?}",
+            parsed.unmapped_fields
+        );
+
+        let plain = parse_script(&generate_script(
+            &sample(SyncProfile::mirror()),
+            "4.2.1-test",
+        ))
+        .expect("must parse");
+        assert_eq!(plain.profile.backup_dir, None);
     }
 
     #[test]

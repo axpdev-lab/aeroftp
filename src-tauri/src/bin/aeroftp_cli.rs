@@ -66242,6 +66242,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                backup_dir: None,
             };
             let script = generate_script(&profile, "test");
             let lines = read_batch_script(&script).unwrap_or_else(|e| panic!("{}: {script}", e.1));
@@ -66496,6 +66497,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                backup_dir: None,
             });
             out.push(AerosyncScriptProfile {
                 profile: preset,
@@ -66511,6 +66513,7 @@ DISCONNECT\n";
                 skip_matching: true,
                 resync: true,
                 watch: true,
+                backup_dir: None,
             });
         }
         out
@@ -66537,6 +66540,7 @@ DISCONNECT\n";
                     skip_matching: want_skip,
                     resync: want_resync,
                     watch: want_watch,
+                    backup_dir: _,
                 } = exported.clone();
                 let SyncProfile {
                     id: _,
@@ -85998,6 +86002,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                backup_dir: None,
             },
             "test",
         );

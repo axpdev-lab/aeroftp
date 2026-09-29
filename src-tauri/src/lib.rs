@@ -13445,6 +13445,8 @@ struct SyncScriptExportArgs {
     // `None` means "the preset's own"; an empty list explicitly clears it. See
     // `sync::resolve_exclude_patterns`.
     exclude_patterns: Option<Vec<String>>,
+    #[serde(default)]
+    backup_dir: Option<String>,
     format: String,
 }
 
@@ -13473,6 +13475,7 @@ fn export_sync_script_cmd_blocking(args: SyncScriptExportArgs) -> Result<String,
         local_path: &args.local_path,
         remote_path: &args.remote_path,
         exclude_patterns: &excludes,
+        backup_dir: args.backup_dir.as_deref(),
         format,
     })
 }
@@ -13512,6 +13515,8 @@ struct AerosyncExportScriptArgs {
     resync: bool,
     #[serde(default)]
     watch: bool,
+    #[serde(default)]
+    backup_dir: Option<String>,
     output_path: String,
     #[serde(default)]
     also_generate_wrapper: bool,
@@ -13584,6 +13589,7 @@ fn aerosync_export_script_cmd_blocking(
         skip_matching: args.skip_matching,
         resync: args.resync,
         watch: args.watch,
+        backup_dir: args.backup_dir.clone().filter(|dir| !dir.is_empty()),
     };
 
     let app_version = env!("CARGO_PKG_VERSION");

@@ -79,7 +79,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         const patch = buildAeroSyncTabStatePatch(
             settings,
             context.pairKind,
-            tabState.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined)?.backupDir,
+            tabState.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined),
         );
         Object.entries(patch).forEach(([key, value]) => tabState.set(key, value));
         setShowTemplates(false);

@@ -242,11 +242,35 @@ describe('the exclusions an exported script carries', () => {
             deleteOrphans: true, excludePatterns: [...AEROSYNC_DEFAULT_EXCLUDES, 'cache/**', backupDir],
         });
         expect(buildAeroSyncTabStatePatch(exported('.aeroftp-versions'), 'local-remote')['sync.exclude']).toBe('cache/**');
-        expect(buildAeroSyncTabStatePatch(exported('history/versions'), 'local-remote', 'history/versions')['sync.exclude'])
-            .toBe('cache/**');
+        expect(buildAeroSyncTabStatePatch(
+            exported('history/versions'), 'local-remote', { enabled: true, backupDir: 'history/versions' },
+        )['sync.exclude']).toBe('cache/**');
         // A folder the user excluded on purpose, which is not the Plan's, stays.
         expect(buildAeroSyncTabStatePatch(exported('history/versions'), 'local-remote')['sync.exclude'])
             .toBe('cache/**, history/versions');
+    });
+});
+
+describe('the backup folder an exported script records (#979 review)', () => {
+    const exported = {
+        localPath: '/l', remotePath: '/r', direction: 'local_to_remote' as const, deleteOrphans: true,
+        excludePatterns: [...AEROSYNC_DEFAULT_EXCLUDES, 'cache/**', 'history/versions'],
+        backupDir: 'history/versions',
+    };
+
+    it('goes back to the Plan and out of the user field, whatever the Plan held before', () => {
+        const patch = buildAeroSyncTabStatePatch(exported, 'local-remote', { enabled: true, backupDir: 'other' });
+        expect(patch['sync.exclude']).toBe('cache/**');
+        expect(patch['plan.versionedBackup']).toEqual({ enabled: true, backupDir: 'history/versions' });
+    });
+
+    it('is read from both script formats', () => {
+        const legacy = settingsFromLegacyScript({
+            schema: 1, profile_id: 'mirror', profile_name: 'x', local_path: '/l', remote_path: '/r',
+            direction: 'local_to_remote', delete_orphans: true, exclude_patterns: [],
+            retries: null, retries_sleep: null, backup_dir: 'history/versions',
+        });
+        expect(legacy.backupDir).toBe('history/versions');
     });
 });
 

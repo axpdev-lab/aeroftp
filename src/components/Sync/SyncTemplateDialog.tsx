@@ -29,6 +29,7 @@ import {
     settingsFromAerosyncScript,
     settingsFromLegacyScript,
     settingsFromTemplate,
+    readScriptBackupDir,
     readScriptExcludePatterns,
     readSyncExcludePatterns,
     type ImportedSyncSettings,
@@ -220,6 +221,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                     remote_path: remotePath,
                     connect_profile: serverProfileName || null,
                     exclude_patterns_override: liveScriptExcludes(),
+                    backup_dir: readScriptBackupDir(tabState),
                     dry_run: false,
                     conflict_mode: 'newer',
                     track_renames: false,
@@ -261,6 +263,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 local_path: localPath,
                 remote_path: remotePath,
                 exclude_patterns: liveScriptExcludes(),
+                backup_dir: readScriptBackupDir(tabState),
                 format,
             },
         });

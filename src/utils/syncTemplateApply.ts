@@ -28,11 +28,16 @@ export const readSyncExcludePatterns = (store: TabStateStore | null, fallback: s
  * Plan showed.
  */
 export const readScriptExcludePatterns = (store: TabStateStore | null, fallback: string[]): string[] =>
-    cliExcludePatterns(
-        readSyncExcludePatterns(store, fallback),
-        store?.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined)?.backupDir
-            ?? AEROSYNC_DEFAULT_BACKUP_DIR,
-    );
+    cliExcludePatterns(readSyncExcludePatterns(store, fallback), readScriptBackupDir(store));
+
+/**
+ * The Plan's backup folder an exported script records on its own, next to
+ * the exclude list that also carries it, so an import can give it back to
+ * the Plan rather than read it as one of the user's patterns.
+ */
+export const readScriptBackupDir = (store: TabStateStore | null): string =>
+    store?.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined)?.backupDir
+        ?? AEROSYNC_DEFAULT_BACKUP_DIR;
 
 export interface ImportedSyncSettings {
     localPath: string;
@@ -40,6 +45,8 @@ export interface ImportedSyncSettings {
     direction: SyncDirection;
     deleteOrphans: boolean;
     excludePatterns: string[];
+    /** The backup folder the exported script recorded, when it has one. */
+    backupDir?: string;
     verifyPolicy?: VerifyPolicy;
     dryRun?: boolean;
     conflictMode?: string | null;
@@ -160,6 +167,7 @@ export function settingsFromLegacyScript(script: SyncScriptMeta): ImportedSyncSe
         direction: script.direction,
         deleteOrphans: script.delete_orphans,
         excludePatterns: script.exclude_patterns,
+        backupDir: script.backup_dir ?? undefined,
     };
 }
 
@@ -171,6 +179,7 @@ export function settingsFromAerosyncScript(script: AerosyncImportScriptResult): 
         direction: imported.profile.direction,
         deleteOrphans: imported.profile.delete_orphans,
         excludePatterns: imported.profile.exclude_patterns,
+        backupDir: imported.backup_dir ?? undefined,
         verifyPolicy: imported.profile.verify_policy,
         dryRun: imported.dry_run,
         conflictMode: imported.conflict_mode,
@@ -215,8 +224,13 @@ function planConflict(value: string | null | undefined): ConflictPolicy | undefi
 export function buildAeroSyncTabStatePatch(
     settings: ImportedSyncSettings,
     pairKind: AeroSyncPairKind | null,
-    backupDir: string = AEROSYNC_DEFAULT_BACKUP_DIR,
+    currentBackup?: VersionedBackupConfig,
 ): AeroSyncTabStatePatch {
+    // A script that recorded its backup folder gives it back to the Plan; an
+    // older one is read against the Plan's current folder.
+    const backupDir = settings.backupDir
+        ?? currentBackup?.backupDir
+        ?? AEROSYNC_DEFAULT_BACKUP_DIR;
     const patch: AeroSyncTabStatePatch = {
         'sync.source': settings.localPath,
         'sync.destination': settings.remotePath,
@@ -227,6 +241,12 @@ export function buildAeroSyncTabStatePatch(
         'plan.preset': planPreset(settings),
         'plan.direction': planDirection(settings.direction, pairKind),
     };
+    if (settings.backupDir) {
+        patch['plan.versionedBackup'] = {
+            enabled: currentBackup?.enabled ?? false,
+            backupDir: settings.backupDir,
+        } satisfies VersionedBackupConfig;
+    }
     const verify = planVerify(settings.verifyPolicy);
     if (verify) patch['plan.verifyPolicy'] = verify;
     if (settings.dryRun != null) patch['sync.dryRun'] = settings.dryRun;
