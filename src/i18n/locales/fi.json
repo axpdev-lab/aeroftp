@@ -806,7 +806,7 @@
             "keystorePreviewLocalFromVault": "Tämän laitteen palvelinprofiilien luetteloa ei voitu lukea, joten vertailussa käytetään holviin tallennettua palvelinluetteloa.",
             "keystoreDecisionsFailed": "Tuonti valmistui, mutta palvelinprofiileja koskevia valintojasi ei voitu toteuttaa: {error}",
             "keystoreListMergeFailed": "Tuonti valmistui, mutta varmuuskopion palvelinluetteloa ei voitu yhdistää tämän laitteen luetteloon: {error}",
-            "keystorePartitionSkipped": "Varmuuskopion tiliosiota ei voi avata tällä laitteella, ja se jätettiin pois: palvelinluettelo yhdistettiin varmuuskopion holvissa olevasta kopiosta. Tuo Korvaa-valinnalla palauttaaksesi osion kokonaan.",
+            "keystorePartitionSkipped": "Varmuuskopion tiliosiota ei voi avata tällä laitteella, ja se jätettiin pois. Tuo Korvaa-valinnalla palauttaaksesi osion kokonaan.",
             "exportKeystoreDesc": "Vie kaikki salatut tunnistetiedot varmuuskopiotiedostoon",
             "importKeystoreDesc": "Tuo tunnistetiedot varmuuskopiotiedostosta",
             "keystoreExported": "Avainholvi viety onnistuneesti ({count} merkintää)",

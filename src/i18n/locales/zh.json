@@ -806,7 +806,7 @@
             "keystorePreviewLocalFromVault": "无法读取此设备的服务器配置列表，因此比较使用保管库中保存的服务器列表。",
             "keystoreDecisionsFailed": "导入已完成，但未能应用您对服务器配置的选择：{error}",
             "keystoreListMergeFailed": "导入已完成，但未能将备份中的服务器列表与此设备的列表合并：{error}",
-            "keystorePartitionSkipped": "备份的账户分区无法在此设备上解锁，已被跳过：服务器列表已从备份保险库中的副本合并。请使用“覆盖”方式导入以完整恢复该分区。",
+            "keystorePartitionSkipped": "备份的账户分区无法在此设备上解锁，已被跳过。请使用“覆盖”方式导入以完整恢复该分区。",
             "exportKeystoreDesc": "将所有加密凭据导出到备份文件",
             "importKeystoreDesc": "从备份文件导入凭据",
             "keystoreExported": "密钥库导出成功（{count} 条记录）",

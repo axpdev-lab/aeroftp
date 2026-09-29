@@ -40254,8 +40254,7 @@ async fn cmd_keystore_import(
         if outcome.profile_partition_skipped {
             eprintln!(
                 "The backup's account partition cannot be unlocked on this machine and was \
-                 left out: the server list was merged from the copy in the backup's vault. \
-                 Import with --merge overwrite to restore that partition whole."
+                 left out. Import with --merge overwrite to restore that partition whole."
             );
         }
         if let Some(e) = &outcome.profile_decisions_error {

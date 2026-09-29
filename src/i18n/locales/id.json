@@ -806,7 +806,7 @@
             "keystorePreviewLocalFromVault": "Daftar profil server perangkat ini tidak dapat dibaca, jadi perbandingan memakai daftar server yang tersimpan di brankas.",
             "keystoreDecisionsFailed": "Impor selesai, tetapi pilihan Anda untuk profil server tidak dapat diterapkan: {error}",
             "keystoreListMergeFailed": "Impor selesai, tetapi daftar server dari cadangan tidak dapat digabungkan dengan daftar perangkat ini: {error}",
-            "keystorePartitionSkipped": "Partisi akun cadangan tidak dapat dibuka di perangkat ini dan dilewati: daftar server digabungkan dari salinan di brankas cadangan. Impor dengan Timpa untuk memulihkan partisi itu seutuhnya.",
+            "keystorePartitionSkipped": "Partisi akun cadangan tidak dapat dibuka di perangkat ini dan dilewati. Impor dengan Timpa untuk memulihkan partisi itu seutuhnya.",
             "exportKeystoreDesc": "Ekspor semua kredensial terenkripsi ke file cadangan",
             "importKeystoreDesc": "Impor kredensial dari file cadangan",
             "keystoreExported": "Keystore berhasil diekspor ({count} entri)",

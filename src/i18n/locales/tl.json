@@ -806,7 +806,7 @@
             "keystorePreviewLocalFromVault": "Hindi mabasa ang listahan ng mga profile ng server ng device na ito, kaya ang paghahambing ay gumagamit ng listahan ng server na naka-save sa vault.",
             "keystoreDecisionsFailed": "Tapos na ang pag-import, pero hindi nailapat ang mga pinili mo para sa mga profile ng server: {error}",
             "keystoreListMergeFailed": "Tapos na ang pag-import, pero hindi naipagsama ang listahan ng server mula sa backup sa listahan ng device na ito: {error}",
-            "keystorePartitionSkipped": "Hindi ma-unlock sa device na ito ang partition ng mga account ng backup at hindi ito isinama: pinagsama ang listahan ng mga server mula sa kopya sa vault ng backup. Mag-import gamit ang Overwrite para maibalik nang buo ang partition na iyon.",
+            "keystorePartitionSkipped": "Hindi ma-unlock sa device na ito ang partition ng mga account ng backup at hindi ito isinama. Mag-import gamit ang Overwrite para maibalik nang buo ang partition na iyon.",
             "exportKeystoreDesc": "I-export ang lahat ng naka-encrypt na kredensyal sa backup file",
             "importKeystoreDesc": "Mag-import ng mga kredensyal mula sa backup file",
             "keystoreExported": "Matagumpay na na-export ang keystore ({count} entry)",

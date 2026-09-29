@@ -565,9 +565,8 @@ pub struct KeystoreImportResult {
     #[serde(default)]
     pub user_partitions_unreadable: u32,
     /// The backup's `user_partitions.db` was left out of the restore: a
-    /// skip-existing import with no review cannot read it here, so this
-    /// device's partition stays and the plan merges the backup's vault list
-    /// into it (review of #980).
+    /// skip-existing import cannot read it here, so this device's partition
+    /// stays and the plan writes the merged list into it (review of #980).
     #[serde(default)]
     pub profile_partition_skipped: bool,
     /// F-012 W3: filesystem path of the timestamped snapshot taken of the
@@ -1836,8 +1835,9 @@ fn import_keystore_with_store(
         // version), exactly what the dialog starts from. A partition that
         // cannot be read here (another machine's keys, a locked account)
         // would replace this device's partition with one that opens nothing
-        // here, and the plan could not be written into it either: that
-        // partition is left out of the restore, and the plan merges the
+        // here, and the plan could not be written into it either: under
+        // "Skip existing" that partition is left out of the restore, see
+        // `profile_partition_skipped` below, and the plan merges the
         // backup's vault list into the partition this device has.
         None if merge_strategy == "skip_existing"
             && config_dir.is_some()
@@ -1865,10 +1865,12 @@ fn import_keystore_with_store(
         }
         None => None,
     };
-    let profile_partition_skipped = matches!(
-        &profile_plan,
-        Some((inputs, choices)) if inputs.backup_unreadable && choices.decisions.is_empty()
-    );
+    // Under "Skip existing", reviewed or not: the decisions are written into
+    // the partition this device keeps, where they can be, not into one that
+    // opens nothing here. "Overwrite" restores the backup's partition whole,
+    // as asked.
+    let profile_partition_skipped = merge_strategy == "skip_existing"
+        && matches!(&profile_plan, Some((inputs, _)) if inputs.backup_unreadable);
     let mut entries = if sections.vault {
         std::mem::take(&mut payload.vault_entries)
     } else {
@@ -3657,6 +3659,59 @@ mod tests {
         assert_eq!(
             effective_secret(&store, &cfg, "server_srv_photos").as_deref(),
             Some("photos-password")
+        );
+        assert_eq!(blob_of(&store), my_servers(&store, &cfg));
+    }
+
+    /// Review of #980, round 2: the same under a review. The decisions are
+    /// written into the partition this device keeps, where they can be, not
+    /// into a restored one that opens nothing here.
+    #[test]
+    fn a_reviewed_skip_existing_import_leaves_out_the_partition_it_cannot_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        store.store("server_srv_drive", "local-password").unwrap();
+        let (backup, _other_vault) = backup_of_another_machine(dir.path());
+        let fingerprint = previewed(&store, &cfg, &backup, "skip_existing");
+        let decisions = [
+            ProfileDecisionInput {
+                id: "srv_photos".into(),
+                decision: keystore_profile_plan::ProfileDecision::Accept,
+                copy_name: None,
+            },
+            ProfileDecisionInput {
+                id: "srv_drive".into(),
+                decision: keystore_profile_plan::ProfileDecision::Reject,
+                copy_name: None,
+            },
+        ];
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            }),
+        )
+        .unwrap();
+
+        assert!(result.profile_partition_skipped, "the result must say so");
+        assert_eq!(result.profile_decisions_error, None);
+        assert_eq!(result.profiles_after_decisions, Some(2));
+        let ids: Vec<String> = my_servers(&store, &cfg)
+            .iter()
+            .map(|p| p["id"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(ids, vec!["srv_photos", "srv_drive"]);
+        assert_eq!(
+            effective_secret(&store, &cfg, "server_srv_drive").as_deref(),
+            Some("local-password")
         );
         assert_eq!(blob_of(&store), my_servers(&store, &cfg));
     }

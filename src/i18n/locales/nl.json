@@ -806,7 +806,7 @@
             "keystorePreviewLocalFromVault": "De lijst met serverprofielen van dit apparaat kon niet worden gelezen, dus de vergelijking gebruikt de serverlijst in de kluis.",
             "keystoreDecisionsFailed": "De import is voltooid, maar je keuzes voor de serverprofielen konden niet worden toegepast: {error}",
             "keystoreListMergeFailed": "De import is voltooid, maar de serverlijst uit de back-up kon niet worden samengevoegd met de lijst van dit apparaat: {error}",
-            "keystorePartitionSkipped": "De accountpartitie van de back-up kan op dit apparaat niet worden ontgrendeld en is overgeslagen: de serverlijst is samengevoegd uit de kopie in de kluis van de back-up. Importeer met Overschrijven om die partitie volledig terug te zetten.",
+            "keystorePartitionSkipped": "De accountpartitie van de back-up kan op dit apparaat niet worden ontgrendeld en is overgeslagen. Importeer met Overschrijven om die partitie volledig terug te zetten.",
             "exportKeystoreDesc": "Alle versleutelde inloggegevens exporteren naar een back-upbestand",
             "importKeystoreDesc": "Inloggegevens importeren vanuit een back-upbestand",
             "keystoreExported": "Sleutelhanger succesvol geëxporteerd ({count} items)",

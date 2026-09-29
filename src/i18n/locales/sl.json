@@ -806,7 +806,7 @@
             "keystorePreviewLocalFromVault": "Seznama profilov strežnikov te naprave ni bilo mogoče prebrati, zato primerjava uporablja seznam strežnikov, shranjen v trezorju.",
             "keystoreDecisionsFailed": "Uvoz je končan, vendar vaših izbir za profile strežnikov ni bilo mogoče uveljaviti: {error}",
             "keystoreListMergeFailed": "Uvoz je končan, vendar seznama strežnikov iz varnostne kopije ni bilo mogoče združiti s seznamom te naprave: {error}",
-            "keystorePartitionSkipped": "Particije računov iz varnostne kopije na tej napravi ni mogoče odkleniti in je bila izpuščena: seznam strežnikov je bil združen iz kopije v trezorju varnostne kopije. Za obnovitev celotne particije uvozite z možnostjo Prepiši.",
+            "keystorePartitionSkipped": "Particije računov iz varnostne kopije na tej napravi ni mogoče odkleniti in je bila izpuščena. Za obnovitev celotne particije uvozite z možnostjo Prepiši.",
             "exportKeystoreDesc": "Izvozite vse šifrirane poverilnice v datoteko varnostne kopije",
             "importKeystoreDesc": "Uvozite poverilnice iz datoteke varnostne kopije",
             "keystoreExported": "Shramba ključev uspešno izvožena ({count} vnosov)",

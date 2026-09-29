@@ -806,7 +806,7 @@
             "keystorePreviewLocalFromVault": "Nie udało się odczytać listy profili serwerów tego urządzenia, więc porównanie używa listy serwerów zapisanej w sejfie.",
             "keystoreDecisionsFailed": "Import zakończył się, ale nie udało się zastosować Twoich wyborów dla profili serwerów: {error}",
             "keystoreListMergeFailed": "Import zakończył się, ale nie udało się scalić listy serwerów z kopii zapasowej z listą tego urządzenia: {error}",
-            "keystorePartitionSkipped": "Partycji kont z kopii zapasowej nie można odblokować na tym urządzeniu i została pominięta: lista serwerów została scalona z kopii w sejfie kopii zapasowej. Zaimportuj z opcją Nadpisz, aby przywrócić tę partycję w całości.",
+            "keystorePartitionSkipped": "Partycji kont z kopii zapasowej nie można odblokować na tym urządzeniu i została pominięta. Zaimportuj z opcją Nadpisz, aby przywrócić tę partycję w całości.",
             "exportKeystoreDesc": "Eksportuj wszystkie zaszyfrowane dane logowania do pliku kopii zapasowej",
             "importKeystoreDesc": "Importuj dane logowania z pliku kopii zapasowej",
             "keystoreExported": "Magazyn wyeksportowany pomyślnie ({count} wpisów)",
