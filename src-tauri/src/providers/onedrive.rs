@@ -3077,6 +3077,11 @@ mod tests {
                 let method = request.method().clone();
                 let path = request.uri().path().to_string();
                 seen.lock().unwrap().push(format!("{method} {path}"));
+                // Read the whole request before answering: a reply sent
+                // while an upload body is still arriving closes the
+                // connection under it, and on Windows the client then fails
+                // with "error sending request" instead of reading the reply.
+                let _ = axum::body::to_bytes(request.into_body(), usize::MAX).await;
                 let (status, body) = answer(&method, &path);
                 (status, Json(body))
             }
