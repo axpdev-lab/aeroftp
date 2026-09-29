@@ -806,6 +806,7 @@
             "keystorePreviewLocalFromVault": "Nepavyko nuskaityti šio įrenginio serverių profilių sąrašo, todėl palyginimui naudojamas saugykloje išsaugotas serverių sąrašas.",
             "keystoreDecisionsFailed": "Importavimas baigtas, bet jūsų pasirinkimų serverių profiliams pritaikyti nepavyko: {error}",
             "keystoreListMergeFailed": "Importavimas baigtas, bet atsarginės kopijos serverių sąrašo nepavyko sujungti su šio įrenginio sąrašu: {error}",
+            "keystorePartitionSkipped": "Atsarginės kopijos paskyrų skaidinio šiame įrenginyje atrakinti nepavyksta, todėl jis praleistas: serverių sąrašas sujungtas iš kopijos atsarginės kopijos saugykloje. Norėdami atkurti visą tą skaidinį, importuokite pasirinkę Perrašyti.",
             "exportKeystoreDesc": "Eksportuoti visus užšifruotus prisijungimo duomenis į atsarginės kopijos failą",
             "importKeystoreDesc": "Importuoti prisijungimo duomenis iš atsarginės kopijos failo",
             "keystoreExported": "Raktų saugykla sėkmingai eksportuota ({count} įrašų)",

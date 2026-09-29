@@ -806,6 +806,7 @@
             "keystorePreviewLocalFromVault": "Senarai profil pelayan peranti ini tidak dapat dibaca, jadi perbandingan menggunakan senarai pelayan yang disimpan dalam peti besi.",
             "keystoreDecisionsFailed": "Import selesai, tetapi pilihan anda untuk profil pelayan tidak dapat digunakan: {error}",
             "keystoreListMergeFailed": "Import selesai, tetapi senarai pelayan daripada sandaran tidak dapat digabungkan dengan senarai peranti ini: {error}",
+            "keystorePartitionSkipped": "Partition akaun sandaran tidak dapat dibuka kunci pada peranti ini dan ditinggalkan: senarai pelayan digabungkan daripada salinan dalam peti besi sandaran. Import dengan Tulis Ganti untuk memulihkan partition itu sepenuhnya.",
             "exportKeystoreDesc": "Eksport semua kelayakan disulitkan ke fail sandaran",
             "importKeystoreDesc": "Import kelayakan dari fail sandaran",
             "keystoreExported": "Stor kunci berjaya dieksport ({count} entri)",

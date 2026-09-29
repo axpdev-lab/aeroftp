@@ -806,6 +806,7 @@
             "keystorePreviewLocalFromVault": "Šīs ierīces serveru profilu sarakstu neizdevās nolasīt, tāpēc salīdzinājums izmanto glabātavā saglabāto serveru sarakstu.",
             "keystoreDecisionsFailed": "Importēšana ir pabeigta, bet neizdevās piemērot jūsu serveru profilu izvēles: {error}",
             "keystoreListMergeFailed": "Importēšana ir pabeigta, bet neizdevās apvienot dublējuma serveru sarakstu ar šīs ierīces sarakstu: {error}",
+            "keystorePartitionSkipped": "Dublējuma kontu nodalījumu šajā ierīcē nevar atbloķēt, un tas tika izlaists: serveru saraksts tika apvienots no kopijas dublējuma glabātavā. Lai atjaunotu visu nodalījumu, importējiet ar opciju Pārrakstīt.",
             "exportKeystoreDesc": "Eksportēt visus šifrētos akreditācijas datus dublējuma failā",
             "importKeystoreDesc": "Importēt akreditācijas datus no dublējuma faila",
             "keystoreExported": "Atslēgu glabātuve veiksmīgi eksportēta ({count} ieraksti)",

@@ -806,6 +806,7 @@
             "keystorePreviewLocalFromVault": "Selle seadme serveriprofiilide loendit ei õnnestunud lugeda, seega kasutab võrdlus hoidlasse salvestatud serverite loendit.",
             "keystoreDecisionsFailed": "Import lõppes, kuid sinu valikuid serveriprofiilide kohta ei õnnestunud rakendada: {error}",
             "keystoreListMergeFailed": "Import lõppes, kuid varukoopia serverite loendit ei õnnestunud selle seadme loendiga ühendada: {error}",
+            "keystorePartitionSkipped": "Varukoopia kontode partitsiooni ei saa selles seadmes avada ja see jäeti välja: serverite loend liideti varukoopia hoidlas olevast koopiast. Kogu partitsiooni taastamiseks impordi valikuga Kirjuta üle.",
             "exportKeystoreDesc": "Eksportida kõik krüpteeritud mandaadid varukoopiafaili",
             "importKeystoreDesc": "Importida mandaadid varukoopiafailist",
             "keystoreExported": "Võtmehoidla edukalt eksporditud ({count} kirjet)",

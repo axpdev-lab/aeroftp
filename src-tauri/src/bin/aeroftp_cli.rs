@@ -40223,6 +40223,7 @@ async fn cmd_keystore_import(
             "requires_restart": outcome.requires_restart,
             "user_partitions_rekeyed": outcome.user_partitions_rekeyed,
             "user_partitions_unreadable": outcome.user_partitions_unreadable,
+            "profile_partition_skipped": outcome.profile_partition_skipped,
             "profile_list_error": outcome.profile_decisions_error,
         });
         println!("{}", summary);
@@ -40248,6 +40249,13 @@ async fn cmd_keystore_import(
                  (backup made elsewhere without a portable key). Re-export from the source \
                  machine with a passphrase set on those users.",
                 outcome.user_partitions_unreadable
+            );
+        }
+        if outcome.profile_partition_skipped {
+            eprintln!(
+                "The backup's account partition cannot be unlocked on this machine and was \
+                 left out: the server list was merged from the copy in the backup's vault. \
+                 Import with --merge overwrite to restore that partition whole."
             );
         }
         if let Some(e) = &outcome.profile_decisions_error {

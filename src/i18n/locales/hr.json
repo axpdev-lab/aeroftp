@@ -821,6 +821,7 @@
             "keystorePreviewLocalFromVault": "Popis profila poslužitelja ovog uređaja nije moguće pročitati, pa usporedba koristi popis poslužitelja spremljen u trezoru.",
             "keystoreDecisionsFailed": "Uvoz je završen, ali vaši odabiri za profile poslužitelja nisu primijenjeni: {error}",
             "keystoreListMergeFailed": "Uvoz je završen, ali popis poslužitelja iz sigurnosne kopije nije spojen s popisom ovog uređaja: {error}",
+            "keystorePartitionSkipped": "Particija računa sigurnosne kopije ne može se otključati na ovom uređaju i izostavljena je: popis poslužitelja spojen je iz kopije u trezoru sigurnosne kopije. Uvezite s opcijom Prebriši da biste tu particiju vratili u cijelosti.",
             "exportKeystoreDesc": "Izvezi sve kriptirane vjerodajnice u datoteku sigurnosne kopije",
             "importKeystoreDesc": "Uvezi vjerodajnice iz datoteke sigurnosne kopije",
             "keystoreExported": "Trezor uspješno izvezen ({count} stavki)",

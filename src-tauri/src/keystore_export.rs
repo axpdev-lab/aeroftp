@@ -564,6 +564,12 @@ pub struct KeystoreImportResult {
     /// from the source with a passphrase set.
     #[serde(default)]
     pub user_partitions_unreadable: u32,
+    /// The backup's `user_partitions.db` was left out of the restore: a
+    /// skip-existing import with no review cannot read it here, so this
+    /// device's partition stays and the plan merges the backup's vault list
+    /// into it (review of #980).
+    #[serde(default)]
+    pub profile_partition_skipped: bool,
     /// F-012 W3: filesystem path of the timestamped snapshot taken of the
     /// pre-existing `user_partitions.db` immediately before the import
     /// overwrote it. `None` when there was no local partition DB to preserve
@@ -1828,8 +1834,11 @@ fn import_keystore_with_store(
         // the vault blob below never reached it. Apply the plan with its
         // defaults (added: accept; changed and only here: keep this device's
         // version), exactly what the dialog starts from. A partition that
-        // cannot be read here cannot take a list either: that import keeps
-        // the blob union, the only list it has.
+        // cannot be read here (another machine's keys, a locked account)
+        // would replace this device's partition with one that opens nothing
+        // here, and the plan could not be written into it either: that
+        // partition is left out of the restore, and the plan merges the
+        // backup's vault list into the partition this device has.
         None if merge_strategy == "skip_existing"
             && config_dir.is_some()
             && sections.sqlite_dbs
@@ -1843,7 +1852,7 @@ fn import_keystore_with_store(
                 sections,
                 config_dir,
             )?;
-            if inputs.replaces_list && !inputs.backup_unreadable {
+            if inputs.replaces_list {
                 default_fingerprint = keystore_profile_plan::preview(&inputs).fingerprint;
                 let choices = ProfileChoices {
                     decisions: &[],
@@ -1856,6 +1865,10 @@ fn import_keystore_with_store(
         }
         None => None,
     };
+    let profile_partition_skipped = matches!(
+        &profile_plan,
+        Some((inputs, choices)) if inputs.backup_unreadable && choices.decisions.is_empty()
+    );
     let mut entries = if sections.vault {
         std::mem::take(&mut payload.vault_entries)
     } else {
@@ -2017,6 +2030,13 @@ fn import_keystore_with_store(
                             continue;
                         }
                     };
+                    if name.as_str() == "user_partitions.db" && profile_partition_skipped {
+                        tracing::info!(
+                            "SQLite restore: {name} left out, it cannot be read here and the \
+                             default plan merges the backup's list into this device's partition"
+                        );
+                        continue;
+                    }
                     let target = cfg.join(name);
                     // F-012 W3: the import is a blind whole-file overwrite. For
                     // user_partitions.db this can replace a healthy local
@@ -2079,7 +2099,10 @@ fn import_keystore_with_store(
     // can warn instead of silently showing an empty "My Servers".
     let mut user_partitions_rekeyed = 0u32;
     let mut user_partitions_unreadable = 0u32;
-    if sections.sqlite_dbs && payload.sqlite_dumps.contains_key("user_partitions.db") {
+    let partition_in_restore = sections.sqlite_dbs
+        && payload.sqlite_dumps.contains_key("user_partitions.db")
+        && !profile_partition_skipped;
+    if partition_in_restore {
         if let Some(cfg) = config_dir {
             let db_path = cfg.join("user_partitions.db");
             if db_path.is_file() {
@@ -2113,8 +2136,9 @@ fn import_keystore_with_store(
     // mirrored the blob overwrote the restored list with a months-old one.
     // When the partition cannot be read here (another machine without a
     // transport key, a locked passphrase partition) the blob is left as the
-    // backup carried it, which is the only list available.
-    if sections.sqlite_dbs && payload.sqlite_dumps.contains_key("user_partitions.db") {
+    // backup carried it, which is the only list available. A partition left
+    // out of the restore is written by the plan below, blob included.
+    if partition_in_restore {
         if let Some(cfg) = config_dir {
             refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
         }
@@ -2233,6 +2257,7 @@ fn import_keystore_with_store(
         skipped_due_to_read_error: 0,
         user_partitions_rekeyed,
         user_partitions_unreadable,
+        profile_partition_skipped,
         user_partitions_backup_path,
         profiles_after_decisions,
         profile_decisions_error,
@@ -3588,6 +3613,95 @@ mod tests {
         );
         // The GUI copies the blob into the partition after the import.
         assert_eq!(blob_of(&store), my_servers(&store, &cfg));
+    }
+
+    /// Review of #980: with no review, "Skip existing" leaves out a backup
+    /// partition this device cannot read instead of replacing this device's
+    /// partition with one that opens nothing here, and merges the backup's
+    /// vault list into the partition that stays.
+    #[test]
+    fn skip_existing_without_review_keeps_the_partition_it_cannot_replace_with_a_readable_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let (store, cfg) = machine_with_a_frozen_blob(dir.path());
+        store.store("server_srv_drive", "local-password").unwrap();
+        let (backup, _other_vault) = backup_of_another_machine(dir.path());
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert!(result.profile_partition_skipped, "the result must say so");
+        assert!(
+            result.user_partitions_backup_path.is_none(),
+            "nothing was overwritten, so there is no snapshot to go back to"
+        );
+        assert_eq!(result.profile_decisions_error, None);
+        let ids: Vec<String> = my_servers(&store, &cfg)
+            .iter()
+            .map(|p| p["id"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(ids, vec!["srv_photos", "srv_drive"]);
+        assert_eq!(my_servers(&store, &cfg)[1]["name"], "Drive 2TB");
+        assert_eq!(
+            effective_secret(&store, &cfg, "server_srv_drive").as_deref(),
+            Some("local-password")
+        );
+        assert_eq!(
+            effective_secret(&store, &cfg, "server_srv_photos").as_deref(),
+            Some("photos-password")
+        );
+        assert_eq!(blob_of(&store), my_servers(&store, &cfg));
+    }
+
+    /// A backup made on another machine (another vault key) and exported
+    /// without a transport sidecar: its partition's keys do not open here. Its
+    /// vault carries the list `[srv_photos]` and that profile's password.
+    fn backup_of_another_machine(
+        dir: &Path,
+    ) -> (PathBuf, crate::credential_store::CredentialStore) {
+        let other_path = dir.join("other-machine-vault.db");
+        std::fs::write(
+            &other_path,
+            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
+        )
+        .unwrap();
+        let other =
+            crate::credential_store::CredentialStore::from_verified_key(&other_path, &[0x17; 32]);
+        let source_cfg = dir.join("source");
+        std::fs::create_dir_all(&source_cfg).unwrap();
+        let backup_json = serde_json::to_string(&vec![profile("srv_photos", "Photos")]).unwrap();
+        let mut root = other.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(source_cfg.join("user_partitions.db")).unwrap();
+        crate::user_partitions::migrate_legacy_payloads(&mut conn, Some(&backup_json), None, &root)
+            .unwrap();
+        root.zeroize();
+        drop(conn);
+
+        let mut payload = ExportPayload::default();
+        payload
+            .vault_entries
+            .insert("config_server_profiles".to_string(), backup_json);
+        payload.vault_entries.insert(
+            "server_srv_photos".to_string(),
+            "photos-password".to_string(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_cfg.join("user_partitions.db"))
+                .unwrap()
+                .unwrap(),
+        );
+        let backup = dir.join("unreadable.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+        (backup, other)
     }
 
     /// M6 (4.2.1 review): a backup partition this device cannot read is still

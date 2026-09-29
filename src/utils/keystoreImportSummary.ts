@@ -13,6 +13,8 @@ export interface KeystoreImportOutcome {
     requiresRestart?: boolean;
     userPartitionsRekeyed?: number;
     userPartitionsUnreadable?: number;
+    /** The backup's account partition was left out: unreadable here (review of #980). */
+    profilePartitionSkipped?: boolean;
     profileDecisionsError?: string;
 }
 
@@ -65,6 +67,9 @@ export function keystoreImportSummary(
     if ((result.userPartitionsUnreadable ?? 0) > 0) {
         extraNotes.push(t('settings.keystoreUnreadablePartitions', { count: result.userPartitionsUnreadable ?? 0, defaultValue: '{count} account(s) could not be unlocked on this device. The backup was made on another computer: re-export it there with a password set on those accounts, then import it here.' }));
     }
+    if (result.profilePartitionSkipped) {
+        extraNotes.push(t('settings.keystorePartitionSkipped'));
+    }
     if (result.profileDecisionsError) {
         // Review B1 (4.2.1): a skip-existing import with no review applies the
         // default plan itself. When that fails, the user made no choices, so
@@ -79,6 +84,7 @@ export function keystoreImportSummary(
         extraNotes.push(t('settings.keystoreRestartRequired', { defaultValue: 'Restart AeroFTP to apply restored databases and plugins.' }));
     }
     const hadWarning = (result.userPartitionsUnreadable ?? 0) > 0
+        || !!result.profilePartitionSkipped
         || !!result.requiresRestart
         || !!result.profileDecisionsError
         || !!preferencesError;

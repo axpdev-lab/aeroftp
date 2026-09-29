@@ -61,6 +61,16 @@ describe('keystoreImportSummary', () => {
         ).text).toContain('settings.keystoreDecisionsFailed(error=locked.)');
     });
 
+    it('says when the backup partition was left out of the restore', () => {
+        const summary = keystoreImportSummary(
+            { imported: 2, skipped: 1, profilePartitionSkipped: true }, null, t, { reviewed: false },
+        );
+        expect(summary.type).toBe('info');
+        expect(summary.text).toBe(
+            'settings.keystoreImported(imported=2,skipped=1). settings.keystorePartitionSkipped',
+        );
+    });
+
     it('ends an error with a full stop, so the next note does not run into it', () => {
         const summary = keystoreImportSummary(
             { imported: 1, skipped: 0, requiresRestart: true },

@@ -806,6 +806,7 @@
             "keystorePreviewLocalFromVault": "Não foi possível ler a lista de perfis de servidor deste dispositivo, então a comparação usa a lista de servidores guardada no cofre.",
             "keystoreDecisionsFailed": "A importação terminou, mas suas escolhas para os perfis de servidor não puderam ser aplicadas: {error}",
             "keystoreListMergeFailed": "A importação terminou, mas a lista de servidores do backup não pôde ser mesclada com a lista deste dispositivo: {error}",
+            "keystorePartitionSkipped": "A partição de contas da cópia de segurança não pode ser desbloqueada neste dispositivo e foi deixada de fora: a lista de servidores foi mesclada a partir da cópia no cofre da cópia de segurança. Importe com Sobrescrever para restaurar essa partição por inteiro.",
             "exportKeystoreDesc": "Exportar todas as credenciais criptografadas para um arquivo de backup",
             "importKeystoreDesc": "Importar credenciais de um arquivo de backup",
             "keystoreExported": "Cofre exportado com sucesso ({count} entradas)",

@@ -806,6 +806,7 @@
             "keystorePreviewLocalFromVault": "Listen over serverprofiler på denne enheten kunne ikke leses, så sammenligningen bruker serverlisten som er lagret i hvelvet.",
             "keystoreDecisionsFailed": "Importen er ferdig, men valgene dine for serverprofilene kunne ikke brukes: {error}",
             "keystoreListMergeFailed": "Importen er ferdig, men serverlisten fra sikkerhetskopien kunne ikke slås sammen med listen på denne enheten: {error}",
+            "keystorePartitionSkipped": "Sikkerhetskopiens kontopartisjon kan ikke låses opp på denne enheten og ble utelatt: serverlisten ble slått sammen fra kopien i sikkerhetskopiens hvelv. Importer med Overskriv for å gjenopprette hele partisjonen.",
             "exportKeystoreDesc": "Eksporter alle krypterte legitimasjoner til en sikkerhetskopi",
             "importKeystoreDesc": "Importer legitimasjoner fra en sikkerhetskopi",
             "keystoreExported": "Nøkkellager eksportert ({count} oppføringer)",
