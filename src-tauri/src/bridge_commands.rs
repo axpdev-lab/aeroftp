@@ -2286,6 +2286,8 @@ mod tests {
                 "rcloneCryptOverlayName": "vault",
                 "rcloneCryptPassword": "",
                 "rcloneCryptPassword2": "saltsecret",
+                "private_key_path": "/home/admin/.ssh/id_ed25519",
+                "key_passphrase": "keysecret",
             },
         }]);
         export_bridge_config(
@@ -2301,6 +2303,16 @@ mod tests {
         assert!(
             !conf.contains("password2"),
             "a crypt salt was exported without credentials:\n{conf}"
+        );
+        // The SFTP key passphrase is a credential too (review of #980); the
+        // key file path is not, and still goes out.
+        assert!(
+            !conf.contains("key_file_pass"),
+            "an SFTP key passphrase was exported without credentials:\n{conf}"
+        );
+        assert!(
+            conf.contains("key_file = /home/admin/.ssh/id_ed25519"),
+            "{conf}"
         );
     }
 }
