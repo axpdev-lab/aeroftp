@@ -181,18 +181,17 @@ struct TrashFile {
     parent_id: Option<i64>,
 }
 
-/// Paginated response shape for trash listings
-#[allow(dead_code)]
+/// One page of the v3 trash listing: `cursor` and `has_more` sit beside
+/// `data` at the top level of the envelope, not inside it.
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum TrashPayload {
-    Paginated {
-        #[serde(default)]
-        data: Vec<TrashFile>,
-        has_more: Option<bool>,
-        cursor: Option<String>,
-    },
-    Flat(Vec<TrashFile>),
+struct TrashListing {
+    #[allow(dead_code)]
+    result: Option<String>,
+    #[serde(default)]
+    data: Vec<TrashFile>,
+    has_more: Option<bool>,
+    cursor: Option<String>,
+    error: Option<ApiError>,
 }
 
 // ─── Dir Cache ───────────────────────────────────────────────────────────
@@ -2085,38 +2084,28 @@ impl KDriveProvider {
                 return Err(api_failure("List trash failed", Some(status), &body));
             }
 
-            let api_resp: ApiResponse<TrashPayload> = resp
+            let page: TrashListing = resp
                 .json()
                 .await
                 .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            if let Some(error) = page.error {
+                return Err(ProviderError::ServerError(sanitize_api_error(
+                    &error.description.or(error.code).unwrap_or_default(),
+                )));
+            }
 
-            let payload = api_resp.data.ok_or_else(|| {
-                ProviderError::ParseError("No trash data in response".to_string())
-            })?;
-
-            match payload {
-                TrashPayload::Paginated {
-                    data,
-                    has_more: Some(true),
-                    cursor: Some(next),
-                } => {
-                    files.extend(data);
-                    cursor = Some(next);
-                }
+            files.extend(page.data);
+            match (page.has_more, page.cursor) {
+                (Some(true), Some(next)) => cursor = Some(next),
                 // More items announced with no way to reach them: not a
                 // complete listing either.
-                TrashPayload::Paginated {
-                    has_more: Some(true),
-                    cursor: None,
-                    ..
-                } => {
+                (Some(true), None) => {
                     return Err(ProviderError::ServerError(
                         "The trash listing announced more items without a cursor to read them"
                             .to_string(),
                     ));
                 }
-                TrashPayload::Paginated { data, .. } | TrashPayload::Flat(data) => {
-                    files.extend(data);
+                _ => {
                     complete = true;
                     break;
                 }
@@ -2803,9 +2792,9 @@ mod tests {
     }
 
     /// [`provider_on_kdrive_trash`] listing the trash `per_page` items at a
-    /// time in the paginated shape (`data`, `has_more`, `cursor`) while items
-    /// remain, and the flat array when they fit in one answer. With
-    /// `per_page` 0 the first item comes with `has_more` and no cursor.
+    /// time in the documented envelope (`data`, `has_more`, `cursor` at the
+    /// top level). With `per_page` 0 the first item comes with `has_more`
+    /// and no cursor.
     async fn provider_on_kdrive_trash_paged(
         folders: &'static [(i64, &'static str)],
         trashed: &'static [(i64, &'static str, i64)],
@@ -2850,23 +2839,31 @@ mod tests {
                                     "id": id, "name": name, "type": "file", "parent_id": parent,
                                 }))
                                 .collect();
+                            // The documented v3 envelope: `cursor` and
+                            // `has_more` beside `data` at the top level.
+                            let page = |data: &[serde_json::Value], has_more: bool, cursor: Option<String>| {
+                                axum::Json(serde_json::json!({
+                                    "result": "success",
+                                    "data": data,
+                                    "has_more": has_more,
+                                    "cursor": cursor,
+                                    "response_at": 1,
+                                }))
+                                .into_response()
+                            };
                             if per_page >= items.len() {
-                                return ok(serde_json::json!(items));
+                                return page(&items, false, None);
                             }
                             if per_page == 0 {
                                 // More announced, no cursor to reach it.
-                                return ok(serde_json::json!({
-                                    "data": items[..1],
-                                    "has_more": true,
-                                    "cursor": serde_json::Value::Null,
-                                }));
+                                return page(&items[..1], true, None);
                             }
                             let to = items.len().min(cursor.saturating_add(per_page));
-                            ok(serde_json::json!({
-                                "data": items[cursor.min(items.len())..to],
-                                "has_more": to < items.len(),
-                                "cursor": (to < items.len()).then(|| to.to_string()),
-                            }))
+                            page(
+                                &items[cursor.min(items.len())..to],
+                                to < items.len(),
+                                (to < items.len()).then(|| to.to_string()),
+                            )
                         }
                         _ => ok(serde_json::json!([])),
                     }
