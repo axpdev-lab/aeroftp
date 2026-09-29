@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 860
+    "tauri_commands": 861
   },
   "mcp": {
     "count": 77,
@@ -589,7 +589,7 @@
         "namespace": "aeroftp_"
       },
       {
-        "description": "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories.",
+        "description": "Find-and-replace on a remote UTF-8 text file without downloading it locally. Replaces all occurrences by default, or only the first when `first=true`. Returns the number of replacements and bytes before/after. If no match is found, the file is NOT re-uploaded (no-op). Rejects binary files, files larger than 10 MB, and directories. On a server that cannot replace a file in one step the edit is refused and nothing is written. Where that server's replace sets the previous file aside (MEGA through the native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive), `allow_non_atomic` true accepts it: the previous file is set aside, the new one is moved into its place, and the old one is then deleted.",
         "name": "aeroftp_edit",
         "namespace": "aeroftp_"
       },
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 486,
+    "name_matched_count": 487,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1485,6 +1485,7 @@
       "sync_backup_remote_move",
       "sync_backup_archive_local",
       "sync_backup_archive_remote",
+      "sync_remove_empty_dir",
       "generate_share_link",
       "generate_share_link_remote",
       "generate_server_share_link",
@@ -2195,6 +2196,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 860
+    "count": 861
   }
 }

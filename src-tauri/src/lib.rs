@@ -257,6 +257,7 @@ mod sync_badge;
 #[cfg(test)]
 mod sync_command_audit;
 pub mod sync_core;
+pub mod sync_empty_dir;
 pub mod sync_exclude;
 mod sync_ignore;
 mod sync_scheduler;
@@ -15593,6 +15594,52 @@ async fn sync_backup_archive_remote(
     archived.map_err(|e| format!("Backup of {} failed: {}", rel, e))
 }
 
+/// Remove a folder a sync emptied, only if it is empty (`sync_empty_dir`):
+/// `"removed"`, or `"kept"` when it still holds something. `target` is
+/// `local` (the local disk, also both sides of a local pair), `provider` (the
+/// provider session) or `ftp` (the GUI's FTP session). Never recursive: a
+/// folder that holds an excluded file, or a file whose backup failed, stays.
+#[tauri::command]
+async fn sync_remove_empty_dir(
+    app_state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    target: String,
+    path: String,
+) -> Result<String, String> {
+    let removal = match target.as_str() {
+        "local" => {
+            validate_path(&path)?;
+            let local = path.clone();
+            tokio::task::spawn_blocking(move || {
+                sync_empty_dir::remove_local_dir_if_empty(std::path::Path::new(&local))
+                    .map_err(|e| e.to_string())
+            })
+            .await
+            .unwrap_or_else(|err| Err(format!("sync_remove_empty_dir task failed: {err}")))
+        }
+        "provider" => {
+            let mut lock = provider_state.provider.lock().await;
+            let provider = lock.as_mut().ok_or("Not connected to any provider")?;
+            sync_empty_dir::remove_remote_dir_if_empty(
+                &mut sync_empty_dir::ProviderDirRemote(provider.as_mut()),
+                &path,
+            )
+            .await
+            .map_err(|e| e.to_string())
+        }
+        "ftp" => {
+            let mut ftp_manager = app_state.ftp_manager.lock().await;
+            sync_empty_dir::remove_remote_dir_if_empty(&mut *ftp_manager, &path)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        other => return Err(format!("unknown removal target: {other}")),
+    };
+    removal
+        .map(|r| r.as_str().to_string())
+        .map_err(|e| format!("Could not remove the folder {}: {}", path, e))
+}
+
 /// List remote folder tree for the selective sync UI.
 /// Returns a flat list of folder paths with metadata.
 #[tauri::command]
@@ -19848,6 +19895,7 @@ pub fn run() {
             sync_backup_remote_move,
             sync_backup_archive_local,
             sync_backup_archive_remote,
+            sync_remove_empty_dir,
             generate_share_link,
             generate_share_link_remote,
             generate_server_share_link,
