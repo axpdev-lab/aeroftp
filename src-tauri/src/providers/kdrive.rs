@@ -1188,7 +1188,9 @@ impl StorageProvider for KDriveProvider {
     ) -> Result<(), ProviderError> {
         let resolved = self.resolve_path(remote_path);
         let (parent_path, filename) = Self::split_path(&resolved);
-        let parent_id = self.resolve_folder_id(parent_path).await?;
+        // Exact: an upload with `conflict=version` into a folder of another
+        // case would add a version to a file the caller never named.
+        let parent_id = self.resolve_folder_id_exact(parent_path).await?;
 
         // KD-001: Stream file instead of reading entire file into RAM
         let file_meta = tokio::fs::metadata(local_path)
@@ -2929,6 +2931,27 @@ mod tests {
         let (mut provider, _, changes) =
             provider_on_kdrive_tree(&[(21, "Docs", 1, "dir"), (31, "x.txt", 21, "file")]).await;
         let outcome = provider.delete("/docs/x.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(changes.lock().unwrap().is_empty());
+    }
+
+    /// With only `Docs` there, `put x.txt /docs/x.txt` resolved `/docs` to
+    /// `Docs` through the fallback and uploaded into it, where `conflict=version`
+    /// adds a version to a file the caller never named. The parent of an
+    /// upload resolves exactly.
+    #[tokio::test]
+    async fn an_upload_into_a_folder_of_another_case_is_refused() {
+        let (mut provider, _, changes) =
+            provider_on_kdrive_tree(&[(21, "Docs", 1, "dir"), (31, "x.txt", 21, "file")]).await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("x.txt");
+        std::fs::write(&local, b"new content").unwrap();
+        let outcome = provider
+            .upload(&local.to_string_lossy(), "/docs/x.txt", None)
+            .await;
         assert!(
             matches!(outcome, Err(ProviderError::NotFound(_))),
             "{outcome:?}"
