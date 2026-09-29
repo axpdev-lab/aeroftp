@@ -13,8 +13,7 @@
             "canary": false,
             "transferBudgetBytes": 0,
             "errorCorrectionPct": 15,
-            "versionedBackup": false,
-            "excludesMatch": true
+            "versionedBackup": false
         },
         "argv": [
             "aeroftp-cli", "--profile", "My Server", "sync", "/home/u/site", "/www/site",

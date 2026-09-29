@@ -48,7 +48,7 @@ import { useStickyState, useSkipSeedOnRestore } from './tabStateStore';
 import {
     AEROSYNC_DEFAULT_BACKUP_DIR,
     AEROSYNC_DEFAULT_EXCLUDES,
-    compareExcludePatterns,
+    cliExcludePatterns,
     sameExcludePatterns,
 } from '../../utils/aeroSyncExcludes';
 import { buildCliSyncCommand, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
@@ -354,7 +354,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
         profileInitialPath: cli?.profileInitialPath,
         localPath: cli?.localPath ?? '',
         remotePath: cli?.remotePath ?? '',
-        excludes: compareExcludePatterns(userExcludes),
+        excludes: cliExcludePatterns(userExcludes, compareBackupDir ?? validBackupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR),
         canary: canaryMode,
         transferBudgetBytes: transferBudgetMb > 0 ? transferBudgetMb * 1024 * 1024 : 0,
         errorCorrectionPct: ecEnabled ? ecPct : null,

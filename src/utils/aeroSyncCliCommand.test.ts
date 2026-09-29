@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../../src-tauri/tests/fixtures/aerosync/cli-commands.json';
 import { buildCliSyncCommand, CLI_EXCLUDES_MATCH_PLAN, quoteArg, type CliCommandInput } from './aeroSyncCliCommand';
-import { AEROSYNC_DEFAULT_EXCLUDES } from './aeroSyncExcludes';
+import { AEROSYNC_DEFAULT_EXCLUDES, cliExcludePatterns } from './aeroSyncExcludes';
 
 /**
  * POSIX word splitting for what `quoteArg` emits: bare words and single-quoted
@@ -75,7 +75,6 @@ const mirrorUpload: CliCommandInput = {
     errorCorrectionPct: null,
     versionedBackup: false,
     shell: 'posix',
-    excludesMatch: true,
 };
 
 describe('aeroftp-cli sync line for the Plan tab', () => {
@@ -97,13 +96,16 @@ describe('aeroftp-cli sync line for the Plan tab', () => {
         });
     }
 
-    it('offers no command while the CLI matches exclusions differently from the compare', () => {
-        // The compare always excludes node_modules and friends per path
-        // segment; the CLI's --exclude does not, so its Mirror would delete
-        // destination files under node_modules/ that the Plan never listed.
-        expect(CLI_EXCLUDES_MATCH_PLAN).toBe(false);
-        const { excludesMatch: _unused, ...live } = mirrorUpload;
-        expect(buildCliSyncCommand(live)).toEqual({ kind: 'none', reason: 'exclusions' });
+    it('offers the line, carrying every exclusion the compare applied (M4)', () => {
+        // Since the shared matcher (#939) the CLI's --exclude covers at least
+        // what the compare's does for the same list, so a Mirror with the
+        // defaults written out deletes nothing the Plan never listed.
+        expect(CLI_EXCLUDES_MATCH_PLAN).toBe(true);
+        const built = buildCliSyncCommand({ ...mirrorUpload, excludes: cliExcludePatterns(['*.log'], '.aeroftp-versions') });
+        expect(built.kind).toBe('command');
+        if (built.kind !== 'command') return;
+        const excluded = built.argv.flatMap((arg, i) => (built.argv[i - 1] === '--exclude' ? [arg] : []));
+        expect(excluded).toEqual([...AEROSYNC_DEFAULT_EXCLUDES, '*.log', '.aeroftp-versions']);
     });
 
     it.each([
