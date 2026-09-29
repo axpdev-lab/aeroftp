@@ -52,6 +52,37 @@ describe('trashLocalPaths', () => {
     expect(result.removed).toEqual(['/m/b']);
   });
 
+  // Pre-release review of 4.2.1 (L3): any answer other than 'copy' or
+  // 'cancel' fell through to the permanent delete. A dialog that resolves
+  // nothing on dismiss (or a value added later) must keep the items.
+  it.each([undefined, null, '', 'dismissed', 'PERMANENT'])(
+    'keeps the items and deletes nothing when the answer is %j',
+    async answer => {
+      const { calls, invoke } = backend({ '/m/b': 'copy' });
+      const result = await trashLocalPaths(['/m/b'], {
+        invoke,
+        askHomeCopy: async () => answer as unknown as 'cancel',
+      });
+
+      expect(permanentCalls(calls)).toEqual([]);
+      expect(calls.filter(c => c.args.allowHomeCopy === true)).toEqual([]);
+      expect(result.kept).toEqual(['/m/b']);
+      expect(result.removed).toEqual([]);
+    },
+  );
+
+  it('deletes after a trash failure only on an explicit yes', async () => {
+    const { calls, invoke } = backend({ '/x': 'fail' });
+    const result = await trashLocalPaths(['/x'], {
+      invoke,
+      askHomeCopy: async () => 'copy',
+      askPermanentAfterFailure: async () => 'yes' as unknown as boolean,
+    });
+
+    expect(permanentCalls(calls)).toEqual([]);
+    expect(result.kept).toEqual(['/x']);
+  });
+
   it('never turns a trash failure into a permanent delete without asking', async () => {
     const { calls, invoke } = backend({ '/x': 'fail' });
     const deps: LocalTrashDeps = { invoke, askHomeCopy: async () => 'copy' };
