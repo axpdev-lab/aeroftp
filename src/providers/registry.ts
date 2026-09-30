@@ -884,6 +884,12 @@ export const PROVIDERS: ProviderConfig[] = [
                 label: 'Region',
                 type: 'select',
                 required: true,
+                // The public locations of IBM's endpoint table (endpoints.md in
+                // github.com/ibm-cloud-docs/cloud-object-storage, 2026-09-29):
+                // thirteen regional codes, three cross-region, six single data
+                // center. Decommissioned sites (mel01, mex01, tor01, osl01,
+                // hkg02, seo01, mil01) are left out. ibmCosLocations.test.ts
+                // pins the list.
                 options: [
                     { value: 'eu-de', label: 'EU Germany (Frankfurt)' },
                     { value: 'eu-gb', label: 'EU United Kingdom (London)' },

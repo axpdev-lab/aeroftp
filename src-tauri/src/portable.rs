@@ -171,32 +171,143 @@ fn has_importable_file(src: &Path) -> bool {
     }
 }
 
+/// A copy by [`copy_missing_tree`] that stopped on an error, with the number
+/// of files it had copied before it: a report that dropped them left the user
+/// with no idea that part of the configuration was already in place.
+#[derive(Debug)]
+struct CopyInterrupted {
+    copied: usize,
+    error: std::io::Error,
+}
+
+impl std::fmt::Display for CopyInterrupted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} ({} {} copied before the error)",
+            self.error,
+            self.copied,
+            if self.copied == 1 { "file" } else { "files" }
+        )
+    }
+}
+
+impl From<CopyInterrupted> for std::io::Error {
+    fn from(interrupted: CopyInterrupted) -> Self {
+        std::io::Error::new(interrupted.error.kind(), interrupted.to_string())
+    }
+}
+
 /// Copy into `dst` every file of `src` that `dst` does not have yet, never
 /// replacing one, and return how many files were copied: zero when `dst`
 /// already had all of them, so a caller can report only what happened.
-fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
+///
+/// The vault files at the top of the tree ([`VAULT_FILES`]) are one unit: they
+/// come in only when `dst` has none of them, and a failure part way through
+/// them removes the ones this call copied. The partition database is created
+/// lazily, so an install can hold its own key without it, and a copy file by
+/// file then put another install's partition database (or key) next to this
+/// one's vault, where nothing can open it.
+fn copy_missing_tree(src: &Path, dst: &Path) -> Result<usize, CopyInterrupted> {
+    let mut copied = 0;
+    copy_missing_root(src, dst, &mut copied)
+        .map(|()| copied)
+        .map_err(|error| CopyInterrupted { copied, error })
+}
+
+/// The top of [`copy_missing_tree`]: the vault unit first, then the rest.
+fn copy_missing_root(src: &Path, dst: &Path, copied: &mut usize) -> std::io::Result<()> {
+    if never_copied(src) || !src.is_dir() {
+        return copy_missing_node(src, dst, copied);
+    }
+    prepare_copy_dir(dst)?;
+    copy_vault_unit(src, dst, copied)?;
+    for entry in entries_by_name(src)? {
+        let name = entry.file_name();
+        if VAULT_FILES.iter().any(|vault_file| name == *vault_file) {
+            continue;
+        }
+        copy_missing_node(&entry.path(), &dst.join(name), copied)?;
+    }
+    Ok(())
+}
+
+/// Copy the vault files of `src` into `dst` together, or none of them.
+fn copy_vault_unit(src: &Path, dst: &Path, copied: &mut usize) -> std::io::Result<()> {
+    // A dangling link counts as present, as it does for the no-clobber rename.
+    if VAULT_FILES
+        .iter()
+        .any(|name| dst.join(name).symlink_metadata().is_ok())
+    {
+        return Ok(());
+    }
+    let mut created = Vec::new();
+    for name in VAULT_FILES {
+        let before = *copied;
+        let outcome = copy_missing_node(&src.join(name), &dst.join(name), copied);
+        if *copied > before {
+            created.push(dst.join(name));
+        }
+        if let Err(e) = outcome {
+            for path in &created {
+                let _ = std::fs::remove_file(path);
+            }
+            *copied -= created.len();
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+/// Create `dst` as a private folder for the copy.
+fn prepare_copy_dir(dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700));
+    }
+    Ok(())
+}
+
+/// The entries of `dir` in name order, so a copy that fails stops at the same
+/// place on every run and says the same count.
+fn entries_by_name(dir: &Path) -> std::io::Result<Vec<std::fs::DirEntry>> {
+    let mut entries = std::fs::read_dir(dir)?.collect::<std::io::Result<Vec<_>>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    Ok(entries)
+}
+
+/// True for a file to copy through a SQLite snapshot: one that starts with the
+/// SQLite header, or an empty one (an empty database whose data may still sit
+/// in its WAL). `vault.db` is JSON under a `.db` name, and the snapshot failed
+/// on it ("file is not a database"), so a host vault could never come in.
+fn is_sqlite_database(path: &Path) -> std::io::Result<bool> {
+    use std::io::Read;
+    const HEADER: &[u8; 16] = b"SQLite format 3\0";
+    let mut start = Vec::with_capacity(HEADER.len());
+    std::fs::File::open(path)?
+        .take(HEADER.len() as u64)
+        .read_to_end(&mut start)?;
+    Ok(start.is_empty() || start == HEADER)
+}
+
+/// One file or folder of [`copy_missing_tree`], counting into `copied`.
+fn copy_missing_node(src: &Path, dst: &Path, copied: &mut usize) -> std::io::Result<()> {
     if never_copied(src) {
-        return Ok(0);
+        return Ok(());
     }
     if src.is_dir() {
-        std::fs::create_dir_all(dst)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o700));
+        prepare_copy_dir(dst)?;
+        for entry in entries_by_name(src)? {
+            copy_missing_node(&entry.path(), &dst.join(entry.file_name()), copied)?;
         }
-        let mut copied = 0;
-        for entry in std::fs::read_dir(src)? {
-            let entry = entry?;
-            let name = entry.file_name();
-            copied += copy_missing_tree(&entry.path(), &dst.join(name))?;
-        }
-        Ok(copied)
+        Ok(())
     } else if src.is_file() && !dst.exists() {
         if let Some(parent) = dst.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        if src.extension().and_then(|s| s.to_str()) == Some("db") {
+        if src.extension().and_then(|s| s.to_str()) == Some("db") && is_sqlite_database(src)? {
             let snapshot = tempfile::Builder::new()
                 .prefix(".aeroftp-migration-")
                 .tempfile_in(dst.parent().unwrap_or_else(|| Path::new(".")))?;
@@ -216,20 +327,21 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
             snapshot.as_file().sync_all()?;
             match snapshot.persist_noclobber(dst) {
                 Ok(_) => {}
-                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(0),
+                Err(e) if e.error.kind() == std::io::ErrorKind::AlreadyExists => return Ok(()),
                 Err(e) => return Err(e.error),
             }
         } else if !copy_file_noclobber(src, dst)? {
-            return Ok(0);
+            return Ok(());
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o600));
         }
-        Ok(1)
+        *copied += 1;
+        Ok(())
     } else {
-        Ok(0)
+        Ok(())
     }
 }
 
@@ -238,7 +350,7 @@ fn copy_missing_tree(src: &Path, dst: &Path) -> std::io::Result<usize> {
 /// so two first starts racing each other (both run before the single-instance
 /// plugin exists) cannot overwrite what the other has just written, and an
 /// interrupted copy leaves no half-written destination behind. Returns
-/// `Ok(false)` when the destination was already there. The `.db` branch above
+/// `Ok(false)` when the destination was already there. The SQLite branch above
 /// reaches the same guarantee through its own snapshot file.
 fn copy_file_noclobber(src: &Path, dst: &Path) -> std::io::Result<bool> {
     let parent = dst.parent().unwrap_or_else(|| Path::new("."));
@@ -508,8 +620,9 @@ pub enum HostVault {
 }
 
 /// Whether the host vault and saved servers will come in with the copy. The
-/// copy never replaces a file, so a vault file this install already has (the
-/// GUI creates one at the first start, before the offer) keeps the host's out.
+/// copy takes the vault files as one unit and never replaces a file, so any
+/// vault file this install already has (the GUI creates them at the first
+/// start, before the offer) keeps all of the host's out.
 /// A name counts as present even when it is a dangling link, as it does for the
 /// copy's no-clobber rename.
 fn host_vault_outcome(src: &Path, dst: &Path) -> HostVault {
@@ -529,6 +642,41 @@ fn host_vault_outcome(src: &Path, dst: &Path) -> HostVault {
         HostVault::Skipped
     } else {
         HostVault::Imported
+    }
+}
+
+/// A host-config import that stopped on an error, with what it had done
+/// before it. The files already copied stay in the sandbox and load at the
+/// next start; a report that dropped their count left the user with no idea
+/// that part of the configuration was already in place (4.2.1 review, L12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlatpakImportError {
+    /// Files copied into the sandbox before the error. Zero when the copy
+    /// never started (no host configuration to import).
+    pub copied: usize,
+    /// The error, which names the count too, for the callers that show text.
+    pub message: String,
+}
+
+impl std::fmt::Display for FlatpakImportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for FlatpakImportError {}
+
+impl FlatpakImportError {
+    /// The failure as `aeroftp-cli flatpak-import --json` prints it: the CLI
+    /// error object plus `copied`, so a script can tell a copy that stopped
+    /// half way from one that never started.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "status": "error",
+            "error": self.message,
+            "code": 1,
+            "copied": self.copied,
+        })
     }
 }
 
@@ -637,7 +785,7 @@ fn import_offer(
 /// ([`HostVault`]), because the GUI creates this install's vault at the first
 /// start, before the offer, and a vault the copy left behind must not be
 /// announced as imported.
-pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, String> {
+pub fn flatpak_host_import_apply(accept: bool) -> Result<FlatpakImportReport, FlatpakImportError> {
     apply_flatpak_host_import(accept, host_config_dir_under_flatpak(), aeroftp_data_root())
 }
 
@@ -648,7 +796,7 @@ fn apply_flatpak_host_import(
     accept: bool,
     source: Option<PathBuf>,
     target: Option<PathBuf>,
-) -> Result<FlatpakImportReport, String> {
+) -> Result<FlatpakImportReport, FlatpakImportError> {
     let mut report = FlatpakImportReport {
         copied: 0,
         vault: HostVault::Absent,
@@ -662,16 +810,22 @@ fn apply_flatpak_host_import(
                 // Looked at before the copy: what this install already has is
                 // exactly what the copy leaves in place.
                 report.vault = host_vault_outcome(src, dst);
-                report.copied = copy_missing_tree(src, dst).map_err(|e| {
-                    format!(
+                report.copied = copy_missing_tree(src, dst).map_err(|e| FlatpakImportError {
+                    copied: e.copied,
+                    message: format!(
                         "Import host config from {} to {}: {e}",
                         src.display(),
                         dst.display()
-                    )
+                    ),
                 })?;
                 report.nothing_importable = report.copied == 0 && !has_importable_file(src);
             }
-            _ => return Err("No host configuration available to import".to_string()),
+            _ => {
+                return Err(FlatpakImportError {
+                    copied: 0,
+                    message: "No host configuration available to import".to_string(),
+                })
+            }
         }
     }
     if let Some(dst) = target.as_deref() {
@@ -1588,9 +1742,8 @@ mod tests {
     }
 
     /// A host vault, marked by `vault.key` and a real SQLite
-    /// `user_partitions.db`. The real `vault.db` is JSON, which the `.db`
-    /// snapshot in `copy_missing_tree` cannot copy into an install that lacks
-    /// one, so the fixture leaves it out.
+    /// `user_partitions.db`. The tests that need the JSON `vault.db` too add
+    /// it themselves.
     fn write_host_vault(host: &Path) {
         std::fs::write(
             host.join(crate::credential_store::VAULTKEY_FILENAME),
@@ -1677,6 +1830,134 @@ mod tests {
 
         assert_eq!(report.copied, 1);
         assert_eq!(report.vault, HostVault::Absent);
+    }
+
+    /// Pre-release review of 4.2.1 (M5): the partition database is created
+    /// lazily, so a sandbox can hold `vault.key` and `vault.db` without
+    /// `user_partitions.db`. The copy then brought the host's partition
+    /// database in next to this install's own vault, whose key cannot open it,
+    /// while the report said the host vault stayed behind. The three files
+    /// are one vault: with any of them here, none comes in.
+    #[test]
+    fn flatpak_import_never_mixes_a_host_vault_file_into_this_installs_vault() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_host_vault(&host);
+        std::fs::create_dir_all(&sandbox).unwrap();
+        for name in [
+            crate::credential_store::VAULTKEY_FILENAME,
+            crate::credential_store::VAULT_FILENAME,
+        ] {
+            std::fs::write(sandbox.join(name), b"sandbox").unwrap();
+        }
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert!(
+            !sandbox.join(crate::user_partitions::DB_FILENAME).exists(),
+            "the host partition database was copied next to this install's vault"
+        );
+        assert_eq!(report.copied, 1, "only servers.json comes in");
+        assert_eq!(report.vault, HostVault::Skipped);
+    }
+
+    /// The real `vault.db` is JSON under a `.db` name. The SQLite snapshot
+    /// taken for every `.db` failed on it, so a host vault could not come into
+    /// an install without one: the import stopped half way through the vault.
+    #[test]
+    fn flatpak_import_copies_a_whole_host_vault_with_its_json_vault_db() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_host_vault(&host);
+        std::fs::write(
+            host.join(crate::credential_store::VAULT_FILENAME),
+            br#"{"version":2,"entries":{}}"#,
+        )
+        .unwrap();
+
+        let report =
+            apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone())).unwrap();
+
+        assert_eq!(report.copied, 4);
+        assert_eq!(report.vault, HostVault::Imported);
+        assert_eq!(
+            std::fs::read(sandbox.join(crate::credential_store::VAULT_FILENAME)).unwrap(),
+            br#"{"version":2,"entries":{}}"#
+        );
+        let db =
+            rusqlite::Connection::open(sandbox.join(crate::user_partitions::DB_FILENAME)).unwrap();
+        let user: String = db
+            .query_row("SELECT name FROM users", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(user, "host");
+    }
+
+    /// A vault file the copy cannot read leaves no part of the host vault
+    /// behind: the ones already copied are removed again, so the next attempt
+    /// does not find a partial vault and skip the rest.
+    #[cfg(unix)]
+    #[test]
+    fn a_host_vault_that_cannot_be_copied_whole_leaves_none_of_it() {
+        use std::os::unix::fs::PermissionsExt;
+        // SAFETY: geteuid never fails and has no preconditions.
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("skipped: root reads a file without read permission");
+            return;
+        }
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        write_host_vault(&host);
+        std::fs::write(host.join(crate::credential_store::VAULT_FILENAME), b"{}").unwrap();
+        // The partition database goes last, after the key and vault.db.
+        let partitions = host.join(crate::user_partitions::DB_FILENAME);
+        std::fs::set_permissions(&partitions, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone()));
+        std::fs::set_permissions(&partitions, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+        assert!(result.is_err());
+        for name in VAULT_FILES {
+            assert!(
+                !sandbox.join(name).exists(),
+                "{name} of a partial host vault was left in the sandbox"
+            );
+        }
+    }
+
+    /// Pre-release review of 4.2.1 (L12): a copy that failed half way said
+    /// nothing of the files it had already copied.
+    #[test]
+    fn a_failed_import_says_how_many_files_it_had_copied() {
+        let (_tmp, host, sandbox) = flatpak_import_fixture();
+        std::fs::create_dir_all(host.join("zz-plugins")).unwrap();
+        std::fs::write(host.join("zz-plugins").join("p.json"), b"{}").unwrap();
+        // A file where the copy needs a folder: creating it fails.
+        std::fs::create_dir_all(&sandbox).unwrap();
+        std::fs::write(sandbox.join("zz-plugins"), b"not a folder").unwrap();
+
+        let error = apply_flatpak_host_import(true, Some(host.clone()), Some(sandbox.clone()))
+            .expect_err("the copy fails on zz-plugins");
+
+        assert!(sandbox.join("servers.json").is_file());
+        assert!(
+            error.message.contains("1 file copied before"),
+            "the error lost the partial count: {error}"
+        );
+        // The count travels as a number too: the CLI's JSON error carries it,
+        // so a script can tell a copy that stopped half way from one that
+        // never started.
+        assert_eq!(error.copied, 1);
+        assert_eq!(error.to_json()["copied"], 1);
+        assert_eq!(error.to_json()["code"], 1);
+    }
+
+    /// An import with nothing to copy from stopped before the copy: the
+    /// error says it copied nothing, so a caller never reads a stale count.
+    #[test]
+    fn an_import_without_a_host_config_reports_zero_copied() {
+        let (_tmp, _host, sandbox) = flatpak_import_fixture();
+        let error = apply_flatpak_host_import(true, None, Some(sandbox))
+            .expect_err("nothing to import from");
+        assert_eq!(error.copied, 0);
+        assert_eq!(error.to_json()["copied"], 0);
     }
 
     #[test]

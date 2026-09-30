@@ -41,10 +41,18 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     drivehq: 'drivehq',
     infinicloud: 'infinicloud',
     'mega-s4': 'mega-s4',
+    // S3 and WebDAV presets of a provider with its own page: without these
+    // they fell through to the plain `s3` protocol (the AWS S3 page) or to
+    // no page at all.
+    'ibm-cos': 'ibm-cloud-object-storage',
+    backblaze: 'backblaze-b2',
+    'quotaless-s3': 'quotaless',
+    'quotaless-webdav': 'quotaless',
+    'mailru-cloud': 'mailru-cloud',
+    '4shared-webdav': '4shared',
     s3drive: 's3drive',
     jianguoyun: 'jianguoyun',
     felicloud: 'felicloud',
-    quotaless: 'quotaless',
     pixelunion: 'pixelunion',
     tabdigital: 'tabdigital',
     sourceforge: 'sourceforge',
@@ -86,6 +94,7 @@ const PROTOCOL_TO_SLUG: Record<string, string> = {
     yandexdisk: 'yandex',
     github: 'github',
     gitlab: 'gitlab',
+    twake: 'twake',
     immich: 'immich',
     imagekit: 'imagekit',
     uploadcare: 'uploadcare',

@@ -40328,7 +40328,20 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             0
         }
         Err(e) => {
-            print_error(format, &format!("flatpak-import failed: {e}"), 1);
+            // The files copied before the error stay in the sandbox and load
+            // at the next start (4.2.1 review, L12): the JSON carries their
+            // count as a number, the text names it in the message.
+            match format {
+                OutputFormat::Json => {
+                    let mut json = e.to_json();
+                    json["error"] =
+                        serde_json::Value::String(format!("flatpak-import failed: {e}"));
+                    eprintln!("{json}");
+                }
+                OutputFormat::Text => {
+                    print_error(format, &format!("flatpak-import failed: {e}"), 1)
+                }
+            }
             1
         }
     }

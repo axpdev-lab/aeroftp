@@ -366,9 +366,10 @@ pub(crate) async fn extract_7z_entry_impl(
         crate::copy_7z_entry(&mut counted, &mut *tmp_file, declared)?;
         Ok(())
     };
-    let decoded = match archive.stream_map.file_block_index[index] {
+    match archive.stream_map.file_block_index[index] {
         // No data of its own (an empty file or a folder): nothing to decode.
-        None => copy_target(&mut std::io::empty()),
+        None => copy_target(&mut std::io::empty())
+            .map_err(|e| format!("Failed to extract: {}", crate::describe_7z_error(&e)))?,
         // Decode only the block that holds the entry. In a solid block (7-Zip's
         // default) every entry continues one decoded stream, and sevenz-rust2
         // hands each entry the next bytes of it without skipping what a caller
@@ -376,25 +377,60 @@ pub(crate) async fn extract_7z_entry_impl(
         // it would start inside them and fail its CRC check.
         Some(block) => {
             let threads = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
-            BlockDecoder::new(threads, block, &archive, &pwd, &mut reader)
-                .for_each_entries(&mut |entry, stream| {
-                    if std::ptr::eq(entry, target) {
-                        copy_target(stream)?;
-                        return Ok(false);
-                    }
-                    std::io::copy(stream, &mut std::io::sink())?;
-                    Ok(true)
-                })
-                .map(|_| ())
+            copy_entry_from_block(
+                |each| {
+                    BlockDecoder::new(threads, block, &archive, &pwd, &mut reader)
+                        .for_each_entries(&mut |entry, stream| each(entry, stream))
+                },
+                |entry| std::ptr::eq(entry, target),
+                &mut copy_target,
+                &entry_name,
+            )?;
         }
-    };
-    decoded.map_err(|e| format!("Failed to extract: {}", crate::describe_7z_error(&e)))?;
+    }
 
     tmp.persist(out_path)
         .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
     progress.finish();
 
     Ok(output_path)
+}
+
+/// What `copy_entry_from_block` hands each entry of a decoded 7z block.
+type SevenzEach<'a> = dyn FnMut(&sevenz_rust2::ArchiveEntry, &mut dyn std::io::Read) -> Result<bool, sevenz_rust2::Error>
+    + 'a;
+
+/// Reads one decoded 7z block through to the entry `is_target` picks and
+/// copies that entry with `copy_target`; the entries before it are read and
+/// dropped. `decode` runs the block's decoder over the callback it is given.
+///
+/// A block that ends without the entry is an error. The caller finds the
+/// entry by address in sevenz-rust2's own list, which holds in 0.23; should a
+/// later version hand out copies, nothing would match, and without this the
+/// empty temporary was persisted as the extracted file.
+fn copy_entry_from_block(
+    decode: impl FnOnce(&mut SevenzEach<'_>) -> Result<bool, sevenz_rust2::Error>,
+    is_target: impl Fn(&sevenz_rust2::ArchiveEntry) -> bool,
+    copy_target: &mut dyn FnMut(&mut dyn std::io::Read) -> Result<(), sevenz_rust2::Error>,
+    entry_name: &str,
+) -> Result<(), String> {
+    let mut found = false;
+    decode(&mut |entry, stream| {
+        if is_target(entry) {
+            found = true;
+            copy_target(stream)?;
+            return Ok(false);
+        }
+        std::io::copy(stream, &mut std::io::sink())?;
+        Ok(true)
+    })
+    .map_err(|e| format!("Failed to extract: {}", crate::describe_7z_error(&e)))?;
+    if !found {
+        return Err(format!(
+            "Failed to extract: entry '{entry_name}' was not found in its 7z block"
+        ));
+    }
+    Ok(())
 }
 
 // ─── TAR ───────────────────────────────────────────────────────────────────────
@@ -658,4 +694,68 @@ pub(crate) async fn extract_rar_entry_impl(
     }
 
     Err(format!("Entry '{}' not found in archive", entry_name))
+}
+
+#[cfg(test)]
+mod tests {
+    use sevenz_rust2::ArchiveEntry as SevenzEntry;
+
+    /// Decodes a fake block holding `entries`, each with the bytes "data".
+    fn block_of(
+        entries: &[SevenzEntry],
+    ) -> impl FnOnce(&mut super::SevenzEach<'_>) -> Result<bool, sevenz_rust2::Error> + '_ {
+        move |each| {
+            for entry in entries {
+                if !each(entry, &mut &b"data"[..])? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+    }
+
+    /// Pre-release review of 4.2.1 (L13): the entry is found by address in
+    /// sevenz-rust2's own list. Should a later version hand out copies, no
+    /// entry would match and the empty temporary was persisted as the
+    /// extracted file. A block that never reaches the entry is an error.
+    #[test]
+    fn a_block_without_the_wanted_entry_is_an_error_not_an_empty_file() {
+        let entries = [
+            SevenzEntry::new_file("a.txt"),
+            SevenzEntry::new_file("b.txt"),
+        ];
+        let mut copied = false;
+        let result = super::copy_entry_from_block(
+            block_of(&entries),
+            |_| false,
+            &mut |_| {
+                copied = true;
+                Ok(())
+            },
+            "wanted.txt",
+        );
+        assert!(!copied);
+        let error = result.expect_err("no entry matched, yet the extraction succeeded");
+        assert!(error.contains("wanted.txt"), "{error}");
+    }
+
+    #[test]
+    fn the_wanted_entry_is_copied_after_the_ones_before_it() {
+        let entries = [
+            SevenzEntry::new_file("a.txt"),
+            SevenzEntry::new_file("b.txt"),
+        ];
+        let mut got = Vec::new();
+        super::copy_entry_from_block(
+            block_of(&entries),
+            |entry| entry.name() == "b.txt",
+            &mut |stream| {
+                stream.read_to_end(&mut got)?;
+                Ok(())
+            },
+            "b.txt",
+        )
+        .unwrap();
+        assert_eq!(got, b"data");
+    }
 }

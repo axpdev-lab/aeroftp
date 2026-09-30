@@ -5,7 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey } from 'lucide-react';
 import { Bucket } from '../connectionMethodIcons';
 import { AeroCryptRecoveryKitModal } from '../AeroCryptRecoveryKitModal';
-import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay } from '../../types';
+import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay, NATIVE_PROVIDER_PROTOCOLS } from '../../types';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
 import { MyServersSidebar } from './MyServersSidebar';
@@ -110,7 +110,7 @@ const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<
 function deriveProviderId(server: ServerProfile): string | undefined {
     const proto = server.protocol;
     if (!proto) return undefined;
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive', 'github', 'gitlab', 'twake'].includes(proto)) return proto;
+    if (NATIVE_PROVIDER_PROTOCOLS.has(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('backblaze')) return 'backblaze';

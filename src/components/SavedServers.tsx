@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Server, Plus, Trash2, Edit2, Copy, Check, Cloud, AlertCircle, GripVertical, Activity, Play, Loader2, Eye, EyeOff, Scissors } from 'lucide-react';
 import { ImportExportIcon } from './icons/ImportExportIcon';
-import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol } from '../types';
+import { ServerProfile, ConnectionParams, ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, NATIVE_PROVIDER_PROTOCOLS } from '../types';
 import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { getProtocolInfo, ProtocolBadge, ProtocolIcon } from './ProtocolSelector';
@@ -74,7 +74,7 @@ const deriveProviderId = (server: ServerProfile): string | undefined => {
     const proto = server.protocol;
     if (!proto) return undefined;
     // Native providers map directly
-    if (['mega', 'box', 'pcloud', 'azure', 'filen', 'internxt', 'kdrive', 'drime', 'filelu', 'koofr', 'opendrive', 'yandexdisk', 'googledrive', 'dropbox', 'onedrive', 'fourshared', 'zohoworkdrive', 'github', 'gitlab', 'immich', 'twake'].includes(proto)) return proto;
+    if (NATIVE_PROVIDER_PROTOCOLS.has(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
         if (host.includes('cloudflarestorage')) return 'cloudflare-r2';

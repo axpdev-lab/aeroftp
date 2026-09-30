@@ -84,7 +84,10 @@ pub(crate) mod temp_claim {
     /// Open the temporary at `temp` to go on writing it (a resume), and claim
     /// it: refused while another writer holds it.
     pub(crate) fn open_to_append(temp: &Path) -> Result<std::fs::File> {
-        let file = std::fs::OpenOptions::new().append(true).open(temp)?;
+        let file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(temp)
+            .map_err(|e| name_too_long(e, temp))?;
         claim(&file, temp, try_lock)?;
         Ok(file)
     }
@@ -119,6 +122,7 @@ pub(crate) mod temp_claim {
             .create_new(true)
             .write(true)
             .open(temp)
+            .map_err(|e| name_too_long(e, temp))
     }
 
     /// Remove the temporary at `temp` unless a live writer holds it: a stale
@@ -167,8 +171,157 @@ pub(crate) mod temp_claim {
                     }
                 }
                 Err(taken) if taken.kind() == ErrorKind::AlreadyExists => return Err(in_use(temp)),
-                Err(e) => return Err(e),
+                Err(e) => return Err(name_too_long(e, temp)),
             }
+        }
+    }
+
+    /// `e`, from creating or opening the temporary at `temp`, told plainly
+    /// when the file system refused the name as too long. The temporary is
+    /// the local name plus a suffix of up to 11 bytes (`.aerosegtmp`), so a
+    /// name that fits the file system on its own can still leave no room for
+    /// it, and the bare "File name too long" reads as if the name were
+    /// refused. The name cannot be shortened here: a resumed download finds
+    /// its part again by this exact name.
+    pub(crate) fn name_too_long(e: Error, temp: &Path) -> Error {
+        #[cfg(unix)]
+        let too_long = e.raw_os_error() == Some(libc::ENAMETOOLONG);
+        // ERROR_FILENAME_EXCED_RANGE (206) is only a length error.
+        // ERROR_INVALID_NAME (123) is a syntax error too: a short name with a
+        // character Windows forbids (`?`, `*`, `:`) fails with it, and
+        // "shorten the name" is wrong there, so 123 is a length error only
+        // for a name past the 255 UTF-16 unit component limit (#987: the bare
+        // 123 reads "The filename, directory name, or volume label syntax is
+        // incorrect", which says nothing about the name).
+        #[cfg(windows)]
+        let too_long = match e.raw_os_error() {
+            Some(206) => true,
+            Some(123) => {
+                use std::os::windows::ffi::OsStrExt;
+                temp.file_name()
+                    .is_some_and(|name| name.encode_wide().count() > 255)
+            }
+            _ => false,
+        };
+        #[cfg(not(any(unix, windows)))]
+        let too_long = false;
+        if !too_long {
+            return e;
+        }
+        let bytes = temp.file_name().map_or(0, |name| name.len());
+        // A name within the folder's own name limit was not refused for its
+        // length: the whole path was (a fixed-length temporary in a deep
+        // folder), and "shorten the file name" would not help.
+        #[cfg(unix)]
+        if name_fits_its_folder(temp, bytes) {
+            return Error::new(
+                ErrorKind::InvalidFilename,
+                format!(
+                    "Cannot create the download temporary {}: the path is {} bytes, \
+                     too long for this file system; download into a shorter folder ({e})",
+                    temp.display(),
+                    temp.as_os_str().len()
+                ),
+            );
+        }
+        Error::new(
+            ErrorKind::InvalidFilename,
+            format!(
+                "Cannot create the download temporary {}: its name is {bytes} bytes, \
+                 too long for this file system once the suffix is added to the file \
+                 name; shorten the local file name ({e})",
+                temp.display()
+            ),
+        )
+    }
+
+    /// Whether a name of `bytes` bytes fits the name limit of the folder that
+    /// holds `temp` (`pathconf(_PC_NAME_MAX)`). False when the limit cannot be
+    /// read, so the name is then assumed to be what was too long.
+    #[cfg(unix)]
+    fn name_fits_its_folder(temp: &Path, bytes: usize) -> bool {
+        use std::os::unix::ffi::OsStrExt;
+        let Some(parent) = temp.parent().filter(|p| !p.as_os_str().is_empty()) else {
+            return false;
+        };
+        let Ok(parent) = std::ffi::CString::new(parent.as_os_str().as_bytes()) else {
+            return false;
+        };
+        // SAFETY: `parent` is a valid NUL-terminated C string that outlives
+        // the call; pathconf only reads it.
+        let limit = unsafe { libc::pathconf(parent.as_ptr(), libc::_PC_NAME_MAX) };
+        limit > 0 && bytes <= limit as usize
+    }
+
+    /// `name_too_long` on the raw codes of each platform: only the codes that
+    /// mean a name too long are rewritten, everything else passes through.
+    #[cfg(all(test, any(unix, windows)))]
+    mod name_too_long_tests {
+        use super::*;
+
+        /// The temporary of a 250-character name: with ".aerotmp" it is 258
+        /// UTF-16 units, past the 255-unit component limit.
+        fn over_long_temp() -> std::path::PathBuf {
+            Path::new("dir").join(format!("{}.aerotmp", "n".repeat(250)))
+        }
+
+        /// Windows CI of #987: a name with no room for the temporary's suffix
+        /// fails there with ERROR_INVALID_NAME (123) or
+        /// ERROR_FILENAME_EXCED_RANGE (206), never ENAMETOOLONG, and only 206
+        /// was read: the download failed with the bare "The filename,
+        /// directory name, or volume label syntax is incorrect". 123 is a
+        /// syntax error too, so a short name keeps it: a `?` in the file name
+        /// is what is wrong there, not the length.
+        #[cfg(windows)]
+        #[test]
+        fn on_windows_a_too_long_name_is_read_from_either_code() {
+            for code in [123, 206] {
+                let told = name_too_long(Error::from_raw_os_error(code), &over_long_temp());
+                assert!(
+                    told.to_string().contains("shorten"),
+                    "os error {code} was not read as a name too long"
+                );
+            }
+            let short = Path::new("dir").join("report?.txt.aerotmp");
+            // 206 is only a length error: a long path under a short name is
+            // still told as too long.
+            let told = name_too_long(Error::from_raw_os_error(206), &short);
+            assert!(told.to_string().contains("shorten"));
+            for code in [5, 123] {
+                let other = name_too_long(Error::from_raw_os_error(code), &short);
+                assert_eq!(
+                    other.raw_os_error(),
+                    Some(code),
+                    "os error {code} on a short name was rewritten"
+                );
+            }
+        }
+
+        /// Only ENAMETOOLONG is rewritten: another error passes through as is.
+        #[cfg(unix)]
+        #[test]
+        fn on_unix_only_a_name_too_long_is_rewritten() {
+            let told = name_too_long(
+                Error::from_raw_os_error(libc::ENAMETOOLONG),
+                &over_long_temp(),
+            );
+            assert!(told.to_string().contains("shorten"));
+            let other = name_too_long(Error::from_raw_os_error(libc::EACCES), &over_long_temp());
+            assert_eq!(other.raw_os_error(), Some(libc::EACCES));
+        }
+
+        /// CodeRabbit on #987: a short temporary name in a real folder was
+        /// told to shorten its file name when ENAMETOOLONG came from the
+        /// whole path. It says the path is too long.
+        #[cfg(unix)]
+        #[test]
+        fn on_unix_a_short_name_in_a_long_path_blames_the_path() {
+            let dir = tempfile::tempdir().unwrap();
+            let temp = dir.path().join(".aeroftp-readahead-0123456789");
+            let told =
+                name_too_long(Error::from_raw_os_error(libc::ENAMETOOLONG), &temp).to_string();
+            assert!(told.contains("the path is"), "{told}");
+            assert!(!told.contains("shorten the local file name"), "{told}");
         }
     }
 
@@ -754,7 +907,7 @@ impl ResumableFile {
                 }
             }
             Err(gone) if gone.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e),
+            Err(e) => return Err(temp_claim::name_too_long(e, &temp_path)),
         };
         let (file, offset) = if let Some(resumed) = resumed {
             resumed
@@ -1093,5 +1246,42 @@ mod tests {
         assert_eq!(std::fs::read(path).unwrap(), b"old content");
         file.commit().await.unwrap();
         assert_eq!(std::fs::read(path).unwrap(), b"first part, the rest");
+    }
+
+    /// Pre-release review of 4.2.1 (B4 sweep): a local name that fits the
+    /// file system but leaves no room for the temporary's suffix failed with
+    /// the bare "File name too long", which reads as if the name itself were
+    /// refused. Every writer names the temporary and the way out.
+    #[tokio::test]
+    async fn a_name_with_no_room_for_the_suffix_fails_with_a_clear_error() {
+        let dir = tempfile::tempdir().unwrap();
+        // 250 bytes fits NAME_MAX (255); 250 + ".aerotmp" does not.
+        let path = dir.path().join("n".repeat(250));
+        let path = path.to_str().unwrap();
+        let clear = |e: std::io::Error, suffix: &str| {
+            let text = e.to_string();
+            assert!(
+                text.contains(suffix) && text.contains("shorten"),
+                "unclear error: {text}"
+            );
+        };
+        clear(AtomicFile::new(path).await.err().unwrap(), ".aerotmp");
+        clear(
+            ResumableFile::open_in(path, false).await.err().unwrap(),
+            ".aerotmp",
+        );
+        clear(
+            ResumableFile::open_fresh_in(path, false)
+                .await
+                .err()
+                .unwrap(),
+            ".aerotmp",
+        );
+        let segmented = crate::providers::multi_thread::segmented_temp_path_for(Path::new(path));
+        clear(
+            temp_claim::create_fresh(&segmented).err().unwrap(),
+            ".aerosegtmp",
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
 }

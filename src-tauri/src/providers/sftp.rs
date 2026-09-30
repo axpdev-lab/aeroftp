@@ -3926,7 +3926,7 @@ async fn create_sftp_readahead_temp(
             ProviderError::TransferFailed(format!(
                 "Failed to create exclusive local read-ahead temp {}: {}",
                 temp_path.display(),
-                e
+                super::atomic_write::temp_claim::name_too_long(e, &temp_path)
             ))
         })?;
     let guard = ReadaheadTempGuard::new(temp_path);
