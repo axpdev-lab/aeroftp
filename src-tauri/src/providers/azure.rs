@@ -308,6 +308,52 @@ impl AzureProvider {
         Ok(BASE64.encode(raw.as_bytes()))
     }
 
+    /// The two blobs a directory can be made of, once nothing else is under
+    /// it: the `<path>/` marker `mkdir` writes and the `hdi_isfolder` stub.
+    async fn delete_directory_markers(&mut self, path: &str) -> Result<(), ProviderError> {
+        // `mkdir` writes a zero-byte marker blob named `<path>/` so an empty
+        // folder survives a listing. That marker is invisible to `list`: with
+        // prefix `<path>/` it comes back as a blob whose name IS the prefix, so
+        // stripping the prefix leaves an empty string and the entry is dropped.
+        // The loop above therefore never deleted it, and `rmdir` reported
+        // "Removed empty directory" while the folder was still there on the
+        // next listing. Delete it explicitly; a folder that only ever held
+        // files has no marker, so a 404 here is the normal case and must not
+        // fail the operation.
+        let blob_path = self
+            .resolve_blob_path(path)
+            .trim_end_matches('/')
+            .to_string();
+        self.delete_directory_blob(&format!("{blob_path}/"), "directory marker", None)
+            .await?;
+
+        // The directory can also be a blob named `<path>` that carries
+        // `hdi_isfolder=true`: the directory of a hierarchical-namespace
+        // account, or the stub AzCopy (`--include-directory-stub`) and ADLS
+        // migrations leave on a flat account. `stat` reports it as a
+        // directory, so `rm` comes here, and deleting only the marker
+        // answered Ok while the stub stayed. A blob without the flag is a
+        // file that only shares the folder's name, and it stays. The blob is
+        // asked by its name without the slash: `path` as the caller wrote it
+        // (`d/`) sent the HEAD to the marker just deleted.
+        //
+        // The DELETE carries the ETag of the HEAD that saw the flag, so a
+        // stub another client replaced with an ordinary blob in between is
+        // refused (412) instead of deleted. A HEAD without an ETag leaves the
+        // DELETE unconditional, as it was.
+        match self.stat(&format!("/{blob_path}")).await {
+            Ok(entry) if entry.is_dir => {
+                let etag = entry.metadata.get("etag").map(String::as_str);
+                self.delete_directory_blob(&blob_path, "directory blob", etag)
+                    .await?
+            }
+            Ok(_) | Err(ProviderError::NotFound(_)) => {}
+            Err(e) => return Err(e),
+        }
+
+        Ok(())
+    }
+
     /// DELETE the blob that stands for a directory (`what` names it in the
     /// error). A 404 is the normal case: most folders are prefixes only.
     async fn delete_directory_blob(
@@ -1864,8 +1910,17 @@ impl StorageProvider for AzureProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        // Delete all blobs with this prefix
-        self.rmdir_recursive(path).await
+        // Round 2 of the 4.2.1 review: this used to be `rmdir_recursive`. A
+        // directory that lists anything is refused; only its markers go: the
+        // `<path>/` marker blob and the `hdi_isfolder` stub, the latter with
+        // the ETag of the HEAD that saw the flag (`If-Match`).
+        if path.trim_matches('/').is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to remove the root '/'.".into(),
+            ));
+        }
+        self.refuse_non_empty_dir(path).await?;
+        self.delete_directory_markers(path).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1884,47 +1939,7 @@ impl StorageProvider for AzureProvider {
             }
         }
 
-        // `mkdir` writes a zero-byte marker blob named `<path>/` so an empty
-        // folder survives a listing. That marker is invisible to `list`: with
-        // prefix `<path>/` it comes back as a blob whose name IS the prefix, so
-        // stripping the prefix leaves an empty string and the entry is dropped.
-        // The loop above therefore never deleted it, and `rmdir` reported
-        // "Removed empty directory" while the folder was still there on the
-        // next listing. Delete it explicitly; a folder that only ever held
-        // files has no marker, so a 404 here is the normal case and must not
-        // fail the operation.
-        let blob_path = self
-            .resolve_blob_path(path)
-            .trim_end_matches('/')
-            .to_string();
-        self.delete_directory_blob(&format!("{blob_path}/"), "directory marker", None)
-            .await?;
-
-        // The directory can also be a blob named `<path>` that carries
-        // `hdi_isfolder=true`: the directory of a hierarchical-namespace
-        // account, or the stub AzCopy (`--include-directory-stub`) and ADLS
-        // migrations leave on a flat account. `stat` reports it as a
-        // directory, so `rm` comes here, and deleting only the marker
-        // answered Ok while the stub stayed. A blob without the flag is a
-        // file that only shares the folder's name, and it stays. The blob is
-        // asked by its name without the slash: `path` as the caller wrote it
-        // (`d/`) sent the HEAD to the marker just deleted.
-        //
-        // The DELETE carries the ETag of the HEAD that saw the flag, so a
-        // stub another client replaced with an ordinary blob in between is
-        // refused (412) instead of deleted. A HEAD without an ETag leaves the
-        // DELETE unconditional, as it was.
-        match self.stat(&format!("/{blob_path}")).await {
-            Ok(entry) if entry.is_dir => {
-                let etag = entry.metadata.get("etag").map(String::as_str);
-                self.delete_directory_blob(&blob_path, "directory blob", etag)
-                    .await?
-            }
-            Ok(_) | Err(ProviderError::NotFound(_)) => {}
-            Err(e) => return Err(e),
-        }
-
-        Ok(())
+        self.delete_directory_markers(path).await
     }
 
     /// AZ-016: Rename via Copy + Delete with async copy polling: see
@@ -2928,6 +2943,72 @@ mod tests {
     /// and `rmdir_recursive` deleted only the `<path>/` marker: it answered
     /// Ok while the stub stayed. The stub itself is deleted now, and a blob
     /// without the flag that shares the folder's name is left alone.
+    /// Round 2 of the 4.2.1 review: `rmdir` was `rmdir_recursive`, so a
+    /// blob the caller's listing had left out went with the "empty"
+    /// directory. A directory that lists anything is refused with nothing
+    /// deleted; an empty one loses only its markers.
+    #[tokio::test]
+    async fn rmdir_refuses_a_directory_that_lists_anything_and_deletes_only_markers() {
+        use std::sync::{Arc, Mutex};
+        for (blobs, expect_refusal) in [("<Blob><Name>d/a.txt</Name></Blob>", true), ("", false)] {
+            let log: Arc<Mutex<Vec<String>>> = Arc::default();
+            let seen = Arc::clone(&log);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        let method = req.method().to_string();
+                        let path = req.uri().path().to_string();
+                        seen.lock().unwrap().push(format!("{method} {path}"));
+                        let status = match (method.as_str(), path.as_str()) {
+                            ("GET", "/mycontainer") => {
+                                return axum::response::Response::builder()
+                                    .status(200)
+                                    .body(axum::body::Body::from(format!(
+                                        "<EnumerationResults><Blobs>{blobs}</Blobs></EnumerationResults>"
+                                    )))
+                                    .unwrap();
+                            }
+                            ("HEAD", _) => 404,
+                            ("DELETE", _) => 202,
+                            _ => 404,
+                        };
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-length", "0")
+                            .body(axum::body::Body::empty())
+                            .unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut config = test_config();
+            config.endpoint = Some(format!("http://{addr}"));
+            let mut provider = AzureProvider::new(config);
+            provider.connected = true;
+            let outcome = provider.rmdir("/d").await;
+            let deletes: Vec<String> = log
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|line| line.starts_with("DELETE "))
+                .cloned()
+                .collect();
+            if expect_refusal {
+                assert!(
+                    matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
+                    "{outcome:?}"
+                );
+                assert!(deletes.is_empty(), "nothing is deleted: {deletes:?}");
+            } else {
+                outcome.expect("an empty directory loses its marker");
+                assert_eq!(deletes, ["DELETE /mycontainer/d/"], "the marker only");
+            }
+        }
+    }
+
     #[tokio::test]
     async fn removing_a_directory_deletes_its_hdi_isfolder_stub() {
         use std::sync::{Arc, Mutex};

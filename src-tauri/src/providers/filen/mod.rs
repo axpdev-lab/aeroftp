@@ -1535,6 +1535,43 @@ impl FilenProvider {
     }
 }
 
+impl FilenProvider {
+    /// The API's delete of a folder, which takes whatever the folder holds
+    /// along: `rmdir` reaches it only for a folder that listed empty,
+    /// `rmdir_recursive` for any.
+    async fn remove_folder_whole(&mut self, path: &str) -> Result<(), ProviderError> {
+        let folder_uuid = self.resolve_folder_uuid(path).await?;
+
+        let request = self
+            .client
+            .post(format!("{}/v3/dir/trash", self.gateway_base()))
+            .header(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
+                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
+            )
+            .json(&serde_json::json!({"uuid": folder_uuid}))
+            .build()
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let sent = self.send_retry(request).await;
+        // Whatever the answer, not only the folder's own uuid: every folder
+        // cached under it went to the trash with it.
+        self.forget_dir_subtree(&Self::normalize_path(path));
+        let resp: GenericResponse = sent?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+
+        if !resp.status {
+            return Err(ProviderError::Other(
+                resp.message.unwrap_or_else(|| "rmdir failed".to_string()),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl StorageProvider for FilenProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -2540,39 +2577,15 @@ impl StorageProvider for FilenProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        let folder_uuid = self.resolve_folder_uuid(path).await?;
-
-        let request = self
-            .client
-            .post(format!("{}/v3/dir/trash", self.gateway_base()))
-            .header(
-                "Authorization",
-                HeaderValue::from_str(&format!("Bearer {}", self.auth.api_key.expose_secret()))
-                    .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-            )
-            .json(&serde_json::json!({"uuid": folder_uuid}))
-            .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let sent = self.send_retry(request).await;
-        // Whatever the answer, not only the folder's own uuid: every folder
-        // cached under it went to the trash with it.
-        self.forget_dir_subtree(&Self::normalize_path(path));
-        let resp: GenericResponse = sent?
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-        if !resp.status {
-            return Err(ProviderError::Other(
-                resp.message.unwrap_or_else(|| "rmdir failed".to_string()),
-            ));
-        }
-
-        Ok(())
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(path).await?;
+        self.remove_folder_whole(path).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.rmdir(path).await // Filen trash handles recursive
+        self.remove_folder_whole(path).await
     }
 
     /// Rename and/or move: see `relocate`.
@@ -3792,7 +3805,7 @@ mod tests {
             if by_delete {
                 provider.delete("/a").await.expect("delete");
             } else {
-                provider.rmdir("/a").await.expect("rmdir");
+                provider.rmdir_recursive("/a").await.expect("rmdir");
             }
             server.abort();
             assert_eq!(endpoints(&calls), ["/v3/dir/trash"]);

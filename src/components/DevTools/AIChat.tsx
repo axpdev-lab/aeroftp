@@ -23,8 +23,10 @@ import { Message, AIChatProps, SelectedModel, MAX_IMAGES, MUTATION_TOOLS, AgentM
 import { checkRateLimit, recordRequest, withRetry, estimateTokens, buildMessageWindow, detectTaskType, parseToolCalls, formatToolResult, formatProviderError, isFailoverWorthy } from './aiChatUtils';
 import { resolveRoutedModels } from './aiChatModelRouting';
 import { appendAssistantTurn, appendToolResult, assertToolResultsComplete, hasStructuredTurn, nativeTurnMatches, requiresNativeTurn, type NativeTurn } from './aiChatNativeTurn';
+import { createChatRequests } from './aiChatCancellableChat';
 import { analyzeToolError } from './aiChatToolRetry';
 import { buildExecutionLevels, executePipeline } from './aiChatToolPipeline';
+import { toolOutputBelongsToActiveTurn } from './aiChatToolOutput';
 import { ToolMacro, resolveMacroSteps, DEFAULT_MACROS, MAX_TOTAL_MACRO_STEPS, createMacroStepCounter, MacroStepCounter } from './aiChatToolMacros';
 import { buildToolRegistry, resolveRegisteredTool, resolveMacroStep, ToolExposure, TOOL_EXPOSURE_GUIDE, assertToolExecutionCurrent, recordToolDispatch } from './aiChatToolRegistry';
 import { validateToolArgs } from './aiChatToolValidation';
@@ -736,6 +738,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             invoke('ai_cancel_stream', { streamId: activeStreamIdRef.current }).catch(() => {});
             activeStreamIdRef.current = null;
         }
+        chatRequestsRef.current.cancel();
         if (streamUnlistenRef.current) {
             streamUnlistenRef.current();
             streamUnlistenRef.current = null;
@@ -847,6 +850,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     } | null>(null);
     const streamingMsgIdRef = useRef<string | null>(null);
     const activeStreamIdRef = useRef<string | null>(null);
+    // Non-streaming ai_chat calls in flight, cancelled in the backend by Stop.
+    const chatRequestsRef = useRef(createChatRequests(invoke));
     const streamUnlistenRef = useRef<(() => void) | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1496,6 +1501,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     contextLocalPath: localPath || undefined,
                     sessionId: activeConversationId || undefined,
                     approvalGrantId,
+                    turnId: options.turnScope ?? chatRequestsRef.current.turnId() ?? undefined,
                 });
             } finally {
                 dispatchAIStatus('streaming');
@@ -1528,7 +1534,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }
 
             // In expert mode, the user already confirmed via the approval panel -
-            // skip the native OS dialog to avoid double-confirmation.
+            // skip the native OS dialog to avoid double-confirmation. The backend
+            // still opens its window for a tool that needs it on every call
+            // (delete, shell, any High tool): the webview alone cannot approve one.
             // In safe/normal mode, always show both (defense in depth).
             // In extreme mode, tools are auto-approved so panelApproved is never true here.
             const mode = agentModeRef.current;
@@ -1556,6 +1564,18 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         _stepCounter?: MacroStepCounter,
         options: ExecuteToolOptions = {},
     ): Promise<string | null> => {
+        // The plan pipeline is still awaiting this call when Stop or a new chat
+        // replaces the active turn. A result, a retry or an error published
+        // afterwards would be appended to the chat that replaced the plan.
+        const publishToolMessage = (message: Message): boolean => {
+            if (!toolOutputBelongsToActiveTurn(options.turnScope, activeTurnRef.current)) return false;
+            setMessages(prev => [...prev, message]);
+            setPendingToolCalls([]);
+            return true;
+        };
+        if (!toolOutputBelongsToActiveTurn(options.turnScope, activeTurnRef.current)) {
+            return 'Error: execution cancelled';
+        }
         const registered = resolveRegisteredTool(toolRegistryRef.current, toolCall.toolName);
         const tool = registered?.tool;
 
@@ -1568,8 +1588,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     content: 'Macro recursion limit exceeded (max depth: 5)',
                     timestamp: new Date(),
                 };
-                setMessages(prev => [...prev, errMsg]);
-                setPendingToolCalls([]);
+                if (!publishToolMessage(errMsg)) return 'Error: execution cancelled';
                 return null;
             }
 
@@ -1585,8 +1604,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     content: `Unknown macro: ${macroName}`,
                     timestamp: new Date(),
                 };
-                setMessages(prev => [...prev, errMsg]);
-                setPendingToolCalls([]);
+                if (!publishToolMessage(errMsg)) return 'Error: execution cancelled';
                 return null;
             }
 
@@ -1613,8 +1631,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     content: `Macro "${macroName}" has unresolved variables: ${unresolvedVars.join(', ')}`,
                     timestamp: new Date(),
                 };
-                setMessages(prev => [...prev, errMsg]);
-                setPendingToolCalls([]);
+                if (!publishToolMessage(errMsg)) return 'Error: execution cancelled';
                 return null;
             }
 
@@ -1629,8 +1646,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         content: `Maximum macro execution steps (${MAX_TOTAL_MACRO_STEPS}) exceeded`,
                         timestamp: new Date(),
                     };
-                    setMessages(prev => [...prev, errMsg]);
-                    setPendingToolCalls([]);
+                    if (!publishToolMessage(errMsg)) return 'Error: execution cancelled';
                     return null;
                 }
                 // The wrapper is conservative; each child still obtains its own backend
@@ -1664,9 +1680,15 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
         try {
             const result = await executeToolByName(toolCall.toolName, executionArgs, options);
+            if (!toolOutputBelongsToActiveTurn(options.turnScope, activeTurnRef.current)) {
+                return 'Error: execution cancelled';
+            }
 
             if (toolCall.toolName === 'agent_memory_write') {
                 await refreshAgentMemory(10);
+                if (!toolOutputBelongsToActiveTurn(options.turnScope, activeTurnRef.current)) {
+                    return 'Error: execution cancelled';
+                }
             }
 
             // shell_execute: show command in the visible terminal for user awareness (display only, NOT re-executed)
@@ -1711,7 +1733,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     toolName: codingToolResultData ? toolCall.toolName : undefined,
                     toolResultData: codingToolResultData,
                 };
-                setMessages(prev => [...prev, errorMessage]);
+                if (!publishToolMessage(errorMessage)) return 'Error: execution cancelled';
 
                 // Inject suggestion into multi-step context if active
                 if (strategy.suggestedTool && multiStepContextRef.current && !hasStructuredTurn(multiStepContextRef.current.messageHistory)) {
@@ -1721,7 +1743,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     });
                 }
 
-                setPendingToolCalls([]);
                 return formattedResult; // Still return so multi-step can continue with the error info
             }
 
@@ -1733,7 +1754,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 timestamp: new Date(),
                 toolResultData,
             };
-            setMessages(prev => [...prev, resultMessage]);
+            if (!publishToolMessage(resultMessage)) return 'Error: execution cancelled';
 
             // Refresh file panels after mutation tools
             const mutationTarget = getMutationTargetForTool(toolCall.toolName, executionArgs);
@@ -1758,9 +1779,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
             }
 
-            setPendingToolCalls([]);
             return formattedResult;
         } catch (error: any) {
+            if (!toolOutputBelongsToActiveTurn(options.turnScope, activeTurnRef.current)) {
+                if (options.macroState) options.macroState.failed = true;
+                return 'Error: execution cancelled';
+            }
             const errorStr = error.message || error.toString();
             const strategy = analyzeToolError(toolCall.toolName, toolCall.args, errorStr);
 
@@ -1771,6 +1795,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         () => executeToolByName(toolCall.toolName, executionArgs, options),
                         strategy.maxRetries || 3,
                     );
+                    if (!toolOutputBelongsToActiveTurn(options.turnScope, activeTurnRef.current)) {
+                        return 'Error: execution cancelled';
+                    }
                     const retryFormatted = formatToolResult(toolCall.toolName, retryResult);
                     const retryPatchResultData = buildCodingPatchResultData(toolCall.toolName, retryResult, executionArgs);
                     const retryCheckpointRestoreResultData = buildCodingCheckpointRestoreResultData(toolCall.toolName, retryResult, executionArgs);
@@ -1789,16 +1816,19 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         toolResultData: retryCodingToolResultData,
                         timestamp: new Date(),
                     };
-                    setMessages(prev => [...prev, retryMsg]);
+                    if (!publishToolMessage(retryMsg)) return 'Error: execution cancelled';
 
                     const mutationTarget = getMutationTargetForTool(toolCall.toolName, executionArgs);
                     if (mutationTarget && onFileMutation) onFileMutation(mutationTarget);
 
-                    setPendingToolCalls([]);
                     return retryFormatted;
                 } catch (retryError: any) {
                     // Retry exhausted, fall through to error display. Only now has the
                     // step failed: a macro keeps going when an automatic retry recovers.
+                    if (!toolOutputBelongsToActiveTurn(options.turnScope, activeTurnRef.current)) {
+                        if (options.macroState) options.macroState.failed = true;
+                        return 'Error: execution cancelled';
+                    }
                     if (options.macroState) options.macroState.failed = true;
                     const exhaustedStr = retryError.message || retryError.toString();
                     const errorMessage: Message = {
@@ -1807,8 +1837,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         content: `Tool failed after retries: ${exhaustedStr}\n\n**Suggestion**: ${strategy.suggestion}`,
                         timestamp: new Date(),
                     };
-                    setMessages(prev => [...prev, errorMessage]);
-                    setPendingToolCalls([]);
+                    if (!publishToolMessage(errorMessage)) return 'Error: execution cancelled';
                     return null;
                 }
             }
@@ -1821,7 +1850,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 content: `Tool failed: ${errorStr}\n\n**Suggestion**: ${strategy.suggestion}`,
                 timestamp: new Date(),
             };
-            setMessages(prev => [...prev, errorMessage]);
+            if (!publishToolMessage(errorMessage)) return 'Error: execution cancelled';
 
             // Inject suggestion into multi-step context
             if (strategy.suggestedTool && multiStepContextRef.current && !hasStructuredTurn(multiStepContextRef.current.messageHistory)) {
@@ -1831,12 +1860,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 });
             }
 
-            setPendingToolCalls([]);
             return null;
         }
     };
 
     const executeTransferPlan = useCallback(async (messageId: string, plan: TransferPlan, selectedOperationIds: string[]) => {
+        if (isLoading) return;
         const selectedSet = new Set(selectedOperationIds);
         const selectedOperations = plan.operations.filter(op => op.category !== 'prepare' && selectedSet.has(op.id));
         if (selectedOperations.length === 0) {
@@ -1874,6 +1903,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 status: 'approved',
             }));
 
+        // A plan is its own turn (M9): without one its calls ran under
+        // whatever turn the chat was on, Stop could not reach them, and a
+        // later chat would have adopted the ones still queued.
+        const turnScope = crypto.randomUUID();
+        activeTurnRef.current = turnScope;
+        chatRequestsRef.current.setTurn(turnScope);
         setExecutingTransferPlanId(messageId);
         setIsLoading(true);
         try {
@@ -1885,12 +1920,18 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             }]);
 
             const levels = buildExecutionLevels(plannedCalls);
-            await executePipeline(levels, executeTool);
+            await executePipeline(levels, tc => executeTool(tc, 0, undefined, { turnScope }));
         } finally {
             setExecutingTransferPlanId(null);
-            setIsLoading(false);
+            // Stop or a new chat owns the shared state when the scope is no
+            // longer active; clearing it here would end that turn's loading.
+            if (activeTurnRef.current === turnScope) {
+                activeTurnRef.current = null;
+                chatRequestsRef.current.setTurn(null);
+                setIsLoading(false);
+            }
         }
-    }, [executeTool]);
+    }, [executeTool, isLoading]);
 
     // PERF-02: stable callbacks for the memoized ChatMessageRow. The row's
     // comparator deliberately ignores callback identity, so these read the latest
@@ -1965,8 +2006,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     messageHistory.push({ role: 'user', content: 'Continue with the next step based on the tool result above. If the task is complete, respond normally without calling a tool.' });
                 }
 
-                // Make another AI call
-                const response = await invoke<{
+                // Make another AI call, cancellable by Stop like the stream
+                const response = await chatRequestsRef.current.call<{
                     content: string;
                     model: string;
                     tokens_used?: number;
@@ -1976,11 +2017,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     cache_read_input_tokens?: number;
                     native_turn?: NativeTurn;
                     tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                }>('ai_chat', {
-                    request: { ...aiRequest, messages: messageHistory,
-                        ...(aiRequest.tools && toolExposureRef.current && toolExposureRef.current.scope === aiRequest.turn_scope
-                            ? { tools: toolExposureRef.current.definitions() } : {}),
-                    },
+                }>({
+                    ...aiRequest, messages: messageHistory,
+                    ...(aiRequest.tools && toolExposureRef.current && toolExposureRef.current.scope === aiRequest.turn_scope
+                        ? { tools: toolExposureRef.current.definitions() } : {}),
                 });
 
                 if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
@@ -2151,6 +2191,9 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         autoStopRef.current = false;
         const turnScope = crypto.randomUUID();
         activeTurnRef.current = turnScope;
+        // M9: the tools of this turn are sent with its id, so Stop can reach
+        // the one running and refuse the ones not started.
+        chatRequestsRef.current.setTurn(turnScope);
         toolExposureRef.current = new ToolExposure(turnScope, toolRegistryRef.current);
         multiStepContextRef.current = null;
         setPendingToolCalls([]);
@@ -2641,7 +2684,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 } else {
                     // Non-streaming mode: single response
                     const response = await withRetry(() =>
-                        invoke<{
+                        chatRequestsRef.current.call<{
                             content: string;
                             model: string;
                             tokens_used?: number;
@@ -2652,7 +2695,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             finish_reason?: string;
                             native_turn?: NativeTurn;
                             tool_calls?: Array<{ id: string; name: string; arguments: unknown }>;
-                        }>('ai_chat', { request: aiRequest })
+                        }>(aiRequest)
                     );
 
                     // Billed tokens are recorded before any check that can end the turn.

@@ -1,11 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "ai-approval",
-  "description": "AeroAgent approval window: it only reads its request and answers it through the app's own ai_approval_prompt / ai_approval_decide commands, and drags its custom titlebar. Deliberately none of the default capability (no fs, shell, dialog or event permissions): the window that grants approvals holds the least of any.",
+  "description": "AeroAgent approval window: it only reads its request and answers it through the app's own ai_approval_prompt / ai_approval_decide commands, and drags its custom titlebar. Linux release builds load it from the local server on 14321 (see app_page_url), a remote origin for the ACL, hence the remote URL; the bundled page of the other builds stays covered (local defaults to true). Deliberately none of the default capability (no fs, shell, dialog or event permissions): the window that grants approvals holds the least of any.",
   "windows": [
     "ai-approval-*"
   ],
   "permissions": [
     "core:window:allow-start-dragging"
-  ]
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:14321/*"
+    ]
+  }
 }

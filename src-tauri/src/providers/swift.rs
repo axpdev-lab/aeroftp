@@ -1632,10 +1632,50 @@ impl StorageProvider for SwiftProvider {
         }
     }
 
-    /// Delete directory marker
+    /// Delete the pseudo-folder marker, once nothing else is under the prefix.
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        // Try with trailing slash (directory marker convention)
-        let dir_path = format!("{}/", Self::normalize_path(path));
+        // Round 2 of the 4.2.1 review: this answered Ok on a folder that
+        // still held objects, which stayed behind an "empty" folder. Two
+        // names of the prefix are enough to tell "only the marker" from
+        // "anything else" (Swift lists names in byte order and the marker,
+        // `prefix/`, is the shortest).
+        let prefix = Self::normalize_path(path);
+        if prefix.is_empty() {
+            return Err(ProviderError::InvalidPath(
+                "Refusing to remove the container root '/'.".into(),
+            ));
+        }
+        let dir_path = format!("{prefix}/");
+        let base = format!("{}/{}", self.storage_url()?, self.container);
+        let url = format!(
+            "{base}?format=json&prefix={}&limit=2",
+            urlencoding::encode(&dir_path)
+        );
+        let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "List for rmdir failed: HTTP {status}"
+            )));
+        }
+        let body = resp
+            .bytes()
+            .await
+            .map_err(|e| ProviderError::ServerError(format!("List for rmdir failed: {e}")))?;
+        let names: Vec<String> = if status == StatusCode::NO_CONTENT
+            || body.iter().all(u8::is_ascii_whitespace)
+        {
+            Vec::new()
+        } else {
+            let entries: Vec<ObjectEntry> = serde_json::from_slice(&body)
+                .map_err(|e| ProviderError::ServerError(format!("List for rmdir failed: {e}")))?;
+            entries.into_iter().filter_map(|entry| entry.name).collect()
+        };
+        let content = names.iter().filter(|name| **name != dir_path).count();
+        if content > 0 {
+            return Err(super::directory_not_empty(path, content));
+        }
+        // Only the marker (directory marker convention: trailing slash).
         let url = self.object_url(&dir_path)?;
         let resp = self.swift_request(Method::DELETE, &url, None, &[]).await?;
         match resp.status() {
@@ -1727,7 +1767,17 @@ impl StorageProvider for SwiftProvider {
 
         // Also delete the directory marker itself. A folder that held nothing
         // is answered Ok whatever its marker does, as it always was.
-        let marker_deleted = self.rmdir(path).await;
+        let dir_path = format!("{prefix}/");
+        let url = self.object_url(&dir_path)?;
+        let marker_deleted = match self.swift_request(Method::DELETE, &url, None, &[]).await {
+            Ok(resp) => match resp.status() {
+                StatusCode::NO_CONTENT | StatusCode::OK | StatusCode::NOT_FOUND => Ok(()),
+                status => Err(ProviderError::ServerError(format!(
+                    "Rmdir failed: HTTP {status}"
+                ))),
+            },
+            Err(e) => Err(e),
+        };
         if deleted_any {
             marker_deleted?;
         }
@@ -2579,6 +2629,68 @@ mod tests {
         let error = outcome.expect_err("a listing that goes back cannot be deleted through");
         assert!(error.to_string().contains("did not advance"), "{error}");
         assert_eq!(listings, 3, "the third page goes back and stops it");
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` deleted the pseudo-folder marker
+    /// and answered Ok whatever was under the prefix, so an "empty" folder
+    /// stayed on the server with its objects. The prefix is listed first:
+    /// anything under it but the marker refuses the removal.
+    #[tokio::test]
+    async fn rmdir_refuses_a_prefix_with_content_and_deletes_only_the_marker() {
+        use std::sync::{Arc, Mutex};
+        for (listing, expect_refusal) in [
+            (
+                r#"[{"name":"d/","bytes":0},{"name":"d/a","bytes":1}]"#,
+                true,
+            ),
+            (r#"[{"name":"d/a","bytes":1}]"#, true),
+            (r#"[{"name":"d/","bytes":0}]"#, false),
+            ("[]", false),
+        ] {
+            let deletes: Arc<Mutex<Vec<String>>> = Arc::default();
+            let seen = Arc::clone(&deletes);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let seen = Arc::clone(&seen);
+                    async move {
+                        if req.method() == axum::http::Method::DELETE {
+                            seen.lock().unwrap().push(req.uri().path().to_string());
+                            return axum::response::Response::builder()
+                                .status(204)
+                                .body(axum::body::Body::empty())
+                                .unwrap();
+                        }
+                        axum::response::Response::builder()
+                            .status(200)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(listing))
+                            .unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut p = cleartext_opted_in_provider();
+            p.auth = Some(SwiftAuth {
+                token: SecretString::from("t".to_string()),
+                storage_url: format!("http://{addr}/v1/AUTH_a"),
+                obtained_at: Instant::now(),
+            });
+            p.container = "c".to_string();
+            let outcome = p.rmdir("/d").await;
+            let deletes = deletes.lock().unwrap();
+            if expect_refusal {
+                assert!(
+                    matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
+                    "{listing}: {outcome:?}"
+                );
+                assert!(deletes.is_empty(), "{listing}: nothing is deleted");
+            } else {
+                outcome.expect("an empty prefix loses its marker");
+                assert_eq!(*deletes, ["/v1/AUTH_a/c/d/"], "{listing}");
+            }
+        }
     }
 
     /// The GUI's default listing path is `"."`, not `"/"`, and Swift turned that

@@ -83,6 +83,34 @@ async fn publish_remote_edit(
     Ok(())
 }
 
+/// [`publish_remote_edit`] on the legacy FTP session ([`crate::ftp::FtpManager`],
+/// the GUI's `connect_ftp` with no provider active), which until 4.2.1 stored
+/// the new text over the file in place. The manager is lent to a
+/// [`FtpManagerProvider`](super::ftp_manager_provider::FtpManagerProvider) for
+/// the publish and put back afterwards, also if the future is dropped.
+async fn publish_remote_edit_on_ftp_manager(
+    manager: &mut crate::ftp::FtpManager,
+    local_temp: &str,
+    path: &str,
+    allow_non_atomic: bool,
+) -> Result<(), String> {
+    struct Lent<'a> {
+        slot: &'a mut crate::ftp::FtpManager,
+        session: super::ftp_manager_provider::FtpManagerProvider,
+    }
+    impl Drop for Lent<'_> {
+        fn drop(&mut self) {
+            std::mem::swap(self.slot, &mut self.session.0);
+        }
+    }
+    let session = std::mem::take(manager);
+    let mut lent = Lent {
+        slot: manager,
+        session: super::ftp_manager_provider::FtpManagerProvider(session),
+    };
+    publish_remote_edit(&mut lent.session, local_temp, path, allow_non_atomic).await
+}
+
 pub async fn dispatch_gui_tool(
     ctx: &dyn crate::ai_core::tools::ToolCtx,
     tool_name: &str,
@@ -945,10 +973,13 @@ pub async fn dispatch_gui_tool(
                 }
             } else if has_ftp(&app_state).await {
                 let mut manager = app_state.ftp_manager.lock().await;
-                manager
-                    .upload_file(&tmp_path, &path)
-                    .await
-                    .map_err(|e| e.to_string())
+                let publish = publish_remote_edit_on_ftp_manager(
+                    &mut manager,
+                    &tmp_path,
+                    &path,
+                    allow_non_atomic,
+                );
+                warnings.scope(publish).await
             } else {
                 Err("Not connected".to_string())
             };
@@ -989,6 +1020,255 @@ mod tests {
         let file = tempfile::NamedTempFile::new().expect("temp file");
         std::fs::write(file.path(), text).expect("stage");
         file
+    }
+
+    /// A plain FTP server for the legacy session: one folder `/`, whose
+    /// files are `(content, mode)` and whose links point elsewhere. Every
+    /// command is logged. PASV data connections carry LIST and STOR.
+    mod legacy_ftp {
+        use std::collections::{BTreeMap, BTreeSet};
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpListener;
+
+        #[derive(Default)]
+        pub struct Remote {
+            pub files: BTreeMap<String, (Vec<u8>, u32)>,
+            pub links: BTreeMap<String, String>,
+            /// Links whose LIST row carries no ` -> ` target, the way a
+            /// dangling link arrives.
+            pub bare_links: BTreeSet<String>,
+            pub log: Vec<String>,
+        }
+
+        fn letters(mode: u32) -> String {
+            (0..9)
+                .map(|bit| {
+                    if mode & (0o400 >> bit) == 0 {
+                        '-'
+                    } else {
+                        ['r', 'w', 'x'][bit % 3]
+                    }
+                })
+                .collect()
+        }
+
+        pub async fn serve(remote: Arc<Mutex<Remote>>) -> String {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap().to_string();
+            tokio::spawn(async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                let (read, mut write) = socket.into_split();
+                let mut lines = BufReader::new(read).lines();
+                let mut data: Option<TcpListener> = None;
+                let mut from = String::new();
+                write.write_all(b"220 ready\r\n").await.unwrap();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                    let (cmd, arg) = (cmd.to_uppercase(), arg.trim().to_string());
+                    remote.lock().unwrap().log.push(line.clone());
+                    let reply = match cmd.as_str() {
+                        "USER" => "331 password\r\n".to_string(),
+                        "PASS" => "230 in\r\n".to_string(),
+                        "PWD" => "257 \"/\"\r\n".to_string(),
+                        "CWD" if arg == "/" => "250 ok\r\n".to_string(),
+                        "CWD" => "550 no such folder\r\n".to_string(),
+                        "PASV" => {
+                            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                            let port = listener.local_addr().unwrap().port();
+                            data = Some(listener);
+                            format!(
+                                "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                                port / 256,
+                                port % 256
+                            )
+                        }
+                        "LIST" => {
+                            write.write_all(b"150 listing\r\n").await.unwrap();
+                            let (mut socket, _) = data.take().unwrap().accept().await.unwrap();
+                            let rows: String = {
+                                let r = remote.lock().unwrap();
+                                let files = r.files.iter().map(|(p, (c, m))| {
+                                    format!(
+                                        "-{} 1 u g {} Jan 20 10:00 {}\r\n",
+                                        letters(*m),
+                                        c.len(),
+                                        p.trim_start_matches('/')
+                                    )
+                                });
+                                let links = r.links.iter().map(|(p, t)| {
+                                    format!(
+                                        "lrwxrwxrwx 1 u g {} Jan 20 10:00 {} -> {}\r\n",
+                                        t.len(),
+                                        p.trim_start_matches('/'),
+                                        t
+                                    )
+                                });
+                                let bare = r.bare_links.iter().map(|p| {
+                                    format!(
+                                        "lrwxrwxrwx 1 u g 7 Jan 20 10:00 {}\r\n",
+                                        p.trim_start_matches('/')
+                                    )
+                                });
+                                files.chain(links).chain(bare).collect()
+                            };
+                            socket.write_all(rows.as_bytes()).await.unwrap();
+                            socket.shutdown().await.unwrap();
+                            "226 done\r\n".to_string()
+                        }
+                        "STOR" => {
+                            write.write_all(b"150 send\r\n").await.unwrap();
+                            let (mut socket, _) = data.take().unwrap().accept().await.unwrap();
+                            let mut body = Vec::new();
+                            socket.read_to_end(&mut body).await.unwrap();
+                            remote.lock().unwrap().files.insert(arg, (body, 0o644));
+                            "226 stored\r\n".to_string()
+                        }
+                        "SITE" => {
+                            let mut words = arg.split_whitespace();
+                            let (_, mode, path) = (words.next(), words.next(), words.next());
+                            let mode = u32::from_str_radix(mode.unwrap(), 8).unwrap();
+                            match remote.lock().unwrap().files.get_mut(path.unwrap()) {
+                                Some(file) => {
+                                    file.1 = mode;
+                                    "200 chmod\r\n".to_string()
+                                }
+                                None => "550 no such file\r\n".to_string(),
+                            }
+                        }
+                        "RNFR" => {
+                            from = arg;
+                            "350 go on\r\n".to_string()
+                        }
+                        "RNTO" => {
+                            let mut r = remote.lock().unwrap();
+                            match r.files.remove(&from) {
+                                Some(file) => {
+                                    r.links.remove(&arg);
+                                    r.files.insert(arg, file);
+                                    "250 renamed\r\n".to_string()
+                                }
+                                None => "550 no such file\r\n".to_string(),
+                            }
+                        }
+                        "DELE" => {
+                            remote.lock().unwrap().files.remove(&arg);
+                            "250 deleted\r\n".to_string()
+                        }
+                        "QUIT" => {
+                            let _ = write.write_all(b"221 bye\r\n").await;
+                            break;
+                        }
+                        _ => "200 ok\r\n".to_string(),
+                    };
+                    write.write_all(reply.as_bytes()).await.unwrap();
+                }
+            });
+            addr
+        }
+    }
+
+    async fn legacy_session(
+        remote: &std::sync::Arc<std::sync::Mutex<legacy_ftp::Remote>>,
+    ) -> crate::ftp::FtpManager {
+        let addr = legacy_ftp::serve(std::sync::Arc::clone(remote)).await;
+        let mut manager = crate::ftp::FtpManager::new();
+        manager.connect(&addr).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        manager
+    }
+
+    /// L17 of the 4.2.1 review: on the legacy FTP session (no provider)
+    /// `remote_edit` still stored the new text over the file in place, which
+    /// leaves a partial file when the transfer breaks, and dropped the checks
+    /// the provider path makes. It now goes through `publish_remote_edit`: a
+    /// temporary beside the file, its mode copied, then RNFR/RNTO.
+    #[tokio::test]
+    async fn remote_edit_on_the_legacy_ftp_session_publishes_a_temporary() {
+        let remote = std::sync::Arc::new(std::sync::Mutex::new(legacy_ftp::Remote::default()));
+        remote
+            .lock()
+            .unwrap()
+            .files
+            .insert("/t.txt".into(), (b"old".to_vec(), 0o600));
+        let mut manager = legacy_session(&remote).await;
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+
+        super::publish_remote_edit_on_ftp_manager(&mut manager, &local, "/t.txt", false)
+            .await
+            .expect("edit on the legacy session");
+
+        let r = remote.lock().unwrap();
+        assert!(
+            !r.log.iter().any(|line| line == "STOR /t.txt"),
+            "never a store over the file itself: {:?}",
+            r.log
+        );
+        assert!(
+            r.log.iter().any(|line| line == "RNTO /t.txt"),
+            "{:?}",
+            r.log
+        );
+        assert_eq!(
+            r.files.keys().collect::<Vec<_>>(),
+            ["/t.txt"],
+            "the temporary is gone"
+        );
+        assert_eq!(
+            r.files["/t.txt"],
+            (b"new".to_vec(), 0o600),
+            "content and mode"
+        );
+    }
+
+    /// The replace would put a regular file where the link is: refused
+    /// before anything is stored, as on the provider path.
+    #[tokio::test]
+    async fn remote_edit_on_the_legacy_ftp_session_refuses_a_link() {
+        let remote = std::sync::Arc::new(std::sync::Mutex::new(legacy_ftp::Remote::default()));
+        remote
+            .lock()
+            .unwrap()
+            .links
+            .insert("/t.txt".into(), "real.txt".into());
+        let mut manager = legacy_session(&remote).await;
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+
+        let outcome =
+            super::publish_remote_edit_on_ftp_manager(&mut manager, &local, "/t.txt", false).await;
+
+        let r = remote.lock().unwrap();
+        assert!(
+            !r.log.iter().any(|line| line.starts_with("STOR")),
+            "nothing may be stored over a link: {:?}",
+            r.log
+        );
+        assert!(outcome.unwrap_err().contains("symbolic link"));
+    }
+
+    /// The same refusal for a link whose LIST row carries no ` -> ` target:
+    /// the adapter derived `is_symlink` from the target, so a dangling link
+    /// read as a regular file and the edit staged and replaced through it.
+    #[tokio::test]
+    async fn remote_edit_on_the_legacy_ftp_session_refuses_a_link_without_a_target() {
+        let remote = std::sync::Arc::new(std::sync::Mutex::new(legacy_ftp::Remote::default()));
+        remote.lock().unwrap().bare_links.insert("/t.txt".into());
+        let mut manager = legacy_session(&remote).await;
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+
+        let outcome =
+            super::publish_remote_edit_on_ftp_manager(&mut manager, &local, "/t.txt", false).await;
+
+        let r = remote.lock().unwrap();
+        assert!(
+            !r.log.iter().any(|line| line.starts_with("STOR")),
+            "nothing may be stored over a link: {:?}",
+            r.log
+        );
+        assert!(outcome.unwrap_err().contains("symbolic link"));
     }
 
     /// M2 of the 4.2.1 closeout: the default path asked for an atomic

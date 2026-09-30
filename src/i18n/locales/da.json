@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (fra sikkerhedskopi)",
             "keystorePreviewLocalFromVault": "Enhedens liste over serverprofiler kunne ikke læses, så sammenligningen bruger serverlisten i boksen.",
             "keystoreDecisionsFailed": "Importen er færdig, men dine valg for serverprofilerne kunne ikke anvendes: {error}",
+            "keystoreListMergeFailed": "Importen er færdig, men serverlisten fra sikkerhedskopien kunne ikke flettes med denne enheds liste: {error}",
+            "keystorePartitionSkipped": "Sikkerhedskopiens kontopartition kan ikke låses op på denne enhed og blev udeladt. Importér med Overskriv for at gendanne hele partitionen.",
             "exportKeystoreDesc": "Eksportér alle krypterede legitimationsoplysninger til en sikkerhedskopifil",
             "importKeystoreDesc": "Importér legitimationsoplysninger fra en sikkerhedskopifil",
             "keystoreExported": "Nøglelager eksporteret ({count} poster)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Ryd tilsidesættelser",
             "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
             "uiTokensRejected": "Afviste poster: {count}",
-            "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}"
+            "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}",
+            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhedskopi kan ikke læses på denne enhed, så sammenligningen bruger den liste, der er gemt i sikkerhedskopiens boks. Importen erstatter stadig serverlisten på denne enhed."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Uploadet",
             "reportDownloaded": "Downloadet",
             "reportSkipped": "Sprunget over",
+            "keptDirs": "Beholdte mapper",
+            "keptDirUnfinished": "indeholder filer, der ikke blev synkroniseret",
+            "keptDirEntries": "indeholder udelukkede eller ikke-viste poster",
+            "keptDirServer": "ikke tom på serveren",
             "reportTransferred": "Overført",
             "reportDuration": "Varighed",
             "reportDirsCreated": "Mapper oprettet",

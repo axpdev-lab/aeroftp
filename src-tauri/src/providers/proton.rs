@@ -354,6 +354,10 @@ fn redact_cli_args(args: &[&str]) -> Vec<String> {
         if *arg == "--password" {
             hide_next = true;
         }
+        if arg.starts_with("--password=") {
+            out.push("--password=***".to_string());
+            continue;
+        }
         out.push((*arg).to_string());
     }
     out
@@ -990,6 +994,10 @@ impl StorageProvider for ProtonCliProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(path).await?;
         self.delete(path).await
     }
 
@@ -1231,9 +1239,15 @@ impl StorageProvider for ProtonCliProvider {
         if let Some(ref pw) = options.password {
             // The password travels in the process arguments, and there is no
             // way around it today: `cli-drive@0.8.0+06e8c605` accepts it only
-            // as `--password PASSWORD` for `sharing set-url`, with no stdin
-            // form and no environment variable. Checked against the binary's
-            // own help rather than assumed.
+            // as an option value of `sharing set-url`, with no stdin form and
+            // no environment variable. Checked against the binary's own help
+            // rather than assumed.
+            //
+            // One token, `--password=VALUE`: as two tokens a password that
+            // starts with `-` is read as an option, the ambiguity measured on
+            // `copy -n -x`, and `--name=-x` is the form the CLI documents for
+            // a value that starts with `-`. `redact_cli_args` hides the value
+            // in this form too.
             //
             // **The window is up to three processes, not one.** `run_cli`
             // retries a transient failure, `for attempt in 0..=MAX_RETRIES`
@@ -1257,8 +1271,7 @@ impl StorageProvider for ProtonCliProvider {
                  command runs, up to three times if it is retried. The Proton Drive CLI \
                  offers no other way to supply it."
             );
-            args.push("--password".into());
-            args.push(pw.clone());
+            args.push(format!("--password={pw}"));
         }
         let mut expires_at = None;
         if let Some(secs) = options.expires_in_secs {
@@ -1439,6 +1452,16 @@ mod tests {
         let redacted = redact_cli_args(&args);
         assert_eq!(redacted[3], "***");
         assert!(redacted.iter().all(|s| s != "secret"));
+    }
+
+    /// The password goes out as one `--password=VALUE` token, and the log
+    /// line hides the value in that form too.
+    #[test]
+    fn redacts_a_share_password_given_in_one_token() {
+        let args = ["sharing", "set-url", "--password=-secret", "/my-files/a"];
+        let redacted = redact_cli_args(&args);
+        assert_eq!(redacted[2], "--password=***");
+        assert!(redacted.iter().all(|s| !s.contains("secret")));
     }
 
     #[test]
@@ -1981,6 +2004,36 @@ mod cli_sequence_tests {
             copy.iter().any(|a| a == "--name=-z"),
             "copy -n with a dash name needs --name=-z (measured): {copy:?}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A share password starting with `-` went out as `--password -x`, two
+    /// tokens, the form measured ambiguous for `copy -n`: the CLI could read
+    /// the password as an option. It goes out as one `--password=-x` token,
+    /// the form the CLI documents for a value that starts with `-`.
+    #[tokio::test]
+    async fn a_share_password_starting_with_a_dash_is_one_token() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let mut p = provider(&shim);
+        let link = p
+            .create_share_link(
+                "/my-files/a.txt",
+                crate::providers::ShareLinkOptions {
+                    password: Some("-x".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("share link");
+        assert_eq!(link.password.as_deref(), Some("-x"));
+        let argv = read_argv(&dir);
+        let set_url = argv
+            .iter()
+            .find(|a| a.first().map(String::as_str) == Some("sharing"))
+            .expect("sharing set-url ran");
+        assert!(set_url.iter().any(|a| a == "--password=-x"), "{set_url:?}");
+        assert!(!set_url.iter().any(|a| a == "--password"), "{set_url:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

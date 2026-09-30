@@ -181,18 +181,17 @@ struct TrashFile {
     parent_id: Option<i64>,
 }
 
-/// Paginated response shape for trash listings
-#[allow(dead_code)]
+/// One page of the v3 trash listing: `cursor` and `has_more` sit beside
+/// `data` at the top level of the envelope, not inside it.
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum TrashPayload {
-    Paginated {
-        #[serde(default)]
-        data: Vec<TrashFile>,
-        has_more: Option<bool>,
-        cursor: Option<String>,
-    },
-    Flat(Vec<TrashFile>),
+struct TrashListing {
+    #[allow(dead_code)]
+    result: Option<String>,
+    #[serde(default)]
+    data: Vec<TrashFile>,
+    has_more: Option<bool>,
+    cursor: Option<String>,
+    error: Option<ApiError>,
 }
 
 // ─── Dir Cache ───────────────────────────────────────────────────────────
@@ -1455,6 +1454,18 @@ impl StorageProvider for KDriveProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        // `list` moves this session into the listed folder; the check must
+        // not, or the delete and every later relative path would resolve
+        // from inside the folder being removed (CodeRabbit on #979).
+        let saved_current_path = self.current_path.clone();
+        let saved_current_file_id = self.current_file_id;
+        let checked = self.refuse_non_empty_dir(path).await;
+        self.current_path = saved_current_path;
+        self.current_file_id = saved_current_file_id;
+        checked?;
         self.delete(path).await
     }
 
@@ -1470,7 +1481,8 @@ impl StorageProvider for KDriveProvider {
         // dispatch to the inherent permanently_delete_trash helper: by name
         // alone, a purge of `/new/a.txt` could take a trashed `/old/a.txt`.
         // Ok(false) when nothing matches, or the folder is no longer there
-        // to tell which item is this path.
+        // to tell which item is this path; refused when several items of
+        // that name were trashed from it.
         let resolved = self.resolve_path(path);
         let (parent_path, basename) = Self::split_path(&resolved);
         if basename.is_empty() {
@@ -1482,12 +1494,13 @@ impl StorageProvider for KDriveProvider {
             Err(e) => return Err(e),
         };
         let trashed = self.list_trash().await?;
-        let id = trashed
+        let matches: Vec<String> = trashed
             .iter()
             .filter(|e| e.metadata.get("parent_id") == Some(&parent_id))
-            .find(|e| e.name == basename)
-            .and_then(|e| e.metadata.get("file_id").cloned());
-        match id {
+            .filter(|e| e.name == basename)
+            .filter_map(|e| e.metadata.get("file_id").cloned())
+            .collect();
+        match super::the_one_trashed_item(path, matches)? {
             Some(file_id) => {
                 self.permanently_delete_trash(&file_id).await?;
                 Ok(true)
@@ -2060,28 +2073,75 @@ impl KDriveProvider {
             return Err(ProviderError::NotConnected);
         }
 
-        let url = self.api_url_v3("/trash");
-        let resp = self.get_with_retry(&url).await?;
+        // Every page is read: `delete_permanent` decides from this listing
+        // whether the path has one trashed item, and a second item of the
+        // name on a page never read would make the first look like the only
+        // one. A listing that does not end within `MAX_PAGES` is an error,
+        // not a shorter trash.
+        const MAX_PAGES: usize = 200;
+        let mut files = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut complete = false;
+        for _ in 0..MAX_PAGES {
+            let mut url = self.api_url_v3("/trash");
+            if let Some(cursor) = &cursor {
+                url.push_str("?cursor=");
+                url.push_str(&urlencoding::encode(cursor));
+            }
+            let resp = self.get_with_retry(&url).await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(api_failure("List trash failed", Some(status), &body));
+            let status = resp.status();
+            if !status.is_success() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(api_failure("List trash failed", Some(status), &body));
+            }
+
+            let page: TrashListing = resp
+                .json()
+                .await
+                .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            if let Some(error) = page.error {
+                return Err(ProviderError::ServerError(sanitize_api_error(
+                    &error.description.or(error.code).unwrap_or_default(),
+                )));
+            }
+
+            files.extend(page.data);
+            match (page.has_more, page.cursor) {
+                // The same cursor again would read the same page for ever.
+                (Some(true), Some(next)) if cursor.as_deref() == Some(next.as_str()) => {
+                    return Err(ProviderError::ServerError(
+                        "The trash listing announced more items under the cursor just read"
+                            .to_string(),
+                    ));
+                }
+                (Some(true), Some(next)) => cursor = Some(next),
+                // More items announced with no way to reach them: not a
+                // complete listing either.
+                (Some(true), None) => {
+                    return Err(ProviderError::ServerError(
+                        "The trash listing announced more items without a cursor to read them"
+                            .to_string(),
+                    ));
+                }
+                (Some(false), _) => {
+                    complete = true;
+                    break;
+                }
+                // The field is documented as always present: a page without
+                // it does not say whether the trash ends here.
+                (None, _) => {
+                    return Err(ProviderError::ServerError(
+                        "The trash listing did not say whether more items follow".to_string(),
+                    ));
+                }
+            }
         }
-
-        let api_resp: ApiResponse<TrashPayload> = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        let payload = api_resp
-            .data
-            .ok_or_else(|| ProviderError::ParseError("No trash data in response".to_string()))?;
-
-        let files = match payload {
-            TrashPayload::Paginated { data, .. } => data,
-            TrashPayload::Flat(data) => data,
-        };
+        if !complete {
+            return Err(ProviderError::ServerError(format!(
+                "The trash listing did not end within {MAX_PAGES} pages"
+            )));
+        }
 
         let entries = files
             .iter()
@@ -2754,6 +2814,28 @@ mod tests {
         KDriveProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_on_kdrive_trash_paged(folders, trashed, usize::MAX).await
+    }
+
+    /// The trash double's answer with `per_page` set to it: the envelope
+    /// without its `has_more`.
+    const NO_HAS_MORE: usize = usize::MAX - 1;
+    /// The trash double's answer with `per_page` set to it: `has_more` under
+    /// the cursor the request carried.
+    const SAME_CURSOR: usize = usize::MAX - 2;
+
+    /// [`provider_on_kdrive_trash`] listing the trash `per_page` items at a
+    /// time in the documented envelope (`data`, `has_more`, `cursor` at the
+    /// top level). With `per_page` 0 the first item comes with `has_more`
+    /// and no cursor; see [`NO_HAS_MORE`] and [`SAME_CURSOR`].
+    async fn provider_on_kdrive_trash_paged(
+        folders: &'static [(i64, &'static str)],
+        trashed: &'static [(i64, &'static str, i64)],
+        per_page: usize,
+    ) -> (
+        KDriveProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use axum::response::IntoResponse;
         use std::sync::{Arc, Mutex};
         let purges: Arc<Mutex<Vec<String>>> = Arc::default();
@@ -2763,6 +2845,12 @@ mod tests {
                 let seen = Arc::clone(&seen);
                 async move {
                     let path = req.uri().path().to_string();
+                    let cursor: usize = req
+                        .uri()
+                        .query()
+                        .and_then(|q| q.strip_prefix("cursor="))
+                        .and_then(|c| c.parse().ok())
+                        .unwrap_or(0);
                     let ok = |data: serde_json::Value| {
                         axum::Json(serde_json::json!({ "result": "success", "data": data }))
                             .into_response()
@@ -2777,12 +2865,52 @@ mod tests {
                             .iter()
                             .map(|(id, name)| serde_json::json!({ "id": id, "name": name, "type": "dir" }))
                             .collect::<Vec<_>>())),
-                        "/3/drive/987654/trash" => ok(serde_json::json!(trashed
-                            .iter()
-                            .map(|(id, name, parent)| serde_json::json!({
-                                "id": id, "name": name, "type": "file", "parent_id": parent,
-                            }))
-                            .collect::<Vec<_>>())),
+                        "/3/drive/987654/trash" => {
+                            let items: Vec<serde_json::Value> = trashed
+                                .iter()
+                                .map(|(id, name, parent)| serde_json::json!({
+                                    "id": id, "name": name, "type": "file", "parent_id": parent,
+                                }))
+                                .collect();
+                            // The documented v3 envelope: `cursor` and
+                            // `has_more` beside `data` at the top level.
+                            let page = |data: &[serde_json::Value], has_more: bool, cursor: Option<String>| {
+                                axum::Json(serde_json::json!({
+                                    "result": "success",
+                                    "data": data,
+                                    "has_more": has_more,
+                                    "cursor": cursor,
+                                    "response_at": 1,
+                                }))
+                                .into_response()
+                            };
+                            if per_page == NO_HAS_MORE {
+                                // The envelope without its `has_more`.
+                                return axum::Json(serde_json::json!({
+                                    "result": "success",
+                                    "data": &items[..1],
+                                    "response_at": 1,
+                                }))
+                                .into_response();
+                            }
+                            if per_page == SAME_CURSOR {
+                                // More announced under the cursor just read.
+                                return page(&items[..1], true, Some("0".to_string()));
+                            }
+                            if per_page >= items.len() {
+                                return page(&items, false, None);
+                            }
+                            if per_page == 0 {
+                                // More announced, no cursor to reach it.
+                                return page(&items[..1], true, None);
+                            }
+                            let to = items.len().min(cursor.saturating_add(per_page));
+                            page(
+                                &items[cursor.min(items.len())..to],
+                                to < items.len(),
+                                (to < items.len()).then(|| to.to_string()),
+                            )
+                        }
                         _ => ok(serde_json::json!([])),
                     }
                 }
@@ -2820,6 +2948,108 @@ mod tests {
             .await
             .expect("no folder of that case"));
         assert_eq!(purges.lock().unwrap().len(), 1);
+    }
+
+    /// Two generations of `a.txt` trashed from `/new`: the purge took the
+    /// first one listed, which the trash cannot tell to be this path. It is
+    /// refused, as Proton refuses it, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_two_trashed_items_of_one_name() {
+        let (mut provider, purges) =
+            provider_on_kdrive_trash(&[(22, "new")], &[(31, "a.txt", 22), (32, "a.txt", 22)]).await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            purges.lock().unwrap().is_empty(),
+            "{:?}",
+            purges.lock().unwrap()
+        );
+    }
+
+    /// The trash listing read its first page only: with the two generations
+    /// of `a.txt` on two pages, the first looked like the only one and was
+    /// purged. Every page is read before the purge is decided.
+    #[tokio::test]
+    async fn a_permanent_delete_reads_every_trash_page_before_it_decides() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            1,
+        )
+        .await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
+            "{outcome:?}"
+        );
+        assert!(
+            purges.lock().unwrap().is_empty(),
+            "{:?}",
+            purges.lock().unwrap()
+        );
+    }
+
+    /// A listing that announces more items without a cursor to reach them
+    /// read as complete, and the one item read was purged. It is an error,
+    /// and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_a_trash_announced_beyond_its_cursor() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            0,
+        )
+        .await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("cursor")),
+            "{outcome:?}"
+        );
+        assert!(
+            purges.lock().unwrap().is_empty(),
+            "{:?}",
+            purges.lock().unwrap()
+        );
+    }
+
+    /// A page without `has_more`, which the API documents as always
+    /// present, read as the end of the trash and the one item read was
+    /// purged. It is an error, and nothing is purged.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_a_trash_page_that_does_not_say_if_more_follows() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            NO_HAS_MORE,
+        )
+        .await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("more items follow")),
+            "{outcome:?}"
+        );
+        assert!(purges.lock().unwrap().is_empty());
+    }
+
+    /// A page announcing more items under the cursor just read was asked
+    /// again and again until the page limit. It is refused at once.
+    #[tokio::test]
+    async fn a_permanent_delete_refuses_a_trash_cursor_that_does_not_move() {
+        let (mut provider, purges) = provider_on_kdrive_trash_paged(
+            &[(22, "new")],
+            &[(31, "a.txt", 22), (32, "a.txt", 22)],
+            SAME_CURSOR,
+        )
+        .await;
+        let outcome = provider.delete_permanent("/new/a.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("cursor just read")),
+            "{outcome:?}"
+        );
+        assert!(purges.lock().unwrap().is_empty());
     }
 
     /// One item of [`provider_on_kdrive_tree`]: id, name, parent id, `dir`
@@ -2886,6 +3116,23 @@ mod tests {
         provider.root_file_id = 1;
         provider.api_base_override = Some(format!("http://{addr}"));
         (provider, store, changes)
+    }
+
+    /// CodeRabbit on #979: the emptiness check lists the folder, and kDrive's
+    /// `list` moves the session into it; after the folder was deleted the
+    /// session stayed inside it, so a later relative path resolved from a
+    /// folder that no longer exists. The session stays where it was.
+    #[tokio::test]
+    async fn rmdir_leaves_the_session_where_it_was() {
+        let (mut provider, _, changes) = provider_on_kdrive_tree(&[(21, "docs", 1, "dir")]).await;
+        provider.current_path = "/".to_string();
+        provider.current_file_id = 1;
+        provider.rmdir("/docs").await.expect("an empty folder goes");
+        assert_eq!(*changes.lock().unwrap(), ["delete 21"]);
+        assert_eq!(
+            (provider.current_path.as_str(), provider.current_file_id),
+            ("/", 1)
+        );
     }
 
     /// `cd /docs` beside only `Docs` resolved to `Docs` through the case

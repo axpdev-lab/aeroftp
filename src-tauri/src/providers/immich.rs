@@ -589,6 +589,48 @@ impl ImmichProvider {
 // StorageProvider trait implementation
 // ---------------------------------------------------------------------------
 
+impl ImmichProvider {
+    /// The API's delete of a folder, which takes whatever the folder holds
+    /// along: `rmdir` reaches it only for a folder that listed empty,
+    /// `rmdir_recursive` for any.
+    async fn remove_folder_whole(&mut self, path: &str) -> Result<(), ProviderError> {
+        let trimmed = path.trim_matches('/');
+        if trimmed.is_empty() {
+            return Err(ProviderError::InvalidPath("Cannot delete root".to_string()));
+        }
+
+        if trimmed == VIRTUAL_ALL_ASSETS || trimmed == VIRTUAL_FAVORITES {
+            return Err(ProviderError::InvalidPath(
+                "Cannot delete virtual folders".to_string(),
+            ));
+        }
+
+        let album_id = self.resolve_album_id(trimmed).await?;
+
+        // DELETE /api/albums/{id} - deletes album but NOT its assets
+        let url = self.api_url(&format!("/albums/{}", album_id));
+        let response = self
+            .client
+            .delete(&url)
+            .send()
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(Self::map_api_error(status, &text, "Delete album"));
+        }
+
+        // Clean cache
+        self.album_cache.remove(trimmed);
+        self.album_id_to_name.remove(&album_id);
+
+        info!("Deleted album '{}' (id={})", trimmed, album_id);
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl StorageProvider for ImmichProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
@@ -1178,45 +1220,15 @@ impl StorageProvider for ImmichProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        let trimmed = path.trim_matches('/');
-        if trimmed.is_empty() {
-            return Err(ProviderError::InvalidPath("Cannot delete root".to_string()));
-        }
-
-        if trimmed == VIRTUAL_ALL_ASSETS || trimmed == VIRTUAL_FAVORITES {
-            return Err(ProviderError::InvalidPath(
-                "Cannot delete virtual folders".to_string(),
-            ));
-        }
-
-        let album_id = self.resolve_album_id(trimmed).await?;
-
-        // DELETE /api/albums/{id} - deletes album but NOT its assets
-        let url = self.api_url(&format!("/albums/{}", album_id));
-        let response = self
-            .client
-            .delete(&url)
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            return Err(Self::map_api_error(status, &text, "Delete album"));
-        }
-
-        // Clean cache
-        self.album_cache.remove(trimmed);
-        self.album_id_to_name.remove(&album_id);
-
-        info!("Deleted album '{}' (id={})", trimmed, album_id);
-        Ok(())
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(path).await?;
+        self.remove_folder_whole(path).await
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        // Albums don't contain sub-albums, so same as rmdir
-        self.rmdir(path).await
+        self.remove_folder_whole(path).await
     }
 
     async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {

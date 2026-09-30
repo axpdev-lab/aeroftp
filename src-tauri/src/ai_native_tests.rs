@@ -532,6 +532,40 @@ fn invalid_tool_identity_or_arguments_cannot_be_executed() {
     }
 }
 
+/// M10 of the 4.2.1 review: a tool without parameters may come back with
+/// `arguments: ""` (or only whitespace) instead of `"{}"`, and the parse
+/// refused the whole turn as "Invalid tool arguments JSON". Empty arguments
+/// are the empty object; anything else still has to be a JSON object.
+#[test]
+fn a_zero_argument_tool_call_with_empty_arguments_is_an_empty_object() {
+    let req = request("kimi", "kimi-k3");
+    for args in ["", "   ", "\n"] {
+        let response = json!({"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"inspect","arguments":args}}]}}]});
+        let parsed =
+            parse(&req, &response).unwrap_or_else(|e| panic!("arguments {args:?} refused: {e}"));
+        let calls = parsed.tool_calls.expect("the call is kept");
+        assert_eq!(calls[0].arguments, json!({}), "arguments {args:?}");
+    }
+}
+
+/// Missing or non-string arguments are not the blank of a zero-argument
+/// call: the parse read both as `""`, accepted them as the empty object, and
+/// would execute a call the model never really made.
+#[test]
+fn missing_or_typed_tool_arguments_are_refused() {
+    let req = request("kimi", "kimi-k3");
+    for arguments in [json!(null), json!({"path": "f"}), json!(3)] {
+        let response = json!({"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"inspect","arguments":arguments}}]}}]});
+        assert!(
+            parse(&req, &response).is_err(),
+            "arguments {arguments} accepted"
+        );
+    }
+    // No `arguments` field at all is refused the same way.
+    let response = json!({"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"inspect"}}]}}]});
+    assert!(parse(&req, &response).is_err());
+}
+
 #[test]
 fn refusal_is_visible_without_exposing_reasoning() {
     let req = request("openai", "gpt-6-sol");

@@ -40281,6 +40281,8 @@ async fn cmd_keystore_import(
             "requires_restart": outcome.requires_restart,
             "user_partitions_rekeyed": outcome.user_partitions_rekeyed,
             "user_partitions_unreadable": outcome.user_partitions_unreadable,
+            "profile_partition_skipped": outcome.profile_partition_skipped,
+            "profile_list_error": outcome.profile_decisions_error,
         });
         println!("{}", summary);
     } else if matches!(format, OutputFormat::Text) {
@@ -40306,6 +40308,15 @@ async fn cmd_keystore_import(
                  machine with a passphrase set on those users.",
                 outcome.user_partitions_unreadable
             );
+        }
+        if outcome.profile_partition_skipped {
+            eprintln!(
+                "The backup's account partition cannot be unlocked on this machine and was \
+                 left out. Import with --merge overwrite to restore that partition whole."
+            );
+        }
+        if let Some(e) = &outcome.profile_decisions_error {
+            eprintln!("Warning: the server list could not be merged: {e}");
         }
         if outcome.requires_restart {
             eprintln!(
@@ -40375,7 +40386,20 @@ fn cmd_flatpak_import(status_only: bool, format: OutputFormat) -> i32 {
             0
         }
         Err(e) => {
-            print_error(format, &format!("flatpak-import failed: {e}"), 1);
+            // The files copied before the error stay in the sandbox and load
+            // at the next start (4.2.1 review, L12): the JSON carries their
+            // count as a number, the text names it in the message.
+            match format {
+                OutputFormat::Json => {
+                    let mut json = e.to_json();
+                    json["error"] =
+                        serde_json::Value::String(format!("flatpak-import failed: {e}"));
+                    eprintln!("{json}");
+                }
+                OutputFormat::Text => {
+                    print_error(format, &format!("flatpak-import failed: {e}"), 1)
+                }
+            }
             1
         }
     }
@@ -43260,37 +43284,10 @@ async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
         return 1;
     }
 
-    // Emptiness check counts EVERY entry, including dotfiles, so a
-    // directory holding only hidden files is correctly rejected.
-    match provider.list(path).await {
-        Ok(entries) => {
-            if !entries.is_empty() {
-                print_error(
-                    format,
-                    &format!(
-                        "rmdir failed: directory not empty: {} ({} entr{})",
-                        path,
-                        entries.len(),
-                        if entries.len() == 1 { "y" } else { "ies" }
-                    ),
-                    9,
-                );
-                let _ = provider.disconnect().await;
-                return 9;
-            }
-        }
-        Err(e) => {
-            print_error(
-                format,
-                &format!("rmdir failed: {}", e),
-                provider_error_to_exit_code(&e),
-            );
-            let _ = provider.disconnect().await;
-            return provider_error_to_exit_code(&e);
-        }
-    }
-
-    match provider.rmdir(path).await {
+    // The backend's own `rmdir` refuses a directory that holds anything,
+    // dotfiles included (exit 9, `DirectoryNotEmpty`): the one primitive the
+    // GUI sync, `sync --delete` and every non-recursive delete share.
+    match ftp_client_gui_lib::providers::remove_empty_directory(provider.as_mut(), path).await {
         Ok(()) => {
             match format {
                 OutputFormat::Text => {
@@ -49411,20 +49408,6 @@ fn sync_orphan_dir_candidates<'a>(
     out
 }
 
-/// Whether `rmdir` on this backend refuses a directory that is not empty, by
-/// protocol: FTP `RMD` and SFTP `rmdir` do. Object stores and most cloud APIs
-/// delete a directory with everything in it, and a listing can leave stored
-/// objects out (a crypt overlay's sentinels, a listing that is not
-/// authoritative), so an "emptied" directory there is not removed. The crypt
-/// and compress overlays forward `rmdir` to the backend's own, and report its
-/// type, so they answer as the backend underneath.
-fn sync_rmdir_refuses_non_empty(provider: ProviderType) -> bool {
-    matches!(
-        provider,
-        ProviderType::Ftp | ProviderType::Ftps | ProviderType::Sftp
-    )
-}
-
 /// Whether `dir` is the `--backup-dir` directory or inside it: the empty
 /// directories a `sync --delete` removes never include the backups.
 fn sync_backup_dir_holds(backup_dir: Option<&str>, dir: &Path) -> bool {
@@ -51441,48 +51424,43 @@ async fn cmd_sync(
 
     // The directories a one-way --delete leaves empty on the destination:
     // candidates now (for the dry run too), each removed after the file
-    // deletes only when it lists empty then. A remote destination takes part
-    // only where `rmdir` refuses a directory that is not empty
-    // (`sync_rmdir_refuses_non_empty`): elsewhere the removal would take with
-    // it whatever the listing did not show.
-    let removes_dirs = direction == "download"
-        || (direction == "upload" && sync_rmdir_refuses_non_empty(provider.provider_type()));
-    let orphan_dirs: Vec<String> = if delete
-        && removes_dirs
-        && reconcile_plan.is_none()
-        && matches!(direction, "upload" | "download")
-    {
-        let (deleted, source_paths): (&[&str], Vec<&str>) = if direction == "upload" {
-            (&to_delete_remote, local_map.keys().copied().collect())
-        } else {
-            (&to_delete_local, remote_map.keys().copied().collect())
-        };
-        let mut dirs = Vec::new();
-        for dir in sync_orphan_dir_candidates(deleted, source_paths, &exclude_matchers, |d| {
-            bound.covers(d)
-        }) {
-            if validate_relative_path(&dir).is_none() {
-                continue;
-            }
-            // A directory the source has, empty or not, stays. On a remote
-            // source only a NotFound answer counts as absent.
-            let source_has_it = if direction == "upload" {
-                Path::new(local).join(&dir).is_dir()
+    // deletes with the backend's `rmdir`, which refuses a directory that
+    // holds anything on every backend (round 2 of the 4.2.1 review): an
+    // entry the listing did not show keeps its directory instead of going
+    // with it.
+    let orphan_dirs: Vec<String> =
+        if delete && reconcile_plan.is_none() && matches!(direction, "upload" | "download") {
+            let (deleted, source_paths): (&[&str], Vec<&str>) = if direction == "upload" {
+                (&to_delete_remote, local_map.keys().copied().collect())
             } else {
-                let remote_dir = format!("{}/{}", remote.trim_end_matches('/'), dir);
-                !matches!(
-                    provider.stat(&remote_dir).await,
-                    Err(ProviderError::NotFound(_))
-                )
+                (&to_delete_local, remote_map.keys().copied().collect())
             };
-            if !source_has_it {
-                dirs.push(dir);
+            let mut dirs = Vec::new();
+            for dir in sync_orphan_dir_candidates(deleted, source_paths, &exclude_matchers, |d| {
+                bound.covers(d)
+            }) {
+                if validate_relative_path(&dir).is_none() {
+                    continue;
+                }
+                // A directory the source has, empty or not, stays. On a remote
+                // source only a NotFound answer counts as absent.
+                let source_has_it = if direction == "upload" {
+                    Path::new(local).join(&dir).is_dir()
+                } else {
+                    let remote_dir = format!("{}/{}", remote.trim_end_matches('/'), dir);
+                    !matches!(
+                        provider.stat(&remote_dir).await,
+                        Err(ProviderError::NotFound(_))
+                    )
+                };
+                if !source_has_it {
+                    dirs.push(dir);
+                }
             }
-        }
-        dirs
-    } else {
-        Vec::new()
-    };
+            dirs
+        } else {
+            Vec::new()
+        };
 
     // KE-A5: Apply --order-by to the transfer queue BEFORE the dry-run
     // gate so the printed/JSON plan reflects the order that the live
@@ -52502,13 +52480,15 @@ async fn cmd_sync(
         }
     }
 
-    // Directories the deletes left empty, deepest first. Each is listed again
-    // and removed only when that listing is empty, with a call that refuses a
-    // directory that is not empty (a local `remove_dir`, FTP `RMD`, SFTP
-    // `rmdir`), so an entry the listing did not show makes the removal fail
-    // instead of going with it. A failure is a note, not an error: the files
-    // the run was asked to sync are synced. Each directory kept that way is
-    // listed in the JSON result with the reason, `--quiet` or not.
+    // Directories the deletes left empty, deepest first. Each is removed
+    // with the backend's `rmdir`, which refuses a directory that holds
+    // anything (a local `remove_dir`, FTP `RMD`, SFTP `rmdir`, a listing on
+    // the cloud APIs), so an entry the listing did not show keeps its
+    // directory instead of going with it. A refusal is a note, not an error:
+    // the files the run was asked to sync are synced. Each directory kept
+    // that way is listed in the JSON result with the reason, `--quiet` or
+    // not; a directory that still holds entries the plan did not have says
+    // how many.
     let mut dirs_deleted: u32 = 0;
     let mut dirs_kept: Vec<CliSyncKeptDir> = Vec::new();
     for dir in &orphan_dirs {
@@ -52517,13 +52497,17 @@ async fn cmd_sync(
         }
         if direction == "upload" {
             let remote_dir = format!("{}/{}", remote.trim_end_matches('/'), dir);
-            if !matches!(provider.list(&remote_dir).await, Ok(entries) if entries.is_empty()) {
-                continue;
-            }
-            match provider.rmdir(&remote_dir).await {
+            match ftp_client_gui_lib::providers::remove_empty_directory(
+                provider.as_mut(),
+                &remote_dir,
+            )
+            .await
+            {
                 Ok(()) => dirs_deleted += 1,
                 Err(ProviderError::NotFound(_)) => {}
-                Err(e) => {
+                // Kept on purpose: the directory holds what the plan did not
+                // have (an excluded or unlisted entry).
+                Err(e @ ProviderError::DirectoryNotEmpty(_)) => {
                     if !quiet {
                         eprintln!("Note: kept remote directory {dir}: {e}");
                     }
@@ -52532,20 +52516,60 @@ async fn cmd_sync(
                         reason: e.to_string(),
                     });
                 }
+                // Any other refusal (permissions, a timeout, a server error)
+                // is a failure of the run, not a directory kept by design.
+                Err(e) => errors.push(format!("remove remote directory {dir}: {e}")),
             }
         } else {
             let local_dir = Path::new(local).join(dir);
             if sync_backup_dir_holds(backup_dir, &local_dir) {
                 continue;
             }
-            let empty = std::fs::read_dir(&local_dir).is_ok_and(|mut it| it.next().is_none());
-            if !empty {
+            let held = match std::fs::read_dir(&local_dir) {
+                Ok(entries) => {
+                    // An entry that fails to read is an error of the run, not
+                    // one more entry that keeps the directory.
+                    let mut held = 0usize;
+                    let mut unreadable = None;
+                    for entry in entries {
+                        match entry {
+                            Ok(_) => held += 1,
+                            Err(e) => {
+                                unreadable = Some(e);
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(e) = unreadable {
+                        errors.push(format!("read local directory {dir}: {e}"));
+                        continue;
+                    }
+                    held
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    errors.push(format!("read local directory {dir}: {e}"));
+                    continue;
+                }
+            };
+            if held > 0 {
+                let reason = format!(
+                    "{dir} holds {held} entr{} the plan did not have",
+                    if held == 1 { "y" } else { "ies" }
+                );
+                if !quiet {
+                    eprintln!("Note: kept local directory {dir}: {reason}");
+                }
+                dirs_kept.push(CliSyncKeptDir {
+                    path: dir.clone(),
+                    reason,
+                });
                 continue;
             }
             match std::fs::remove_dir(&local_dir) {
                 Ok(()) => dirs_deleted += 1,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => {
+                Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
                     if !quiet {
                         eprintln!("Note: kept local directory {dir}: {e}");
                     }
@@ -52554,6 +52578,7 @@ async fn cmd_sync(
                         reason: e.to_string(),
                     });
                 }
+                Err(e) => errors.push(format!("remove local directory {dir}: {e}")),
             }
         }
     }
@@ -66399,6 +66424,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                backup_dir: None,
             };
             let script = generate_script(&profile, "test");
             let lines = read_batch_script(&script).unwrap_or_else(|e| panic!("{}: {script}", e.1));
@@ -66671,6 +66697,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                backup_dir: None,
             });
             out.push(AerosyncScriptProfile {
                 profile: preset,
@@ -66686,6 +66713,7 @@ DISCONNECT\n";
                 skip_matching: true,
                 resync: true,
                 watch: true,
+                backup_dir: None,
             });
         }
         out
@@ -66712,6 +66740,7 @@ DISCONNECT\n";
                     skip_matching: want_skip,
                     resync: want_resync,
                     watch: want_watch,
+                    backup_dir: _,
                 } = exported.clone();
                 let SyncProfile {
                     id: _,
@@ -81305,12 +81334,13 @@ mod tests {
         /// The precision its times are listed with, when not the declared one
         /// for `kind` (`Some(None)`: no comparable time, size only).
         precision: Option<Option<std::time::Duration>>,
-        /// `rmdir` removes the directory with everything under it, as the
-        /// object stores and most cloud APIs do.
-        recursive_rmdir: bool,
         /// Full paths a listing leaves out although they are stored (a crypt
-        /// overlay's sentinels, a listing that is not authoritative).
+        /// overlay's sentinels, an FTP `LIST` without dot files). `rmdir`
+        /// still sees them: a directory that holds one is refused, as the
+        /// server refuses it.
         hidden: std::collections::HashSet<String>,
+        /// Opt-in: every `rmdir` is refused for want of permission.
+        rmdir_denied: bool,
     }
 
     impl MemTreeProvider {
@@ -81448,17 +81478,40 @@ mod tests {
             if !self.mutable {
                 return Err(ProviderError::NotSupported("rmdir".to_string()));
             }
+            if self.rmdir_denied {
+                return Err(ProviderError::PermissionDenied(format!(
+                    "{path}: 550 Permission denied"
+                )));
+            }
+            // The contract of every backend since round 2 of the 4.2.1
+            // review: a directory that holds anything, listed or not, is
+            // refused. A backend that lists first says so in words
+            // (`DirectoryNotEmpty`); one whose server refuses on its own
+            // (FTP `RMD`) answers a bare status.
             match self.dirs.get(path) {
                 None => return Err(ProviderError::NotFound(path.to_string())),
-                Some(listing) if !listing.is_empty() && !self.recursive_rmdir => {
-                    return Err(ProviderError::Other(format!("{path}: not empty")))
+                Some(listing) if !listing.is_empty() => {
+                    let listed = listing
+                        .iter()
+                        .filter(|entry| !self.hidden.contains(&entry.path))
+                        .count();
+                    return Err(if listed > 0 {
+                        ProviderError::DirectoryNotEmpty(format!(
+                            "{path} holds {listed} entr{}",
+                            if listed == 1 { "y" } else { "ies" }
+                        ))
+                    } else {
+                        // What the FTP provider answers since it looks into a
+                        // directory whose RMD the server refused without
+                        // saying why (vsftpd's bare 550).
+                        ProviderError::DirectoryNotEmpty(format!(
+                            "550 {path}: Remove directory operation failed. ({path} holds hidden entries)"
+                        ))
+                    });
                 }
                 Some(_) => {}
             }
-            // A recursive backend takes everything under it, listed or not.
-            let prefix = format!("{path}/");
-            self.dirs
-                .retain(|dir, _| dir != path && !dir.starts_with(&prefix));
+            self.dirs.remove(path);
             let parent = path.rsplit_once('/').map_or("", |(parent, _)| parent);
             if let Some(listing) = self.dirs.get_mut(parent) {
                 listing.retain(|entry| entry.path != path);
@@ -86362,6 +86415,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                backup_dir: None,
             },
             "test",
         );
@@ -86611,30 +86665,46 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 "/root/old/y.txt"
             ]
         );
+        // Round 2 of the 4.2.1 review: the folder that still holds the
+        // excluded `b.log` is offered to the backend's non-recursive rmdir
+        // too, which refuses it, and the run says why it stayed.
         assert_eq!(
             *rmdirs.lock().unwrap(),
-            vec!["/root/old/sub".to_string(), "/root/old".to_string()]
+            vec![
+                "/root/old/sub".to_string(),
+                "/root/mixed".to_string(),
+                "/root/old".to_string()
+            ]
+        );
+        assert_eq!(stats.dirs_kept.len(), 1);
+        assert_eq!(stats.dirs_kept[0].path, "mixed");
+        assert!(
+            stats.dirs_kept[0].reason.contains("holds 1 entry"),
+            "{}",
+            stats.dirs_kept[0].reason
         );
     }
 
     /// C2 (review of #949): `sync --delete` removed an emptied directory with
-    /// `rmdir`, which object stores and most cloud APIs run recursively, after
-    /// a listing that can leave stored objects out (a crypt overlay's
-    /// sentinels, a listing that is not authoritative). The object the listing
-    /// hid went with the directory, uncounted by `--max-delete`. A backend whose
-    /// `rmdir` is not known to refuse a non-empty directory keeps its
-    /// directories.
+    /// Round 2 of the 4.2.1 review: `sync --delete` removed no emptied
+    /// directory on an object store or a cloud API, because their `rmdir`
+    /// took along whatever the listing did not show. Every `rmdir` refuses a
+    /// directory that holds anything now, so the emptied directory goes on
+    /// every backend, and one that hides an object stays with it.
     #[test]
-    fn an_emptied_directory_on_a_recursive_backend_is_left_alone() {
+    fn an_emptied_directory_on_an_object_store_is_removed_and_a_hiding_one_kept() {
         let fixture = FilesFromFixture::new();
         let local = fixture.local();
         std::fs::create_dir_all(Path::new(&local).join("keep")).unwrap();
         fixture.local_file("keep/a.txt", 1);
-        let mut remote =
-            MemTreeProvider::tree(&[("keep/a.txt", 1), ("old/x.txt", 1), ("old/sentinel", 1)]);
+        let mut remote = MemTreeProvider::tree(&[
+            ("keep/a.txt", 1),
+            ("old/x.txt", 1),
+            ("gone/y.txt", 1),
+            ("old/sentinel", 1),
+        ]);
         remote.mutable = true;
         remote.kind = Some(ProviderType::S3);
-        remote.recursive_rmdir = true;
         remote.hidden.insert("/root/old/sentinel".to_string());
         let rmdirs = Arc::clone(&remote.rmdir_attempts);
         let cli = Cli {
@@ -86652,11 +86722,15 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             &cli,
         );
         assert_eq!(stats.exit_code, 0);
-        assert!(
-            rmdirs.lock().unwrap().is_empty(),
-            "a recursive rmdir after a listing that hides objects deletes them: {:?}",
-            rmdirs.lock().unwrap()
+        let mut attempted = rmdirs.lock().unwrap().clone();
+        attempted.sort();
+        assert_eq!(
+            attempted,
+            vec!["/root/gone".to_string(), "/root/old".to_string()],
+            "both emptied directories go through rmdir on an object store"
         );
+        let kept: Vec<&str> = stats.dirs_kept.iter().map(|d| d.path.as_str()).collect();
+        assert_eq!(kept, vec!["old"], "the directory hiding an object stays");
     }
 
     /// Minor 3 (re-review of #949): a one-way pair `--update` leaves alone
@@ -86721,6 +86795,75 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             vec!["old"],
             "RMD refused the directory the listing showed empty"
         );
+    }
+
+    /// CodeRabbit on #979: a directory the backend refused for another reason
+    /// than holding entries (permissions here) was listed as kept and the run
+    /// exited 0. Only a refusal for content is a kept directory; any other is
+    /// an error of the run.
+    #[test]
+    fn a_directory_whose_removal_is_denied_fails_the_run() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir_all(Path::new(&local).join("keep")).unwrap();
+        fixture.local_file("keep/a.txt", 1);
+        let mut remote = MemTreeProvider::tree(&[("keep/a.txt", 1), ("old/x.txt", 1)]);
+        remote.mutable = true;
+        remote.rmdir_denied = true;
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = run_sync_rule(
+            remote,
+            &local,
+            "upload",
+            false,
+            true,
+            &[],
+            SOURCE_WINS,
+            &cli,
+        );
+        assert!(
+            stats.dirs_kept.is_empty(),
+            "a denied removal is not a kept directory"
+        );
+        assert_ne!(stats.exit_code, 0, "a denied removal fails the run");
+    }
+
+    /// CodeRabbit on #979: a local directory a download emptied of what the
+    /// plan had, but that still holds an excluded file, was skipped without a
+    /// word. It is listed as kept, with the count.
+    #[test]
+    fn a_local_directory_holding_an_excluded_file_is_listed_as_kept() {
+        let fixture = FilesFromFixture::new();
+        let local = fixture.local();
+        std::fs::create_dir_all(Path::new(&local).join("keep")).unwrap();
+        std::fs::create_dir_all(Path::new(&local).join("old")).unwrap();
+        fixture.local_file("keep/a.txt", 1);
+        fixture.local_file("old/x.txt", 1);
+        fixture.local_file("old/.env", 1);
+        let mut remote = MemTreeProvider::tree(&[("keep/a.txt", 1)]);
+        remote.mutable = true;
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let excludes = vec![".env".to_string()];
+        let stats = run_sync_rule(
+            remote,
+            &local,
+            "download",
+            false,
+            true,
+            &excludes,
+            SOURCE_WINS,
+            &cli,
+        );
+        assert_eq!(stats.exit_code, 0);
+        assert!(Path::new(&local).join("old/.env").exists());
+        let kept: Vec<&str> = stats.dirs_kept.iter().map(|d| d.path.as_str()).collect();
+        assert_eq!(kept, vec!["old"]);
     }
 
     /// A dry run removes no directory: it lists the candidates and stops.

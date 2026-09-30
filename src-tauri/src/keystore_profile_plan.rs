@@ -109,6 +109,10 @@ pub struct ProfilePreview {
     /// The import replaces the list (a restored partition, or "overwrite"),
     /// so a profile only on this machine is removed unless kept.
     pub replaces_list: bool,
+    /// The backup's partition, which the import restores whole, cannot be
+    /// read on this device: the comparison uses the list in the backup's
+    /// vault, and the dialog says so.
+    pub backup_unreadable: bool,
     pub unchanged: u32,
     pub changes: Vec<ProfileChange>,
     /// Identifies the exact state this preview describes (both lists, their
@@ -137,6 +141,9 @@ pub struct PlanInputs {
     pub backup: Option<Vec<Value>>,
     pub source: ProfileListSource,
     pub replaces_list: bool,
+    /// The backup carries a partition the import restores, but it cannot be
+    /// read here; `backup` is then the list in the backup's vault (or empty).
+    pub backup_unreadable: bool,
     /// "Skip existing": a change starts at this device's version. The name of
     /// the strategy is the user's intent, even where the restored partition
     /// would replace the list without a decision.
@@ -235,6 +242,7 @@ pub fn preview(inputs: &PlanInputs) -> ProfilePreview {
             source: ProfileListSource::None,
             local_source: inputs.local_source,
             replaces_list: false,
+            backup_unreadable: inputs.backup_unreadable,
             unchanged: inputs.local.len() as u32,
             changes: Vec::new(),
             fingerprint: fingerprint(inputs),
@@ -317,6 +325,7 @@ pub fn preview(inputs: &PlanInputs) -> ProfilePreview {
         source: inputs.source,
         local_source: inputs.local_source,
         replaces_list: inputs.replaces_list,
+        backup_unreadable: inputs.backup_unreadable,
         unchanged,
         changes,
         fingerprint: fingerprint(inputs),
@@ -403,18 +412,24 @@ pub fn fingerprint(inputs: &PlanInputs) -> String {
     };
     field(
         format!(
-            "{:?}|{:?}|{}|{}",
-            inputs.source, inputs.local_source, inputs.replaces_list, inputs.keep_local_by_default
+            "{:?}|{:?}|{}|{}|{}",
+            inputs.source,
+            inputs.local_source,
+            inputs.replaces_list,
+            inputs.keep_local_by_default,
+            inputs.backup_unreadable
         )
         .as_bytes(),
     );
+    // Without the volatile fields: the preview ignores them, and a
+    // connection made between "Review changes" and "Import" rewrites them.
     field(
-        serde_json::to_string(&inputs.local)
+        serde_json::to_string(&without_volatile(&inputs.local))
             .unwrap_or_default()
             .as_bytes(),
     );
     field(
-        serde_json::to_string(&inputs.backup)
+        serde_json::to_string(&inputs.backup.as_deref().map(without_volatile))
             .unwrap_or_default()
             .as_bytes(),
     );
@@ -437,6 +452,21 @@ pub fn fingerprint(inputs: &PlanInputs) -> String {
         }
     }
     hex::encode(mac.finalize().into_bytes())
+}
+
+/// `list` without the [`VOLATILE_FIELDS`], as [`fingerprint`] hashes it.
+fn without_volatile(list: &[Value]) -> Vec<Value> {
+    list.iter()
+        .map(|p| {
+            let mut p = p.clone();
+            if let Some(obj) = p.as_object_mut() {
+                for f in VOLATILE_FIELDS {
+                    obj.remove(*f);
+                }
+            }
+            p
+        })
+        .collect()
 }
 
 /// Refuse decisions that do not belong to this plan, before anything is
@@ -620,6 +650,7 @@ mod tests {
                 ProfileListSource::Vault
             },
             replaces_list,
+            backup_unreadable: false,
             // Overwrite over a partition, "skip existing" over a vault blob:
             // the two combinations the import had before the preview.
             keep_local_by_default: !replaces_list,
@@ -665,6 +696,29 @@ mod tests {
         // The value handed out is not a plain hash of the inputs.
         assert!(!reviewed.contains("pw-b"));
         assert_eq!(reviewed.len(), 64);
+    }
+
+    /// L11 (4.2.1 review): a connection made between "Review changes" and
+    /// "Import" rewrites only the fields the preview ignores; the decisions
+    /// still apply, and the list keeps the newer values.
+    #[test]
+    fn a_connection_after_the_preview_keeps_the_decisions_valid() {
+        let reviewed = fp(&inputs(true));
+        let keep = [ProfileDecisionInput {
+            id: "srv_b".into(),
+            decision: ProfileDecision::Reject,
+            copy_name: None,
+        }];
+        let mut connected = inputs(true);
+        connected.local[0]["lastConnected"] = json!("2026-09-29T10:00:00Z");
+        connected.local[1]["lastQuota"] = json!({"used": 10, "total": 100});
+        assert!(
+            validate(&connected, &keep, &reviewed).is_ok(),
+            "a background connect invalidated the reviewed decisions"
+        );
+        let out = apply(&connected, &keep, &reviewed, &mut || unreachable!()).unwrap();
+        assert_eq!(out.profiles[0]["lastConnected"], "2026-09-29T10:00:00Z");
+        assert_eq!(out.profiles[1]["lastQuota"]["used"], 10);
     }
 
     fn ids(list: &[Value]) -> Vec<&str> {

@@ -42,6 +42,35 @@ describe('keystoreImportSummary', () => {
         );
     });
 
+    it('reports a failed default plan as an unmerged list, not as choices that failed', () => {
+        // B1 (4.2.1): with no review the user made no choices; the default
+        // plan the import applied on its own is what failed.
+        const summary = keystoreImportSummary(
+            { imported: 3, skipped: 0, profileDecisionsError: 'locked' },
+            null,
+            t,
+            { reviewed: false },
+        );
+        expect(summary.type).toBe('info');
+        expect(summary.text).toBe(
+            'settings.keystoreImported(imported=3,skipped=0). settings.keystoreListMergeFailed(error=locked.)',
+        );
+        // A reviewed import keeps naming the user's choices.
+        expect(keystoreImportSummary(
+            { imported: 3, skipped: 0, profileDecisionsError: 'locked' }, null, t, { reviewed: true },
+        ).text).toContain('settings.keystoreDecisionsFailed(error=locked.)');
+    });
+
+    it('says when the backup partition was left out of the restore', () => {
+        const summary = keystoreImportSummary(
+            { imported: 2, skipped: 1, profilePartitionSkipped: true }, null, t, { reviewed: false },
+        );
+        expect(summary.type).toBe('info');
+        expect(summary.text).toBe(
+            'settings.keystoreImported(imported=2,skipped=1). settings.keystorePartitionSkipped',
+        );
+    });
+
     it('ends an error with a full stop, so the next note does not run into it', () => {
         const summary = keystoreImportSummary(
             { imported: 1, skipped: 0, requiresRestart: true },

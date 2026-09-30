@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (từ bản sao lưu)",
             "keystorePreviewLocalFromVault": "Không đọc được danh sách hồ sơ máy chủ của thiết bị này, nên việc so sánh dùng danh sách máy chủ lưu trong kho.",
             "keystoreDecisionsFailed": "Quá trình nhập đã xong, nhưng không áp dụng được lựa chọn của bạn cho hồ sơ máy chủ: {error}",
+            "keystoreListMergeFailed": "Quá trình nhập đã xong, nhưng không gộp được danh sách máy chủ của bản sao lưu với danh sách của thiết bị này: {error}",
+            "keystorePartitionSkipped": "Không thể mở khóa phân vùng tài khoản của bản sao lưu trên thiết bị này nên nó đã bị bỏ qua. Hãy nhập với tùy chọn Ghi đè để khôi phục toàn bộ phân vùng đó.",
             "exportKeystoreDesc": "Xuất tất cả thông tin xác thực đã mã hóa sang tệp sao lưu",
             "importKeystoreDesc": "Nhập thông tin xác thực từ tệp sao lưu",
             "keystoreExported": "Đã xuất kho lưu trữ thành công ({count} mục)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Xóa ghi đè",
             "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
             "uiTokensRejected": "Các mục bị từ chối: {count}",
-            "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}"
+            "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}",
+            "keystorePreviewBackupUnreadable": "Không thể đọc danh sách máy chủ trong bản sao lưu này trên thiết bị này, nên việc so sánh dùng danh sách được lưu trong kho của bản sao lưu. Việc nhập vẫn thay thế danh sách máy chủ trên thiết bị này."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Đã tải lên",
             "reportDownloaded": "Đã tải xuống",
             "reportSkipped": "Đã bỏ qua",
+            "keptDirs": "Thư mục được giữ lại",
+            "keptDirUnfinished": "chứa các tệp chưa được đồng bộ",
+            "keptDirEntries": "chứa các mục bị loại trừ hoặc không được liệt kê",
+            "keptDirServer": "không trống trên máy chủ",
             "reportTransferred": "Đã truyền",
             "reportDuration": "Thời lượng",
             "reportDirsCreated": "Thư mục đã tạo",

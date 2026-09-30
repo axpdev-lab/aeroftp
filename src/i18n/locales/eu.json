@@ -820,6 +820,8 @@
             "keystoreCopyName": "{name} (babeskopiatik)",
             "keystorePreviewLocalFromVault": "Ezin izan da gailu honetako zerbitzari-profilen zerrenda irakurri, beraz konparazioak gordailuan gordetako zerbitzari-zerrenda erabiltzen du.",
             "keystoreDecisionsFailed": "Inportazioa amaitu da, baina ezin izan dira zerbitzari-profilen aukerak aplikatu: {error}",
+            "keystoreListMergeFailed": "Inportazioa amaitu da, baina babeskopiaren zerbitzari-zerrenda ezin izan da gailu honen zerrendarekin bateratu: {error}",
+            "keystorePartitionSkipped": "Babeskopiaren kontuen partizioa ezin da gailu honetan desblokeatu eta kanpoan utzi da. Partizio hori osorik leheneratzeko, inportatu Gainidatzi aukerarekin.",
             "exportKeystoreDesc": "Esportatu enkriptatutako kredentzial guztiak babeskopia fitxategi batera",
             "importKeystoreDesc": "Inportatu kredentzialak babeskopia fitxategi batetik",
             "keystoreExported": "Ganga ondo esportatu da ({count} sarrera)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Garbitu gainidazketak",
             "uiTokensApplied": "Aplikatutako gainidatziak: {count}",
             "uiTokensRejected": "Baztertutako sarrerak: {count}",
-            "keystorePreferencesFailed": "Inportazioa amaitu da, baina ezin izan dira aplikazioaren hobespenak berrezarri: {error}"
+            "keystorePreferencesFailed": "Inportazioa amaitu da, baina ezin izan dira aplikazioaren hobespenak berrezarri: {error}",
+            "keystorePreviewBackupUnreadable": "Babeskopia honetako zerbitzari-zerrenda ezin da irakurri gailu honetan, beraz konparazioak babeskopiaren gordailuan gordetako zerrenda erabiltzen du. Inportazioak, hala ere, gailu honetako zerbitzari-zerrenda ordezkatzen du."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2141,6 +2144,10 @@
             "reportDownloaded": "Deskargatutakoak",
             "reportDirsCreated": "Karpeta sortuak",
             "reportSkipped": "Saltatuak",
+            "keptDirs": "Mantendutako karpetak",
+            "keptDirUnfinished": "sinkronizatu ez diren fitxategiak ditu",
+            "keptDirEntries": "baztertutako edo zerrendatu gabeko sarrerak ditu",
+            "keptDirServer": "ez dago hutsik zerbitzarian",
             "reportTransferred": "Transferituak",
             "reportDuration": "Iraupena",
             "journalFound": "Etendako sinkronizazioa detektatu da",

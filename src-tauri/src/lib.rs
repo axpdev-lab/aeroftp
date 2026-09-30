@@ -257,6 +257,7 @@ mod sync_badge;
 #[cfg(test)]
 mod sync_command_audit;
 pub mod sync_core;
+pub mod sync_empty_dir;
 pub mod sync_exclude;
 mod sync_ignore;
 mod sync_scheduler;
@@ -753,6 +754,7 @@ async fn aerovault_overlay_list(
                         path: format!("/{}", overlay_join(&current_dir, first)),
                         size: None,
                         is_dir: true,
+                        is_symlink: false,
                         modified: None,
                         permissions: None,
                         link_target: None,
@@ -767,6 +769,7 @@ async fn aerovault_overlay_list(
                 path: format!("/{}", overlay_join(&current_dir, first)),
                 size: if entry.is_dir { None } else { Some(entry.size) },
                 is_dir: entry.is_dir,
+                is_symlink: false,
                 modified: Some(entry.modified),
                 permissions: None,
                 link_target: None,
@@ -816,6 +819,7 @@ async fn aerovault_overlay_list(
                         path: format!("/{}", overlay_join(&current_dir, first)),
                         size: None,
                         is_dir: true,
+                        is_symlink: false,
                         modified: None,
                         permissions: None,
                         link_target: None,
@@ -844,6 +848,7 @@ async fn aerovault_overlay_list(
                 path: format!("/{}", overlay_join(&current_dir, first)),
                 size,
                 is_dir,
+                is_symlink: false,
                 modified,
                 permissions: None,
                 link_target: None,
@@ -8167,14 +8172,11 @@ where
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| std::path::Path::new("."));
-    let name = out_path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "entry".to_string());
-    let tmp_path = parent.join(format!(
-        ".{name}.aeroftp-part-{}",
-        &uuid::Uuid::new_v4().simple().to_string()[..8]
-    ));
+    // A fixed prefix and a random suffix only (46 bytes), never the entry's
+    // name: built from it, the temporary was 23 bytes longer than the entry,
+    // and an entry within 23 bytes of the file system's name limit (255 on
+    // ext4, about 143 on eCryptfs) could not be extracted at all.
+    let tmp_path = parent.join(format!(".aeroftp-part-{}", uuid::Uuid::new_v4().simple()));
     // create_new: never reuse or follow something already at the temporary path.
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -13444,6 +13446,8 @@ struct SyncScriptExportArgs {
     // `None` means "the preset's own"; an empty list explicitly clears it. See
     // `sync::resolve_exclude_patterns`.
     exclude_patterns: Option<Vec<String>>,
+    #[serde(default)]
+    backup_dir: Option<String>,
     format: String,
 }
 
@@ -13472,6 +13476,7 @@ fn export_sync_script_cmd_blocking(args: SyncScriptExportArgs) -> Result<String,
         local_path: &args.local_path,
         remote_path: &args.remote_path,
         exclude_patterns: &excludes,
+        backup_dir: args.backup_dir.as_deref(),
         format,
     })
 }
@@ -13511,6 +13516,8 @@ struct AerosyncExportScriptArgs {
     resync: bool,
     #[serde(default)]
     watch: bool,
+    #[serde(default)]
+    backup_dir: Option<String>,
     output_path: String,
     #[serde(default)]
     also_generate_wrapper: bool,
@@ -13583,6 +13590,7 @@ fn aerosync_export_script_cmd_blocking(
         skip_matching: args.skip_matching,
         resync: args.resync,
         watch: args.watch,
+        backup_dir: args.backup_dir.clone().filter(|dir| !dir.is_empty()),
     };
 
     let app_version = env!("CARGO_PKG_VERSION");
@@ -15593,6 +15601,54 @@ async fn sync_backup_archive_remote(
     archived.map_err(|e| format!("Backup of {} failed: {}", rel, e))
 }
 
+/// Remove a folder a sync emptied, only if it is empty (`sync_empty_dir`):
+/// `"removed"`, `"kept:entries"` when its listing shows something, or
+/// `"kept:server"` when the server refused it as not empty while its listing
+/// shows nothing. Any other refusal is an error. `target` is `local` (the
+/// local disk, also both sides of a local pair), `provider` (the provider
+/// session) or `ftp` (the GUI's FTP session). Never recursive: a folder that
+/// holds an excluded file, or a file whose backup failed, stays.
+#[tauri::command]
+async fn sync_remove_empty_dir(
+    app_state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    target: String,
+    path: String,
+) -> Result<String, String> {
+    let removal = match target.as_str() {
+        "local" => {
+            validate_path(&path)?;
+            let local = path.clone();
+            tokio::task::spawn_blocking(move || {
+                sync_empty_dir::remove_local_dir_if_empty(std::path::Path::new(&local))
+                    .map_err(|e| e.to_string())
+            })
+            .await
+            .unwrap_or_else(|err| Err(format!("sync_remove_empty_dir task failed: {err}")))
+        }
+        "provider" => {
+            let mut lock = provider_state.provider.lock().await;
+            let provider = lock.as_mut().ok_or("Not connected to any provider")?;
+            sync_empty_dir::remove_remote_dir_if_empty(
+                &mut sync_empty_dir::ProviderDirRemote(provider.as_mut()),
+                &path,
+            )
+            .await
+            .map_err(|e| e.to_string())
+        }
+        "ftp" => {
+            let mut ftp_manager = app_state.ftp_manager.lock().await;
+            sync_empty_dir::remove_remote_dir_if_empty(&mut *ftp_manager, &path)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        other => return Err(format!("unknown removal target: {other}")),
+    };
+    removal
+        .map(|r| r.as_str().to_string())
+        .map_err(|e| format!("Could not remove the folder {}: {}", path, e))
+}
+
 /// List remote folder tree for the selective sync UI.
 /// Returns a flat list of folder paths with metadata.
 #[tauri::command]
@@ -16902,7 +16958,9 @@ async fn flatpak_config_import_apply(accept: bool) -> Result<serde_json::Value, 
 
 /// The body of `flatpak_config_import_apply`, kept synchronous and run on the blocking pool.
 fn flatpak_config_import_apply_blocking(accept: bool) -> Result<serde_json::Value, String> {
-    portable::flatpak_host_import_apply(accept).map(|report| report.to_json())
+    portable::flatpak_host_import_apply(accept)
+        .map(|report| report.to_json())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -19848,6 +19906,7 @@ pub fn run() {
             sync_backup_remote_move,
             sync_backup_archive_local,
             sync_backup_archive_remote,
+            sync_remove_empty_dir,
             generate_share_link,
             generate_share_link_remote,
             generate_server_share_link,
@@ -20009,6 +20068,7 @@ pub fn run() {
             ai_approval_window::ai_approval_prompt,
             ai_approval_window::ai_approval_decide,
             ai_tools::execute_ai_tool,
+            ai_tools::ai_cancel_tool_turn,
             ai_tools::clipboard_read_image,
             plugins::prepare_plugin_tool_approval,
             // Context Intelligence commands
@@ -21661,6 +21721,48 @@ mod sevenz_mhe_tests {
         assert_eq!(std::fs::read(&target).unwrap(), b"new");
         let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o755, "mode after replace: {mode:o}");
+    }
+
+    // The temporary was named after the entry plus 23 bytes, so any entry with
+    // a name longer than 232 bytes failed with "File name too long" and the
+    // whole extraction stopped, where writing the final path directly worked.
+    // 255 bytes is NAME_MAX on ext4, btrfs and APFS.
+    #[test]
+    fn an_entry_with_a_name_at_the_file_system_limit_is_written() {
+        let dir = tempfile::tempdir().unwrap();
+        for (len, existing) in [(240, true), (255, false)] {
+            let target = dir.path().join("a".repeat(len));
+            if existing {
+                std::fs::write(&target, b"old").unwrap();
+            }
+            let result = super::write_entry_atomically(&target, |f| {
+                use std::io::Write;
+                f.write_all(b"new")?;
+                Ok(3)
+            });
+            assert!(result.is_ok(), "{len}-byte name: {:?}", result.err());
+            assert_eq!(std::fs::read(&target).unwrap(), b"new");
+            std::fs::remove_file(&target).unwrap();
+        }
+        let left: Vec<_> = std::fs::read_dir(dir.path()).unwrap().collect();
+        assert!(left.is_empty(), "temporary files left behind: {left:?}");
+    }
+
+    // A failed entry with a long name still leaves the file already there as
+    // it was, and no temporary beside it.
+    #[test]
+    fn a_failed_entry_with_a_long_name_leaves_the_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("b".repeat(250));
+        std::fs::write(&target, b"old").unwrap();
+        let result = super::write_entry_atomically(&target, |f| {
+            use std::io::Write;
+            f.write_all(b"partial")?;
+            Err(std::io::Error::other("stream ended"))
+        });
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&target).unwrap(), b"old");
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
     // The dialog's Fast/Normal/Maximum buttons (and the CLI's --level) must

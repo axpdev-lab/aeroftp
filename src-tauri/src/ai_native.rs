@@ -28,6 +28,17 @@ fn invalid(message: &str) -> AIError {
     AIError::InvalidResponse(message.to_owned())
 }
 
+/// The arguments of a native tool call. A tool without parameters may come
+/// back with `""` (or only whitespace) instead of `"{}"`: that is the empty
+/// object. Anything else has to parse; whether it is an object is checked by
+/// the caller.
+pub(crate) fn tool_arguments(raw: &str) -> Option<Value> {
+    if raw.trim().is_empty() {
+        return Some(json!({}));
+    }
+    serde_json::from_str(raw).ok()
+}
+
 fn complete_reason(reason: Option<&str>) -> bool {
     matches!(
         reason,
@@ -512,10 +523,12 @@ pub(crate) fn parse(request: &AIRequest, value: &Value) -> Result<AIResponse, AI
                         .as_str()
                         .ok_or_else(|| invalid("Missing tool name"))?
                         .to_owned(),
-                    arguments: serde_json::from_str(
-                        tool["function"]["arguments"].as_str().unwrap_or(""),
+                    arguments: tool_arguments(
+                        tool["function"]["arguments"]
+                            .as_str()
+                            .ok_or_else(|| invalid("Invalid tool arguments JSON"))?,
                     )
-                    .map_err(|_| invalid("Invalid tool arguments JSON"))?,
+                    .ok_or_else(|| invalid("Invalid tool arguments JSON"))?,
                 });
             }
         }

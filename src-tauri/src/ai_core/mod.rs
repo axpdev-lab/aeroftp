@@ -12,6 +12,7 @@ pub mod coding_tools;
 pub mod correct_tools;
 pub mod credential_provider;
 pub mod event_sink;
+mod ftp_manager_provider;
 pub mod local_tools;
 pub mod mcp_impl;
 pub mod remote_backend;

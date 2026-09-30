@@ -61,7 +61,10 @@ export async function trashLocalPaths(
 
   if (needsCopy.length > 0) {
     const choice = deps.isCancelled?.() ? 'cancel' : await deps.askHomeCopy(needsCopy);
-    if (choice === 'cancel') {
+    // Only the two exact choices act. Anything else (a dialog dismissed with
+    // no value, a choice added later) keeps the items: the permanent delete
+    // is never what an unexpected answer falls through to.
+    if (choice !== 'copy' && choice !== 'permanent') {
       result.kept.push(...needsCopy);
     } else {
       for (const [index, path] of needsCopy.entries()) {
@@ -85,7 +88,7 @@ export async function trashLocalPaths(
 
   if (refused.length > 0 && deps.askPermanentAfterFailure && !deps.isCancelled?.()) {
     const confirmed = await deps.askPermanentAfterFailure(refused.map(r => r.path));
-    if (confirmed) {
+    if (confirmed === true) {
       for (const [index, { path }] of refused.entries()) {
         if (deps.isCancelled?.()) {
           result.kept.push(...refused.slice(index).map(r => r.path));

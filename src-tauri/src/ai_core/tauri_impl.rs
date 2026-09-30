@@ -888,10 +888,16 @@ pub struct TauriToolCtx {
     pub context_local_path: Option<String>,
     pub approval_grant_id: Option<String>,
     pub session_id: Option<String>,
+    /// The token of the chat turn this call belongs to, flipped by
+    /// `ai_cancel_tool_turn` when the user presses Stop (M9).
+    pub cancel: Option<tokio_util::sync::CancellationToken>,
 }
 
 #[async_trait]
 impl ToolCtx for TauriToolCtx {
+    fn cancel_token(&self) -> Option<&tokio_util::sync::CancellationToken> {
+        self.cancel.as_ref()
+    }
     fn event_sink(&self) -> &dyn EventSink {
         &self.sink
     }

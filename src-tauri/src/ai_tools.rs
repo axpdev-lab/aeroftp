@@ -14,9 +14,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::LazyLock;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, State};
 use tokio::process::Command as TokioCommand;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 /// Allowed tool names (whitelist)
@@ -169,20 +170,40 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
     }
 }
 
+/// Whether a tool may be allowed "for the rest of this chat". Fails closed:
+/// a tool the registry does not know, or classifies `High`, is approved one
+/// call at a time, and the explicit list below keeps the Medium tools that
+/// still destroy data (trash, extraction over files, checkpoint restore...).
+/// A grant refused here also cannot skip the approval window (see
+/// [`approval_window_required`]).
 fn allows_session_grant(tool_name: &str, args: &Value) -> bool {
-    if tool_name == "shell_execute" {
+    // `server_exec` is `High` for its mutating operations; its read-only
+    // ones are decided by the arguments and keep the chat-wide grant.
+    if tool_name == "server_exec" {
+        return !server_exec_is_mutating(args);
+    }
+
+    // A sync start can delete under a delete-enabled profile.
+    if tool_name == "sync_control"
+        && !matches!(
+            args.get("action").and_then(|value| value.as_str()),
+            Some("status" | "stop")
+        )
+    {
         return false;
     }
 
-    if (tool_name == "server_exec" && server_exec_is_mutating(args))
-        || tool_name == "cross_profile_transfer"
+    if crate::ai_core::tools::find_tool(tool_name)
+        .is_none_or(|def| def.danger == crate::ai_core::tools::DangerLevel::High)
     {
         return false;
     }
 
     !matches!(
         tool_name,
-        "remote_delete"
+        "shell_execute"
+            | "cross_profile_transfer"
+            | "remote_delete"
             | "local_delete"
             | "local_trash"
             | "archive_decompress"
@@ -575,8 +596,10 @@ pub(crate) async fn ensure_ai_tool_approval(
             return Err(AI_APPROVAL_REQUIRED_REASON.to_string());
         };
 
+        // A chat-wide grant covers the tool in the context it was given in
+        // (working folder, connected server), never another one.
         let scope_matches = if grant.remember_for_session {
-            true
+            grant.scope_key == session_scope_key
         } else {
             grant.scope_key == scope_key
         };
@@ -1969,6 +1992,19 @@ pub async fn prepare_ai_tool_approval(
     .await)
 }
 
+/// Whether the approval window has to be shown for `request`.
+///
+/// `skip_native_dialog` is the chat webview's word that it already showed
+/// its own approval panel (expert mode), so the webview alone decides it.
+/// It is honoured only for a tool that could also be allowed for the rest
+/// of the chat: delete, trash, shell, extraction, a mutating `server_exec`,
+/// a sync start, any `High` tool, any tool the registry does not know and a
+/// `high` plugin tool always get the window, which only the backend opens
+/// and only the user can answer.
+fn approval_window_required(skip_native_dialog: bool, request: &AiToolApprovalRequest) -> bool {
+    !skip_native_dialog || !request.allow_session_grant
+}
+
 #[tauri::command]
 pub async fn grant_ai_tool_approval(
     app: tauri::AppHandle,
@@ -1989,12 +2025,13 @@ pub async fn grant_ai_tool_approval(
     }
 
     // When the frontend already showed an approval panel (expert mode),
-    // skip the approval window to avoid double-confirmation.
+    // skip the approval window to avoid double-confirmation, except for the
+    // tools that need it on every call (see `approval_window_required`).
     // In safe/normal mode, always show the approval window as a second factor.
     // It is a separate window that only the backend opens and only it can
     // answer (see `ai_approval_window`), so the chat webview cannot approve.
     let mut remember_for_session = remember_for_session;
-    if !skip_native_dialog {
+    if approval_window_required(skip_native_dialog, &request) {
         let (action, details) = split_approval_message(&request.message);
         let decision = crate::ai_approval_window::ask(
             &app,
@@ -2053,6 +2090,104 @@ pub async fn grant_ai_tool_approval(
     })
 }
 
+/// The tools running for a chat turn, keyed by the turn id the chat gives
+/// every `execute_ai_tool` call of one message (M9, 4.2.1 review). Stop
+/// cancelled the chat request and the stream only; a tool still running, an
+/// upload of many files or a tree search, ran on to its end. `ai_cancel_tool_turn`
+/// flips the turn's token: the running tool returns at its next cancel point
+/// and a later tool of the same turn does not start.
+struct TurnTools {
+    token: CancellationToken,
+    /// Calls of this turn still running: the entry goes when the last one
+    /// ends, cancelled or not, so a late call of a stopped turn finds the
+    /// flipped token while any call of the turn is still up.
+    running: usize,
+    /// When Stop reached the turn with no call up. The entry is kept so a
+    /// call already on its way finds the token flipped, and pruned after
+    /// [`CANCELLED_TURN_KEEP`] so a turn that never calls leaves nothing.
+    cancelled_at: Option<Instant>,
+}
+
+static AI_TOOL_TURNS: LazyLock<tokio::sync::Mutex<HashMap<String, TurnTools>>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
+
+/// How long a turn Stop reached with no call up keeps its flipped token:
+/// long enough for a call already on its way to be refused, short enough
+/// that turns that never call do not pile entries up.
+const CANCELLED_TURN_KEEP: Duration = Duration::from_secs(5 * 60);
+
+/// Drop the entries Stop left for turns with no call up once they have sat
+/// idle past [`CANCELLED_TURN_KEEP`]. Runs inside the calls that already
+/// take the lock, so no timer is needed.
+fn prune_cancelled_idle_turns(turns: &mut HashMap<String, TurnTools>) {
+    turns.retain(|_, entry| {
+        entry.running > 0
+            || entry
+                .cancelled_at
+                .is_none_or(|since| since.elapsed() < CANCELLED_TURN_KEEP)
+    });
+}
+
+/// Enter a tool call of `turn_id`: the turn's token, shared by every call of
+/// the turn, created at the first.
+async fn enter_turn_tool(turn_id: &str) -> CancellationToken {
+    let mut turns = AI_TOOL_TURNS.lock().await;
+    prune_cancelled_idle_turns(&mut turns);
+    let entry = turns
+        .entry(turn_id.to_string())
+        .or_insert_with(|| TurnTools {
+            token: CancellationToken::new(),
+            running: 0,
+            cancelled_at: None,
+        });
+    entry.running += 1;
+    entry.token.clone()
+}
+
+/// Leave a tool call of `turn_id`: the last call of the turn drops the
+/// entry, cancelled or not, so the map holds only live turns.
+async fn leave_turn_tool(turn_id: &str) {
+    let mut turns = AI_TOOL_TURNS.lock().await;
+    if let Some(entry) = turns.get_mut(turn_id) {
+        entry.running = entry.running.saturating_sub(1);
+        if entry.running == 0 {
+            turns.remove(turn_id);
+        }
+    }
+}
+
+/// Stop every tool of `turn_id`, running or not yet started. The token stays
+/// until the last running call of the turn leaves, then goes with it. A Stop
+/// that lands before the first call still records the turn: the entry, its
+/// token already flipped, is what a late call finds, and
+/// [`prune_cancelled_idle_turns`] drops it once it has sat idle — no call
+/// will ever leave an entry nothing entered.
+pub(crate) async fn cancel_turn_tools(turn_id: &str) {
+    let mut turns = AI_TOOL_TURNS.lock().await;
+    prune_cancelled_idle_turns(&mut turns);
+    let entry = turns
+        .entry(turn_id.to_string())
+        .or_insert_with(|| TurnTools {
+            token: CancellationToken::new(),
+            running: 0,
+            cancelled_at: None,
+        });
+    entry.token.cancel();
+    if entry.running == 0 {
+        entry.cancelled_at = Some(Instant::now());
+    }
+}
+
+/// Stop the tools of a chat turn: the one running returns at its next cancel
+/// point (between two files of an upload, two folders of a search), a tool the
+/// chat still sends for that turn does not start. A no-op for a turn with no
+/// tool running.
+#[tauri::command]
+pub async fn ai_cancel_tool_turn(turn_id: String) -> Result<(), String> {
+    cancel_turn_tools(&turn_id).await;
+    Ok(())
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_ai_tool(
@@ -2067,9 +2202,51 @@ pub async fn execute_ai_tool(
     context_local_path: Option<String>,
     session_id: Option<String>,
     approval_grant_id: Option<String>,
+    turn_id: Option<String>,
 ) -> Result<serde_json::Value, String> {
     if !ALLOWED_TOOLS.contains(&tool_name.as_str()) {
         return Err(format!("Unknown or disallowed tool: {}", tool_name));
+    }
+    let cancel = match turn_id.as_deref() {
+        Some(turn) => Some(enter_turn_tool(turn).await),
+        None => None,
+    };
+    let result = execute_ai_tool_of_turn(
+        app,
+        state,
+        app_state,
+        tool_name,
+        args,
+        context_local_path,
+        session_id,
+        approval_grant_id,
+        cancel,
+    )
+    .await;
+    if let Some(turn) = turn_id.as_deref() {
+        leave_turn_tool(turn).await;
+    }
+    result
+}
+
+/// The body of [`execute_ai_tool`], with the turn's token entered and left by
+/// the caller whatever the outcome.
+#[allow(clippy::too_many_arguments)]
+async fn execute_ai_tool_of_turn(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+    app_state: tauri::State<'_, crate::AppState>,
+    tool_name: String,
+    args: serde_json::Value,
+    context_local_path: Option<String>,
+    session_id: Option<String>,
+    approval_grant_id: Option<String>,
+    cancel: Option<CancellationToken>,
+) -> Result<serde_json::Value, String> {
+    // M9: a tool of a turn the user already stopped does not start, also not
+    // its approval.
+    if cancel.as_ref().is_some_and(|token| token.is_cancelled()) {
+        return Err(crate::ai_core::tools::CANCELLED.to_string());
     }
 
     if requires_backend_write_approval(&tool_name, &args) {
@@ -2102,10 +2279,111 @@ pub async fn execute_ai_tool(
         context_local_path,
         approval_grant_id,
         session_id,
+        cancel: cancel.clone(),
     };
-    crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args)
-        .await
-        .map_err(|e| e.to_string())
+    let dispatch = crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args);
+    match cancel {
+        // The cancel point inside the tool ends a loop between two items; a
+        // tool waiting on one request (a large remote read) ends here, the
+        // way a cancelled `ai_chat` ends: the request is dropped, and what
+        // the tool had done stays done. A blocking step that has started
+        // runs to its end on the blocking pool, and its result is discarded.
+        Some(token) => tokio::select! {
+            _ = token.cancelled() => Err(crate::ai_core::tools::CANCELLED.to_string()),
+            res = dispatch => res.map_err(|e| e.to_string()),
+        },
+        None => dispatch.await.map_err(|e| e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod turn_cancel_tests {
+    use super::*;
+
+    /// M9 (4.2.1 review): Stop reached the chat request and the stream, never
+    /// a tool. Every call of a turn shares one token; Stop flips it, a call
+    /// that comes later for the same turn finds it flipped, and a turn whose
+    /// calls all ended without a Stop leaves nothing behind.
+    #[tokio::test]
+    async fn stop_flips_the_token_every_call_of_the_turn_shares() {
+        let turn = format!("turn-{}", Uuid::new_v4());
+        let first = enter_turn_tool(&turn).await;
+        let second = enter_turn_tool(&turn).await;
+        assert!(!first.is_cancelled());
+        cancel_turn_tools(&turn).await;
+        assert!(first.is_cancelled(), "the running call's token");
+        assert!(second.is_cancelled(), "the same token for every call");
+        // A call the chat still sends for the stopped turn finds it flipped.
+        assert!(enter_turn_tool(&turn).await.is_cancelled());
+        leave_turn_tool(&turn).await;
+        leave_turn_tool(&turn).await;
+        leave_turn_tool(&turn).await;
+        assert!(
+            !AI_TOOL_TURNS.lock().await.contains_key(&turn),
+            "the last call of the turn drops the entry"
+        );
+
+        // A turn that ends without a Stop is dropped by its last call. A
+        // Stop that lands only now cannot tell "ended" from "not started",
+        // so it records the turn: a call that still comes is refused.
+        let quiet = format!("turn-{}", Uuid::new_v4());
+        let token = enter_turn_tool(&quiet).await;
+        leave_turn_tool(&quiet).await;
+        assert!(!token.is_cancelled());
+        assert!(!AI_TOOL_TURNS.lock().await.contains_key(&quiet));
+        cancel_turn_tools(&quiet).await;
+        assert!(enter_turn_tool(&quiet).await.is_cancelled());
+        leave_turn_tool(&quiet).await;
+        assert!(!AI_TOOL_TURNS.lock().await.contains_key(&quiet));
+    }
+
+    /// Stop can land before the turn's first `execute_ai_tool` (the call is
+    /// already on its way). With no entry the Stop recorded nothing and the
+    /// queued call started; the Stop now leaves the flipped token behind,
+    /// and the call finds it.
+    #[tokio::test]
+    async fn stop_before_the_first_call_refuses_the_call_that_comes() {
+        let turn = format!("turn-{}", Uuid::new_v4());
+        cancel_turn_tools(&turn).await;
+        let token = enter_turn_tool(&turn).await;
+        assert!(
+            token.is_cancelled(),
+            "the queued call finds the flipped token"
+        );
+        leave_turn_tool(&turn).await;
+        assert!(
+            !AI_TOOL_TURNS.lock().await.contains_key(&turn),
+            "the refused call still takes the entry with it"
+        );
+    }
+
+    /// The entry a Stop leaves for a turn that never calls has no call to
+    /// drop it: it is pruned once it has sat idle past the keep, while a
+    /// fresh record stays.
+    #[tokio::test]
+    async fn an_idle_cancelled_turn_is_pruned_after_the_keep() {
+        let stale = format!("turn-{}", Uuid::new_v4());
+        let fresh = format!("turn-{}", Uuid::new_v4());
+        {
+            let mut turns = AI_TOOL_TURNS.lock().await;
+            let token = CancellationToken::new();
+            token.cancel();
+            turns.insert(
+                stale.clone(),
+                TurnTools {
+                    token,
+                    running: 0,
+                    cancelled_at: Some(
+                        Instant::now() - CANCELLED_TURN_KEEP - Duration::from_secs(1),
+                    ),
+                },
+            );
+        }
+        cancel_turn_tools(&fresh).await;
+        let turns = AI_TOOL_TURNS.lock().await;
+        assert!(!turns.contains_key(&stale), "sat past the keep");
+        assert!(turns.contains_key(&fresh), "the new Stop stays");
+    }
 }
 
 #[cfg(test)]
@@ -2223,6 +2501,126 @@ mod session_grant_tests {
         )
         .await;
         assert!(other_chat.approval_required);
+    }
+
+    /// M8 of the 4.2.1 review: the chat-wide grant was refused by tool name
+    /// only, so every destructive tool missing from the list (and any added
+    /// later) could be allowed for the rest of the chat. A `High` tool of
+    /// the registry never can, whatever the list says.
+    #[test]
+    fn no_high_danger_tool_can_be_allowed_for_the_rest_of_the_chat() {
+        use crate::ai_core::tools::{DangerLevel, TOOL_DEFINITIONS};
+        let granted: Vec<&str> = TOOL_DEFINITIONS
+            .iter()
+            .filter(|def| def.danger == DangerLevel::High)
+            .filter(|def| allows_session_grant(def.name, &json!({})))
+            .map(|def| def.name)
+            .collect();
+        assert!(
+            granted.is_empty(),
+            "chat-wide grant allowed for {granted:?}"
+        );
+    }
+
+    /// A sync start can delete under a delete-enabled profile, and a tool the
+    /// registry does not know has no danger level to trust: neither is
+    /// granted for the chat. Reading a sync status and a read-only
+    /// `server_exec` keep the chat-wide grant.
+    #[test]
+    fn sync_start_and_unknown_tools_are_not_granted_for_the_chat() {
+        assert!(!allows_session_grant(
+            "sync_control",
+            &json!({ "action": "start" })
+        ));
+        assert!(!allows_session_grant("a_tool_added_later", &json!({})));
+        assert!(allows_session_grant(
+            "sync_control",
+            &json!({ "action": "status" })
+        ));
+        assert!(allows_session_grant(
+            "server_exec",
+            &json!({ "operation": "ls" })
+        ));
+        assert!(allows_session_grant("local_mkdir", &json!({})));
+    }
+
+    /// M8, second half: a chat-wide grant presented by id was accepted in any
+    /// context, so a grant given in `/work` let the same tool run against
+    /// another folder or server. It must hold only where it was given; a
+    /// presentation in another context withdraws it, as for a one-shot grant.
+    #[tokio::test]
+    async fn a_chat_grant_presented_by_id_holds_only_in_its_own_context() {
+        let session = format!("s-{}", Uuid::new_v4());
+        let grant_id = Uuid::new_v4().to_string();
+        AI_TOOL_APPROVAL_GRANTS.lock().await.insert(
+            grant_id.clone(),
+            AiToolApprovalGrant {
+                session_key: cache_session_key(Some(&session)),
+                tool_name: "local_mkdir".into(),
+                scope_key: session_key_for("local_mkdir"),
+                created_at_ms: current_time_ms(),
+                expires_at_ms: current_time_ms() + AI_SESSION_GRANT_TTL_MS,
+                remember_for_session: true,
+            },
+        );
+        ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &key("local_mkdir", "/work/y"),
+            &session_key_for("local_mkdir"),
+            Some(&grant_id),
+        )
+        .await
+        .expect("the grant holds in its own context");
+        let elsewhere = build_session_scope_key("local_mkdir", Some("/elsewhere"), None).unwrap();
+        let outcome = ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &build_tool_cache_key(
+                "local_mkdir",
+                &json!({ "path": "/elsewhere/x" }),
+                Some("/elsewhere"),
+                None,
+            )
+            .unwrap(),
+            &elsewhere,
+            Some(&grant_id),
+        )
+        .await;
+        assert!(
+            outcome.is_err(),
+            "a /work grant let the tool run in /elsewhere"
+        );
+        let withdrawn = ensure_ai_tool_approval(
+            Some(&session),
+            "local_mkdir",
+            &key("local_mkdir", "/work/z"),
+            &session_key_for("local_mkdir"),
+            Some(&grant_id),
+        )
+        .await;
+        assert!(withdrawn.is_err(), "the mismatch withdraws the grant");
+    }
+
+    /// M7 of the 4.2.1 review: `skip_native_dialog` comes from the chat
+    /// webview. It may spare the approval window only for a tool that could
+    /// also be allowed for the chat, never for delete, shell, extraction or
+    /// any `High` tool, so the webview alone can never approve one.
+    #[test]
+    fn the_webview_cannot_skip_the_window_for_a_tool_that_needs_it_every_time() {
+        let request = |allow_session_grant| AiToolApprovalRequest {
+            session_key: "s".into(),
+            tool_name: "t".into(),
+            scope_key: "k".into(),
+            session_scope_key: "k".into(),
+            created_at_ms: 0,
+            allow_session_grant,
+            message: "m".into(),
+        };
+        assert!(approval_window_required(true, &request(false)));
+        assert!(approval_window_required(false, &request(false)));
+        assert!(approval_window_required(false, &request(true)));
+        assert!(!approval_window_required(true, &request(true)));
     }
 }
 

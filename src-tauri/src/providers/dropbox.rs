@@ -1533,6 +1533,10 @@ impl StorageProvider for DropboxProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        self.refuse_non_empty_dir(path).await?;
         self.delete(path).await
     }
 
@@ -3065,6 +3069,53 @@ mod tests {
         let mut provider = fixture_connected();
         provider.content_base_override = Some(format!("http://{addr}"));
         (provider, calls)
+    }
+
+    /// Round 2 of the 4.2.1 review: `rmdir` was `delete`, which Dropbox
+    /// runs on a folder with everything in it. The folder is listed first:
+    /// one that holds anything is refused, with no `delete_v2` sent.
+    #[tokio::test]
+    async fn rmdir_lists_the_folder_and_refuses_one_that_holds_anything() {
+        use std::sync::{Arc, Mutex};
+        for (entries, expect_refusal) in [
+            (
+                r#"[{".tag":"file","name":"a.txt","path_display":"/d/a.txt","size":1}]"#,
+                true,
+            ),
+            ("[]", false),
+        ] {
+            let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+            let seen = Arc::clone(&calls);
+            let app =
+                axum::Router::new().fallback(axum::routing::post(move |uri: axum::http::Uri| {
+                    seen.lock().unwrap().push(uri.path().to_string());
+                    async move {
+                        let body = if uri.path() == "/files/list_folder" {
+                            format!(r#"{{"entries":{entries},"cursor":"c","has_more":false}}"#)
+                        } else {
+                            "{}".to_string()
+                        };
+                        ([("content-type", "application/json")], body)
+                    }
+                }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = fixture_connected();
+            provider.content_base_override = Some(format!("http://{addr}"));
+            let outcome = provider.rmdir("/d").await;
+            let calls = calls.lock().unwrap();
+            if expect_refusal {
+                assert!(
+                    matches!(outcome, Err(ProviderError::DirectoryNotEmpty(_))),
+                    "{outcome:?}"
+                );
+                assert!(!calls.iter().any(|c| c == "/files/delete_v2"), "{calls:?}");
+            } else {
+                outcome.expect("an empty folder goes");
+                assert!(calls.iter().any(|c| c == "/files/delete_v2"), "{calls:?}");
+            }
+        }
     }
 
     /// Dropbox refuses a move onto a taken name with 409 `to/conflict`,

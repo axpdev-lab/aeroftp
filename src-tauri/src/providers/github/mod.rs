@@ -1557,6 +1557,11 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        // Round 2 of the 4.2.1 review: the API's delete takes a folder's
+        // content along, so a folder that lists anything is refused here and
+        // only one that listed empty reaches it.
+        // The virtual paths are dispatched first: an asset is a file, and a
+        // release is judged by its own assets before the release goes.
         let resolved = self.resolve_path(path);
         if let Some(virtual_path) = self.parse_virtual_path(&resolved) {
             return match virtual_path {
@@ -1564,11 +1569,13 @@ impl StorageProvider for GitHubProvider {
                     "Deleting all releases in one operation is not supported".to_string(),
                 )),
                 GitHubVirtualPath::ReleaseTag(tag) => {
+                    self.refuse_non_empty_dir(path).await?;
                     delete_release(&mut self.client, &self.owner, &self.repo, &tag).await
                 }
                 GitHubVirtualPath::ReleaseAsset { .. } => self.delete(path).await,
             };
         }
+        self.refuse_non_empty_dir(path).await?;
 
         // GitHub has no empty-dir concept; delete all contents recursively.
         self.rmdir_recursive(path).await
@@ -1579,10 +1586,18 @@ impl StorageProvider for GitHubProvider {
             return Err(ProviderError::NotConnected);
         }
         let resolved = self.resolve_path(path);
-        if self.parse_virtual_path(&resolved) == Some(GitHubVirtualPath::ReleasesRoot) {
-            return Err(ProviderError::NotSupported(
-                "Recursive deletion of all releases is not supported".to_string(),
-            ));
+        match self.parse_virtual_path(&resolved) {
+            Some(GitHubVirtualPath::ReleasesRoot) => {
+                return Err(ProviderError::NotSupported(
+                    "Recursive deletion of all releases is not supported".to_string(),
+                ));
+            }
+            // Deleting a release takes its assets with it: the release goes
+            // whole, rather than being emptied and left behind.
+            Some(GitHubVirtualPath::ReleaseTag(tag)) => {
+                return delete_release(&mut self.client, &self.owner, &self.repo, &tag).await;
+            }
+            _ => {}
         }
         let entries = self.list(path).await?;
         for entry in entries {

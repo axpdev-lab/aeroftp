@@ -805,6 +805,8 @@
             "keystoreCopyName": "{name} (yedekten)",
             "keystorePreviewLocalFromVault": "Bu cihazın sunucu profili listesi okunamadı, bu yüzden karşılaştırma kasada saklanan sunucu listesini kullanıyor.",
             "keystoreDecisionsFailed": "İçe aktarma tamamlandı ancak sunucu profilleri için seçimleriniz uygulanamadı: {error}",
+            "keystoreListMergeFailed": "İçe aktarma tamamlandı ancak yedeğin sunucu listesi bu cihazın listesiyle birleştirilemedi: {error}",
+            "keystorePartitionSkipped": "Yedeğin hesap bölümü bu cihazda kilidi açılamadığından dışarıda bırakıldı. O bölümü bütünüyle geri yüklemek için Üzerine Yaz ile içe aktarın.",
             "exportKeystoreDesc": "Tüm şifreli kimlik bilgilerini bir yedekleme dosyasına dışa aktarın",
             "importKeystoreDesc": "Bir yedekleme dosyasından kimlik bilgilerini içe aktarın",
             "keystoreExported": "Anahtar deposu başarıyla dışa aktarıldı ({count} kayıt)",
@@ -1194,7 +1196,8 @@
             "uiTokensReset": "Geçersiz kılmaları temizle",
             "uiTokensApplied": "Uygulanan geçersiz kılmalar: {count}",
             "uiTokensRejected": "Reddedilen girdiler: {count}",
-            "keystorePreferencesFailed": "İçe aktarma tamamlandı ancak uygulama tercihleriniz geri yüklenemedi: {error}"
+            "keystorePreferencesFailed": "İçe aktarma tamamlandı ancak uygulama tercihleriniz geri yüklenemedi: {error}",
+            "keystorePreviewBackupUnreadable": "Bu yedekteki sunucu listesi bu cihazda okunamıyor, bu yüzden karşılaştırma yedeğin kasasında saklanan listeyi kullanır. İçe aktarma yine de bu cihazdaki sunucu listesinin yerini alır."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2140,6 +2143,10 @@
             "reportUploaded": "Yüklendi",
             "reportDownloaded": "İndirildi",
             "reportSkipped": "Atlandı",
+            "keptDirs": "Korunan klasörler",
+            "keptDirUnfinished": "eşitlenmemiş dosyalar içeriyor",
+            "keptDirEntries": "hariç tutulan veya listelenmeyen öğeler içeriyor",
+            "keptDirServer": "sunucuda boş değil",
             "reportTransferred": "Aktarıldı",
             "reportDuration": "Süre",
             "reportDirsCreated": "Oluşturulan klasörler",

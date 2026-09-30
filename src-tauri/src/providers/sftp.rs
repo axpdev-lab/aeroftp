@@ -3047,15 +3047,36 @@ impl StorageProvider for SftpProvider {
 
         tracing::info!("SFTP: Removing directory: {}", full_path);
 
-        until_sftp_ends(&sftp.ended, sftp.remove_dir(&full_path))
+        // `SSH_FXP_RMDIR` refuses a directory that is not empty on the server.
+        // A reply that says so (status SSH_FX_DIR_NOT_EMPTY on v6 servers) is
+        // `DirectoryNotEmpty`. OpenSSH answers a bare "Failure" that says no
+        // more, so the directory is looked into: one that still holds entries
+        // is `DirectoryNotEmpty` too, and only a refusal of an empty or
+        // unreadable directory stays a server error (permissions, a lock).
+        let refused = until_sftp_ends(&sftp.ended, sftp.remove_dir(&full_path))
             .await
             .map_err(|e| {
                 classify_russh_err(e, |s| {
-                    ProviderError::ServerError(format!("Failed to remove directory: {}", s))
+                    if super::ftp::reply_names_not_empty(&s) {
+                        ProviderError::DirectoryNotEmpty(format!(
+                            "Failed to remove directory: {}",
+                            s
+                        ))
+                    } else {
+                        ProviderError::ServerError(format!("Failed to remove directory: {}", s))
+                    }
                 })
-            })?;
-
-        Ok(())
+            });
+        match refused {
+            Ok(()) => Ok(()),
+            Err(ProviderError::ServerError(text)) => match self.list(&full_path).await {
+                Ok(entries) if !entries.is_empty() => Err(ProviderError::DirectoryNotEmpty(
+                    format!("{text} ({full_path} holds {} entries)", entries.len()),
+                )),
+                _ => Err(ProviderError::ServerError(text)),
+            },
+            Err(other) => Err(other),
+        }
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -3905,7 +3926,7 @@ async fn create_sftp_readahead_temp(
             ProviderError::TransferFailed(format!(
                 "Failed to create exclusive local read-ahead temp {}: {}",
                 temp_path.display(),
-                e
+                super::atomic_write::temp_claim::name_too_long(e, &temp_path)
             ))
         })?;
     let guard = ReadaheadTempGuard::new(temp_path);

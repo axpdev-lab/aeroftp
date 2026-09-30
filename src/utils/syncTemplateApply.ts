@@ -8,9 +8,10 @@ import type {
     VerifyPolicy,
 } from '../types';
 import type { AeroSyncPairKind, AeroSyncVerifyPolicy } from '../components/AeroSync/types';
-import type { ConflictPolicy, PresetDirection, SyncPreset } from './syncPresets';
+import type { ConflictPolicy, PresetDirection, SyncPreset, VersionedBackupConfig } from './syncPresets';
 import type { TabStateStore } from '../components/AeroSync/tabStateStore';
 import { presetForTemplate } from './syncDirectionLabels';
+import { AEROSYNC_DEFAULT_BACKUP_DIR, cliExcludePatterns, userExcludePatterns } from './aeroSyncExcludes';
 
 export const parseSyncExcludePatterns = (text: string): string[] =>
     text.split(/[\n,]/).map(pattern => pattern.trim()).filter(Boolean);
@@ -19,12 +20,33 @@ export const parseSyncExcludePatterns = (text: string): string[] =>
 export const readSyncExcludePatterns = (store: TabStateStore | null, fallback: string[]): string[] =>
     parseSyncExcludePatterns(store?.get('sync.exclude', fallback.join(', ')) ?? fallback.join(', '));
 
+/**
+ * What an exported script hands to `aeroftp-cli sync --exclude`
+ * ([`cliExcludePatterns`]): the compare's defaults, the user's patterns and
+ * the Plan's backup folder. Since the shared matcher the CLI excludes at least
+ * what the compare excludes for the same list, so the script does what the
+ * Plan showed.
+ */
+export const readScriptExcludePatterns = (store: TabStateStore | null, fallback: string[]): string[] =>
+    cliExcludePatterns(readSyncExcludePatterns(store, fallback), readScriptBackupDir(store));
+
+/**
+ * The Plan's backup folder an exported script records on its own, next to
+ * the exclude list that also carries it, so an import can give it back to
+ * the Plan rather than read it as one of the user's patterns.
+ */
+export const readScriptBackupDir = (store: TabStateStore | null): string =>
+    store?.get<VersionedBackupConfig | undefined>('plan.versionedBackup', undefined)?.backupDir
+        ?? AEROSYNC_DEFAULT_BACKUP_DIR;
+
 export interface ImportedSyncSettings {
     localPath: string;
     remotePath: string;
     direction: SyncDirection;
     deleteOrphans: boolean;
     excludePatterns: string[];
+    /** The backup folder the exported script recorded, when it has one. */
+    backupDir?: string;
     verifyPolicy?: VerifyPolicy;
     dryRun?: boolean;
     conflictMode?: string | null;
@@ -145,6 +167,7 @@ export function settingsFromLegacyScript(script: SyncScriptMeta): ImportedSyncSe
         direction: script.direction,
         deleteOrphans: script.delete_orphans,
         excludePatterns: script.exclude_patterns,
+        backupDir: script.backup_dir ?? undefined,
     };
 }
 
@@ -156,6 +179,7 @@ export function settingsFromAerosyncScript(script: AerosyncImportScriptResult): 
         direction: imported.profile.direction,
         deleteOrphans: imported.profile.delete_orphans,
         excludePatterns: imported.profile.exclude_patterns,
+        backupDir: imported.backup_dir ?? undefined,
         verifyPolicy: imported.profile.verify_policy,
         dryRun: imported.dry_run,
         conflictMode: imported.conflict_mode,
@@ -189,18 +213,40 @@ function planConflict(value: string | null | undefined): ConflictPolicy | undefi
     }
 }
 
-/** Convert every import format into the controls owned by AeroSync's tabs. */
+/**
+ * Convert every import format into the controls owned by AeroSync's tabs.
+ * `backupDir` is the Plan's versioned-backup folder at the time of the
+ * import: an exported script carries it as its last exclude pattern
+ * ([`cliExcludePatterns`]), and it must not land in the user's field, or a
+ * later change of the backup folder would leave the old one excluded from
+ * every compare and export (review of #979).
+ */
 export function buildAeroSyncTabStatePatch(
     settings: ImportedSyncSettings,
     pairKind: AeroSyncPairKind | null,
+    currentBackup?: VersionedBackupConfig,
 ): AeroSyncTabStatePatch {
+    // A script that recorded its backup folder gives it back to the Plan; an
+    // older one is read against the Plan's current folder.
+    const backupDir = settings.backupDir
+        ?? currentBackup?.backupDir
+        ?? AEROSYNC_DEFAULT_BACKUP_DIR;
     const patch: AeroSyncTabStatePatch = {
         'sync.source': settings.localPath,
         'sync.destination': settings.remotePath,
-        'sync.exclude': settings.excludePatterns.join(', '),
+        // An exported script carries the compare defaults and the backup
+        // folder too; the field holds only the user's own, since the compare
+        // adds the rest anyway.
+        'sync.exclude': userExcludePatterns(settings.excludePatterns, backupDir).join(', '),
         'plan.preset': planPreset(settings),
         'plan.direction': planDirection(settings.direction, pairKind),
     };
+    if (settings.backupDir) {
+        patch['plan.versionedBackup'] = {
+            enabled: currentBackup?.enabled ?? false,
+            backupDir: settings.backupDir,
+        } satisfies VersionedBackupConfig;
+    }
     const verify = planVerify(settings.verifyPolicy);
     if (verify) patch['plan.verifyPolicy'] = verify;
     if (settings.dryRun != null) patch['sync.dryRun'] = settings.dryRun;

@@ -291,7 +291,7 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
                         })?;
                     let arguments: Value = item["arguments"]
                         .as_str()
-                        .and_then(|arguments| serde_json::from_str(arguments).ok())
+                        .and_then(crate::ai_native::tool_arguments)
                         .filter(Value::is_object)
                         .ok_or_else(|| {
                             AIError::InvalidResponse("Invalid Responses tool arguments".into())
@@ -365,7 +365,11 @@ pub(crate) fn parse_response_body(body: &str, fallback_model: &str) -> Result<AI
 struct PartialFunctionCall {
     call_id: String,
     name: String,
-    arguments: String,
+    /// The arguments exactly as they arrived: a string, even a blank one
+    /// (the empty object of a zero-argument call, M10). `None` when no event
+    /// carried them as a string — a missing or non-string field, which the
+    /// completed check refuses rather than reading as blank.
+    arguments: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -398,7 +402,11 @@ impl ResponsesStreamAccumulator {
             .map(|call| AIToolCall {
                 id: call.call_id.clone(),
                 name: call.name.clone(),
-                arguments: serde_json::from_str(&call.arguments).unwrap_or_else(|_| json!({})),
+                arguments: call
+                    .arguments
+                    .as_deref()
+                    .and_then(crate::ai_native::tool_arguments)
+                    .unwrap_or_else(|| json!({})),
             })
             .collect::<Vec<_>>();
         (!calls.is_empty()).then_some(calls)
@@ -458,10 +466,11 @@ impl ResponsesStreamAccumulator {
                 if let Some(name) = item.get("name").and_then(Value::as_str) {
                     call.name = name.to_string();
                 }
-                if event_type.ends_with(".done") {
-                    if let Some(arguments) = item.get("arguments").and_then(Value::as_str) {
-                        call.arguments = arguments.to_string();
-                    }
+                // Read on the added item as well as the done one: a call that
+                // streams no argument events (a zero-argument call) carries
+                // its blank only here. A present non-string poisons the call.
+                if let Some(arguments) = item.get("arguments") {
+                    call.arguments = arguments.as_str().map(str::to_owned);
                 }
                 Ok(None)
             }
@@ -475,6 +484,7 @@ impl ResponsesStreamAccumulator {
                         .entry(index)
                         .or_default()
                         .arguments
+                        .get_or_insert_default()
                         .push_str(delta);
                 }
                 Ok(None)
@@ -484,8 +494,9 @@ impl ResponsesStreamAccumulator {
                     .get("output_index")
                     .and_then(Value::as_u64)
                     .unwrap_or(0);
-                if let Some(arguments) = event.get("arguments").and_then(Value::as_str) {
-                    self.function_calls.entry(index).or_default().arguments = arguments.to_string();
+                if let Some(arguments) = event.get("arguments") {
+                    self.function_calls.entry(index).or_default().arguments =
+                        arguments.as_str().map(str::to_owned);
                 }
                 Ok(None)
             }
@@ -509,7 +520,7 @@ impl ResponsesStreamAccumulator {
                                 PartialFunctionCall {
                                     call_id: item["call_id"].as_str().unwrap_or("").to_owned(),
                                     name: item["name"].as_str().unwrap_or("").to_owned(),
-                                    arguments: item["arguments"].as_str().unwrap_or("").to_owned(),
+                                    arguments: item["arguments"].as_str().map(str::to_owned),
                                 },
                             );
                         }
@@ -520,8 +531,11 @@ impl ResponsesStreamAccumulator {
                     if call.call_id.is_empty()
                         || call.name.is_empty()
                         || !ids.insert(&call.call_id)
-                        || !serde_json::from_str::<Value>(&call.arguments)
-                            .is_ok_and(|value| value.is_object())
+                        || !call
+                            .arguments
+                            .as_deref()
+                            .and_then(crate::ai_native::tool_arguments)
+                            .is_some_and(|value| value.is_object())
                     {
                         return Err("Invalid completed Responses tool call".into());
                     }
@@ -736,6 +750,84 @@ mod tests {
             done.tool_calls.unwrap()[0].arguments,
             json!({"path":"b.txt"})
         );
+    }
+
+    /// M10 of the 4.2.1 review: a tool without parameters may arrive with
+    /// `arguments: ""`, which both the body parse and the stream check
+    /// refused. Empty or blank arguments are the empty object.
+    #[test]
+    fn empty_function_call_arguments_are_an_empty_object() {
+        for args in ["", "  "] {
+            let body = json!({
+                "model":"gpt-5.6-sol",
+                "status":"completed",
+                "output":[{"type":"function_call","call_id":"call_0","name":"app_info","arguments":args}]
+            });
+            let parsed = parse_response_body(&body.to_string(), "fallback")
+                .unwrap_or_else(|e| panic!("arguments {args:?} refused: {e}"));
+            assert_eq!(parsed.tool_calls.unwrap()[0].arguments, json!({}));
+
+            let mut state = ResponsesStreamAccumulator::default();
+            state
+                .ingest(&json!({
+                    "type":"response.output_item.added","output_index":0,
+                    "item":{"type":"function_call","call_id":"call_0","name":"app_info","arguments":args}
+                }))
+                .unwrap();
+            let done = state
+                .ingest(&json!({"type":"response.completed","response":{}}))
+                .unwrap_or_else(|e| panic!("stream arguments {args:?} refused: {e}"))
+                .unwrap();
+            assert_eq!(done.tool_calls.unwrap()[0].arguments, json!({}));
+        }
+    }
+
+    /// Missing or non-string arguments are not the blank of a zero-argument
+    /// call: the accumulator read both as `""` and the completed check
+    /// accepted them as the empty object. The body parse already refused
+    /// them; the stream now does too.
+    #[test]
+    fn a_completed_tool_call_without_string_arguments_is_refused() {
+        for arguments in [json!(null), json!({"path": "f"}), json!(3)] {
+            let mut state = ResponsesStreamAccumulator::default();
+            state
+                .ingest(&json!({
+                    "type":"response.output_item.added","output_index":0,
+                    "item":{"type":"function_call","call_id":"call_0","name":"app_info","arguments":arguments}
+                }))
+                .unwrap();
+            let outcome = state.ingest(&json!({"type":"response.completed","response":{}}));
+            assert!(outcome.is_err(), "stream arguments {arguments} accepted");
+
+            let body = json!({
+                "model":"gpt-5.6-sol",
+                "status":"completed",
+                "output":[{"type":"function_call","call_id":"call_0","name":"app_info","arguments":arguments}]
+            });
+            assert!(
+                parse_response_body(&body.to_string(), "fallback").is_err(),
+                "body arguments {arguments} accepted"
+            );
+        }
+        // The field missing from every event, and from the completed
+        // payload's own output, is refused the same way.
+        let mut state = ResponsesStreamAccumulator::default();
+        state
+            .ingest(&json!({
+                "type":"response.output_item.added","output_index":0,
+                "item":{"type":"function_call","call_id":"call_0","name":"app_info"}
+            }))
+            .unwrap();
+        assert!(state
+            .ingest(&json!({"type":"response.completed","response":{}}))
+            .is_err());
+        let mut state = ResponsesStreamAccumulator::default();
+        assert!(state
+            .ingest(&json!({
+                "type":"response.completed",
+                "response":{"output":[{"type":"function_call","call_id":"call_0","name":"app_info"}]}
+            }))
+            .is_err());
     }
 
     #[test]

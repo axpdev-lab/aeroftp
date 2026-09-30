@@ -86,16 +86,19 @@ export const isAeroCloudProvider = (type: ProviderType): boolean => {
   return type === "aerocloud";
 };
 
-// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / FTP / SFTP / S3 / Azure / MTP)
+// Protocol class label shown on My Servers tiles (OAuth / API / WebDAV / E2E / CLI / FTP / SFTP / S3 / Azure / MTP)
 // "Crypt" is a profile-level class (not a transport): a saved profile with an
 // enabled crypt overlay reads as "Crypt" regardless of its backend. See
 // getProfileProtocolClass.
-export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
+export type ProtocolClass = "OAuth" | "API" | "WebDAV" | "E2E" | "CLI" | "FTP" | "FTPS" | "SFTP" | "S3" | "Azure" | "AeroCloud" | "Crypt" | "MTP";
 
 export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   if (isOAuthProvider(type) || isFourSharedProvider(type)) return "OAuth";
   if (isAeroCloudProvider(type)) return "AeroCloud";
-  if (type === "filen" || type === "internxt" || type === "mega" || type === "proton") return "E2E";
+  if (type === "filen" || type === "internxt" || type === "mega") return "E2E";
+  // Driven through the user-installed Proton Drive CLI, as the catalog, the
+  // mode strip and the connection label present it.
+  if (type === "proton") return "CLI";
   if (type === "webdav") return "WebDAV";
   if (type === "ftps") return "FTPS";
   if (type === "ftp") return "FTP";
@@ -108,15 +111,22 @@ export const getProtocolClass = (type: ProviderType): ProtocolClass => {
   return "API";
 };
 
-// Encryption strength (bits) for E2E providers. MEGA uses AES-128 for files;
-// Filen and Internxt use AES-256 zero-knowledge encryption. Proton Drive
-// encrypts file contents with AES-256 and ECC key exchange (proton.me/learn
-// encryption AES page, read 2026-09-18).
+// Encryption strength (bits) for the E2E class. MEGA uses AES-128 for files;
+// Filen and Internxt use AES-256 zero-knowledge encryption.
 export const getE2EBits = (type: ProviderType): 128 | 256 | null => {
   if (type === "mega") return 128;
-  if (type === "filen" || type === "internxt" || type === "proton") return 256;
+  if (type === "filen" || type === "internxt") return 256;
   return null;
 };
+
+// Protocols that are a provider of their own: a saved profile without a
+// `providerId` takes the protocol as its provider id (legacy back-fill in
+// My Servers and the saved-servers list).
+export const NATIVE_PROVIDER_PROTOCOLS: ReadonlySet<string> = new Set([
+  "mega", "proton", "box", "pcloud", "azure", "filen", "internxt", "kdrive", "drime",
+  "filelu", "koofr", "opendrive", "yandexdisk", "googledrive", "dropbox", "onedrive",
+  "fourshared", "zohoworkdrive", "github", "gitlab", "immich", "twake",
+]);
 
 // Check if a provider uses non-FTP backend (provider_* Tauri commands)
 export const isNonFtpProvider = (type: ProviderType): boolean => {
@@ -1040,6 +1050,8 @@ export interface AerosyncScriptProfile {
   skip_matching: boolean;
   resync: boolean;
   watch: boolean;
+  /** The Plan's versioned-backup folder at export time (#979). */
+  backup_dir?: string | null;
 }
 
 export interface AerosyncImportScriptResult {
@@ -1245,6 +1257,8 @@ export interface SyncScriptMeta {
   exclude_patterns: string[];
   retries: number | null;
   retries_sleep: string | null;
+  /** The Plan's versioned-backup folder at export time (#979). */
+  backup_dir?: string | null;
 }
 
 // Sync Templates (#153)

@@ -1713,6 +1713,9 @@ pub const IMPORT_SECRET_OPTION_KEYS: &[&str] = &[
     "rcloneCryptPassword",
     "rcloneCryptPassword2",
     "filen_api_key",
+    // The SFTP key passphrase a profile keeps in its options, which the
+    // rclone exporter writes as `key_file_pass` (review of #980).
+    "key_passphrase",
 ];
 
 /// `options` without the keys in [`IMPORT_SECRET_OPTION_KEYS`], for output.

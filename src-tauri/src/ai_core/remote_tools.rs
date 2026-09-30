@@ -812,6 +812,8 @@ async fn upload_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let mut errors = 0u32;
     let started = std::time::Instant::now();
     for (idx, item) in items.iter().enumerate() {
+        // M9: Stop ends the batch after the file in flight.
+        crate::ai_core::tools::check_cancelled(ctx)?;
         let mut item_args = item.clone();
         let Some(obj) = item_args.as_object_mut() else {
             return Err(ToolError::InvalidArgs {
@@ -1103,6 +1105,7 @@ async fn delete_many(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let mut truncated = false;
     let started = std::time::Instant::now();
     for path in paths {
+        crate::ai_core::tools::check_cancelled(ctx)?;
         let Some(path) = path.as_str() else {
             return Err(ToolError::InvalidArgs {
                 tool: "aeroftp_delete_many".to_string(),
@@ -1605,6 +1608,7 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             truncated = true;
             continue;
         }
+        crate::ai_core::tools::check_cancelled(ctx)?;
         let entries = match backend.list(&dir).await {
             Ok(e) => e,
             // A single unreadable directory is non-fatal: skip it, keep the
@@ -1883,6 +1887,7 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         if depth > max_depth {
             continue;
         }
+        crate::ai_core::tools::check_cancelled(ctx)?;
         let listing = match backend.list(&dir).await {
             Ok(v) => v,
             Err(e) => {
@@ -2416,6 +2421,7 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let progress_step = std::cmp::max((total_planned / 50).max(1), 5);
 
     for (idx, entry) in plan.entries.iter().enumerate() {
+        crate::ai_core::tools::check_cancelled(ctx)?;
         if skip_existing {
             match crate::cross_profile_transfer::should_skip_existing(
                 dst_provider.as_mut(),
@@ -2588,6 +2594,7 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         if orphans.len() >= MAX_BFS_ENTRIES {
             break;
         }
+        crate::ai_core::tools::check_cancelled(ctx)?;
         match backend.list(&dir).await {
             Ok(entries) => {
                 for entry in entries {
@@ -2906,6 +2913,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             if depth >= MAX_BFS_DEPTH || remote_files >= MAX_BFS_ENTRIES {
                 break;
             }
+            crate::ai_core::tools::check_cancelled(ctx)?;
             if let Ok(entries) = backend.list(&dir).await {
                 for e in entries {
                     if e.is_dir {
@@ -3041,6 +3049,7 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         if depth >= MAX_BFS_DEPTH || files.len() >= MAX_BFS_ENTRIES {
             continue;
         }
+        crate::ai_core::tools::check_cancelled(ctx)?;
         match backend.list(&dir).await {
             Ok(entries) => {
                 for e in entries {
@@ -3834,6 +3843,10 @@ mod tests {
         chmod_supported: bool,
         /// When set, `chmod` fails with this message.
         chmod_fails_with: Option<String>,
+        /// Runs at every `upload`, before it fails as unused: a test flips a
+        /// cancel token from here, the way Stop lands while a file is in
+        /// flight.
+        on_upload: Option<Arc<dyn Fn() + Send + Sync>>,
     }
 
     impl FakeBackend {
@@ -3882,6 +3895,7 @@ mod tests {
                 modes: Mutex::new(std::collections::HashMap::new()),
                 chmod_supported: false,
                 chmod_fails_with: None,
+                on_upload: None,
             }
         }
 
@@ -3998,6 +4012,9 @@ mod tests {
             Err("unused".into())
         }
         async fn upload(&self, _local: &str, _remote: &str) -> Result<(), String> {
+            if let Some(hook) = &self.on_upload {
+                hook();
+            }
             Err("unused".into())
         }
         async fn delete(&self, path: &str) -> Result<(), String> {
@@ -4116,6 +4133,7 @@ mod tests {
         backend: Arc<dyn RemoteBackend>,
         sink: NoopSink,
         creds: NoopCreds,
+        cancel: Option<tokio_util::sync::CancellationToken>,
     }
 
     #[async_trait::async_trait]
@@ -4135,6 +4153,46 @@ mod tests {
         fn surface(&self) -> crate::ai_core::tools::Surfaces {
             crate::ai_core::tools::Surfaces::MCP
         }
+
+        fn cancel_token(&self) -> Option<&tokio_util::sync::CancellationToken> {
+            self.cancel.as_ref()
+        }
+    }
+
+    /// M9 (4.2.1 review): Stop reached the chat request and the stream, and a
+    /// batch upload ran on to its last file. The token flipped while the
+    /// first file is in flight stops the batch before the second.
+    #[tokio::test]
+    async fn stop_ends_an_upload_batch_after_the_file_in_flight() {
+        let token = tokio_util::sync::CancellationToken::new();
+        let flip = token.clone();
+        let backend = Arc::new(FakeBackend {
+            on_upload: Some(Arc::new(move || flip.cancel())),
+            ..FakeBackend::sample()
+        });
+        let ctx = TestCtx {
+            cancel: Some(token),
+            ..test_ctx(Arc::clone(&backend))
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.txt");
+        std::fs::write(&local, b"x").unwrap();
+        let local = local.to_string_lossy().to_string();
+        let args = json!({
+            "server": "srv",
+            "items": [
+                {"local_path": local, "remote_path": "/root/one.txt"},
+                {"local_path": local, "remote_path": "/root/two.txt"},
+            ],
+        });
+        let err = upload_many(&ctx, &args).await.unwrap_err();
+        assert!(matches!(err, ToolError::Cancelled), "{err}");
+
+        // Without a Stop the same batch reaches its second file.
+        let backend = Arc::new(FakeBackend::sample());
+        let plain = test_ctx(Arc::clone(&backend));
+        let report = upload_many(&plain, &args).await.unwrap();
+        assert_eq!(report["summary"]["processed"], 2);
     }
 
     fn test_ctx(backend: Arc<FakeBackend>) -> TestCtx {
@@ -4143,6 +4201,7 @@ mod tests {
             backend,
             sink: NoopSink,
             creds: NoopCreds::default(),
+            cancel: None,
         }
     }
 
@@ -4152,6 +4211,7 @@ mod tests {
             backend,
             sink: NoopSink,
             creds: NoopCreds { profiles },
+            cancel: None,
         }
     }
 
