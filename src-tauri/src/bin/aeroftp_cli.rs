@@ -10752,6 +10752,9 @@ async fn interrupted_inplace_exit(
     report_interrupted(format, what)
 }
 
+/// The close half of an interrupted exit: disconnect within
+/// [`INTERRUPTED_DISCONNECT_GRACE`], so a server that stopped answering —
+/// often the reason for the Ctrl-C — cannot hold the command open.
 async fn close_after_interrupt(provider: &mut dyn StorageProvider) {
     let _ = tokio::time::timeout(INTERRUPTED_DISCONNECT_GRACE, provider.disconnect()).await;
 }
@@ -10762,6 +10765,8 @@ async fn close_after_interrupt(provider: &mut dyn StorageProvider) {
 /// the opposite.
 const INTERRUPTED_STATUS: &str = "interrupted";
 
+/// The shared ending of an interrupted run: the note, in the output format,
+/// and 130, the exit code a shell gives SIGINT.
 fn report_interrupted(format: OutputFormat, what: &str) -> i32 {
     print_error(format, &format!("Interrupted (Ctrl+C): {what}"), 130);
     130
@@ -27530,6 +27535,10 @@ async fn create_and_connect_for_agent(
     Ok((provider, initial_path.to_string()))
 }
 
+/// `agent-info`: the capabilities JSON an orchestrating agent reads first —
+/// saved profiles, the safety model with its danger levels, supported
+/// protocols, output modes and exit codes. `--redact-identifiers` hides who
+/// each account is (host, username), not how the connection is shaped.
 fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
     let (profiles, profiles_error) = match safe_vault_profiles(cli) {
         Ok(profiles) => (profiles, None),
@@ -34461,6 +34470,10 @@ async fn pget_fallback_single(
     }
 }
 
+/// `get -r`: download a directory tree. The exit code answers what the
+/// counters cannot: 0 when every file landed, 130 ("interrupted" in the
+/// JSON) when Ctrl-C stopped the run, 8 for an intentional --max-transfer
+/// stop, 4 for anything else left behind.
 async fn cmd_get_recursive(
     url: &str,
     remote_dir: &str,
@@ -34794,6 +34807,10 @@ async fn cmd_get_recursive(
     }
 }
 
+/// `get` of a glob pattern: download every match, with the ending of
+/// `get -r` — interrupted is 130, an --immutable skip counts toward success
+/// like a download, a --max-transfer stop is 8, anything else incomplete
+/// is 4.
 async fn cmd_get_glob(
     url: &str,
     pattern: &str,
@@ -35565,6 +35582,11 @@ async fn cmd_put(
     }
 }
 
+/// `put -r`: upload a directory tree. An --immutable or --no-clobber skip
+/// counts toward success (9 when nothing was left to upload), an --immutable
+/// destination of another size is a refusal counted in the errors; Ctrl-C
+/// ends the run interrupted (130), a --max-transfer stop is 8, anything else
+/// incomplete is 4.
 async fn cmd_put_recursive(
     url: &str,
     local_dir: &str,
@@ -50444,6 +50466,14 @@ fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
     has_profile && !url.contains("://") && url != "_"
 }
 
+/// `sync`: plan from the two listings, then run the transfers, renames,
+/// deletes and the empty-directory cleanup, and answer one exit code out of
+/// several facts. Ctrl-C in any phase ends the run interrupted (130,
+/// "interrupted" in the JSON); a failure (4) outranks an incomplete listing,
+/// which outranks a deliberate --max-transfer stop (8). --immutable refuses
+/// a destination of another size (counted in the errors) and skips, counted,
+/// one of the same size; a one-way --delete removes the directories its
+/// deletes left empty and lists each one it kept, with the reason.
 // `use_aerorsync_batch` is only consumed inside an `aerorsync`-gated
 // block below; tolerate the dead argument when the feature is off.
 #[cfg_attr(not(feature = "aerorsync"), allow(unused_variables))]
@@ -59723,6 +59753,10 @@ async fn cmd_rclone_crypt_put(
     }
 }
 
+/// `put` of a glob pattern: upload every match, with the ending of
+/// `put -r` — an --immutable/--no-clobber skip counts toward success (9
+/// when nothing was left to upload), an --immutable refusal is counted in
+/// the errors, interrupted is 130, a --max-transfer stop is 8.
 async fn cmd_put_glob(
     url: &str,
     local_pattern: &str,
@@ -67274,6 +67308,10 @@ fn tool_exposure_category(tool: &str) -> &'static str {
     }
 }
 
+/// What a tool sends to the model when it runs: nothing, metadata, a
+/// preview (a capped read), file content, or whatever the asked-for
+/// operation carries (`server_exec`). Surfaced in `agent-info` so an
+/// orchestrator can judge egress before it grants a level.
 fn tool_data_egress(tool: &str) -> &'static str {
     match tool {
         "server_list_saved" | "remote_list" | "remote_info" | "remote_search" => "metadata",
@@ -67321,6 +67359,8 @@ fn tool_danger_level(tool: &str) -> u8 {
     }
 }
 
+/// The name of a tool's [`tool_danger_level`], shown in the tool listings
+/// and the `agent-info` JSON: safe, medium, high or destructive.
 fn tool_danger_name(tool: &str) -> &'static str {
     match tool_danger_level(tool) {
         0 => "safe",
