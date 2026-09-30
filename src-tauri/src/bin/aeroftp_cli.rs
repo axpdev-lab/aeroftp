@@ -52521,10 +52521,15 @@ async fn cmd_sync(
     // how many.
     let mut dirs_deleted: u32 = 0;
     let mut dirs_kept: Vec<CliSyncKeptDir> = Vec::new();
+    // Iterations the loop reached, counted apart from the outcome: a kept
+    // directory, one the backup holds and one already gone are all work done,
+    // and the interrupted check below compares it against the plan.
+    let mut dirs_processed: u32 = 0;
     for dir in &orphan_dirs {
         if cancelled.load(Ordering::Relaxed) {
             break;
         }
+        dirs_processed += 1;
         if direction == "upload" {
             let remote_dir = format!("{}/{}", remote.trim_end_matches('/'), dir);
             match ftp_client_gui_lib::providers::remove_empty_directory(
@@ -52621,8 +52626,26 @@ async fn cmd_sync(
     // Ctrl-C stops every phase above: the transfers record the files they
     // did not move, the renames, deletes and directory removals stop where
     // they are. Whichever phase it stopped, the run ends as interrupted
-    // (exit 130), not as a success or a failure to retry.
-    let interrupted = cancelled.load(Ordering::Relaxed);
+    // (exit 130), not as a success or a failure to retry. A flag that
+    // flipped after the last planned action — the signal can land between
+    // the final phase and this check — stopped nothing, and the run keeps
+    // its normal outcome: 130 tells an agent not to retry, and a completed
+    // plan has nothing to retry. The batch commands gate the same way on
+    // their completed counts.
+    let planned = (to_upload.len()
+        + to_download.len()
+        + to_conflict_upload.len()
+        + renames.len()
+        + to_delete_remote.len()
+        + to_delete_local.len()
+        + orphan_dirs.len()) as u64;
+    let completed = uploaded as u64
+        + downloaded as u64
+        + conflict_uploaded as u64
+        + renamed as u64
+        + deleted as u64
+        + dirs_processed as u64;
+    let interrupted = cancelled.load(Ordering::Relaxed) && completed < planned;
     if interrupted && !quiet {
         eprintln!("Interrupted (Ctrl+C): the sync stopped before the end of its plan");
     }
@@ -87326,6 +87349,45 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         );
         assert_eq!(stats.deleted, 1, "the second delete is not attempted");
         assert_eq!(stats.exit_code, 130, "a cancelled run is not a success");
+    }
+
+    /// Review of the interrupt gate: a Ctrl-C that lands after the last
+    /// planned action but before the check read only the flag, so a sync
+    /// whose plan had completed reported "interrupted" and exited 130, the
+    /// code an agent reads as stopped, do not retry. The flag flipped at the
+    /// last instant stops nothing: the run keeps its normal outcome.
+    #[test]
+    fn ctrl_c_after_the_plan_completes_keeps_the_outcome() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("keep.txt", 4);
+        let local = fixture.local();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&cancelled);
+        let remote = SharedTreeProvider {
+            after_delete: Some(Arc::new(move |_| flag.store(true, Ordering::Relaxed))),
+            ..SharedTreeProvider::with_files(&[("keep.txt", b"xxxx"), ("old.txt", b"1")])
+        };
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let stats = run_sync_shared_with(
+            &remote,
+            &local,
+            SharedSyncRun {
+                direction: "upload",
+                delete: true,
+                max_delete: Some("100"),
+                cancelled,
+                ..SharedSyncRun::default()
+            },
+            &cli,
+        );
+        assert_eq!(stats.deleted, 1, "the one planned delete ran");
+        assert_eq!(
+            stats.exit_code, 0,
+            "the plan completed before the flag flipped: not an interrupted run"
+        );
     }
 
     /// H4 (4.2.1 review): Ctrl-C during the transfers of a `sync` exited 4,
