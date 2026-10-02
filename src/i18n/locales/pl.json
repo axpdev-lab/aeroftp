@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Zaloguj się ponownie",
             "twakeSignedIn": "Zalogowano",
             "twakeWaitingBrowser": "Dokończ logowanie w przeglądarce...",
-            "twakeSignInHelp": "AeroFTP otwiera Twake w Twojej przeglądarce i prosi o dostęp tylko do Twoich plików. Jeśli Twake pokaże błąd za pierwszym razem, zaloguj się do Twake w przeglądarce i zaloguj się ponownie. Dostęp możesz odwołać w dowolnym momencie w ustawieniach Twake, Połączone urządzenia."
+            "twakeSignInHelp": "AeroFTP otwiera Twake w Twojej przeglądarce i prosi o dostęp tylko do Twoich plików. Jeśli Twake pokaże błąd za pierwszym razem, zaloguj się do Twake w przeglądarce i zaloguj się ponownie. Dostęp możesz odwołać w dowolnym momencie w ustawieniach Twake, Połączone urządzenia.",
+            "oauthKeysMissingTitle": "Brak kluczy aplikacji {provider}",
+            "oauthKeysMissing": "W sejfie nie zapisano kluczy aplikacji dla {provider}, więc AeroFTP nie może się zalogować. AeroFTP nie zawiera własnych kluczy: wprowadź klucze swojej aplikacji deweloperskiej {provider} w {location}, a następnie połącz się ponownie.",
+            "oauthKeysOpenSettings": "Otwórz ustawienia OAuth"
         },
         "browser": {
             "remote": "Zdalny",

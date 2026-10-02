@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Pierakstieties vēlreiz",
             "twakeSignedIn": "Pierakstījies",
             "twakeWaitingBrowser": "Pabeidziet pierakstīšanos savā pārlūkprogrammā...",
-            "twakeSignInHelp": "AeroFTP atver Twake jūsu pārlūkprogrammā un pieprasa piekļuvi tikai jūsu failiem. Ja Twake pirmoreiz parāda kļūdu, piesakieties Twake pārlūkprogrammā un pierakstieties vēlreiz. Piekļuvi varat atsaukt jebkurā laikā Twake iestatījumos, Savienotās ierīces."
+            "twakeSignInHelp": "AeroFTP atver Twake jūsu pārlūkprogrammā un pieprasa piekļuvi tikai jūsu failiem. Ja Twake pirmoreiz parāda kļūdu, piesakieties Twake pārlūkprogrammā un pierakstieties vēlreiz. Piekļuvi varat atsaukt jebkurā laikā Twake iestatījumos, Savienotās ierīces.",
+            "oauthKeysMissingTitle": "Trūkst {provider} lietotnes atslēgu",
+            "oauthKeysMissing": "Glabātuvē nav saglabātu {provider} lietotnes atslēgu, tāpēc AeroFTP nevar pieteikties. AeroFTP nepiegādā savas atslēgas: ievadiet sava {provider} izstrādātāja lietotnes atslēgas šeit: {location}, un pēc tam izveidojiet savienojumu vēlreiz.",
+            "oauthKeysOpenSettings": "Atvērt OAuth iestatījumus"
         },
         "browser": {
             "remote": "Attālināts",

@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Prisijunkite iš naujo",
             "twakeSignedIn": "Prisijungta",
             "twakeWaitingBrowser": "Baikite prisijungimą naršyklėje...",
-            "twakeSignInHelp": "AeroFTP atidaro Twake jūsų naršyklėje ir prašo prieigos tik prie jūsų failų. Jei Twake pirmą kartą rodo klaidą, prisijunkite prie Twake naršyklėje ir prisijunkite iš naujo. Prieigą galite atšaukti bet kada Twake nustatymuose, Prijungti įrenginiai."
+            "twakeSignInHelp": "AeroFTP atidaro Twake jūsų naršyklėje ir prašo prieigos tik prie jūsų failų. Jei Twake pirmą kartą rodo klaidą, prisijunkite prie Twake naršyklėje ir prisijunkite iš naujo. Prieigą galite atšaukti bet kada Twake nustatymuose, Prijungti įrenginiai.",
+            "oauthKeysMissingTitle": "Trūksta „{provider}“ programos raktų",
+            "oauthKeysMissing": "Saugykloje nėra išsaugotų „{provider}“ programos raktų, todėl AeroFTP negali prisijungti. AeroFTP nepateikia savų raktų: įveskite savo „{provider}“ kūrėjo programos raktus čia: {location}, tada prisijunkite iš naujo.",
+            "oauthKeysOpenSettings": "Atidaryti OAuth nustatymus"
         },
         "browser": {
             "remote": "Nuotolinis",

@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Đăng nhập lại",
             "twakeSignedIn": "Đã đăng nhập",
             "twakeWaitingBrowser": "Hoàn tất đăng nhập trong trình duyệt của bạn...",
-            "twakeSignInHelp": "AeroFTP mở Twake trong trình duyệt của bạn và chỉ yêu cầu quyền truy cập vào tệp của bạn. Nếu Twake hiển thị lỗi lần đầu tiên, hãy đăng nhập vào Twake trong trình duyệt rồi đăng nhập lại. Bạn có thể thu hồi quyền truy cập bất kỳ lúc nào trong Cài đặt Twake, Thiết bị đã kết nối."
+            "twakeSignInHelp": "AeroFTP mở Twake trong trình duyệt của bạn và chỉ yêu cầu quyền truy cập vào tệp của bạn. Nếu Twake hiển thị lỗi lần đầu tiên, hãy đăng nhập vào Twake trong trình duyệt rồi đăng nhập lại. Bạn có thể thu hồi quyền truy cập bất kỳ lúc nào trong Cài đặt Twake, Thiết bị đã kết nối.",
+            "oauthKeysMissingTitle": "Thiếu khóa ứng dụng {provider}",
+            "oauthKeysMissing": "Không có khóa ứng dụng nào của {provider} được lưu trong kho bảo mật, nên AeroFTP không thể đăng nhập. AeroFTP không kèm khóa riêng: hãy nhập khóa của ứng dụng nhà phát triển {provider} của bạn tại {location}, rồi kết nối lại.",
+            "oauthKeysOpenSettings": "Mở cài đặt OAuth"
         },
         "browser": {
             "remote": "Từ xa",

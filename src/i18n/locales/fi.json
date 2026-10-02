@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Kirjaudu sisään uudelleen",
             "twakeSignedIn": "Kirjauduttu sisään",
             "twakeWaitingBrowser": "Viimeistele kirjautuminen selaimessasi...",
-            "twakeSignInHelp": "AeroFTP avaa Twaken selaimessasi ja pyytää pääsyä vain tiedostoihisi. Jos Twake näyttää virheen ensimmäisellä kerralla, kirjaudu Twakeen selaimessa ja kirjaudu sisään uudelleen. Voit peruuttaa käyttöoikeuden milloin tahansa Twaken asetuksista, Yhdistetyt laitteet."
+            "twakeSignInHelp": "AeroFTP avaa Twaken selaimessasi ja pyytää pääsyä vain tiedostoihisi. Jos Twake näyttää virheen ensimmäisellä kerralla, kirjaudu Twakeen selaimessa ja kirjaudu sisään uudelleen. Voit peruuttaa käyttöoikeuden milloin tahansa Twaken asetuksista, Yhdistetyt laitteet.",
+            "oauthKeysMissingTitle": "{provider}-sovellusavaimet puuttuvat",
+            "oauthKeysMissing": "Holvissa ei ole tallennettuna {provider}-sovellusavaimia, joten AeroFTP ei voi kirjautua sisään. AeroFTP ei sisällä omia avaimia: syötä oman {provider}-kehittäjäsovelluksesi avaimet kohtaan {location} ja yhdistä uudelleen.",
+            "oauthKeysOpenSettings": "Avaa OAuth-asetukset"
         },
         "browser": {
             "remote": "Etä",

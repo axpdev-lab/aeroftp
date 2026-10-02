@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Jelentkezz be újra",
             "twakeSignedIn": "Bejelentkezve",
             "twakeWaitingBrowser": "Fejezd be a bejelentkezést a böngésződben...",
-            "twakeSignInHelp": "Az AeroFTP megnyitja a Twake-et a böngésződben, és csak a fájljaidhoz kér hozzáférést. Ha a Twake először hibát jelez, jelentkezz be a Twake-be a böngészőben, majd jelentkezz be újra. A hozzáférést bármikor visszavonhatod a Twake beállításokban, a Csatlakoztatott eszközök menüpontban."
+            "twakeSignInHelp": "Az AeroFTP megnyitja a Twake-et a böngésződben, és csak a fájljaidhoz kér hozzáférést. Ha a Twake először hibát jelez, jelentkezz be a Twake-be a böngészőben, majd jelentkezz be újra. A hozzáférést bármikor visszavonhatod a Twake beállításokban, a Csatlakoztatott eszközök menüpontban.",
+            "oauthKeysMissingTitle": "Hiányoznak a(z) {provider} alkalmazáskulcsai",
+            "oauthKeysMissing": "A széfben nincs mentve alkalmazáskulcs a(z) {provider} szolgáltatáshoz, ezért az AeroFTP nem tud bejelentkezni. Az AeroFTP nem szállít saját kulcsokat: adja meg a(z) {provider} fejlesztői alkalmazásának kulcsait itt: {location}, majd csatlakozzon újra.",
+            "oauthKeysOpenSettings": "OAuth-beállítások megnyitása"
         },
         "browser": {
             "remote": "Távoli",

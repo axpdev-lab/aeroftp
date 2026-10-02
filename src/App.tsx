@@ -201,6 +201,7 @@ import {
 import { copyText } from './utils/clipboard';
 import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
+import { notifyOAuthKeysMissing, OPEN_OAUTH_SETTINGS_EVENT } from './utils/oauthKeysMissing';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
@@ -2478,6 +2479,17 @@ const App: React.FC = () => {
     window.addEventListener('aeroftp-toast', handler as EventListener);
     return () => window.removeEventListener('aeroftp-toast', handler as EventListener);
   }, [toast, showToastNotifications]);
+
+  // Action of the "app keys missing" toast (notifyOAuthKeysMissing): open
+  // Settings on the tab where the user's own OAuth app keys are entered.
+  useEffect(() => {
+    const openOAuthSettings = () => {
+      setSettingsInitialTab('cloudproviders');
+      setShowSettingsPanel(true);
+    };
+    window.addEventListener(OPEN_OAUTH_SETTINGS_EVENT, openOAuthSettings);
+    return () => window.removeEventListener(OPEN_OAUTH_SETTINGS_EVENT, openOAuthSettings);
+  }, []);
 
   // Preview: handled by usePreview hook
   const preview = usePreview({ notify, toast });
@@ -8343,6 +8355,7 @@ const App: React.FC = () => {
         }
 
         if (!clientId || !clientSecret) {
+          notifyOAuthKeysMissing(t, protocol);
           throw new Error(`OAuth credentials not found for ${protocol}`);
         }
 
@@ -10144,10 +10157,7 @@ const App: React.FC = () => {
           clientSecret = await getCredentialWithRetry(`oauth_${protocol}_client_secret`);
         } catch { /* missing */ }
         if (!clientId || !clientSecret) {
-          notify.error(
-            t('toast.connectionFailed') || 'Connection failed',
-            t('transfer.resumeConnectFailed', { name: profile.name }),
-          );
+          notifyOAuthKeysMissing(t, protocol);
           return false;
         }
         const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
@@ -10209,10 +10219,7 @@ const App: React.FC = () => {
           consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
         } catch { /* missing */ }
         if (!consumerKey || !consumerSecret) {
-          notify.error(
-            t('toast.connectionFailed') || 'Connection failed',
-            t('transfer.resumeConnectFailed', { name: profile.name }),
-          );
+          notifyOAuthKeysMissing(t, protocol);
           return false;
         }
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });

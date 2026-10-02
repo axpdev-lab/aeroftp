@@ -334,7 +334,10 @@
             "twakeSignInAgain": "再度サインイン",
             "twakeSignedIn": "サインイン済み",
             "twakeWaitingBrowser": "ブラウザでサインインを完了してください...",
-            "twakeSignInHelp": "AeroFTPはブラウザでTwakeを開き、ファイルへのアクセスのみを要求します。初回にTwakeでエラーが表示された場合は、ブラウザでTwakeにログインしてから再度サインインしてください。アクセス権はいつでもTwakeの設定の「接続済みデバイス」から取り消せます。"
+            "twakeSignInHelp": "AeroFTPはブラウザでTwakeを開き、ファイルへのアクセスのみを要求します。初回にTwakeでエラーが表示された場合は、ブラウザでTwakeにログインしてから再度サインインしてください。アクセス権はいつでもTwakeの設定の「接続済みデバイス」から取り消せます。",
+            "oauthKeysMissingTitle": "{provider} のアプリキーがありません",
+            "oauthKeysMissing": "{provider} のアプリキーが保管庫に保存されていないため、AeroFTP はサインインできません。AeroFTP は独自のキーを同梱していません。{location} に {provider} の開発者アプリのキーを入力してから、もう一度接続してください。",
+            "oauthKeysOpenSettings": "OAuth 設定を開く"
         },
         "browser": {
             "remote": "リモート",

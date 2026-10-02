@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Prijavite se ponovno",
             "twakeSignedIn": "Prijavljeni ste",
             "twakeWaitingBrowser": "Dovršite prijavu u pregledniku...",
-            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledniku i traži pristup samo vašim datotekama. Ako Twake prvi put prikaže pogrešku, prijavite se u Twake u pregledniku i prijavite se ponovno. Pristup možete opozvati bilo kada u Twake postavkama, Povezani uređaji."
+            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledniku i traži pristup samo vašim datotekama. Ako Twake prvi put prikaže pogrešku, prijavite se u Twake u pregledniku i prijavite se ponovno. Pristup možete opozvati bilo kada u Twake postavkama, Povezani uređaji.",
+            "oauthKeysMissingTitle": "Nedostaju ključevi aplikacije za {provider}",
+            "oauthKeysMissing": "U trezoru nisu pohranjeni ključevi aplikacije za {provider}, pa se AeroFTP ne može prijaviti. AeroFTP ne isporučuje vlastite ključeve: unesite ključeve svoje razvojne aplikacije za {provider} u {location}, a zatim se ponovno povežite.",
+            "oauthKeysOpenSettings": "Otvori postavke OAutha"
         },
         "browser": {
             "remote": "Udaljeno",

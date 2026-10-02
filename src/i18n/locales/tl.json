@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Mag-sign in ulit",
             "twakeSignedIn": "Naka-sign in",
             "twakeWaitingBrowser": "Tapusin ang pag-sign in sa iyong browser...",
-            "twakeSignInHelp": "Binubuksan ng AeroFTP ang Twake sa iyong browser at humihiling lamang ng access sa iyong mga file. Kung nagpakita ng error ang Twake sa unang pagkakataon, mag-log in sa Twake sa browser at mag-sign in ulit. Puwede mong bawiin ang access anumang oras sa Mga Setting ng Twake, Mga Nakakonektang Device."
+            "twakeSignInHelp": "Binubuksan ng AeroFTP ang Twake sa iyong browser at humihiling lamang ng access sa iyong mga file. Kung nagpakita ng error ang Twake sa unang pagkakataon, mag-log in sa Twake sa browser at mag-sign in ulit. Puwede mong bawiin ang access anumang oras sa Mga Setting ng Twake, Mga Nakakonektang Device.",
+            "oauthKeysMissingTitle": "Kulang ang mga app key ng {provider}",
+            "oauthKeysMissing": "Walang nakaimbak na app key para sa {provider} sa vault, kaya hindi makapag-sign in ang AeroFTP. Walang sariling key ang AeroFTP: ilagay ang mga key ng iyong developer app sa {provider} sa {location}, pagkatapos ay kumonekta muli.",
+            "oauthKeysOpenSettings": "Buksan ang mga setting ng OAuth"
         },
         "browser": {
             "remote": "Remote",

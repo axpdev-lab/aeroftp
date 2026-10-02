@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Log masuk semula",
             "twakeSignedIn": "Log masuk berjaya",
             "twakeWaitingBrowser": "Selesaikan log masuk dalam pelayar anda...",
-            "twakeSignInHelp": "AeroFTP membuka Twake dalam pelayar anda dan hanya meminta akses kepada fail anda. Jika Twake menunjukkan ralat pada kali pertama, log masuk ke Twake dalam pelayar dan log masuk semula. Anda boleh menarik balik akses pada bila-bila masa dalam Tetapan Twake, Peranti Disambungkan."
+            "twakeSignInHelp": "AeroFTP membuka Twake dalam pelayar anda dan hanya meminta akses kepada fail anda. Jika Twake menunjukkan ralat pada kali pertama, log masuk ke Twake dalam pelayar dan log masuk semula. Anda boleh menarik balik akses pada bila-bila masa dalam Tetapan Twake, Peranti Disambungkan.",
+            "oauthKeysMissingTitle": "Kunci aplikasi {provider} tiada",
+            "oauthKeysMissing": "Tiada kunci aplikasi untuk {provider} disimpan dalam peti besi, jadi AeroFTP tidak dapat log masuk. AeroFTP tidak menyertakan kunci sendiri: masukkan kunci aplikasi pembangun {provider} anda di {location}, kemudian sambung semula.",
+            "oauthKeysOpenSettings": "Buka tetapan OAuth"
         },
         "browser": {
             "remote": "Jauh",

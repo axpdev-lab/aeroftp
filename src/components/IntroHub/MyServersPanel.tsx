@@ -37,6 +37,7 @@ import { useResponsiveColumns } from '../../hooks/useResponsiveColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 import { matchLiveDevice } from '../../utils/mtpFingerprint';
+import { notifyOAuthKeysMissing } from '../../utils/oauthKeysMissing';
 import type { MtpDeviceInfo } from '../../types/aerofile';
 import { loadFavoriteServers, saveFavoriteServers } from '../../utils/favoriteServers';
 import {
@@ -1178,6 +1179,7 @@ export function MyServersPanel({
             } catch { /* not found */ }
 
             if (!credentials) {
+                notifyOAuthKeysMissing(t, server.protocol);
                 setConnectingId(null);
                 return;
             }
@@ -1251,7 +1253,11 @@ export function MyServersPanel({
                 consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
                 consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
             } catch { /* ignore */ }
-            if (!consumerKey || !consumerSecret) { setConnectingId(null); return; }
+            if (!consumerKey || !consumerSecret) {
+                notifyOAuthKeysMissing(t, server.protocol);
+                setConnectingId(null);
+                return;
+            }
 
             setOauthConnecting(server.id);
             try {

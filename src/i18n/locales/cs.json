@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Přihlásit se znovu",
             "twakeSignedIn": "Přihlášeno",
             "twakeWaitingBrowser": "Dokončete přihlášení v prohlížeči...",
-            "twakeSignInHelp": "AeroFTP otevře Twake ve vašem prohlížeči a požádá pouze o přístup k vašim souborům. Pokud Twake poprvé zobrazí chybu, přihlaste se do Twake v prohlížeči a zkuste to znovu. Přístup můžete kdykoli zrušit v nastavení Twake, Připojená zařízení."
+            "twakeSignInHelp": "AeroFTP otevře Twake ve vašem prohlížeči a požádá pouze o přístup k vašim souborům. Pokud Twake poprvé zobrazí chybu, přihlaste se do Twake v prohlížeči a zkuste to znovu. Přístup můžete kdykoli zrušit v nastavení Twake, Připojená zařízení.",
+            "oauthKeysMissingTitle": "Chybí klíče aplikace {provider}",
+            "oauthKeysMissing": "V úschovně nejsou uloženy žádné klíče aplikace pro {provider}, takže se AeroFTP nemůže přihlásit. AeroFTP nedodává vlastní klíče: zadejte klíče své vývojářské aplikace {provider} v {location} a připojte se znovu.",
+            "oauthKeysOpenSettings": "Otevřít nastavení OAuth"
         },
         "browser": {
             "remote": "Vzdálený",

@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Logga in igen",
             "twakeSignedIn": "Inloggad",
             "twakeWaitingBrowser": "Slutför inloggningen i din webbläsare...",
-            "twakeSignInHelp": "AeroFTP öppnar Twake i din webbläsare och begär endast åtkomst till dina filer. Om Twake visar ett fel första gången, logga in på Twake i webbläsaren och logga in igen. Du kan när som helst återkalla åtkomsten i Twake-inställningar, Anslutna enheter."
+            "twakeSignInHelp": "AeroFTP öppnar Twake i din webbläsare och begär endast åtkomst till dina filer. Om Twake visar ett fel första gången, logga in på Twake i webbläsaren och logga in igen. Du kan när som helst återkalla åtkomsten i Twake-inställningar, Anslutna enheter.",
+            "oauthKeysMissingTitle": "Appnycklar för {provider} saknas",
+            "oauthKeysMissing": "Inga appnycklar för {provider} finns sparade i valvet, så AeroFTP kan inte logga in. AeroFTP levereras inte med egna nycklar: ange nycklarna för din {provider}-utvecklarapp i {location} och anslut igen.",
+            "oauthKeysOpenSettings": "Öppna OAuth-inställningar"
         },
         "browser": {
             "remote": "Fjärr",

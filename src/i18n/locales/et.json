@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Logi uuesti sisse",
             "twakeSignedIn": "Sisse logitud",
             "twakeWaitingBrowser": "Lõpetage sisselogimine oma brauseris...",
-            "twakeSignInHelp": "AeroFTP avab Twake teie brauseris ja palub ligipääsu ainult teie failidele. Kui Twake näitab esimesel korral viga, logige brauseris Twake'i sisse ja logige uuesti sisse. Ligipääsu saate igal ajal tühistada Twake seadetes, Ühendatud seadmed."
+            "twakeSignInHelp": "AeroFTP avab Twake teie brauseris ja palub ligipääsu ainult teie failidele. Kui Twake näitab esimesel korral viga, logige brauseris Twake'i sisse ja logige uuesti sisse. Ligipääsu saate igal ajal tühistada Twake seadetes, Ühendatud seadmed.",
+            "oauthKeysMissingTitle": "{provider} rakenduse võtmed puuduvad",
+            "oauthKeysMissing": "Hoidlas pole {provider} rakenduse võtmeid, seega AeroFTP ei saa sisse logida. AeroFTP ei sisalda omi võtmeid: sisestage oma {provider} arendajarakenduse võtmed asukohas {location} ja ühendage uuesti.",
+            "oauthKeysOpenSettings": "Ava OAuth-i seaded"
         },
         "browser": {
             "remote": "Kaugserver",

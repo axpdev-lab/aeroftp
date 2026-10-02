@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Ingia tena",
             "twakeSignedIn": "Umeingia",
             "twakeWaitingBrowser": "Kamilisha kuingia kwenye kivinjari chako...",
-            "twakeSignInHelp": "AeroFTP hufungua Twake kwenye kivinjari chako na kuomba ufikiaji wa faili zako pekee. Ikiwa Twake itaonyesha hitilafu mara ya kwanza, ingia kwenye Twake kwenye kivinjari kisha ingia tena. Unaweza kubatilisha ufikiaji wakati wowote kwenye Mipangilio ya Twake, Vifaa Vilivyounganishwa."
+            "twakeSignInHelp": "AeroFTP hufungua Twake kwenye kivinjari chako na kuomba ufikiaji wa faili zako pekee. Ikiwa Twake itaonyesha hitilafu mara ya kwanza, ingia kwenye Twake kwenye kivinjari kisha ingia tena. Unaweza kubatilisha ufikiaji wakati wowote kwenye Mipangilio ya Twake, Vifaa Vilivyounganishwa.",
+            "oauthKeysMissingTitle": "Funguo za programu ya {provider} hazipo",
+            "oauthKeysMissing": "Hakuna funguo za programu za {provider} zilizohifadhiwa kwenye hifadhi salama, kwa hivyo AeroFTP haiwezi kuingia. AeroFTP haina funguo zake yenyewe: weka funguo za programu yako ya msanidi ya {provider} katika {location}, kisha unganisha tena.",
+            "oauthKeysOpenSettings": "Fungua mipangilio ya OAuth"
         },
         "browser": {
             "remote": "Mbali",

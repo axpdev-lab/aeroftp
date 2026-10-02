@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Conectați-vă din nou",
             "twakeSignedIn": "Conectat",
             "twakeWaitingBrowser": "Finalizați conectarea în browser...",
-            "twakeSignInHelp": "AeroFTP deschide Twake în browserul dumneavoastră și solicită acces doar la fișierele dumneavoastră. Dacă Twake afișează o eroare prima dată, conectați-vă la Twake în browser și conectați-vă din nou. Puteți revoca accesul oricând din Setări Twake, Dispozitive conectate."
+            "twakeSignInHelp": "AeroFTP deschide Twake în browserul dumneavoastră și solicită acces doar la fișierele dumneavoastră. Dacă Twake afișează o eroare prima dată, conectați-vă la Twake în browser și conectați-vă din nou. Puteți revoca accesul oricând din Setări Twake, Dispozitive conectate.",
+            "oauthKeysMissingTitle": "Lipsesc cheile aplicației {provider}",
+            "oauthKeysMissing": "În seif nu sunt stocate chei de aplicație pentru {provider}, deci AeroFTP nu se poate autentifica. AeroFTP nu include chei proprii: introdu cheile aplicației tale de dezvoltator {provider} în {location}, apoi conectează-te din nou.",
+            "oauthKeysOpenSettings": "Deschide setările OAuth"
         },
         "browser": {
             "remote": "La distanță",

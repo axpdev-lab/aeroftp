@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Mewngofnodi eto",
             "twakeSignedIn": "Wedi mewngofnodi",
             "twakeWaitingBrowser": "Gorffennwch fewngofnodi yn eich porwr...",
-            "twakeSignInHelp": "Mae AeroFTP yn agor Twake yn eich porwr ac yn gofyn am fynediad i'ch ffeiliau yn unig. Os yw Twake yn dangos gwall y tro cyntaf, mewngofnodwch i Twake yn y porwr a mewngofnodwch eto. Gallwch ddiddymu mynediad unrhyw bryd yng Ngosodiadau Twake, Dyfeisiau Cysylltiedig."
+            "twakeSignInHelp": "Mae AeroFTP yn agor Twake yn eich porwr ac yn gofyn am fynediad i'ch ffeiliau yn unig. Os yw Twake yn dangos gwall y tro cyntaf, mewngofnodwch i Twake yn y porwr a mewngofnodwch eto. Gallwch ddiddymu mynediad unrhyw bryd yng Ngosodiadau Twake, Dyfeisiau Cysylltiedig.",
+            "oauthKeysMissingTitle": "Allweddi ap {provider} ar goll",
+            "oauthKeysMissing": "Nid oes allweddi ap ar gyfer {provider} wedi'u storio yn y gladdgell, felly ni all AeroFTP fewngofnodi. Nid yw AeroFTP yn cynnwys ei allweddi ei hun: rhowch allweddi eich ap datblygwr {provider} yn {location}, yna cysylltwch eto.",
+            "oauthKeysOpenSettings": "Agor gosodiadau OAuth"
         },
         "browser": {
             "remote": "Pell",

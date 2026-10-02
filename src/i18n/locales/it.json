@@ -451,7 +451,10 @@
             "twakeSignInAgain": "Accedi di nuovo",
             "twakeSignedIn": "Accesso effettuato",
             "twakeWaitingBrowser": "Completa l'accesso nel browser...",
-            "twakeSignInHelp": "AeroFTP apre Twake nel browser e chiede l'accesso solo ai tuoi file. Se la prima volta Twake mostra un errore, accedi a Twake nel browser e riprova. Puoi revocare l'accesso in qualsiasi momento dalle Impostazioni di Twake, Dispositivi collegati."
+            "twakeSignInHelp": "AeroFTP apre Twake nel browser e chiede l'accesso solo ai tuoi file. Se la prima volta Twake mostra un errore, accedi a Twake nel browser e riprova. Puoi revocare l'accesso in qualsiasi momento dalle Impostazioni di Twake, Dispositivi collegati.",
+            "oauthKeysMissingTitle": "Chiavi dell'app {provider} mancanti",
+            "oauthKeysMissing": "Nel vault non sono salvate chiavi dell'app per {provider}, quindi AeroFTP non può accedere. AeroFTP non include chiavi proprie: inserisci le chiavi della tua app sviluppatore {provider} in {location}, poi riconnettiti.",
+            "oauthKeysOpenSettings": "Apri impostazioni OAuth"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",

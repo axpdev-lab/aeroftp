@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Iniciar sesión de novo",
             "twakeSignedIn": "Sesión iniciada",
             "twakeWaitingBrowser": "Remata de iniciar sesión no teu navegador...",
-            "twakeSignInHelp": "AeroFTP abre Twake no teu navegador e só pide acceso aos teus ficheiros. Se Twake amosa un erro a primeira vez, inicia sesión en Twake no navegador e téntao de novo. Podes revogar o acceso en calquera momento na Configuración de Twake, Dispositivos conectados."
+            "twakeSignInHelp": "AeroFTP abre Twake no teu navegador e só pide acceso aos teus ficheiros. Se Twake amosa un erro a primeira vez, inicia sesión en Twake no navegador e téntao de novo. Podes revogar o acceso en calquera momento na Configuración de Twake, Dispositivos conectados.",
+            "oauthKeysMissingTitle": "Faltan as claves da aplicación de {provider}",
+            "oauthKeysMissing": "Non hai claves de aplicación de {provider} gardadas no cofre, polo que AeroFTP non pode iniciar sesión. AeroFTP non inclúe claves propias: introduce as claves da túa aplicación de desenvolvedor de {provider} en {location} e volve conectar.",
+            "oauthKeysOpenSettings": "Abrir axustes de OAuth"
         },
         "browser": {
             "remote": "Remoto",

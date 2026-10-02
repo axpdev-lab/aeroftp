@@ -334,7 +334,10 @@
             "twakeSignInAgain": "Tekrar giriş yap",
             "twakeSignedIn": "Giriş yapıldı",
             "twakeWaitingBrowser": "Tarayıcınızda girişi tamamlayın...",
-            "twakeSignInHelp": "AeroFTP, tarayıcınızda Twake'i açar ve yalnızca dosyalarınıza erişim ister. Twake ilk seferde hata gösterirse, tarayıcıda Twake'e giriş yapın ve tekrar giriş yapın. Erişimi istediğiniz zaman Twake Ayarları, Bağlı cihazlar bölümünden iptal edebilirsiniz."
+            "twakeSignInHelp": "AeroFTP, tarayıcınızda Twake'i açar ve yalnızca dosyalarınıza erişim ister. Twake ilk seferde hata gösterirse, tarayıcıda Twake'e giriş yapın ve tekrar giriş yapın. Erişimi istediğiniz zaman Twake Ayarları, Bağlı cihazlar bölümünden iptal edebilirsiniz.",
+            "oauthKeysMissingTitle": "{provider} uygulama anahtarları eksik",
+            "oauthKeysMissing": "Kasada {provider} için kayıtlı uygulama anahtarı yok, bu yüzden AeroFTP oturum açamıyor. AeroFTP kendi anahtarlarını sunmaz: {provider} geliştirici uygulamanızın anahtarlarını {location} bölümüne girin, ardından yeniden bağlanın.",
+            "oauthKeysOpenSettings": "OAuth ayarlarını aç"
         },
         "browser": {
             "remote": "Uzak",
