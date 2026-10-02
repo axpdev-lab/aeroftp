@@ -125,6 +125,8 @@ pub mod kopia_import;
 pub mod lftp_import;
 #[cfg(target_os = "linux")]
 pub mod linux_egl;
+#[cfg(target_os = "linux")]
+mod linux_rttime;
 pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod panic_safe;
@@ -10294,6 +10296,26 @@ pub(crate) fn is_secondary_window_label(label: &str) -> bool {
         || label.starts_with(ai_approval_window::LABEL_PREFIX)
 }
 
+/// An empty menu for a secondary window's builder.
+///
+/// A window built without a menu of its own gets the global app menu attached
+/// while it is created, before `remove_menu` can run. With `appmenu-gtk-module`
+/// loaded (the GNOME default on Ubuntu) attaching that menu to a second live
+/// window recurses inside GTK until the main thread overflows its stack, so
+/// opening the AeroAgent approval window crashed the app. An empty menu of its
+/// own keeps the global one off the new window. Linux only: on macOS a window
+/// menu would replace the app menu, and the crash is GTK's.
+#[cfg(target_os = "linux")]
+pub(crate) fn secondary_window_menu(app: &AppHandle) -> Option<tauri::menu::Menu<tauri::Wry>> {
+    match tauri::menu::Menu::new(app) {
+        Ok(menu) => Some(menu),
+        Err(e) => {
+            log::warn!("Cannot create the empty menu of a secondary window: {e}");
+            None
+        }
+    }
+}
+
 pub(crate) fn strip_menu_from_secondary_windows(app: &AppHandle) {
     for (label, window) in app.webview_windows() {
         if is_secondary_window_label(&label) {
@@ -10341,6 +10363,11 @@ fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
         .initialization_script(&init);
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
+    #[cfg(target_os = "linux")]
+    let builder = match secondary_window_menu(app) {
+        Some(menu) => builder.menu(menu),
+        None => builder,
+    };
     let builder = match portable::webview_data_dir() {
         Some(dir) => builder.data_directory(dir),
         None => builder,
@@ -18822,6 +18849,13 @@ pub fn run() {
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
+        // A GNOME session passes on gnome-shell's RLIMIT_RTTIME with the soft
+        // limit equal to the hard one, so WebKit's real-time threads are
+        // killed without the SIGXCPU warning WebKit relies on, taking the
+        // network process and every in-flight load with them. Must run before
+        // the first WebKit process is spawned: they inherit the limit.
+        crate::linux_rttime::configure();
+
         // Turn WebKit's accelerated compositor off only where EGL cannot feed
         // it. Without a usable EGL display the compositor produces a live,
         // "visible", permanently blank window (#462) instead of falling back,
@@ -19079,6 +19113,8 @@ pub fn run() {
             // first thing a blank-window report needs to answer.
             #[cfg(target_os = "linux")]
             crate::linux_egl::log_decision();
+            #[cfg(target_os = "linux")]
+            crate::linux_rttime::log_decision();
 
             // Register the global AppHandle so Tauri-agnostic code paths
             // (e.g. the MEGAcmd warmup notice in the provider layer) can emit
