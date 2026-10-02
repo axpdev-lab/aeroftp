@@ -12080,6 +12080,8 @@ const App: React.FC = () => {
     // gain nothing from either, so they all go in the batch.
     const singles: Entry[] = [];
     const resumes = new Set<Entry>();
+    // Destinations already written by an earlier file of this transfer.
+    const claimedDestinations = new Set<string>();
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const overwriteResult = await checkOverwrite(
@@ -12113,6 +12115,7 @@ const App: React.FC = () => {
         size: item.size,
         modified: isDownload ? item.modified : null,
       };
+      const destination = isDownload ? entry.local_path : entry.remote_path;
       const single = keepsSingleFilePath({
         direction,
         isProviderSession: isProvider,
@@ -12120,7 +12123,9 @@ const App: React.FC = () => {
         action: overwriteResult.action,
         destinationExists: overwriteResult.destinationExists,
         renamed: !!overwriteResult.newName,
+        destinationClaimed: claimedDestinations.has(destination),
       });
+      claimedDestinations.add(destination);
       if (single) {
         singles.push(entry);
         if (!isDownload && overwriteResult.action === 'resume') resumes.add(entry);

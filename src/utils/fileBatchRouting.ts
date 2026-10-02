@@ -86,6 +86,12 @@ export function fileBatchCommand(
  * there goes in the batch (it loses the delta, nothing else) and one existing
  * only here goes single (it loses the parallelism, nothing else). Safe both
  * ways; it is checkOverwrite's long-standing limit, not a new one.
+ *
+ * - a file whose destination another file of the same transfer already
+ *   writes (`destinationClaimed`: two picked files with one name from
+ *   different folders): in the batch both would be written at once and the
+ *   result would depend on which finished last. After the batch, one at a
+ *   time, the later file wins, as it did before the batch existed.
  */
 export function keepsSingleFilePath(file: {
   direction: FileBatchDirection;
@@ -94,8 +100,10 @@ export function keepsSingleFilePath(file: {
   action: string;
   destinationExists: boolean;
   renamed: boolean;
+  destinationClaimed: boolean;
 }): boolean {
   if (!file.isProviderSession) return false;
+  if (file.destinationClaimed) return true;
   if (file.direction === 'upload' && file.action === 'resume') return true;
   return file.protocol === 'sftp' && file.destinationExists && !file.renamed;
 }

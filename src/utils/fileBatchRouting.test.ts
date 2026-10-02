@@ -125,6 +125,7 @@ describe('keepsSingleFilePath', () => {
     action: 'overwrite',
     destinationExists: false,
     renamed: false,
+    destinationClaimed: false,
   };
 
   it('a new file goes in the batch on every protocol', () => {
@@ -152,5 +153,14 @@ describe('keepsSingleFilePath', () => {
 
   it('the legacy session with no protocol never splits', () => {
     expect(keepsSingleFilePath({ ...base, isProviderSession: false, protocol: 'sftp', destinationExists: true })).toBe(false);
+  });
+
+  it('a second file for a destination already in this transfer runs after the batch, never beside it', () => {
+    // Two picked files with the same name from different folders map to one
+    // remote path; in one batch they would be written concurrently and the
+    // result would depend on which finished last.
+    expect(keepsSingleFilePath({ ...base, destinationClaimed: true })).toBe(true);
+    expect(keepsSingleFilePath({ ...base, direction: 'upload', destinationClaimed: true })).toBe(true);
+    expect(keepsSingleFilePath({ ...base, destinationClaimed: false })).toBe(false);
   });
 });

@@ -194,3 +194,18 @@ describe('multi-file GUI entry points use the parallel batch (#591)', () => {
     expect(identifiers).not.toContain('canUseNativeUploadBatch');
   });
 });
+
+describe('runFileBatch keeps one writer per destination', () => {
+  it('routes a file whose destination an earlier file of the transfer claimed out of the batch', () => {
+    // The destination is where the file lands: the local path of a download,
+    // the remote path of an upload. Without the claim, two picked files with
+    // one name from different folders shared a batch and one destination.
+    const start = APP.indexOf('const runFileBatch = async (');
+    const end = APP.indexOf('const launchBatch = async', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const body = APP.slice(start, end);
+    expect(body).toContain('const destination = isDownload ? entry.local_path : entry.remote_path;');
+    expect(body).toMatch(/keepsSingleFilePath\(\{[^}]*destinationClaimed: claimedDestinations\.has\(destination\),[^}]*\}\);\s*claimedDestinations\.add\(destination\);/);
+  });
+});
