@@ -54,5 +54,5 @@ aeroftp-cli --user alice sync --profile "Backup" /local /remote
 ## Security notes
 
 - Passphrases are never persisted; partition keys live in memory only for the duration of an unlocked session and are zeroized on lock/logout.
-- A cross-user deduplication probe uses HMAC keying so the app can detect shared credentials without exposing one user's secrets to another.
+- A cross-user deduplication probe uses HMAC keying so the app can tell that a server account is already saved by another user on this device without decrypting that user's profiles or reading their secrets. After a save from the connection form it shows a non-blocking warning with the other account names (and records it in the Activity Log); the save is never refused.
 - See [SECURITY.md](../SECURITY.md) and [UNIVERSAL-VAULT.md](./UNIVERSAL-VAULT.md) for the underlying vault architecture.

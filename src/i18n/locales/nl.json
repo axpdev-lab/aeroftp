@@ -5583,7 +5583,9 @@
             "confirmDelete": "Account \"{name}\" verwijderen?\n\nTe verwijderen versleutelde gegevens: {profiles} profielen, {settings} instellingsbereiken.",
             "passwordChoiceNote": "Een accountwachtwoord instellen is optioneel. Het voorkomt dat andere mensen die dit apparaat gebruiken je account openen; je opgeslagen gegevens blijven hoe dan ook versleuteld. Sla dit over als je de enige gebruiker bent of als je iedereen vertrouwt die dit apparaat gebruikt.",
             "copy": "Gebruiker dupliceren (alleen servers, geen wachtwoorden)",
-            "copyLockedHint": "Schakel eerst over naar dit account om de servers te dupliceren"
+            "copyLockedHint": "Schakel eerst over naar dit account om de servers te dupliceren",
+            "crossUserDedupTitle": "Al opgeslagen door een ander account",
+            "crossUserDedupMessage": "\"{name}\" gebruikt een serveraccount dat ook op dit apparaat is opgeslagen door: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-overlay",

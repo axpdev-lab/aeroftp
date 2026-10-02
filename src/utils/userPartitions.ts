@@ -237,6 +237,8 @@ export interface CrossUserDedupMatch {
     userAvatarColor?: string | null;
 }
 
+// Only caller: warnIfSavedByOtherAccount (crossUserDedupWarning.ts), run
+// after each save from the connection form.
 export const findCrossUserDedup = (
     profile: Record<string, unknown>,
 ): Promise<CrossUserDedupMatch[]> =>

@@ -5583,7 +5583,9 @@
             "confirmDelete": "Kas kustutada konto \"{name}\"?\n\nEemaldatavad krüpteeritud andmed: {profiles} profiili, {settings} seadete ulatust.",
             "passwordChoiceNote": "Konto parooli määramine on valikuline. See takistab teistel seda seadet kasutavatel inimestel teie kontot avada; teie salvestatud andmed jäävad nii või teisiti krüptituks. Jätke see vahele, kui olete ainus kasutaja või kui usaldate kõiki, kes seda seadet kasutavad.",
             "copy": "Dubleeri kasutaja (ainult serverid, paroole pole)",
-            "copyLockedHint": "Lülitu esmalt sellele kontole, et dubleerida selle servereid"
+            "copyLockedHint": "Lülitu esmalt sellele kontole, et dubleerida selle servereid",
+            "crossUserDedupTitle": "Juba salvestatud teise konto poolt",
+            "crossUserDedupMessage": "\"{name}\" kasutab serverikontot, mille on sellesse seadmesse salvestanud ka: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypti kattekiht",

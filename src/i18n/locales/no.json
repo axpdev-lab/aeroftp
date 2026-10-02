@@ -5602,7 +5602,9 @@
             "confirmDelete": "Slette kontoen \"{name}\"?\n\nKrypterte data som skal fjernes: {profiles} profiler, {settings} innstillingsområder.",
             "passwordChoiceNote": "Det er valgfritt å angi et kontopassord. Det hindrer andre som bruker denne enheten i å åpne kontoen din; de lagrede dataene dine forblir kryptert uansett. Hopp over dette hvis du er den eneste brukeren, eller hvis du stoler på alle som bruker denne enheten.",
             "copy": "Dupliser bruker (kun servere, ingen passord)",
-            "copyLockedHint": "Bytt til denne kontoen først for å duplisere serverne dens"
+            "copyLockedHint": "Bytt til denne kontoen først for å duplisere serverne dens",
+            "crossUserDedupTitle": "Allerede lagret av en annen konto",
+            "crossUserDedupMessage": "\"{name}\" bruker en serverkonto som også er lagret på denne enheten av: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-overlegg",

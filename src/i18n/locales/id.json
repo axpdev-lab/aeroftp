@@ -5583,7 +5583,9 @@
             "confirmDelete": "Hapus akun \"{name}\"?\n\nData terenkripsi yang akan dihapus: {profiles} profil, {settings} cakupan pengaturan.",
             "passwordChoiceNote": "Mengatur kata sandi akun bersifat opsional. Ini mencegah orang lain yang menggunakan perangkat ini membuka akun Anda; data tersimpan Anda tetap terenkripsi dalam kedua kasus. Lewati saja jika Anda satu-satunya pengguna, atau jika Anda memercayai semua orang yang menggunakan perangkat ini.",
             "copy": "Duplikat pengguna (hanya server, tanpa kata sandi)",
-            "copyLockedHint": "Beralih ke akun ini dulu untuk menduplikasi servernya"
+            "copyLockedHint": "Beralih ke akun ini dulu untuk menduplikasi servernya",
+            "crossUserDedupTitle": "Sudah disimpan oleh akun lain",
+            "crossUserDedupMessage": "\"{name}\" menggunakan akun server yang juga disimpan di perangkat ini oleh: {accounts}"
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",

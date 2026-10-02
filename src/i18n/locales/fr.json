@@ -5583,7 +5583,9 @@
             "confirmDelete": "Supprimer le compte \"{name}\" ?\n\nDonnées chiffrées à supprimer : {profiles} profils, {settings} domaines de paramètres.",
             "passwordChoiceNote": "Définir un mot de passe de compte est facultatif. Cela empêche les autres personnes qui utilisent cet appareil d'ouvrir votre compte; vos données enregistrées restent chiffrées dans tous les cas. Ignorez cette étape si vous êtes le seul utilisateur ou si vous faites confiance à tous ceux qui utilisent cet appareil.",
             "copy": "Dupliquer l'utilisateur (serveurs uniquement, sans mots de passe)",
-            "copyLockedHint": "Basculez d'abord sur ce compte pour dupliquer ses serveurs"
+            "copyLockedHint": "Basculez d'abord sur ce compte pour dupliquer ses serveurs",
+            "crossUserDedupTitle": "Déjà enregistré par un autre compte",
+            "crossUserDedupMessage": "\"{name}\" utilise un compte serveur également enregistré sur cet appareil par : {accounts}"
         },
         "aerocryptNative": {
             "title": "Superposition AeroCrypt",

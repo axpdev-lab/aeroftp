@@ -5602,7 +5602,9 @@
             "confirmDelete": "Tanggalin ang account na \"{name}\"?\n\nMga naka-encrypt na payload na tatanggalin: {profiles} na profile, {settings} na saklaw ng setting.",
             "passwordChoiceNote": "Opsyonal ang pagtatakda ng password ng account. Pinipigilan nito ang ibang taong gumagamit ng device na ito na buksan ang iyong account; mananatiling naka-encrypt ang iyong naka-save na data sa alinmang paraan. Laktawan ito kung ikaw lang ang gumagamit dito, o kung pinagkakatiwalaan mo ang lahat ng gumagamit ng device na ito.",
             "copy": "Kopyahin ang user (mga server lang, walang password)",
-            "copyLockedHint": "Lumipat muna sa account na ito para kopyahin ang mga server nito"
+            "copyLockedHint": "Lumipat muna sa account na ito para kopyahin ang mga server nito",
+            "crossUserDedupTitle": "Naka-save na ng ibang account",
+            "crossUserDedupMessage": "Ang \"{name}\" ay gumagamit ng server account na naka-save rin sa device na ito ng: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt overlay",

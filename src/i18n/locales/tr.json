@@ -5583,7 +5583,9 @@
             "confirmDelete": "\"{name}\" hesabı silinsin mi?\n\nKaldırılacak şifreli veriler: {profiles} profil, {settings} ayar kapsamı.",
             "passwordChoiceNote": "Hesap parolası belirlemek isteğe bağlıdır. Bu cihazı kullanan diğer kişilerin hesabınızı açmasını engeller; kayıtlı verileriniz her durumda şifreli kalır. Burada tek kullanıcı sizseniz ya da bu cihazı kullanan herkese güveniyorsanız bu adımı atlayın.",
             "copy": "Kullanıcıyı çoğalt (yalnızca sunucular, parola yok)",
-            "copyLockedHint": "Sunucularını çoğaltmak için önce bu hesaba geçin"
+            "copyLockedHint": "Sunucularını çoğaltmak için önce bu hesaba geçin",
+            "crossUserDedupTitle": "Başka bir hesap tarafından zaten kaydedilmiş",
+            "crossUserDedupMessage": "\"{name}\", bu cihazda şu hesaplar tarafından da kaydedilmiş bir sunucu hesabını kullanıyor: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt katmanı",

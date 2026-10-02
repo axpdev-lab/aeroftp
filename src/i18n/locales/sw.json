@@ -5583,7 +5583,9 @@
             "confirmDelete": "Futa akaunti \"{name}\"?\n\nData zilizosimbwa za kuondoa: wasifu {profiles}, mipangilio {settings}.",
             "passwordChoiceNote": "Kuweka nenosiri la akaunti ni hiari. Linazuia watu wengine wanaotumia kifaa hiki kufungua akaunti yako; data uliyohifadhi inabaki imesimbwa kwa njia fiche vyovyote vile. Ruka hatua hii ikiwa wewe ndiye mtumiaji pekee hapa, au ikiwa unawaamini wote wanaotumia kifaa hiki.",
             "copy": "Nakili mtumiaji (seva tu, bila nywila)",
-            "copyLockedHint": "Badili kwa akaunti hii kwanza ili kunakili seva zake"
+            "copyLockedHint": "Badili kwa akaunti hii kwanza ili kunakili seva zake",
+            "crossUserDedupTitle": "Tayari imehifadhiwa na akaunti nyingine",
+            "crossUserDedupMessage": "\"{name}\" inatumia akaunti ya seva ambayo pia imehifadhiwa kwenye kifaa hiki na: {accounts}"
         },
         "aerocryptNative": {
             "title": "Tabaka la AeroCrypt",

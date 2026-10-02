@@ -5602,7 +5602,9 @@
             "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDatos cifrados que eliminar: {profiles} perfís, {settings} ámbitos de configuración.",
             "passwordChoiceNote": "Establecer un contrasinal da conta é opcional. Evita que outras persoas que usan este dispositivo abran a túa conta; os teus datos gardados seguen cifrados en calquera caso. Omíteo se es o único que o usa, ou se confías en todos os que usan este dispositivo.",
             "copy": "Duplicar usuario (só servidores, sen contrasinais)",
-            "copyLockedHint": "Cambia primeiro a esta conta para duplicar os seus servidores"
+            "copyLockedHint": "Cambia primeiro a esta conta para duplicar os seus servidores",
+            "crossUserDedupTitle": "Xa gardado por outra conta",
+            "crossUserDedupMessage": "\"{name}\" usa unha conta de servidor que tamén está gardada neste dispositivo por: {accounts}"
         },
         "aerocryptNative": {
             "title": "Superposición AeroCrypt",

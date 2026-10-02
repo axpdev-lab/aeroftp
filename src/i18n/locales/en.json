@@ -2402,7 +2402,9 @@
             "errCurrentRequired": "Current account password is required.",
             "errNewRequired": "New account password is required.",
             "confirmRemovePassword": "Remove the account password for \"{name}\"?",
-            "confirmDelete": "Delete account \"{name}\"?\n\nEncrypted payloads to remove: {profiles} profiles, {settings} settings scopes."
+            "confirmDelete": "Delete account \"{name}\"?\n\nEncrypted payloads to remove: {profiles} profiles, {settings} settings scopes.",
+            "crossUserDedupTitle": "Already saved by another account",
+            "crossUserDedupMessage": "\"{name}\" uses a server account that is also saved on this device by: {accounts}"
         },
         "lockScreen": {
             "enterPassword": "Enter your master password",

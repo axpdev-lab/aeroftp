@@ -5583,7 +5583,9 @@
             "confirmDelete": "Dzēst kontu \"{name}\"?\n\nNoņemamie šifrētie dati: {profiles} profili, {settings} iestatījumu jomas.",
             "passwordChoiceNote": "Konta paroles iestatīšana nav obligāta. Tā neļauj citiem cilvēkiem, kuri izmanto šo ierīci, atvērt jūsu kontu; jūsu saglabātie dati abos gadījumos paliek šifrēti. Izlaidiet to, ja esat vienīgais lietotājs vai ja uzticaties visiem, kas izmanto šo ierīci.",
             "copy": "Dublēt lietotāju (tikai serveri, bez parolēm)",
-            "copyLockedHint": "Vispirms pārslēdzieties uz šo kontu, lai dublētu tā serverus"
+            "copyLockedHint": "Vispirms pārslēdzieties uz šo kontu, lai dublētu tā serverus",
+            "crossUserDedupTitle": "Jau saglabājis cits konts",
+            "crossUserDedupMessage": "\"{name}\" izmanto servera kontu, ko šajā ierīcē ir saglabājis arī: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt pārklājums",

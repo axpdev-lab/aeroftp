@@ -5583,7 +5583,9 @@
             "confirmDelete": "Ta bort kontot \"{name}\"?\n\nKrypterade data att ta bort: {profiles} profiler, {settings} inställningsområden.",
             "passwordChoiceNote": "Att ange ett kontolösenord är valfritt. Det hindrar andra som använder den här enheten från att öppna ditt konto; dina sparade data förblir krypterade oavsett. Hoppa över det här steget om du är den enda här eller om du litar på alla som använder den här enheten.",
             "copy": "Duplicera användare (endast servrar, inga lösenord)",
-            "copyLockedHint": "Byt till det här kontot först för att duplicera dess servrar"
+            "copyLockedHint": "Byt till det här kontot först för att duplicera dess servrar",
+            "crossUserDedupTitle": "Redan sparat av ett annat konto",
+            "crossUserDedupMessage": "\"{name}\" använder ett serverkonto som även är sparat på den här enheten av: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-överlägg",

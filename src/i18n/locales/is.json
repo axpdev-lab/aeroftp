@@ -5602,7 +5602,9 @@
             "confirmDelete": "Eyða reikningnum \"{name}\"?\n\nDulkóðuð gögn til að fjarlægja: {profiles} snið, {settings} stillingasvið.",
             "passwordChoiceNote": "Það er valfrjálst að setja lykilorð fyrir reikninginn. Það kemur í veg fyrir að aðrir sem nota þetta tæki opni reikninginn þinn; vistuðu gögnin þín haldast dulkóðuð hvort sem er. Slepptu þessu ef þú ert eini notandinn, eða ef þú treystir öllum sem nota þetta tæki.",
             "copy": "Afrita notanda (aðeins netþjónar, engin lykilorð)",
-            "copyLockedHint": "Skiptu fyrst yfir á þennan reikning til að afrita netþjóna hans"
+            "copyLockedHint": "Skiptu fyrst yfir á þennan reikning til að afrita netþjóna hans",
+            "crossUserDedupTitle": "Þegar vistað af öðrum aðgangi",
+            "crossUserDedupMessage": "\"{name}\" notar þjónsaðgang sem er einnig vistaður í þessu tæki af: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-yfirlag",

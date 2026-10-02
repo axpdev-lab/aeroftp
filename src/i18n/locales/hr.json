@@ -5583,7 +5583,9 @@
             "confirmDelete": "Izbrisati račun \"{name}\"?\n\nŠifrirani podaci za uklanjanje: {profiles} profila, {settings} opsega postavki.",
             "passwordChoiceNote": "Postavljanje lozinke za račun nije obavezno. Sprječava druge osobe koje koriste ovaj uređaj da otvore vaš račun; vaši spremljeni podaci u svakom slučaju ostaju šifrirani. Preskočite ovo ako ste jedini korisnik ili ako vjerujete svima koji koriste ovaj uređaj.",
             "copy": "Dupliciraj korisnika (samo poslužitelji, bez lozinki)",
-            "copyLockedHint": "Prvo se prebacite na ovaj račun da biste duplicirali njegove poslužitelje"
+            "copyLockedHint": "Prvo se prebacite na ovaj račun da biste duplicirali njegove poslužitelje",
+            "crossUserDedupTitle": "Već spremljeno s drugog računa",
+            "crossUserDedupMessage": "\"{name}\" koristi poslužiteljski račun koji je na ovom uređaju spremio i: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt sloj",

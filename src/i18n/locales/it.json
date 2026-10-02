@@ -169,7 +169,9 @@
             "errCurrentRequired": "La password attuale dell'account è obbligatoria.",
             "errNewRequired": "La nuova password dell'account è obbligatoria.",
             "confirmRemovePassword": "Rimuovere la password dell'account per \"{name}\"?",
-            "confirmDelete": "Eliminare l'account \"{name}\"?\n\nPayload cifrati da rimuovere: {profiles} profili, {settings} ambiti di impostazioni."
+            "confirmDelete": "Eliminare l'account \"{name}\"?\n\nPayload cifrati da rimuovere: {profiles} profili, {settings} ambiti di impostazioni.",
+            "crossUserDedupTitle": "Già salvato da un altro account",
+            "crossUserDedupMessage": "\"{name}\" usa un account del server che è salvato su questo dispositivo anche da: {accounts}"
         },
         "lockScreen": {
             "locked": "App Bloccata",

@@ -5583,7 +5583,9 @@
             "confirmDelete": "Odstrániť účet „{name}“?\n\nZašifrované údaje na odstránenie: {profiles} profilov, {settings} rozsahov nastavení.",
             "passwordChoiceNote": "Nastavenie hesla účtu je voliteľné. Zabráni ostatným ľuďom, ktorí používajú toto zariadenie, otvoriť váš účet; vaše uložené údaje zostávajú tak či tak zašifrované. Tento krok preskočte, ak ste tu jediný používateľ alebo ak dôverujete všetkým, ktorí toto zariadenie používajú.",
             "copy": "Duplikovať používateľa (iba servery, bez hesiel)",
-            "copyLockedHint": "Najprv prepnite na tento účet, aby ste mohli duplikovať jeho servery"
+            "copyLockedHint": "Najprv prepnite na tento účet, aby ste mohli duplikovať jeho servery",
+            "crossUserDedupTitle": "Už uložené iným účtom",
+            "crossUserDedupMessage": "\"{name}\" používa serverový účet, ktorý je v tomto zariadení uložený aj u: {accounts}"
         },
         "aerocryptNative": {
             "title": "Vrstva AeroCrypt",

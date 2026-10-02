@@ -5583,7 +5583,9 @@
             "confirmDelete": "Ištrinti paskyrą „{name}“?\n\nPašalinami užšifruoti duomenys: {profiles} profiliai, {settings} nustatymų sritys.",
             "passwordChoiceNote": "Paskyros slaptažodžio nustatymas yra neprivalomas. Jis neleidžia kitiems šį įrenginį naudojantiems žmonėms atidaryti jūsų paskyros; jūsų išsaugoti duomenys bet kuriuo atveju lieka užšifruoti. Praleiskite tai, jei esate vienintelis naudotojas arba jei pasitikite visais, kurie naudoja šį įrenginį.",
             "copy": "Dubliuoti naudotoją (tik serveriai, be slaptažodžių)",
-            "copyLockedHint": "Pirma perjunkite į šią paskyrą, kad galėtumėte dubliuoti jos serverius"
+            "copyLockedHint": "Pirma perjunkite į šią paskyrą, kad galėtumėte dubliuoti jos serverius",
+            "crossUserDedupTitle": "Jau išsaugota kitos paskyros",
+            "crossUserDedupMessage": "„{name}“ naudoja serverio paskyrą, kurią šiame įrenginyje taip pat išsaugojo: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt perdanga",

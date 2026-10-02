@@ -5583,7 +5583,9 @@
             "confirmDelete": "Izbrišem račun \"{name}\"?\n\nŠifrirane vsebine za odstranitev: {profiles} profilov, {settings} obsegov nastavitev.",
             "passwordChoiceNote": "Nastavitev gesla za račun je izbirna. Drugim ljudem, ki uporabljajo to napravo, prepreči, da bi odprli vaš račun; vaši shranjeni podatki ostanejo v vsakem primeru šifrirani. Ta korak preskočite, če ste edini uporabnik tukaj ali če zaupate vsem, ki uporabljajo to napravo.",
             "copy": "Podvoji uporabnika (samo strežniki, brez gesel)",
-            "copyLockedHint": "Najprej preklopite na ta račun, da podvojite njegove strežnike"
+            "copyLockedHint": "Najprej preklopite na ta račun, da podvojite njegove strežnike",
+            "crossUserDedupTitle": "Že shranil drug račun",
+            "crossUserDedupMessage": "\"{name}\" uporablja strežniški račun, ki je na tej napravi shranjen tudi pri: {accounts}"
         },
         "aerocryptNative": {
             "title": "Sloj AeroCrypt",

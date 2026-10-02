@@ -5602,7 +5602,9 @@
             "confirmDelete": "\"{name}\" kontua ezabatu?\n\nKendu beharreko karga zifratuak: {profiles} profil, {settings} ezarpen-eremu.",
             "passwordChoiceNote": "Kontuaren pasahitza ezartzea aukerakoa da. Gailu hau erabiltzen duten beste pertsona batzuek zure kontua irekitzea eragozten du; zure gordetako datuak zifratuta jarraitzen dute edonola ere. Saltatu hau gailua erabiltzen duen bakarra bazara, edo gailu hau erabiltzen duten guztiengan konfiantza baduzu.",
             "copy": "Bikoiztu erabiltzailea (zerbitzariak soilik, pasahitzik gabe)",
-            "copyLockedHint": "Aldatu lehenik kontu honetara haren zerbitzariak bikoizteko"
+            "copyLockedHint": "Aldatu lehenik kontu honetara haren zerbitzariak bikoizteko",
+            "crossUserDedupTitle": "Beste kontu batek gordeta dauka dagoeneko",
+            "crossUserDedupMessage": "\"{name}\" zerbitzari-kontu bat erabiltzen du, eta gailu honetan honek ere gordeta dauka: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt gainjartzea",

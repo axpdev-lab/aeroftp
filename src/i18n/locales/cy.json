@@ -5602,7 +5602,9 @@
             "confirmDelete": "Dileu'r cyfrif \"{name}\"?\n\nLlwythi wedi'u hamgryptio i'w tynnu: {profiles} proffil, {settings} cwmpas gosodiadau.",
             "passwordChoiceNote": "Mae gosod cyfrinair cyfrif yn ddewisol. Mae'n atal pobl eraill sy'n defnyddio'r ddyfais hon rhag agor eich cyfrif; mae eich data sydd wedi'i gadw yn aros wedi'i amgryptio y naill ffordd neu'r llall. Hepgorwch ef os mai chi yw'r unig un yma, neu os ydych yn ymddiried yn bawb sy'n defnyddio'r ddyfais hon.",
             "copy": "Dyblygu defnyddiwr (gweinyddion yn unig, dim cyfrineiriau)",
-            "copyLockedHint": "Newidiwch i'r cyfrif hwn yn gyntaf i ddyblygu ei weinyddion"
+            "copyLockedHint": "Newidiwch i'r cyfrif hwn yn gyntaf i ddyblygu ei weinyddion",
+            "crossUserDedupTitle": "Eisoes wedi'i gadw gan gyfrif arall",
+            "crossUserDedupMessage": "Mae \"{name}\" yn defnyddio cyfrif gweinydd sydd hefyd wedi'i gadw ar y ddyfais hon gan: {accounts}"
         },
         "aerocryptNative": {
             "title": "Troshaen AeroCrypt",

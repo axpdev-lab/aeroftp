@@ -5583,7 +5583,9 @@
             "confirmDelete": "Eliminar a conta \"{name}\"?\n\nDados encriptados a remover: {profiles} perfis, {settings} âmbitos de definições.",
             "passwordChoiceNote": "Definir uma palavra-passe da conta é opcional. Impede que outras pessoas que usam este dispositivo abram a sua conta; os seus dados guardados permanecem encriptados de qualquer forma. Ignore este passo se for o único utilizador aqui, ou se confiar em todos os que usam este dispositivo.",
             "copy": "Duplicar utilizador (apenas servidores, sem palavras-passe)",
-            "copyLockedHint": "Mude primeiro para esta conta para duplicar os respetivos servidores"
+            "copyLockedHint": "Mude primeiro para esta conta para duplicar os respetivos servidores",
+            "crossUserDedupTitle": "Já guardado por outra conta",
+            "crossUserDedupMessage": "\"{name}\" usa uma conta de servidor que também está guardada neste dispositivo por: {accounts}"
         },
         "aerocryptNative": {
             "title": "Sobreposição AeroCrypt",
