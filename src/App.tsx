@@ -171,8 +171,6 @@ import { ContextMenu, useContextMenu, ContextMenuItem } from './components/Conte
 import { useAeroShareEnabled } from './hooks/useAeroShareEnabled';
 import { openAeroShareDialog, openAeroShareSend } from './utils/aeroShare';
 import { AeroShareHub } from './components/AeroShare/AeroShareHub';
-import { SavedServers } from './components/SavedServers';
-import { ConnectionScreen } from './components/ConnectionScreen';
 import { findActiveModeGroup } from './components/providerModeGroups';
 import { TwoFactorPromptDialog } from './components/TwoFactorPromptDialog';
 import { IntroHub } from './components/IntroHub';
@@ -1858,12 +1856,12 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('Failed to initialize credential vault:', err);
       } finally {
-        // MU-FE-P0: no localStorage pre-warm. SavedServers reads via
+        // MU-FE-P0: no localStorage pre-warm. The My Servers list reads via
         // `loadSavedServerProfiles` (partition-aware) on every refresh
         // and the legacy localStorage blob is cross-user, so seeding it
         // would actively leak between users on switch. The active user's
         // partition is the only source of truth.
-        // Force SavedServers to re-fetch from vault (now initialized)
+        // Force the My Servers list to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
         vaultInitDone.current = true;
         setVaultBootComplete(true);
@@ -8171,7 +8169,7 @@ const App: React.FC = () => {
         }
       }
     } catch { /* ignore */ }
-    // Refresh SavedServers UI (vault is now up-to-date)
+    // Refresh the My Servers list (vault is now up-to-date)
     setServersRefreshKey(k => k + 1);
   }, []);
 

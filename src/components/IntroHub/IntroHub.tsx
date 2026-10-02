@@ -510,10 +510,6 @@ export function IntroHub(props: IntroHubProps) {
                                 onConnect(overrideParams || activeFormTab.connectionParams);
                                 handleCloseFormTab(activeFormTab.id);
                             }}
-                            onSavedServerConnect={async (params, initialPath, localInitialPath) => {
-                                handleCloseFormTab(activeFormTab.id);
-                                await onSavedServerConnect(params, initialPath, localInitialPath);
-                            }}
                             onFormSaved={() => {
                                 handleCloseFormTab(activeFormTab.id);
                                 setActiveTab('my-servers');

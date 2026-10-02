@@ -109,7 +109,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     );
 
     // Pre-compute existing server keys for duplicate detection in import previews.
-    // The parent (ConnectionScreen / SettingsPanel / IntroHub) feeds `servers`
+    // The parent (App / SettingsPanel / IntroHub) feeds `servers`
     // from the active user's partition via loadSavedServerProfiles, so a
     // separate localStorage read is no longer needed.
     const existingServerKeys = useMemo(

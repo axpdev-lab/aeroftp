@@ -21,8 +21,6 @@ import { listMtpDevices } from '../utils/mtpListDevices';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
-import { SavedServers } from './SavedServers';
-import { ExportImportDialog } from './ExportImportDialog';
 import { useTranslation } from '../i18n';
 import { ProtocolSelector, ProtocolFields, getDefaultPort } from './ProtocolSelector';
 import { UnstableProviderNotice } from './UnstableProviderNotice';
@@ -53,7 +51,6 @@ import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
 import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
-import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
@@ -111,7 +108,6 @@ interface ConnectionScreenProps {
     onConnectionParamsChange: (params: ConnectionParams) => void;
     onQuickConnectDirsChange: (dirs: QuickConnectDirs) => void;
     onConnect: (overrideParams?: ConnectionParams) => void;
-    onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
     onSkipToFileManager: () => void;
     onAeroFile?: () => void;
     onAeroCloud?: () => void;
@@ -121,7 +117,7 @@ interface ConnectionScreenProps {
     hasExistingSessions?: boolean;  // Show active sessions badge next to QuickConnect
     sessionCount?: number;  // Number of open session tabs, shown as a count chip on the badge (#128-C)
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
-    formOnly?: boolean;  // IntroHub: hide SavedServers panel, center form at max-w-640px
+    formOnly?: boolean;  // IntroHub: center the form at max-w-640px
     editingProfile?: ServerProfile;  // IntroHub: auto-enter edit mode on mount for this profile
     onFormSaved?: () => void;  // IntroHub: callback after save/edit completes (to close form tab)
     onTabLabelChange?: (label: string) => void;  // IntroHub: update tab label when connection name changes
@@ -494,7 +490,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onConnectionParamsChange,
     onQuickConnectDirsChange,
     onConnect,
-    onSavedServerConnect,
     onSkipToFileManager,
     onAeroFile,
     onAeroCloud,
@@ -813,27 +808,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    // Export/Import dialog state
-    const [showExportImport, setShowExportImport] = useState(false);
-    const [servers, setServers] = useState<ServerProfile[]>([]);
-    const [savedProfilesForNaming, setSavedProfilesForNaming] = useState<ServerProfile[]>([]);
-
-    // Load servers when opening export/import dialog
-    useEffect(() => {
-        if (!showExportImport) return;
-        let cancelled = false;
-        (async () => {
-            const vaultServers = await loadSavedServerProfiles();
-            if (!cancelled) setServers(vaultServers);
-        })();
-        return () => { cancelled = true; };
-    }, [showExportImport]);
+    // The active user's saved profiles, reloaded after every save and on
+    // serversRefreshKey: the suggested-name check and the OAuth edit Save
+    // compare against it.
+    const [savedProfiles, setSavedProfiles] = useState<ServerProfile[]>([]);
 
     useEffect(() => {
         let cancelled = false;
         (async () => {
             const loaded = await loadSavedServerProfiles();
-            if (!cancelled) setSavedProfilesForNaming(loaded);
+            if (!cancelled) setSavedProfiles(loaded);
         })();
         return () => { cancelled = true; };
     }, [savedServersUpdate, serversRefreshKey]);
@@ -1999,7 +1983,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // to persist it was to sign in again, which is what this Save exists to avoid.
     const oauthEditHasChanges = (): boolean => {
         if (!editingProfileId) return false;
-        const ep = servers.find((s) => s.id === editingProfileId);
+        const ep = savedProfiles.find((s) => s.id === editingProfileId);
         if (!ep) return false;
         return (
             (connectionName || ep.name) !== ep.name ||
@@ -2907,7 +2891,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             : (selectedProvider?.name || selectedProviderId || protocol || 'connection')
         ).replace(/[_\-]+/g, ' ').trim();
         const taken = new Set(
-            savedProfilesForNaming
+            savedProfiles
                 .filter((p) => p.id !== editingProfileId)
                 .map((p) => (p.name || '').trim().toLowerCase())
                 .filter(Boolean)
@@ -4230,7 +4214,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 connectionName={connectionName}
                                 onConnectionNameChange={setConnectionName}
                                 isEditing={!!editingProfileId}
-                                existingNames={servers.map(s => s.name)}
                                 onConnected={async (displayName, extraOptions) => {
                                     // #369: same anchor-escape rule as the other save
                                     // paths. Edit mode implies saveConnection=true, so
@@ -7156,34 +7139,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     })()}
                 </div>
 
-                {/* Saved Servers (hidden in formOnly mode) */}
-                {!formOnly && (
-                <div className="min-w-0 w-full overflow-hidden bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6">
-                    <SavedServers
-                        onConnect={onSavedServerConnect}
-                        onEdit={handleEdit}
-                        lastUpdate={savedServersUpdate + serversRefreshKey}
-                        onOpenExportImport={() => setShowExportImport(true)}
-                    />
-                </div>
-                )}
-
                 {/* Skip to File Manager: accessible via status bar AeroFile button */}
             </div> {/* Close grid */}
 
-            {/* Export/Import Dialog */}
-            {showExportImport && (
-                <ExportImportDialog
-                    servers={servers}
-                    onImport={async (newServers) => {
-                        const updated = await appendImportedProfiles(newServers);
-                        setServers(updated);
-                        setShowExportImport(false);
-                        setSavedServersUpdate(Date.now());
-                    }}
-                    onClose={() => setShowExportImport(false)}
-                />
-            )}
             {gitHubAlert && (
                 <AlertDialog
                     title={gitHubAlert.title}

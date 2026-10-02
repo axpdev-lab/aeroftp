@@ -47,6 +47,24 @@ describe('ConnectionScreen edit sessions', () => {
         expect(source).toContain('disabled={remotePathEscapesOverlay || cryptFormsHalfRecorded}');
     });
 
+    it('compares the OAuth edit Save against profiles loaded on mount', () => {
+        // The list oauthEditHasChanges searched was filled only when an export
+        // dialog opened, and IntroHub never opens it from here, so the list
+        // stayed empty, the edited profile was never found and Save never
+        // enabled. The list must come from a loader that runs unconditionally
+        // and again whenever the saved servers change.
+        const list = bodyOf('oauthEditHasChanges').match(/const ep = (\w+)\.find\(/)?.[1];
+        expect(list, 'oauthEditHasChanges looks the profile up in a list').toBeTruthy();
+        const setter = `set${list![0].toUpperCase()}${list!.slice(1)}(`;
+        const effects = source.match(/useEffect\(\(\) => \{[\s\S]*?\n {4}\}, \[[^\]]*\]\);/g) ?? [];
+        const loaders = effects.filter((e) => e.includes(setter));
+        expect(loaders, `an effect calls ${setter}`).not.toHaveLength(0);
+        for (const loader of loaders) {
+            expect(loader, 'the loader is not gated on a flag').not.toMatch(/^\s*if \(![\w.]+\) return;/m);
+            expect(loader, 'the loader reruns on serversRefreshKey').toMatch(/\[[^\]]*\bserversRefreshKey\b[^\]]*\]\);$/);
+        }
+    });
+
     it('asks before changing a recorded form on a bound profile, for both secrets', () => {
         const choices = source.match(/<CryptSecretFormChoice[\s\S]*?\/>/g) ?? [];
         expect(choices).toHaveLength(2);
