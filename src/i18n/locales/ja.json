@@ -3045,7 +3045,18 @@
                     "startFailed": "ローカルサーバーを起動できませんでした。",
                     "serverFailed": "サーバーが停止したか、無効な応答を送信しました。",
                     "httpUnauthorized": "サーバーが保存済みの認証情報を拒否しました。",
-                    "unsupportedVersion": "サーバーはAeroFTPが対応していないMCPバージョンを使用しています。"
+                    "unsupportedVersion": "サーバーはAeroFTPが対応していないMCPバージョンを使用しています。",
+                    "directoryInvalid": "リンクや機密性の高いアプリケーションファイルを含まない専用ディレクトリを選択してください。",
+                    "directoryChanged": "許可したディレクトリが変更されたか、見つかりません。再選択してアクセス権を更新してください。",
+                    "permissionCommand": "ディレクトリとネットワークの権限設定でアクセス権を変更してください。",
+                    "installInvalid": "この管理対象のインストールは利用できないか、マニフェストが無効です。",
+                    "installIntegrity": "パッケージの整合性検証に失敗しました。サーバーを削除して再インストールしてください。",
+                    "installArchive": "パッケージに安全でないパス、リンク、または無効な起動ファイルが含まれています。",
+                    "installRuntime": "必要なシステムランタイムが見つかりません。",
+                    "installDownload": "パッケージのダウンロードに失敗したか、タイムアウトしました。",
+                    "installLimit": "パッケージがインストールの制限を超えています。",
+                    "installExists": "再インストールする前に既存のインストールを削除してください。",
+                    "installIo": "インストールファイルを読み書きできませんでした。"
                 },
                 "routingNotice": "有効なサーバーは、そのツールを AeroAgent に提供します。ツールを呼び出すたびに、まずあなたの承認が求められます。",
                 "checkNow": "今すぐ確認",
@@ -3054,7 +3065,19 @@
                 "healthError": "利用できません: {reason}",
                 "healthReady": "準備完了、AeroAgent が使えるツール: {count}",
                 "healthUnsupported": "未対応のスキーマを持つツール: {count}",
-                "healthShowTools": "ツールを表示"
+                "healthShowTools": "ツールを表示",
+                "directoryTitle": "読み取り専用ディレクトリ",
+                "grantDirectory": "ディレクトリを選択",
+                "confirmDirectory": "このサーバーに {path} 内のすべてのファイルへの読み取り専用アクセスを許可しますか？サーバーまたはプロジェクト専用のディレクトリのみ許可してください。",
+                "noDirectories": "ディレクトリへのアクセス権がありません。",
+                "revokeDirectory": "アクセス権を取り消す",
+                "confirmRevokeDirectory": "{path} へのアクセス権を取り消しますか？以前のツール承認は無効になります。",
+                "networkAccess": "ネットワークアクセスを許可（すべてのホスト）",
+                "networkBlocked": "ネットワークアクセスはブロックされています。",
+                "confirmNetwork": "{name} にローカルサービスを含むネットワークへのアクセスを許可しますか？以前のツール承認は無効になります。",
+                "confirmBlockNetwork": "{name} のネットワークアクセスをブロックしますか？以前のツール承認は無効になります。",
+                "managedStatus": "管理対象のインストール: {version}",
+                "renewDirectory": "アクセス権を更新"
             }
         },
         "archive": {

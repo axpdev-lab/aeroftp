@@ -3080,7 +3080,18 @@
                     "startFailed": "Nid oedd modd cychwyn y gweinydd lleol.",
                     "serverFailed": "Stopiodd y gweinydd neu anfonodd ateb annilys.",
                     "httpUnauthorized": "Gwrthododd y gweinydd y manylion adnabod a gadwyd.",
-                    "unsupportedVersion": "Mae'r gweinydd yn defnyddio fersiwn MCP nad yw AeroFTP yn ei chefnogi."
+                    "unsupportedVersion": "Mae'r gweinydd yn defnyddio fersiwn MCP nad yw AeroFTP yn ei chefnogi.",
+                    "directoryInvalid": "Dewiswch gyfeiriadur penodol heb ddolenni na ffeiliau cymhwysiad sensitif.",
+                    "directoryChanged": "Mae’r cyfeiriadur a awdurdodwyd wedi newid neu ar goll. Dewiswch ef eto i adnewyddu mynediad.",
+                    "permissionCommand": "Newidiwch fynediad gan ddefnyddio rheolyddion caniatâd cyfeiriaduron a rhwydwaith.",
+                    "installInvalid": "Nid yw’r gosodiad rheoledig hwn ar gael neu mae ei faniffest yn annilys.",
+                    "installIntegrity": "Methodd dilysu cyfanrwydd y pecyn. Tynnwch y gweinydd ac ailosodwch ef.",
+                    "installArchive": "Mae’r pecyn yn cynnwys llwybrau anniogel, dolenni, neu ffeil gychwyn annilys.",
+                    "installRuntime": "Mae’r amgylchedd rhedeg system gofynnol ar goll.",
+                    "installDownload": "Methodd lawrlwytho’r pecyn neu daeth yr amser i ben.",
+                    "installLimit": "Mae’r pecyn yn fwy na’r terfynau gosod.",
+                    "installExists": "Tynnwch y gosodiad presennol cyn ailosod.",
+                    "installIo": "Methu darllen neu ysgrifennu’r ffeiliau gosod."
                 },
                 "routingNotice": "Mae gweinyddion wedi'u galluogi yn cynnig eu hoffer i AeroAgent. Mae pob galwad offeryn yn gofyn am eich cymeradwyaeth yn gyntaf.",
                 "checkNow": "Gwirio nawr",
@@ -3089,7 +3100,19 @@
                 "healthError": "Ddim ar gael: {reason}",
                 "healthReady": "Yn barod, offer ar gael i AeroAgent: {count}",
                 "healthUnsupported": "Offer â sgemâu heb eu cefnogi: {count}",
-                "healthShowTools": "Dangos yr offer"
+                "healthShowTools": "Dangos yr offer",
+                "directoryTitle": "Cyfeiriaduron darllen yn unig",
+                "grantDirectory": "Dewis cyfeiriadur",
+                "confirmDirectory": "Rhoi mynediad darllen yn unig i’r gweinydd hwn at bob ffeil yn {path}? Rhowch gyfeiriadur penodol i’r gweinydd neu’r prosiect yn unig.",
+                "noDirectories": "Dim mynediad at gyfeiriaduron.",
+                "revokeDirectory": "Diddymu mynediad",
+                "confirmRevokeDirectory": "Diddymu mynediad at {path}? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
+                "networkAccess": "Caniatáu mynediad rhwydwaith (pob gwesteiwr)",
+                "networkBlocked": "Mae mynediad rhwydwaith wedi’i rwystro.",
+                "confirmNetwork": "Caniatáu i {name} gyrchu’r rhwydwaith, gan gynnwys gwasanaethau lleol? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
+                "confirmBlockNetwork": "Rhwystro mynediad rhwydwaith i {name}? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
+                "managedStatus": "Gosodiad wedi’i reoli: {version}",
+                "renewDirectory": "Adnewyddu mynediad"
             }
         },
         "archive": {

@@ -3080,7 +3080,18 @@
                     "startFailed": "Nie udało się uruchomić lokalnego serwera.",
                     "serverFailed": "Serwer zatrzymał się lub wysłał nieprawidłową odpowiedź.",
                     "httpUnauthorized": "Serwer odrzucił zapisane dane uwierzytelniające.",
-                    "unsupportedVersion": "Serwer używa wersji MCP, której AeroFTP nie obsługuje."
+                    "unsupportedVersion": "Serwer używa wersji MCP, której AeroFTP nie obsługuje.",
+                    "directoryInvalid": "Wybierz osobny katalog bez dowiązań ani poufnych plików aplikacji.",
+                    "directoryChanged": "Udostępniony katalog został zmieniony lub nie istnieje. Wybierz go ponownie, aby odnowić dostęp.",
+                    "permissionCommand": "Zmień dostęp za pomocą ustawień uprawnień do katalogów i sieci.",
+                    "installInvalid": "Ta zarządzana instalacja jest niedostępna lub jej manifest jest nieprawidłowy.",
+                    "installIntegrity": "Weryfikacja integralności pakietu nie powiodła się. Usuń i ponownie zainstaluj serwer.",
+                    "installArchive": "Pakiet zawiera niebezpieczne ścieżki, dowiązania lub nieprawidłowy plik startowy.",
+                    "installRuntime": "Brakuje wymaganego systemowego środowiska uruchomieniowego.",
+                    "installDownload": "Pobieranie pakietu nie powiodło się lub przekroczyło limit czasu.",
+                    "installLimit": "Pakiet przekracza limity instalacji.",
+                    "installExists": "Usuń istniejącą instalację przed ponowną instalacją.",
+                    "installIo": "Nie można odczytać lub zapisać plików instalacji."
                 },
                 "routingNotice": "Włączone serwery udostępniają swoje narzędzia AeroAgent. Każde wywołanie narzędzia najpierw prosi o Twoje zatwierdzenie.",
                 "checkNow": "Sprawdź teraz",
@@ -3089,7 +3100,19 @@
                 "healthError": "Niedostępny: {reason}",
                 "healthReady": "Gotowy, narzędzia dostępne dla AeroAgent: {count}",
                 "healthUnsupported": "Narzędzia z nieobsługiwanymi schematami: {count}",
-                "healthShowTools": "Pokaż narzędzia"
+                "healthShowTools": "Pokaż narzędzia",
+                "directoryTitle": "Katalogi tylko do odczytu",
+                "grantDirectory": "Wybierz katalog",
+                "confirmDirectory": "Przyznać temu serwerowi dostęp tylko do odczytu do wszystkich plików w {path}? Przyznawaj dostęp tylko do katalogu przeznaczonego dla serwera lub projektu.",
+                "noDirectories": "Brak dostępu do katalogów.",
+                "revokeDirectory": "Odbierz dostęp",
+                "confirmRevokeDirectory": "Odebrać dostęp do {path}? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
+                "networkAccess": "Zezwalaj na dostęp do sieci (wszystkie hosty)",
+                "networkBlocked": "Dostęp do sieci jest zablokowany.",
+                "confirmNetwork": "Zezwolić {name} na dostęp do sieci, w tym usług lokalnych? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
+                "confirmBlockNetwork": "Zablokować dostęp do sieci dla {name}? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
+                "managedStatus": "Zarządzana instalacja: {version}",
+                "renewDirectory": "Odnów dostęp"
             }
         },
         "archive": {

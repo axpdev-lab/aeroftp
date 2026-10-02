@@ -3080,7 +3080,18 @@
                     "startFailed": "A helyi szervert nem sikerült elindítani.",
                     "serverFailed": "A szerver leállt, vagy érvénytelen választ küldött.",
                     "httpUnauthorized": "A szerver elutasította a mentett hitelesítő adatokat.",
-                    "unsupportedVersion": "A szerver olyan MCP-verziót használ, amelyet az AeroFTP nem támogat."
+                    "unsupportedVersion": "A szerver olyan MCP-verziót használ, amelyet az AeroFTP nem támogat.",
+                    "directoryInvalid": "Válasszon külön könyvtárat hivatkozások és érzékeny alkalmazásfájlok nélkül.",
+                    "directoryChanged": "Az engedélyezett könyvtár megváltozott vagy hiányzik. Válassza ki újra a hozzáférés megújításához.",
+                    "permissionCommand": "A hozzáférést a könyvtár- és hálózati jogosultságok beállításaival módosíthatja.",
+                    "installInvalid": "Ez a felügyelt telepítés nem érhető el, vagy a jegyzékfájlja érvénytelen.",
+                    "installIntegrity": "A csomag sértetlenségének ellenőrzése sikertelen. Távolítsa el, majd telepítse újra a kiszolgálót.",
+                    "installArchive": "A csomag nem biztonságos útvonalakat, hivatkozásokat vagy érvénytelen indítófájlt tartalmaz.",
+                    "installRuntime": "Hiányzik a szükséges rendszer-futtatókörnyezet.",
+                    "installDownload": "A csomag letöltése sikertelen, vagy túllépte az időkorlátot.",
+                    "installLimit": "A csomag túllépi a telepítési korlátokat.",
+                    "installExists": "Újratelepítés előtt távolítsa el a meglévő telepítést.",
+                    "installIo": "A telepítési fájlokat nem sikerült olvasni vagy írni."
                 },
                 "routingNotice": "Az engedélyezett szerverek felkínálják eszközeiket az AeroAgentnek. Minden eszközhívás előbb a jóváhagyásodat kéri.",
                 "checkNow": "Ellenőrzés most",
@@ -3089,7 +3100,19 @@
                 "healthError": "Nem érhető el: {reason}",
                 "healthReady": "Kész, az AeroAgent számára elérhető eszközök: {count}",
                 "healthUnsupported": "Nem támogatott sémájú eszközök: {count}",
-                "healthShowTools": "Eszközök megjelenítése"
+                "healthShowTools": "Eszközök megjelenítése",
+                "directoryTitle": "Csak olvasható könyvtárak",
+                "grantDirectory": "Könyvtár kiválasztása",
+                "confirmDirectory": "Kapjon ez a szerver olvasási hozzáférést a(z) {path} összes fájljához? Csak külön szerver- vagy projektkönyvtárhoz adjon hozzáférést.",
+                "noDirectories": "Nincs könyvtár-hozzáférés.",
+                "revokeDirectory": "Hozzáférés visszavonása",
+                "confirmRevokeDirectory": "Visszavonja a(z) {path} hozzáférését? A korábbi eszközjóváhagyások érvényüket vesztik.",
+                "networkAccess": "Hálózati hozzáférés engedélyezése (minden gép)",
+                "networkBlocked": "A hálózati hozzáférés le van tiltva.",
+                "confirmNetwork": "Engedélyezi a(z) {name} hálózati hozzáférését, a helyi szolgáltatásokat is beleértve? A korábbi eszközjóváhagyások érvényüket vesztik.",
+                "confirmBlockNetwork": "Letiltja a(z) {name} hálózati hozzáférését? A korábbi eszközjóváhagyások érvényüket vesztik.",
+                "managedStatus": "Felügyelt telepítés: {version}",
+                "renewDirectory": "Hozzáférés megújítása"
             }
         },
         "archive": {

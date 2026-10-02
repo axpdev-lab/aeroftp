@@ -3080,7 +3080,18 @@
                     "startFailed": "Nepavyko paleisti vietinio serverio.",
                     "serverFailed": "Serveris sustojo arba atsiuntė netinkamą atsakymą.",
                     "httpUnauthorized": "Serveris atmetė išsaugotus prisijungimo duomenis.",
-                    "unsupportedVersion": "Serveris naudoja MCP versiją, kurios AeroFTP nepalaiko."
+                    "unsupportedVersion": "Serveris naudoja MCP versiją, kurios AeroFTP nepalaiko.",
+                    "directoryInvalid": "Pasirinkite atskirą katalogą be nuorodų ar neskelbtinų programų failų.",
+                    "directoryChanged": "Katalogas, kuriam suteikta prieiga, pasikeitė arba jo nėra. Pasirinkite jį dar kartą, kad atnaujintumėte prieigą.",
+                    "permissionCommand": "Keiskite prieigą naudodami katalogų ir tinklo leidimų valdiklius.",
+                    "installInvalid": "Šis valdomas diegimas nepasiekiamas arba jo manifestas netinkamas.",
+                    "installIntegrity": "Paketo vientisumo patikra nepavyko. Pašalinkite serverį ir įdiekite jį iš naujo.",
+                    "installArchive": "Pakete yra nesaugių kelių, nuorodų arba netinkamas paleidimo failas.",
+                    "installRuntime": "Trūksta būtinos sistemos vykdymo aplinkos.",
+                    "installDownload": "Paketo atsisiųsti nepavyko arba baigėsi skirtasis laikas.",
+                    "installLimit": "Paketas viršija diegimo ribas.",
+                    "installExists": "Prieš diegdami iš naujo pašalinkite esamą diegimą.",
+                    "installIo": "Nepavyko perskaityti arba įrašyti diegimo failų."
                 },
                 "routingNotice": "Įjungti serveriai teikia savo įrankius AeroAgent. Kiekvienas įrankio iškvietimas pirmiausia prašo jūsų patvirtinimo.",
                 "checkNow": "Tikrinti dabar",
@@ -3089,7 +3100,19 @@
                 "healthError": "Nepasiekiamas: {reason}",
                 "healthReady": "Paruoštas, AeroAgent prieinami įrankiai: {count}",
                 "healthUnsupported": "Įrankiai su nepalaikomomis schemomis: {count}",
-                "healthShowTools": "Rodyti įrankius"
+                "healthShowTools": "Rodyti įrankius",
+                "directoryTitle": "Tik skaitomi katalogai",
+                "grantDirectory": "Pasirinkti katalogą",
+                "confirmDirectory": "Suteikti šiam serveriui tik skaitymo prieigą prie visų failų kataloge {path}? Suteikite prieigą tik prie serveriui ar projektui skirto katalogo.",
+                "noDirectories": "Prieigos prie katalogų nėra.",
+                "revokeDirectory": "Atšaukti prieigą",
+                "confirmRevokeDirectory": "Atšaukti prieigą prie {path}? Ankstesni įrankių patvirtinimai nebegalios.",
+                "networkAccess": "Leisti tinklo prieigą (visi pagrindiniai kompiuteriai)",
+                "networkBlocked": "Tinklo prieiga užblokuota.",
+                "confirmNetwork": "Leisti {name} prieigą prie tinklo, įskaitant vietines paslaugas? Ankstesni įrankių patvirtinimai nebegalios.",
+                "confirmBlockNetwork": "Užblokuoti {name} tinklo prieigą? Ankstesni įrankių patvirtinimai nebegalios.",
+                "managedStatus": "Valdomas diegimas: {version}",
+                "renewDirectory": "Atnaujinti prieigą"
             }
         },
         "archive": {

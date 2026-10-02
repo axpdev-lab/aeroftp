@@ -3080,7 +3080,18 @@
                     "startFailed": "Vietējo serveri neizdevās startēt.",
                     "serverFailed": "Serveris apstājās vai nosūtīja nederīgu atbildi.",
                     "httpUnauthorized": "Serveris noraidīja saglabātos akreditācijas datus.",
-                    "unsupportedVersion": "Serveris izmanto MCP versiju, ko AeroFTP neatbalsta."
+                    "unsupportedVersion": "Serveris izmanto MCP versiju, ko AeroFTP neatbalsta.",
+                    "directoryInvalid": "Izvēlieties atsevišķu direktoriju bez saitēm vai sensitīviem lietotņu failiem.",
+                    "directoryChanged": "Atļautais direktorijs ir mainīts vai nav pieejams. Atlasiet to vēlreiz, lai atjaunotu piekļuvi.",
+                    "permissionCommand": "Mainiet piekļuvi ar direktoriju un tīkla atļauju vadīklām.",
+                    "installInvalid": "Šī pārvaldītā instalācija nav pieejama vai tās manifests nav derīgs.",
+                    "installIntegrity": "Pakotnes integritātes pārbaude neizdevās. Noņemiet un atkārtoti instalējiet serveri.",
+                    "installArchive": "Pakotne satur nedrošus ceļus, saites vai nederīgu sākuma failu.",
+                    "installRuntime": "Trūkst nepieciešamās sistēmas izpildlaika vides.",
+                    "installDownload": "Pakotnes lejupielāde neizdevās vai pārsniedza taimautu.",
+                    "installLimit": "Pakotne pārsniedz instalēšanas ierobežojumus.",
+                    "installExists": "Pirms atkārtotas instalēšanas noņemiet esošo instalāciju.",
+                    "installIo": "Instalācijas failus nevarēja nolasīt vai ierakstīt."
                 },
                 "routingNotice": "Iespējotie serveri piedāvā savus rīkus AeroAgent. Katrs rīka izsaukums vispirms pieprasa jūsu apstiprinājumu.",
                 "checkNow": "Pārbaudīt tagad",
@@ -3089,7 +3100,19 @@
                 "healthError": "Nav pieejams: {reason}",
                 "healthReady": "Gatavs, AeroAgent pieejamie rīki: {count}",
                 "healthUnsupported": "Rīki ar neatbalstītām shēmām: {count}",
-                "healthShowTools": "Rādīt rīkus"
+                "healthShowTools": "Rādīt rīkus",
+                "directoryTitle": "Tikai lasāmi direktoriji",
+                "grantDirectory": "Izvēlēties direktoriju",
+                "confirmDirectory": "Piešķirt šim serverim tikai lasīšanas piekļuvi visiem failiem direktorijā {path}? Piešķiriet piekļuvi tikai serverim vai projektam paredzētam direktorijam.",
+                "noDirectories": "Nav piekļuves direktorijiem.",
+                "revokeDirectory": "Atsaukt piekļuvi",
+                "confirmRevokeDirectory": "Atsaukt piekļuvi direktorijam {path}? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
+                "networkAccess": "Atļaut piekļuvi tīklam (visi resursdatori)",
+                "networkBlocked": "Piekļuve tīklam ir bloķēta.",
+                "confirmNetwork": "Atļaut {name} piekļuvi tīklam, arī vietējiem pakalpojumiem? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
+                "confirmBlockNetwork": "Bloķēt {name} piekļuvi tīklam? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
+                "managedStatus": "Pārvaldīta instalācija: {version}",
+                "renewDirectory": "Atjaunot piekļuvi"
             }
         },
         "archive": {

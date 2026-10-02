@@ -3080,7 +3080,18 @@
                     "startFailed": "Không thể khởi động máy chủ cục bộ.",
                     "serverFailed": "Máy chủ đã dừng hoặc gửi phản hồi không hợp lệ.",
                     "httpUnauthorized": "Máy chủ đã từ chối thông tin xác thực đã lưu.",
-                    "unsupportedVersion": "Máy chủ dùng phiên bản MCP mà AeroFTP không hỗ trợ."
+                    "unsupportedVersion": "Máy chủ dùng phiên bản MCP mà AeroFTP không hỗ trợ.",
+                    "directoryInvalid": "Chọn thư mục riêng không có liên kết hoặc tệp ứng dụng nhạy cảm.",
+                    "directoryChanged": "Thư mục được cấp quyền đã thay đổi hoặc không còn. Chọn lại để gia hạn quyền truy cập.",
+                    "permissionCommand": "Thay đổi quyền truy cập bằng các điều khiển quyền thư mục và mạng.",
+                    "installInvalid": "Bản cài đặt được quản lý này không khả dụng hoặc tệp kê khai không hợp lệ.",
+                    "installIntegrity": "Xác minh tính toàn vẹn của gói thất bại. Gỡ bỏ và cài đặt lại máy chủ.",
+                    "installArchive": "Gói chứa đường dẫn không an toàn, liên kết hoặc tệp khởi chạy không hợp lệ.",
+                    "installRuntime": "Thiếu môi trường thực thi hệ thống cần thiết.",
+                    "installDownload": "Tải gói thất bại hoặc hết thời gian chờ.",
+                    "installLimit": "Gói vượt quá giới hạn cài đặt.",
+                    "installExists": "Gỡ bỏ bản cài đặt hiện có trước khi cài đặt lại.",
+                    "installIo": "Không thể đọc hoặc ghi các tệp cài đặt."
                 },
                 "routingNotice": "Các máy chủ được bật cung cấp công cụ của mình cho AeroAgent. Mỗi lệnh gọi công cụ đều hỏi sự chấp thuận của bạn trước.",
                 "checkNow": "Kiểm tra ngay",
@@ -3089,7 +3100,19 @@
                 "healthError": "Không khả dụng: {reason}",
                 "healthReady": "Sẵn sàng, công cụ khả dụng cho AeroAgent: {count}",
                 "healthUnsupported": "Công cụ có lược đồ không được hỗ trợ: {count}",
-                "healthShowTools": "Hiện công cụ"
+                "healthShowTools": "Hiện công cụ",
+                "directoryTitle": "Thư mục chỉ đọc",
+                "grantDirectory": "Chọn thư mục",
+                "confirmDirectory": "Cấp cho máy chủ này quyền chỉ đọc mọi tệp trong {path}? Chỉ cấp quyền cho thư mục dành riêng cho máy chủ hoặc dự án.",
+                "noDirectories": "Không có quyền truy cập thư mục.",
+                "revokeDirectory": "Thu hồi quyền truy cập",
+                "confirmRevokeDirectory": "Thu hồi quyền truy cập {path}? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
+                "networkAccess": "Cho phép truy cập mạng (mọi máy chủ)",
+                "networkBlocked": "Truy cập mạng bị chặn.",
+                "confirmNetwork": "Cho phép {name} truy cập mạng, bao gồm dịch vụ cục bộ? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
+                "confirmBlockNetwork": "Chặn truy cập mạng cho {name}? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
+                "managedStatus": "Bản cài đặt được quản lý: {version}",
+                "renewDirectory": "Gia hạn quyền truy cập"
             }
         },
         "archive": {

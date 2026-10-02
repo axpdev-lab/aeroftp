@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { McpServersPanel } from './McpServersPanel';
 
 const invoke = vi.hoisted(() => vi.fn());
+const open = vi.hoisted(() => vi.fn());
+vi.mock('../../utils/pickPath', () => ({ pickFile: open }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('./McpHttpServersPanel', () => ({ McpHttpServersPanel: () => null }));
 vi.mock('../../i18n', async () => {
@@ -30,7 +32,7 @@ const input = async (element: HTMLInputElement | HTMLTextAreaElement, value: str
 };
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-    invoke.mockReset();
+    invoke.mockReset(); open.mockReset();
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
@@ -159,5 +161,48 @@ describe('MCP live health', () => {
         const before = invoke.mock.calls.filter(([command]) => command === 'mcp_client_tool_snapshots').length;
         await click(host.querySelector('input[type=checkbox]')!);
         expect(invoke.mock.calls.filter(([command]) => command === 'mcp_client_tool_snapshots').length).toBeGreaterThan(before);
+    });
+});
+
+
+describe('MCP directory permission consent', () => {
+    it('waits for explicit confirmation, preserves sandbox on ordinary edits, and revokes with its revision', async () => {
+        const sandbox = { directories: [{ path: '/project/old', device: 1, inode: 2 }], network_consent: false, managed: null };
+        const current = { ...saved, sandbox };
+        invoke.mockImplementation(async (command: string) => command === 'mcp_client_list_servers' ? [current] : undefined);
+        open.mockResolvedValue('/project/new');
+        await render();
+        const button = (text: string) => Array.from(document.querySelectorAll('button')).find(b => b.textContent?.trim() === text)!;
+        await click(button('Save server'));
+        expect(invoke).toHaveBeenCalledWith('mcp_client_upsert_server', { config: { ...current, revision: 2 } });
+        await click(button('Choose directory'));
+        expect(document.body.textContent).toContain('every file in /project/new');
+        expect(invoke.mock.calls.filter(([c]) => c === 'mcp_client_set_permissions')).toHaveLength(0);
+        await click(button('Cancel'));
+        expect(invoke.mock.calls.filter(([c]) => c === 'mcp_client_set_permissions')).toHaveLength(0);
+        await click(button('Choose directory')); await click(button('Confirm'));
+        expect(invoke).toHaveBeenCalledWith('mcp_client_set_permissions', { serverId: 'fixture', expectedRevision: 1, directoryPaths: ['/project/old', '/project/new'], networkConsent: false, grantPath: '/project/new' });
+        await click(button('Renew access')); await click(button('Confirm'));
+        expect(invoke).toHaveBeenCalledWith('mcp_client_set_permissions', { serverId: 'fixture', expectedRevision: 1, directoryPaths: ['/project/old'], networkConsent: false, grantPath: '/project/old' });
+        await click(button('Revoke access')); await click(button('Confirm'));
+        expect(invoke).toHaveBeenCalledWith('mcp_client_set_permissions', { serverId: 'fixture', expectedRevision: 1, directoryPaths: [], networkConsent: false, grantPath: null });
+    });
+
+    it('uses the revision at confirmation creation and locks managed launch fields', async () => {
+        const managed = { manifest_id: 'fixture', version: '1.0.0', archive_sha256: 'a'.repeat(64), tree_sha256: 'b'.repeat(64), network_declared: true };
+        let current = { ...saved, sandbox: { directories: [{ path: '/managed/fixture', device: 1, inode: 2 }], network_consent: false, managed } };
+        invoke.mockImplementation(async (command: string) => command === 'mcp_client_list_servers' ? [current] : undefined);
+        await render();
+        expect(host.textContent).toContain('Managed installation: 1.0.0');
+        expect((host.querySelector('textarea') as HTMLTextAreaElement).disabled).toBe(true);
+        expect(Array.from(host.querySelectorAll('button')).find(b => b.textContent === 'Choose directory')).toBeUndefined();
+        const network = Array.from(host.querySelectorAll('input[type=checkbox]'))[1];
+        await click(network);
+        expect(document.body.textContent).toContain('including local services');
+        current = { ...current, revision: 3 };
+        await click(host.querySelector('[aria-label="Refresh MCP servers"]')!);
+        const confirm = Array.from(document.querySelectorAll('button')).find(b => b.textContent === 'Confirm')!;
+        await click(confirm);
+        expect(invoke).toHaveBeenCalledWith('mcp_client_set_permissions', { serverId: 'fixture', expectedRevision: 1, directoryPaths: ['/managed/fixture'], networkConsent: true, grantPath: null });
     });
 });

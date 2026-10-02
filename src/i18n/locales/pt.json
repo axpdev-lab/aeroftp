@@ -3080,7 +3080,18 @@
                     "startFailed": "Não foi possível iniciar o servidor local.",
                     "serverFailed": "O servidor parou ou enviou uma resposta inválida.",
                     "httpUnauthorized": "O servidor recusou as credenciais guardadas.",
-                    "unsupportedVersion": "O servidor usa uma versão do MCP que o AeroFTP não suporta."
+                    "unsupportedVersion": "O servidor usa uma versão do MCP que o AeroFTP não suporta.",
+                    "directoryInvalid": "Escolha um diretório dedicado sem links ou arquivos sensíveis de aplicativos.",
+                    "directoryChanged": "O diretório autorizado mudou ou não existe. Selecione-o novamente para renovar o acesso.",
+                    "permissionCommand": "Altere o acesso pelos controles de permissões de diretórios e rede.",
+                    "installInvalid": "Esta instalação gerenciada está indisponível ou seu manifesto é inválido.",
+                    "installIntegrity": "A verificação de integridade do pacote falhou. Remova e reinstale o servidor.",
+                    "installArchive": "O pacote contém caminhos inseguros, links ou um arquivo de entrada inválido.",
+                    "installRuntime": "O ambiente de execução do sistema necessário está ausente.",
+                    "installDownload": "O download do pacote falhou ou excedeu o tempo limite.",
+                    "installLimit": "O pacote excede os limites de instalação.",
+                    "installExists": "Remova a instalação existente antes de reinstalar.",
+                    "installIo": "Não foi possível ler ou gravar os arquivos de instalação."
                 },
                 "routingNotice": "Os servidores ativados oferecem as suas ferramentas ao AeroAgent. Cada chamada de ferramenta pede primeiro a sua aprovação.",
                 "checkNow": "Verificar agora",
@@ -3089,7 +3100,19 @@
                 "healthError": "Indisponível: {reason}",
                 "healthReady": "Pronto, ferramentas disponíveis para o AeroAgent: {count}",
                 "healthUnsupported": "Ferramentas com esquemas não suportados: {count}",
-                "healthShowTools": "Mostrar ferramentas"
+                "healthShowTools": "Mostrar ferramentas",
+                "directoryTitle": "Diretórios só de leitura",
+                "grantDirectory": "Escolher diretório",
+                "confirmDirectory": "Conceder a este servidor acesso só de leitura a todos os ficheiros em {path}? Conceda apenas um diretório dedicado ao servidor ou ao projeto.",
+                "noDirectories": "Sem acesso a diretórios.",
+                "revokeDirectory": "Revogar acesso",
+                "confirmRevokeDirectory": "Revogar o acesso a {path}? As aprovações anteriores das ferramentas deixarão de ser válidas.",
+                "networkAccess": "Permitir acesso à rede (todos os hosts)",
+                "networkBlocked": "O acesso à rede está bloqueado.",
+                "confirmNetwork": "Permitir que {name} aceda à rede, incluindo serviços locais? As aprovações anteriores das ferramentas deixarão de ser válidas.",
+                "confirmBlockNetwork": "Bloquear o acesso à rede de {name}? As aprovações anteriores das ferramentas deixarão de ser válidas.",
+                "managedStatus": "Instalação gerida: {version}",
+                "renewDirectory": "Renovar acesso"
             }
         },
         "archive": {

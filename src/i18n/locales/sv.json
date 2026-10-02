@@ -3080,7 +3080,18 @@
                     "startFailed": "Den lokala servern kunde inte startas.",
                     "serverFailed": "Servern stoppades eller skickade ett ogiltigt svar.",
                     "httpUnauthorized": "Servern avvisade de sparade inloggningsuppgifterna.",
-                    "unsupportedVersion": "Servern använder en MCP-version som AeroFTP inte stöder."
+                    "unsupportedVersion": "Servern använder en MCP-version som AeroFTP inte stöder.",
+                    "directoryInvalid": "Välj en särskild katalog utan länkar eller känsliga programfiler.",
+                    "directoryChanged": "Den godkända katalogen har ändrats eller saknas. Välj den igen för att förnya åtkomsten.",
+                    "permissionCommand": "Ändra åtkomst via inställningarna för katalog- och nätverksbehörigheter.",
+                    "installInvalid": "Den här hanterade installationen är inte tillgänglig eller dess manifest är ogiltigt.",
+                    "installIntegrity": "Paketets integritetskontroll misslyckades. Ta bort och installera om servern.",
+                    "installArchive": "Paketet innehåller osäkra sökvägar, länkar eller en ogiltig startfil.",
+                    "installRuntime": "Den nödvändiga systemkörmiljön saknas.",
+                    "installDownload": "Hämtningen av paketet misslyckades eller tog för lång tid.",
+                    "installLimit": "Paketet överskrider installationsgränserna.",
+                    "installExists": "Ta bort den befintliga installationen innan du installerar om.",
+                    "installIo": "Installationsfilerna kunde inte läsas eller skrivas."
                 },
                 "routingNotice": "Aktiverade servrar erbjuder sina verktyg till AeroAgent. Varje verktygsanrop ber först om ditt godkännande.",
                 "checkNow": "Kontrollera nu",
@@ -3089,7 +3100,19 @@
                 "healthError": "Otillgänglig: {reason}",
                 "healthReady": "Redo, verktyg tillgängliga för AeroAgent: {count}",
                 "healthUnsupported": "Verktyg med scheman som inte stöds: {count}",
-                "healthShowTools": "Visa verktyg"
+                "healthShowTools": "Visa verktyg",
+                "directoryTitle": "Skrivskyddade kataloger",
+                "grantDirectory": "Välj katalog",
+                "confirmDirectory": "Ge denna server läsbehörighet till alla filer i {path}? Ge endast åtkomst till en särskild server- eller projektkatalog.",
+                "noDirectories": "Ingen katalogåtkomst.",
+                "revokeDirectory": "Återkalla åtkomst",
+                "confirmRevokeDirectory": "Återkalla åtkomst till {path}? Tidigare verktygsgodkännanden är då inte längre giltiga.",
+                "networkAccess": "Tillåt nätverksåtkomst (alla värdar)",
+                "networkBlocked": "Nätverksåtkomst är blockerad.",
+                "confirmNetwork": "Tillåta {name} att komma åt nätverket, inklusive lokala tjänster? Tidigare verktygsgodkännanden är då inte längre giltiga.",
+                "confirmBlockNetwork": "Blockera nätverksåtkomst för {name}? Tidigare verktygsgodkännanden är då inte längre giltiga.",
+                "managedStatus": "Hanterad installation: {version}",
+                "renewDirectory": "Förnya åtkomst"
             }
         },
         "archive": {

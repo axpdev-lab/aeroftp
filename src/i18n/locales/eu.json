@@ -3080,7 +3080,18 @@
                     "startFailed": "Tokiko zerbitzaria ezin izan da abiarazi.",
                     "serverFailed": "Zerbitzaria gelditu da edo erantzun baliogabea bidali du.",
                     "httpUnauthorized": "Zerbitzariak gordetako kredentzialak baztertu ditu.",
-                    "unsupportedVersion": "Zerbitzariak AeroFTPk onartzen ez duen MCP bertsio bat erabiltzen du."
+                    "unsupportedVersion": "Zerbitzariak AeroFTPk onartzen ez duen MCP bertsio bat erabiltzen du.",
+                    "directoryInvalid": "Aukeratu loturarik edo aplikazioen fitxategi sentikorrik gabeko direktorio dedikatu bat.",
+                    "directoryChanged": "Baimendutako direktorioa aldatu da edo falta da. Hautatu berriro sarbidea berritzeko.",
+                    "permissionCommand": "Aldatu sarbidea direktorioen eta sarearen baimenen kontrolen bidez.",
+                    "installInvalid": "Kudeatutako instalazio hau ez dago erabilgarri edo bere manifestua baliogabea da.",
+                    "installIntegrity": "Paketearen osotasunaren egiaztapenak huts egin du. Kendu eta berrinstalatu zerbitzaria.",
+                    "installArchive": "Paketeak bide ez-seguruak, loturak edo hasierako fitxategi baliogabe bat ditu.",
+                    "installRuntime": "Beharrezko sistemaren exekuzio-ingurunea falta da.",
+                    "installDownload": "Paketearen deskargak huts egin du edo denbora-muga gainditu du.",
+                    "installLimit": "Paketeak instalazioaren mugak gainditzen ditu.",
+                    "installExists": "Kendu dagoen instalazioa berrinstalatu aurretik.",
+                    "installIo": "Ezin izan dira instalazioaren fitxategiak irakurri edo idatzi."
                 },
                 "routingNotice": "Gaitutako zerbitzariek beren tresnak eskaintzen dizkiote AeroAgent-i. Tresna-dei bakoitzak lehenik zure onespena eskatzen du.",
                 "checkNow": "Egiaztatu orain",
@@ -3089,7 +3100,19 @@
                 "healthError": "Ez dago erabilgarri: {reason}",
                 "healthReady": "Prest, AeroAgent-entzat erabilgarri dauden tresnak: {count}",
                 "healthUnsupported": "Onartzen ez diren eskemak dituzten tresnak: {count}",
-                "healthShowTools": "Erakutsi tresnak"
+                "healthShowTools": "Erakutsi tresnak",
+                "directoryTitle": "Irakurtzeko soilik diren direktorioak",
+                "grantDirectory": "Aukeratu direktorioa",
+                "confirmDirectory": "Zerbitzari honi {path} bideko fitxategi guztiak irakurtzeko sarbidea eman? Eman zerbitzari edo proiektu horretarako direktorio bat soilik.",
+                "noDirectories": "Ez dago direktorioetarako sarbiderik.",
+                "revokeDirectory": "Kendu sarbidea",
+                "confirmRevokeDirectory": "{path} biderako sarbidea kendu? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
+                "networkAccess": "Baimendu sarerako sarbidea (ostalari guztiak)",
+                "networkBlocked": "Sarerako sarbidea blokeatuta dago.",
+                "confirmNetwork": "{name} zerbitzariari sarerako sarbidea baimendu, tokiko zerbitzuak barne? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
+                "confirmBlockNetwork": "{name} zerbitzariaren sarerako sarbidea blokeatu? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
+                "managedStatus": "Kudeatutako instalazioa: {version}",
+                "renewDirectory": "Berritu sarbidea"
             }
         },
         "archive": {

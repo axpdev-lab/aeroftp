@@ -3080,7 +3080,18 @@
                     "startFailed": "Den lokale server kunne ikke startes.",
                     "serverFailed": "Serveren stoppede eller sendte et ugyldigt svar.",
                     "httpUnauthorized": "Serveren afviste de gemte legitimationsoplysninger.",
-                    "unsupportedVersion": "Serveren bruger en MCP-version, som AeroFTP ikke understøtter."
+                    "unsupportedVersion": "Serveren bruger en MCP-version, som AeroFTP ikke understøtter.",
+                    "directoryInvalid": "Vælg en dedikeret mappe uden links eller følsomme programfiler.",
+                    "directoryChanged": "Den godkendte mappe er ændret eller mangler. Vælg den igen for at forny adgangen.",
+                    "permissionCommand": "Skift adgang via indstillingerne for mappe- og netværkstilladelser.",
+                    "installInvalid": "Denne administrerede installation er utilgængelig, eller dens manifest er ugyldigt.",
+                    "installIntegrity": "Pakkens integritetskontrol mislykkedes. Fjern og geninstaller serveren.",
+                    "installArchive": "Pakken indeholder usikre stier, links eller en ugyldig startfil.",
+                    "installRuntime": "Det nødvendige systemkørselsmiljø mangler.",
+                    "installDownload": "Download af pakken mislykkedes eller overskred tidsgrænsen.",
+                    "installLimit": "Pakken overskrider installationsgrænserne.",
+                    "installExists": "Fjern den eksisterende installation før geninstallation.",
+                    "installIo": "Installationsfilerne kunne ikke læses eller skrives."
                 },
                 "routingNotice": "Aktiverede servere stiller deres værktøjer til rådighed for AeroAgent. Hvert værktøjskald beder først om din godkendelse.",
                 "checkNow": "Tjek nu",
@@ -3089,7 +3100,19 @@
                 "healthError": "Ikke tilgængelig: {reason}",
                 "healthReady": "Klar, værktøjer tilgængelige for AeroAgent: {count}",
                 "healthUnsupported": "Værktøjer med ikke-understøttede skemaer: {count}",
-                "healthShowTools": "Vis værktøjer"
+                "healthShowTools": "Vis værktøjer",
+                "directoryTitle": "Skrivebeskyttede mapper",
+                "grantDirectory": "Vælg mappe",
+                "confirmDirectory": "Give denne server læseadgang til alle filer i {path}? Giv kun adgang til en særskilt server- eller projektmappe.",
+                "noDirectories": "Ingen mappeadgang.",
+                "revokeDirectory": "Tilbagekald adgang",
+                "confirmRevokeDirectory": "Tilbagekalde adgang til {path}? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
+                "networkAccess": "Tillad netværksadgang (alle værter)",
+                "networkBlocked": "Netværksadgang er blokeret.",
+                "confirmNetwork": "Tillade {name} at tilgå netværket, herunder lokale tjenester? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
+                "confirmBlockNetwork": "Blokere netværksadgang for {name}? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
+                "managedStatus": "Administreret installation: {version}",
+                "renewDirectory": "Forny adgang"
             }
         },
         "archive": {

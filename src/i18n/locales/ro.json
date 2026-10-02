@@ -3080,7 +3080,18 @@
                     "startFailed": "Serverul local nu a putut fi pornit.",
                     "serverFailed": "Serverul s-a oprit sau a trimis un răspuns nevalid.",
                     "httpUnauthorized": "Serverul a refuzat datele de autentificare salvate.",
-                    "unsupportedVersion": "Serverul folosește o versiune MCP pe care AeroFTP nu o acceptă."
+                    "unsupportedVersion": "Serverul folosește o versiune MCP pe care AeroFTP nu o acceptă.",
+                    "directoryInvalid": "Alege un director dedicat fără legături sau fișiere sensibile ale aplicațiilor.",
+                    "directoryChanged": "Directorul autorizat s-a schimbat sau lipsește. Selectează-l din nou pentru a reînnoi accesul.",
+                    "permissionCommand": "Modifică accesul folosind comenzile pentru permisiunile directoarelor și rețelei.",
+                    "installInvalid": "Această instalare gestionată nu este disponibilă sau manifestul ei este nevalid.",
+                    "installIntegrity": "Verificarea integrității pachetului a eșuat. Elimină și reinstalează serverul.",
+                    "installArchive": "Pachetul conține căi nesigure, legături sau un fișier de pornire nevalid.",
+                    "installRuntime": "Lipsește mediul de execuție de sistem necesar.",
+                    "installDownload": "Descărcarea pachetului a eșuat sau a depășit timpul limită.",
+                    "installLimit": "Pachetul depășește limitele de instalare.",
+                    "installExists": "Elimină instalarea existentă înainte de reinstalare.",
+                    "installIo": "Fișierele de instalare nu au putut fi citite sau scrise."
                 },
                 "routingNotice": "Serverele activate oferă instrumentele lor lui AeroAgent. Fiecare apel de instrument cere mai întâi aprobarea ta.",
                 "checkNow": "Verifică acum",
@@ -3089,7 +3100,19 @@
                 "healthError": "Indisponibil: {reason}",
                 "healthReady": "Pregătit, instrumente disponibile pentru AeroAgent: {count}",
                 "healthUnsupported": "Instrumente cu scheme neacceptate: {count}",
-                "healthShowTools": "Afișează instrumentele"
+                "healthShowTools": "Afișează instrumentele",
+                "directoryTitle": "Directoare doar pentru citire",
+                "grantDirectory": "Alege directorul",
+                "confirmDirectory": "Acordați acestui server acces doar pentru citire la toate fișierele din {path}? Acordați acces numai la un director dedicat serverului sau proiectului.",
+                "noDirectories": "Fără acces la directoare.",
+                "revokeDirectory": "Revocă accesul",
+                "confirmRevokeDirectory": "Revocați accesul la {path}? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
+                "networkAccess": "Permite accesul la rețea (toate gazdele)",
+                "networkBlocked": "Accesul la rețea este blocat.",
+                "confirmNetwork": "Permiteți accesul lui {name} la rețea, inclusiv la serviciile locale? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
+                "confirmBlockNetwork": "Blocați accesul la rețea pentru {name}? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
+                "managedStatus": "Instalare gestionată: {version}",
+                "renewDirectory": "Reînnoiește accesul"
             }
         },
         "archive": {

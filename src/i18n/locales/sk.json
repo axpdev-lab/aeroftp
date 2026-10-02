@@ -3080,7 +3080,18 @@
                     "startFailed": "Lokálny server sa nepodarilo spustiť.",
                     "serverFailed": "Server sa zastavil alebo poslal neplatnú odpoveď.",
                     "httpUnauthorized": "Server odmietol uložené prihlasovacie údaje.",
-                    "unsupportedVersion": "Server používa verziu MCP, ktorú AeroFTP nepodporuje."
+                    "unsupportedVersion": "Server používa verziu MCP, ktorú AeroFTP nepodporuje.",
+                    "directoryInvalid": "Vyberte vyhradený adresár bez odkazov alebo citlivých súborov aplikácií.",
+                    "directoryChanged": "Povolený adresár sa zmenil alebo chýba. Vyberte ho znova na obnovenie prístupu.",
+                    "permissionCommand": "Zmeňte prístup pomocou nastavení oprávnení pre adresáre a sieť.",
+                    "installInvalid": "Táto spravovaná inštalácia nie je dostupná alebo má neplatný manifest.",
+                    "installIntegrity": "Overenie integrity balíka zlyhalo. Odstráňte server a znova ho nainštalujte.",
+                    "installArchive": "Balík obsahuje nebezpečné cesty, odkazy alebo neplatný spúšťací súbor.",
+                    "installRuntime": "Chýba požadované systémové prostredie na spúšťanie.",
+                    "installDownload": "Stiahnutie balíka zlyhalo alebo vypršal časový limit.",
+                    "installLimit": "Balík prekračuje limity inštalácie.",
+                    "installExists": "Pred opätovnou inštaláciou odstráňte existujúcu inštaláciu.",
+                    "installIo": "Inštalačné súbory sa nepodarilo prečítať alebo zapísať."
                 },
                 "routingNotice": "Povolené servery ponúkajú svoje nástroje AeroAgentovi. Každé volanie nástroja najprv vyžaduje vaše schválenie.",
                 "checkNow": "Skontrolovať teraz",
@@ -3089,7 +3100,19 @@
                 "healthError": "Nedostupný: {reason}",
                 "healthReady": "Pripravený, nástroje dostupné pre AeroAgent: {count}",
                 "healthUnsupported": "Nástroje s nepodporovanými schémami: {count}",
-                "healthShowTools": "Zobraziť nástroje"
+                "healthShowTools": "Zobraziť nástroje",
+                "directoryTitle": "Adresáre iba na čítanie",
+                "grantDirectory": "Vybrať adresár",
+                "confirmDirectory": "Udeliť tomuto serveru prístup iba na čítanie ku všetkým súborom v {path}? Udeľte prístup iba k vyhradenému adresáru servera alebo projektu.",
+                "noDirectories": "Žiadny prístup k adresárom.",
+                "revokeDirectory": "Odobrať prístup",
+                "confirmRevokeDirectory": "Odobrať prístup k {path}? Predchádzajúce schválenia nástrojov už nebudú platné.",
+                "networkAccess": "Povoliť sieťový prístup (všetci hostitelia)",
+                "networkBlocked": "Sieťový prístup je blokovaný.",
+                "confirmNetwork": "Povoliť serveru {name} prístup k sieti vrátane miestnych služieb? Predchádzajúce schválenia nástrojov už nebudú platné.",
+                "confirmBlockNetwork": "Blokovať sieťový prístup servera {name}? Predchádzajúce schválenia nástrojov už nebudú platné.",
+                "managedStatus": "Spravovaná inštalácia: {version}",
+                "renewDirectory": "Obnoviť prístup"
             }
         },
         "archive": {

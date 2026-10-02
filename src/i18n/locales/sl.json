@@ -3080,7 +3080,18 @@
                     "startFailed": "Lokalnega strežnika ni bilo mogoče zagnati.",
                     "serverFailed": "Strežnik se je ustavil ali poslal neveljaven odgovor.",
                     "httpUnauthorized": "Strežnik je zavrnil shranjena poverila.",
-                    "unsupportedVersion": "Strežnik uporablja različico MCP, ki je AeroFTP ne podpira."
+                    "unsupportedVersion": "Strežnik uporablja različico MCP, ki je AeroFTP ne podpira.",
+                    "directoryInvalid": "Izberite namenski imenik brez povezav ali občutljivih datotek aplikacij.",
+                    "directoryChanged": "Odobreni imenik je spremenjen ali manjka. Znova ga izberite, da obnovite dostop.",
+                    "permissionCommand": "Spremenite dostop z nastavitvami dovoljenj za imenike in omrežje.",
+                    "installInvalid": "Ta upravljana namestitev ni na voljo ali pa je njen manifest neveljaven.",
+                    "installIntegrity": "Preverjanje celovitosti paketa ni uspelo. Odstranite in znova namestite strežnik.",
+                    "installArchive": "Paket vsebuje nevarne poti, povezave ali neveljavno zagonsko datoteko.",
+                    "installRuntime": "Manjka zahtevano sistemsko izvajalno okolje.",
+                    "installDownload": "Prenos paketa ni uspel ali je potekla časovna omejitev.",
+                    "installLimit": "Paket presega omejitve namestitve.",
+                    "installExists": "Pred ponovno namestitvijo odstranite obstoječo namestitev.",
+                    "installIo": "Namestitvenih datotek ni bilo mogoče prebrati ali zapisati."
                 },
                 "routingNotice": "Omogočeni strežniki svoja orodja ponujajo AeroAgentu. Vsak klic orodja najprej zahteva vašo odobritev.",
                 "checkNow": "Preveri zdaj",
@@ -3089,7 +3100,19 @@
                 "healthError": "Ni na voljo: {reason}",
                 "healthReady": "Pripravljen, orodja na voljo AeroAgentu: {count}",
                 "healthUnsupported": "Orodja z nepodprtimi shemami: {count}",
-                "healthShowTools": "Pokaži orodja"
+                "healthShowTools": "Pokaži orodja",
+                "directoryTitle": "Imeniki samo za branje",
+                "grantDirectory": "Izberi imenik",
+                "confirmDirectory": "Temu strežniku omogočim dostop samo za branje do vseh datotek v {path}? Omogočite le dostop do namenskega imenika strežnika ali projekta.",
+                "noDirectories": "Ni dostopa do imenikov.",
+                "revokeDirectory": "Prekliči dostop",
+                "confirmRevokeDirectory": "Prekličem dostop do {path}? Prejšnje odobritve orodij ne bodo več veljavne.",
+                "networkAccess": "Dovoli dostop do omrežja (vsi gostitelji)",
+                "networkBlocked": "Dostop do omrežja je blokiran.",
+                "confirmNetwork": "Dovolim strežniku {name} dostop do omrežja, vključno z lokalnimi storitvami? Prejšnje odobritve orodij ne bodo več veljavne.",
+                "confirmBlockNetwork": "Blokiram dostop do omrežja za {name}? Prejšnje odobritve orodij ne bodo več veljavne.",
+                "managedStatus": "Upravljana namestitev: {version}",
+                "renewDirectory": "Obnovi dostop"
             }
         },
         "archive": {

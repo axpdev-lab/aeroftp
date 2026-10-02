@@ -3080,7 +3080,18 @@
                     "startFailed": "Lokalni poslužitelj nije se mogao pokrenuti.",
                     "serverFailed": "Poslužitelj se zaustavio ili je poslao neispravan odgovor.",
                     "httpUnauthorized": "Poslužitelj je odbio spremljene vjerodajnice.",
-                    "unsupportedVersion": "Poslužitelj koristi MCP verziju koju AeroFTP ne podržava."
+                    "unsupportedVersion": "Poslužitelj koristi MCP verziju koju AeroFTP ne podržava.",
+                    "directoryInvalid": "Odaberite namjenski direktorij bez poveznica ili osjetljivih datoteka aplikacija.",
+                    "directoryChanged": "Odobreni direktorij promijenjen je ili nedostaje. Ponovno ga odaberite za obnovu pristupa.",
+                    "permissionCommand": "Promijenite pristup pomoću postavki dopuštenja za direktorije i mrežu.",
+                    "installInvalid": "Ova upravljana instalacija nije dostupna ili njezin manifest nije valjan.",
+                    "installIntegrity": "Provjera integriteta paketa nije uspjela. Uklonite i ponovno instalirajte poslužitelj.",
+                    "installArchive": "Paket sadrži nesigurne putanje, poveznice ili nevaljanu početnu datoteku.",
+                    "installRuntime": "Nedostaje potrebno sistemsko okruženje za izvršavanje.",
+                    "installDownload": "Preuzimanje paketa nije uspjelo ili je isteklo vrijeme čekanja.",
+                    "installLimit": "Paket premašuje ograničenja instalacije.",
+                    "installExists": "Uklonite postojeću instalaciju prije ponovne instalacije.",
+                    "installIo": "Instalacijske datoteke nije bilo moguće pročitati ili zapisati."
                 },
                 "routingNotice": "Omogućeni poslužitelji nude svoje alate AeroAgentu. Svaki poziv alata prvo traži vaše odobrenje.",
                 "checkNow": "Provjeri sada",
@@ -3089,7 +3100,19 @@
                 "healthError": "Nedostupno: {reason}",
                 "healthReady": "Spremno, alati dostupni AeroAgentu: {count}",
                 "healthUnsupported": "Alati s nepodržanim shemama: {count}",
-                "healthShowTools": "Prikaži alate"
+                "healthShowTools": "Prikaži alate",
+                "directoryTitle": "Mape samo za čitanje",
+                "grantDirectory": "Odaberi mapu",
+                "confirmDirectory": "Dopustiti ovom poslužitelju pristup samo za čitanje svim datotekama u {path}? Dopustite samo pristup namjenskoj mapi poslužitelja ili projekta.",
+                "noDirectories": "Nema pristupa mapama.",
+                "revokeDirectory": "Opozovi pristup",
+                "confirmRevokeDirectory": "Opozvati pristup mapi {path}? Prethodna odobrenja alata više neće biti valjana.",
+                "networkAccess": "Dopusti mrežni pristup (svi hostovi)",
+                "networkBlocked": "Mrežni pristup je blokiran.",
+                "confirmNetwork": "Dopustiti poslužitelju {name} pristup mreži, uključujući lokalne usluge? Prethodna odobrenja alata više neće biti valjana.",
+                "confirmBlockNetwork": "Blokirati mrežni pristup poslužitelju {name}? Prethodna odobrenja alata više neće biti valjana.",
+                "managedStatus": "Upravljana instalacija: {version}",
+                "renewDirectory": "Obnovi pristup"
             }
         },
         "archive": {

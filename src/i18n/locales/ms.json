@@ -3080,7 +3080,18 @@
                     "startFailed": "Pelayan tempatan tidak dapat dimulakan.",
                     "serverFailed": "Pelayan berhenti atau menghantar balasan yang tidak sah.",
                     "httpUnauthorized": "Pelayan menolak bukti kelayakan yang disimpan.",
-                    "unsupportedVersion": "Pelayan menggunakan versi MCP yang tidak disokong oleh AeroFTP."
+                    "unsupportedVersion": "Pelayan menggunakan versi MCP yang tidak disokong oleh AeroFTP.",
+                    "directoryInvalid": "Pilih direktori khusus tanpa pautan atau fail aplikasi sensitif.",
+                    "directoryChanged": "Direktori yang dibenarkan telah berubah atau tiada. Pilih semula untuk memperbaharui akses.",
+                    "permissionCommand": "Ubah akses menggunakan kawalan kebenaran direktori dan rangkaian.",
+                    "installInvalid": "Pemasangan terurus ini tidak tersedia atau manifesnya tidak sah.",
+                    "installIntegrity": "Pengesahan integriti pakej gagal. Alih keluar dan pasang semula pelayan.",
+                    "installArchive": "Pakej mengandungi laluan tidak selamat, pautan atau fail permulaan yang tidak sah.",
+                    "installRuntime": "Persekitaran masa jalan sistem yang diperlukan tiada.",
+                    "installDownload": "Muat turun pakej gagal atau tamat masa.",
+                    "installLimit": "Pakej melebihi had pemasangan.",
+                    "installExists": "Alih keluar pemasangan sedia ada sebelum memasang semula.",
+                    "installIo": "Fail pemasangan tidak dapat dibaca atau ditulis."
                 },
                 "routingNotice": "Pelayan yang didayakan menawarkan alatnya kepada AeroAgent. Setiap panggilan alat meminta kebenaran anda terlebih dahulu.",
                 "checkNow": "Semak sekarang",
@@ -3089,7 +3100,19 @@
                 "healthError": "Tidak tersedia: {reason}",
                 "healthReady": "Sedia, alat tersedia untuk AeroAgent: {count}",
                 "healthUnsupported": "Alat dengan skema yang tidak disokong: {count}",
-                "healthShowTools": "Tunjukkan alat"
+                "healthShowTools": "Tunjukkan alat",
+                "directoryTitle": "Direktori baca sahaja",
+                "grantDirectory": "Pilih direktori",
+                "confirmDirectory": "Berikan pelayan ini akses baca sahaja kepada semua fail dalam {path}? Berikan akses hanya kepada direktori khusus untuk pelayan atau projek.",
+                "noDirectories": "Tiada akses direktori.",
+                "revokeDirectory": "Tarik balik akses",
+                "confirmRevokeDirectory": "Tarik balik akses kepada {path}? Kelulusan alat terdahulu tidak lagi sah.",
+                "networkAccess": "Benarkan akses rangkaian (semua hos)",
+                "networkBlocked": "Akses rangkaian disekat.",
+                "confirmNetwork": "Benarkan {name} mengakses rangkaian, termasuk perkhidmatan setempat? Kelulusan alat terdahulu tidak lagi sah.",
+                "confirmBlockNetwork": "Sekat akses rangkaian untuk {name}? Kelulusan alat terdahulu tidak lagi sah.",
+                "managedStatus": "Pemasangan terurus: {version}",
+                "renewDirectory": "Perbaharui akses"
             }
         },
         "archive": {

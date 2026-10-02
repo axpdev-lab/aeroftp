@@ -3080,7 +3080,18 @@
                     "startFailed": "Paikallista palvelinta ei voitu käynnistää.",
                     "serverFailed": "Palvelin pysähtyi tai lähetti virheellisen vastauksen.",
                     "httpUnauthorized": "Palvelin hylkäsi tallennetut tunnistetiedot.",
-                    "unsupportedVersion": "Palvelin käyttää MCP-versiota, jota AeroFTP ei tue."
+                    "unsupportedVersion": "Palvelin käyttää MCP-versiota, jota AeroFTP ei tue.",
+                    "directoryInvalid": "Valitse erillinen hakemisto, jossa ei ole linkkejä tai arkaluonteisia sovellustiedostoja.",
+                    "directoryChanged": "Sallittu hakemisto on muuttunut tai puuttuu. Valitse se uudelleen käyttöoikeuden uusimiseksi.",
+                    "permissionCommand": "Muuta käyttöoikeutta hakemisto- ja verkkolupien asetuksista.",
+                    "installInvalid": "Tämä hallittu asennus ei ole käytettävissä tai sen manifesti on virheellinen.",
+                    "installIntegrity": "Paketin eheystarkistus epäonnistui. Poista palvelin ja asenna se uudelleen.",
+                    "installArchive": "Paketti sisältää turvattomia polkuja, linkkejä tai virheellisen käynnistystiedoston.",
+                    "installRuntime": "Tarvittava järjestelmän suoritusympäristö puuttuu.",
+                    "installDownload": "Paketin lataus epäonnistui tai aikakatkaistiin.",
+                    "installLimit": "Paketti ylittää asennusrajoitukset.",
+                    "installExists": "Poista nykyinen asennus ennen uudelleenasennusta.",
+                    "installIo": "Asennustiedostoja ei voitu lukea tai kirjoittaa."
                 },
                 "routingNotice": "Käytössä olevat palvelimet tarjoavat työkalunsa AeroAgentille. Jokainen työkalukutsu pyytää ensin hyväksyntäsi.",
                 "checkNow": "Tarkista nyt",
@@ -3089,7 +3100,19 @@
                 "healthError": "Ei käytettävissä: {reason}",
                 "healthReady": "Valmis, AeroAgentin käytettävissä olevat työkalut: {count}",
                 "healthUnsupported": "Työkalut, joiden skeemoja ei tueta: {count}",
-                "healthShowTools": "Näytä työkalut"
+                "healthShowTools": "Näytä työkalut",
+                "directoryTitle": "Vain luettavat hakemistot",
+                "grantDirectory": "Valitse hakemisto",
+                "confirmDirectory": "Annetaanko tälle palvelimelle lukuoikeus kaikkiin tiedostoihin hakemistossa {path}? Anna pääsy vain erilliseen palvelin- tai projektihakemistoon.",
+                "noDirectories": "Ei hakemistojen käyttöoikeutta.",
+                "revokeDirectory": "Peru käyttöoikeus",
+                "confirmRevokeDirectory": "Perutaanko hakemiston {path} käyttöoikeus? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
+                "networkAccess": "Salli verkkoyhteydet (kaikki isännät)",
+                "networkBlocked": "Verkkoyhteydet on estetty.",
+                "confirmNetwork": "Sallitaanko palvelimelle {name} verkkoyhteydet, myös paikallisiin palveluihin? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
+                "confirmBlockNetwork": "Estetäänkö palvelimen {name} verkkoyhteydet? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
+                "managedStatus": "Hallittu asennus: {version}",
+                "renewDirectory": "Uusi käyttöoikeus"
             }
         },
         "archive": {

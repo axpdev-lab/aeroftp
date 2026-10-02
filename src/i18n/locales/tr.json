@@ -3080,7 +3080,18 @@
                     "startFailed": "Yerel sunucu başlatılamadı.",
                     "serverFailed": "Sunucu durdu veya geçersiz bir yanıt gönderdi.",
                     "httpUnauthorized": "Sunucu kayıtlı kimlik bilgilerini reddetti.",
-                    "unsupportedVersion": "Sunucu, AeroFTP'nin desteklemediği bir MCP sürümü kullanıyor."
+                    "unsupportedVersion": "Sunucu, AeroFTP'nin desteklemediği bir MCP sürümü kullanıyor.",
+                    "directoryInvalid": "Bağlantı veya hassas uygulama dosyaları içermeyen özel bir dizin seçin.",
+                    "directoryChanged": "İzin verilen dizin değişti veya eksik. Erişimi yenilemek için yeniden seçin.",
+                    "permissionCommand": "Erişimi dizin ve ağ izni denetimleriyle değiştirin.",
+                    "installInvalid": "Bu yönetilen kurulum kullanılamıyor veya bildirim dosyası geçersiz.",
+                    "installIntegrity": "Paket bütünlüğü doğrulanamadı. Sunucuyu kaldırıp yeniden yükleyin.",
+                    "installArchive": "Paket güvensiz yollar, bağlantılar veya geçersiz bir giriş dosyası içeriyor.",
+                    "installRuntime": "Gerekli sistem çalışma zamanı eksik.",
+                    "installDownload": "Paket indirme başarısız oldu veya zaman aşımına uğradı.",
+                    "installLimit": "Paket kurulum sınırlarını aşıyor.",
+                    "installExists": "Yeniden yüklemeden önce mevcut kurulumu kaldırın.",
+                    "installIo": "Kurulum dosyaları okunamadı veya yazılamadı."
                 },
                 "routingNotice": "Etkinleştirilen sunucular araçlarını AeroAgent'a sunar. Her araç çağrısı önce onayınızı ister.",
                 "checkNow": "Şimdi kontrol et",
@@ -3089,7 +3100,19 @@
                 "healthError": "Kullanılamıyor: {reason}",
                 "healthReady": "Hazır, AeroAgent için kullanılabilir araçlar: {count}",
                 "healthUnsupported": "Desteklenmeyen şemalara sahip araçlar: {count}",
-                "healthShowTools": "Araçları göster"
+                "healthShowTools": "Araçları göster",
+                "directoryTitle": "Salt okunur dizinler",
+                "grantDirectory": "Dizin seç",
+                "confirmDirectory": "Bu sunucuya {path} içindeki her dosya için salt okunur erişim verilsin mi? Yalnızca sunucuya veya projeye ayrılmış bir dizine erişim verin.",
+                "noDirectories": "Dizin erişimi yok.",
+                "revokeDirectory": "Erişimi iptal et",
+                "confirmRevokeDirectory": "{path} erişimi iptal edilsin mi? Önceki araç onayları artık geçerli olmayacak.",
+                "networkAccess": "Ağ erişimine izin ver (tüm ana bilgisayarlar)",
+                "networkBlocked": "Ağ erişimi engelleniyor.",
+                "confirmNetwork": "{name} için yerel hizmetler dahil ağa erişim izni verilsin mi? Önceki araç onayları artık geçerli olmayacak.",
+                "confirmBlockNetwork": "{name} için ağ erişimi engellensin mi? Önceki araç onayları artık geçerli olmayacak.",
+                "managedStatus": "Yönetilen kurulum: {version}",
+                "renewDirectory": "Erişimi yenile"
             }
         },
         "archive": {

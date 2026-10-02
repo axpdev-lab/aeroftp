@@ -3080,7 +3080,18 @@
                     "startFailed": "De lokale server kon niet worden gestart.",
                     "serverFailed": "De server is gestopt of heeft een ongeldig antwoord gestuurd.",
                     "httpUnauthorized": "De server heeft de opgeslagen inloggegevens geweigerd.",
-                    "unsupportedVersion": "De server gebruikt een MCP-versie die AeroFTP niet ondersteunt."
+                    "unsupportedVersion": "De server gebruikt een MCP-versie die AeroFTP niet ondersteunt.",
+                    "directoryInvalid": "Kies een aparte map zonder koppelingen of gevoelige toepassingsbestanden.",
+                    "directoryChanged": "De toegestane map is gewijzigd of ontbreekt. Selecteer deze opnieuw om de toegang te vernieuwen.",
+                    "permissionCommand": "Wijzig de toegang via de machtigingen voor mappen en netwerk.",
+                    "installInvalid": "Deze beheerde installatie is niet beschikbaar of het manifest is ongeldig.",
+                    "installIntegrity": "De integriteitscontrole van het pakket is mislukt. Verwijder de server en installeer deze opnieuw.",
+                    "installArchive": "Het pakket bevat onveilige paden, koppelingen of een ongeldig startbestand.",
+                    "installRuntime": "De vereiste systeemruntime ontbreekt.",
+                    "installDownload": "De pakketdownload is mislukt of heeft de tijdslimiet overschreden.",
+                    "installLimit": "Het pakket overschrijdt de installatielimieten.",
+                    "installExists": "Verwijder de bestaande installatie voordat je opnieuw installeert.",
+                    "installIo": "De installatiebestanden konden niet worden gelezen of geschreven."
                 },
                 "routingNotice": "Ingeschakelde servers bieden hun tools aan AeroAgent aan. Elke toolaanroep vraagt eerst om jouw goedkeuring.",
                 "checkNow": "Nu controleren",
@@ -3089,7 +3100,19 @@
                 "healthError": "Niet beschikbaar: {reason}",
                 "healthReady": "Gereed, tools beschikbaar voor AeroAgent: {count}",
                 "healthUnsupported": "Tools met niet-ondersteunde schema's: {count}",
-                "healthShowTools": "Tools tonen"
+                "healthShowTools": "Tools tonen",
+                "directoryTitle": "Mappen met alleen leestoegang",
+                "grantDirectory": "Map kiezen",
+                "confirmDirectory": "Deze server leestoegang geven tot elk bestand in {path}? Geef alleen toegang tot een aparte server- of projectmap.",
+                "noDirectories": "Geen toegang tot mappen.",
+                "revokeDirectory": "Toegang intrekken",
+                "confirmRevokeDirectory": "Toegang tot {path} intrekken? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
+                "networkAccess": "Netwerktoegang toestaan (alle hosts)",
+                "networkBlocked": "Netwerktoegang is geblokkeerd.",
+                "confirmNetwork": "{name} toegang geven tot het netwerk, inclusief lokale diensten? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
+                "confirmBlockNetwork": "Netwerktoegang voor {name} blokkeren? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
+                "managedStatus": "Beheerde installatie: {version}",
+                "renewDirectory": "Toegang vernieuwen"
             }
         },
         "archive": {

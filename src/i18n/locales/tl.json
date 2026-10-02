@@ -3080,7 +3080,18 @@
                     "startFailed": "Hindi masimulan ang lokal na server.",
                     "serverFailed": "Huminto ang server o nagpadala ng di-wastong sagot.",
                     "httpUnauthorized": "Tinanggihan ng server ang mga naka-save na kredensyal.",
-                    "unsupportedVersion": "Gumagamit ang server ng bersyon ng MCP na hindi sinusuportahan ng AeroFTP."
+                    "unsupportedVersion": "Gumagamit ang server ng bersyon ng MCP na hindi sinusuportahan ng AeroFTP.",
+                    "directoryInvalid": "Pumili ng nakalaang direktoryo na walang link o sensitibong file ng application.",
+                    "directoryChanged": "Nagbago o nawawala ang pinahintulutang direktoryo. Piliin ito muli upang i-renew ang access.",
+                    "permissionCommand": "Baguhin ang access gamit ang mga kontrol ng pahintulot sa direktoryo at network.",
+                    "installInvalid": "Hindi available ang pinamamahalaang pag-install na ito o hindi wasto ang manifest nito.",
+                    "installIntegrity": "Nabigo ang pag-verify ng integridad ng package. Alisin at muling i-install ang server.",
+                    "installArchive": "Naglalaman ang package ng mga hindi ligtas na path, link, o hindi wastong panimulang file.",
+                    "installRuntime": "Nawawala ang kinakailangang system runtime.",
+                    "installDownload": "Nabigo o naubusan ng oras ang pag-download ng package.",
+                    "installLimit": "Lumampas ang package sa mga limitasyon sa pag-install.",
+                    "installExists": "Alisin ang kasalukuyang pag-install bago muling mag-install.",
+                    "installIo": "Hindi mabasa o maisulat ang mga file ng pag-install."
                 },
                 "routingNotice": "Ibinibigay ng mga naka-enable na server ang kanilang mga tool sa AeroAgent. Humihingi muna ng iyong pag-apruba ang bawat tawag sa tool.",
                 "checkNow": "Suriin ngayon",
@@ -3089,7 +3100,19 @@
                 "healthError": "Hindi available: {reason}",
                 "healthReady": "Handa, mga tool na available sa AeroAgent: {count}",
                 "healthUnsupported": "Mga tool na may hindi sinusuportahang schema: {count}",
-                "healthShowTools": "Ipakita ang mga tool"
+                "healthShowTools": "Ipakita ang mga tool",
+                "directoryTitle": "Mga direktoryong para sa pagbasa lamang",
+                "grantDirectory": "Pumili ng direktoryo",
+                "confirmDirectory": "Bigyan ang server na ito ng access para sa pagbasa lamang sa lahat ng file sa {path}? Magbigay lamang ng access sa direktoryong nakalaan sa server o proyekto.",
+                "noDirectories": "Walang access sa direktoryo.",
+                "revokeDirectory": "Bawiin ang access",
+                "confirmRevokeDirectory": "Bawiin ang access sa {path}? Hindi na magiging balido ang mga nakaraang pag-apruba sa tool.",
+                "networkAccess": "Payagan ang access sa network (lahat ng host)",
+                "networkBlocked": "Naka-block ang access sa network.",
+                "confirmNetwork": "Payagan ang {name} na ma-access ang network, kabilang ang mga lokal na serbisyo? Hindi na magiging balido ang mga nakaraang pag-apruba sa tool.",
+                "confirmBlockNetwork": "I-block ang access sa network ng {name}? Hindi na magiging balido ang mga nakaraang pag-apruba sa tool.",
+                "managedStatus": "Pinamamahalaang pag-install: {version}",
+                "renewDirectory": "I-renew ang access"
             }
         },
         "archive": {

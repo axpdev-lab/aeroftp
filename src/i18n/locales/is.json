@@ -3080,7 +3080,18 @@
                     "startFailed": "Ekki tókst að ræsa staðbundna netþjóninn.",
                     "serverFailed": "Netþjónninn stöðvaðist eða sendi ógilt svar.",
                     "httpUnauthorized": "Netþjónninn hafnaði vistuðu auðkennisupplýsingunum.",
-                    "unsupportedVersion": "Netþjónninn notar MCP útgáfu sem AeroFTP styður ekki."
+                    "unsupportedVersion": "Netþjónninn notar MCP útgáfu sem AeroFTP styður ekki.",
+                    "directoryInvalid": "Veldu sérstaka möppu án tengla eða viðkvæmra forritsskráa.",
+                    "directoryChanged": "Mappan sem veittur var aðgangur að hefur breyst eða vantar. Veldu hana aftur til að endurnýja aðgang.",
+                    "permissionCommand": "Breyttu aðgangi með stillingum fyrir möppu- og netheimildir.",
+                    "installInvalid": "Þessi stýrða uppsetning er ekki tiltæk eða skráalýsing hennar er ógild.",
+                    "installIntegrity": "Sannprófun á heilleika pakkans mistókst. Fjarlægðu þjóninn og settu hann upp aftur.",
+                    "installArchive": "Pakkinn inniheldur óöruggar slóðir, tengla eða ógilda ræsiskrá.",
+                    "installRuntime": "Nauðsynlegt keyrsluumhverfi kerfisins vantar.",
+                    "installDownload": "Niðurhal pakkans mistókst eða rann út á tíma.",
+                    "installLimit": "Pakkinn fer yfir uppsetningarmörkin.",
+                    "installExists": "Fjarlægðu núverandi uppsetningu áður en þú setur upp aftur.",
+                    "installIo": "Ekki tókst að lesa eða skrifa uppsetningarskrárnar."
                 },
                 "routingNotice": "Virkir netþjónar bjóða AeroAgent verkfæri sín. Hvert verkfærakall biður fyrst um samþykki þitt.",
                 "checkNow": "Athuga núna",
@@ -3089,7 +3100,19 @@
                 "healthError": "Ekki tiltækt: {reason}",
                 "healthReady": "Tilbúið, verkfæri í boði fyrir AeroAgent: {count}",
                 "healthUnsupported": "Verkfæri með óstudd skema: {count}",
-                "healthShowTools": "Sýna verkfæri"
+                "healthShowTools": "Sýna verkfæri",
+                "directoryTitle": "Skráasöfn með lesaðgangi eingöngu",
+                "grantDirectory": "Velja skráasafn",
+                "confirmDirectory": "Veita þessum þjóni lesaðgang að öllum skrám í {path}? Veittu aðeins aðgang að sérstöku skráasafni fyrir þjóninn eða verkefnið.",
+                "noDirectories": "Enginn aðgangur að skráasöfnum.",
+                "revokeDirectory": "Afturkalla aðgang",
+                "confirmRevokeDirectory": "Afturkalla aðgang að {path}? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
+                "networkAccess": "Leyfa netaðgang (allir hýslar)",
+                "networkBlocked": "Netaðgangur er lokaður.",
+                "confirmNetwork": "Leyfa {name} netaðgang, þar á meðal að staðbundinni þjónustu? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
+                "confirmBlockNetwork": "Loka netaðgangi fyrir {name}? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
+                "managedStatus": "Stýrð uppsetning: {version}",
+                "renewDirectory": "Endurnýja aðgang"
             }
         },
         "archive": {

@@ -3080,7 +3080,18 @@
                     "startFailed": "Server lokal tidak dapat dimulai.",
                     "serverFailed": "Server berhenti atau mengirim balasan yang tidak valid.",
                     "httpUnauthorized": "Server menolak kredensial yang tersimpan.",
-                    "unsupportedVersion": "Server menggunakan versi MCP yang tidak didukung AeroFTP."
+                    "unsupportedVersion": "Server menggunakan versi MCP yang tidak didukung AeroFTP.",
+                    "directoryInvalid": "Pilih direktori khusus tanpa tautan atau berkas aplikasi sensitif.",
+                    "directoryChanged": "Direktori yang diizinkan berubah atau tidak ditemukan. Pilih lagi untuk memperbarui akses.",
+                    "permissionCommand": "Ubah akses menggunakan kontrol izin direktori dan jaringan.",
+                    "installInvalid": "Instalasi terkelola ini tidak tersedia atau manifesnya tidak valid.",
+                    "installIntegrity": "Verifikasi integritas paket gagal. Hapus dan instal ulang server.",
+                    "installArchive": "Paket berisi jalur tidak aman, tautan, atau berkas awal yang tidak valid.",
+                    "installRuntime": "Lingkungan eksekusi sistem yang diperlukan tidak tersedia.",
+                    "installDownload": "Pengunduhan paket gagal atau kehabisan waktu.",
+                    "installLimit": "Paket melebihi batas instalasi.",
+                    "installExists": "Hapus instalasi yang ada sebelum menginstal ulang.",
+                    "installIo": "Berkas instalasi tidak dapat dibaca atau ditulis."
                 },
                 "routingNotice": "Server yang diaktifkan menyediakan alatnya untuk AeroAgent. Setiap panggilan alat meminta persetujuan Anda terlebih dahulu.",
                 "checkNow": "Periksa sekarang",
@@ -3089,7 +3100,19 @@
                 "healthError": "Tidak tersedia: {reason}",
                 "healthReady": "Siap, alat tersedia untuk AeroAgent: {count}",
                 "healthUnsupported": "Alat dengan skema yang tidak didukung: {count}",
-                "healthShowTools": "Tampilkan alat"
+                "healthShowTools": "Tampilkan alat",
+                "directoryTitle": "Direktori hanya baca",
+                "grantDirectory": "Pilih direktori",
+                "confirmDirectory": "Beri server ini akses hanya baca ke semua berkas di {path}? Beri akses hanya ke direktori khusus server atau proyek.",
+                "noDirectories": "Tidak ada akses direktori.",
+                "revokeDirectory": "Cabut akses",
+                "confirmRevokeDirectory": "Cabut akses ke {path}? Persetujuan alat sebelumnya tidak akan berlaku lagi.",
+                "networkAccess": "Izinkan akses jaringan (semua host)",
+                "networkBlocked": "Akses jaringan diblokir.",
+                "confirmNetwork": "Izinkan {name} mengakses jaringan, termasuk layanan lokal? Persetujuan alat sebelumnya tidak akan berlaku lagi.",
+                "confirmBlockNetwork": "Blokir akses jaringan untuk {name}? Persetujuan alat sebelumnya tidak akan berlaku lagi.",
+                "managedStatus": "Instalasi terkelola: {version}",
+                "renewDirectory": "Perbarui akses"
             }
         },
         "archive": {

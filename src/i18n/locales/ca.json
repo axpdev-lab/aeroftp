@@ -3080,7 +3080,18 @@
                     "startFailed": "No s'ha pogut iniciar el servidor local.",
                     "serverFailed": "El servidor s'ha aturat o ha enviat una resposta no vàlida.",
                     "httpUnauthorized": "El servidor ha rebutjat les credencials desades.",
-                    "unsupportedVersion": "El servidor utilitza una versió de MCP que AeroFTP no admet."
+                    "unsupportedVersion": "El servidor utilitza una versió de MCP que AeroFTP no admet.",
+                    "directoryInvalid": "Tria un directori dedicat sense enllaços ni fitxers sensibles d’aplicacions.",
+                    "directoryChanged": "El directori autoritzat ha canviat o no existeix. Selecciona’l de nou per renovar l’accés.",
+                    "permissionCommand": "Canvia l’accés amb els controls de permisos de directoris i xarxa.",
+                    "installInvalid": "Aquesta instal·lació gestionada no està disponible o el seu manifest no és vàlid.",
+                    "installIntegrity": "Ha fallat la verificació d’integritat del paquet. Elimina el servidor i torna’l a instal·lar.",
+                    "installArchive": "El paquet conté camins insegurs, enllaços o un fitxer d’inici no vàlid.",
+                    "installRuntime": "Falta l’entorn d’execució del sistema requerit.",
+                    "installDownload": "La baixada del paquet ha fallat o ha esgotat el temps d’espera.",
+                    "installLimit": "El paquet supera els límits d’instal·lació.",
+                    "installExists": "Elimina la instal·lació existent abans de reinstal·lar.",
+                    "installIo": "No s’han pogut llegir o escriure els fitxers d’instal·lació."
                 },
                 "routingNotice": "Els servidors activats ofereixen les seves eines a AeroAgent. Cada crida a una eina demana primer la teva aprovació.",
                 "checkNow": "Comprova ara",
@@ -3089,7 +3100,19 @@
                 "healthError": "No disponible: {reason}",
                 "healthReady": "Preparat, eines disponibles per a AeroAgent: {count}",
                 "healthUnsupported": "Eines amb esquemes no compatibles: {count}",
-                "healthShowTools": "Mostra les eines"
+                "healthShowTools": "Mostra les eines",
+                "directoryTitle": "Directoris de només lectura",
+                "grantDirectory": "Tria un directori",
+                "confirmDirectory": "Vols concedir a aquest servidor accés de només lectura a tots els fitxers de {path}? Concedeix només un directori dedicat al servidor o al projecte.",
+                "noDirectories": "Sense accés a directoris.",
+                "revokeDirectory": "Revoca l’accés",
+                "confirmRevokeDirectory": "Vols revocar l’accés a {path}? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
+                "networkAccess": "Permet l’accés a la xarxa (tots els hosts)",
+                "networkBlocked": "L’accés a la xarxa està bloquejat.",
+                "confirmNetwork": "Vols permetre que {name} accedeixi a la xarxa, inclosos els serveis locals? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
+                "confirmBlockNetwork": "Vols bloquejar l’accés a la xarxa de {name}? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
+                "managedStatus": "Instal·lació gestionada: {version}",
+                "renewDirectory": "Renova l’accés"
             }
         },
         "archive": {

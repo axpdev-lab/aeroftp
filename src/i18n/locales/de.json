@@ -3080,7 +3080,18 @@
                     "startFailed": "Der lokale Server konnte nicht gestartet werden.",
                     "serverFailed": "Der Server wurde beendet oder hat eine ungültige Antwort gesendet.",
                     "httpUnauthorized": "Der Server hat die gespeicherten Anmeldedaten abgelehnt.",
-                    "unsupportedVersion": "Der Server verwendet eine MCP-Version, die AeroFTP nicht unterstützt."
+                    "unsupportedVersion": "Der Server verwendet eine MCP-Version, die AeroFTP nicht unterstützt.",
+                    "directoryInvalid": "Wähle ein eigenes Verzeichnis ohne Verknüpfungen oder sensible Anwendungsdateien.",
+                    "directoryChanged": "Das freigegebene Verzeichnis wurde geändert oder fehlt. Wähle es erneut aus, um den Zugriff zu erneuern.",
+                    "permissionCommand": "Ändere den Zugriff über die Berechtigungen für Verzeichnisse und Netzwerk.",
+                    "installInvalid": "Diese verwaltete Installation ist nicht verfügbar oder ihr Manifest ist ungültig.",
+                    "installIntegrity": "Die Integritätsprüfung des Pakets ist fehlgeschlagen. Entferne den Server und installiere ihn erneut.",
+                    "installArchive": "Das Paket enthält unsichere Pfade, Verknüpfungen oder eine ungültige Startdatei.",
+                    "installRuntime": "Die erforderliche Systemlaufzeit fehlt.",
+                    "installDownload": "Der Paketdownload ist fehlgeschlagen oder hat das Zeitlimit überschritten.",
+                    "installLimit": "Das Paket überschreitet die Installationslimits.",
+                    "installExists": "Entferne die vorhandene Installation vor der Neuinstallation.",
+                    "installIo": "Die Installationsdateien konnten nicht gelesen oder geschrieben werden."
                 },
                 "routingNotice": "Aktivierte Server stellen AeroAgent ihre Tools zur Verfügung. Jeder Tool-Aufruf erfordert zuerst Ihre Genehmigung.",
                 "checkNow": "Jetzt prüfen",
@@ -3089,7 +3100,19 @@
                 "healthError": "Nicht verfügbar: {reason}",
                 "healthReady": "Bereit, für AeroAgent verfügbare Tools: {count}",
                 "healthUnsupported": "Tools mit nicht unterstützten Schemas: {count}",
-                "healthShowTools": "Tools anzeigen"
+                "healthShowTools": "Tools anzeigen",
+                "directoryTitle": "Schreibgeschützte Verzeichnisse",
+                "grantDirectory": "Verzeichnis auswählen",
+                "confirmDirectory": "Diesem Server Lesezugriff auf jede Datei in {path} gewähren? Gewähre nur Zugriff auf ein eigenes Server- oder Projektverzeichnis.",
+                "noDirectories": "Kein Verzeichniszugriff.",
+                "revokeDirectory": "Zugriff entziehen",
+                "confirmRevokeDirectory": "Zugriff auf {path} entziehen? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
+                "networkAccess": "Netzwerkzugriff erlauben (alle Hosts)",
+                "networkBlocked": "Netzwerkzugriff ist gesperrt.",
+                "confirmNetwork": "{name} den Netzwerkzugriff einschließlich lokaler Dienste erlauben? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
+                "confirmBlockNetwork": "Netzwerkzugriff für {name} sperren? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
+                "managedStatus": "Verwaltete Installation: {version}",
+                "renewDirectory": "Zugriff erneuern"
             }
         },
         "archive": {

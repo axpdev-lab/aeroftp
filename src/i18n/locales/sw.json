@@ -3080,7 +3080,18 @@
                     "startFailed": "Seva ya ndani haikuweza kuanzishwa.",
                     "serverFailed": "Seva ilisimama au ilituma jibu lisilo sahihi.",
                     "httpUnauthorized": "Seva ilikataa vitambulisho vilivyohifadhiwa.",
-                    "unsupportedVersion": "Seva inatumia toleo la MCP ambalo AeroFTP haiungi mkono."
+                    "unsupportedVersion": "Seva inatumia toleo la MCP ambalo AeroFTP haiungi mkono.",
+                    "directoryInvalid": "Chagua saraka maalumu isiyo na viungo au faili nyeti za programu.",
+                    "directoryChanged": "Saraka iliyoruhusiwa imebadilika au haipo. Ichague tena ili kufanya upya ufikiaji.",
+                    "permissionCommand": "Badilisha ufikiaji kwa kutumia vidhibiti vya ruhusa za saraka na mtandao.",
+                    "installInvalid": "Usakinishaji huu unaodhibitiwa haupatikani au faili yake ya maelezo si halali.",
+                    "installIntegrity": "Uthibitishaji wa uadilifu wa kifurushi umeshindwa. Ondoa na usakinishe seva tena.",
+                    "installArchive": "Kifurushi kina njia zisizo salama, viungo au faili ya kuanzisha isiyo halali.",
+                    "installRuntime": "Mazingira ya utekelezaji ya mfumo yanayohitajika hayapo.",
+                    "installDownload": "Upakuaji wa kifurushi umeshindwa au muda umeisha.",
+                    "installLimit": "Kifurushi kinazidi mipaka ya usakinishaji.",
+                    "installExists": "Ondoa usakinishaji uliopo kabla ya kusakinisha tena.",
+                    "installIo": "Faili za usakinishaji hazikuweza kusomwa au kuandikwa."
                 },
                 "routingNotice": "Seva zilizowezeshwa hutoa zana zake kwa AeroAgent. Kila ombi la zana huomba idhini yako kwanza.",
                 "checkNow": "Kagua sasa",
@@ -3089,7 +3100,19 @@
                 "healthError": "Haipatikani: {reason}",
                 "healthReady": "Tayari, zana zinazopatikana kwa AeroAgent: {count}",
                 "healthUnsupported": "Zana zenye skima zisizotumika: {count}",
-                "healthShowTools": "Onyesha zana"
+                "healthShowTools": "Onyesha zana",
+                "directoryTitle": "Saraka za kusoma tu",
+                "grantDirectory": "Chagua saraka",
+                "confirmDirectory": "Ipe seva hii ruhusa ya kusoma tu kila faili katika {path}? Ruhusu saraka maalumu ya seva au mradi pekee.",
+                "noDirectories": "Hakuna ufikiaji wa saraka.",
+                "revokeDirectory": "Ondoa ruhusa",
+                "confirmRevokeDirectory": "Ondoa ruhusa ya kufikia {path}? Idhini za awali za zana hazitakuwa halali tena.",
+                "networkAccess": "Ruhusu ufikiaji wa mtandao (wenyeji wote)",
+                "networkBlocked": "Ufikiaji wa mtandao umezuiwa.",
+                "confirmNetwork": "Ruhusu {name} kufikia mtandao, pamoja na huduma za ndani? Idhini za awali za zana hazitakuwa halali tena.",
+                "confirmBlockNetwork": "Zuia ufikiaji wa mtandao wa {name}? Idhini za awali za zana hazitakuwa halali tena.",
+                "managedStatus": "Usakinishaji unaosimamiwa: {version}",
+                "renewDirectory": "Sasisha ruhusa"
             }
         },
         "archive": {
