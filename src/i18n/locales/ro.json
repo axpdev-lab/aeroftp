@@ -3109,12 +3109,19 @@
                 "noDirectories": "Fără acces la directoare.",
                 "revokeDirectory": "Revocă accesul",
                 "confirmRevokeDirectory": "Revocați accesul la {path}? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
-                "networkAccess": "Permite accesul la rețea (toate gazdele)",
+                "networkAccess": "Permite accesul la rețea (toate gazdele și serviciile locale)",
                 "networkBlocked": "Accesul la rețea este blocat.",
                 "confirmNetwork": "Permiteți accesul lui {name} la rețea, inclusiv la serviciile locale? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
                 "confirmBlockNetwork": "Blocați accesul la rețea pentru {name}? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
                 "managedStatus": "Instalare gestionată: {version}",
-                "renewDirectory": "Reînnoiește accesul"
+                "renewDirectory": "Reînnoiește accesul",
+                "presetsTitle": "Servere recomandate",
+                "presetsSubtitle": "Seturile revizuite se instalează doar după confirmare. Rămân oprite până le activați.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Caută documentația unui depozit public.",
+                "presetInstall": "Instalează",
+                "presetInstalledDisabled": "Instalat și oprit",
+                "presetReady": "Gata"
             }
         },
         "archive": {

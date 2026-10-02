@@ -12,7 +12,7 @@ Managed manifests can declare network access. A separate recorded user consent e
 
 ## Reviewed manifest contract
 
-`src-tauri/src/mcp_client_install.rs` owns the manifest registry. The renderer supplies only a manifest ID/version, an operation UUID and consent, never an archive URL, hash, runtime command or manifest body. The registry is deliberately empty in this foundation; MCLIENT-07 supplies the reviewed presets and Recommended cards. Generic installer controls load the registry, confirm declared network access, and offer scoped cancellation while an install is pending; an empty registry adds no visible cards. Closing settings cancels an unfinished install.
+`src-tauri/src/mcp_client_install.rs` owns the manifest registry. The renderer supplies only a manifest ID/version, an operation UUID and consent, never an archive URL, hash, runtime command or manifest body. The STDIO registry is still empty: a curated STDIO preset ships only with a reviewed download pin (see Recommended servers). Generic installer controls load the registry, confirm declared network access, and offer scoped cancellation while an install is pending; an empty registry adds no visible cards. Closing settings cancels an unfinished install.
 
 A STDIO manifest identifies:
 
@@ -25,6 +25,12 @@ A STDIO manifest identifies:
 The artifact is a complete runnable **tar.gz** tree with all transitive dependencies already pinned and included. Paths are relative to the archive root. Only ordinary files and directories are accepted. Absolute paths, traversal, Windows path spellings, duplicate entries, links, device files, FIFOs and PAX/GNU metadata entries are refused. Permissions, ownership and executable modes from the archive are not applied. Python artifacts use the system interpreter and include dependencies without a symlink-based virtualenv. No package install scripts or package managers execute, and no dependency download occurs at launch.
 
 Limits: 64 MiB compressed download, 256 MiB expanded tree, 8,192 entries, 32 directory levels and 1,024-byte relative paths. HTTPS requests reuse the MCP transport's public-address DNS pinning, disabled proxies and refused redirects. Installation has a 120-second outer download deadline plus the transport's request deadline. Staging and directory copying check cancellation between entries and chunks.
+
+## Recommended servers
+
+AI Settings > MCP shows a Recommended servers section with reviewed presets. The first one is DeepWiki, an HTTP preset: `src-tauri/src/mcp_client_presets.rs` holds its fixed endpoint `https://mcp.deepwiki.com/mcp`, and the renderer sends only the preset id. Install adds it to the HTTP server list with no authentication and leaves it disabled until the user turns it on; an existing id returns `MCP_INSTALL_EXISTS`. Removing it from the HTTP list brings the Install button back.
+
+Curated STDIO presets (the Fetch and Git reference servers) are not shipped yet. They will be downloaded at install time from a pinned HTTPS URL, verified against a SHA-256 in the manifest, and offered only on the platforms and architectures their native dependencies support. Nothing is embedded in the AeroFTP binary.
 
 ## Storage, launch and removal
 

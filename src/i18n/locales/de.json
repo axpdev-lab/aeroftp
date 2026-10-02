@@ -3109,12 +3109,19 @@
                 "noDirectories": "Kein Verzeichniszugriff.",
                 "revokeDirectory": "Zugriff entziehen",
                 "confirmRevokeDirectory": "Zugriff auf {path} entziehen? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
-                "networkAccess": "Netzwerkzugriff erlauben (alle Hosts)",
+                "networkAccess": "Netzwerkzugriff erlauben (alle Hosts und lokale Dienste)",
                 "networkBlocked": "Netzwerkzugriff ist gesperrt.",
                 "confirmNetwork": "{name} den Netzwerkzugriff einschließlich lokaler Dienste erlauben? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
                 "confirmBlockNetwork": "Netzwerkzugriff für {name} sperren? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
                 "managedStatus": "Verwaltete Installation: {version}",
-                "renewDirectory": "Zugriff erneuern"
+                "renewDirectory": "Zugriff erneuern",
+                "presetsTitle": "Empfohlene Server",
+                "presetsSubtitle": "Geprüfte Voreinstellungen werden erst nach Ihrer Bestätigung installiert. Sie bleiben aus, bis Sie sie aktivieren.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Sucht die Dokumentation eines öffentlichen Repositorys.",
+                "presetInstall": "Installieren",
+                "presetInstalledDisabled": "Installiert und ausgeschaltet",
+                "presetReady": "Bereit"
             }
         },
         "archive": {

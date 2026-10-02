@@ -70,6 +70,7 @@ mod mcp_client_http_transport;
 mod mcp_client_install;
 mod mcp_client_install_paths;
 mod mcp_client_oauth;
+mod mcp_client_presets;
 pub mod mcp_client_protocol;
 mod mcp_client_routing;
 mod mcp_client_sandbox;
@@ -20230,6 +20231,8 @@ pub fn run() {
             mcp_client_install::mcp_client_install_manifests,
             mcp_client_install::mcp_client_install_server,
             mcp_client_install::mcp_client_install_cancel,
+            mcp_client_presets::mcp_client_presets_list,
+            mcp_client_presets::mcp_client_preset_install_http,
             mcp_client_http_commands::mcp_client_http_list_servers,
             mcp_client_http_commands::mcp_client_http_upsert_server,
             mcp_client_http_commands::mcp_client_http_remove_server,

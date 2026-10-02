@@ -279,6 +279,42 @@ fn apply_bearer(
     save(conn, root_key, user_id, &configs)
 }
 
+/// Install one reviewed HTTPS preset, disabled, with no caller-supplied endpoint.
+pub(crate) fn install_disabled_endpoint(
+    app: &AppHandle,
+    id: &str,
+    endpoint: &str,
+) -> Result<(), &'static str> {
+    let server_id = id.to_string();
+    let id = id.to_string();
+    let endpoint = endpoint.to_string();
+    write_catalog(
+        app,
+        &server_id,
+        move |conn, root_key, user_id, stdio_ids| {
+            if load(conn, root_key, user_id)?
+                .iter()
+                .any(|config| config.id == id)
+            {
+                return Err("MCP_INSTALL_EXISTS");
+            }
+            apply_upsert(
+                conn,
+                root_key,
+                user_id,
+                stdio_ids,
+                McpHttpServerInput {
+                    id,
+                    endpoint,
+                    auth: McpHttpAuthInput::None {},
+                    enabled: false,
+                    expected_revision: 0,
+                },
+            )
+        },
+    )
+}
+
 /// Runs one catalog write: Immediate transaction before the read, pending and
 /// in-flight attempts for the binding cancelled before and after the commit.
 fn write_catalog(

@@ -3109,12 +3109,19 @@
                 "noDirectories": "Sense accés a directoris.",
                 "revokeDirectory": "Revoca l’accés",
                 "confirmRevokeDirectory": "Vols revocar l’accés a {path}? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
-                "networkAccess": "Permet l’accés a la xarxa (tots els hosts)",
+                "networkAccess": "Permet l'accés a la xarxa (tots els amfitrions i serveis locals)",
                 "networkBlocked": "L’accés a la xarxa està bloquejat.",
                 "confirmNetwork": "Vols permetre que {name} accedeixi a la xarxa, inclosos els serveis locals? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
                 "confirmBlockNetwork": "Vols bloquejar l’accés a la xarxa de {name}? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
                 "managedStatus": "Instal·lació gestionada: {version}",
-                "renewDirectory": "Renova l’accés"
+                "renewDirectory": "Renova l’accés",
+                "presetsTitle": "Servidors recomanats",
+                "presetsSubtitle": "Els predefinits revisats només s'instal·len després de confirmar. Es queden desactivats fins que els activeu.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Consulta la documentació d'un repositori públic.",
+                "presetInstall": "Instal·la",
+                "presetInstalledDisabled": "Instal·lat i desactivat",
+                "presetReady": "A punt"
             }
         },
         "archive": {

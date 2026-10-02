@@ -3109,12 +3109,19 @@
                 "noDirectories": "Ez dago direktorioetarako sarbiderik.",
                 "revokeDirectory": "Kendu sarbidea",
                 "confirmRevokeDirectory": "{path} biderako sarbidea kendu? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
-                "networkAccess": "Baimendu sarerako sarbidea (ostalari guztiak)",
+                "networkAccess": "Baimendu sareko sarbidea (ostalari guztiak eta tokiko zerbitzuak)",
                 "networkBlocked": "Sarerako sarbidea blokeatuta dago.",
                 "confirmNetwork": "{name} zerbitzariari sarerako sarbidea baimendu, tokiko zerbitzuak barne? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
                 "confirmBlockNetwork": "{name} zerbitzariaren sarerako sarbidea blokeatu? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
                 "managedStatus": "Kudeatutako instalazioa: {version}",
-                "renewDirectory": "Berritu sarbidea"
+                "renewDirectory": "Berritu sarbidea",
+                "presetsTitle": "Gomendatutako zerbitzariak",
+                "presetsSubtitle": "Berrikusitako aurrezarpenak baieztatu ondoren bakarrik instalatzen dira. Itzalita geratzen dira zuk gaitzen dituzun arte.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Biltegi publiko baten dokumentazioa bilatzen du.",
+                "presetInstall": "Instalatu",
+                "presetInstalledDisabled": "Instalatuta eta itzalita",
+                "presetReady": "Prest"
             }
         },
         "archive": {

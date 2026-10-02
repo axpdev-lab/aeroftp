@@ -3109,12 +3109,19 @@
                 "noDirectories": "निर्देशिकाओं की पहुँच नहीं है।",
                 "revokeDirectory": "पहुँच वापस लें",
                 "confirmRevokeDirectory": "{path} की पहुँच वापस लें? पिछले टूल अनुमोदन अब मान्य नहीं रहेंगे।",
-                "networkAccess": "नेटवर्क पहुँच की अनुमति दें (सभी होस्ट)",
+                "networkAccess": "नेटवर्क पहुँच दें (सभी होस्ट और स्थानीय सेवाएँ)",
                 "networkBlocked": "नेटवर्क पहुँच अवरुद्ध है।",
                 "confirmNetwork": "{name} को स्थानीय सेवाओं सहित नेटवर्क की पहुँच दें? पिछले टूल अनुमोदन अब मान्य नहीं रहेंगे।",
                 "confirmBlockNetwork": "{name} के लिए नेटवर्क पहुँच अवरुद्ध करें? पिछले टूल अनुमोदन अब मान्य नहीं रहेंगे।",
                 "managedStatus": "प्रबंधित स्थापना: {version}",
-                "renewDirectory": "पहुँच नवीनीकृत करें"
+                "renewDirectory": "पहुँच नवीनीकृत करें",
+                "presetsTitle": "अनुशंसित सर्वर",
+                "presetsSubtitle": "समीक्षित प्रीसेट केवल पुष्टि के बाद इंस्टॉल होते हैं। चालू करने तक वे बंद रहते हैं।",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "सार्वजनिक रिपॉज़िटरी का दस्तावेज़ देखता है।",
+                "presetInstall": "इंस्टॉल करें",
+                "presetInstalledDisabled": "इंस्टॉल है और बंद है",
+                "presetReady": "तैयार"
             }
         },
         "archive": {

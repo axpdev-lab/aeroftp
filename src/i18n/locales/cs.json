@@ -3109,12 +3109,19 @@
                 "noDirectories": "Žádný přístup k adresářům.",
                 "revokeDirectory": "Odebrat přístup",
                 "confirmRevokeDirectory": "Odebrat přístup k {path}? Předchozí schválení nástrojů již nebudou platná.",
-                "networkAccess": "Povolit síťový přístup (všichni hostitelé)",
+                "networkAccess": "Povolit přístup k síti (všichni hostitelé a místní služby)",
                 "networkBlocked": "Síťový přístup je blokován.",
                 "confirmNetwork": "Povolit serveru {name} přístup k síti včetně místních služeb? Předchozí schválení nástrojů již nebudou platná.",
                 "confirmBlockNetwork": "Blokovat síťový přístup serveru {name}? Předchozí schválení nástrojů již nebudou platná.",
                 "managedStatus": "Spravovaná instalace: {version}",
-                "renewDirectory": "Obnovit přístup"
+                "renewDirectory": "Obnovit přístup",
+                "presetsTitle": "Doporučené servery",
+                "presetsSubtitle": "Zkontrolované předvolby se nainstalují až po potvrzení. Zůstanou vypnuté, dokud je nezapnete.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Vyhledá dokumentaci veřejného úložiště.",
+                "presetInstall": "Instalovat",
+                "presetInstalledDisabled": "Nainstalováno a vypnuto",
+                "presetReady": "Připraveno"
             }
         },
         "archive": {

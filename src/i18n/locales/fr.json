@@ -3109,12 +3109,19 @@
                 "noDirectories": "Aucun accès aux dossiers.",
                 "revokeDirectory": "Révoquer l’accès",
                 "confirmRevokeDirectory": "Révoquer l’accès à {path} ? Les autorisations précédentes des outils ne seront plus valides.",
-                "networkAccess": "Autoriser l’accès réseau (tous les hôtes)",
+                "networkAccess": "Autoriser l'accès au réseau (tous les hôtes et services locaux)",
                 "networkBlocked": "L’accès réseau est bloqué.",
                 "confirmNetwork": "Autoriser {name} à accéder au réseau, y compris aux services locaux ? Les autorisations précédentes des outils ne seront plus valides.",
                 "confirmBlockNetwork": "Bloquer l’accès réseau de {name} ? Les autorisations précédentes des outils ne seront plus valides.",
                 "managedStatus": "Installation gérée : {version}",
-                "renewDirectory": "Renouveler l’accès"
+                "renewDirectory": "Renouveler l’accès",
+                "presetsTitle": "Serveurs recommandés",
+                "presetsSubtitle": "Les préréglages vérifiés ne s'installent qu'après confirmation. Ils restent désactivés jusqu'à ce que vous les activiez.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Consulte la documentation d'un dépôt public.",
+                "presetInstall": "Installer",
+                "presetInstalledDisabled": "Installé et désactivé",
+                "presetReady": "Prêt"
             }
         },
         "archive": {

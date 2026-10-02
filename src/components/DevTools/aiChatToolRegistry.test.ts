@@ -135,8 +135,24 @@ describe('untrusted MCP registry snapshot', () => {
             { ...base, properties: { path: { type: 'string', description: 'x'.repeat(8192) } } },
             { ...base, properties: { path: { type: 'array', items: { type: 'string', extra: true } } } },
             { ...base, description: 'x'.repeat(8192) },
+            { ...base, properties: { path: { type: 'integer', minimum: 0, exclusiveMinimum: 1 } } },
             { ...base, properties: { path: { type: 'array', items: { type: 'array', items: { type: 'string' } } } } },
         ]) expect(schema(invalid)).toBe(false);
+    });
+
+    it('keeps string lengths, exclusive bounds and wrapped descriptions', () => {
+        const server = mcp('fetch', 'fetch');
+        server.tools[0].description = 'Fetches a URL.\nThe page is read only.';
+        server.tools[0].inputSchema = { type: 'object', properties: {
+            url: { type: 'string', minLength: 1, maxLength: 8, description: 'URL to fetch' },
+            max_length: { type: 'integer', exclusiveMinimum: 0, exclusiveMaximum: 10, default: 5 },
+        }, required: ['url'], additionalProperties: false };
+        const entry = buildToolRegistry([], [], [server]).find(tool => tool.source.kind === 'mcp');
+        expect(entry?.tool.description).toContain('\n');
+        expect(toJSONSchema(entry!.tool).properties).toMatchObject({
+            url: { minLength: 1, maxLength: 8 },
+            max_length: { exclusiveMinimum: 0, exclusiveMaximum: 10 },
+        });
     });
 
     it('exposes supported string arrays without admitting nested arrays', () => {

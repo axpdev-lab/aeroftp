@@ -10,6 +10,7 @@ const ERROR_KEYS: Record<string, string> = {
     MCP_PERMISSION_COMMAND_REQUIRED: 'ai.mcpClient.errors.permissionCommand',
     MCP_NETWORK_UNDECLARED: 'ai.mcpClient.networkBlocked',
     MCP_INSTALL_UNKNOWN: 'ai.mcpClient.errors.installInvalid',
+    MCP_PRESET_UNKNOWN: 'ai.mcpClient.errors.installInvalid',
     MCP_INSTALL_INVALID: 'ai.mcpClient.errors.installInvalid',
     MCP_INSTALL_INTEGRITY: 'ai.mcpClient.errors.installIntegrity',
     MCP_INSTALL_ARCHIVE: 'ai.mcpClient.errors.installArchive',

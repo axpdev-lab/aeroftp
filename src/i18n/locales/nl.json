@@ -3109,12 +3109,19 @@
                 "noDirectories": "Geen toegang tot mappen.",
                 "revokeDirectory": "Toegang intrekken",
                 "confirmRevokeDirectory": "Toegang tot {path} intrekken? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
-                "networkAccess": "Netwerktoegang toestaan (alle hosts)",
+                "networkAccess": "Netwerktoegang toestaan (alle hosts en lokale diensten)",
                 "networkBlocked": "Netwerktoegang is geblokkeerd.",
                 "confirmNetwork": "{name} toegang geven tot het netwerk, inclusief lokale diensten? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
                 "confirmBlockNetwork": "Netwerktoegang voor {name} blokkeren? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
                 "managedStatus": "Beheerde installatie: {version}",
-                "renewDirectory": "Toegang vernieuwen"
+                "renewDirectory": "Toegang vernieuwen",
+                "presetsTitle": "Aanbevolen servers",
+                "presetsSubtitle": "Beoordeelde presets worden pas geïnstalleerd nadat u bevestigt. Ze blijven uit tot u ze inschakelt.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Zoek documentatie van een openbare repository.",
+                "presetInstall": "Installeren",
+                "presetInstalledDisabled": "Geïnstalleerd en uitgeschakeld",
+                "presetReady": "Gereed"
             }
         },
         "archive": {

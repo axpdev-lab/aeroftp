@@ -3109,12 +3109,19 @@
                 "noDirectories": "Nema pristupa mapama.",
                 "revokeDirectory": "Opozovi pristup",
                 "confirmRevokeDirectory": "Opozvati pristup mapi {path}? Prethodna odobrenja alata više neće biti valjana.",
-                "networkAccess": "Dopusti mrežni pristup (svi hostovi)",
+                "networkAccess": "Dopusti pristup mreži (svi hostovi i lokalne usluge)",
                 "networkBlocked": "Mrežni pristup je blokiran.",
                 "confirmNetwork": "Dopustiti poslužitelju {name} pristup mreži, uključujući lokalne usluge? Prethodna odobrenja alata više neće biti valjana.",
                 "confirmBlockNetwork": "Blokirati mrežni pristup poslužitelju {name}? Prethodna odobrenja alata više neće biti valjana.",
                 "managedStatus": "Upravljana instalacija: {version}",
-                "renewDirectory": "Obnovi pristup"
+                "renewDirectory": "Obnovi pristup",
+                "presetsTitle": "Preporučeni poslužitelji",
+                "presetsSubtitle": "Pregledani predlošci instaliraju se tek nakon potvrde. Ostaju isključeni dok ih ne uključite.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Traži dokumentaciju javnog repozitorija.",
+                "presetInstall": "Instaliraj",
+                "presetInstalledDisabled": "Instalirano i isključeno",
+                "presetReady": "Spremno"
             }
         },
         "archive": {

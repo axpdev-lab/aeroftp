@@ -3109,12 +3109,19 @@
                 "noDirectories": "Ingen mappeadgang.",
                 "revokeDirectory": "Tilbagekald adgang",
                 "confirmRevokeDirectory": "Tilbagekalde adgang til {path}? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
-                "networkAccess": "Tillad netværksadgang (alle værter)",
+                "networkAccess": "Tillad netværksadgang (alle værter og lokale tjenester)",
                 "networkBlocked": "Netværksadgang er blokeret.",
                 "confirmNetwork": "Tillade {name} at tilgå netværket, herunder lokale tjenester? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
                 "confirmBlockNetwork": "Blokere netværksadgang for {name}? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
                 "managedStatus": "Administreret installation: {version}",
-                "renewDirectory": "Forny adgang"
+                "renewDirectory": "Forny adgang",
+                "presetsTitle": "Anbefalede servere",
+                "presetsSubtitle": "Gennemgåede forudindstillinger installeres kun efter din bekræftelse. De forbliver slået fra, indtil du aktiverer dem.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Slår dokumentation op for et offentligt lager.",
+                "presetInstall": "Installer",
+                "presetInstalledDisabled": "Installeret og slået fra",
+                "presetReady": "Klar"
             }
         },
         "archive": {

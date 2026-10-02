@@ -3109,12 +3109,19 @@
                 "noDirectories": "Nincs könyvtár-hozzáférés.",
                 "revokeDirectory": "Hozzáférés visszavonása",
                 "confirmRevokeDirectory": "Visszavonja a(z) {path} hozzáférését? A korábbi eszközjóváhagyások érvényüket vesztik.",
-                "networkAccess": "Hálózati hozzáférés engedélyezése (minden gép)",
+                "networkAccess": "Hálózati hozzáférés engedélyezése (minden gép és helyi szolgáltatás)",
                 "networkBlocked": "A hálózati hozzáférés le van tiltva.",
                 "confirmNetwork": "Engedélyezi a(z) {name} hálózati hozzáférését, a helyi szolgáltatásokat is beleértve? A korábbi eszközjóváhagyások érvényüket vesztik.",
                 "confirmBlockNetwork": "Letiltja a(z) {name} hálózati hozzáférését? A korábbi eszközjóváhagyások érvényüket vesztik.",
                 "managedStatus": "Felügyelt telepítés: {version}",
-                "renewDirectory": "Hozzáférés megújítása"
+                "renewDirectory": "Hozzáférés megújítása",
+                "presetsTitle": "Ajánlott kiszolgálók",
+                "presetsSubtitle": "Az ellenőrzött előbeállítások csak a megerősítés után települnek. Kikapcsolva maradnak, amíg be nem kapcsolod őket.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Dokumentációt keres egy nyilvános tárolóhoz.",
+                "presetInstall": "Telepítés",
+                "presetInstalledDisabled": "Telepítve és kikapcsolva",
+                "presetReady": "Kész"
             }
         },
         "archive": {

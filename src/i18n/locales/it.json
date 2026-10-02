@@ -3305,12 +3305,19 @@
                 "noDirectories": "Nessun accesso alle directory.",
                 "revokeDirectory": "Revoca accesso",
                 "confirmRevokeDirectory": "Revocare l’accesso a {path}? Le precedenti approvazioni degli strumenti non saranno più valide.",
-                "networkAccess": "Consenti accesso alla rete (tutti gli host)",
+                "networkAccess": "Consenti l'accesso alla rete (tutti gli host e i servizi locali)",
                 "networkBlocked": "L’accesso alla rete è bloccato.",
                 "confirmNetwork": "Consentire a {name} di accedere alla rete, inclusi i servizi locali? Le precedenti approvazioni degli strumenti non saranno più valide.",
                 "confirmBlockNetwork": "Bloccare l’accesso alla rete per {name}? Le precedenti approvazioni degli strumenti non saranno più valide.",
                 "managedStatus": "Installazione gestita: {version}",
-                "renewDirectory": "Rinnova accesso"
+                "renewDirectory": "Rinnova accesso",
+                "presetsTitle": "Server consigliati",
+                "presetsSubtitle": "I preset verificati si installano solo dopo la conferma. Restano disattivati finché non li attivi.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Cerca la documentazione di un repository pubblico.",
+                "presetInstall": "Installa",
+                "presetInstalledDisabled": "Installato e disattivato",
+                "presetReady": "Pronto"
             }
         },
         "archive": {

@@ -3109,12 +3109,19 @@
                 "noDirectories": "Ei hakemistojen käyttöoikeutta.",
                 "revokeDirectory": "Peru käyttöoikeus",
                 "confirmRevokeDirectory": "Perutaanko hakemiston {path} käyttöoikeus? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
-                "networkAccess": "Salli verkkoyhteydet (kaikki isännät)",
+                "networkAccess": "Salli verkkoyhteys (kaikki isännät ja paikalliset palvelut)",
                 "networkBlocked": "Verkkoyhteydet on estetty.",
                 "confirmNetwork": "Sallitaanko palvelimelle {name} verkkoyhteydet, myös paikallisiin palveluihin? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
                 "confirmBlockNetwork": "Estetäänkö palvelimen {name} verkkoyhteydet? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
                 "managedStatus": "Hallittu asennus: {version}",
-                "renewDirectory": "Uusi käyttöoikeus"
+                "renewDirectory": "Uusi käyttöoikeus",
+                "presetsTitle": "Suositellut palvelimet",
+                "presetsSubtitle": "Tarkistetut esiasetukset asennetaan vasta vahvistuksen jälkeen. Ne pysyvät pois päältä, kunnes otat ne käyttöön.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Hakee julkisen tietovaraston dokumentaation.",
+                "presetInstall": "Asenna",
+                "presetInstalledDisabled": "Asennettu ja pois päältä",
+                "presetReady": "Valmis"
             }
         },
         "archive": {

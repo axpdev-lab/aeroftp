@@ -3109,12 +3109,19 @@
                 "noDirectories": "Sin acceso a directorios.",
                 "revokeDirectory": "Revocar acceso",
                 "confirmRevokeDirectory": "¿Revocar el acceso a {path}? Las aprobaciones anteriores de las herramientas dejarán de ser válidas.",
-                "networkAccess": "Permitir acceso a la red (todos los hosts)",
+                "networkAccess": "Permitir el acceso a la red (todos los hosts y servicios locales)",
                 "networkBlocked": "El acceso a la red está bloqueado.",
                 "confirmNetwork": "¿Permitir que {name} acceda a la red, incluidos los servicios locales? Las aprobaciones anteriores de las herramientas dejarán de ser válidas.",
                 "confirmBlockNetwork": "¿Bloquear el acceso a la red de {name}? Las aprobaciones anteriores de las herramientas dejarán de ser válidas.",
                 "managedStatus": "Instalación gestionada: {version}",
-                "renewDirectory": "Renovar acceso"
+                "renewDirectory": "Renovar acceso",
+                "presetsTitle": "Servidores recomendados",
+                "presetsSubtitle": "Los preajustes revisados solo se instalan tras confirmar. Siguen desactivados hasta que los actives.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Consulta la documentación de un repositorio público.",
+                "presetInstall": "Instalar",
+                "presetInstalledDisabled": "Instalado y desactivado",
+                "presetReady": "Listo"
             }
         },
         "archive": {

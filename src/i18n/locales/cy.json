@@ -3109,12 +3109,19 @@
                 "noDirectories": "Dim mynediad at gyfeiriaduron.",
                 "revokeDirectory": "Diddymu mynediad",
                 "confirmRevokeDirectory": "Diddymu mynediad at {path}? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
-                "networkAccess": "Caniatáu mynediad rhwydwaith (pob gwesteiwr)",
+                "networkAccess": "Caniatáu mynediad rhwydwaith (pob gwesteiwr a gwasanaeth lleol)",
                 "networkBlocked": "Mae mynediad rhwydwaith wedi’i rwystro.",
                 "confirmNetwork": "Caniatáu i {name} gyrchu’r rhwydwaith, gan gynnwys gwasanaethau lleol? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
                 "confirmBlockNetwork": "Rhwystro mynediad rhwydwaith i {name}? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
                 "managedStatus": "Gosodiad wedi’i reoli: {version}",
-                "renewDirectory": "Adnewyddu mynediad"
+                "renewDirectory": "Adnewyddu mynediad",
+                "presetsTitle": "Gweinyddion a argymhellir",
+                "presetsSubtitle": "Mae rhagosodiadau wedi'u hadolygu yn gosod dim ond ar ôl i chi gadarnhau. Maent yn aros wedi'u diffodd nes i chi eu galluogi.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Chwilio am ddogfennaeth storfa gyhoeddus.",
+                "presetInstall": "Gosod",
+                "presetInstalledDisabled": "Wedi'i osod ac wedi'i ddiffodd",
+                "presetReady": "Yn barod"
             }
         },
         "archive": {

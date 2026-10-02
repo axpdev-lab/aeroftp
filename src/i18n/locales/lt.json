@@ -3109,12 +3109,19 @@
                 "noDirectories": "Prieigos prie katalogų nėra.",
                 "revokeDirectory": "Atšaukti prieigą",
                 "confirmRevokeDirectory": "Atšaukti prieigą prie {path}? Ankstesni įrankių patvirtinimai nebegalios.",
-                "networkAccess": "Leisti tinklo prieigą (visi pagrindiniai kompiuteriai)",
+                "networkAccess": "Leisti prieigą prie tinklo (visi kompiuteriai ir vietinės paslaugos)",
                 "networkBlocked": "Tinklo prieiga užblokuota.",
                 "confirmNetwork": "Leisti {name} prieigą prie tinklo, įskaitant vietines paslaugas? Ankstesni įrankių patvirtinimai nebegalios.",
                 "confirmBlockNetwork": "Užblokuoti {name} tinklo prieigą? Ankstesni įrankių patvirtinimai nebegalios.",
                 "managedStatus": "Valdomas diegimas: {version}",
-                "renewDirectory": "Atnaujinti prieigą"
+                "renewDirectory": "Atnaujinti prieigą",
+                "presetsTitle": "Rekomenduojami serveriai",
+                "presetsSubtitle": "Peržiūrėti rinkiniai diegiami tik patvirtinus. Jie lieka išjungti, kol jų neįjungiate.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Ieškoti viešos saugyklos dokumentacijos.",
+                "presetInstall": "Diegti",
+                "presetInstalledDisabled": "Įdiegta ir išjungta",
+                "presetReady": "Paruošta"
             }
         },
         "archive": {

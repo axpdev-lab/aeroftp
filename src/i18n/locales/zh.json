@@ -3109,12 +3109,19 @@
                 "noDirectories": "无目录访问权限。",
                 "revokeDirectory": "撤销访问权限",
                 "confirmRevokeDirectory": "撤销对 {path} 的访问权限吗？此前的工具批准将失效。",
-                "networkAccess": "允许网络访问（所有主机）",
+                "networkAccess": "允许网络访问（所有主机和本地服务）",
                 "networkBlocked": "网络访问已被阻止。",
                 "confirmNetwork": "允许 {name} 访问网络，包括本地服务吗？此前的工具批准将失效。",
                 "confirmBlockNetwork": "阻止 {name} 的网络访问吗？此前的工具批准将失效。",
                 "managedStatus": "托管安装：{version}",
-                "renewDirectory": "续期访问权限"
+                "renewDirectory": "续期访问权限",
+                "presetsTitle": "推荐的服务器",
+                "presetsSubtitle": "已审核的预设仅在你确认后安装。启用前保持关闭。",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "查找公开仓库的文档。",
+                "presetInstall": "安装",
+                "presetInstalledDisabled": "已安装并已关闭",
+                "presetReady": "就绪"
             }
         },
         "archive": {

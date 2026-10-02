@@ -3109,12 +3109,19 @@
                 "noDirectories": "Enginn aðgangur að skráasöfnum.",
                 "revokeDirectory": "Afturkalla aðgang",
                 "confirmRevokeDirectory": "Afturkalla aðgang að {path}? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
-                "networkAccess": "Leyfa netaðgang (allir hýslar)",
+                "networkAccess": "Leyfa netaðgang (allir hýslar og staðbundin þjónusta)",
                 "networkBlocked": "Netaðgangur er lokaður.",
                 "confirmNetwork": "Leyfa {name} netaðgang, þar á meðal að staðbundinni þjónustu? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
                 "confirmBlockNetwork": "Loka netaðgangi fyrir {name}? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
                 "managedStatus": "Stýrð uppsetning: {version}",
-                "renewDirectory": "Endurnýja aðgang"
+                "renewDirectory": "Endurnýja aðgang",
+                "presetsTitle": "Ráðlagðir netþjónar",
+                "presetsSubtitle": "Yfirfarnar forstillingar setjast upp aðeins eftir að þú staðfestir. Þær haldast óvirkar þar til þú virkjar þær.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Flettir upp skjölun fyrir opna geymslu.",
+                "presetInstall": "Setja upp",
+                "presetInstalledDisabled": "Uppsett og slökkt",
+                "presetReady": "Tilbúið"
             }
         },
         "archive": {

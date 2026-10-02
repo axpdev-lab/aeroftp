@@ -3109,12 +3109,19 @@
                 "noDirectories": "Kataloogidele puudub juurdepääs.",
                 "revokeDirectory": "Tühista juurdepääs",
                 "confirmRevokeDirectory": "Kas tühistada juurdepääs kataloogile {path}? Varasemad tööriistade kinnitused ei kehti enam.",
-                "networkAccess": "Luba võrgujuurdepääs (kõik hostid)",
+                "networkAccess": "Luba võrgujuurdepääs (kõik hostid ja kohalikud teenused)",
                 "networkBlocked": "Võrgujuurdepääs on blokeeritud.",
                 "confirmNetwork": "Kas lubada serverile {name} võrgujuurdepääs, sealhulgas kohalikele teenustele? Varasemad tööriistade kinnitused ei kehti enam.",
                 "confirmBlockNetwork": "Kas blokeerida serveri {name} võrgujuurdepääs? Varasemad tööriistade kinnitused ei kehti enam.",
                 "managedStatus": "Hallatud paigaldus: {version}",
-                "renewDirectory": "Uuenda juurdepääsu"
+                "renewDirectory": "Uuenda juurdepääsu",
+                "presetsTitle": "Soovitatud serverid",
+                "presetsSubtitle": "Ülevaadatud eelseaded installitakse alles pärast kinnitamist. Need jäävad väljas, kuni lülitate need sisse.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Otsib avaliku hoidla dokumentatsiooni.",
+                "presetInstall": "Installi",
+                "presetInstalledDisabled": "Installitud ja välja lülitatud",
+                "presetReady": "Valmis"
             }
         },
         "archive": {

@@ -3109,12 +3109,19 @@
                 "noDirectories": "Ingen katalogåtkomst.",
                 "revokeDirectory": "Återkalla åtkomst",
                 "confirmRevokeDirectory": "Återkalla åtkomst till {path}? Tidigare verktygsgodkännanden är då inte längre giltiga.",
-                "networkAccess": "Tillåt nätverksåtkomst (alla värdar)",
+                "networkAccess": "Tillåt nätverksåtkomst (alla värdar och lokala tjänster)",
                 "networkBlocked": "Nätverksåtkomst är blockerad.",
                 "confirmNetwork": "Tillåta {name} att komma åt nätverket, inklusive lokala tjänster? Tidigare verktygsgodkännanden är då inte längre giltiga.",
                 "confirmBlockNetwork": "Blockera nätverksåtkomst för {name}? Tidigare verktygsgodkännanden är då inte längre giltiga.",
                 "managedStatus": "Hanterad installation: {version}",
-                "renewDirectory": "Förnya åtkomst"
+                "renewDirectory": "Förnya åtkomst",
+                "presetsTitle": "Rekommenderade servrar",
+                "presetsSubtitle": "Granskade förval installeras först efter att du bekräftar. De är av tills du slår på dem.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Slå upp dokumentation för ett offentligt arkiv.",
+                "presetInstall": "Installera",
+                "presetInstalledDisabled": "Installerad och avstängd",
+                "presetReady": "Redo"
             }
         },
         "archive": {

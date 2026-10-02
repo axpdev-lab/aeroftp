@@ -3109,12 +3109,19 @@
                 "noDirectories": "Không có quyền truy cập thư mục.",
                 "revokeDirectory": "Thu hồi quyền truy cập",
                 "confirmRevokeDirectory": "Thu hồi quyền truy cập {path}? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
-                "networkAccess": "Cho phép truy cập mạng (mọi máy chủ)",
+                "networkAccess": "Cho phép truy cập mạng (mọi máy chủ và dịch vụ cục bộ)",
                 "networkBlocked": "Truy cập mạng bị chặn.",
                 "confirmNetwork": "Cho phép {name} truy cập mạng, bao gồm dịch vụ cục bộ? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
                 "confirmBlockNetwork": "Chặn truy cập mạng cho {name}? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
                 "managedStatus": "Bản cài đặt được quản lý: {version}",
-                "renewDirectory": "Gia hạn quyền truy cập"
+                "renewDirectory": "Gia hạn quyền truy cập",
+                "presetsTitle": "Máy chủ được đề xuất",
+                "presetsSubtitle": "Gói đã xem xét chỉ được cài sau khi bạn xác nhận. Chúng tắt cho đến khi bạn bật.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Tra cứu tài liệu của kho công khai.",
+                "presetInstall": "Cài đặt",
+                "presetInstalledDisabled": "Đã cài và đang tắt",
+                "presetReady": "Sẵn sàng"
             }
         },
         "archive": {

@@ -3109,12 +3109,19 @@
                 "noDirectories": "Dizin erişimi yok.",
                 "revokeDirectory": "Erişimi iptal et",
                 "confirmRevokeDirectory": "{path} erişimi iptal edilsin mi? Önceki araç onayları artık geçerli olmayacak.",
-                "networkAccess": "Ağ erişimine izin ver (tüm ana bilgisayarlar)",
+                "networkAccess": "Ağ erişimine izin ver (tüm ana makineler ve yerel hizmetler)",
                 "networkBlocked": "Ağ erişimi engelleniyor.",
                 "confirmNetwork": "{name} için yerel hizmetler dahil ağa erişim izni verilsin mi? Önceki araç onayları artık geçerli olmayacak.",
                 "confirmBlockNetwork": "{name} için ağ erişimi engellensin mi? Önceki araç onayları artık geçerli olmayacak.",
                 "managedStatus": "Yönetilen kurulum: {version}",
-                "renewDirectory": "Erişimi yenile"
+                "renewDirectory": "Erişimi yenile",
+                "presetsTitle": "Önerilen sunucular",
+                "presetsSubtitle": "İncelenmiş hazır ayarlar yalnızca siz onayladıktan sonra kurulur. Siz açana kadar kapalı kalır.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Herkese açık bir deponun belgelerine bak.",
+                "presetInstall": "Kur",
+                "presetInstalledDisabled": "Kuruldu ve kapalı",
+                "presetReady": "Hazır"
             }
         },
         "archive": {

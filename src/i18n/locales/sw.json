@@ -3109,12 +3109,19 @@
                 "noDirectories": "Hakuna ufikiaji wa saraka.",
                 "revokeDirectory": "Ondoa ruhusa",
                 "confirmRevokeDirectory": "Ondoa ruhusa ya kufikia {path}? Idhini za awali za zana hazitakuwa halali tena.",
-                "networkAccess": "Ruhusu ufikiaji wa mtandao (wenyeji wote)",
+                "networkAccess": "Ruhusu ufikiaji wa mtandao (seva zote na huduma za ndani)",
                 "networkBlocked": "Ufikiaji wa mtandao umezuiwa.",
                 "confirmNetwork": "Ruhusu {name} kufikia mtandao, pamoja na huduma za ndani? Idhini za awali za zana hazitakuwa halali tena.",
                 "confirmBlockNetwork": "Zuia ufikiaji wa mtandao wa {name}? Idhini za awali za zana hazitakuwa halali tena.",
                 "managedStatus": "Usakinishaji unaosimamiwa: {version}",
-                "renewDirectory": "Sasisha ruhusa"
+                "renewDirectory": "Sasisha ruhusa",
+                "presetsTitle": "Seva zinazopendekezwa",
+                "presetsSubtitle": "Mipangilio iliyokaguliwa husakinishwa tu baada ya kuthibitisha. Hubaki imezimwa hadi uwashe.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Tafuta nyaraka za hazina ya umma.",
+                "presetInstall": "Sakinisha",
+                "presetInstalledDisabled": "Imesakinishwa na imezimwa",
+                "presetReady": "Tayari"
             }
         },
         "archive": {

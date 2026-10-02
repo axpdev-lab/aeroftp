@@ -3109,12 +3109,19 @@
                 "noDirectories": "Brak dostępu do katalogów.",
                 "revokeDirectory": "Odbierz dostęp",
                 "confirmRevokeDirectory": "Odebrać dostęp do {path}? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
-                "networkAccess": "Zezwalaj na dostęp do sieci (wszystkie hosty)",
+                "networkAccess": "Zezwól na dostęp do sieci (wszystkie hosty i usługi lokalne)",
                 "networkBlocked": "Dostęp do sieci jest zablokowany.",
                 "confirmNetwork": "Zezwolić {name} na dostęp do sieci, w tym usług lokalnych? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
                 "confirmBlockNetwork": "Zablokować dostęp do sieci dla {name}? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
                 "managedStatus": "Zarządzana instalacja: {version}",
-                "renewDirectory": "Odnów dostęp"
+                "renewDirectory": "Odnów dostęp",
+                "presetsTitle": "Zalecane serwery",
+                "presetsSubtitle": "Sprawdzone zestawy instalują się dopiero po potwierdzeniu. Pozostają wyłączone, dopóki ich nie włączysz.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Wyszukaj dokumentację publicznego repozytorium.",
+                "presetInstall": "Zainstaluj",
+                "presetInstalledDisabled": "Zainstalowano i wyłączono",
+                "presetReady": "Gotowe"
             }
         },
         "archive": {

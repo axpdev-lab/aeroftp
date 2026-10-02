@@ -3109,12 +3109,19 @@
                 "noDirectories": "Nav piekļuves direktorijiem.",
                 "revokeDirectory": "Atsaukt piekļuvi",
                 "confirmRevokeDirectory": "Atsaukt piekļuvi direktorijam {path}? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
-                "networkAccess": "Atļaut piekļuvi tīklam (visi resursdatori)",
+                "networkAccess": "Atļaut tīkla piekļuvi (visi resursdatori un vietējie pakalpojumi)",
                 "networkBlocked": "Piekļuve tīklam ir bloķēta.",
                 "confirmNetwork": "Atļaut {name} piekļuvi tīklam, arī vietējiem pakalpojumiem? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
                 "confirmBlockNetwork": "Bloķēt {name} piekļuvi tīklam? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
                 "managedStatus": "Pārvaldīta instalācija: {version}",
-                "renewDirectory": "Atjaunot piekļuvi"
+                "renewDirectory": "Atjaunot piekļuvi",
+                "presetsTitle": "Ieteiktie serveri",
+                "presetsSubtitle": "Pārskatītās sagataves tiek instalētas tikai pēc apstiprinājuma. Tās paliek izslēgtas, līdz tās ieslēdzat.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Meklēt publiskas repozitorijas dokumentāciju.",
+                "presetInstall": "Instalēt",
+                "presetInstalledDisabled": "Instalēts un izslēgts",
+                "presetReady": "Gatavs"
             }
         },
         "archive": {

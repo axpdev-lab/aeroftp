@@ -3109,12 +3109,19 @@
                 "noDirectories": "Tiada akses direktori.",
                 "revokeDirectory": "Tarik balik akses",
                 "confirmRevokeDirectory": "Tarik balik akses kepada {path}? Kelulusan alat terdahulu tidak lagi sah.",
-                "networkAccess": "Benarkan akses rangkaian (semua hos)",
+                "networkAccess": "Benarkan akses rangkaian (semua hos dan perkhidmatan tempatan)",
                 "networkBlocked": "Akses rangkaian disekat.",
                 "confirmNetwork": "Benarkan {name} mengakses rangkaian, termasuk perkhidmatan setempat? Kelulusan alat terdahulu tidak lagi sah.",
                 "confirmBlockNetwork": "Sekat akses rangkaian untuk {name}? Kelulusan alat terdahulu tidak lagi sah.",
                 "managedStatus": "Pemasangan terurus: {version}",
-                "renewDirectory": "Perbaharui akses"
+                "renewDirectory": "Perbaharui akses",
+                "presetsTitle": "Pelayan disyorkan",
+                "presetsSubtitle": "Pratetap yang disemak dipasang hanya selepas anda sahkan. Ia kekal mati sehingga anda hidupkan.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Cari dokumentasi untuk repositori awam.",
+                "presetInstall": "Pasang",
+                "presetInstalledDisabled": "Dipasang dan dimatikan",
+                "presetReady": "Sedia"
             }
         },
         "archive": {

@@ -3109,12 +3109,19 @@
                 "noDirectories": "Ingen mappetilgang.",
                 "revokeDirectory": "Trekk tilbake tilgang",
                 "confirmRevokeDirectory": "Trekke tilbake tilgang til {path}? Tidligere verktøygodkjenninger vil ikke lenger være gyldige.",
-                "networkAccess": "Tillat nettverkstilgang (alle verter)",
+                "networkAccess": "Tillat nettverkstilgang (alle verter og lokale tjenester)",
                 "networkBlocked": "Nettverkstilgang er blokkert.",
                 "confirmNetwork": "Tillate {name} å få tilgang til nettverket, inkludert lokale tjenester? Tidligere verktøygodkjenninger vil ikke lenger være gyldige.",
                 "confirmBlockNetwork": "Blokkere nettverkstilgang for {name}? Tidligere verktøygodkjenninger vil ikke lenger være gyldige.",
                 "managedStatus": "Administrert installasjon: {version}",
-                "renewDirectory": "Forny tilgang"
+                "renewDirectory": "Forny tilgang",
+                "presetsTitle": "Anbefalte servere",
+                "presetsSubtitle": "Gjennomgåtte forhåndsvalg installeres bare etter at du bekrefter. De blir av til du slår dem på.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Slå opp dokumentasjon for et offentlig lager.",
+                "presetInstall": "Installer",
+                "presetInstalledDisabled": "Installert og slått av",
+                "presetReady": "Klar"
             }
         },
         "archive": {

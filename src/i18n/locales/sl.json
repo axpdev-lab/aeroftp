@@ -3109,12 +3109,19 @@
                 "noDirectories": "Ni dostopa do imenikov.",
                 "revokeDirectory": "Prekliči dostop",
                 "confirmRevokeDirectory": "Prekličem dostop do {path}? Prejšnje odobritve orodij ne bodo več veljavne.",
-                "networkAccess": "Dovoli dostop do omrežja (vsi gostitelji)",
+                "networkAccess": "Dovoli dostop do omrežja (vsi gostitelji in lokalne storitve)",
                 "networkBlocked": "Dostop do omrežja je blokiran.",
                 "confirmNetwork": "Dovolim strežniku {name} dostop do omrežja, vključno z lokalnimi storitvami? Prejšnje odobritve orodij ne bodo več veljavne.",
                 "confirmBlockNetwork": "Blokiram dostop do omrežja za {name}? Prejšnje odobritve orodij ne bodo več veljavne.",
                 "managedStatus": "Upravljana namestitev: {version}",
-                "renewDirectory": "Obnovi dostop"
+                "renewDirectory": "Obnovi dostop",
+                "presetsTitle": "Priporočeni strežniki",
+                "presetsSubtitle": "Pregledane prednastavitve se namestijo šele po potrditvi. Ostanejo izklopljene, dokler jih ne vklopite.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Poišči dokumentacijo javnega repozitorija.",
+                "presetInstall": "Namesti",
+                "presetInstalledDisabled": "Nameščeno in izklopljeno",
+                "presetReady": "Pripravljeno"
             }
         },
         "archive": {

@@ -3074,12 +3074,19 @@
                 "noDirectories": "ディレクトリへのアクセス権がありません。",
                 "revokeDirectory": "アクセス権を取り消す",
                 "confirmRevokeDirectory": "{path} へのアクセス権を取り消しますか？以前のツール承認は無効になります。",
-                "networkAccess": "ネットワークアクセスを許可（すべてのホスト）",
+                "networkAccess": "ネットワークアクセスを許可 (すべてのホストとローカルサービス)",
                 "networkBlocked": "ネットワークアクセスはブロックされています。",
                 "confirmNetwork": "{name} にローカルサービスを含むネットワークへのアクセスを許可しますか？以前のツール承認は無効になります。",
                 "confirmBlockNetwork": "{name} のネットワークアクセスをブロックしますか？以前のツール承認は無効になります。",
                 "managedStatus": "管理対象のインストール: {version}",
-                "renewDirectory": "アクセス権を更新"
+                "renewDirectory": "アクセス権を更新",
+                "presetsTitle": "おすすめのサーバー",
+                "presetsSubtitle": "確認済みのプリセットは、確認したあとだけインストールされます。有効にするまでオフのままです。",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "公開リポジトリのドキュメントを調べます。",
+                "presetInstall": "インストール",
+                "presetInstalledDisabled": "インストール済み、オフ",
+                "presetReady": "準備完了"
             }
         },
         "archive": {
