@@ -4787,7 +4787,14 @@
             "participants": "cyfranogwyr",
             "saving": "Yn cadw...",
             "saved": "Wedi'i gadw",
-            "saveNow": "Cadw nawr"
+            "saveNow": "Cadw nawr",
+            "noteType": "Math o nodyn",
+            "addTag": "Ychwanegu tag",
+            "newTag": "Tag newydd...",
+            "tagName": "Enw'r tag",
+            "removeTag": "Tynnu'r tag",
+            "manageTags": "Rheoli tagiau",
+            "deleteTagConfirm": "Dileu'r tag “{name}”? Mae'r nodiadau'n cadw eu testun."
         },
         "shareLinkModal": {
             "title": "Dolen Rhannu",

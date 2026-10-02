@@ -4787,7 +4787,14 @@
             "participants": "deltakere",
             "saving": "Lagrer...",
             "saved": "Lagret",
-            "saveNow": "Lagre nå"
+            "saveNow": "Lagre nå",
+            "noteType": "Notattype",
+            "addTag": "Legg til merkelapp",
+            "newTag": "Ny merkelapp...",
+            "tagName": "Navn på merkelapp",
+            "removeTag": "Fjern merkelapp",
+            "manageTags": "Administrer merkelapper",
+            "deleteTagConfirm": "Slette merkelappen «{name}»? Notater beholder teksten sin."
         },
         "shareLinkModal": {
             "title": "Delingslenke",

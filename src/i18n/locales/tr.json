@@ -4768,7 +4768,14 @@
             "participants": "katılımcılar",
             "saving": "Kaydediliyor...",
             "saved": "Kaydedildi",
-            "saveNow": "Şimdi kaydet"
+            "saveNow": "Şimdi kaydet",
+            "noteType": "Not türü",
+            "addTag": "Etiket ekle",
+            "newTag": "Yeni etiket...",
+            "tagName": "Etiket adı",
+            "removeTag": "Etiketi kaldır",
+            "manageTags": "Etiketleri yönet",
+            "deleteTagConfirm": "“{name}” etiketi silinsin mi? Notlar metinlerini korur."
         },
         "shareLinkModal": {
             "title": "Paylaşım bağlantısı",

@@ -4768,7 +4768,14 @@
             "participants": "dalyviai",
             "saving": "Saugoma...",
             "saved": "Išsaugota",
-            "saveNow": "Išsaugoti dabar"
+            "saveNow": "Išsaugoti dabar",
+            "noteType": "Užrašo tipas",
+            "addTag": "Pridėti žymą",
+            "newTag": "Nauja žyma...",
+            "tagName": "Žymos pavadinimas",
+            "removeTag": "Pašalinti žymą",
+            "manageTags": "Tvarkyti žymas",
+            "deleteTagConfirm": "Ištrinti žymą „{name}“? Užrašai išsaugo savo tekstą."
         },
         "shareLinkModal": {
             "title": "Bendrinimo nuoroda",

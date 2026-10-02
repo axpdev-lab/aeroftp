@@ -4768,7 +4768,14 @@
             "participants": "deltagere",
             "saving": "Gemmer...",
             "saved": "Gemt",
-            "saveNow": "Gem nu"
+            "saveNow": "Gem nu",
+            "noteType": "Notetype",
+            "addTag": "Tilføj tag",
+            "newTag": "Nyt tag...",
+            "tagName": "Tagnavn",
+            "removeTag": "Fjern tag",
+            "manageTags": "Administrer tags",
+            "deleteTagConfirm": "Slet tagget »{name}«? Noter beholder deres tekst."
         },
         "shareLinkModal": {
             "title": "Delingslink",

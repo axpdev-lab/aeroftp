@@ -4768,7 +4768,14 @@
             "participants": "deltagare",
             "saving": "Sparar...",
             "saved": "Sparat",
-            "saveNow": "Spara nu"
+            "saveNow": "Spara nu",
+            "noteType": "Anteckningstyp",
+            "addTag": "Lägg till tagg",
+            "newTag": "Ny tagg...",
+            "tagName": "Taggnamn",
+            "removeTag": "Ta bort tagg",
+            "manageTags": "Hantera taggar",
+            "deleteTagConfirm": "Ta bort taggen ”{name}”? Anteckningarna behåller sin text."
         },
         "shareLinkModal": {
             "title": "Delningslänk",

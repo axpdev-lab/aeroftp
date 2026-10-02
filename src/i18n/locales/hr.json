@@ -4768,7 +4768,14 @@
             "participants": "sudionici",
             "saving": "Spremanje...",
             "saved": "Spremljeno",
-            "saveNow": "Spremi sada"
+            "saveNow": "Spremi sada",
+            "noteType": "Vrsta bilješke",
+            "addTag": "Dodaj oznaku",
+            "newTag": "Nova oznaka...",
+            "tagName": "Naziv oznake",
+            "removeTag": "Ukloni oznaku",
+            "manageTags": "Upravljaj oznakama",
+            "deleteTagConfirm": "Izbrisati oznaku „{name}“? Bilješke zadržavaju svoj tekst."
         },
         "shareLinkModal": {
             "title": "Veza za dijeljenje",

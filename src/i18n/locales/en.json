@@ -5408,6 +5408,13 @@
             "archive": "Archive",
             "trash": "Trash",
             "participants": "participants",
+            "noteType": "Note type",
+            "addTag": "Add tag",
+            "newTag": "New tag...",
+            "tagName": "Tag name",
+            "removeTag": "Remove tag",
+            "manageTags": "Manage tags",
+            "deleteTagConfirm": "Delete the tag \"{name}\"? Notes keep their text.",
             "filter": {
                 "all": "All",
                 "favorites": "Favorites",

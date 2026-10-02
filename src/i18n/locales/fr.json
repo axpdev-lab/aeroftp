@@ -4768,7 +4768,14 @@
             "participants": "participants",
             "saving": "Enregistrement...",
             "saved": "Enregistré",
-            "saveNow": "Enregistrer maintenant"
+            "saveNow": "Enregistrer maintenant",
+            "noteType": "Type de note",
+            "addTag": "Ajouter une étiquette",
+            "newTag": "Nouvelle étiquette...",
+            "tagName": "Nom de l'étiquette",
+            "removeTag": "Retirer l'étiquette",
+            "manageTags": "Gérer les étiquettes",
+            "deleteTagConfirm": "Supprimer l'étiquette « {name} » ? Les notes conservent leur texte."
         },
         "shareLinkModal": {
             "title": "Lien de partage",

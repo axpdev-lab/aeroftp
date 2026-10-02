@@ -4787,7 +4787,14 @@
             "participants": "participants",
             "saving": "Desant...",
             "saved": "Desat",
-            "saveNow": "Desar ara"
+            "saveNow": "Desar ara",
+            "noteType": "Tipus de nota",
+            "addTag": "Afegeix etiqueta",
+            "newTag": "Etiqueta nova...",
+            "tagName": "Nom de l'etiqueta",
+            "removeTag": "Elimina l'etiqueta",
+            "manageTags": "Gestiona les etiquetes",
+            "deleteTagConfirm": "Vols eliminar l'etiqueta «{name}»? Les notes conserven el text."
         },
         "shareLinkModal": {
             "title": "Enllaç per compartir",

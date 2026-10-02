@@ -4768,7 +4768,14 @@
             "participants": "参加者",
             "saving": "保存中...",
             "saved": "保存済み",
-            "saveNow": "今すぐ保存"
+            "saveNow": "今すぐ保存",
+            "noteType": "ノートの種類",
+            "addTag": "タグを追加",
+            "newTag": "新しいタグ...",
+            "tagName": "タグ名",
+            "removeTag": "タグを外す",
+            "manageTags": "タグを管理",
+            "deleteTagConfirm": "タグ「{name}」を削除しますか？ノートの本文は残ります。"
         },
         "shareLinkModal": {
             "title": "共有リンク",

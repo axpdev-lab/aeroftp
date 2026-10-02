@@ -4768,7 +4768,14 @@
             "participants": "osallistujaa",
             "saving": "Tallennetaan...",
             "saved": "Tallennettu",
-            "saveNow": "Tallenna nyt"
+            "saveNow": "Tallenna nyt",
+            "noteType": "Muistiinpanon tyyppi",
+            "addTag": "Lisää tunniste",
+            "newTag": "Uusi tunniste...",
+            "tagName": "Tunnisteen nimi",
+            "removeTag": "Poista tunniste",
+            "manageTags": "Hallitse tunnisteita",
+            "deleteTagConfirm": "Poistetaanko tunniste ”{name}”? Muistiinpanot säilyttävät tekstinsä."
         },
         "shareLinkModal": {
             "title": "Jakolinkki",

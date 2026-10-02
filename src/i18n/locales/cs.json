@@ -4768,7 +4768,14 @@
             "participants": "účastníci",
             "saving": "Ukládání...",
             "saved": "Uloženo",
-            "saveNow": "Uložit nyní"
+            "saveNow": "Uložit nyní",
+            "noteType": "Typ poznámky",
+            "addTag": "Přidat štítek",
+            "newTag": "Nový štítek...",
+            "tagName": "Název štítku",
+            "removeTag": "Odebrat štítek",
+            "manageTags": "Spravovat štítky",
+            "deleteTagConfirm": "Smazat štítek „{name}“? Poznámky si ponechají svůj text."
         },
         "shareLinkModal": {
             "title": "Odkaz ke sdílení",

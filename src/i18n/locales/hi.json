@@ -4768,7 +4768,14 @@
             "participants": "प्रतिभागी",
             "saving": "सहेजा जा रहा है...",
             "saved": "सहेजा गया",
-            "saveNow": "अभी सहेजें"
+            "saveNow": "अभी सहेजें",
+            "noteType": "नोट का प्रकार",
+            "addTag": "टैग जोड़ें",
+            "newTag": "नया टैग...",
+            "tagName": "टैग का नाम",
+            "removeTag": "टैग हटाएँ",
+            "manageTags": "टैग प्रबंधित करें",
+            "deleteTagConfirm": "टैग “{name}” हटाएँ? नोट्स का टेक्स्ट बना रहेगा।"
         },
         "shareLinkModal": {
             "title": "शेयर लिंक",

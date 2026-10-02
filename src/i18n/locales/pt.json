@@ -4768,7 +4768,14 @@
             "participants": "participantes",
             "saving": "Salvando...",
             "saved": "Salvo",
-            "saveNow": "Salvar agora"
+            "saveNow": "Salvar agora",
+            "noteType": "Tipo de nota",
+            "addTag": "Adicionar etiqueta",
+            "newTag": "Nova etiqueta...",
+            "tagName": "Nome da etiqueta",
+            "removeTag": "Remover etiqueta",
+            "manageTags": "Gerenciar etiquetas",
+            "deleteTagConfirm": "Excluir a etiqueta “{name}”? As notas mantêm o texto."
         },
         "shareLinkModal": {
             "title": "Link de partilha",

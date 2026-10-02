@@ -4768,7 +4768,14 @@
             "participants": "résztvevők",
             "saving": "Mentés...",
             "saved": "Mentve",
-            "saveNow": "Mentés most"
+            "saveNow": "Mentés most",
+            "noteType": "Jegyzet típusa",
+            "addTag": "Címke hozzáadása",
+            "newTag": "Új címke...",
+            "tagName": "Címke neve",
+            "removeTag": "Címke eltávolítása",
+            "manageTags": "Címkék kezelése",
+            "deleteTagConfirm": "Törlöd a(z) „{name}” címkét? A jegyzetek megőrzik a szövegüket."
         },
         "shareLinkModal": {
             "title": "Megosztási hivatkozás",

@@ -4787,7 +4787,14 @@
             "participants": "kalahok",
             "saving": "Sine-save...",
             "saved": "Na-save",
-            "saveNow": "I-save ngayon"
+            "saveNow": "I-save ngayon",
+            "noteType": "Uri ng tala",
+            "addTag": "Magdagdag ng tag",
+            "newTag": "Bagong tag...",
+            "tagName": "Pangalan ng tag",
+            "removeTag": "Alisin ang tag",
+            "manageTags": "Pamahalaan ang mga tag",
+            "deleteTagConfirm": "Burahin ang tag na “{name}”? Mananatili ang teksto ng mga tala."
         },
         "shareLinkModal": {
             "title": "Link ng pagbabahagi",

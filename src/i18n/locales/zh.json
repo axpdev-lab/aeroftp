@@ -4768,7 +4768,14 @@
             "participants": "参与者",
             "saving": "保存中...",
             "saved": "已保存",
-            "saveNow": "立即保存"
+            "saveNow": "立即保存",
+            "noteType": "笔记类型",
+            "addTag": "添加标签",
+            "newTag": "新建标签...",
+            "tagName": "标签名称",
+            "removeTag": "移除标签",
+            "manageTags": "管理标签",
+            "deleteTagConfirm": "删除标签“{name}”？笔记会保留其文本。"
         },
         "shareLinkModal": {
             "title": "共享链接",

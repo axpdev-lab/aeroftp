@@ -5088,7 +5088,14 @@
                 "pinned": "Fissate",
                 "archived": "Archiviate",
                 "trash": "Cestino"
-            }
+            },
+            "noteType": "Tipo di nota",
+            "addTag": "Aggiungi tag",
+            "newTag": "Nuovo tag...",
+            "tagName": "Nome del tag",
+            "removeTag": "Rimuovi tag",
+            "manageTags": "Gestisci tag",
+            "deleteTagConfirm": "Eliminare il tag \"{name}\"? Le note mantengono il loro testo."
         },
         "shareLinkModal": {
             "title": "Link di condivisione",

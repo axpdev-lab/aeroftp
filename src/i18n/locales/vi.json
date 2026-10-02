@@ -4768,7 +4768,14 @@
             "participants": "người tham gia",
             "saving": "Đang lưu...",
             "saved": "Đã lưu",
-            "saveNow": "Lưu ngay"
+            "saveNow": "Lưu ngay",
+            "noteType": "Loại ghi chú",
+            "addTag": "Thêm thẻ",
+            "newTag": "Thẻ mới...",
+            "tagName": "Tên thẻ",
+            "removeTag": "Gỡ thẻ",
+            "manageTags": "Quản lý thẻ",
+            "deleteTagConfirm": "Xóa thẻ “{name}”? Ghi chú vẫn giữ nội dung."
         },
         "shareLinkModal": {
             "title": "Liên kết chia sẻ",

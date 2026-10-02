@@ -4787,7 +4787,14 @@
             "participants": "þátttakendur",
             "saving": "Vista...",
             "saved": "Vistað",
-            "saveNow": "Vista núna"
+            "saveNow": "Vista núna",
+            "noteType": "Tegund minnismiða",
+            "addTag": "Bæta við merki",
+            "newTag": "Nýtt merki...",
+            "tagName": "Heiti merkis",
+            "removeTag": "Fjarlægja merki",
+            "manageTags": "Sýsla með merki",
+            "deleteTagConfirm": "Eyða merkinu „{name}“? Minnismiðar halda textanum sínum."
         },
         "shareLinkModal": {
             "title": "Deilitengill",

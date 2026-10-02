@@ -4768,7 +4768,14 @@
             "participants": "참여자",
             "saving": "저장 중...",
             "saved": "저장됨",
-            "saveNow": "지금 저장"
+            "saveNow": "지금 저장",
+            "noteType": "노트 유형",
+            "addTag": "태그 추가",
+            "newTag": "새 태그...",
+            "tagName": "태그 이름",
+            "removeTag": "태그 제거",
+            "manageTags": "태그 관리",
+            "deleteTagConfirm": "태그 “{name}”을(를) 삭제할까요? 노트의 텍스트는 유지됩니다."
         },
         "shareLinkModal": {
             "title": "공유 링크",

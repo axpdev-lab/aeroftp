@@ -4768,7 +4768,14 @@
             "participants": "peserta",
             "saving": "Menyimpan...",
             "saved": "Disimpan",
-            "saveNow": "Simpan sekarang"
+            "saveNow": "Simpan sekarang",
+            "noteType": "Jenis nota",
+            "addTag": "Tambah teg",
+            "newTag": "Teg baharu...",
+            "tagName": "Nama teg",
+            "removeTag": "Alih keluar teg",
+            "manageTags": "Urus teg",
+            "deleteTagConfirm": "Padam teg “{name}”? Nota mengekalkan teksnya."
         },
         "shareLinkModal": {
             "title": "Pautan Kongsi",

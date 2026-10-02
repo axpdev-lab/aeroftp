@@ -4768,7 +4768,14 @@
             "participants": "peserta",
             "saving": "Menyimpan...",
             "saved": "Tersimpan",
-            "saveNow": "Simpan sekarang"
+            "saveNow": "Simpan sekarang",
+            "noteType": "Jenis catatan",
+            "addTag": "Tambah tag",
+            "newTag": "Tag baru...",
+            "tagName": "Nama tag",
+            "removeTag": "Hapus tag",
+            "manageTags": "Kelola tag",
+            "deleteTagConfirm": "Hapus tag “{name}”? Catatan tetap menyimpan teksnya."
         },
         "shareLinkModal": {
             "title": "Tautan Berbagi",

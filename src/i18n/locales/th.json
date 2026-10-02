@@ -4768,7 +4768,14 @@
             "participants": "ผู้เข้าร่วม",
             "saving": "กำลังบันทึก...",
             "saved": "บันทึกแล้ว",
-            "saveNow": "บันทึกเดี๋ยวนี้"
+            "saveNow": "บันทึกเดี๋ยวนี้",
+            "noteType": "ประเภทโน้ต",
+            "addTag": "เพิ่มแท็ก",
+            "newTag": "แท็กใหม่...",
+            "tagName": "ชื่อแท็ก",
+            "removeTag": "นำแท็กออก",
+            "manageTags": "จัดการแท็ก",
+            "deleteTagConfirm": "ลบแท็ก “{name}” หรือไม่ โน้ตจะยังคงข้อความไว้"
         },
         "shareLinkModal": {
             "title": "ลิงก์แชร์",

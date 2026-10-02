@@ -4768,7 +4768,14 @@
             "participants": "uczestników",
             "saving": "Zapisywanie...",
             "saved": "Zapisano",
-            "saveNow": "Zapisz teraz"
+            "saveNow": "Zapisz teraz",
+            "noteType": "Typ notatki",
+            "addTag": "Dodaj tag",
+            "newTag": "Nowy tag...",
+            "tagName": "Nazwa tagu",
+            "removeTag": "Usuń tag",
+            "manageTags": "Zarządzaj tagami",
+            "deleteTagConfirm": "Usunąć tag „{name}”? Notatki zachowają swój tekst."
         },
         "shareLinkModal": {
             "title": "Link udostępniania",

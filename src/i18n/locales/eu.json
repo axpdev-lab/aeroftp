@@ -4787,7 +4787,14 @@
             "participants": "parte-hartzaileak",
             "saving": "Gordetzen...",
             "saved": "Gordeta",
-            "saveNow": "Gorde orain"
+            "saveNow": "Gorde orain",
+            "noteType": "Ohar mota",
+            "addTag": "Gehitu etiketa",
+            "newTag": "Etiketa berria...",
+            "tagName": "Etiketaren izena",
+            "removeTag": "Kendu etiketa",
+            "manageTags": "Kudeatu etiketak",
+            "deleteTagConfirm": "«{name}» etiketa ezabatu? Oharrek testua mantentzen dute."
         },
         "shareLinkModal": {
             "title": "Partekatzeko esteka",

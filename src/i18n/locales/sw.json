@@ -4768,7 +4768,14 @@
             "participants": "washiriki",
             "saving": "Inahifadhi...",
             "saved": "Imehifadhiwa",
-            "saveNow": "Hifadhi sasa"
+            "saveNow": "Hifadhi sasa",
+            "noteType": "Aina ya noti",
+            "addTag": "Ongeza lebo",
+            "newTag": "Lebo mpya...",
+            "tagName": "Jina la lebo",
+            "removeTag": "Ondoa lebo",
+            "manageTags": "Dhibiti lebo",
+            "deleteTagConfirm": "Futa lebo “{name}”? Noti zinabaki na maandishi yake."
         },
         "shareLinkModal": {
             "title": "Kiungo cha kushiriki",

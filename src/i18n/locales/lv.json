@@ -4768,7 +4768,14 @@
             "participants": "dalībnieki",
             "saving": "Saglabā...",
             "saved": "Saglabāts",
-            "saveNow": "Saglabāt tagad"
+            "saveNow": "Saglabāt tagad",
+            "noteType": "Piezīmes veids",
+            "addTag": "Pievienot atzīmi",
+            "newTag": "Jauna atzīme...",
+            "tagName": "Atzīmes nosaukums",
+            "removeTag": "Noņemt atzīmi",
+            "manageTags": "Pārvaldīt atzīmes",
+            "deleteTagConfirm": "Dzēst atzīmi “{name}”? Piezīmes saglabā savu tekstu."
         },
         "shareLinkModal": {
             "title": "Koplietošanas saite",

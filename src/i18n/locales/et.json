@@ -4768,7 +4768,14 @@
             "participants": "osalejad",
             "saving": "Salvestamine...",
             "saved": "Salvestatud",
-            "saveNow": "Salvesta kohe"
+            "saveNow": "Salvesta kohe",
+            "noteType": "Märkme tüüp",
+            "addTag": "Lisa silt",
+            "newTag": "Uus silt...",
+            "tagName": "Sildi nimi",
+            "removeTag": "Eemalda silt",
+            "manageTags": "Halda silte",
+            "deleteTagConfirm": "Kas kustutada silt „{name}“? Märkmed säilitavad oma teksti."
         },
         "shareLinkModal": {
             "title": "Jagamislink",
