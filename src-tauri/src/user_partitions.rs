@@ -84,17 +84,6 @@ pub struct MigrationReport {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PartitionDebugState {
-    pub db_path: String,
-    pub schema_version: Option<String>,
-    pub active_user_id: Option<i64>,
-    pub user_count: i64,
-    pub profile_count: i64,
-    pub settings_count: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct UserStorageStats {
     pub user_id: i64,
     pub profile_count: i64,
@@ -2029,23 +2018,6 @@ pub fn delete_user_setting_for(conn: &Connection, user_id: i64, scope: &str) -> 
     Ok(())
 }
 
-pub fn list_user_setting_scopes_for(
-    conn: &Connection,
-    user_id: i64,
-) -> Result<Vec<String>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT scope FROM user_settings
-             WHERE user_id = ?1 ORDER BY scope ASC",
-        )
-        .map_err(|e| format!("Prepare list user settings: {e}"))?;
-    let rows = stmt
-        .query_map(params![user_id], |row| row.get::<_, String>(0))
-        .map_err(|e| format!("Query list user settings: {e}"))?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| format!("Read user setting scopes: {e}"))
-}
-
 pub fn get_active_user_setting(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -2070,11 +2042,6 @@ pub fn delete_active_user_setting(conn: &Connection, scope: &str) -> Result<(), 
     delete_user_setting_for(conn, user_id, scope)
 }
 
-pub fn list_active_user_setting_scopes(conn: &Connection) -> Result<Vec<String>, String> {
-    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
-    list_user_setting_scopes_for(conn, user_id)
-}
-
 // --- MUV-1: per-user credentials (raw secrets under the user DEK) -----------
 //
 // Companion of `user_settings`, but for raw secrets (server passwords, OAuth
@@ -2083,9 +2050,10 @@ pub fn list_active_user_setting_scopes(conn: &Connection) -> Result<Vec<String>,
 // composite primary key `(user_id, credential_id)`, NOT the delete-all + insert
 // pattern used for `server_profiles`. The secret is encrypted with the user's
 // DEK exactly like a profile blob; only the active user (or a primed session
-// for a passphrase account) can read or write its own credentials. MUV-1 builds
-// the store only: no existing caller is rewired and nothing is migrated yet
-// (that is MUV-2..6).
+// for a passphrase account) can read or write its own credentials. Callers reach
+// it through the dual-write and fallback helpers below (MUV-2..5) or with a key
+// they build themselves; no IPC command reads or writes it by an id the webview
+// chooses, which is what keeps backend-private rows such as `mcp_*` private.
 
 /// Upsert one secret into a user's partition, encrypted with their DEK.
 ///
@@ -2223,16 +2191,6 @@ pub fn set_active_user_credential(
         credential_type,
         secret,
     )
-}
-
-/// Active-user wrapper for [`get_user_credential_for`].
-pub fn get_active_user_credential(
-    conn: &Connection,
-    root_key: &[u8; 32],
-    credential_id: &str,
-) -> Result<Option<Zeroizing<String>>, String> {
-    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
-    get_user_credential_for(conn, root_key, user_id, credential_id)
 }
 
 /// Active-user wrapper for [`delete_user_credential_for`].
@@ -3686,31 +3644,6 @@ pub fn user_storage_stats(conn: &Connection) -> Result<Vec<UserStorageStats>, St
         .map_err(|e| format!("Read user storage stats: {e}"))
 }
 
-pub fn debug_state(app: &AppHandle) -> Result<PartitionDebugState, String> {
-    let path = db_path(app)?;
-    let conn = open_or_init(app)?;
-    let active_user_id = active_user_id(&conn)?;
-    let schema_version = current_schema_version(&conn)?;
-    let user_count = conn
-        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
-        .map_err(|e| format!("Count users: {e}"))?;
-    let profile_count = conn
-        .query_row("SELECT COUNT(*) FROM server_profiles", [], |row| row.get(0))
-        .map_err(|e| format!("Count profiles: {e}"))?;
-    let settings_count = conn
-        .query_row("SELECT COUNT(*) FROM user_settings", [], |row| row.get(0))
-        .map_err(|e| format!("Count settings: {e}"))?;
-
-    Ok(PartitionDebugState {
-        db_path: path.display().to_string(),
-        schema_version,
-        active_user_id,
-        user_count,
-        profile_count,
-        settings_count,
-    })
-}
-
 /// MUV-2: best-effort eager credential migration on the CLI side. The CLI has
 /// the store in hand (no Master-Password gate), so it just runs when there is
 /// eager-pending work. Never fails the caller.
@@ -4172,56 +4105,6 @@ fn read_legacy_server_profiles_blob(store: &CredentialStore) -> Result<Vec<Value
         .get("config_server_profiles")
         .map_err(|e| format!("Failed to read profiles: {e}"))?;
     serde_json::from_str(&raw).map_err(|e| format!("Failed to parse profiles: {e}"))
-}
-
-/// CLI bridge: read one secret from a user's partition (MUV-1). MUV-3 will wire
-/// the CLI's credential resolution onto this; for now it is the binary the
-/// later cutover slices call. Same locking semantics as the profile readers.
-pub fn cli_get_user_credential(
-    store: &CredentialStore,
-    user_id: i64,
-    credential_id: &str,
-) -> Result<Option<Zeroizing<String>>, String> {
-    init_or_migrate_cli(store)?;
-    let conn = open_or_init_cli()?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = get_user_credential_for(&conn, &root_key, user_id, credential_id);
-    root_key.zeroize();
-    result
-}
-
-/// CLI bridge: upsert one secret into a user's partition (MUV-1).
-pub fn cli_set_user_credential(
-    store: &CredentialStore,
-    user_id: i64,
-    credential_id: &str,
-    credential_type: &str,
-    secret: &str,
-) -> Result<(), String> {
-    init_or_migrate_cli(store)?;
-    let conn = open_or_init_cli()?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = set_user_credential_for(
-        &conn,
-        &root_key,
-        user_id,
-        credential_id,
-        credential_type,
-        secret,
-    );
-    root_key.zeroize();
-    result
-}
-
-/// CLI bridge: delete one secret from a user's partition (MUV-1).
-pub fn cli_delete_user_credential(
-    store: &CredentialStore,
-    user_id: i64,
-    credential_id: &str,
-) -> Result<(), String> {
-    init_or_migrate_cli(store)?;
-    let conn = open_or_init_cli()?;
-    delete_user_credential_for(&conn, user_id, credential_id)
 }
 
 /// CLI bridge: read a credential preferring the per-user store and falling back
@@ -4851,15 +4734,6 @@ pub async fn user_partitions_list_users(app: AppHandle) -> Result<Vec<UserMetada
     list_users(&conn)
 }
 
-#[tauri::command]
-pub async fn user_partitions_get_active_user(
-    app: AppHandle,
-) -> Result<Option<UserMetadata>, String> {
-    init_or_migrate(&app)?;
-    let conn = open_or_init(&app)?;
-    get_active_user(&conn)
-}
-
 /// Backward-compat self-heal (BUG-LT2a): the redacted `hasStoredAeroCrypt*`
 /// flags are persisted into the profile blob at save/import time, but the normal
 /// load path returns them verbatim. Profiles created before those flags existed
@@ -5086,102 +4960,6 @@ pub async fn user_partitions_delete_active_setting(
     init_or_migrate(&app)?;
     let conn = open_or_init(&app)?;
     delete_active_user_setting(&conn, &scope)
-}
-
-#[tauri::command]
-pub async fn user_partitions_list_active_setting_scopes(
-    app: AppHandle,
-) -> Result<Vec<String>, String> {
-    init_or_migrate(&app)?;
-    let conn = open_or_init(&app)?;
-    let scopes = list_active_user_setting_scopes(&conn)?;
-    Ok(scopes
-        .into_iter()
-        .filter(|s| !s.starts_with("__"))
-        .collect())
-}
-
-// Every MCP namespace is backend-private, including future transport secrets.
-fn is_private_mcp_credential(id: &str) -> bool {
-    id.starts_with("mcp_")
-}
-
-#[cfg(test)]
-mod private_mcp_credential_tests {
-    #[test]
-    fn reserves_all_mcp_namespaces_without_blocking_provider_credentials() {
-        for id in [
-            "mcp_env_a",
-            "mcp_http_bearer_a",
-            "mcp_oauth_a",
-            "mcp_http_oauth_a",
-            "mcp_future_a",
-        ] {
-            assert!(super::is_private_mcp_credential(id));
-        }
-        for id in ["provider_a", "server_a", "mcp", ""] {
-            assert!(!super::is_private_mcp_credential(id));
-        }
-    }
-}
-
-/// MUV-1: read one secret from the active user's encrypted partition. Returns
-/// JSON null when the credential does not exist. Errors with `USER_LOCKED` when
-/// the active user is a passphrase account that has not been unlocked. The
-/// secret crosses the IPC boundary as a plain string for the GUI to consume,
-/// the same way profile blobs already do; in-process it stays zeroize-on-drop.
-#[tauri::command]
-pub async fn user_partitions_get_user_credential(
-    app: AppHandle,
-    credential_id: String,
-) -> Result<Option<String>, String> {
-    if is_private_mcp_credential(&credential_id) {
-        return Err("MCP_CREDENTIAL_PRIVATE".to_string());
-    }
-    init_or_migrate(&app)?;
-    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let conn = open_or_init(&app)?;
-    let result = get_active_user_credential(&conn, &root_key, &credential_id);
-    root_key.zeroize();
-    Ok(result?.map(|secret| secret.to_string()))
-}
-
-/// MUV-1: upsert one secret into the active user's encrypted partition.
-#[tauri::command]
-pub async fn user_partitions_set_user_credential(
-    app: AppHandle,
-    credential_id: String,
-    credential_type: String,
-    mut secret: String,
-) -> Result<(), String> {
-    if is_private_mcp_credential(&credential_id) {
-        secret.zeroize();
-        return Err("MCP_CREDENTIAL_PRIVATE".to_string());
-    }
-    init_or_migrate(&app)?;
-    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    let mut root_key = store.derive_user_partition_wrapping_key();
-    let conn = open_or_init(&app)?;
-    let result =
-        set_active_user_credential(&conn, &root_key, &credential_id, &credential_type, &secret);
-    root_key.zeroize();
-    secret.zeroize();
-    result
-}
-
-/// MUV-1: delete one secret from the active user's encrypted partition.
-#[tauri::command]
-pub async fn user_partitions_delete_user_credential(
-    app: AppHandle,
-    credential_id: String,
-) -> Result<(), String> {
-    if is_private_mcp_credential(&credential_id) {
-        return Err("MCP_CREDENTIAL_PRIVATE".to_string());
-    }
-    init_or_migrate(&app)?;
-    let conn = open_or_init(&app)?;
-    delete_active_user_credential(&conn, &credential_id)
 }
 
 /// MU-7: ask "is this profile already saved by another user account?". Called
@@ -5469,13 +5247,6 @@ pub async fn user_partitions_change_passphrase(
 }
 
 #[tauri::command]
-pub async fn user_partitions_set_active_user(app: AppHandle, user_id: i64) -> Result<(), String> {
-    init_or_migrate(&app)?;
-    let conn = open_or_init(&app)?;
-    set_active_user(&conn, user_id)
-}
-
-#[tauri::command]
 pub async fn user_partitions_rename_user(
     app: AppHandle,
     user_id: i64,
@@ -5588,11 +5359,6 @@ pub async fn user_partitions_storage_stats(
     init_or_migrate(&app)?;
     let conn = open_or_init(&app)?;
     user_storage_stats(&conn)
-}
-
-#[tauri::command]
-pub async fn user_partitions_debug_state(app: AppHandle) -> Result<PartitionDebugState, String> {
-    debug_state(&app)
 }
 
 #[cfg(test)]
@@ -7605,6 +7371,17 @@ mod tests {
         assert_eq!(read, Some(value));
     }
 
+    /// Scopes stored for one user, read straight from the table.
+    fn setting_scopes_of(conn: &Connection, user_id: i64) -> Vec<String> {
+        let mut stmt = conn
+            .prepare("SELECT scope FROM user_settings WHERE user_id = ?1 ORDER BY scope ASC")
+            .expect("prepare scopes");
+        stmt.query_map(params![user_id], |row| row.get::<_, String>(0))
+            .expect("query scopes")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("read scopes")
+    }
+
     #[test]
     fn user_settings_missing_returns_none() {
         let _guard = test_lock();
@@ -7627,7 +7404,8 @@ mod tests {
             .expect("read")
             .expect("present");
         assert_eq!(read, json!({"v": 2}));
-        let scopes = list_active_user_setting_scopes(&conn).expect("list");
+        let active = active_user_id(&conn).expect("active").expect("default");
+        let scopes = setting_scopes_of(&conn, active);
         assert_eq!(
             scopes.iter().filter(|s| s == &"aerosync_schedule").count(),
             1,
@@ -7680,12 +7458,12 @@ mod tests {
             .expect("default value");
         assert_eq!(default_read, json!("default-value"));
 
-        // list_active_user_setting_scopes is also scoped: switching back to
-        // alice shows only her scopes plus any legacy backup row migrated
-        // for her (none, since alice is a fresh user).
-        set_active_user(&conn, alice.id).expect("switch alice 2");
-        let alice_scopes = list_active_user_setting_scopes(&conn).expect("alice scopes");
-        assert_eq!(alice_scopes, vec!["aerosync_schedule".to_string()]);
+        // The rows themselves are scoped too: alice owns only her scope, with
+        // no legacy backup row (she is a fresh user).
+        assert_eq!(
+            setting_scopes_of(&conn, alice.id),
+            vec!["aerosync_schedule".to_string()]
+        );
     }
 
     #[test]

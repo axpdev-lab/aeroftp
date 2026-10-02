@@ -32,15 +32,6 @@ export interface UserPartitionMigrationReport {
     alreadyMigrated: boolean;
 }
 
-export interface UserPartitionDebugState {
-    dbPath: string;
-    schemaVersion?: string | null;
-    activeUserId?: number | null;
-    userCount: number;
-    profileCount: number;
-    settingsCount: number;
-}
-
 export interface UserUnlockStatus {
     activeUserId?: number | null;
     unlockedUserId?: number | null;
@@ -59,9 +50,6 @@ export const initUserPartitions = (): Promise<UserPartitionMigrationReport> =>
 
 export const listUsers = (): Promise<UserMetadata[]> =>
     invoke<UserMetadata[]>('user_partitions_list_users');
-
-export const getActiveUser = (): Promise<UserMetadata | null> =>
-    invoke<UserMetadata | null>('user_partitions_get_active_user');
 
 export const loadActiveServerProfiles = (): Promise<ServerProfile[]> =>
     invoke<ServerProfile[]>('user_partitions_load_active_server_profiles');
@@ -116,9 +104,6 @@ export const changeUserPassphrase = (
         newPassphrase,
     });
 
-export const setActiveUser = (userId: number): Promise<void> =>
-    invoke<void>('user_partitions_set_active_user', { userId });
-
 export const renameUser = (userId: number, name: string): Promise<void> =>
     invoke<void>('user_partitions_rename_user', { userId, name });
 
@@ -166,9 +151,6 @@ export const adminResetUserPassphrase = (
 
 export const getUserStorageStats = (): Promise<UserStorageStats[]> =>
     invoke<UserStorageStats[]>('user_partitions_storage_stats');
-
-export const getUserPartitionDebugState = (): Promise<UserPartitionDebugState> =>
-    invoke<UserPartitionDebugState>('user_partitions_debug_state');
 
 // MU-4: per-user settings (encrypted with the active user's DEK). Scopes
 // starting with `__` are blocked at the Rust boundary to keep the legacy
@@ -223,9 +205,6 @@ export const setActiveUserSetting = <T = unknown>(scope: string, value: T): Prom
 
 export const deleteActiveUserSetting = (scope: string): Promise<void> =>
     invoke<void>('user_partitions_delete_active_setting', { scope });
-
-export const listActiveUserSettingScopes = (): Promise<string[]> =>
-    invoke<string[]>('user_partitions_list_active_setting_scopes');
 
 // MU-7: cross-user dedup match metadata. The backend returns only public
 // fields about the OTHER user account that already saved the same profile.
