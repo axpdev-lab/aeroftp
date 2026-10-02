@@ -159,16 +159,17 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   }, [path, providerName, fileName, t]);
 
   // Ask the provider what it offers: show the options when it has any,
-  // otherwise create the link straight away.
-  const didRun = React.useRef(false);
+  // otherwise create the link straight away. A modal closed before the answer
+  // arrives creates nothing; StrictMode's remount asks again.
   useEffect(() => {
-    if (didRun.current) return;
-    didRun.current = true;
+    let cancelled = false;
     void loadShareLinkCapabilities(invoke).then((loaded) => {
+      if (cancelled) return;
       setCaps(loaded);
       if (loaded.hasAdvancedOptions) setState('options');
       else generateLink();
     });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
