@@ -1539,17 +1539,22 @@ export function MyServersPanel({
     const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string) => {
         const group = groups.find(g => g.id === groupId);
         if (!group) return;
+        // A group can still list ids of deleted profiles (see groupCounts):
+        // export only the members that resolve, and offer nothing to export
+        // when none do, instead of opening an export with nothing selected.
+        const present = new Set(servers.map(s => s.id));
+        const exportableMembers = group.members.filter(id => present.has(id));
         showContextMenu(e, [
             { label: t('introHub.group.rename'), icon: MENU_ICON_RENAME, action: () => setGroupDialog({ id: group.id, name: group.name }) },
             ...(onExportProfiles ? [{
                 label: t('introHub.group.export'),
                 icon: MENU_ICON_EXPORT,
-                action: () => onExportProfiles(group.members),
-                disabled: group.members.length === 0,
+                action: () => onExportProfiles(exportableMembers),
+                disabled: exportableMembers.length === 0,
             }] : []),
             { label: t('introHub.group.delete'), icon: MENU_ICON_DELETE, action: () => setGroupDeleteTarget(group), danger: true },
         ]);
-    }, [t, groups, showContextMenu, onExportProfiles]);
+    }, [t, groups, servers, showContextMenu, onExportProfiles]);
 
     const handleStaticFilter = (f: MyServersFilterBy) => {
         setActiveFilter(f);
