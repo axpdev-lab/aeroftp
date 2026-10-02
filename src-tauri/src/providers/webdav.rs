@@ -3327,12 +3327,17 @@ impl StorageProvider for WebDavProvider {
             // A file asked for in the collection form answers 404 on most
             // servers. `stat` asks in the file form first, so it tells the
             // file that cannot be entered from the path that does not exist.
+            // Any other `stat` failure is returned as it is: a network error
+            // or a refused redirect must not read as "path not found".
             StatusCode::NOT_FOUND => match self.stat(path).await {
                 Ok(entry) if !entry.is_dir => Err(ProviderError::InvalidPath(format!(
                     "{} is not a directory",
                     path
                 ))),
-                _ => Err(ProviderError::NotFound(path.to_string())),
+                Ok(_) | Err(ProviderError::NotFound(_)) => {
+                    Err(ProviderError::NotFound(path.to_string()))
+                }
+                Err(e) => Err(e),
             },
             StatusCode::UNAUTHORIZED => {
                 self.connected = false;
@@ -7369,6 +7374,42 @@ mod collection_redirect_tests {
         }
         assert!(!err.is_recoverable(), "a misconfiguration is not retried");
         assert_eq!(seen(&stub), vec!["PROPFIND /moved"]);
+    }
+
+    /// `cd`'s 404 fallback asks `stat` only to tell a file from a missing
+    /// path. When `stat` itself fails for another reason (here a refused
+    /// downgrade on the file-form PROPFIND), that failure is the answer, not
+    /// a "path not found" that would hide it.
+    #[tokio::test]
+    async fn cd_keeps_a_failure_of_its_404_fallback_instead_of_reporting_not_found() {
+        let stub = spawn_downgrading_server(|_| {
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        })
+        .await;
+        let mut provider = provider(&stub.base);
+
+        let err = provider.cd("/moved").await.expect_err("must fail");
+        match &err {
+            ProviderError::ServerError(msg) => assert!(msg.contains("leaves HTTPS"), "{msg}"),
+            other => panic!("expected the stat failure, got {other:?}"),
+        }
+
+        // The ordinary cases keep their meaning.
+        assert!(matches!(
+            provider.cd("/file.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
+        assert_eq!(
+            seen(&stub),
+            vec![
+                "PROPFIND /moved/",
+                "PROPFIND /moved",
+                "PROPFIND /file.txt/",
+                // `stat` retries a 404 in the collection form.
+                "PROPFIND /file.txt",
+                "PROPFIND /file.txt/",
+            ]
+        );
     }
 
     /// RFC 4918 gives a MOVE's 502 a WebDAV meaning: the Destination was
