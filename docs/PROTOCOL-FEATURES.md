@@ -784,12 +784,9 @@ See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categ
 | Ollama pull from UI | Done (v2.0.0) | NDJSON streaming progress in AI Settings |
 | Gemini code execution | Done (v2.0.0) | executableCode/codeExecutionResult parsing |
 | Kimi web search | Done (v2.0.1) | `$web_search` builtin_function tool injection |
-| Kimi context caching | Done (v2.0.1) | `/v1/caching` endpoint, cache_id passthrough |
-| Kimi file analysis | Done (v2.0.1) | `/v1/files` upload, fileid:// references |
 | Qwen thinking mode | Done (v2.0.1) | `enable_thinking` + `thinking_budget` parameters |
 | Qwen web search | Done (v2.0.1) | `enable_search` + `search_options.search_strategy` |
 | DeepSeek thinking mode | Done (v2.0.1) | `reasoning_content` streaming (shared with o3) |
-| DeepSeek FIM completion | Done (v2.0.1) | `/beta/completions` with prompt + suffix |
 | DeepSeek prefix completion | Done (v2.0.1) | `prefix: true` on last assistant message |
 
 ---
@@ -804,12 +801,10 @@ See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categ
 | Streaming | SSE | SSE | SSE | SSE | SSE | NDJSON | SSE | SSE | SSE | SSE |
 | Vision/Multimodal | Yes | Yes | Yes | Yes | Via model | Yes | Yes | Yes | N/A | Via model |
 | Structured Outputs | **strict: true** | N/A | N/A | **strict: true** | **strict: true** | N/A | N/A | N/A | N/A | N/A |
-| Prompt Caching | N/A | **Ephemeral** | **cachedContent** | N/A | N/A | N/A | **Context cache** | N/A | N/A | N/A |
+| Prompt Caching | N/A | **Ephemeral** | **Implicit** | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
 | Extended Thinking | o3/o3-mini | Claude 3.5+ | Gemini 2.0+ | N/A | Via model | deepseek-r1 | N/A | **enable_thinking** | **reasoning_content** | N/A |
 | Web Search | N/A | N/A | N/A | N/A | N/A | N/A | **$web_search** | **enable_search** | N/A | N/A |
 | Code Execution | N/A | N/A | **Python sandbox** | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
-| FIM Completion | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | **beta/completions** | N/A |
-| File Analysis | N/A | N/A | N/A | N/A | N/A | N/A | **v1/files** | N/A | N/A | N/A |
 | Prefix Completion | N/A | N/A | N/A | N/A | N/A | N/A | N/A | N/A | **prefix: true** | N/A |
 | Model Pull from UI | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |
 | GPU Monitoring | N/A | N/A | N/A | N/A | N/A | **Yes** | N/A | N/A | N/A | N/A |

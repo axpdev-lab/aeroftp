@@ -1,11 +1,11 @@
 //! Context Intelligence: project detection, import scanning, git context, agent memory
 //!
-//! Provides 5 Tauri commands for AeroAgent context awareness:
+//! Provides 3 Tauri commands for AeroAgent context awareness:
 //! - `detect_project_context`: Detect project type, scripts, dependencies
 //! - `scan_file_imports`: Parse imports/requires/uses from source files
 //! - `get_git_context`: Git branch, recent commits, uncommitted changes
-//! - `read_agent_memory`: Read relevant persistent agent memory for a project
-//! - `write_agent_memory`: Store a persistent memory entry for a project
+//!
+//! Persistent agent memory lives in `agent_memory_db.rs`.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -1064,47 +1064,4 @@ pub async fn get_git_context(path: String) -> Result<GitContext, String> {
         uncommitted_changes,
         has_uncommitted,
     })
-}
-
-// ─── Command 4: read_agent_memory ───────────────────────────────────────────
-
-#[tauri::command]
-pub async fn read_agent_memory(
-    app: tauri::AppHandle,
-    project_path: String,
-) -> Result<String, String> {
-    validate_context_path(&project_path)?;
-    let entries =
-        crate::agent_memory_db::agent_memory_search(app, project_path, None, Some(10)).await?;
-
-    Ok(entries
-        .into_iter()
-        .map(|entry| {
-            format!(
-                "[{}] [{}] {}",
-                entry.created_at, entry.category, entry.content
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n"))
-}
-
-// ─── Command 5: write_agent_memory ──────────────────────────────────────────
-
-#[tauri::command]
-pub async fn write_agent_memory(
-    app: tauri::AppHandle,
-    project_path: String,
-    content: String,
-) -> Result<(), String> {
-    validate_context_path(&project_path)?;
-    crate::agent_memory_db::agent_memory_store(
-        app,
-        project_path,
-        "general".to_string(),
-        content,
-        None,
-    )
-    .await?;
-    Ok(())
 }

@@ -179,15 +179,6 @@ function sessionToConversation(data: SessionWithMessages): Conversation {
 // API functions
 // ---------------------------------------------------------------------------
 
-export async function initChatHistory(): Promise<string> {
-    try {
-        return await invoke<string>('chat_history_init');
-    } catch (e) {
-        logger.error('Chat history init failed:', e);
-        return 'Init failed';
-    }
-}
-
 export async function loadHistory(): Promise<Conversation[]> {
     try {
         const sessions = await invoke<ChatSession[]>('chat_history_list_sessions', {
@@ -292,21 +283,6 @@ export async function deleteSession(sessionId: string): Promise<void> {
     }
 }
 
-export async function deleteSessionsBulk(
-    sessionIds?: string[],
-    olderThanDays?: number,
-): Promise<number> {
-    try {
-        return await invoke<number>('chat_history_delete_sessions_bulk', {
-            sessionIds: sessionIds ?? null,
-            olderThanDays: olderThanDays ?? null,
-        });
-    } catch (e) {
-        logger.error('Failed to bulk delete sessions:', e);
-        return 0;
-    }
-}
-
 export async function searchHistory(query: string, limit?: number): Promise<SearchResult[]> {
     try {
         return await invoke<SearchResult[]>('chat_history_search', {
@@ -328,7 +304,7 @@ export async function cleanupHistory(retentionDays: number): Promise<number> {
     }
 }
 
-// F4: Dedicated clear-all (replaces semantic overload of deleteSessionsBulk(undefined, 0))
+// F4: Dedicated clear-all, so clearing everything is not a bulk delete with no ids and age 0
 export async function clearAllHistory(): Promise<number> {
     try {
         return await invoke<number>('chat_history_clear_all');
@@ -343,24 +319,6 @@ export async function getChatStats(): Promise<ChatStats | null> {
         return await invoke<ChatStats>('chat_history_stats');
     } catch (e) {
         logger.error('Failed to get chat stats:', e);
-        return null;
-    }
-}
-
-export async function exportSession(sessionId: string, format: 'json' | 'markdown'): Promise<string | null> {
-    try {
-        return await invoke<string>('chat_history_export_session', { sessionId, format });
-    } catch (e) {
-        logger.error('Failed to export session:', e);
-        return null;
-    }
-}
-
-export async function importSession(jsonData: string): Promise<string | null> {
-    try {
-        return await invoke<string>('chat_history_import', { jsonData });
-    } catch (e) {
-        logger.error('Failed to import session:', e);
         return null;
     }
 }
