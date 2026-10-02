@@ -11280,8 +11280,18 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
     }
 }
 
+/// Whether the user turned the native menu bar on for the main window
+/// (Settings, through `toggle_menu_bar`). Off by default: the titlebar menus
+/// replace it. `rebuild_menu` reads it, because a global `set_menu` reaches
+/// every window on Linux and would otherwise show the bar the user hid.
+static MAIN_MENU_BAR_VISIBLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[tauri::command]
 fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
+    if window.label() == "main" {
+        MAIN_MENU_BAR_VISIBLE.store(visible, Ordering::SeqCst);
+    }
     if visible {
         if let Some(menu) = app.menu() {
             let _ = window.set_menu(menu);
@@ -11554,6 +11564,14 @@ fn rebuild_menu_on_main(
         }
     } else {
         app.set_menu(menu).map_err(|e| e.to_string())?;
+        // GTK just gave the main window the menu too; keep the bar hidden
+        // unless the user turned it on. (macOS has one app-wide menu bar and
+        // ignores per-window menus.)
+        if !MAIN_MENU_BAR_VISIBLE.load(Ordering::SeqCst) {
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.remove_menu();
+            }
+        }
     }
 
     // Splash, extract and approval windows: GTK just gave them the menu too.

@@ -263,7 +263,6 @@ const INHERITED_UNCALLED: string[] = [
     'rclone_crypt_encrypt_name',
     'read_agent_memory',
     'read_export_metadata',
-    'rebuild_menu',
     'session_change_dir',
     'session_connect',
     'session_create_share_link',

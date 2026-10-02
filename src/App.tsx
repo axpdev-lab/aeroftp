@@ -197,6 +197,7 @@ import {
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
+import { nativeMenuLabels } from './utils/nativeMenuLabels';
 import { openUrl } from './utils/openUrl';
 import { openOnGitLab } from './utils/gitlabWeb';
 import { connectionViaLabel } from './utils/connectionViaLabel';
@@ -295,6 +296,7 @@ import { OverwriteDialog } from './components/OverwriteDialog';
 import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOverwriteDialog';
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { CyberToolsModal } from './components/CyberToolsModal';
+import { nativeDropOwnerAt } from './utils/nativeDropOwner';
 import { LockScreen } from './components/LockScreen';
 import { AccountLockScreen } from './components/AccountLockScreen';
 import {
@@ -1716,6 +1718,13 @@ const App: React.FC = () => {
   const insecureCertPreviouslyEnabledRef = useRef(false);
 
   const t = useTranslation();
+
+  // The native menu (always in the macOS menu bar, optional elsewhere) is built
+  // in English at startup; relabel it whenever the language changes. Before
+  // the app is ready the backend keeps the rebuilt menu for app_ready to install.
+  useEffect(() => {
+    invoke('rebuild_menu', { labels: nativeMenuLabels(t) }).catch(() => {});
+  }, [t]);
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
 
   // Sync Badge Helper - returns badge element if file is in cloud folder
@@ -5551,12 +5560,15 @@ const App: React.FC = () => {
   // Skipped while the vault panel or the Security Tools modal is open (each
   // registers its own drop listener - Hash Forge owns the drop) or the
   // connection screen is showing (no local target). The webview drop event is
-  // window-global, so this gate is what keeps it from double-firing.
+  // window-global, so this gate is what keeps it from double-firing. The
+  // Security Tools panel in AeroTools sits next to AeroFile instead of over
+  // it, so a drop that lands on it is left to Hash Forge drop by drop.
   useEffect(() => {
     if (showVaultPanel || showConnectionScreen || showCyberTools) return;
     const webview = getCurrentWebview();
     return guardedUnlisten(webview.onDragDropEvent(async (event) => {
       if (event.payload.type !== 'drop') return;
+      if (nativeDropOwnerAt(event.payload.position)) return;
       const dest = currentLocalPathRef.current;
       if (!dest || !event.payload.paths.length) return;
       let copied = 0;
@@ -19314,7 +19326,7 @@ const App: React.FC = () => {
           theme={getLogTheme(theme, isDark)}
         />
 
-        {/* DevTools V2 - 3-Column Responsive Layout (at bottom, below ActivityLog) */}
+        {/* DevTools V2 - Responsive Column Layout (at bottom, below ActivityLog) */}
         <DevToolsV2
           isOpen={devToolsOpen}
           previewFile={devToolsPreviewFile}
@@ -19327,7 +19339,6 @@ const App: React.FC = () => {
           onMaximizeChange={setDevToolsMaximized}
           onClose={() => setDevToolsOpen(false)}
           onClearFile={() => setDevToolsPreviewFile(null)}
-          onShowCyberTools={() => setShowCyberTools(true)}
           editorTheme={getMonacoTheme(theme, isDark)}
           appTheme={getEffectiveTheme(theme, isDark)}
           providerType={connectionParams.protocol}
