@@ -6484,9 +6484,22 @@ async fn delete_remote_file(
     }
 }
 
-/// Delete a local file or folder with detailed event emission for each deleted item.
+/// Delete a local file or folder with detailed event emission for each deleted
+/// item, then drop the file tags of whatever is gone.
 #[tauri::command]
 async fn delete_local_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    let result = delete_local_file_inner(app.clone(), state, path.clone()).await;
+    // A folder delete can stop half way and still return Ok: follow_delete only
+    // forgets the tags of paths that are no longer on disk.
+    file_tags::follow_delete(&app, &path);
+    result
+}
+
+async fn delete_local_file_inner(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
@@ -6871,12 +6884,26 @@ async fn copy_then_delete_local(
     Ok(())
 }
 
+/// Rename or move a local file or folder; its file tags (and those of
+/// everything under a folder) move with it.
 #[tauri::command]
 async fn rename_local_file(
+    app: AppHandle,
     from: String,
     to: String,
     overwrite: Option<bool>,
 ) -> Result<(), String> {
+    rename_local_file_inner(&from, &to, overwrite).await?;
+    file_tags::follow_move(&app, &from, &to);
+    Ok(())
+}
+
+async fn rename_local_file_inner(
+    from: &str,
+    to: &str,
+    overwrite: Option<bool>,
+) -> Result<(), String> {
+    let (from, to) = (from.to_string(), to.to_string());
     validate_path(&from)?;
     validate_path(&to)?;
     // Check for Windows reserved filenames
@@ -6983,7 +7010,7 @@ async fn copy_dir_recursive(
 
 #[cfg(test)]
 mod rename_local_exdev_tests {
-    use super::{copy_then_delete_local, is_cross_device_rename_error, rename_local_file};
+    use super::{copy_then_delete_local, is_cross_device_rename_error, rename_local_file_inner};
     use std::io::{Error, ErrorKind};
     use std::path::Path;
 
@@ -7053,13 +7080,9 @@ mod rename_local_exdev_tests {
         let from = dir.path().join("old.txt");
         let to = dir.path().join("new.txt");
         std::fs::write(&from, b"ok").expect("write");
-        rename_local_file(
-            from.to_string_lossy().into_owned(),
-            to.to_string_lossy().into_owned(),
-            Some(false),
-        )
-        .await
-        .expect("rename");
+        rename_local_file_inner(&from.to_string_lossy(), &to.to_string_lossy(), Some(false))
+            .await
+            .expect("rename");
         assert!(!from.exists());
         assert_eq!(std::fs::read(&to).unwrap(), b"ok");
     }
@@ -7071,13 +7094,10 @@ mod rename_local_exdev_tests {
         let to = dir.path().join("b.txt");
         std::fs::write(&from, b"a").expect("write a");
         std::fs::write(&to, b"b").expect("write b");
-        let err = rename_local_file(
-            from.to_string_lossy().into_owned(),
-            to.to_string_lossy().into_owned(),
-            Some(false),
-        )
-        .await
-        .expect_err("must refuse clobber");
+        let err =
+            rename_local_file_inner(&from.to_string_lossy(), &to.to_string_lossy(), Some(false))
+                .await
+                .expect_err("must refuse clobber");
         assert!(
             err.starts_with(super::DEST_EXISTS_MARKER),
             "expected DEST_EXISTS marker, got {err}"
@@ -15377,9 +15397,14 @@ async fn ai_execute_tool(
             validate_tool_path(new_path, "new_path")?;
 
             if location == "local" {
-                rename_local_file(old_path.to_string(), new_path.to_string(), None)
-                    .await
-                    .map_err(|e| e.to_string())?;
+                rename_local_file(
+                    app.clone(),
+                    old_path.to_string(),
+                    new_path.to_string(),
+                    None,
+                )
+                .await
+                .map_err(|e| e.to_string())?;
             } else {
                 rename_remote_file(state.clone(), old_path.to_string(), new_path.to_string())
                     .await
@@ -20866,8 +20891,6 @@ pub fn run() {
             file_tags::file_tags_remove_tag,
             file_tags::file_tags_get_tags_for_files,
             file_tags::file_tags_get_files_by_label,
-            file_tags::file_tags_update_path,
-            file_tags::file_tags_delete_all_for_file,
             file_tags::file_tags_get_label_counts,
             // Vault History
             vault_history::vault_history_save,

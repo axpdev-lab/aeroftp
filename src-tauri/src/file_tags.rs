@@ -404,40 +404,136 @@ pub async fn file_tags_get_files_by_label(
         .collect())
 }
 
-/// Update file path in all tags when a file is renamed/moved (prevents orphan tags)
-#[tauri::command]
-pub async fn file_tags_update_path(
-    app: AppHandle,
-    old_path: String,
-    new_path: String,
-) -> Result<usize, String> {
-    validate_path(&old_path)?;
-    validate_path(&new_path)?;
-    let db = app.state::<FileTagsDb>();
-    let conn = acquire_lock(&db);
+// ---------------------------------------------------------------------------
+// Tags follow local moves and deletes
+// ---------------------------------------------------------------------------
+//
+// Tags are keyed by path. A rename or move that left them behind lost them, and
+// worse, handed them to whatever file later took the old name; a delete left
+// them to the next file created at that path. The app's own local rename,
+// move and delete paths (the GUI commands and AeroAgent's local tools) call
+// `follow_move` / `follow_delete` after the filesystem change succeeds. Moving
+// to the OS trash keeps the tags, so a file restored to its path gets them back.
 
-    conn.execute(
-        "UPDATE file_tags SET file_path = ?1 WHERE file_path = ?2",
-        params![new_path, old_path],
-    )
-    .map_err(|e| format!("Update file path: {e}"))
+/// `path` without trailing separators (a root stays as it is).
+fn trim_separators(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() {
+        path
+    } else {
+        trimmed
+    }
 }
 
-/// Delete all tags for a file (cleanup on file deletion)
-#[tauri::command]
-pub async fn file_tags_delete_all_for_file(
-    app: AppHandle,
-    file_path: String,
-) -> Result<usize, String> {
-    validate_path(&file_path)?;
-    let db = app.state::<FileTagsDb>();
-    let conn = acquire_lock(&db);
+/// `path` escaped for a LIKE pattern with `\\` as the escape character, so a
+/// `%` or `_` in a file name matches only itself.
+fn like_escape(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for c in path.chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
 
+/// Every tag row of `path` and of anything under it, whichever separator the
+/// stored paths use.
+const UNDER_PATH: &str =
+    "file_path = ?1 OR file_path LIKE ?2 ESCAPE '\\' OR file_path LIKE ?3 ESCAPE '\\'";
+
+fn under_patterns(path: &str) -> (String, String) {
+    let base = like_escape(path);
+    (format!("{base}/%"), format!("{base}\\\\%"))
+}
+
+/// Drop the tags of `path` and of everything under it.
+pub fn forget_tags_in_conn(conn: &Connection, path: &str) -> Result<usize, String> {
+    let path = trim_separators(path);
+    let (slash, backslash) = under_patterns(path);
     conn.execute(
-        "DELETE FROM file_tags WHERE file_path = ?1",
-        params![file_path],
+        &format!("DELETE FROM file_tags WHERE {UNDER_PATH}"),
+        params![path, slash, backslash],
     )
-    .map_err(|e| format!("Delete file tags: {e}"))
+    .map_err(|e| format!("Forget file tags: {e}"))
+}
+
+/// Move the tags of `from` (and of everything under it) to `to`. Whatever was
+/// tagged at `to` is replaced, as the move replaced the file there.
+pub fn move_tags_in_conn(conn: &mut Connection, from: &str, to: &str) -> Result<usize, String> {
+    let (from, to) = (trim_separators(from), trim_separators(to));
+    if from == to {
+        return Ok(0);
+    }
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Begin tag move: {e}"))?;
+    forget_tags_in_conn(&tx, to)?;
+    let (slash, backslash) = under_patterns(from);
+    let moved = tx
+        .execute(
+            &format!(
+                "UPDATE file_tags SET file_path = ?4 || substr(file_path, length(?1) + 1) WHERE {UNDER_PATH}"
+            ),
+            params![from, slash, backslash, to],
+        )
+        .map_err(|e| format!("Move file tags: {e}"))?;
+    tx.commit().map_err(|e| format!("Commit tag move: {e}"))?;
+    Ok(moved)
+}
+
+/// After a successful local rename or move: carry the tags along. Best effort,
+/// the filesystem change already happened; a failure is logged.
+pub fn follow_move(app: &AppHandle, from: &str, to: &str) {
+    let Some(db) = app.try_state::<FileTagsDb>() else {
+        return;
+    };
+    let mut conn = acquire_lock(&db);
+    if let Err(e) = move_tags_in_conn(&mut conn, from, to) {
+        tracing::warn!("file tags did not follow {from} -> {to}: {e}");
+    }
+}
+
+/// Drop the tags of the paths at or under `path` that `exists` says are gone.
+/// A folder delete can stop half way (an error, a cancel) and still report
+/// success: what is still on disk keeps its tags.
+pub fn forget_tags_of_missing_in_conn(
+    conn: &Connection,
+    path: &str,
+    exists: impl Fn(&str) -> bool,
+) -> Result<usize, String> {
+    let path = trim_separators(path);
+    let (slash, backslash) = under_patterns(path);
+    let mut stmt = conn
+        .prepare(&format!(
+            "SELECT DISTINCT file_path FROM file_tags WHERE {UNDER_PATH}"
+        ))
+        .map_err(|e| format!("Prepare tag lookup: {e}"))?;
+    let tagged: Vec<String> = stmt
+        .query_map(params![path, slash, backslash], |r| r.get(0))
+        .map_err(|e| format!("Tag lookup: {e}"))?
+        .filter_map(Result::ok)
+        .collect();
+    let mut forgotten = 0;
+    for gone in tagged.iter().filter(|p| !exists(p)) {
+        forgotten += conn
+            .execute("DELETE FROM file_tags WHERE file_path = ?1", params![gone])
+            .map_err(|e| format!("Forget file tags: {e}"))?;
+    }
+    Ok(forgotten)
+}
+
+/// After a local delete: drop the tags of what is no longer on disk.
+pub fn follow_delete(app: &AppHandle, path: &str) {
+    let Some(db) = app.try_state::<FileTagsDb>() else {
+        return;
+    };
+    let conn = acquire_lock(&db);
+    let exists = |p: &str| std::path::Path::new(p).exists();
+    if let Err(e) = forget_tags_of_missing_in_conn(&conn, path, exists) {
+        tracing::warn!("file tags of deleted {path} were kept: {e}");
+    }
 }
 
 /// Get label usage counts (how many files each label is applied to)
@@ -476,4 +572,125 @@ pub async fn file_tags_get_label_counts(app: AppHandle) -> Result<Vec<LabelCount
             }
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_db_schema(&conn).unwrap();
+        conn
+    }
+
+    fn tag(conn: &Connection, path: &str, label_id: i64) {
+        conn.execute(
+            "INSERT INTO file_tags (file_path, label_id) VALUES (?1, ?2)",
+            params![path, label_id],
+        )
+        .unwrap();
+    }
+
+    fn tagged(conn: &Connection) -> Vec<(String, i64)> {
+        let mut stmt = conn
+            .prepare("SELECT file_path, label_id FROM file_tags ORDER BY file_path, label_id")
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    /// `file_tags_update_path` existed for this and nothing called it, so a
+    /// rename lost the file's tags. A folder carries the tags of everything
+    /// under it, and a sibling sharing the name as a prefix keeps its own.
+    #[test]
+    fn a_rename_carries_the_tags_of_the_item_and_everything_under_it() {
+        let mut conn = db();
+        tag(&conn, "/home/u/doc.txt", 1);
+        tag(&conn, "/home/u/proj", 2);
+        tag(&conn, "/home/u/proj/a.rs", 3);
+        tag(&conn, "/home/u/proj/sub/b.rs", 4);
+        tag(&conn, "/home/u/projects/c.rs", 5);
+        tag(&conn, "C:\\work\\proj\\d.rs", 6);
+
+        move_tags_in_conn(&mut conn, "/home/u/doc.txt", "/home/u/notes.txt").unwrap();
+        move_tags_in_conn(&mut conn, "/home/u/proj/", "/home/u/app").unwrap();
+        move_tags_in_conn(&mut conn, "C:\\work\\proj", "C:\\work\\app").unwrap();
+
+        assert_eq!(
+            tagged(&conn),
+            [
+                ("/home/u/app".to_string(), 2),
+                ("/home/u/app/a.rs".to_string(), 3),
+                ("/home/u/app/sub/b.rs".to_string(), 4),
+                ("/home/u/notes.txt".to_string(), 1),
+                ("/home/u/projects/c.rs".to_string(), 5),
+                ("C:\\work\\app\\d.rs".to_string(), 6),
+            ]
+        );
+    }
+
+    /// A move that overwrote a tagged file takes the moved file's tags, and a
+    /// `%` or `_` in a name is a character, not a wildcard.
+    #[test]
+    fn an_overwrite_replaces_the_destination_tags_and_wildcards_stay_literal() {
+        let mut conn = db();
+        tag(&conn, "/d/new.txt", 1);
+        tag(&conn, "/d/old.txt", 2);
+        tag(&conn, "/d/a_b/x", 3);
+        tag(&conn, "/d/aXb/y", 4);
+
+        move_tags_in_conn(&mut conn, "/d/new.txt", "/d/old.txt").unwrap();
+        move_tags_in_conn(&mut conn, "/d/a_b", "/d/c").unwrap();
+
+        assert_eq!(
+            tagged(&conn),
+            [
+                ("/d/aXb/y".to_string(), 4),
+                ("/d/c/x".to_string(), 3),
+                ("/d/old.txt".to_string(), 1),
+            ]
+        );
+    }
+
+    /// `file_tags_delete_all_for_file` existed for this and nothing called
+    /// it, so a delete left the tags to the next file created at that path.
+    /// A folder delete that stopped half way keeps the tags of what survived.
+    #[test]
+    fn a_delete_forgets_the_tags_of_what_is_gone_and_only_that() {
+        let conn = db();
+        tag(&conn, "/d/gone", 1);
+        tag(&conn, "/d/gone/inner.txt", 2);
+        tag(&conn, "/d/gone/survivor.txt", 5);
+        tag(&conn, "/d/gone.txt", 3);
+        tag(&conn, "/d/kept/x", 4);
+
+        // The folder delete failed on one file, so the folder stays too.
+        let on_disk = [
+            "/d/gone",
+            "/d/gone/survivor.txt",
+            "/d/gone.txt",
+            "/d/kept/x",
+        ];
+        forget_tags_of_missing_in_conn(&conn, "/d/gone/", |p| on_disk.contains(&p)).unwrap();
+        assert_eq!(
+            tagged(&conn),
+            [
+                ("/d/gone".to_string(), 1),
+                ("/d/gone.txt".to_string(), 3),
+                ("/d/gone/survivor.txt".to_string(), 5),
+                ("/d/kept/x".to_string(), 4),
+            ]
+        );
+
+        // Second attempt removes everything.
+        let on_disk = ["/d/gone.txt", "/d/kept/x"];
+        forget_tags_of_missing_in_conn(&conn, "/d/gone", |p| on_disk.contains(&p)).unwrap();
+        assert_eq!(
+            tagged(&conn),
+            [("/d/gone.txt".to_string(), 3), ("/d/kept/x".to_string(), 4)]
+        );
+    }
 }
