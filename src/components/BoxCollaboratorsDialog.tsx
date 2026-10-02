@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Users, UserPlus, Loader2, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
@@ -32,6 +32,8 @@ const ROLE_KEY: Record<BoxRole, string> = {
   'co-owner': 'box.roleCoOwner',
 };
 
+const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled])';
+
 /** Who a Box file or folder is shared with: list, invite by email with a role, remove. */
 export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaboratorsDialogProps) {
   const t = useTranslation();
@@ -41,17 +43,21 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   const [role, setRole] = useState<BoxRole>('viewer');
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
 
   const roleLabel = (r: string) => (r in ROLE_KEY ? t(ROLE_KEY[r as BoxRole]) : r);
 
   const reload = useCallback(async () => {
     try {
       setCollaborators(await listBoxCollaborators(invoke, path));
+      setLoadError(null);
     } catch (err) {
-      setCollaborators([]);
-      setError(String(err));
+      // A failed load is not an empty share list: keep what is on screen and say why.
+      setLoadError(String(err));
     }
   }, [path]);
 
@@ -66,6 +72,37 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  // Focus starts in the dialog, Tab stays inside it, and focus goes back where
+  // it came from on close, as in ConfirmOverlay. Tab is also kept from the
+  // app's own Tab shortcut, which swallows it on a button and switches the
+  // panel behind the dialog. Mount-only: App passes `onClose` as an inline arrow.
+  useEffect(() => {
+    const returnTo = document.activeElement as HTMLElement | null;
+    const onTab = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      event.stopPropagation();
+      const panel = panelRef.current;
+      const focusable = panel?.querySelectorAll<HTMLElement>(FOCUSABLE);
+      if (!panel || !focusable || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !panel.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onTab, true);
+    emailRef.current?.focus();
+    return () => {
+      document.removeEventListener('keydown', onTab, true);
+      returnTo?.focus?.();
+    };
+  }, []);
 
   const handleAdd = async () => {
     if (!email.trim() || adding) return;
@@ -104,6 +141,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
         {...modalDrag.panelProps}
+        ref={panelRef}
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
@@ -124,8 +162,9 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
         </div>
 
         <div className="px-5 py-3 max-h-64 overflow-y-auto space-y-1.5">
+          {loadError && <p className="text-xs text-red-500 py-2">{loadError}</p>}
           {collaborators === null ? (
-            <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-400" /></div>
+            !loadError && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-400" /></div>
           ) : collaborators.length === 0 ? (
             <p className="text-xs text-gray-500 dark:text-gray-400 py-2">{t('box.noCollaborators')}</p>
           ) : (
@@ -152,6 +191,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
         <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700/50 space-y-2">
           <div className="text-[11px] uppercase tracking-wide text-gray-500">{t('box.addCollaborator')}</div>
           <input
+            ref={emailRef}
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}

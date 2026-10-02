@@ -16,6 +16,8 @@ import {
   type FileComment,
 } from '../utils/boxDriveSocial';
 
+const FOCUSABLE = 'button:not([disabled]), textarea:not([disabled])';
+
 interface FileCommentsDialogProps {
   provider: CommentsProvider;
   filePath: string;
@@ -34,21 +36,23 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const reload = useCallback(async () => {
     try {
       setComments(await listComments(invoke, provider, filePath));
+      setLoadError(null);
     } catch (err) {
-      setComments([]);
-      setError(String(err));
+      // A failed load is not a file without comments: keep what is on screen and say why.
+      setLoadError(String(err));
     }
   }, [provider, filePath]);
 
   useEffect(() => {
-    textareaRef.current?.focus();
     void reload();
   }, [reload]);
 
@@ -59,6 +63,38 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
+
+  // Focus starts on the message box, Tab stays inside the dialog, and focus
+  // goes back where it came from on close, as in ConfirmOverlay. Tab is also
+  // kept from the app's own Tab shortcut, which swallows it on a button and
+  // switches the panel behind the dialog. Mount-only: App passes `onClose` as
+  // an inline arrow.
+  useEffect(() => {
+    const returnTo = document.activeElement as HTMLElement | null;
+    const onTab = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+      event.stopPropagation();
+      const panel = panelRef.current;
+      const focusable = panel?.querySelectorAll<HTMLElement>(FOCUSABLE);
+      if (!panel || !focusable || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !panel.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || !panel.contains(active))) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onTab, true);
+    textareaRef.current?.focus();
+    return () => {
+      document.removeEventListener('keydown', onTab, true);
+      returnTo?.focus?.();
+    };
+  }, []);
 
   const handleSubmit = async () => {
     if (!message.trim() || sending) return;
@@ -97,6 +133,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
         {...modalDrag.panelProps}
+        ref={panelRef}
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
@@ -117,8 +154,9 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
         </div>
 
         <div className="px-5 py-3 max-h-72 overflow-y-auto space-y-2">
+          {loadError && <p className="text-xs text-red-500 py-2">{loadError}</p>}
           {comments === null ? (
-            <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-400" /></div>
+            !loadError && <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-400" /></div>
           ) : comments.length === 0 ? (
             <p className="text-xs text-gray-500 dark:text-gray-400 py-2">{t('fileComments.empty')}</p>
           ) : (
