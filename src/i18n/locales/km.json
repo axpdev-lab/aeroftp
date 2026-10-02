@@ -1714,7 +1714,8 @@
             "overlay_locked": "ស្រទាប់អ៊ិនគ្រីបត្រូវបានចាក់សោ",
             "aerocrypt_marker_migrate": "កំពុងបំប្លែងសញ្ញាសម្គាល់ AeroCrypt ទៅជា .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "សញ្ញាសម្គាល់ AeroCrypt ត្រូវបានបម្លែងទៅជា .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] កំពុងដោះសោថត {filename}..."
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "បន្ថែមស្លាក...",
             "tagsUpdated": "ស្លាកត្រូវបានធ្វើបច្ចុប្បន្នភាព",
             "addTag": "បន្ថែម",
-            "noTags": "គ្មានស្លាក"
+            "noTags": "គ្មានស្លាក",
+            "collaborators": "អ្នករួមការងារ",
+            "noCollaborators": "មិនទាន់បានចែករំលែកជាមួយអ្នកណាម្នាក់នៅឡើយ",
+            "folderNotLocked": "ថតនេះមិនត្រូវបានចាក់សោទេ",
+            "roleEditor": "អ្នកកែសម្រួល",
+            "roleViewer": "អ្នកមើល",
+            "rolePreviewer": "អ្នកមើលជាមុន",
+            "roleUploader": "អ្នកផ្ទុកឡើង",
+            "rolePreviewerUploader": "អ្នកមើលជាមុន និងអ្នកផ្ទុកឡើង",
+            "roleViewerUploader": "អ្នកមើល និងអ្នកផ្ទុកឡើង",
+            "roleCoOwner": "សហម្ចាស់"
         },
         "googledrive": {
             "star": "ដាក់ផ្កាយ",
             "unstar": "ដកផ្កាយ",
             "starred": "ឯកសារត្រូវបានដាក់ផ្កាយ",
-            "unstarred": "ឯកសារត្រូវបានដកផ្កាយ",
-            "addComment": "បន្ថែមមតិយោបល់",
-            "commentPlaceholder": "សរសេរមតិយោបល់របស់អ្នក...",
-            "commentAdded": "មតិយោបល់ត្រូវបានបន្ថែម"
+            "unstarred": "ឯកសារត្រូវបានដកផ្កាយ"
         },
         "dropbox": {
             "manageTags": "គ្រប់គ្រងស្លាក"
@@ -6061,6 +6069,10 @@
             "scopeSession": "អនុម័តឧបករណ៍នេះសម្រាប់រយៈពេលដែលនៅសល់នៃការជជែក។",
             "approve": "អនុម័ត",
             "rememberForChat": "អនុញ្ញាតឧបករណ៍នេះសម្រាប់ការជជែកនេះដែលនៅសល់"
+        },
+        "fileComments": {
+            "title": "មតិយោបល់",
+            "empty": "មិនទាន់មានមតិយោបល់នៅឡើយ"
         }
     }
 }

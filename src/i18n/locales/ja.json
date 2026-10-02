@@ -1714,7 +1714,8 @@
             "overlay_locked": "暗号化オーバーレイをロックしました",
             "aerocrypt_marker_migrate": "AeroCrypt マーカーを .aerocrypt.tsv に変換しています…",
             "aerocrypt_marker_migrated": "AeroCrypt マーカーを .aerocrypt.tsv に変換しました",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] フォルダ {filename} のロックを解除しています..."
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "タグを追加...",
             "tagsUpdated": "タグが更新されました",
             "addTag": "追加",
-            "noTags": "タグなし"
+            "noTags": "タグなし",
+            "collaborators": "共同作業者",
+            "noCollaborators": "まだ誰とも共有されていません",
+            "folderNotLocked": "このフォルダはロックされていません",
+            "roleEditor": "編集者",
+            "roleViewer": "閲覧者",
+            "rolePreviewer": "プレビューア",
+            "roleUploader": "アップローダー",
+            "rolePreviewerUploader": "プレビューア・アップローダー",
+            "roleViewerUploader": "閲覧者・アップローダー",
+            "roleCoOwner": "共同所有者"
         },
         "googledrive": {
             "star": "スターを付ける",
             "unstar": "スターを外す",
             "starred": "ファイルにスターを付けました",
-            "unstarred": "ファイルのスターを外しました",
-            "addComment": "コメントを追加",
-            "commentPlaceholder": "コメントを入力...",
-            "commentAdded": "コメントを追加しました"
+            "unstarred": "ファイルのスターを外しました"
         },
         "dropbox": {
             "manageTags": "タグを管理"
@@ -6042,6 +6050,10 @@
             "scopeSession": "このチャットセッションの残りの間、このツールを承認します。",
             "approve": "承認",
             "rememberForChat": "このチャットの残りの間、このツールを許可する"
+        },
+        "fileComments": {
+            "title": "コメント",
+            "empty": "コメントはまだありません"
         }
     }
 }

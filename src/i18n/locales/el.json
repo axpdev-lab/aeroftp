@@ -1714,7 +1714,8 @@
             "overlay_locked": "Το κρυπτογραφημένο επίστρωμα κλειδώθηκε",
             "aerocrypt_marker_migrate": "Μετατροπή του δείκτη AeroCrypt σε .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Ο δείκτης AeroCrypt μετατράπηκε σε .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Ξεκλείδωμα φακέλου {filename}..."
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Προσθήκη ετικέτας...",
             "tagsUpdated": "Οι ετικέτες ενημερώθηκαν",
             "addTag": "Προσθήκη",
-            "noTags": "Χωρίς ετικέτες"
+            "noTags": "Χωρίς ετικέτες",
+            "collaborators": "Συνεργάτες",
+            "noCollaborators": "Δεν έχει κοινοποιηθεί σε κανέναν ακόμη",
+            "folderNotLocked": "Αυτός ο φάκελος δεν είναι κλειδωμένος",
+            "roleEditor": "Επεξεργαστής",
+            "roleViewer": "Θεατής",
+            "rolePreviewer": "Προεπισκόπηση",
+            "roleUploader": "Μεταφορτωτής",
+            "rolePreviewerUploader": "Προεπισκόπηση και μεταφόρτωση",
+            "roleViewerUploader": "Θεατής και μεταφόρτωση",
+            "roleCoOwner": "Συνιδιοκτήτης"
         },
         "googledrive": {
             "star": "Προσθήκη αστεριού",
             "unstar": "Αφαίρεση αστεριού",
             "starred": "Το αρχείο σημειώθηκε με αστέρι",
-            "unstarred": "Το αστέρι αφαιρέθηκε",
-            "addComment": "Προσθήκη σχολίου",
-            "commentPlaceholder": "Γράψτε το σχόλιό σας...",
-            "commentAdded": "Το σχόλιο προστέθηκε"
+            "unstarred": "Το αστέρι αφαιρέθηκε"
         },
         "dropbox": {
             "manageTags": "Διαχείριση ετικετών"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Εγκρίνει αυτό το εργαλείο για το υπόλοιπο της συνεδρίας.",
             "approve": "Έγκριση",
             "rememberForChat": "Να επιτρέπεται αυτό το εργαλείο για το υπόλοιπο αυτής της συνομιλίας"
+        },
+        "fileComments": {
+            "title": "Σχόλια",
+            "empty": "Δεν υπάρχουν σχόλια ακόμη"
         }
     }
 }

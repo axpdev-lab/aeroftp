@@ -1714,7 +1714,8 @@
             "overlay_locked": "Superposition chiffrée verrouillée",
             "aerocrypt_marker_migrate": "Conversion du marqueur AeroCrypt en .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marqueur AeroCrypt converti en .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Déverrouillage du dossier {filename}..."
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Ajouter une étiquette...",
             "tagsUpdated": "Étiquettes mises à jour",
             "addTag": "Ajouter",
-            "noTags": "Aucune étiquette"
+            "noTags": "Aucune étiquette",
+            "collaborators": "Collaborateurs",
+            "noCollaborators": "Pas encore partagé avec qui que ce soit",
+            "folderNotLocked": "Ce dossier n'est pas verrouillé",
+            "roleEditor": "Éditeur",
+            "roleViewer": "Lecteur",
+            "rolePreviewer": "Prévisualisateur",
+            "roleUploader": "Téléverseur",
+            "rolePreviewerUploader": "Prévisualisateur et téléverseur",
+            "roleViewerUploader": "Lecteur et téléverseur",
+            "roleCoOwner": "Copropriétaire"
         },
         "googledrive": {
             "star": "Ajouter une étoile",
             "unstar": "Retirer l'étoile",
             "starred": "Fichier marqué d'une étoile",
-            "unstarred": "Étoile retirée du fichier",
-            "addComment": "Ajouter un commentaire",
-            "commentPlaceholder": "Écrivez votre commentaire...",
-            "commentAdded": "Commentaire ajouté"
+            "unstarred": "Étoile retirée du fichier"
         },
         "dropbox": {
             "manageTags": "Gérer les tags"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Approuve cet outil pour le reste de la session de chat.",
             "approve": "Approuver",
             "rememberForChat": "Autoriser cet outil pour le reste de cette conversation"
+        },
+        "fileComments": {
+            "title": "Commentaires",
+            "empty": "Aucun commentaire pour le moment"
         }
     }
 }

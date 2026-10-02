@@ -1714,7 +1714,8 @@
             "overlay_locked": "Krypterat överlägg låst",
             "aerocrypt_marker_migrate": "Konverterar AeroCrypt-markör till .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markör konverterad till .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Låser upp mappen {filename}..."
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Lägg till en tagg...",
             "tagsUpdated": "Taggar uppdaterade",
             "addTag": "Lägg till",
-            "noTags": "Inga taggar"
+            "noTags": "Inga taggar",
+            "collaborators": "Medarbetare",
+            "noCollaborators": "Inte delad med någon än",
+            "folderNotLocked": "Den här mappen är inte låst",
+            "roleEditor": "Redigerare",
+            "roleViewer": "Visare",
+            "rolePreviewer": "Förhandsgranskare",
+            "roleUploader": "Uppladdare",
+            "rolePreviewerUploader": "Förhandsgranskare och uppladdare",
+            "roleViewerUploader": "Visare och uppladdare",
+            "roleCoOwner": "Medägare"
         },
         "googledrive": {
             "star": "Markera med stjärna",
             "unstar": "Ta bort stjärna",
             "starred": "Filen markerad med stjärna",
-            "unstarred": "Stjärnmarkering borttagen",
-            "addComment": "Lägg till kommentar",
-            "commentPlaceholder": "Skriv din kommentar...",
-            "commentAdded": "Kommentar tillagd"
+            "unstarred": "Stjärnmarkering borttagen"
         },
         "dropbox": {
             "manageTags": "Hantera taggar"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Godkänner det här verktyget under resten av chattsessionen.",
             "approve": "Godkänn",
             "rememberForChat": "Tillåt det här verktyget under resten av chatten"
+        },
+        "fileComments": {
+            "title": "Kommentarer",
+            "empty": "Inga kommentarer än"
         }
     }
 }

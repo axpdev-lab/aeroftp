@@ -1714,7 +1714,8 @@
             "overlay_locked": "Capa xifrada bloquejada",
             "aerocrypt_marker_migrate": "S'està convertint el marcador d'AeroCrypt a .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador d'AeroCrypt convertit a .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] S'està desbloquejant la carpeta {filename}..."
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "Afegir una etiqueta...",
             "tagsUpdated": "Etiquetes actualitzades",
             "addTag": "Afegir",
-            "noTags": "Sense etiquetes"
+            "noTags": "Sense etiquetes",
+            "collaborators": "Col·laboradors",
+            "noCollaborators": "Encara no s'ha compartit amb ningú",
+            "folderNotLocked": "Aquesta carpeta no està bloquejada",
+            "roleEditor": "Editor",
+            "roleViewer": "Lector",
+            "rolePreviewer": "Previsualitzador",
+            "roleUploader": "Carregador",
+            "rolePreviewerUploader": "Previsualitzador i carregador",
+            "roleViewerUploader": "Lector i carregador",
+            "roleCoOwner": "Copropietari"
         },
         "googledrive": {
             "star": "Destacar",
             "unstar": "Treure destacat",
             "starred": "Fitxer destacat",
-            "unstarred": "Fitxer sense destacar",
-            "addComment": "Afegir comentari",
-            "commentPlaceholder": "Escriu el teu comentari...",
-            "commentAdded": "Comentari afegit"
+            "unstarred": "Fitxer sense destacar"
         },
         "dropbox": {
             "manageTags": "Gestionar etiquetes"
@@ -6061,6 +6069,10 @@
             "scopeSession": "Aprova aquesta eina per a la resta de la sessió de xat.",
             "approve": "Aprova",
             "rememberForChat": "Permet aquesta eina durant la resta d'aquest xat"
+        },
+        "fileComments": {
+            "title": "Comentaris",
+            "empty": "Encara no hi ha comentaris"
         }
     }
 }

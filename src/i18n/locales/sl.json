@@ -1714,7 +1714,8 @@
             "overlay_locked": "Šifrirana plast zaklenjena",
             "aerocrypt_marker_migrate": "Pretvarjanje označbe AeroCrypt v .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Označba AeroCrypt pretvorjena v .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Odklepanje mape {filename}..."
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Dodaj oznako...",
             "tagsUpdated": "Oznake posodobljene",
             "addTag": "Dodaj",
-            "noTags": "Ni oznak"
+            "noTags": "Ni oznak",
+            "collaborators": "Sodelavci",
+            "noCollaborators": "Še ni deljeno z nikomer",
+            "folderNotLocked": "Ta mapa ni zaklenjena",
+            "roleEditor": "Urejevalec",
+            "roleViewer": "Gledalec",
+            "rolePreviewer": "Predogledovalec",
+            "roleUploader": "Nalagalec",
+            "rolePreviewerUploader": "Predogledovalec in nalagalec",
+            "roleViewerUploader": "Gledalec in nalagalec",
+            "roleCoOwner": "Solastnik"
         },
         "googledrive": {
             "star": "Označi z zvezdico",
             "unstar": "Odstrani zvezdico",
             "starred": "Datoteka označena z zvezdico",
-            "unstarred": "Zvezdica odstranjena",
-            "addComment": "Dodaj komentar",
-            "commentPlaceholder": "Napišite svoj komentar...",
-            "commentAdded": "Komentar dodan"
+            "unstarred": "Zvezdica odstranjena"
         },
         "dropbox": {
             "manageTags": "Upravljanje oznak"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Odobri to orodje do konca seje klepeta.",
             "approve": "Odobri",
             "rememberForChat": "Dovoli to orodje do konca tega klepeta"
+        },
+        "fileComments": {
+            "title": "Komentarji",
+            "empty": "Še ni komentarjev"
         }
     }
 }

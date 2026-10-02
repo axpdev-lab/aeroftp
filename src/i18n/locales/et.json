@@ -1714,7 +1714,8 @@
             "overlay_locked": "Krüpteeritud kiht lukustatud",
             "aerocrypt_marker_migrate": "AeroCrypti märgise teisendamine vormingusse .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypti märgis teisendatud vormingusse .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Kausta {filename} avamine..."
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Lisa silt...",
             "tagsUpdated": "Sildid uuendatud",
             "addTag": "Lisa",
-            "noTags": "Silte pole"
+            "noTags": "Silte pole",
+            "collaborators": "Koostööpartnerid",
+            "noCollaborators": "Pole veel kellegagi jagatud",
+            "folderNotLocked": "See kaust pole lukustatud",
+            "roleEditor": "Toimetaja",
+            "roleViewer": "Vaataja",
+            "rolePreviewer": "Eelvaataja",
+            "roleUploader": "Üleslaadija",
+            "rolePreviewerUploader": "Eelvaataja ja üleslaadija",
+            "roleViewerUploader": "Vaataja ja üleslaadija",
+            "roleCoOwner": "Kaasomanik"
         },
         "googledrive": {
             "star": "Lisa tärn",
             "unstar": "Eemalda tärn",
             "starred": "Fail tärniga märgitud",
-            "unstarred": "Tärn eemaldatud",
-            "addComment": "Lisa kommentaar",
-            "commentPlaceholder": "Kirjuta oma kommentaar...",
-            "commentAdded": "Kommentaar lisatud"
+            "unstarred": "Tärn eemaldatud"
         },
         "dropbox": {
             "manageTags": "Halda silte"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Kinnitab selle tööriista vestluse lõpuni.",
             "approve": "Kinnita",
             "rememberForChat": "Luba see tööriist selle vestluse lõpuni"
+        },
+        "fileComments": {
+            "title": "Kommentaarid",
+            "empty": "Kommentaare veel pole"
         }
     }
 }

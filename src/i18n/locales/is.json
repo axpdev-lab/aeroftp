@@ -1714,7 +1714,8 @@
             "overlay_locked": "Dulkóðað yfirlag læst",
             "aerocrypt_marker_migrate": "Umbreyti AeroCrypt-merki í .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-merki umbreytt í .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Aflæsi möppu {filename}..."
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "Bæta við merki...",
             "tagsUpdated": "Merki uppfærð",
             "addTag": "Bæta við",
-            "noTags": "Engin merki"
+            "noTags": "Engin merki",
+            "collaborators": "Samstarfsaðilar",
+            "noCollaborators": "Ekki deilt með neinum enn",
+            "folderNotLocked": "Þessi mappa er ekki læst",
+            "roleEditor": "Ritstjóri",
+            "roleViewer": "Áhorfandi",
+            "rolePreviewer": "Forskoðandi",
+            "roleUploader": "Upphleðsluaðili",
+            "rolePreviewerUploader": "Forskoðandi og upphleðsluaðili",
+            "roleViewerUploader": "Áhorfandi og upphleðsluaðili",
+            "roleCoOwner": "Meðeigandi"
         },
         "googledrive": {
             "star": "Stjarnmerkja",
             "unstar": "Afmerkja stjörnu",
             "starred": "Skrá stjörnumerkt",
-            "unstarred": "Stjörnumerking fjarlægð",
-            "addComment": "Bæta við athugasemd",
-            "commentPlaceholder": "Skrifaðu athugasemd...",
-            "commentAdded": "Athugasemd bætt við"
+            "unstarred": "Stjörnumerking fjarlægð"
         },
         "dropbox": {
             "manageTags": "Stjórna merkjum"
@@ -6061,6 +6069,10 @@
             "scopeSession": "Samþykkir þetta verkfæri það sem eftir er af spjallinu.",
             "approve": "Samþykkja",
             "rememberForChat": "Leyfa þetta verkfæri það sem eftir er af þessu spjalli"
+        },
+        "fileComments": {
+            "title": "Athugasemdir",
+            "empty": "Engar athugasemdir enn"
         }
     }
 }

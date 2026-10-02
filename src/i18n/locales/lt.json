@@ -1714,7 +1714,8 @@
             "overlay_locked": "Šifruotas sluoksnis užrakintas",
             "aerocrypt_marker_migrate": "AeroCrypt žymuo konvertuojamas į .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt žymuo konvertuotas į .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Atrakinamas aplankas {filename}..."
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Pridėti žymą...",
             "tagsUpdated": "Žymos atnaujintos",
             "addTag": "Pridėti",
-            "noTags": "Nėra žymų"
+            "noTags": "Nėra žymų",
+            "collaborators": "Bendradarbiai",
+            "noCollaborators": "Dar niekam nepasidalinta",
+            "folderNotLocked": "Šis aplankas neužrakintas",
+            "roleEditor": "Redaktorius",
+            "roleViewer": "Žiūrėtojas",
+            "rolePreviewer": "Peržiūrėtojas",
+            "roleUploader": "Įkėlėjas",
+            "rolePreviewerUploader": "Peržiūrėtojas ir įkėlėjas",
+            "roleViewerUploader": "Žiūrėtojas ir įkėlėjas",
+            "roleCoOwner": "Bendrasavininkis"
         },
         "googledrive": {
             "star": "Pažymėti žvaigždute",
             "unstar": "Pašalinti žvaigždutę",
             "starred": "Failas pažymėtas žvaigždute",
-            "unstarred": "Žvaigždutė pašalinta",
-            "addComment": "Pridėti komentarą",
-            "commentPlaceholder": "Rašykite komentarą...",
-            "commentAdded": "Komentaras pridėtas"
+            "unstarred": "Žvaigždutė pašalinta"
         },
         "dropbox": {
             "manageTags": "Tvarkyti žymas"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Patvirtina šį įrankį iki pokalbio seanso pabaigos.",
             "approve": "Patvirtinti",
             "rememberForChat": "Leisti šį įrankį iki šio pokalbio pabaigos"
+        },
+        "fileComments": {
+            "title": "Komentarai",
+            "empty": "Komentarų dar nėra"
         }
     }
 }

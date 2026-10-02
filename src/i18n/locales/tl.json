@@ -1714,7 +1714,8 @@
             "overlay_locked": "Naka-lock ang naka-encrypt na overlay",
             "aerocrypt_marker_migrate": "Kino-convert ang marker ng AeroCrypt sa .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Na-convert ang AeroCrypt marker sa .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Ina-unlock ang folder na {filename}..."
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "Magdagdag ng tag...",
             "tagsUpdated": "Na-update ang mga tag",
             "addTag": "Idagdag",
-            "noTags": "Walang mga tag"
+            "noTags": "Walang mga tag",
+            "collaborators": "Mga katuwang",
+            "noCollaborators": "Hindi pa naibabahagi sa sinuman",
+            "folderNotLocked": "Hindi naka-lock ang folder na ito",
+            "roleEditor": "Editor",
+            "roleViewer": "Tagatingin",
+            "rolePreviewer": "Tagapag-preview",
+            "roleUploader": "Tagapag-upload",
+            "rolePreviewerUploader": "Tagapag-preview at tagapag-upload",
+            "roleViewerUploader": "Tagatingin at tagapag-upload",
+            "roleCoOwner": "Kasamang may-ari"
         },
         "googledrive": {
             "star": "Lagyan ng bituin",
             "unstar": "Alisin ang bituin",
             "starred": "Nilagyan ng bituin ang file",
-            "unstarred": "Inalis ang bituin sa file",
-            "addComment": "Magdagdag ng komento",
-            "commentPlaceholder": "Isulat ang iyong komento...",
-            "commentAdded": "Naidagdag ang komento"
+            "unstarred": "Inalis ang bituin sa file"
         },
         "dropbox": {
             "manageTags": "Pamahalaan ang mga tag"
@@ -6061,6 +6069,10 @@
             "scopeSession": "Inaaprubahan ang tool na ito sa natitirang bahagi ng chat session.",
             "approve": "Aprubahan",
             "rememberForChat": "Payagan ang tool na ito sa natitirang bahagi ng chat na ito"
+        },
+        "fileComments": {
+            "title": "Mga komento",
+            "empty": "Wala pang komento"
         }
     }
 }

@@ -1714,7 +1714,8 @@
             "overlay_locked": "Шифровани слој закључан",
             "aerocrypt_marker_migrate": "Конвертовање AeroCrypt маркера у .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt маркер је конвертован у .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "Конверзија AeroCrypt маркера није успела"
+            "aerocrypt_marker_migrate_failed": "Конверзија AeroCrypt маркера није успела",
+            "box_unlock_folder": "[Box] Откључавање фасцикле {filename}..."
         },
         "protocol": {
             "selectProtocol": "Изабери протокол...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Додај ознаку...",
             "tagsUpdated": "Ознаке ажуриране",
             "addTag": "Додај",
-            "noTags": "Нема ознака"
+            "noTags": "Нема ознака",
+            "collaborators": "Сарадници",
+            "noCollaborators": "Још није подељено ни са ким",
+            "folderNotLocked": "Ова фасцикла није закључана",
+            "roleEditor": "Уредник",
+            "roleViewer": "Гледалац",
+            "rolePreviewer": "Прегледалац",
+            "roleUploader": "Отпремалац",
+            "rolePreviewerUploader": "Прегледалац и отпремалац",
+            "roleViewerUploader": "Гледалац и отпремалац",
+            "roleCoOwner": "Сувласник"
         },
         "googledrive": {
             "star": "Означи звездицом",
             "unstar": "Уклони звездицу",
             "starred": "Датотека означена звездицом",
-            "unstarred": "Звездица уклоњена",
-            "addComment": "Додај коментар",
-            "commentPlaceholder": "Напишите свој коментар...",
-            "commentAdded": "Коментар додат"
+            "unstarred": "Звездица уклоњена"
         },
         "dropbox": {
             "manageTags": "Управљање ознакама"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Одобрава ову алатку до краја сесије ћаскања.",
             "approve": "Одобри",
             "rememberForChat": "Дозволи ову алатку до краја овог ћаскања"
+        },
+        "fileComments": {
+            "title": "Коментари",
+            "empty": "Још нема коментара"
         }
     }
 }

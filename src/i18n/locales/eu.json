@@ -1714,7 +1714,8 @@
             "overlay_locked": "Zifratutako geruza blokeatuta",
             "aerocrypt_marker_migrate": "AeroCrypt marka .aerocrypt.tsv formatura bihurtzen…",
             "aerocrypt_marker_migrated": "AeroCrypt markatzailea .aerocrypt.tsv formatura bihurtu da",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} karpeta desblokeatzen..."
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "Etiketa bat gehitu...",
             "tagsUpdated": "Etiketak eguneratu dira",
             "addTag": "Gehitu",
-            "noTags": "Etiketarik ez"
+            "noTags": "Etiketarik ez",
+            "collaborators": "Lankideak",
+            "noCollaborators": "Oraindik ez da inorekin partekatu",
+            "folderNotLocked": "Karpeta hau ez dago blokeatuta",
+            "roleEditor": "Editorea",
+            "roleViewer": "Ikuslea",
+            "rolePreviewer": "Aurreikuslea",
+            "roleUploader": "Igotzailea",
+            "rolePreviewerUploader": "Aurreikuslea eta igotzailea",
+            "roleViewerUploader": "Ikuslea eta igotzailea",
+            "roleCoOwner": "Jabekidea"
         },
         "googledrive": {
             "star": "Izartu",
             "unstar": "Izarra kendu",
             "starred": "Fitxategia izarrez markatua",
-            "unstarred": "Izarra kendua",
-            "addComment": "Iruzkina gehitu",
-            "commentPlaceholder": "Idatzi zure iruzkina...",
-            "commentAdded": "Iruzkina gehituta"
+            "unstarred": "Izarra kendua"
         },
         "dropbox": {
             "manageTags": "Etiketak kudeatu"
@@ -6061,6 +6069,10 @@
             "scopeSession": "Tresna hau txat-saioaren gainerakoan onesten du.",
             "approve": "Onetsi",
             "rememberForChat": "Baimendu tresna hau txat honen gainerakoan"
+        },
+        "fileComments": {
+            "title": "Iruzkinak",
+            "empty": "Oraindik ez dago iruzkinik"
         }
     }
 }

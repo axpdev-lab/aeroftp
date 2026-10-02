@@ -1714,7 +1714,8 @@
             "overlay_locked": "Capa cifrada bloqueada",
             "aerocrypt_marker_migrate": "Convirtiendo el marcador de AeroCrypt a .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador de AeroCrypt convertido a .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Desbloqueando la carpeta {filename}..."
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Añadir una etiqueta...",
             "tagsUpdated": "Etiquetas actualizadas",
             "addTag": "Añadir",
-            "noTags": "Sin etiquetas"
+            "noTags": "Sin etiquetas",
+            "collaborators": "Colaboradores",
+            "noCollaborators": "Aún no se ha compartido con nadie",
+            "folderNotLocked": "Esta carpeta no está bloqueada",
+            "roleEditor": "Editor",
+            "roleViewer": "Visor",
+            "rolePreviewer": "Previsualizador",
+            "roleUploader": "Cargador",
+            "rolePreviewerUploader": "Previsualizador y cargador",
+            "roleViewerUploader": "Visor y cargador",
+            "roleCoOwner": "Copropietario"
         },
         "googledrive": {
             "star": "Destacar",
             "unstar": "Quitar destacado",
             "starred": "Archivo destacado",
-            "unstarred": "Archivo sin destacar",
-            "addComment": "Agregar comentario",
-            "commentPlaceholder": "Escribe tu comentario...",
-            "commentAdded": "Comentario agregado"
+            "unstarred": "Archivo sin destacar"
         },
         "dropbox": {
             "manageTags": "Administrar etiquetas"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Aprueba esta herramienta durante el resto de la sesión de chat.",
             "approve": "Aprobar",
             "rememberForChat": "Permitir esta herramienta durante el resto de este chat"
+        },
+        "fileComments": {
+            "title": "Comentarios",
+            "empty": "Aún no hay comentarios"
         }
     }
 }

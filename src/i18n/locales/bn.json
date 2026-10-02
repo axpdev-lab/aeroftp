@@ -1714,7 +1714,8 @@
             "overlay_locked": "এনক্রিপ্টেড ওভারলে লক করা হয়েছে",
             "aerocrypt_marker_migrate": "AeroCrypt মার্কার .aerocrypt.tsv-এ রূপান্তর করা হচ্ছে…",
             "aerocrypt_marker_migrated": "AeroCrypt মার্কার .aerocrypt.tsv-এ রূপান্তরিত হয়েছে",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] ফোল্ডার {filename} আনলক করা হচ্ছে..."
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "একটি ট্যাগ যোগ করুন...",
             "tagsUpdated": "ট্যাগ আপডেট হয়েছে",
             "addTag": "যোগ করুন",
-            "noTags": "কোনো ট্যাগ নেই"
+            "noTags": "কোনো ট্যাগ নেই",
+            "collaborators": "সহযোগীরা",
+            "noCollaborators": "এখনও কারও সাথে শেয়ার করা হয়নি",
+            "folderNotLocked": "এই ফোল্ডারটি লক করা নেই",
+            "roleEditor": "সম্পাদক",
+            "roleViewer": "দর্শক",
+            "rolePreviewer": "প্রিভিউয়ার",
+            "roleUploader": "আপলোডার",
+            "rolePreviewerUploader": "প্রিভিউয়ার আপলোডার",
+            "roleViewerUploader": "দর্শক আপলোডার",
+            "roleCoOwner": "সহ-মালিক"
         },
         "googledrive": {
             "star": "তারকাচিহ্নিত করুন",
             "unstar": "তারকাচিহ্ন সরান",
             "starred": "ফাইল তারকাচিহ্নিত হয়েছে",
-            "unstarred": "ফাইলের তারকাচিহ্ন সরানো হয়েছে",
-            "addComment": "মন্তব্য যোগ করুন",
-            "commentPlaceholder": "আপনার মন্তব্য লিখুন...",
-            "commentAdded": "মন্তব্য যোগ হয়েছে"
+            "unstarred": "ফাইলের তারকাচিহ্ন সরানো হয়েছে"
         },
         "dropbox": {
             "manageTags": "ট্যাগ পরিচালনা"
@@ -6042,6 +6050,10 @@
             "scopeSession": "চ্যাট সেশনের বাকি সময়ের জন্য এই টুলটি অনুমোদন করে।",
             "approve": "অনুমোদন করুন",
             "rememberForChat": "এই চ্যাটের বাকি সময়ের জন্য এই টুলটি অনুমোদন করুন"
+        },
+        "fileComments": {
+            "title": "মন্তব্য",
+            "empty": "এখনও কোনো মন্তব্য নেই"
         }
     }
 }

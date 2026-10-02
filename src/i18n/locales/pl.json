@@ -1714,7 +1714,8 @@
             "overlay_locked": "Zaszyfrowana nakładka zablokowana",
             "aerocrypt_marker_migrate": "Konwertowanie znacznika AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Znacznik AeroCrypt przekonwertowany na .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Odblokowywanie folderu {filename}..."
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Dodaj tag...",
             "tagsUpdated": "Tagi zaktualizowane",
             "addTag": "Dodaj",
-            "noTags": "Brak tagów"
+            "noTags": "Brak tagów",
+            "collaborators": "Współpracownicy",
+            "noCollaborators": "Jeszcze nie udostępniono nikomu",
+            "folderNotLocked": "Ten folder nie jest zablokowany",
+            "roleEditor": "Edytor",
+            "roleViewer": "Przeglądający",
+            "rolePreviewer": "Podglądający",
+            "roleUploader": "Przesyłający",
+            "rolePreviewerUploader": "Podglądający i przesyłający",
+            "roleViewerUploader": "Przeglądający i przesyłający",
+            "roleCoOwner": "Współwłaściciel"
         },
         "googledrive": {
             "star": "Oznacz gwiazdką",
             "unstar": "Usuń gwiazdkę",
             "starred": "Plik oznaczony gwiazdką",
-            "unstarred": "Gwiazdka usunięta",
-            "addComment": "Dodaj komentarz",
-            "commentPlaceholder": "Napisz swój komentarz...",
-            "commentAdded": "Komentarz dodany"
+            "unstarred": "Gwiazdka usunięta"
         },
         "dropbox": {
             "manageTags": "Zarządzaj tagami"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Zatwierdza to narzędzie do końca sesji czatu.",
             "approve": "Zatwierdź",
             "rememberForChat": "Zezwól na to narzędzie do końca tego czatu"
+        },
+        "fileComments": {
+            "title": "Komentarze",
+            "empty": "Brak komentarzy"
         }
     }
 }

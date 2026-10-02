@@ -1714,7 +1714,8 @@
             "overlay_locked": "Lapisan terenkripsi terkunci",
             "aerocrypt_marker_migrate": "Mengonversi penanda AeroCrypt ke .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Penanda AeroCrypt dikonversi ke .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Membuka kunci folder {filename}..."
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Tambahkan tag...",
             "tagsUpdated": "Tag diperbarui",
             "addTag": "Tambah",
-            "noTags": "Tidak ada tag"
+            "noTags": "Tidak ada tag",
+            "collaborators": "Kolaborator",
+            "noCollaborators": "Belum dibagikan kepada siapa pun",
+            "folderNotLocked": "Folder ini tidak terkunci",
+            "roleEditor": "Editor",
+            "roleViewer": "Penampil",
+            "rolePreviewer": "Pemratinjau",
+            "roleUploader": "Pengunggah",
+            "rolePreviewerUploader": "Pemratinjau Pengunggah",
+            "roleViewerUploader": "Penampil Pengunggah",
+            "roleCoOwner": "Pemilik bersama"
         },
         "googledrive": {
             "star": "Beri Bintang",
             "unstar": "Hapus Bintang",
             "starred": "File diberi bintang",
-            "unstarred": "Bintang file dihapus",
-            "addComment": "Tambah Komentar",
-            "commentPlaceholder": "Tulis komentar Anda...",
-            "commentAdded": "Komentar ditambahkan"
+            "unstarred": "Bintang file dihapus"
         },
         "dropbox": {
             "manageTags": "Kelola Tag"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Menyetujui alat ini selama sisa sesi obrolan.",
             "approve": "Setujui",
             "rememberForChat": "Izinkan alat ini selama sisa obrolan ini"
+        },
+        "fileComments": {
+            "title": "Komentar",
+            "empty": "Belum ada komentar"
         }
     }
 }

@@ -1714,7 +1714,8 @@
             "overlay_locked": "ล็อกโอเวอร์เลย์ที่เข้ารหัสแล้ว",
             "aerocrypt_marker_migrate": "กำลังแปลงเครื่องหมาย AeroCrypt เป็น .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "แปลงตัวทำเครื่องหมาย AeroCrypt เป็น .aerocrypt.tsv แล้ว",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] กำลังปลดล็อกโฟลเดอร์ {filename}..."
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "เพิ่มแท็ก...",
             "tagsUpdated": "อัปเดตแท็กแล้ว",
             "addTag": "เพิ่ม",
-            "noTags": "ไม่มีแท็ก"
+            "noTags": "ไม่มีแท็ก",
+            "collaborators": "ผู้ทำงานร่วมกัน",
+            "noCollaborators": "ยังไม่ได้แชร์กับใคร",
+            "folderNotLocked": "โฟลเดอร์นี้ไม่ได้ถูกล็อก",
+            "roleEditor": "ผู้แก้ไข",
+            "roleViewer": "ผู้ดู",
+            "rolePreviewer": "ผู้ดูตัวอย่าง",
+            "roleUploader": "ผู้อัปโหลด",
+            "rolePreviewerUploader": "ผู้ดูตัวอย่างและอัปโหลด",
+            "roleViewerUploader": "ผู้ดูและอัปโหลด",
+            "roleCoOwner": "เจ้าของร่วม"
         },
         "googledrive": {
             "star": "ติดดาว",
             "unstar": "เอาดาวออก",
             "starred": "ติดดาวไฟล์แล้ว",
-            "unstarred": "เอาดาวออกแล้ว",
-            "addComment": "เพิ่มความคิดเห็น",
-            "commentPlaceholder": "เขียนความคิดเห็นของคุณ...",
-            "commentAdded": "เพิ่มความคิดเห็นแล้ว"
+            "unstarred": "เอาดาวออกแล้ว"
         },
         "dropbox": {
             "manageTags": "จัดการแท็ก"
@@ -6042,6 +6050,10 @@
             "scopeSession": "อนุมัติเครื่องมือนี้ตลอดเซสชันแชตที่เหลือ",
             "approve": "อนุมัติ",
             "rememberForChat": "อนุญาตเครื่องมือนี้ตลอดแชตนี้ที่เหลือ"
+        },
+        "fileComments": {
+            "title": "ความคิดเห็น",
+            "empty": "ยังไม่มีความคิดเห็น"
         }
     }
 }

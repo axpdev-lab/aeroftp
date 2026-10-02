@@ -1714,7 +1714,8 @@
             "overlay_locked": "Sobreposição cifrada bloqueada",
             "aerocrypt_marker_migrate": "Convertendo o marcador do AeroCrypt para .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador do AeroCrypt convertido para .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Desbloqueando a pasta {filename}..."
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Adicionar uma etiqueta...",
             "tagsUpdated": "Etiquetas atualizadas",
             "addTag": "Adicionar",
-            "noTags": "Sem etiquetas"
+            "noTags": "Sem etiquetas",
+            "collaborators": "Colaboradores",
+            "noCollaborators": "Ainda não compartilhado com ninguém",
+            "folderNotLocked": "Esta pasta não está bloqueada",
+            "roleEditor": "Editor",
+            "roleViewer": "Visualizador",
+            "rolePreviewer": "Pré-visualizador",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Pré-visualizador e uploader",
+            "roleViewerUploader": "Visualizador e uploader",
+            "roleCoOwner": "Coproprietário"
         },
         "googledrive": {
             "star": "Marcar com estrela",
             "unstar": "Remover estrela",
             "starred": "Ficheiro marcado com estrela",
-            "unstarred": "Estrela removida do ficheiro",
-            "addComment": "Adicionar comentário",
-            "commentPlaceholder": "Escreva o seu comentário...",
-            "commentAdded": "Comentário adicionado"
+            "unstarred": "Estrela removida do ficheiro"
         },
         "dropbox": {
             "manageTags": "Gerir etiquetas"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Aprova esta ferramenta pelo resto da sessão de chat.",
             "approve": "Aprovar",
             "rememberForChat": "Permitir esta ferramenta pelo resto deste chat"
+        },
+        "fileComments": {
+            "title": "Comentários",
+            "empty": "Ainda não há comentários"
         }
     }
 }

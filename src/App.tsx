@@ -250,7 +250,9 @@ import { AeroCryptKeyslotsModal } from './components/AeroCryptKeyslotsModal';
 import { CrossProfilePanel } from './components/CrossProfile/CrossProfilePanel';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
-import { GoogleDriveCommentDialog } from './components/GoogleDriveCommentDialog';
+import { FileCommentsDialog } from './components/FileCommentsDialog';
+import { BoxCollaboratorsDialog } from './components/BoxCollaboratorsDialog';
+import { unlockBoxFolder, type CommentsProvider } from './utils/boxDriveSocial';
 import { GitHubCommitDialog } from './components/GitHubCommitDialog';
 import { GitHubLocalSyncWarning } from './components/GitHubLocalSyncWarning';
 import { GitHubBranchSelector } from './components/GitHubBranchSelector';
@@ -1326,7 +1328,8 @@ const App: React.FC = () => {
   }>(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
-  const [showGDriveComment, setShowGDriveComment] = useState<{ path: string; name: string } | null>(null);
+  const [commentsTarget, setCommentsTarget] = useState<{ provider: CommentsProvider; path: string; name: string } | null>(null);
+  const [boxCollabTarget, setBoxCollabTarget] = useState<{ path: string; name: string } | null>(null);
   const [showJottaTrash, setShowJottaTrash] = useState(false);
   const [showMegaTrash, setShowMegaTrash] = useState(false);
   const [showGDriveTrash, setShowGDriveTrash] = useState(false);
@@ -14275,7 +14278,36 @@ const App: React.FC = () => {
               humanLog.updateEntry(logId, { status: 'success', message: '[Box] Locked folder' });
             } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Lock folder failed' }); }
           },
+        });
+        items.push({
+          label: t('box.unlockFolder'),
+          icon: <Unlock size={14} className="text-amber-500" />,
+          badge: proBadge,
+          action: async () => {
+            const logId = humanLog.logRaw('activity.box_unlock_folder', 'INFO', { provider: 'Box', filename: file.name }, 'running');
+            try {
+              const removed = await unlockBoxFolder(invoke, file.path);
+              if (removed > 0) notify.success(t('box.folderUnlocked'));
+              else notify.info(t('box.folderNotLocked'));
+              humanLog.updateEntry(logId, { status: 'success', message: removed > 0 ? '[Box] Unlocked folder' : '[Box] Folder was not locked' });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Unlock folder failed' }); }
+          },
           divider: true,
+        });
+      }
+      // Box: comments (files) and collaborators (files and folders)
+      if (filesToUse.length === 1) {
+        if (!file.is_dir) {
+          items.push({
+            label: t('box.viewComments'),
+            icon: <MessageSquare size={14} className="text-blue-500" />,
+            action: () => setCommentsTarget({ provider: 'box', path: file.path, name: file.name }),
+          });
+        }
+        items.push({
+          label: file.is_dir ? t('box.shareFolder') : t('box.collaborators'),
+          icon: <Users size={14} className="text-blue-500" />,
+          action: () => setBoxCollabTarget({ path: file.path, name: file.name }),
         });
       }
     }
@@ -14351,13 +14383,13 @@ const App: React.FC = () => {
             } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: isStarred ? '[Google Drive] Unstar failed' : '[Google Drive] Star failed' }); }
           },
         });
-        // Google Drive: Add Comment (single file only)
+        // Google Drive: Comments (single file only): read, add, delete
         if (!file.is_dir) {
           items.push({
-            label: t('googledrive.addComment'),
+            label: t('fileComments.title'),
             icon: <MessageSquare size={14} className="text-blue-500" />,
             action: () => {
-              setShowGDriveComment({ path: file.path, name: file.name });
+              setCommentsTarget({ provider: 'googledrive', path: file.path, name: file.name });
             },
           });
         }
@@ -16893,11 +16925,19 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showGDriveComment && (
-          <GoogleDriveCommentDialog
-            filePath={showGDriveComment.path}
-            fileName={showGDriveComment.name}
-            onClose={() => setShowGDriveComment(null)}
+        {commentsTarget && (
+          <FileCommentsDialog
+            provider={commentsTarget.provider}
+            filePath={commentsTarget.path}
+            fileName={commentsTarget.name}
+            onClose={() => setCommentsTarget(null)}
+          />
+        )}
+        {boxCollabTarget && (
+          <BoxCollaboratorsDialog
+            path={boxCollabTarget.path}
+            name={boxCollabTarget.name}
+            onClose={() => setBoxCollabTarget(null)}
           />
         )}
         {showJottaTrash && (

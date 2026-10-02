@@ -1714,7 +1714,8 @@
             "overlay_locked": "Šifrētais slānis bloķēts",
             "aerocrypt_marker_migrate": "Notiek AeroCrypt marķiera konvertēšana uz .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt marķieris pārveidots par .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Atbloķē mapi {filename}..."
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Pievienot birku...",
             "tagsUpdated": "Birkas atjauninātas",
             "addTag": "Pievienot",
-            "noTags": "Nav birku"
+            "noTags": "Nav birku",
+            "collaborators": "Līdzstrādnieki",
+            "noCollaborators": "Vēl nav kopīgots ar nevienu",
+            "folderNotLocked": "Šī mape nav bloķēta",
+            "roleEditor": "Redaktors",
+            "roleViewer": "Skatītājs",
+            "rolePreviewer": "Priekšskatītājs",
+            "roleUploader": "Augšupielādētājs",
+            "rolePreviewerUploader": "Priekšskatītājs un augšupielādētājs",
+            "roleViewerUploader": "Skatītājs un augšupielādētājs",
+            "roleCoOwner": "Līdzīpašnieks"
         },
         "googledrive": {
             "star": "Atzīmēt ar zvaigznīti",
             "unstar": "Noņemt zvaigznīti",
             "starred": "Fails atzīmēts ar zvaigznīti",
-            "unstarred": "Zvaigznīte noņemta",
-            "addComment": "Pievienot komentāru",
-            "commentPlaceholder": "Rakstiet savu komentāru...",
-            "commentAdded": "Komentārs pievienots"
+            "unstarred": "Zvaigznīte noņemta"
         },
         "dropbox": {
             "manageTags": "Pārvaldīt birkas"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Apstiprina šo rīku līdz tērzēšanas sesijas beigām.",
             "approve": "Apstiprināt",
             "rememberForChat": "Atļaut šo rīku līdz šīs tērzēšanas beigām"
+        },
+        "fileComments": {
+            "title": "Komentāri",
+            "empty": "Vēl nav komentāru"
         }
     }
 }

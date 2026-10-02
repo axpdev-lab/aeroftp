@@ -1714,7 +1714,8 @@
             "overlay_locked": "Šifrovaná vrstva uzamčena",
             "aerocrypt_marker_migrate": "Převádí se značka AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Značka AeroCrypt převedena na .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Odemykání složky {filename}..."
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Přidat štítek...",
             "tagsUpdated": "Štítky aktualizovány",
             "addTag": "Přidat",
-            "noTags": "Žádné štítky"
+            "noTags": "Žádné štítky",
+            "collaborators": "Spolupracovníci",
+            "noCollaborators": "Zatím s nikým nesdíleno",
+            "folderNotLocked": "Tato složka není zamčená",
+            "roleEditor": "Editor",
+            "roleViewer": "Prohlížející",
+            "rolePreviewer": "Náhled",
+            "roleUploader": "Nahrávání",
+            "rolePreviewerUploader": "Náhled a nahrávání",
+            "roleViewerUploader": "Prohlížení a nahrávání",
+            "roleCoOwner": "Spoluvlastník"
         },
         "googledrive": {
             "star": "Označit hvězdičkou",
             "unstar": "Odebrat hvězdičku",
             "starred": "Soubor označen hvězdičkou",
-            "unstarred": "Hvězdička odebrána",
-            "addComment": "Přidat komentář",
-            "commentPlaceholder": "Napište komentář...",
-            "commentAdded": "Komentář přidán"
+            "unstarred": "Hvězdička odebrána"
         },
         "dropbox": {
             "manageTags": "Spravovat štítky"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Schválí tento nástroj po zbytek relace chatu.",
             "approve": "Schválit",
             "rememberForChat": "Povolit tento nástroj po zbytek tohoto chatu"
+        },
+        "fileComments": {
+            "title": "Komentáře",
+            "empty": "Zatím žádné komentáře"
         }
     }
 }

@@ -1714,7 +1714,8 @@
             "overlay_locked": "Verschlüsselte Überlagerung gesperrt",
             "aerocrypt_marker_migrate": "AeroCrypt-Markierung wird in .aerocrypt.tsv konvertiert…",
             "aerocrypt_marker_migrated": "AeroCrypt-Marker in .aerocrypt.tsv konvertiert",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Ordner {filename} wird entsperrt..."
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Tag hinzufügen...",
             "tagsUpdated": "Tags aktualisiert",
             "addTag": "Hinzufügen",
-            "noTags": "Keine Tags"
+            "noTags": "Keine Tags",
+            "collaborators": "Mitarbeiter",
+            "noCollaborators": "Noch mit niemandem geteilt",
+            "folderNotLocked": "Dieser Ordner ist nicht gesperrt",
+            "roleEditor": "Editor",
+            "roleViewer": "Betrachter",
+            "rolePreviewer": "Vorschauer",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Vorschauer und Uploader",
+            "roleViewerUploader": "Betrachter und Uploader",
+            "roleCoOwner": "Miteigentümer"
         },
         "googledrive": {
             "star": "Mit Stern markieren",
             "unstar": "Stern entfernen",
             "starred": "Datei mit Stern markiert",
-            "unstarred": "Stern von Datei entfernt",
-            "addComment": "Kommentar hinzufügen",
-            "commentPlaceholder": "Schreiben Sie Ihren Kommentar...",
-            "commentAdded": "Kommentar hinzugefügt"
+            "unstarred": "Stern von Datei entfernt"
         },
         "dropbox": {
             "manageTags": "Tags verwalten"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Gibt dieses Werkzeug für den Rest der Chatsitzung frei.",
             "approve": "Freigeben",
             "rememberForChat": "Dieses Werkzeug für den Rest dieses Chats erlauben"
+        },
+        "fileComments": {
+            "title": "Kommentare",
+            "empty": "Noch keine Kommentare"
         }
     }
 }

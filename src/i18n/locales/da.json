@@ -1714,7 +1714,8 @@
             "overlay_locked": "Krypteret overlay låst",
             "aerocrypt_marker_migrate": "Konverterer AeroCrypt-markør til .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markør konverteret til .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Låser mappen {filename} op..."
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Tilføj et tag...",
             "tagsUpdated": "Tags opdateret",
             "addTag": "Tilføj",
-            "noTags": "Ingen tags"
+            "noTags": "Ingen tags",
+            "collaborators": "Samarbejdspartnere",
+            "noCollaborators": "Ikke delt med nogen endnu",
+            "folderNotLocked": "Denne mappe er ikke låst",
+            "roleEditor": "Redaktør",
+            "roleViewer": "Fremviser",
+            "rolePreviewer": "Forhåndsviser",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Forhåndsviser og uploader",
+            "roleViewerUploader": "Fremviser og uploader",
+            "roleCoOwner": "Medejer"
         },
         "googledrive": {
             "star": "Markér med stjerne",
             "unstar": "Fjern stjerne",
             "starred": "Fil markeret med stjerne",
-            "unstarred": "Stjerne fjernet fra fil",
-            "addComment": "Tilføj kommentar",
-            "commentPlaceholder": "Skriv din kommentar...",
-            "commentAdded": "Kommentar tilføjet"
+            "unstarred": "Stjerne fjernet fra fil"
         },
         "dropbox": {
             "manageTags": "Administrer tags"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Godkender dette værktøj resten af chatsessionen.",
             "approve": "Godkend",
             "rememberForChat": "Tillad dette værktøj resten af denne chat"
+        },
+        "fileComments": {
+            "title": "Kommentarer",
+            "empty": "Ingen kommentarer endnu"
         }
     }
 }

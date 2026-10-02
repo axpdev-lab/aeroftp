@@ -1714,7 +1714,8 @@
             "overlay_locked": "Kryptert overlegg låst",
             "aerocrypt_marker_migrate": "Konverterer AeroCrypt-markør til .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markør konvertert til .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Låser opp mappen {filename}..."
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "Legg til en tagg...",
             "tagsUpdated": "Tagger oppdatert",
             "addTag": "Legg til",
-            "noTags": "Ingen tagger"
+            "noTags": "Ingen tagger",
+            "collaborators": "Samarbeidspartnere",
+            "noCollaborators": "Ikke delt med noen ennå",
+            "folderNotLocked": "Denne mappen er ikke låst",
+            "roleEditor": "Redaktør",
+            "roleViewer": "Seer",
+            "rolePreviewer": "Forhåndsviser",
+            "roleUploader": "Opplaster",
+            "rolePreviewerUploader": "Forhåndsviser og opplaster",
+            "roleViewerUploader": "Seer og opplaster",
+            "roleCoOwner": "Medeier"
         },
         "googledrive": {
             "star": "Merk med stjerne",
             "unstar": "Fjern stjerne",
             "starred": "Filen er stjernemerket",
-            "unstarred": "Stjernemerking fjernet",
-            "addComment": "Legg til kommentar",
-            "commentPlaceholder": "Skriv kommentaren din...",
-            "commentAdded": "Kommentar lagt til"
+            "unstarred": "Stjernemerking fjernet"
         },
         "dropbox": {
             "manageTags": "Administrer etiketter"
@@ -6061,6 +6069,10 @@
             "scopeSession": "Godkjenner dette verktøyet resten av chatøkten.",
             "approve": "Godkjenn",
             "rememberForChat": "Tillat dette verktøyet resten av denne chatten"
+        },
+        "fileComments": {
+            "title": "Kommentarer",
+            "empty": "Ingen kommentarer ennå"
         }
     }
 }

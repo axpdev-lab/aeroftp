@@ -1714,7 +1714,8 @@
             "overlay_locked": "Haen wedi'i hamgryptio wedi'i chloi",
             "aerocrypt_marker_migrate": "Wrthi'n trosi marc AeroCrypt yn .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marciwr AeroCrypt wedi'i drosi i .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Datgloi'r ffolder {filename}..."
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "Ychwanegu tag...",
             "tagsUpdated": "Tagiau wedi'u diweddaru",
             "addTag": "Ychwanegu",
-            "noTags": "Dim tagiau"
+            "noTags": "Dim tagiau",
+            "collaborators": "Cydweithwyr",
+            "noCollaborators": "Heb ei rannu ag unrhyw un eto",
+            "folderNotLocked": "Nid yw'r ffolder hon wedi'i chloi",
+            "roleEditor": "Golygydd",
+            "roleViewer": "Gwyliwr",
+            "rolePreviewer": "Rhagolygwr",
+            "roleUploader": "Uwchlwythwr",
+            "rolePreviewerUploader": "Rhagolygwr Uwchlwythwr",
+            "roleViewerUploader": "Gwyliwr Uwchlwythwr",
+            "roleCoOwner": "Cyd-berchennog"
         },
         "googledrive": {
             "star": "Serennu",
             "unstar": "Dad-serennu",
             "starred": "Ffeil wedi'i serennu",
-            "unstarred": "Seren wedi'i thynnu",
-            "addComment": "Ychwanegu Sylw",
-            "commentPlaceholder": "Ysgrifennwch eich sylw...",
-            "commentAdded": "Sylw wedi'i ychwanegu"
+            "unstarred": "Seren wedi'i thynnu"
         },
         "dropbox": {
             "manageTags": "Rheoli Tagiau"
@@ -6061,6 +6069,10 @@
             "scopeSession": "Yn cymeradwyo'r offeryn hwn am weddill y sesiwn sgwrsio.",
             "approve": "Cymeradwyo",
             "rememberForChat": "Caniatáu'r offeryn hwn am weddill y sgwrs hon"
+        },
+        "fileComments": {
+            "title": "Sylwadau",
+            "empty": "Dim sylwadau eto"
         }
     }
 }

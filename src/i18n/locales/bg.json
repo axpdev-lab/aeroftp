@@ -1714,7 +1714,8 @@
             "overlay_locked": "Шифрованият слой е заключен",
             "aerocrypt_marker_migrate": "Преобразуване на маркера AeroCrypt в .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Маркерът на AeroCrypt е конвертиран в .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Отключване на папка {filename}..."
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Добавете етикет...",
             "tagsUpdated": "Етикетите са актуализирани",
             "addTag": "Добави",
-            "noTags": "Няма етикети"
+            "noTags": "Няма етикети",
+            "collaborators": "Сътрудници",
+            "noCollaborators": "Все още не е споделено с никого",
+            "folderNotLocked": "Тази папка не е заключена",
+            "roleEditor": "Редактор",
+            "roleViewer": "Зрител",
+            "rolePreviewer": "Преглеждащ",
+            "roleUploader": "Качващ",
+            "rolePreviewerUploader": "Преглеждащ и качващ",
+            "roleViewerUploader": "Зрител и качващ",
+            "roleCoOwner": "Съсобственик"
         },
         "googledrive": {
             "star": "Добави в любими",
             "unstar": "Премахни от любими",
             "starred": "Файлът е добавен в любими",
-            "unstarred": "Файлът е премахнат от любими",
-            "addComment": "Добави коментар",
-            "commentPlaceholder": "Напишете коментар...",
-            "commentAdded": "Коментарът е добавен"
+            "unstarred": "Файлът е премахнат от любими"
         },
         "dropbox": {
             "manageTags": "Управление на етикети"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Одобрява този инструмент до края на чат сесията.",
             "approve": "Одобри",
             "rememberForChat": "Разрешаване на този инструмент до края на този чат"
+        },
+        "fileComments": {
+            "title": "Коментари",
+            "empty": "Все още няма коментари"
         }
     }
 }

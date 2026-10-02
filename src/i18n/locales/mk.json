@@ -1714,7 +1714,8 @@
             "overlay_locked": "Шифрираниот слој е заклучен",
             "aerocrypt_marker_migrate": "Маркерот на AeroCrypt се претвора во .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Маркерот на AeroCrypt е конвертиран во .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Се отклучува папката {filename}..."
         },
         "protocol": {
             "selectProtocol": "Избери протокол...",
@@ -4455,16 +4456,23 @@
             "tagsPlaceholder": "Додади ознака...",
             "tagsUpdated": "Ознаките се ажурирани",
             "addTag": "Додади",
-            "noTags": "Нема ознаки"
+            "noTags": "Нема ознаки",
+            "collaborators": "Соработници",
+            "noCollaborators": "Сè уште не е споделено со никого",
+            "folderNotLocked": "Оваа папка не е заклучена",
+            "roleEditor": "Уредник",
+            "roleViewer": "Гледач",
+            "rolePreviewer": "Прегледувач",
+            "roleUploader": "Прикачувач",
+            "rolePreviewerUploader": "Прегледувач и прикачувач",
+            "roleViewerUploader": "Гледач и прикачувач",
+            "roleCoOwner": "Сосопственик"
         },
         "googledrive": {
             "star": "Означи со ѕвезда",
             "unstar": "Отстрани ѕвезда",
             "starred": "Датотеката е означена со ѕвезда",
-            "unstarred": "Ѕвездата е отстранета",
-            "addComment": "Додај коментар",
-            "commentPlaceholder": "Напишете го вашиот коментар...",
-            "commentAdded": "Коментарот е додаден"
+            "unstarred": "Ѕвездата е отстранета"
         },
         "dropbox": {
             "manageTags": "Управувај со ознаки"
@@ -6061,6 +6069,10 @@
             "scopeSession": "Ја одобрува оваа алатка до крајот на сесијата за разговор.",
             "approve": "Одобри",
             "rememberForChat": "Дозволи ја оваа алатка до крајот на овој разговор"
+        },
+        "fileComments": {
+            "title": "Коментари",
+            "empty": "Сè уште нема коментари"
         }
     }
 }

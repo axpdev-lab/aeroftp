@@ -1714,7 +1714,8 @@
             "overlay_locked": "Safu iliyosimbwa imefungwa",
             "aerocrypt_marker_migrate": "Inabadilisha alama ya AeroCrypt kuwa .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Alama ya AeroCrypt imebadilishwa kuwa .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Inafungua kufuli ya folda {filename}..."
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Ongeza lebo...",
             "tagsUpdated": "Lebo zimesasishwa",
             "addTag": "Ongeza",
-            "noTags": "Hakuna lebo"
+            "noTags": "Hakuna lebo",
+            "collaborators": "Washirika",
+            "noCollaborators": "Bado haijashirikiwa na mtu yeyote",
+            "folderNotLocked": "Folda hii haijafungwa kufuli",
+            "roleEditor": "Mhariri",
+            "roleViewer": "Mtazamaji",
+            "rolePreviewer": "Mtazamaji wa awali",
+            "roleUploader": "Mpakiaji",
+            "rolePreviewerUploader": "Mtazamaji wa awali na mpakiaji",
+            "roleViewerUploader": "Mtazamaji na mpakiaji",
+            "roleCoOwner": "Mmiliki mwenza"
         },
         "googledrive": {
             "star": "Weka nyota",
             "unstar": "Ondoa nyota",
             "starred": "Faili imewekwa nyota",
-            "unstarred": "Nyota imeondolewa",
-            "addComment": "Ongeza maoni",
-            "commentPlaceholder": "Andika maoni yako...",
-            "commentAdded": "Maoni yameongezwa"
+            "unstarred": "Nyota imeondolewa"
         },
         "dropbox": {
             "manageTags": "Dhibiti lebo"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Inaidhinisha zana hii kwa muda uliobaki wa kikao cha mazungumzo.",
             "approve": "Idhinisha",
             "rememberForChat": "Ruhusu zana hii kwa muda uliobaki wa mazungumzo haya"
+        },
+        "fileComments": {
+            "title": "Maoni",
+            "empty": "Bado hakuna maoni"
         }
     }
 }

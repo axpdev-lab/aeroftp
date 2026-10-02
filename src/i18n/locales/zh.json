@@ -1714,7 +1714,8 @@
             "overlay_locked": "已锁定加密叠加层",
             "aerocrypt_marker_migrate": "正在将 AeroCrypt 标记转换为 .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt 标记已转换为 .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] 正在解锁文件夹 {filename}..."
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "添加标签...",
             "tagsUpdated": "标签已更新",
             "addTag": "添加",
-            "noTags": "暂无标签"
+            "noTags": "暂无标签",
+            "collaborators": "协作者",
+            "noCollaborators": "尚未与任何人共享",
+            "folderNotLocked": "此文件夹未被锁定",
+            "roleEditor": "编辑者",
+            "roleViewer": "查看者",
+            "rolePreviewer": "预览者",
+            "roleUploader": "上传者",
+            "rolePreviewerUploader": "预览者兼上传者",
+            "roleViewerUploader": "查看者兼上传者",
+            "roleCoOwner": "共同所有者"
         },
         "googledrive": {
             "star": "加星标",
             "unstar": "取消星标",
             "starred": "文件已加星标",
-            "unstarred": "文件已取消星标",
-            "addComment": "添加评论",
-            "commentPlaceholder": "写下您的评论...",
-            "commentAdded": "评论已添加"
+            "unstarred": "文件已取消星标"
         },
         "dropbox": {
             "manageTags": "管理标签"
@@ -6042,6 +6050,10 @@
             "scopeSession": "在本次聊天会话剩余时间内批准此工具。",
             "approve": "批准",
             "rememberForChat": "在本次聊天的剩余时间内允许此工具"
+        },
+        "fileComments": {
+            "title": "评论",
+            "empty": "暂无评论"
         }
     }
 }

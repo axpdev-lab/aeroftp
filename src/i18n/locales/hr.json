@@ -1714,7 +1714,8 @@
             "overlay_locked": "Šifrirani sloj zaključan",
             "aerocrypt_marker_migrate": "Pretvaranje AeroCrypt oznake u .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt oznaka pretvorena u .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Otključavanje mape {filename}..."
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Dodaj oznaku...",
             "tagsUpdated": "Oznake ažurirane",
             "addTag": "Dodaj",
-            "noTags": "Nema oznaka"
+            "noTags": "Nema oznaka",
+            "collaborators": "Suradnici",
+            "noCollaborators": "Još nije ni s kim podijeljeno",
+            "folderNotLocked": "Ova mapa nije zaključana",
+            "roleEditor": "Urednik",
+            "roleViewer": "Gledatelj",
+            "rolePreviewer": "Pretpregledatelj",
+            "roleUploader": "Učitavatelj",
+            "rolePreviewerUploader": "Pretpregledatelj i učitavatelj",
+            "roleViewerUploader": "Gledatelj i učitavatelj",
+            "roleCoOwner": "Suvlasnik"
         },
         "googledrive": {
             "star": "Označi zvjezdicom",
             "unstar": "Ukloni zvjezdicu",
             "starred": "Datoteka označena zvjezdicom",
-            "unstarred": "Zvjezdica uklonjena",
-            "addComment": "Dodaj komentar",
-            "commentPlaceholder": "Napišite svoj komentar...",
-            "commentAdded": "Komentar dodan"
+            "unstarred": "Zvjezdica uklonjena"
         },
         "dropbox": {
             "manageTags": "Upravljanje oznakama"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Odobrava ovaj alat do kraja sesije chata.",
             "approve": "Odobri",
             "rememberForChat": "Dopusti ovaj alat do kraja ovog chata"
+        },
+        "fileComments": {
+            "title": "Komentari",
+            "empty": "Još nema komentara"
         }
     }
 }

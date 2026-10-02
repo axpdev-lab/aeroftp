@@ -1714,7 +1714,8 @@
             "overlay_locked": "Versleutelde overlay vergrendeld",
             "aerocrypt_marker_migrate": "AeroCrypt-markering wordt geconverteerd naar .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-marker geconverteerd naar .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Map {filename} ontgrendelen..."
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Tag toevoegen...",
             "tagsUpdated": "Tags bijgewerkt",
             "addTag": "Toevoegen",
-            "noTags": "Geen tags"
+            "noTags": "Geen tags",
+            "collaborators": "Medewerkers",
+            "noCollaborators": "Nog met niemand gedeeld",
+            "folderNotLocked": "Deze map is niet vergrendeld",
+            "roleEditor": "Editor",
+            "roleViewer": "Kijker",
+            "rolePreviewer": "Voorvertoner",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Voorvertoner en uploader",
+            "roleViewerUploader": "Kijker en uploader",
+            "roleCoOwner": "Mede-eigenaar"
         },
         "googledrive": {
             "star": "Ster toevoegen",
             "unstar": "Ster verwijderen",
             "starred": "Bestand gemarkeerd met ster",
-            "unstarred": "Ster verwijderd van bestand",
-            "addComment": "Opmerking toevoegen",
-            "commentPlaceholder": "Schrijf je opmerking...",
-            "commentAdded": "Opmerking toegevoegd"
+            "unstarred": "Ster verwijderd van bestand"
         },
         "dropbox": {
             "manageTags": "Tags beheren"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Keurt dit hulpmiddel goed voor de rest van de chatsessie.",
             "approve": "Goedkeuren",
             "rememberForChat": "Dit hulpmiddel toestaan voor de rest van deze chat"
+        },
+        "fileComments": {
+            "title": "Opmerkingen",
+            "empty": "Nog geen opmerkingen"
         }
     }
 }

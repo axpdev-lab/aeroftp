@@ -1714,7 +1714,8 @@
             "overlay_locked": "Зашифрованный слой заблокирован",
             "aerocrypt_marker_migrate": "Преобразование маркера AeroCrypt в .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Маркер AeroCrypt преобразован в .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Разблокировка папки {filename}..."
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Добавить тег...",
             "tagsUpdated": "Теги обновлены",
             "addTag": "Добавить",
-            "noTags": "Нет тегов"
+            "noTags": "Нет тегов",
+            "collaborators": "Соавторы",
+            "noCollaborators": "Пока ни с кем не поделились",
+            "folderNotLocked": "Эта папка не заблокирована",
+            "roleEditor": "Редактор",
+            "roleViewer": "Просмотр",
+            "rolePreviewer": "Предпросмотр",
+            "roleUploader": "Загрузка",
+            "rolePreviewerUploader": "Предпросмотр и загрузка",
+            "roleViewerUploader": "Просмотр и загрузка",
+            "roleCoOwner": "Совладелец"
         },
         "googledrive": {
             "star": "Добавить в избранное",
             "unstar": "Убрать из избранного",
             "starred": "Файл добавлен в избранное",
-            "unstarred": "Файл убран из избранного",
-            "addComment": "Добавить комментарий",
-            "commentPlaceholder": "Напишите комментарий...",
-            "commentAdded": "Комментарий добавлен"
+            "unstarred": "Файл убран из избранного"
         },
         "dropbox": {
             "manageTags": "Управление тегами"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Разрешает этот инструмент до конца сеанса чата.",
             "approve": "Разрешить",
             "rememberForChat": "Разрешить этот инструмент до конца этого чата"
+        },
+        "fileComments": {
+            "title": "Комментарии",
+            "empty": "Комментариев пока нет"
         }
     }
 }

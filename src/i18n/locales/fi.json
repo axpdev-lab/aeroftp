@@ -1714,7 +1714,8 @@
             "overlay_locked": "Salattu peittokerros lukittu",
             "aerocrypt_marker_migrate": "Muunnetaan AeroCrypt-merkintää muotoon .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-merkintä muunnettu muotoon .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Avataan kansion {filename} lukitusta..."
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Lisää tunniste...",
             "tagsUpdated": "Tunnisteet päivitetty",
             "addTag": "Lisää",
-            "noTags": "Ei tunnisteita"
+            "noTags": "Ei tunnisteita",
+            "collaborators": "Yhteistyökumppanit",
+            "noCollaborators": "Ei vielä jaettu kenellekään",
+            "folderNotLocked": "Tätä kansiota ei ole lukittu",
+            "roleEditor": "Muokkaaja",
+            "roleViewer": "Katselija",
+            "rolePreviewer": "Esikatselija",
+            "roleUploader": "Lataaja",
+            "rolePreviewerUploader": "Esikatselija ja lataaja",
+            "roleViewerUploader": "Katselija ja lataaja",
+            "roleCoOwner": "Yhteisomistaja"
         },
         "googledrive": {
             "star": "Lisää tähti",
             "unstar": "Poista tähti",
             "starred": "Tiedosto merkitty tähdellä",
-            "unstarred": "Tähti poistettu tiedostosta",
-            "addComment": "Lisää kommentti",
-            "commentPlaceholder": "Kirjoita kommenttisi...",
-            "commentAdded": "Kommentti lisätty"
+            "unstarred": "Tähti poistettu tiedostosta"
         },
         "dropbox": {
             "manageTags": "Hallitse tunnisteita"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Hyväksyy tämän työkalun keskustelun loppuajaksi.",
             "approve": "Hyväksy",
             "rememberForChat": "Salli tämä työkalu tämän keskustelun loppuun"
+        },
+        "fileComments": {
+            "title": "Kommentit",
+            "empty": "Ei vielä kommentteja"
         }
     }
 }

@@ -1714,7 +1714,8 @@
             "overlay_locked": "암호화 오버레이 잠김",
             "aerocrypt_marker_migrate": "AeroCrypt 마커를 .aerocrypt.tsv로 변환하는 중…",
             "aerocrypt_marker_migrated": "AeroCrypt 마커가 .aerocrypt.tsv로 변환되었습니다",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} 폴더 잠금 해제 중..."
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "태그 추가...",
             "tagsUpdated": "태그가 업데이트되었습니다",
             "addTag": "추가",
-            "noTags": "태그 없음"
+            "noTags": "태그 없음",
+            "collaborators": "공동 작업자",
+            "noCollaborators": "아직 아무와도 공유되지 않았습니다",
+            "folderNotLocked": "이 폴더는 잠겨 있지 않습니다",
+            "roleEditor": "편집자",
+            "roleViewer": "뷰어",
+            "rolePreviewer": "미리보기 사용자",
+            "roleUploader": "업로더",
+            "rolePreviewerUploader": "미리보기 사용자 및 업로더",
+            "roleViewerUploader": "뷰어 및 업로더",
+            "roleCoOwner": "공동 소유자"
         },
         "googledrive": {
             "star": "별표 추가",
             "unstar": "별표 제거",
             "starred": "파일에 별표가 추가되었습니다",
-            "unstarred": "파일에서 별표가 제거되었습니다",
-            "addComment": "댓글 추가",
-            "commentPlaceholder": "댓글을 작성하세요...",
-            "commentAdded": "댓글이 추가되었습니다"
+            "unstarred": "파일에서 별표가 제거되었습니다"
         },
         "dropbox": {
             "manageTags": "태그 관리"
@@ -6042,6 +6050,10 @@
             "scopeSession": "이 채팅 세션이 끝날 때까지 이 도구를 승인합니다.",
             "approve": "승인",
             "rememberForChat": "이 채팅이 끝날 때까지 이 도구 허용"
+        },
+        "fileComments": {
+            "title": "댓글",
+            "empty": "아직 댓글이 없습니다"
         }
     }
 }

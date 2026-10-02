@@ -1714,7 +1714,8 @@
             "overlay_locked": "Šifrovaná vrstva uzamknutá",
             "aerocrypt_marker_migrate": "Prevádza sa značka AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Značka AeroCrypt bola prevedená na .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Odomyká sa priečinok {filename}..."
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Pridať štítok...",
             "tagsUpdated": "Štítky aktualizované",
             "addTag": "Pridať",
-            "noTags": "Žiadne štítky"
+            "noTags": "Žiadne štítky",
+            "collaborators": "Spolupracovníci",
+            "noCollaborators": "Zatiaľ s nikým nezdieľané",
+            "folderNotLocked": "Tento priečinok nie je zamknutý",
+            "roleEditor": "Editor",
+            "roleViewer": "Prezerajúci",
+            "rolePreviewer": "Náhľad",
+            "roleUploader": "Nahrávanie",
+            "rolePreviewerUploader": "Náhľad a nahrávanie",
+            "roleViewerUploader": "Prezeranie a nahrávanie",
+            "roleCoOwner": "Spoluvlastník"
         },
         "googledrive": {
             "star": "Označiť hviezdičkou",
             "unstar": "Zrušiť hviezdičku",
             "starred": "Súbor označený hviezdičkou",
-            "unstarred": "Hviezdička odstránená",
-            "addComment": "Pridať komentár",
-            "commentPlaceholder": "Napíšte svoj komentár...",
-            "commentAdded": "Komentár pridaný"
+            "unstarred": "Hviezdička odstránená"
         },
         "dropbox": {
             "manageTags": "Spravovať štítky"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Schváli tento nástroj po zvyšok relácie chatu.",
             "approve": "Schváliť",
             "rememberForChat": "Povoliť tento nástroj po zvyšok tohto chatu"
+        },
+        "fileComments": {
+            "title": "Komentáre",
+            "empty": "Zatiaľ žiadne komentáre"
         }
     }
 }

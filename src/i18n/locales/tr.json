@@ -1714,7 +1714,8 @@
             "overlay_locked": "Şifreli katman kilitlendi",
             "aerocrypt_marker_migrate": "AeroCrypt işaretçisi .aerocrypt.tsv biçimine dönüştürülüyor…",
             "aerocrypt_marker_migrated": "AeroCrypt işareti .aerocrypt.tsv biçimine dönüştürüldü",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} klasörünün kilidi açılıyor..."
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Etiket ekle...",
             "tagsUpdated": "Etiketler güncellendi",
             "addTag": "Ekle",
-            "noTags": "Etiket yok"
+            "noTags": "Etiket yok",
+            "collaborators": "İş birliği yapanlar",
+            "noCollaborators": "Henüz kimseyle paylaşılmadı",
+            "folderNotLocked": "Bu klasör kilitli değil",
+            "roleEditor": "Düzenleyici",
+            "roleViewer": "Görüntüleyici",
+            "rolePreviewer": "Önizleyici",
+            "roleUploader": "Yükleyici",
+            "rolePreviewerUploader": "Önizleyici ve yükleyici",
+            "roleViewerUploader": "Görüntüleyici ve yükleyici",
+            "roleCoOwner": "Ortak sahip"
         },
         "googledrive": {
             "star": "Yıldızla",
             "unstar": "Yıldızı kaldır",
             "starred": "Dosya yıldızlandı",
-            "unstarred": "Dosyanın yıldızı kaldırıldı",
-            "addComment": "Yorum ekle",
-            "commentPlaceholder": "Yorumunuzu yazın...",
-            "commentAdded": "Yorum eklendi"
+            "unstarred": "Dosyanın yıldızı kaldırıldı"
         },
         "dropbox": {
             "manageTags": "Etiketleri yönet"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Bu aracı sohbet oturumunun geri kalanı için onaylar.",
             "approve": "Onayla",
             "rememberForChat": "Bu sohbetin geri kalanı için bu araca izin ver"
+        },
+        "fileComments": {
+            "title": "Yorumlar",
+            "empty": "Henüz yorum yok"
         }
     }
 }

@@ -1714,7 +1714,8 @@
             "overlay_locked": "एन्क्रिप्टेड ओवरले लॉक किया गया",
             "aerocrypt_marker_migrate": "AeroCrypt मार्कर को .aerocrypt.tsv में बदला जा रहा है…",
             "aerocrypt_marker_migrated": "AeroCrypt मार्कर .aerocrypt.tsv में परिवर्तित किया गया",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] फ़ोल्डर {filename} अनलॉक किया जा रहा है..."
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "एक टैग जोड़ें...",
             "tagsUpdated": "टैग अपडेट हो गए",
             "addTag": "जोड़ें",
-            "noTags": "कोई टैग नहीं"
+            "noTags": "कोई टैग नहीं",
+            "collaborators": "सहयोगी",
+            "noCollaborators": "अभी तक किसी के साथ साझा नहीं किया गया",
+            "folderNotLocked": "यह फ़ोल्डर लॉक नहीं है",
+            "roleEditor": "संपादक",
+            "roleViewer": "दर्शक",
+            "rolePreviewer": "प्रीव्यूअर",
+            "roleUploader": "अपलोडर",
+            "rolePreviewerUploader": "प्रीव्यूअर अपलोडर",
+            "roleViewerUploader": "दर्शक अपलोडर",
+            "roleCoOwner": "सह-स्वामी"
         },
         "googledrive": {
             "star": "तारांकित करें",
             "unstar": "तारांकन हटाएं",
             "starred": "फ़ाइल तारांकित की गई",
-            "unstarred": "फ़ाइल का तारांकन हटाया गया",
-            "addComment": "टिप्पणी जोड़ें",
-            "commentPlaceholder": "अपनी टिप्पणी लिखें...",
-            "commentAdded": "टिप्पणी जोड़ी गई"
+            "unstarred": "फ़ाइल का तारांकन हटाया गया"
         },
         "dropbox": {
             "manageTags": "टैग प्रबंधित करें"
@@ -6042,6 +6050,10 @@
             "scopeSession": "इस टूल को चैट सत्र के शेष समय के लिए अनुमोदित करता है।",
             "approve": "अनुमोदित करें",
             "rememberForChat": "इस चैट के शेष समय के लिए इस टूल की अनुमति दें"
+        },
+        "fileComments": {
+            "title": "टिप्पणियाँ",
+            "empty": "अभी तक कोई टिप्पणी नहीं"
         }
     }
 }

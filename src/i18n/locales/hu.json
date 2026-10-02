@@ -1714,7 +1714,8 @@
             "overlay_locked": "Titkosított réteg zárolva",
             "aerocrypt_marker_migrate": "AeroCrypt-jelölő átalakítása .aerocrypt.tsv formátumba…",
             "aerocrypt_marker_migrated": "Az AeroCrypt jelölő átalakítva .aerocrypt.tsv formátumra",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] A(z) {filename} mappa zárolásának feloldása..."
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Címke hozzáadása...",
             "tagsUpdated": "Címkék frissítve",
             "addTag": "Hozzáadás",
-            "noTags": "Nincsenek címkék"
+            "noTags": "Nincsenek címkék",
+            "collaborators": "Együttműködők",
+            "noCollaborators": "Még nincs megosztva senkivel",
+            "folderNotLocked": "Ez a mappa nincs zárolva",
+            "roleEditor": "Szerkesztő",
+            "roleViewer": "Megtekintő",
+            "rolePreviewer": "Előnézet-megtekintő",
+            "roleUploader": "Feltöltő",
+            "rolePreviewerUploader": "Előnézet-megtekintő és feltöltő",
+            "roleViewerUploader": "Megtekintő és feltöltő",
+            "roleCoOwner": "Társtulajdonos"
         },
         "googledrive": {
             "star": "Csillagozás",
             "unstar": "Csillag eltávolítása",
             "starred": "Fájl csillagozva",
-            "unstarred": "Csillag eltávolítva",
-            "addComment": "Megjegyzés hozzáadása",
-            "commentPlaceholder": "Írja meg megjegyzését...",
-            "commentAdded": "Megjegyzés hozzáadva"
+            "unstarred": "Csillag eltávolítva"
         },
         "dropbox": {
             "manageTags": "Címkék kezelése"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Ezt az eszközt a csevegés hátralévő részére hagyja jóvá.",
             "approve": "Jóváhagyás",
             "rememberForChat": "Az eszköz engedélyezése a csevegés hátralévő részére"
+        },
+        "fileComments": {
+            "title": "Megjegyzések",
+            "empty": "Még nincsenek megjegyzések"
         }
     }
 }

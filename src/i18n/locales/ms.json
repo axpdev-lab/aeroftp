@@ -1714,7 +1714,8 @@
             "overlay_locked": "Lapisan tersulit dikunci",
             "aerocrypt_marker_migrate": "Menukar penanda AeroCrypt kepada .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Penanda AeroCrypt ditukar kepada .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Membuka kunci folder {filename}..."
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Tambah tag...",
             "tagsUpdated": "Tag dikemas kini",
             "addTag": "Tambah",
-            "noTags": "Tiada tag"
+            "noTags": "Tiada tag",
+            "collaborators": "Kolaborator",
+            "noCollaborators": "Belum dikongsi dengan sesiapa",
+            "folderNotLocked": "Folder ini tidak dikunci",
+            "roleEditor": "Editor",
+            "roleViewer": "Penonton",
+            "rolePreviewer": "Pempratonton",
+            "roleUploader": "Pemuat naik",
+            "rolePreviewerUploader": "Pempratonton Pemuat naik",
+            "roleViewerUploader": "Penonton Pemuat naik",
+            "roleCoOwner": "Pemilik bersama"
         },
         "googledrive": {
             "star": "Bintangkan",
             "unstar": "Nyahbintang",
             "starred": "Fail dibintangkan",
-            "unstarred": "Bintang fail dialih keluar",
-            "addComment": "Tambah Komen",
-            "commentPlaceholder": "Tulis komen anda...",
-            "commentAdded": "Komen ditambahkan"
+            "unstarred": "Bintang fail dialih keluar"
         },
         "dropbox": {
             "manageTags": "Urus Tag"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Meluluskan alat ini untuk baki sesi sembang.",
             "approve": "Luluskan",
             "rememberForChat": "Benarkan alat ini untuk baki sembang ini"
+        },
+        "fileComments": {
+            "title": "Komen",
+            "empty": "Belum ada komen"
         }
     }
 }

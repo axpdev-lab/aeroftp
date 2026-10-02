@@ -202,7 +202,8 @@
             "session_resumed": "Resumed live session to {server}",
             "aerocrypt_marker_migrate": "Converting AeroCrypt marker to .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt marker converted to .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Unlocking folder {filename}..."
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -5123,7 +5124,17 @@
             "tagsPlaceholder": "Add a tag...",
             "tagsUpdated": "Tags updated",
             "addTag": "Add",
-            "noTags": "No tags"
+            "noTags": "No tags",
+            "collaborators": "Collaborators",
+            "noCollaborators": "Not shared with anyone yet",
+            "folderNotLocked": "This folder has no lock",
+            "roleEditor": "Editor",
+            "roleViewer": "Viewer",
+            "rolePreviewer": "Previewer",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Previewer Uploader",
+            "roleViewerUploader": "Viewer Uploader",
+            "roleCoOwner": "Co-owner"
         },
         "introHub": {
             "tab": {
@@ -5333,10 +5344,11 @@
             "star": "Star",
             "unstar": "Unstar",
             "starred": "File starred",
-            "unstarred": "File unstarred",
-            "addComment": "Add Comment",
-            "commentPlaceholder": "Write your comment...",
-            "commentAdded": "Comment added"
+            "unstarred": "File unstarred"
+        },
+        "fileComments": {
+            "title": "Comments",
+            "empty": "No comments yet"
         },
         "dropbox": {
             "manageTags": "Manage Tags"

@@ -1707,7 +1707,8 @@
             "overlay_locked": "Գաղտնագրված շերտը կողպված է",
             "aerocrypt_marker_migrate": "AeroCrypt նշիչը փոխարկվում է .aerocrypt.tsv ձևաչափի…",
             "aerocrypt_marker_migrated": "AeroCrypt նշիչը փոխարկվեց .aerocrypt.tsv ձևաչափի",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} թղթապանակի արգելափակումը հանվում է..."
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -4436,16 +4437,23 @@
             "tagsPlaceholder": "Ավելացնել պիտակ...",
             "tagsUpdated": "Պիտակները թարմացվել են",
             "addTag": "Ավելացնել",
-            "noTags": "Պիտակներ չկան"
+            "noTags": "Պիտակներ չկան",
+            "collaborators": "Համագործակիցներ",
+            "noCollaborators": "Դեռ ոչ ոքի հետ չի կիսվել",
+            "folderNotLocked": "Այս թղթապանակը կողպված չէ",
+            "roleEditor": "Խմբագիր",
+            "roleViewer": "Դիտող",
+            "rolePreviewer": "Նախադիտող",
+            "roleUploader": "Վերբեռնող",
+            "rolePreviewerUploader": "Նախադիտող և վերբեռնող",
+            "roleViewerUploader": "Դիտող և վերբեռնող",
+            "roleCoOwner": "Համասեփականատեր"
         },
         "googledrive": {
             "star": "Աստղանշանել",
             "unstar": "Հանել աստղանշը",
             "starred": "Ֆայլը աստղանշված է",
-            "unstarred": "Աստղանշը հանվել է",
-            "addComment": "Ավելացնել մեկնաբանություն",
-            "commentPlaceholder": "Գրեք ձեր մեկնաբանությունը...",
-            "commentAdded": "Մեկնաբանությունը ավելացվել է"
+            "unstarred": "Աստղանշը հանվել է"
         },
         "dropbox": {
             "manageTags": "Կառավարել պիտակները"
@@ -6042,6 +6050,10 @@
             "scopeSession": "Հաստատում է այս գործիքը զրույցի մնացած ընթացքի համար։",
             "approve": "Հաստատել",
             "rememberForChat": "Թույլատրել այս գործիքը այս զրույցի մնացած ընթացքում"
+        },
+        "fileComments": {
+            "title": "Մեկնաբանություններ",
+            "empty": "Դեռ մեկնաբանություններ չկան"
         }
     }
 }
