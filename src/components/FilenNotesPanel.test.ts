@@ -57,8 +57,8 @@ const choose = async (select: HTMLSelectElement, value: string) => {
         select.dispatchEvent(new Event('change', { bubbles: true }));
     });
 };
-const press = async (target: EventTarget, key: string) => {
-    await act(async () => { target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })); });
+const press = async (target: EventTarget, key: string, init: KeyboardEventInit = {}) => {
+    await act(async () => { target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...init })); });
 };
 const typeSelect = () => host.querySelector('select[aria-label="Note type"]') as HTMLSelectElement;
 const calls = (command: string) => invoke.mock.calls.filter(([c]) => c === command);
@@ -111,5 +111,27 @@ describe('Filen notes panel: note type and tag requests', () => {
         await press(name, 'Enter');
         await act(async () => created('t1'));
         expect(calls('filen_notes_tags_create')).toHaveLength(1);
+    });
+
+    it('keeps the type selector disabled until the change settles', async () => {
+        // A second change while the first is pending could end with the server
+        // on one type and the editor on another when the first one fails.
+        let settle!: () => void;
+        server({ filen_notes_change_type: () => new Promise<void>(resolve => { settle = resolve; }) });
+        await render(); await open('Alpha');
+        await choose(typeSelect(), 'md');
+        expect(typeSelect().disabled).toBe(true);
+        await act(async () => settle());
+        expect(typeSelect().disabled).toBe(false);
+    });
+
+    it('ignores the Enter that confirms an IME composition in a tag name', async () => {
+        server();
+        await render(); await open('Alpha');
+        await choose(host.querySelector('select[aria-label="Add tag"]') as HTMLSelectElement, '__new__');
+        const name = host.querySelector('input[aria-label="Tag name"]') as HTMLInputElement;
+        await input(name, 'trav');
+        await press(name, 'Enter', { isComposing: true });
+        expect(calls('filen_notes_tags_create')).toHaveLength(0);
     });
 });

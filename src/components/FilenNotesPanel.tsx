@@ -128,6 +128,9 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   // The open note, so a late request result is applied only to the note it was made on
   const selectedUuidRef = useRef<string | null>(null);
   const creatingTagRef = useRef(false);
+  // A second type change while one is pending could leave the server and the
+  // editor on different types when the first one fails: the selector waits.
+  const [typeChangePending, setTypeChangePending] = useState(false);
 
   useEffect(() => {
     selectedUuidRef.current = selectedNote?.uuid ?? null;
@@ -494,6 +497,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       saveTimeoutRef.current = null;
     }
     setNoteType(next);
+    setTypeChangePending(true);
     try {
       if (dirty) {
         await invoke('filen_notes_edit_content', { uuid: selectedNote.uuid, content: noteContent, noteType: previous });
@@ -504,6 +508,8 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     } catch (err) {
       if (selectedUuidRef.current === selectedNote.uuid) setNoteType(previous);
       setError(String(err));
+    } finally {
+      setTypeChangePending(false);
     }
   }, [selectedNote, noteType, dirty, noteContent]);
 
@@ -671,6 +677,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           <select
             value={noteType}
             onChange={e => void handleTypeChange(e.target.value as NoteTypeOption)}
+            disabled={typeChangePending}
             aria-label={t('filenNotes.noteType')}
             className="text-xs bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-700 dark:text-gray-300"
           >
@@ -745,7 +752,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
                 value={newTagName}
                 onChange={e => setNewTagName(e.target.value)}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { e.preventDefault(); void handleCreateTag(); }
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void handleCreateTag(); }
                   if (e.key === 'Escape') { e.stopPropagation(); setNewTagName(null); }
                 }}
                 onBlur={() => { if (!newTagName.trim()) setNewTagName(null); }}
@@ -773,7 +780,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
                       value={renamingTag.name}
                       onChange={e => setRenamingTag({ uuid: tg.uuid, name: e.target.value })}
                       onKeyDown={e => {
-                        if (e.key === 'Enter') { e.preventDefault(); void handleRenameTag(); }
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void handleRenameTag(); }
                         if (e.key === 'Escape') { e.stopPropagation(); setRenamingTag(null); }
                       }}
                       aria-label={t('filenNotes.tagName')}
