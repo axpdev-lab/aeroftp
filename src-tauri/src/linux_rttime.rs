@@ -27,6 +27,7 @@
 
 use std::sync::OnceLock;
 
+use libc::rlim_t;
 use log::info;
 
 /// What was done at startup, held until a logger exists to receive it.
@@ -37,7 +38,7 @@ static DECISION: OnceLock<String> = OnceLock::new();
 /// Mirrors WebKit's own adjustment (80% of the hard limit). Nothing to do when
 /// the hard limit is unlimited (WebKit adjusts it itself), zero, or already
 /// above the soft one.
-pub(crate) fn lowered_soft_limit(soft: u64, hard: u64, infinity: u64) -> Option<u64> {
+pub(crate) fn lowered_soft_limit(soft: rlim_t, hard: rlim_t, infinity: rlim_t) -> Option<rlim_t> {
     if hard == infinity || hard == 0 || soft < hard {
         return None;
     }
@@ -49,7 +50,7 @@ pub(crate) fn lowered_soft_limit(soft: u64, hard: u64, infinity: u64) -> Option<
 ///
 /// Only system calls and arithmetic, so it is also safe between `fork` and
 /// `exec`.
-fn lower_soft_limit() -> std::io::Result<Option<(u64, u64)>> {
+fn lower_soft_limit() -> std::io::Result<Option<(rlim_t, rlim_t)>> {
     let mut limit = libc::rlimit {
         rlim_cur: 0,
         rlim_max: 0,
@@ -95,7 +96,7 @@ mod tests {
     use super::*;
     use std::os::unix::process::CommandExt;
 
-    const INF: u64 = u64::MAX;
+    const INF: rlim_t = libc::RLIM_INFINITY;
 
     #[test]
     fn a_soft_limit_equal_to_the_hard_one_drops_to_eighty_percent() {
@@ -110,18 +111,34 @@ mod tests {
     }
 
     /// The GNOME case end to end, in a child so the test runner keeps its own
-    /// limits: inherit 200000/200000, adjust, and read what the next exec'd
-    /// process (a WebKit helper, in the app) inherits.
+    /// limits: inherit equal soft and hard limits (200000 us, or the runner's
+    /// hard limit when lower, since an unprivileged child cannot raise it),
+    /// adjust, and read what the next exec'd process (a WebKit helper, in the
+    /// app) inherits.
     #[test]
     fn a_process_started_after_the_adjustment_inherits_the_lowered_soft_limit() {
-        let mut command = std::process::Command::new("/bin/cat");
+        let mut inherited = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        // SAFETY: `inherited` is a valid, writable rlimit.
+        assert_eq!(
+            unsafe { libc::getrlimit(libc::RLIMIT_RTTIME, &mut inherited) },
+            0
+        );
+        let gnome = inherited.rlim_max.min(200_000);
+        if gnome == 0 {
+            // A zero hard limit is left alone; nothing to observe.
+            return;
+        }
+        let mut command = std::process::Command::new("cat");
         command.arg("/proc/self/limits");
         // SAFETY: the closure only makes system calls (see `lower_soft_limit`).
         unsafe {
-            command.pre_exec(|| {
+            command.pre_exec(move || {
                 let gnome = libc::rlimit {
-                    rlim_cur: 200_000,
-                    rlim_max: 200_000,
+                    rlim_cur: gnome,
+                    rlim_max: gnome,
                 };
                 if libc::setrlimit(libc::RLIMIT_RTTIME, &gnome) != 0 {
                     return Err(std::io::Error::last_os_error());
@@ -137,6 +154,7 @@ mod tests {
             .find(|line| line.starts_with("Max realtime timeout"))
             .expect("the kernel reports the real-time limit");
         let values: Vec<&str> = line.split_whitespace().skip(3).take(2).collect();
-        assert_eq!(values, ["160000", "200000"], "{line}");
+        let expected = [(gnome - gnome / 5).to_string(), gnome.to_string()];
+        assert_eq!(values, expected, "{line}");
     }
 }
