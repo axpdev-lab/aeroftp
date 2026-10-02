@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Tag, Plus, Trash2, Loader2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { loadS3Tags, saveS3Tags, S3_MAX_TAGS, type TagRow } from '../utils/cloudTiers';
 
 interface S3TagsDialogProps {
@@ -20,17 +21,23 @@ interface S3TagsDialogProps {
 export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(panelRef);
   const [rows, setRows] = useState<TagRow[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
+  // A failed load leaves `rows` null, which keeps Save disabled: an empty
+  // editor would save as "no tags" and delete the ones the object has.
   useEffect(() => {
     let cancelled = false;
     loadS3Tags(invoke, path)
       .then((r) => { if (!cancelled) setRows(r); })
-      .catch((err) => { if (!cancelled) { setRows([]); setError(String(err)); } });
+      .catch((err) => { if (!cancelled) setLoadError(String(err)); });
     return () => { cancelled = true; };
-  }, [path]);
+  }, [path, attempt]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -61,6 +68,7 @@ export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
         {...modalDrag.panelProps}
+        ref={panelRef}
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
@@ -80,7 +88,19 @@ export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps
         </div>
         <div className="px-5 py-3 max-h-72 overflow-y-auto space-y-2">
           {rows === null ? (
-            <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-400" /></div>
+            loadError ? (
+              <div className="text-center py-4">
+                <p className="text-xs text-red-500">{loadError}</p>
+                <button
+                  onClick={() => { setLoadError(null); setAttempt((n) => n + 1); }}
+                  className="mt-2 text-xs text-blue-500 hover:underline"
+                >
+                  {t('common.retry')}
+                </button>
+              </div>
+            ) : (
+              <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-gray-400" /></div>
+            )
           ) : (
             <>
               {rows.length === 0 && <p className="text-xs text-gray-500 dark:text-gray-400">{t('s3.noTags')}</p>}

@@ -49,6 +49,13 @@ describe('S3 storage class, tags and restore; Azure tier', () => {
         expect(invoke).not.toHaveBeenCalled();
     });
 
+    it('refuses a key given twice instead of keeping only one of the rows', async () => {
+        const invoke = vi.fn();
+        const rows = [{ key: 'env', value: 'prod' }, { key: ' env ', value: 'dev' }];
+        await expect(saveS3Tags(invoke as never, '/a', rows)).rejects.toThrow(/env/);
+        expect(invoke).not.toHaveBeenCalled();
+    });
+
     it('offers a restore only for objects that need one', () => {
         expect(needsGlacierRestore('GLACIER')).toBe(true);
         expect(needsGlacierRestore('DEEP_ARCHIVE')).toBe(true);

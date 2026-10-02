@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Layers, Loader2, Snowflake } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import {
   AZURE_ACCESS_TIERS,
   S3_RESTORE_TIERS,
@@ -39,6 +40,8 @@ interface ObjectTierDialogProps {
 export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }: ObjectTierDialogProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalFocusTrap(panelRef);
   const [choice, setChoice] = useState<string>(
     mode === 's3-class' ? (current && (S3_STORAGE_CLASSES as readonly string[]).includes(current) ? current : 'STANDARD')
       : mode === 's3-restore' ? 'Standard' : 'Cool',
@@ -84,6 +87,7 @@ export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }:
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
         {...modalDrag.panelProps}
+        ref={panelRef}
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-sm overflow-hidden animate-scale-in"
         role="dialog"
         aria-modal="true"
@@ -120,7 +124,7 @@ export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }:
                 min={1}
                 max={365}
                 value={days}
-                onChange={(e) => setDays(Math.max(1, Math.min(365, Number(e.target.value) || 1)))}
+                onChange={(e) => setDays(Math.max(1, Math.min(365, Math.trunc(Number(e.target.value)) || 1)))}
                 className="mt-1 w-full text-sm bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 dark:bg-gray-800"
               />
             </label>

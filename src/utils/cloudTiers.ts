@@ -63,15 +63,22 @@ export async function loadS3Tags(invoke: Invoke, path: string): Promise<TagRow[]
 }
 
 /**
- * Rows with an empty key are dropped and a repeated key keeps its last value.
- * An empty set removes the tagging (`s3_delete_object_tags`) rather than
- * writing an empty one.
+ * Rows with an empty key are dropped. A key given twice is refused: the tags
+ * of an object have unique keys, so writing both rows would keep one value and
+ * lose the other without a word. An empty set removes the tagging
+ * (`s3_delete_object_tags`) rather than writing an empty one.
  */
 export async function saveS3Tags(invoke: Invoke, path: string, rows: TagRow[]): Promise<void> {
     const tags: Record<string, string> = {};
+    const seen = new Set<string>();
     for (const { key, value } of rows) {
         const k = key.trim();
-        if (k) tags[k] = value;
+        if (!k) continue;
+        if (seen.has(k)) {
+            throw new Error(`Tag key "${k}" is used more than once`);
+        }
+        seen.add(k);
+        tags[k] = value;
     }
     if (Object.keys(tags).length > S3_MAX_TAGS) {
         throw new Error(`S3 allows at most ${S3_MAX_TAGS} tags per object`);
