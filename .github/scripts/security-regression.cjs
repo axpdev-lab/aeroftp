@@ -121,9 +121,12 @@ function checkHostKeyFailClosed() {
 
 function checkOauthSettingsLeakGuard() {
   const settingsPanelFile = 'src/components/SettingsPanel.tsx';
-  const savedServersFile = 'src/components/SavedServers.tsx';
+  // The saved-server OAuth connect lives in the My Servers panel (the legacy
+  // SavedServers.tsx that this check used to read was never mounted after
+  // v3.3.0 and has been removed).
+  const myServersFile = 'src/components/IntroHub/MyServersPanel.tsx';
   const settings = read(settingsPanelFile);
-  const savedServers = read(savedServersFile);
+  const myServers = read(myServersFile);
 
   assert(
     settings.includes('localStorage.removeItem(OAUTH_SETTINGS_KEY);'),
@@ -131,15 +134,15 @@ function checkOauthSettingsLeakGuard() {
   );
 
   assert(
-    savedServers.includes('SEC: Load credentials from vault only: no localStorage fallback.'),
-    `oauth leak guard regression: missing vault-only guard comment in ${savedServersFile}`
+    myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_id`)') &&
+      myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_secret`)'),
+    `oauth leak guard regression: expected vault/keyring OAuth credential loading path in ${myServersFile}`
   );
 
+  // SEC-P1-03: vault only, no localStorage fallback for OAuth client credentials.
   assert(
-    savedServers.includes('const loadOAuthCredentials = async (provider: string)') &&
-      savedServers.includes('getCredentialWithRetry(`oauth_${provider}_client_id`)') &&
-      savedServers.includes('getCredentialWithRetry(`oauth_${provider}_client_secret`)'),
-    `oauth leak guard regression: expected vault/keyring OAuth credential loading path in ${savedServersFile}`
+    !/localStorage\.getItem\([^)]*oauth_/.test(myServers),
+    `oauth leak guard regression: OAuth credentials read from localStorage in ${myServersFile}`
   );
 }
 
