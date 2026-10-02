@@ -11782,7 +11782,10 @@ const App: React.FC = () => {
       // transfer did, because downloadFile/uploadFile swallow their errors).
       const pasteDirection = sourceIsRemote ? 'download' : 'upload';
       const landed: typeof files = [];
-      const { batch: pasteBatch, sequential: pasteRest } = splitForFileBatch(files, fileBatchSessionFlags(pasteDirection));
+      const { batch: pasteBatch, sequential: pasteRest } = splitForFileBatch(
+        files,
+        fileBatchSessionFlags(pasteDirection, { cut: operation === 'cut' }),
+      );
       let stopAfterBatch = false;
       if (pasteBatch.length > 0) {
         resetOverwriteSettings();
@@ -12032,12 +12035,16 @@ const App: React.FC = () => {
     succeededSources: string[];
   };
 
-  const fileBatchSessionFlags = (direction: FileBatchDirection): FileBatchSessionFlags => {
+  const fileBatchSessionFlags = (
+    direction: FileBatchDirection,
+    options: { cut?: boolean } = {},
+  ): FileBatchSessionFlags => {
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     return {
       aeroVaultOverlay: !!aeroVaultOverlaySession?.sessionId,
       gitHostUpload: direction === 'upload' && (protocol === 'github' || protocol === 'gitlab'),
+      legacyCut: !!options.cut && !usesProviderApi(protocol),
     };
   };
 

@@ -59,6 +59,16 @@ describe('splitForFileBatch (issue #591)', () => {
     expect(splitForFileBatch(files(4), { aeroVaultOverlay: false, gitHostUpload: true }).batch).toEqual([]);
   });
 
+  it('never batches a cut on a session whose batch reports no per-file outcome', () => {
+    // The legacy FTP-manager batch answers one aggregate string, so nothing
+    // counts as landed and the cut would delete no source (or, read loosely,
+    // the wrong ones). Per-file calls report each file.
+    const items = [{ is_dir: false }, { is_dir: false }];
+    const split = splitForFileBatch(items, { aeroVaultOverlay: false, gitHostUpload: false, legacyCut: true });
+    expect(split.batch).toEqual([]);
+    expect(split.sequential).toHaveLength(2);
+  });
+
   it('every item ends up in exactly one of the two lists', () => {
     const items = [...files(3), { name: 'd1', is_dir: true }, { name: 'd2', is_dir: true }];
     const split = splitForFileBatch(items, plain);

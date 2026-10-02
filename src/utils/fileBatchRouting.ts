@@ -20,6 +20,10 @@ export interface FileBatchSessionFlags {
    *  repository case also has an atomic batch-commit path), and both
    *  providers are single-session, so a batch would add no parallelism. */
   gitHostUpload: boolean;
+  /** A cut (the paste deletes the sources that landed) on a session with no
+   *  protocol: its legacy FTP-manager batch reports no per-file outcome, so
+   *  per-file calls must say which sources may go. */
+  legacyCut?: boolean;
 }
 
 export interface FileBatchSplit<T> {
@@ -32,7 +36,7 @@ export interface FileBatchSplit<T> {
 
 /** True when a session can hand a list of files to the backend batch. */
 export function canRunFileBatch(flags: FileBatchSessionFlags): boolean {
-  return !flags.aeroVaultOverlay && !flags.gitHostUpload;
+  return !flags.aeroVaultOverlay && !flags.gitHostUpload && !flags.legacyCut;
 }
 
 /**

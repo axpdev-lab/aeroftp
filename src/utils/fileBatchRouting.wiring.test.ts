@@ -209,3 +209,18 @@ describe('runFileBatch keeps one writer per destination', () => {
     expect(body).toMatch(/keepsSingleFilePath\(\{[^}]*destinationClaimed: claimedDestinations\.has\(destination\),[^}]*\}\);\s*claimedDestinations\.add\(destination\);/);
   });
 });
+
+describe('a cut on a legacy session keeps per-file calls', () => {
+  it('clipboardPaste tells the split when the paste deletes its sources', () => {
+    const start = APP.indexOf('const clipboardPaste = async (');
+    expect(start).toBeGreaterThan(-1);
+    const body = APP.slice(start, APP.indexOf('runFileBatch(', start));
+    expect(body).toContain("fileBatchSessionFlags(pasteDirection, { cut: operation === 'cut' })");
+  });
+
+  it('fileBatchSessionFlags marks a cut on a session that is not a provider session', () => {
+    const start = APP.indexOf('const fileBatchSessionFlags = (');
+    const body = APP.slice(start, APP.indexOf('};', start));
+    expect(body).toMatch(/legacyCut: !!options\.cut && !usesProviderApi\(protocol\)/);
+  });
+});
