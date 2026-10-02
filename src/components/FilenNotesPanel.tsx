@@ -125,6 +125,13 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   // Refs
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The open note, so a late request result is applied only to the note it was made on
+  const selectedUuidRef = useRef<string | null>(null);
+  const creatingTagRef = useRef(false);
+
+  useEffect(() => {
+    selectedUuidRef.current = selectedNote?.uuid ?? null;
+  }, [selectedNote]);
 
   // ── Data loading ──
 
@@ -480,16 +487,25 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const handleTypeChange = useCallback(async (next: NoteTypeOption) => {
     if (!selectedNote) return;
     const previous = noteType;
+    // A pending auto-save carries the old type and, landing after the change,
+    // would put it back: cancel it and save the edit ahead of the change.
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
     setNoteType(next);
     try {
+      if (dirty) {
+        await invoke('filen_notes_edit_content', { uuid: selectedNote.uuid, content: noteContent, noteType: previous });
+      }
       await changeNoteType(invoke, selectedNote.uuid, next);
       setNotes(prev => prev.map(n => (n.uuid === selectedNote.uuid ? { ...n, noteType: next } : n)));
-      setSelectedNote(prev => (prev ? { ...prev, noteType: next } : prev));
+      setSelectedNote(prev => (prev && prev.uuid === selectedNote.uuid ? { ...prev, noteType: next } : prev));
     } catch (err) {
-      setNoteType(previous);
+      if (selectedUuidRef.current === selectedNote.uuid) setNoteType(previous);
       setError(String(err));
     }
-  }, [selectedNote, noteType]);
+  }, [selectedNote, noteType, dirty, noteContent]);
 
   const setNoteTags = useCallback((noteUuid: string, update: (tags: { uuid: string }[]) => { uuid: string }[]) => {
     setNotes(prev => prev.map(n => (n.uuid === noteUuid ? { ...n, tags: update(n.tags) } : n)));
@@ -521,7 +537,9 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   }, [selectedNote, setNoteTags]);
 
   const handleCreateTag = useCallback(async () => {
-    if (!selectedNote || !newTagName?.trim()) return;
+    // Enter pressed again while the request runs would create the tag twice
+    if (!selectedNote || !newTagName?.trim() || creatingTagRef.current) return;
+    creatingTagRef.current = true;
     try {
       const tagUuid = await createTagOnNote(invoke, selectedNote.uuid, newTagName);
       setNoteTags(selectedNote.uuid, current => [...current, { uuid: tagUuid }]);
@@ -529,6 +547,8 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       await reloadTags();
     } catch (err) {
       setError(String(err));
+    } finally {
+      creatingTagRef.current = false;
     }
   }, [selectedNote, newTagName, setNoteTags, reloadTags]);
 

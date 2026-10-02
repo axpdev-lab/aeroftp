@@ -33,7 +33,13 @@ export async function createTagOnNote(invoke: Invoke, noteUuid: string, name: st
     const clean = name.trim();
     if (!clean) throw new Error('A tag needs a name');
     const tagUuid = await invoke<string>('filen_notes_tags_create', { name: clean });
-    await tagNote(invoke, noteUuid, tagUuid);
+    try {
+        await tagNote(invoke, noteUuid, tagUuid);
+    } catch (err) {
+        // Left behind, the unattached tag would be duplicated by a retry with the same name.
+        await deleteTag(invoke, tagUuid).catch(() => undefined);
+        throw err;
+    }
     return tagUuid;
 }
 

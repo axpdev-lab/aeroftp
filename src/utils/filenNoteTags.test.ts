@@ -25,6 +25,21 @@ describe('Filen note tags and type', () => {
         await expect(createTagOnNote(invoke as never, 'n1', '   ')).rejects.toThrow();
     });
 
+    it('removes the new tag when putting it on the note fails, so a retry does not leave a duplicate', async () => {
+        const live = new Set<string>();
+        let created = 0;
+        let attachFailures = 1;
+        const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+            if (cmd === 'filen_notes_tags_create') { const uuid = `t${++created}`; live.add(uuid); return uuid; }
+            if (cmd === 'filen_notes_tag_note' && attachFailures-- > 0) throw new Error('tag refused');
+            if (cmd === 'filen_notes_tags_delete') live.delete(args!.tagUuid as string);
+            return undefined;
+        });
+        await expect(createTagOnNote(invoke as never, 'n1', 'work')).rejects.toThrow('tag refused');
+        expect(await createTagOnNote(invoke as never, 'n1', 'work')).toBe('t2');
+        expect([...live]).toEqual(['t2']);
+    });
+
     it('removes, renames and deletes tags with the arguments each command takes', async () => {
         const invoke = vi.fn(async () => undefined);
         await untagNote(invoke as never, 'n1', 't1');
