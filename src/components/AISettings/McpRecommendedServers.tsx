@@ -23,13 +23,22 @@ export function McpRecommendedServers() {
     const loadSequence = useRef(0);
     const load = useCallback(async () => {
         const sequence = ++loadSequence.current;
-        const [listed, servers] = await Promise.all([
-            invoke<HttpPreset[]>('mcp_client_presets_list'),
-            invoke<Listed[]>('mcp_client_http_list_servers'),
-        ]);
+        let listed: HttpPreset[];
+        let servers: Listed[];
+        try {
+            [listed, servers] = await Promise.all([
+                invoke<HttpPreset[]>('mcp_client_presets_list'),
+                invoke<Listed[]>('mcp_client_http_list_servers'),
+            ]);
+        } catch (cause) {
+            // A failure of a superseded load says nothing about the current state.
+            if (sequence === loadSequence.current) throw cause;
+            return;
+        }
         if (sequence !== loadSequence.current) return;
         setPresets((listed ?? []).filter(preset => preset.transport === 'http' && PRESET_TEXT[preset.id]));
         setInstalled(servers ?? []);
+        setError('');
     }, []);
     useEffect(() => {
         let mounted = true;

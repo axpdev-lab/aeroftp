@@ -98,6 +98,46 @@ it('keeps the newest list when an older load answers last', async () => {
     expect(installButton()).toBeUndefined();
 });
 
+it('shows no error from an older load once a newer one has answered', async () => {
+    const gates: Array<{ fail: () => void }> = [];
+    let lists = 0;
+    invoke.mockImplementation(async (command: string) => {
+        if (command === 'mcp_client_presets_list') return [DEEPWIKI];
+        if (command === 'mcp_client_http_list_servers') {
+            lists += 1;
+            if (lists === 1) {
+                // The older load fails, and only after the newer one answered.
+                await new Promise<void>((_, reject) => { gates.push({ fail: () => reject('MCP_STORE_UNAVAILABLE') }); });
+            }
+            return [{ id: 'deepwiki', enabled: true }];
+        }
+        return undefined;
+    });
+    await act(async () => { root.render(createElement(McpRecommendedServers)); });
+    await act(async () => { notifyMcpServersChanged(); });
+    await act(async () => { gates[0].fail(); });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.textContent).toContain('Ready');
+});
+
+it('clears an earlier load error once a later load succeeds', async () => {
+    let lists = 0;
+    invoke.mockImplementation(async (command: string) => {
+        if (command === 'mcp_client_presets_list') return [DEEPWIKI];
+        if (command === 'mcp_client_http_list_servers') {
+            lists += 1;
+            if (lists === 1) throw 'MCP_STORE_UNAVAILABLE';
+            return [];
+        }
+        return undefined;
+    });
+    await render();
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    await act(async () => { notifyMcpServersChanged(); });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(installButton()).toBeDefined();
+});
+
 it('reports a refused install', async () => {
     invoke.mockImplementation(async (command: string) => {
         if (command === 'mcp_client_presets_list') return [DEEPWIKI];
