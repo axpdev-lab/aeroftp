@@ -199,6 +199,7 @@ import {
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
+import { nativeMenuLabels } from './utils/nativeMenuLabels';
 import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
@@ -1707,6 +1708,13 @@ const App: React.FC = () => {
   const insecureCertPreviouslyEnabledRef = useRef(false);
 
   const t = useTranslation();
+
+  // The native menu (always in the macOS menu bar, optional elsewhere) is built
+  // in English at startup; relabel it whenever the language changes. Before
+  // the app is ready the backend keeps the rebuilt menu for app_ready to install.
+  useEffect(() => {
+    invoke('rebuild_menu', { labels: nativeMenuLabels(t) }).catch(() => {});
+  }, [t]);
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
 
   // Sync Badge Helper - returns badge element if file is in cloud folder

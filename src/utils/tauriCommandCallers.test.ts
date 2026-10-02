@@ -282,7 +282,6 @@ const INHERITED_UNCALLED: string[] = [
     'rclone_crypt_encrypt_name',
     'read_agent_memory',
     'read_export_metadata',
-    'rebuild_menu',
     's3_change_storage_class',
     's3_delete_object_tags',
     's3_get_object_tags',
