@@ -163,8 +163,28 @@ export function IntroHub(props: IntroHubProps) {
         return () => { cancelled = true; };
     }, [serversRefreshKey]);
 
-    // Export/Import dialog
+    // Export/Import dialog. `exportPreselect` holds the profile ids handed
+    // over by a My Servers context menu "Export...": the dialog then opens
+    // straight on the export step with those profiles selected.
     const [showExportImport, setShowExportImport] = useState(false);
+    const [exportPreselect, setExportPreselect] = useState<string[] | null>(null);
+    const openExportImport = useCallback(() => {
+        setExportPreselect(null);
+        setShowExportImport(true);
+    }, []);
+    const openExportForProfiles = useCallback(async (serverIds: string[]) => {
+        // Reload from the vault so a profile saved a moment ago is in the
+        // list the dialog selects from.
+        try {
+            setPaletteServers(await loadSavedServerProfiles());
+        } catch { /* keep the cached list */ }
+        setExportPreselect(serverIds);
+        setShowExportImport(true);
+    }, []);
+    const closeExportImport = useCallback(() => {
+        setShowExportImport(false);
+        setExportPreselect(null);
+    }, []);
 
     // Persist static tab (not form tabs)
     useEffect(() => {
@@ -354,20 +374,6 @@ export function IntroHub(props: IntroHubProps) {
         // no-op: CommandPalette removed
     }, []);
 
-    // Connect from Command Palette (saved server)
-    const handlePaletteConnect = useCallback(async (server: ServerProfile) => {
-        const params: ConnectionParams = {
-            server: server.host || '',
-            port: server.port || 21,
-            username: server.username || '',
-            password: '',
-            protocol: server.protocol || 'ftp',
-            options: server.options || {},
-            providerId: server.providerId,
-        };
-        await onSavedServerConnect(params, server.initialPath, server.localInitialPath);
-    }, [onSavedServerConnect]);
-
     // Keyboard shortcuts
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -449,7 +455,8 @@ export function IntroHub(props: IntroHubProps) {
                         onQuickConnect={handleNewConnection}
                         onJumpToCategory={handleJumpToCategory}
                         lastUpdate={serversRefreshKey}
-                        onOpenExportImport={() => setShowExportImport(true)}
+                        onOpenExportImport={openExportImport}
+                        onExportProfiles={(ids) => { void openExportForProfiles(ids); }}
                         onServersChange={() => {
                             (async () => {
                                 try {
@@ -510,10 +517,6 @@ export function IntroHub(props: IntroHubProps) {
                                 onConnect(overrideParams || activeFormTab.connectionParams);
                                 handleCloseFormTab(activeFormTab.id);
                             }}
-                            onSavedServerConnect={async (params, initialPath, localInitialPath) => {
-                                handleCloseFormTab(activeFormTab.id);
-                                await onSavedServerConnect(params, initialPath, localInitialPath);
-                            }}
                             onFormSaved={() => {
                                 handleCloseFormTab(activeFormTab.id);
                                 setActiveTab('my-servers');
@@ -537,13 +540,15 @@ export function IntroHub(props: IntroHubProps) {
             {showExportImport && (
                 <ExportImportDialog
                     servers={paletteServers}
+                    initialMode={exportPreselect ? 'export' : undefined}
+                    initialSelectedServerIds={exportPreselect ?? undefined}
                     onImport={async (newServers) => {
                         const updated = await appendImportedProfiles(newServers);
                         setPaletteServers(updated);
-                        setShowExportImport(false);
+                        closeExportImport();
                         onServersChanged?.();
                     }}
-                    onClose={() => setShowExportImport(false)}
+                    onClose={closeExportImport}
                 />
             )}
         </div>

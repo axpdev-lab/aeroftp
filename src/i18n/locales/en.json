@@ -202,7 +202,8 @@
             "session_resumed": "Resumed live session to {server}",
             "aerocrypt_marker_migrate": "Converting AeroCrypt marker to .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt marker converted to .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Unlocking folder {filename}..."
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -955,7 +956,18 @@
                     "startFailed": "The local server could not be started.",
                     "serverFailed": "The server stopped or sent an invalid reply.",
                     "httpUnauthorized": "The server refused the saved credentials.",
-                    "unsupportedVersion": "The server uses an MCP version AeroFTP does not support."
+                    "unsupportedVersion": "The server uses an MCP version AeroFTP does not support.",
+                    "directoryInvalid": "Choose a dedicated directory without links or sensitive application files.",
+                    "directoryChanged": "The granted directory changed or is missing. Select it again to renew access.",
+                    "permissionCommand": "Change access using the directory and network permission controls.",
+                    "installInvalid": "This managed installation is unavailable or its manifest is invalid.",
+                    "installIntegrity": "Package integrity verification failed. Remove and reinstall the server.",
+                    "installArchive": "The package contains unsafe paths, links, or an invalid entry file.",
+                    "installRuntime": "The required system runtime is missing.",
+                    "installDownload": "The package download failed or timed out.",
+                    "installLimit": "The package exceeds the installation limits.",
+                    "installExists": "Remove the existing installation before reinstalling.",
+                    "installIo": "The installation files could not be read or written."
                 },
                 "routingNotice": "Enabled servers offer their tools to AeroAgent. Every tool call asks for your approval first.",
                 "checkNow": "Check now",
@@ -964,7 +976,19 @@
                 "healthError": "Unavailable: {reason}",
                 "healthReady": "Ready, tools available to AeroAgent: {count}",
                 "healthUnsupported": "Tools with unsupported schemas: {count}",
-                "healthShowTools": "Show tools"
+                "healthShowTools": "Show tools",
+                "directoryTitle": "Read-only directories",
+                "grantDirectory": "Choose directory",
+                "confirmDirectory": "Grant this server read-only access to every file in {path}? Only grant a dedicated server or project directory.",
+                "noDirectories": "No directory access.",
+                "revokeDirectory": "Revoke access",
+                "confirmRevokeDirectory": "Revoke access to {path}? Previous tool approvals will no longer be valid.",
+                "networkAccess": "Allow network access (all hosts)",
+                "networkBlocked": "Network access is blocked.",
+                "confirmNetwork": "Allow {name} to access the network, including local services? Previous tool approvals will no longer be valid.",
+                "confirmBlockNetwork": "Block network access for {name}? Previous tool approvals will no longer be valid.",
+                "managedStatus": "Managed installation: {version}",
+                "renewDirectory": "Renew access"
             }
         },
         "appearance": {
@@ -1358,17 +1382,12 @@
             "connectionNameOptional": "Connection name (optional)",
             "connectionNamePlaceholder": "Connection Name (e.g. My Cloud)",
             "custom": "Custom",
-            "deleteServer": "Delete Server",
             "disconnected": "Disconnected",
-            "duplicateServer": "Duplicate Server",
-            "duplicateCredentialMissing": "Credential not copied to the duplicate. Re-enter the password before connecting.",
-            "dismiss": "Dismiss",
             "createAccount": "Create Account",
             "generatePassword": "Generate Password",
             "generatePersonalLoginToken": "Generate personal login token",
             "docs": "Docs",
             "downloadMegacmd": "Download MEGAcmd",
-            "editServer": "Edit Server",
             "emailAccount": "Email Account",
             "endToEndAes": "End-to-end encrypted with AES-256-GCM",
             "endToEndEncrypted": "End-to-end encrypted connection",
@@ -1485,7 +1504,6 @@
             "megaRequirement": "Requirement: MEGAcmd",
             "megaRequirementDesc": "This feature requires the free MEGAcmd tool installed and running on your system.",
             "minutes": "minutes",
-            "noSavedServers": "No saved servers",
             "oauth": {
                 "backToExistingAccount": "Back to existing account",
                 "configureCredentials": "Configure OAuth2 credentials",
@@ -1531,12 +1549,9 @@
             "convertUndone": "Profile restored",
             "undo": "Undo",
             "saveChanges": "Save Changes",
-            "savedServers": "Saved Servers",
-            "savedServersHelp": "Select a server to connect.",
             "saveServer": "Save Server",
             "saveThisConnection": "Save this connection",
             "saveToServers": "Save to Saved Servers",
-            "searchServers": "Search servers...",
             "secretAccessKey": "Secret Access Key",
             "secureLogin": "Secure Login",
             "saveAndConnect": "Save & Connect",
@@ -1578,6 +1593,11 @@
             "opendriveDefaultPrivacyHelp": "Applied to folders and files you create or upload. WebDAV connections use OpenDrive's own defaults.",
             "mtpNotAttachedTitle": "Device not connected",
             "mtpNotAttached": "Plug in the device and enable File Transfer mode, then try again.",
+            "oauthKeysMissingTitle": "{provider} app keys missing",
+            "oauthKeysMissing": "No app keys for {provider} are stored in the vault, so AeroFTP cannot sign in. AeroFTP does not ship its own keys: enter the keys of your {provider} developer app in {location}, then connect again.",
+            "oauthKeysOpenSettings": "Open OAuth settings",
+            "oauthKeysReadFailedTitle": "Cannot read {provider} app keys",
+            "oauthKeysReadFailed": "AeroFTP could not read the {provider} app keys from the vault, so it cannot sign in. The keys were not changed. Error: {error}",
             "swiftAuthUrl": "Keystone auth URL",
             "swiftAllowCleartextStorage": "This deployment serves object storage over plain HTTP. Accept it for this profile: the access token and every file cross the network unencrypted.",
             "twakeInstance": "Twake address",
@@ -3158,14 +3178,8 @@
             "reconnectFailed": "Reconnect failed. Please reconnect manually."
         },
         "savedServers": {
-            "dragToReorder": "Drag to reorder",
-            "e2eAes128": "E2E AES-128 - {username}",
             "expBadge": "EXP",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Please configure 4shared credentials in Settings > Cloud Providers.",
             "hideCredentials": "Hide credentials",
-            "oauthConfigError": "Please configure {provider} credentials in Settings > Cloud Providers.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "opendriveDisplay": "OpenDrive {username}",
             "sessionExpired": "Session expired (24h)",
@@ -3350,6 +3364,11 @@
             "selectAll": "Select All",
             "deselectAll": "Deselect All",
             "selected": "selected",
+            "filterServersPlaceholder": "Filter by name, host, protocol or user",
+            "selectShown": "Select the {count} shown",
+            "deselectShown": "Deselect the {count} shown",
+            "filterShownCount": "{shown} shown",
+            "selectedHiddenByFilter": "{count} selected but hidden by the filter, still included",
             "fileExistsAsk": "Ask each time",
             "fileExistsOverwrite": "Overwrite",
             "fileExistsRename": "Rename (add number)",
@@ -5123,7 +5142,17 @@
             "tagsPlaceholder": "Add a tag...",
             "tagsUpdated": "Tags updated",
             "addTag": "Add",
-            "noTags": "No tags"
+            "noTags": "No tags",
+            "collaborators": "Collaborators",
+            "noCollaborators": "Not shared with anyone yet",
+            "folderNotLocked": "This folder has no lock",
+            "roleEditor": "Editor",
+            "roleViewer": "Viewer",
+            "rolePreviewer": "Previewer",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Previewer Uploader",
+            "roleViewerUploader": "Viewer Uploader",
+            "roleCoOwner": "Co-owner"
         },
         "introHub": {
             "tab": {
@@ -5172,6 +5201,7 @@
             "backToServers": "Back to servers",
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
+            "exportProfile": "Export...",
             "group": {
                 "newGroup": "New group",
                 "newGroupEllipsis": "New group...",
@@ -5181,8 +5211,9 @@
                 "namePlaceholder": "Group name",
                 "rename": "Rename group",
                 "delete": "Delete group",
+                "export": "Export group...",
                 "confirmDelete": "Delete the group \"{name}\"? The servers in it are kept, only the group is removed.",
-                "chipHint": "Click to filter; right-click to rename or delete"
+                "chipHint": "Click to filter; right-click to rename, export or delete"
             },
             "storageUsedOf": "{used} used of {total}",
             "storageVersioning": "File versions: {size}",
@@ -5333,10 +5364,11 @@
             "star": "Star",
             "unstar": "Unstar",
             "starred": "File starred",
-            "unstarred": "File unstarred",
-            "addComment": "Add Comment",
-            "commentPlaceholder": "Write your comment...",
-            "commentAdded": "Comment added"
+            "unstarred": "File unstarred"
+        },
+        "fileComments": {
+            "title": "Comments",
+            "empty": "No comments yet"
         },
         "s3": {
             "storageClass": "Storage Class",
@@ -5425,6 +5457,13 @@
             "archive": "Archive",
             "trash": "Trash",
             "participants": "participants",
+            "noteType": "Note type",
+            "addTag": "Add tag",
+            "newTag": "New tag...",
+            "tagName": "Tag name",
+            "removeTag": "Remove tag",
+            "manageTags": "Manage tags",
+            "deleteTagConfirm": "Delete the tag \"{name}\"? Notes keep their text.",
             "filter": {
                 "all": "All",
                 "favorites": "Favorites",

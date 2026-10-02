@@ -318,6 +318,11 @@ pub struct BatchProgressSnapshot {
     pub total: u32,
     pub bytes_transferred: u64,
     pub bytes_total: u64,
+    /// Engine bookkeeping, never sent to the GUI: the most files that held a
+    /// transfer session at the same moment (the high-water of `active`), the
+    /// job's real file concurrency reported as `slot_peak` in its stats.
+    #[serde(skip)]
+    pub peak_active: u32,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

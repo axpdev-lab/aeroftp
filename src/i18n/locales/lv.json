@@ -102,14 +102,9 @@
             "connectionFailed": "Savienojums neizdevās",
             "reconnecting": "Atkārtoti savienojas...",
             "quickConnect": "Ātrais savienojums",
-            "savedServers": "Saglabātie serveri",
-            "noSavedServers": "Nav saglabātu serveru",
             "saveServer": "Saglabāt serveri",
-            "deleteServer": "Dzēst serveri",
-            "editServer": "Rediģēt serveri",
             "serverName": "Servera nosaukums",
             "initialPath": "Sākotnējais ceļš",
-            "savedServersHelp": "Izvēlieties serveri, lai izveidotu savienojumu.",
             "selectSshKey": "Atlasiet SSH privāto atslēgu",
             "allFiles": "Visi faili",
             "sshKeys": "SSH atslēgas",
@@ -132,7 +127,6 @@
             "emailAccount": "E-pasta konts",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Jūsu MEGA parole",
-            "dismiss": "Noraidīt",
             "authenticating": "Autentificēšana...",
             "oauth2Connection": "OAuth2 savienojums",
             "securityTitle": "Šifrēta akreditācijas datu glabāšana",
@@ -170,7 +164,6 @@
             "docs": "Dokumentācija",
             "minutes": "minūtes",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Meklēt serverus...",
             "fourshared": {
                 "backToExistingAccount": "Atpakaļ pie esoša konta",
                 "configureCredentials": "Konfigurēt OAuth 1.0 akreditācijas datus",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Lietojumprogrammas parole",
             "koofrAppPasswordPlaceholder": "Ielīmējiet savu Koofr lietojumprogrammas paroli šeit",
             "koofrHelp": "Izveidojiet lietojumprogrammas paroli lapā app.koofr.net → Preferences → Parole → Lietojumprogrammu paroles",
-            "duplicateServer": "Dublēt serveri",
-            "duplicateCredentialMissing": "Akreditācijas dati netika nokopēti dublikātā. Pirms savienojuma ievadiet paroli vēlreiz.",
             "saveAsNew": "Saglabāt kā jaunu",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Pierakstieties vēlreiz",
             "twakeSignedIn": "Pierakstījies",
             "twakeWaitingBrowser": "Pabeidziet pierakstīšanos savā pārlūkprogrammā...",
-            "twakeSignInHelp": "AeroFTP atver Twake jūsu pārlūkprogrammā un pieprasa piekļuvi tikai jūsu failiem. Ja Twake pirmoreiz parāda kļūdu, piesakieties Twake pārlūkprogrammā un pierakstieties vēlreiz. Piekļuvi varat atsaukt jebkurā laikā Twake iestatījumos, Savienotās ierīces."
+            "twakeSignInHelp": "AeroFTP atver Twake jūsu pārlūkprogrammā un pieprasa piekļuvi tikai jūsu failiem. Ja Twake pirmoreiz parāda kļūdu, piesakieties Twake pārlūkprogrammā un pierakstieties vēlreiz. Piekļuvi varat atsaukt jebkurā laikā Twake iestatījumos, Savienotās ierīces.",
+            "oauthKeysMissingTitle": "Trūkst {provider} lietotnes atslēgu",
+            "oauthKeysMissing": "Glabātuvē nav saglabātu {provider} lietotnes atslēgu, tāpēc AeroFTP nevar pieteikties. AeroFTP nepiegādā savas atslēgas: ievadiet sava {provider} izstrādātāja lietotnes atslēgas šeit: {location}, un pēc tam izveidojiet savienojumu vēlreiz.",
+            "oauthKeysOpenSettings": "Atvērt OAuth iestatījumus",
+            "oauthKeysReadFailedTitle": "Nevar nolasīt {provider} lietotnes atslēgas",
+            "oauthKeysReadFailed": "AeroFTP nevarēja nolasīt {provider} lietotnes atslēgas no glabātuves, tāpēc nevar pieteikties. Atslēgas netika mainītas. Kļūda: {error}"
         },
         "browser": {
             "remote": "Attālināts",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Lietotie aizstājumi: {count}",
             "uiTokensRejected": "Noraidītie ieraksti: {count}",
             "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}",
-            "keystorePreviewBackupUnreadable": "Šī dublējuma serveru sarakstu nevar nolasīt šajā ierīcē, tāpēc salīdzinājumā tiek izmantots dublējuma glabātavā saglabātais saraksts. Importēšana tomēr aizstāj šīs ierīces serveru sarakstu."
+            "keystorePreviewBackupUnreadable": "Šī dublējuma serveru sarakstu nevar nolasīt šajā ierīcē, tāpēc salīdzinājumā tiek izmantots dublējuma glabātavā saglabātais saraksts. Importēšana tomēr aizstāj šīs ierīces serveru sarakstu.",
+            "filterServersPlaceholder": "Filtrēt pēc nosaukuma, resursdatora, protokola vai lietotāja",
+            "selectShown": "Atlasīt attēlotos {count}",
+            "deselectShown": "Noņemt atlasi attēlotajiem {count}",
+            "filterShownCount": "attēloti: {shown}",
+            "selectedHiddenByFilter": "{count} atlasīti, bet filtrs tos slēpj, tie joprojām tiek iekļauti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Šifrētais slānis bloķēts",
             "aerocrypt_marker_migrate": "Notiek AeroCrypt marķiera konvertēšana uz .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt marķieris pārveidots par .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Atbloķē mapi {filename}..."
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Vietējo serveri neizdevās startēt.",
                     "serverFailed": "Serveris apstājās vai nosūtīja nederīgu atbildi.",
                     "httpUnauthorized": "Serveris noraidīja saglabātos akreditācijas datus.",
-                    "unsupportedVersion": "Serveris izmanto MCP versiju, ko AeroFTP neatbalsta."
+                    "unsupportedVersion": "Serveris izmanto MCP versiju, ko AeroFTP neatbalsta.",
+                    "directoryInvalid": "Izvēlieties atsevišķu direktoriju bez saitēm vai sensitīviem lietotņu failiem.",
+                    "directoryChanged": "Atļautais direktorijs ir mainīts vai nav pieejams. Atlasiet to vēlreiz, lai atjaunotu piekļuvi.",
+                    "permissionCommand": "Mainiet piekļuvi ar direktoriju un tīkla atļauju vadīklām.",
+                    "installInvalid": "Šī pārvaldītā instalācija nav pieejama vai tās manifests nav derīgs.",
+                    "installIntegrity": "Pakotnes integritātes pārbaude neizdevās. Noņemiet un atkārtoti instalējiet serveri.",
+                    "installArchive": "Pakotne satur nedrošus ceļus, saites vai nederīgu sākuma failu.",
+                    "installRuntime": "Trūkst nepieciešamās sistēmas izpildlaika vides.",
+                    "installDownload": "Pakotnes lejupielāde neizdevās vai pārsniedza taimautu.",
+                    "installLimit": "Pakotne pārsniedz instalēšanas ierobežojumus.",
+                    "installExists": "Pirms atkārtotas instalēšanas noņemiet esošo instalāciju.",
+                    "installIo": "Instalācijas failus nevarēja nolasīt vai ierakstīt."
                 },
                 "routingNotice": "Iespējotie serveri piedāvā savus rīkus AeroAgent. Katrs rīka izsaukums vispirms pieprasa jūsu apstiprinājumu.",
                 "checkNow": "Pārbaudīt tagad",
@@ -3089,7 +3102,19 @@
                 "healthError": "Nav pieejams: {reason}",
                 "healthReady": "Gatavs, AeroAgent pieejamie rīki: {count}",
                 "healthUnsupported": "Rīki ar neatbalstītām shēmām: {count}",
-                "healthShowTools": "Rādīt rīkus"
+                "healthShowTools": "Rādīt rīkus",
+                "directoryTitle": "Tikai lasāmi direktoriji",
+                "grantDirectory": "Izvēlēties direktoriju",
+                "confirmDirectory": "Piešķirt šim serverim tikai lasīšanas piekļuvi visiem failiem direktorijā {path}? Piešķiriet piekļuvi tikai serverim vai projektam paredzētam direktorijam.",
+                "noDirectories": "Nav piekļuves direktorijiem.",
+                "revokeDirectory": "Atsaukt piekļuvi",
+                "confirmRevokeDirectory": "Atsaukt piekļuvi direktorijam {path}? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
+                "networkAccess": "Atļaut piekļuvi tīklam (visi resursdatori)",
+                "networkBlocked": "Piekļuve tīklam ir bloķēta.",
+                "confirmNetwork": "Atļaut {name} piekļuvi tīklam, arī vietējiem pakalpojumiem? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
+                "confirmBlockNetwork": "Bloķēt {name} piekļuvi tīklam? Iepriekšējie rīku apstiprinājumi vairs nebūs derīgi.",
+                "managedStatus": "Pārvaldīta instalācija: {version}",
+                "renewDirectory": "Atjaunot piekļuvi"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Skatīt avotu"
         },
         "savedServers": {
-            "dragToReorder": "Velciet, lai pārkārtotu",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Lūdzu, konfigurējiet 4shared akreditācijas datus sadaļā Iestatījumi > Mākoņa pakalpojumu sniedzēji.",
-            "oauthConfigError": "Lūdzu, konfigurējiet {provider} akreditācijas datus sadaļā Iestatījumi > Mākoņa pakalpojumu sniedzēji.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4455,23 @@
             "tagsPlaceholder": "Pievienot birku...",
             "tagsUpdated": "Birkas atjauninātas",
             "addTag": "Pievienot",
-            "noTags": "Nav birku"
+            "noTags": "Nav birku",
+            "collaborators": "Līdzstrādnieki",
+            "noCollaborators": "Vēl nav kopīgots ar nevienu",
+            "folderNotLocked": "Šī mape nav bloķēta",
+            "roleEditor": "Redaktors",
+            "roleViewer": "Skatītājs",
+            "rolePreviewer": "Priekšskatītājs",
+            "roleUploader": "Augšupielādētājs",
+            "rolePreviewerUploader": "Priekšskatītājs un augšupielādētājs",
+            "roleViewerUploader": "Skatītājs un augšupielādētājs",
+            "roleCoOwner": "Līdzīpašnieks"
         },
         "googledrive": {
             "star": "Atzīmēt ar zvaigznīti",
             "unstar": "Noņemt zvaigznīti",
             "starred": "Fails atzīmēts ar zvaigznīti",
-            "unstarred": "Zvaigznīte noņemta",
-            "addComment": "Pievienot komentāru",
-            "commentPlaceholder": "Rakstiet savu komentāru...",
-            "commentAdded": "Komentārs pievienots"
+            "unstarred": "Zvaigznīte noņemta"
         },
         "dropbox": {
             "manageTags": "Pārvaldīt birkas"
@@ -4768,7 +4794,14 @@
             "participants": "dalībnieki",
             "saving": "Saglabā...",
             "saved": "Saglabāts",
-            "saveNow": "Saglabāt tagad"
+            "saveNow": "Saglabāt tagad",
+            "noteType": "Piezīmes veids",
+            "addTag": "Pievienot atzīmi",
+            "newTag": "Jauna atzīme...",
+            "tagName": "Atzīmes nosaukums",
+            "removeTag": "Noņemt atzīmi",
+            "manageTags": "Pārvaldīt atzīmes",
+            "deleteTagConfirm": "Dzēst atzīmi “{name}”? Piezīmes saglabā savu tekstu."
         },
         "shareLinkModal": {
             "title": "Koplietošanas saite",
@@ -4961,7 +4994,8 @@
                 "rename": "Pārdēvēt grupu",
                 "delete": "Dzēst grupu",
                 "confirmDelete": "Dzēst grupu “{name}”? Tajā esošie serveri tiek saglabāti, tiek noņemta tikai grupa.",
-                "chipHint": "Noklikšķiniet, lai filtrētu; ar peles labo pogu, lai pārdēvētu vai dzēstu"
+                "chipHint": "Noklikšķiniet, lai filtrētu; ar peles labo pogu varat pārdēvēt, eksportēt vai dzēst",
+                "export": "Eksportēt grupu..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5020,8 @@
                 "offTitle": "Šim spainītim nav noklusējuma šifrēšanas. Tas nav tas pats, kas nešifrēts: SSE-C un šifrēšanu klienta pusē šis iestatījums neatspoguļo.",
                 "unknownKeyTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo lietojumprogrammas atslēgai nav readBucketEncryption iespējas. Vērtība, kuru mums nav atļauts redzēt, nenozīmē, ka šifrēšana ir izslēgta.",
                 "unknownShapeTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo atbildei nebija dokumentētas formas. Atslēgai bija atļauts to lasīt, tāpēc runa ir par atbildi, nevis par atļaujām."
-            }
+            },
+            "exportProfile": "Eksportēt..."
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",
@@ -6059,6 +6094,10 @@
         "azure": {
             "accessTier": "Piekļuves līmenis",
             "accessTierChanged": "Piekļuves līmenis iestatīts uz {tier}"
+        },
+        "fileComments": {
+            "title": "Komentāri",
+            "empty": "Vēl nav komentāru"
         }
     }
 }

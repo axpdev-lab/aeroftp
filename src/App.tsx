@@ -171,8 +171,6 @@ import { ContextMenu, useContextMenu, ContextMenuItem } from './components/Conte
 import { useAeroShareEnabled } from './hooks/useAeroShareEnabled';
 import { openAeroShareDialog, openAeroShareSend } from './utils/aeroShare';
 import { AeroShareHub } from './components/AeroShare/AeroShareHub';
-import { SavedServers } from './components/SavedServers';
-import { ConnectionScreen } from './components/ConnectionScreen';
 import { findActiveModeGroup } from './components/providerModeGroups';
 import { TwoFactorPromptDialog } from './components/TwoFactorPromptDialog';
 import { IntroHub } from './components/IntroHub';
@@ -199,8 +197,11 @@ import {
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
+import { openUrl } from './utils/openUrl';
+import { openOnGitLab } from './utils/gitlabWeb';
 import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
+import { keyReadFailure, notifyOAuthKeysUnavailable, OPEN_OAUTH_SETTINGS_EVENT } from './utils/oauthKeysMissing';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
@@ -250,7 +251,9 @@ import { AeroCryptKeyslotsModal } from './components/AeroCryptKeyslotsModal';
 import { CrossProfilePanel } from './components/CrossProfile/CrossProfilePanel';
 import { ArchiveBrowser } from './components/ArchiveBrowser';
 import { ZohoTrashManager } from './components/ZohoTrashManager';
-import { GoogleDriveCommentDialog } from './components/GoogleDriveCommentDialog';
+import { FileCommentsDialog } from './components/FileCommentsDialog';
+import { BoxCollaboratorsDialog } from './components/BoxCollaboratorsDialog';
+import { unlockBoxFolder, type CommentsProvider } from './utils/boxDriveSocial';
 import { GitHubCommitDialog } from './components/GitHubCommitDialog';
 import { GitHubLocalSyncWarning } from './components/GitHubLocalSyncWarning';
 import { GitHubBranchSelector } from './components/GitHubBranchSelector';
@@ -1329,7 +1332,8 @@ const App: React.FC = () => {
   }>(false);
   const [archiveBrowserState, setArchiveBrowserState] = useState<{ path: string; type: import('./types').ArchiveType; encrypted: boolean } | null>(null);
   const [showZohoTrash, setShowZohoTrash] = useState(false);
-  const [showGDriveComment, setShowGDriveComment] = useState<{ path: string; name: string } | null>(null);
+  const [commentsTarget, setCommentsTarget] = useState<{ provider: CommentsProvider; path: string; name: string } | null>(null);
+  const [boxCollabTarget, setBoxCollabTarget] = useState<{ path: string; name: string } | null>(null);
   const [showJottaTrash, setShowJottaTrash] = useState(false);
   const [showMegaTrash, setShowMegaTrash] = useState(false);
   const [showGDriveTrash, setShowGDriveTrash] = useState(false);
@@ -1350,7 +1354,7 @@ const App: React.FC = () => {
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
-  const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerType?: string; providerIcon?: React.ReactNode } | null>(null);
+  const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
@@ -1863,12 +1867,12 @@ const App: React.FC = () => {
       } catch (err) {
         console.error('Failed to initialize credential vault:', err);
       } finally {
-        // MU-FE-P0: no localStorage pre-warm. SavedServers reads via
+        // MU-FE-P0: no localStorage pre-warm. The My Servers list reads via
         // `loadSavedServerProfiles` (partition-aware) on every refresh
         // and the legacy localStorage blob is cross-user, so seeding it
         // would actively leak between users on switch. The active user's
         // partition is the only source of truth.
-        // Force SavedServers to re-fetch from vault (now initialized)
+        // Force the My Servers list to re-fetch from vault (now initialized)
         setServersRefreshKey(k => k + 1);
         vaultInitDone.current = true;
         setVaultBootComplete(true);
@@ -2483,6 +2487,17 @@ const App: React.FC = () => {
     window.addEventListener('aeroftp-toast', handler as EventListener);
     return () => window.removeEventListener('aeroftp-toast', handler as EventListener);
   }, [toast, showToastNotifications]);
+
+  // Action of the "app keys missing" toast (notifyOAuthKeysUnavailable): open
+  // Settings on the tab where the user's own OAuth app keys are entered.
+  useEffect(() => {
+    const openOAuthSettings = () => {
+      setSettingsInitialTab('cloudproviders');
+      setShowSettingsPanel(true);
+    };
+    window.addEventListener(OPEN_OAUTH_SETTINGS_EVENT, openOAuthSettings);
+    return () => window.removeEventListener(OPEN_OAUTH_SETTINGS_EVENT, openOAuthSettings);
+  }, []);
 
   // Preview: handled by usePreview hook
   const preview = usePreview({ notify, toast });
@@ -8176,7 +8191,7 @@ const App: React.FC = () => {
         }
       }
     } catch { /* ignore */ }
-    // Refresh SavedServers UI (vault is now up-to-date)
+    // Refresh the My Servers list (vault is now up-to-date)
     setServersRefreshKey(k => k + 1);
   }, []);
 
@@ -8333,6 +8348,7 @@ const App: React.FC = () => {
         }
 
         // Fall back to OS keyring (Box, pCloud, and others store credentials there)
+        let keyReadError: unknown = null;
         if (!clientId || !clientSecret) {
           try {
             const keyringProvider = protocol; // Credentials stored with protocol name as-is (e.g., 'googledrive')
@@ -8342,12 +8358,14 @@ const App: React.FC = () => {
               clientId = kid;
               clientSecret = ksecret;
             }
-          } catch {
-            // Keyring not available or credentials not stored
+          } catch (e) {
+            // Credentials not stored (null), or the vault could not be read.
+            keyReadError = keyReadFailure(e);
           }
         }
 
         if (!clientId || !clientSecret) {
+          notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           throw new Error(`OAuth credentials not found for ${protocol}`);
         }
 
@@ -10144,15 +10162,13 @@ const App: React.FC = () => {
       if (isOAuthProvider(protocol)) {
         let clientId = '';
         let clientSecret = '';
+        let keyReadError: unknown = null;
         try {
           clientId = await getCredentialWithRetry(`oauth_${protocol}_client_id`);
           clientSecret = await getCredentialWithRetry(`oauth_${protocol}_client_secret`);
-        } catch { /* missing */ }
+        } catch (e) { keyReadError = keyReadFailure(e); }
         if (!clientId || !clientSecret) {
-          notify.error(
-            t('toast.connectionFailed') || 'Connection failed',
-            t('transfer.resumeConnectFailed', { name: profile.name }),
-          );
+          notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           return false;
         }
         const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
@@ -10209,15 +10225,13 @@ const App: React.FC = () => {
       if (isFourSharedProvider(protocol)) {
         let consumerKey = '';
         let consumerSecret = '';
+        let keyReadError: unknown = null;
         try {
           consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
           consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
-        } catch { /* missing */ }
+        } catch (e) { keyReadError = keyReadFailure(e); }
         if (!consumerKey || !consumerSecret) {
-          notify.error(
-            t('toast.connectionFailed') || 'Connection failed',
-            t('transfer.resumeConnectFailed', { name: profile.name }),
-          );
+          notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           return false;
         }
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });
@@ -14113,7 +14127,7 @@ const App: React.FC = () => {
               default: return currentProtocol?.toUpperCase() || 'Provider';
             }
           })();
-          setShareLinkDialog({ path: file.path, fileName: file.name, providerName: providerLabel, providerType: currentProtocol || undefined, providerIcon: shareIcon });
+          setShareLinkDialog({ path: file.path, fileName: file.name, providerName: providerLabel, providerIcon: shareIcon });
         }
       });
       }
@@ -14280,7 +14294,36 @@ const App: React.FC = () => {
               humanLog.updateEntry(logId, { status: 'success', message: '[Box] Locked folder' });
             } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Lock folder failed' }); }
           },
+        });
+        items.push({
+          label: t('box.unlockFolder'),
+          icon: <Unlock size={14} className="text-amber-500" />,
+          badge: proBadge,
+          action: async () => {
+            const logId = humanLog.logRaw('activity.box_unlock_folder', 'INFO', { provider: 'Box', filename: file.name }, 'running');
+            try {
+              const removed = await unlockBoxFolder(invoke, file.path);
+              if (removed > 0) notify.success(t('box.folderUnlocked'));
+              else notify.info(t('box.folderNotLocked'));
+              humanLog.updateEntry(logId, { status: 'success', message: removed > 0 ? '[Box] Unlocked folder' : '[Box] Folder was not locked' });
+            } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: '[Box] Unlock folder failed' }); }
+          },
           divider: true,
+        });
+      }
+      // Box: comments (files) and collaborators (files and folders)
+      if (filesToUse.length === 1) {
+        if (!file.is_dir) {
+          items.push({
+            label: t('box.viewComments'),
+            icon: <MessageSquare size={14} className="text-blue-500" />,
+            action: () => setCommentsTarget({ provider: 'box', path: file.path, name: file.name }),
+          });
+        }
+        items.push({
+          label: file.is_dir ? t('box.shareFolder') : t('box.collaborators'),
+          icon: <Users size={14} className="text-blue-500" />,
+          action: () => setBoxCollabTarget({ path: file.path, name: file.name }),
         });
       }
     }
@@ -14308,7 +14351,7 @@ const App: React.FC = () => {
           action: async () => {
             const ghBranch = await getGhBranch();
             const filePath = file.path.replace(/^\//, '');
-            window.open(`https://github.com/${ghOwner}/${ghRepo}/blob/${ghBranch}/${filePath}`, '_blank');
+            void openUrl(`https://github.com/${ghOwner}/${ghRepo}/blob/${ghBranch}/${filePath}`);
           },
           divider: true,
         });
@@ -14333,7 +14376,7 @@ const App: React.FC = () => {
           action: async () => {
             const ghBranch = await getGhBranch();
             const filePath = file.path.replace(/^\//, '');
-            window.open(`https://github.com/${ghOwner}/${ghRepo}/commits/${ghBranch}/${filePath}`, '_blank');
+            void openUrl(`https://github.com/${ghOwner}/${ghRepo}/commits/${ghBranch}/${filePath}`);
           },
         });
       }
@@ -14370,6 +14413,18 @@ const App: React.FC = () => {
         divider: true,
       });
     }
+    // GitLab: View on GitLab. The backend builds the URL (self-hosted base,
+    // working branch, encoded segments).
+    if (currentProtocol === 'gitlab' && filesToUse.length === 1) {
+      items.push({
+        label: t('gitlab.viewOnGitlab') || 'View on GitLab',
+        icon: <ExternalLink size={14} />,
+        action: () => {
+          void openOnGitLab(invoke, openUrl, file.path, file.is_dir).catch((err) => notify.error(String(err)));
+        },
+        divider: true,
+      });
+    }
 
     if (currentProtocol === 'googledrive') {
       // Google Drive: Star/Unstar (single file)
@@ -14388,13 +14443,13 @@ const App: React.FC = () => {
             } catch (err) { notify.error(String(err)); humanLog.updateEntry(logId, { status: 'error', message: isStarred ? '[Google Drive] Unstar failed' : '[Google Drive] Star failed' }); }
           },
         });
-        // Google Drive: Add Comment (single file only)
+        // Google Drive: Comments (single file only): read, add, delete
         if (!file.is_dir) {
           items.push({
-            label: t('googledrive.addComment'),
+            label: t('fileComments.title'),
             icon: <MessageSquare size={14} className="text-blue-500" />,
             action: () => {
-              setShowGDriveComment({ path: file.path, name: file.name });
+              setCommentsTarget({ provider: 'googledrive', path: file.path, name: file.name });
             },
           });
         }
@@ -16930,11 +16985,19 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showGDriveComment && (
-          <GoogleDriveCommentDialog
-            filePath={showGDriveComment.path}
-            fileName={showGDriveComment.name}
-            onClose={() => setShowGDriveComment(null)}
+        {commentsTarget && (
+          <FileCommentsDialog
+            provider={commentsTarget.provider}
+            filePath={commentsTarget.path}
+            fileName={commentsTarget.name}
+            onClose={() => setCommentsTarget(null)}
+          />
+        )}
+        {boxCollabTarget && (
+          <BoxCollaboratorsDialog
+            path={boxCollabTarget.path}
+            name={boxCollabTarget.name}
+            onClose={() => setBoxCollabTarget(null)}
           />
         )}
         {showJottaTrash && (
@@ -17042,7 +17105,6 @@ const App: React.FC = () => {
             path={shareLinkDialog.path}
             fileName={shareLinkDialog.fileName}
             providerName={shareLinkDialog.providerName}
-            providerType={shareLinkDialog.providerType}
             providerIcon={shareLinkDialog.providerIcon}
             onClose={() => setShareLinkDialog(null)}
           />

@@ -102,14 +102,9 @@
             "connectionFailed": "Conexión fallida",
             "reconnecting": "Reconectando...",
             "quickConnect": "Conexión Rápida",
-            "savedServers": "Servidores gardados",
-            "noSavedServers": "Non hai servidores gardados",
             "saveServer": "Gardar Servidor",
-            "deleteServer": "Eliminar Servidor",
-            "editServer": "Editar Servidor",
             "serverName": "Nome do Servidor",
             "initialPath": "Ruta Inicial",
-            "savedServersHelp": "Seleccione un servidor para conectarse.",
             "selectSshKey": "Seleccionar clave privada SSH",
             "allFiles": "Todos os ficheiros",
             "sshKeys": "Claves SSH",
@@ -132,7 +127,6 @@
             "emailAccount": "Conta de correo",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "O teu contrasinal MEGA",
-            "dismiss": "Descartar",
             "authenticating": "Autenticando...",
             "oauth2Connection": "Conexión OAuth2",
             "securityTitle": "Almacenamento cifrado de credenciais",
@@ -170,7 +164,6 @@
             "docs": "Documentación",
             "minutes": "minutos",
             "localPathPlaceholder": "/home/usuario/proxectos",
-            "searchServers": "Buscar servidores...",
             "fourshared": {
                 "backToExistingAccount": "Volver á conta existente",
                 "configureCredentials": "Configurar credenciais OAuth 1.0",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Contrasinal da aplicación",
             "koofrAppPasswordPlaceholder": "Pegue o contrasinal da aplicación Koofr aquí",
             "koofrHelp": "Xere un contrasinal da aplicación en app.koofr.net → Preferencias → Contrasinal → Contrasinais da aplicación",
-            "duplicateServer": "Duplicar servidor",
-            "duplicateCredentialMissing": "Credencial non copiada no duplicado. Reintroduce o contrasinal antes de conectar.",
             "saveAsNew": "Gardar como novo",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Iniciar sesión de novo",
             "twakeSignedIn": "Sesión iniciada",
             "twakeWaitingBrowser": "Remata de iniciar sesión no teu navegador...",
-            "twakeSignInHelp": "AeroFTP abre Twake no teu navegador e só pide acceso aos teus ficheiros. Se Twake amosa un erro a primeira vez, inicia sesión en Twake no navegador e téntao de novo. Podes revogar o acceso en calquera momento na Configuración de Twake, Dispositivos conectados."
+            "twakeSignInHelp": "AeroFTP abre Twake no teu navegador e só pide acceso aos teus ficheiros. Se Twake amosa un erro a primeira vez, inicia sesión en Twake no navegador e téntao de novo. Podes revogar o acceso en calquera momento na Configuración de Twake, Dispositivos conectados.",
+            "oauthKeysMissingTitle": "Faltan as claves da aplicación de {provider}",
+            "oauthKeysMissing": "Non hai claves de aplicación de {provider} gardadas no cofre, polo que AeroFTP non pode iniciar sesión. AeroFTP non inclúe claves propias: introduce as claves da túa aplicación de desenvolvedor de {provider} en {location} e volve conectar.",
+            "oauthKeysOpenSettings": "Abrir axustes de OAuth",
+            "oauthKeysReadFailedTitle": "Non se poden ler as claves da aplicación de {provider}",
+            "oauthKeysReadFailed": "AeroFTP non puido ler as claves da aplicación de {provider} do cofre, polo que non pode iniciar sesión. As claves non se modificaron. Erro: {error}"
         },
         "browser": {
             "remote": "Remoto",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Substitucións aplicadas: {count}",
             "uiTokensRejected": "Entradas rexeitadas: {count}",
             "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}",
-            "keystorePreviewBackupUnreadable": "A lista de servidores desta copia non se pode ler neste dispositivo, así que a comparación usa a lista gardada na caixa forte da copia. A importación substitúe igualmente a lista de servidores neste dispositivo."
+            "keystorePreviewBackupUnreadable": "A lista de servidores desta copia non se pode ler neste dispositivo, así que a comparación usa a lista gardada na caixa forte da copia. A importación substitúe igualmente a lista de servidores neste dispositivo.",
+            "filterServersPlaceholder": "Filtrar por nome, host, protocolo ou usuario",
+            "selectShown": "Seleccionar os {count} mostrados",
+            "deselectShown": "Deseleccionar os {count} mostrados",
+            "filterShownCount": "{shown} mostrados",
+            "selectedHiddenByFilter": "{count} seleccionados pero agochados polo filtro, seguen incluídos"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Capa cifrada bloqueada",
             "aerocrypt_marker_migrate": "Convertendo o marcador de AeroCrypt a .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador de AeroCrypt convertido a .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Desbloqueando o cartafol {filename}..."
         },
         "protocol": {
             "selectProtocol": "Seleccionar protocolo...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Non se puido iniciar o servidor local.",
                     "serverFailed": "O servidor detívose ou enviou unha resposta non válida.",
                     "httpUnauthorized": "O servidor rexeitou as credenciais gardadas.",
-                    "unsupportedVersion": "O servidor usa unha versión de MCP que AeroFTP non admite."
+                    "unsupportedVersion": "O servidor usa unha versión de MCP que AeroFTP non admite.",
+                    "directoryInvalid": "Escolle un directorio dedicado sen ligazóns nin ficheiros sensibles de aplicacións.",
+                    "directoryChanged": "O directorio autorizado cambiou ou non existe. Selecciónao de novo para renovar o acceso.",
+                    "permissionCommand": "Cambia o acceso cos controis de permisos de directorios e rede.",
+                    "installInvalid": "Esta instalación xestionada non está dispoñible ou o seu manifesto non é válido.",
+                    "installIntegrity": "Fallou a verificación da integridade do paquete. Elimina o servidor e volve instalalo.",
+                    "installArchive": "O paquete contén rutas inseguras, ligazóns ou un ficheiro de inicio non válido.",
+                    "installRuntime": "Falta o contorno de execución do sistema requirido.",
+                    "installDownload": "A descarga do paquete fallou ou esgotou o tempo de espera.",
+                    "installLimit": "O paquete supera os límites de instalación.",
+                    "installExists": "Elimina a instalación existente antes de reinstalar.",
+                    "installIo": "Non se puideron ler ou escribir os ficheiros de instalación."
                 },
                 "routingNotice": "Os servidores activados ofrecen as súas ferramentas a AeroAgent. Cada chamada a unha ferramenta pide primeiro a túa aprobación.",
                 "checkNow": "Comprobar agora",
@@ -3089,7 +3102,19 @@
                 "healthError": "Non dispoñible: {reason}",
                 "healthReady": "Listo, ferramentas dispoñibles para AeroAgent: {count}",
                 "healthUnsupported": "Ferramentas con esquemas non compatibles: {count}",
-                "healthShowTools": "Amosar ferramentas"
+                "healthShowTools": "Amosar ferramentas",
+                "directoryTitle": "Directorios de só lectura",
+                "grantDirectory": "Escoller directorio",
+                "confirmDirectory": "Conceder a este servidor acceso de só lectura a todos os ficheiros de {path}? Concede só un directorio dedicado ao servidor ou ao proxecto.",
+                "noDirectories": "Sen acceso a directorios.",
+                "revokeDirectory": "Revogar acceso",
+                "confirmRevokeDirectory": "Revogar o acceso a {path}? As aprobacións anteriores das ferramentas deixarán de ser válidas.",
+                "networkAccess": "Permitir acceso á rede (todos os hosts)",
+                "networkBlocked": "O acceso á rede está bloqueado.",
+                "confirmNetwork": "Permitir que {name} acceda á rede, incluídos os servizos locais? As aprobacións anteriores das ferramentas deixarán de ser válidas.",
+                "confirmBlockNetwork": "Bloquear o acceso á rede de {name}? As aprobacións anteriores das ferramentas deixarán de ser válidas.",
+                "managedStatus": "Instalación xestionada: {version}",
+                "renewDirectory": "Renovar acceso"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Ver fonte"
         },
         "savedServers": {
-            "dragToReorder": "Arrastra para reordenar",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Configura as credenciais de 4shared en Axustes > Provedores de nube.",
-            "oauthConfigError": "Configura as credenciais de {provider} en Axustes > Provedores de nube.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4455,16 +4474,23 @@
             "tagsPlaceholder": "Engadir unha etiqueta...",
             "tagsUpdated": "Etiquetas actualizadas",
             "addTag": "Engadir",
-            "noTags": "Sen etiquetas"
+            "noTags": "Sen etiquetas",
+            "collaborators": "Colaboradores",
+            "noCollaborators": "Aínda non se compartiu con ninguén",
+            "folderNotLocked": "Este cartafol non está bloqueado",
+            "roleEditor": "Editor",
+            "roleViewer": "Visor",
+            "rolePreviewer": "Previsualizador",
+            "roleUploader": "Cargador",
+            "rolePreviewerUploader": "Previsualizador e cargador",
+            "roleViewerUploader": "Visor e cargador",
+            "roleCoOwner": "Copropietario"
         },
         "googledrive": {
             "star": "Destacar",
             "unstar": "Quitar destacado",
             "starred": "Ficheiro destacado",
-            "unstarred": "Ficheiro sen destacar",
-            "addComment": "Engadir comentario",
-            "commentPlaceholder": "Escribe o teu comentario...",
-            "commentAdded": "Comentario engadido"
+            "unstarred": "Ficheiro sen destacar"
         },
         "dropbox": {
             "manageTags": "Xestionar etiquetas"
@@ -4787,7 +4813,14 @@
             "participants": "participantes",
             "saving": "Gardando...",
             "saved": "Gardado",
-            "saveNow": "Gardar agora"
+            "saveNow": "Gardar agora",
+            "noteType": "Tipo de nota",
+            "addTag": "Engadir etiqueta",
+            "newTag": "Nova etiqueta...",
+            "tagName": "Nome da etiqueta",
+            "removeTag": "Quitar etiqueta",
+            "manageTags": "Xestionar etiquetas",
+            "deleteTagConfirm": "Eliminar a etiqueta «{name}»? As notas manteñen o seu texto."
         },
         "shareLinkModal": {
             "title": "Ligazón para compartir",
@@ -4980,7 +5013,8 @@
                 "rename": "Renomear grupo",
                 "delete": "Eliminar grupo",
                 "confirmDelete": "Eliminar o grupo «{name}»? Os servidores que contén consérvanse, só se elimina o grupo.",
-                "chipHint": "Fai clic para filtrar; clic dereito para renomear ou eliminar"
+                "chipHint": "Preme para filtrar; preme co botón dereito para renomear, exportar ou eliminar",
+                "export": "Exportar grupo..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5039,8 @@
                 "offTitle": "Este bucket non ten cifrado predeterminado. Iso non é o mesmo que sen cifrar: SSE-C e o cifrado do lado do cliente non se reflicten nesta configuración.",
                 "unknownKeyTitle": "Non puidemos ler a configuración de cifrado deste bucket, porque a clave de aplicación non ten a capacidade readBucketEncryption. Un valor que non temos permiso para ver non significa que o cifrado estea desactivado.",
                 "unknownShapeTitle": "Non puidemos ler a configuración de cifrado deste bucket, porque a resposta non tiña unha forma documentada. A clave si tiña permiso para lela, así que se trata da resposta e non dos permisos."
-            }
+            },
+            "exportProfile": "Exportar..."
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",
@@ -6078,6 +6113,10 @@
         "azure": {
             "accessTier": "Nivel de acceso",
             "accessTierChanged": "Nivel de acceso definido en {tier}"
+        },
+        "fileComments": {
+            "title": "Comentarios",
+            "empty": "Aínda non hai comentarios"
         }
     }
 }
