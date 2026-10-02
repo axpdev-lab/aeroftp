@@ -57,6 +57,7 @@ import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
+import { warnIfSavedByOtherAccount } from '../utils/crossUserDedupWarning';
 import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
@@ -1696,6 +1697,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     'success',
                     `dedupKey=${getStorageDedupKey(savedServer)}`,
                 );
+                // MU-7: not awaited, the warning never holds up the save.
+                void warnIfSavedByOtherAccount(savedServer, prevProfile, t, logActivity);
             }
         } else if (saveConnection) {
             const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
@@ -1763,6 +1766,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 'success',
                 `dedupKey=${getStorageDedupKey(newServer)}`,
             );
+            void warnIfSavedByOtherAccount(newServer, undefined, t, logActivity);
         }
     };
 
@@ -2158,6 +2162,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             await carryServerGroups(originalServer.id, newId, false);
         }
         setSavedServersUpdate(Date.now());
+        // MU-7: compared with the original, so a copy of the same account
+        // says nothing new and a copy re-pointed elsewhere is probed.
+        void warnIfSavedByOtherAccount(newServer, originalServer, t, logActivity);
 
         // Reset form
         endEditSession();
@@ -2280,6 +2287,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         await carryFavoriteServer(originalServer.id, newId, true);
         await carryServerGroups(originalServer.id, newId, true);
         setSavedServersUpdate(Date.now());
+        // MU-7: a convert stays on the same account, which the comparison
+        // with the original skips; only a convert that lands on a different
+        // account identity is probed.
+        void warnIfSavedByOtherAccount(newServer, originalServer, t, logActivity);
 
         // 10s Undo toast (via window event so we don't need to plumb a
         // toast handle through props; App.tsx listens for

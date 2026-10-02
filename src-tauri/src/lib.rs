@@ -19541,11 +19541,27 @@ pub fn run() {
             // hidden until the frontend signals readiness via the `app_ready`
             // command.
             let splash_url = {
+                // In dev the splash follows the configured `devUrl`, joined the
+                // way Tauri resolves `WebviewUrl::App` for the main window. A dev
+                // instance started with a `--config` devUrl override on another
+                // port otherwise loaded its splash from whatever Vite answered on
+                // 5173 (another session's), or a blank page if none did. The
+                // literal is only the fallback for a config without `devUrl`;
+                // `tests/portal-chooser/recon-session.sh` greps a binary for it
+                // to recognise a dev build, so it must stay in this branch.
                 #[cfg(dev)]
                 {
-                    WebviewUrl::External(
-                        url::Url::parse("http://127.0.0.1:5173/splash.html").unwrap(),
-                    )
+                    let dev_splash = app
+                        .config()
+                        .build
+                        .dev_url
+                        .as_ref()
+                        .and_then(|base| base.join("splash.html").ok())
+                        .unwrap_or_else(|| {
+                            url::Url::parse("http://127.0.0.1:5173/splash.html")
+                                .expect("valid localhost URL")
+                        });
+                    WebviewUrl::External(dev_splash)
                 }
                 #[cfg(all(not(dev), target_os = "linux"))]
                 {

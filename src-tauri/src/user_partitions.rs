@@ -2827,9 +2827,10 @@ pub fn store_credential_for_user_typed_dual(
 
 /// MU-7: list other users that already store a profile with the SAME dedup
 /// signature (HMAC of canonical protocol/host/user/port keyed by the device
-/// partition root key). Used by the frontend to warn before adding a profile
-/// that another account already has. Excludes the requesting user. Returns
-/// only public user metadata, never any portion of the encrypted blob.
+/// partition root key). Used by the frontend to warn when a saved profile
+/// points at an account another user already has. Excludes the requesting
+/// user. Returns only public user metadata, never any portion of the
+/// encrypted blob.
 pub fn cross_user_dedup_matches(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -5183,10 +5184,12 @@ pub async fn user_partitions_delete_user_credential(
     delete_active_user_credential(&conn, &credential_id)
 }
 
-/// MU-7: ask "is this profile already saved by another user account?". Used
-/// by the SavedServers add/edit flow to surface a soft warning. Returns the
-/// public metadata of every OTHER user with a matching dedup_key; intra-user
-/// duplicates remain blocked by the existing dedup check (R11).
+/// MU-7: ask "is this profile already saved by another user account?". Called
+/// after a save from the connection form (`warnIfSavedByOtherAccount` in
+/// `src/utils/crossUserDedupWarning.ts`) to surface a soft warning that never
+/// blocks the save. Returns the public metadata of every OTHER user with a
+/// matching dedup_key; intra-user duplicates stay with the frontend's own
+/// duplicate check, which records them in the Activity Log (R11).
 #[tauri::command]
 pub async fn user_partitions_find_cross_user_dedup(
     app: AppHandle,
