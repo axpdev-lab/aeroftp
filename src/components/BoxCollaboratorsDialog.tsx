@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Users, UserPlus, Loader2, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
+import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import {
   addBoxCollaborator,
@@ -32,7 +33,6 @@ const ROLE_KEY: Record<BoxRole, string> = {
   'co-owner': 'box.roleCoOwner',
 };
 
-const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled])';
 
 /** Who a Box file or folder is shared with: list, invite by email with a role, remove. */
 export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaboratorsDialogProps) {
@@ -73,36 +73,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  // Focus starts in the dialog, Tab stays inside it, and focus goes back where
-  // it came from on close, as in ConfirmOverlay. Tab is also kept from the
-  // app's own Tab shortcut, which swallows it on a button and switches the
-  // panel behind the dialog. Mount-only: App passes `onClose` as an inline arrow.
-  useEffect(() => {
-    const returnTo = document.activeElement as HTMLElement | null;
-    const onTab = (event: KeyboardEvent) => {
-      if (event.key !== 'Tab') return;
-      event.stopPropagation();
-      const panel = panelRef.current;
-      const focusable = panel?.querySelectorAll<HTMLElement>(FOCUSABLE);
-      if (!panel || !focusable || focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (event.shiftKey && (active === first || !panel.contains(active))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && (active === last || !panel.contains(active))) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onTab, true);
-    emailRef.current?.focus();
-    return () => {
-      document.removeEventListener('keydown', onTab, true);
-      returnTo?.focus?.();
-    };
-  }, []);
+  useModalFocusTrap(panelRef, emailRef);
 
   const handleAdd = async () => {
     if (!email.trim() || adding) return;
