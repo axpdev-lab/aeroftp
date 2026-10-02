@@ -102,14 +102,9 @@
             "connectionFailed": "Ühendamine ebaõnnestus",
             "reconnecting": "Taasühendamine...",
             "quickConnect": "Kiirühendus",
-            "savedServers": "Salvestatud serverid",
-            "noSavedServers": "Salvestatud servereid pole",
             "saveServer": "Salvesta server",
-            "deleteServer": "Kustuta server",
-            "editServer": "Muuda serverit",
             "serverName": "Serveri nimi",
             "initialPath": "Algne tee",
-            "savedServersHelp": "Valige server ühenduse loomiseks.",
             "selectSshKey": "Valige SSH privaatvõti",
             "allFiles": "Kõik failid",
             "sshKeys": "SSH võtmed",
@@ -132,7 +127,6 @@
             "emailAccount": "E-posti konto",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Teie MEGA parool",
-            "dismiss": "Loobu",
             "authenticating": "Autentimine...",
             "oauth2Connection": "OAuth2-ühendus",
             "securityTitle": "Krüpteeritud mandaatide salvestamine",
@@ -170,7 +164,6 @@
             "docs": "Dokumendid",
             "minutes": "minutit",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Otsi servereid...",
             "fourshared": {
                 "backToExistingAccount": "Tagasi olemasoleva konto juurde",
                 "configureCredentials": "Seadista OAuth 1.0 mandaadid",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Rakenduse parool",
             "koofrAppPasswordPlaceholder": "Kleepige siia oma Koofr rakenduse parool",
             "koofrHelp": "Looge rakenduse parool aadressil app.koofr.net → Eelistused → Parool → Rakenduse paroolid",
-            "duplicateServer": "Dubleeri server",
-            "duplicateCredentialMissing": "Mandaati ei kopeeritud koopiasse. Sisesta parool uuesti enne ühendamist.",
             "saveAsNew": "Salvesta uuena",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Logi uuesti sisse",
             "twakeSignedIn": "Sisse logitud",
             "twakeWaitingBrowser": "Lõpetage sisselogimine oma brauseris...",
-            "twakeSignInHelp": "AeroFTP avab Twake teie brauseris ja palub ligipääsu ainult teie failidele. Kui Twake näitab esimesel korral viga, logige brauseris Twake'i sisse ja logige uuesti sisse. Ligipääsu saate igal ajal tühistada Twake seadetes, Ühendatud seadmed."
+            "twakeSignInHelp": "AeroFTP avab Twake teie brauseris ja palub ligipääsu ainult teie failidele. Kui Twake näitab esimesel korral viga, logige brauseris Twake'i sisse ja logige uuesti sisse. Ligipääsu saate igal ajal tühistada Twake seadetes, Ühendatud seadmed.",
+            "oauthKeysMissingTitle": "{provider} rakenduse võtmed puuduvad",
+            "oauthKeysMissing": "Hoidlas pole {provider} rakenduse võtmeid, seega AeroFTP ei saa sisse logida. AeroFTP ei sisalda omi võtmeid: sisestage oma {provider} arendajarakenduse võtmed asukohas {location} ja ühendage uuesti.",
+            "oauthKeysOpenSettings": "Ava OAuth-i seaded",
+            "oauthKeysReadFailedTitle": "Teenuse {provider} rakenduse võtmeid ei saa lugeda",
+            "oauthKeysReadFailed": "AeroFTP ei saanud teenuse {provider} rakenduse võtmeid hoidlast lugeda, seega ei saa ta sisse logida. Võtmeid ei muudetud. Viga: {error}"
         },
         "browser": {
             "remote": "Kaugserver",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Rakendatud asendused: {count}",
             "uiTokensRejected": "Tagasi lükatud kirjed: {count}",
             "keystorePreferencesFailed": "Import lõppes, kuid sinu rakenduse eelistusi ei õnnestunud taastada: {error}",
-            "keystorePreviewBackupUnreadable": "Selle varukoopia serverite loendit ei saa selles seadmes lugeda, seega kasutab võrdlus varukoopia hoidlasse salvestatud loendit. Importimine asendab siiski selle seadme serverite loendi."
+            "keystorePreviewBackupUnreadable": "Selle varukoopia serverite loendit ei saa selles seadmes lugeda, seega kasutab võrdlus varukoopia hoidlasse salvestatud loendit. Importimine asendab siiski selle seadme serverite loendi.",
+            "filterServersPlaceholder": "Filtreeri nime, hosti, protokolli või kasutaja järgi",
+            "selectShown": "Vali kuvatud {count}",
+            "deselectShown": "Tühista kuvatud {count} valik",
+            "filterShownCount": "{shown} kuvatud",
+            "selectedHiddenByFilter": "{count} valitud, kuid filtri poolt peidetud, kaasatud endiselt"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Krüpteeritud kiht lukustatud",
             "aerocrypt_marker_migrate": "AeroCrypti märgise teisendamine vormingusse .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypti märgis teisendatud vormingusse .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Kausta {filename} avamine..."
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Kohalikku serverit ei õnnestunud käivitada.",
                     "serverFailed": "Server peatus või saatis kehtetu vastuse.",
                     "httpUnauthorized": "Server lükkas salvestatud mandaadid tagasi.",
-                    "unsupportedVersion": "Server kasutab MCP versiooni, mida AeroFTP ei toeta."
+                    "unsupportedVersion": "Server kasutab MCP versiooni, mida AeroFTP ei toeta.",
+                    "directoryInvalid": "Vali eraldi kataloog ilma linkide või tundlike rakendusfailideta.",
+                    "directoryChanged": "Lubatud kataloog on muutunud või puudub. Juurdepääsu uuendamiseks vali see uuesti.",
+                    "permissionCommand": "Muuda juurdepääsu kataloogi- ja võrgulubade juhtelementidega.",
+                    "installInvalid": "See hallatud paigaldus pole saadaval või selle manifest on vigane.",
+                    "installIntegrity": "Paketi tervikluse kontroll ebaõnnestus. Eemalda server ja paigalda see uuesti.",
+                    "installArchive": "Pakett sisaldab ebaturvalisi teid, linke või vigast käivitusfaili.",
+                    "installRuntime": "Nõutav süsteemi käituskeskkond puudub.",
+                    "installDownload": "Paketi allalaadimine ebaõnnestus või aegus.",
+                    "installLimit": "Pakett ületab paigalduspiiranguid.",
+                    "installExists": "Eemalda olemasolev paigaldus enne uuesti paigaldamist.",
+                    "installIo": "Paigaldusfaile ei saanud lugeda või kirjutada."
                 },
                 "routingNotice": "Lubatud serverid pakuvad oma tööriistu AeroAgentile. Iga tööriistakutse küsib esmalt sinu kinnitust.",
                 "checkNow": "Kontrolli kohe",
@@ -3089,7 +3102,19 @@
                 "healthError": "Pole saadaval: {reason}",
                 "healthReady": "Valmis, AeroAgentile saadaolevad tööriistad: {count}",
                 "healthUnsupported": "Toetamata skeemidega tööriistad: {count}",
-                "healthShowTools": "Näita tööriistu"
+                "healthShowTools": "Näita tööriistu",
+                "directoryTitle": "Kirjutuskaitstud kataloogid",
+                "grantDirectory": "Vali kataloog",
+                "confirmDirectory": "Kas anda sellele serverile kõigi kaustas {path} olevate failide lugemisõigus? Anna juurdepääs ainult eraldi serveri- või projektikataloogile.",
+                "noDirectories": "Kataloogidele puudub juurdepääs.",
+                "revokeDirectory": "Tühista juurdepääs",
+                "confirmRevokeDirectory": "Kas tühistada juurdepääs kataloogile {path}? Varasemad tööriistade kinnitused ei kehti enam.",
+                "networkAccess": "Luba võrgujuurdepääs (kõik hostid)",
+                "networkBlocked": "Võrgujuurdepääs on blokeeritud.",
+                "confirmNetwork": "Kas lubada serverile {name} võrgujuurdepääs, sealhulgas kohalikele teenustele? Varasemad tööriistade kinnitused ei kehti enam.",
+                "confirmBlockNetwork": "Kas blokeerida serveri {name} võrgujuurdepääs? Varasemad tööriistade kinnitused ei kehti enam.",
+                "managedStatus": "Hallatud paigaldus: {version}",
+                "renewDirectory": "Uuenda juurdepääsu"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Vaata lähtekoodi"
         },
         "savedServers": {
-            "dragToReorder": "Lohista järjestuse muutmiseks",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Palun seadista 4shared mandaadid menüüs Seaded > Pilve pakkujad.",
-            "oauthConfigError": "Palun seadista {provider} mandaadid menüüs Seaded > Pilve pakkujad.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4455,23 @@
             "tagsPlaceholder": "Lisa silt...",
             "tagsUpdated": "Sildid uuendatud",
             "addTag": "Lisa",
-            "noTags": "Silte pole"
+            "noTags": "Silte pole",
+            "collaborators": "Koostööpartnerid",
+            "noCollaborators": "Pole veel kellegagi jagatud",
+            "folderNotLocked": "See kaust pole lukustatud",
+            "roleEditor": "Toimetaja",
+            "roleViewer": "Vaataja",
+            "rolePreviewer": "Eelvaataja",
+            "roleUploader": "Üleslaadija",
+            "rolePreviewerUploader": "Eelvaataja ja üleslaadija",
+            "roleViewerUploader": "Vaataja ja üleslaadija",
+            "roleCoOwner": "Kaasomanik"
         },
         "googledrive": {
             "star": "Lisa tärn",
             "unstar": "Eemalda tärn",
             "starred": "Fail tärniga märgitud",
-            "unstarred": "Tärn eemaldatud",
-            "addComment": "Lisa kommentaar",
-            "commentPlaceholder": "Kirjuta oma kommentaar...",
-            "commentAdded": "Kommentaar lisatud"
+            "unstarred": "Tärn eemaldatud"
         },
         "dropbox": {
             "manageTags": "Halda silte"
@@ -4768,7 +4794,14 @@
             "participants": "osalejad",
             "saving": "Salvestamine...",
             "saved": "Salvestatud",
-            "saveNow": "Salvesta kohe"
+            "saveNow": "Salvesta kohe",
+            "noteType": "Märkme tüüp",
+            "addTag": "Lisa silt",
+            "newTag": "Uus silt...",
+            "tagName": "Sildi nimi",
+            "removeTag": "Eemalda silt",
+            "manageTags": "Halda silte",
+            "deleteTagConfirm": "Kas kustutada silt „{name}“? Märkmed säilitavad oma teksti."
         },
         "shareLinkModal": {
             "title": "Jagamislink",
@@ -4961,7 +4994,8 @@
                 "rename": "Nimeta rühm ümber",
                 "delete": "Kustuta rühm",
                 "confirmDelete": "Kustutada rühm „{name}“? Selles olevad serverid säilitatakse, eemaldatakse ainult rühm.",
-                "chipHint": "Filtreerimiseks klõpsa; ümbernimetamiseks või kustutamiseks paremklõpsa"
+                "chipHint": "Klõpsa filtreerimiseks; paremklõps ümbernimetamiseks, eksportimiseks või kustutamiseks",
+                "export": "Ekspordi grupp..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5020,8 @@
                 "offTitle": "Sellel kopal puudub vaikimisi krüpteering. See ei ole sama mis krüpteerimata: SSE-C ja kliendipoolset krüpteeringut see säte ei kajasta.",
                 "unknownKeyTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest rakenduse võtmel puudub õigus readBucketEncryption. Väärtus, mida meil ei ole lubatud näha, ei tähenda, et krüpteering oleks välja lülitatud.",
                 "unknownShapeTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest vastusel ei olnud dokumenteeritud kuju. Võtmel oli lubatud seda lugeda, seega on asi vastuses, mitte õigustes."
-            }
+            },
+            "exportProfile": "Ekspordi..."
         },
         "gitlab": {
             "projectPath": "Projekti tee",
@@ -6042,6 +6077,10 @@
             "scopeSession": "Kinnitab selle tööriista vestluse lõpuni.",
             "approve": "Kinnita",
             "rememberForChat": "Luba see tööriist selle vestluse lõpuni"
+        },
+        "fileComments": {
+            "title": "Kommentaarid",
+            "empty": "Kommentaare veel pole"
         }
     }
 }

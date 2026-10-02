@@ -102,14 +102,9 @@
             "connectionFailed": "Помилка підключення",
             "reconnecting": "Перепідключення...",
             "quickConnect": "Швидке підключення",
-            "savedServers": "Збережені сервери",
-            "noSavedServers": "Немає збережених серверів",
             "saveServer": "Зберегти сервер",
-            "deleteServer": "Видалити сервер",
-            "editServer": "Редагувати сервер",
             "serverName": "Назва сервера",
             "initialPath": "Початковий шлях",
-            "savedServersHelp": "Виберіть сервер для підключення.",
             "selectSshKey": "Виберіть приватний ключ SSH",
             "allFiles": "Усі файли",
             "sshKeys": "Ключі SSH",
@@ -132,7 +127,6 @@
             "emailAccount": "Обліковий запис електронної пошти",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ваш пароль MEGA",
-            "dismiss": "Відхилити",
             "authenticating": "Автентифікація...",
             "oauth2Connection": "OAuth2 з'єднання",
             "securityTitle": "Зашифроване зберігання облікових даних",
@@ -170,7 +164,6 @@
             "docs": "Документація",
             "minutes": "хвилин",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Пошук серверів...",
             "fourshared": {
                 "backToExistingAccount": "Повернутися до наявного облікового запису",
                 "configureCredentials": "Налаштувати облікові дані OAuth 1.0",
@@ -242,8 +235,6 @@
             "koofrAppPassword": "Пароль програми",
             "koofrAppPasswordPlaceholder": "Вставте свій пароль програми Koofr сюди",
             "koofrHelp": "Створіть пароль програми на app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Дублювати сервер",
-            "duplicateCredentialMissing": "Облікові дані не скопійовано в дублікат. Введіть пароль повторно перед підключенням.",
             "saveAsNew": "Зберегти як новий",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Увійти знову",
             "twakeSignedIn": "Увійшли",
             "twakeWaitingBrowser": "Завершіть вхід у браузері...",
-            "twakeSignInHelp": "AeroFTP відкриває Twake у вашому браузері та запитує доступ лише до ваших файлів. Якщо Twake вперше показує помилку, увійдіть у Twake в браузері та увійдіть знову. Ви можете відкликати доступ будь-коли в налаштуваннях Twake, Підключені пристрої."
+            "twakeSignInHelp": "AeroFTP відкриває Twake у вашому браузері та запитує доступ лише до ваших файлів. Якщо Twake вперше показує помилку, увійдіть у Twake в браузері та увійдіть знову. Ви можете відкликати доступ будь-коли в налаштуваннях Twake, Підключені пристрої.",
+            "oauthKeysMissingTitle": "Немає ключів застосунку {provider}",
+            "oauthKeysMissing": "У сховищі немає збережених ключів застосунку для {provider}, тому AeroFTP не може увійти. AeroFTP не постачається зі своїми ключами: введіть ключі вашого застосунку розробника {provider} у {location} і підключіться знову.",
+            "oauthKeysOpenSettings": "Відкрити налаштування OAuth",
+            "oauthKeysReadFailedTitle": "Не вдалося прочитати ключі застосунку {provider}",
+            "oauthKeysReadFailed": "AeroFTP не зміг прочитати ключі застосунку {provider} зі сховища, тому не може увійти. Ключі не було змінено. Помилка: {error}"
         },
         "browser": {
             "remote": "Віддалений",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Застосовані перевизначення: {count}",
             "uiTokensRejected": "Відхилені записи: {count}",
             "keystorePreferencesFailed": "Імпорт завершено, але ваші налаштування додатка не вдалося відновити: {error}",
-            "keystorePreviewBackupUnreadable": "Список серверів у цій копії не вдається прочитати на цьому пристрої, тому порівняння використовує список, збережений у сховищі копії. Імпорт усе одно замінює список серверів на цьому пристрої."
+            "keystorePreviewBackupUnreadable": "Список серверів у цій копії не вдається прочитати на цьому пристрої, тому порівняння використовує список, збережений у сховищі копії. Імпорт усе одно замінює список серверів на цьому пристрої.",
+            "filterServersPlaceholder": "Фільтр за назвою, хостом, протоколом або користувачем",
+            "selectShown": "Вибрати показані ({count})",
+            "deselectShown": "Зняти вибір із показаних ({count})",
+            "filterShownCount": "показано: {shown}",
+            "selectedHiddenByFilter": "{count} вибрано, але приховано фільтром, усе ще включено"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Зашифрований шар заблоковано",
             "aerocrypt_marker_migrate": "Перетворення маркера AeroCrypt на .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Маркер AeroCrypt перетворено на .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Розблокування теки {filename}..."
         },
         "protocol": {
             "selectProtocol": "Виберіть протокол...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Не вдалося запустити локальний сервер.",
                     "serverFailed": "Сервер зупинився або надіслав недійсну відповідь.",
                     "httpUnauthorized": "Сервер відхилив збережені облікові дані.",
-                    "unsupportedVersion": "Сервер використовує версію MCP, яку AeroFTP не підтримує."
+                    "unsupportedVersion": "Сервер використовує версію MCP, яку AeroFTP не підтримує.",
+                    "directoryInvalid": "Виберіть окремий каталог без посилань і конфіденційних файлів застосунків.",
+                    "directoryChanged": "Дозволений каталог змінено або він відсутній. Виберіть його знову, щоб поновити доступ.",
+                    "permissionCommand": "Змініть доступ за допомогою налаштувань дозволів для каталогів і мережі.",
+                    "installInvalid": "Ця керована інсталяція недоступна або її маніфест недійсний.",
+                    "installIntegrity": "Перевірка цілісності пакета не вдалася. Видаліть і перевстановіть сервер.",
+                    "installArchive": "Пакет містить небезпечні шляхи, посилання або недійсний файл запуску.",
+                    "installRuntime": "Відсутнє необхідне системне середовище виконання.",
+                    "installDownload": "Не вдалося завантажити пакет або минув час очікування.",
+                    "installLimit": "Пакет перевищує обмеження інсталяції.",
+                    "installExists": "Видаліть наявну інсталяцію перед перевстановленням.",
+                    "installIo": "Не вдалося прочитати або записати файли інсталяції."
                 },
                 "routingNotice": "Увімкнені сервери надають свої інструменти AeroAgent. Кожен виклик інструмента спершу запитує ваше схвалення.",
                 "checkNow": "Перевірити зараз",
@@ -3089,7 +3102,19 @@
                 "healthError": "Недоступний: {reason}",
                 "healthReady": "Готовий, інструментів, доступних AeroAgent: {count}",
                 "healthUnsupported": "Інструменти з непідтримуваними схемами: {count}",
-                "healthShowTools": "Показати інструменти"
+                "healthShowTools": "Показати інструменти",
+                "directoryTitle": "Каталоги лише для читання",
+                "grantDirectory": "Вибрати каталог",
+                "confirmDirectory": "Надати цьому серверу доступ лише для читання до всіх файлів у {path}? Надавайте доступ лише до окремого каталогу сервера або проєкту.",
+                "noDirectories": "Немає доступу до каталогів.",
+                "revokeDirectory": "Відкликати доступ",
+                "confirmRevokeDirectory": "Відкликати доступ до {path}? Попередні дозволи на використання інструментів стануть недійсними.",
+                "networkAccess": "Дозволити доступ до мережі (усі вузли)",
+                "networkBlocked": "Доступ до мережі заблоковано.",
+                "confirmNetwork": "Дозволити {name} доступ до мережі, зокрема локальних служб? Попередні дозволи на використання інструментів стануть недійсними.",
+                "confirmBlockNetwork": "Заблокувати доступ до мережі для {name}? Попередні дозволи на використання інструментів стануть недійсними.",
+                "managedStatus": "Кероване встановлення: {version}",
+                "renewDirectory": "Поновити доступ"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Переглянути вихідний код"
         },
         "savedServers": {
-            "dragToReorder": "Перетягніть для зміни порядку",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Будь ласка, налаштуйте облікові дані 4shared у Налаштування > Хмарні провайдери.",
-            "oauthConfigError": "Будь ласка, налаштуйте облікові дані {provider} у Налаштування > Хмарні провайдери.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4455,23 @@
             "tagsPlaceholder": "Додати тег...",
             "tagsUpdated": "Теги оновлено",
             "addTag": "Додати",
-            "noTags": "Немає тегів"
+            "noTags": "Немає тегів",
+            "collaborators": "Співавтори",
+            "noCollaborators": "Ще ні з ким не поділено",
+            "folderNotLocked": "Ця тека не заблокована",
+            "roleEditor": "Редактор",
+            "roleViewer": "Глядач",
+            "rolePreviewer": "Попередній переглядач",
+            "roleUploader": "Завантажувач",
+            "rolePreviewerUploader": "Попередній переглядач і завантажувач",
+            "roleViewerUploader": "Глядач і завантажувач",
+            "roleCoOwner": "Співвласник"
         },
         "googledrive": {
             "star": "Позначити зіркою",
             "unstar": "Зняти зірку",
             "starred": "Файл позначено зіркою",
-            "unstarred": "Зірку знято",
-            "addComment": "Додати коментар",
-            "commentPlaceholder": "Напишіть свій коментар...",
-            "commentAdded": "Коментар додано"
+            "unstarred": "Зірку знято"
         },
         "dropbox": {
             "manageTags": "Керування тегами"
@@ -4768,7 +4794,14 @@
             "participants": "учасників",
             "saving": "Збереження...",
             "saved": "Збережено",
-            "saveNow": "Зберегти зараз"
+            "saveNow": "Зберегти зараз",
+            "noteType": "Тип нотатки",
+            "addTag": "Додати тег",
+            "newTag": "Новий тег...",
+            "tagName": "Назва тегу",
+            "removeTag": "Прибрати тег",
+            "manageTags": "Керування тегами",
+            "deleteTagConfirm": "Видалити тег «{name}»? Нотатки збережуть свій текст."
         },
         "shareLinkModal": {
             "title": "Посилання для спільного доступу",
@@ -4961,7 +4994,8 @@
                 "rename": "Перейменувати групу",
                 "delete": "Видалити групу",
                 "confirmDelete": "Видалити групу «{name}»? Сервери в ній зберігаються, видаляється лише група.",
-                "chipHint": "Натисніть для фільтрування; правий клік для перейменування або видалення"
+                "chipHint": "Клацніть, щоб фільтрувати; правий клік: перейменувати, експортувати або видалити",
+                "export": "Експорт групи..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5020,8 @@
                 "offTitle": "Цей кошик не має шифрування за замовчуванням. Це не те саме, що незашифрований: SSE-C і шифрування на боці клієнта не відображаються в цьому налаштуванні.",
                 "unknownKeyTitle": "Нам не вдалося прочитати налаштування шифрування цього кошика, оскільки ключ застосунку не має можливості readBucketEncryption. Значення, яке нам не дозволено бачити, не означає, що шифрування вимкнено.",
                 "unknownShapeTitle": "Нам не вдалося прочитати налаштування шифрування цього кошика, оскільки відповідь не мала задокументованої структури. Ключ мав право її прочитати, тож ідеться про відповідь, а не про дозволи."
-            }
+            },
+            "exportProfile": "Експорт..."
         },
         "gitlab": {
             "projectPath": "Шлях до проєкту",
@@ -6042,6 +6077,10 @@
             "scopeSession": "Дозволяє цей інструмент до кінця сеансу чату.",
             "approve": "Дозволити",
             "rememberForChat": "Дозволити цей інструмент до кінця цього чату"
+        },
+        "fileComments": {
+            "title": "Коментарі",
+            "empty": "Коментарів ще немає"
         }
     }
 }

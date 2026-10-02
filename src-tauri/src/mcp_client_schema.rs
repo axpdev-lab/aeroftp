@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use serde_json::Value;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 
 // Includes our 77 primary/compatibility names while keeping discovery bounded.
@@ -66,6 +67,72 @@ pub(crate) fn discover(result: &Value, name: &str) -> Result<Value, SchemaError>
     Ok(schema.clone())
 }
 
+fn typed_value(kind: &str, value: &Value) -> bool {
+    match kind {
+        "string" => value.is_string(),
+        "number" => value.as_f64().is_some_and(f64::is_finite),
+        "integer" => {
+            value.as_i64().is_some()
+                || value.as_u64().is_some()
+                || value
+                    .as_f64()
+                    .is_some_and(|n| n.is_finite() && n.fract() == 0.0)
+        }
+        "boolean" => value.is_boolean(),
+        "array" => value
+            .as_array()
+            .is_some_and(|a| a.iter().all(Value::is_string)),
+        _ => false,
+    }
+}
+
+// Preserve exact integer comparisons beyond f64's 53-bit mantissa. Mixed
+// comparisons first order the integer parts, then the float's fractional part.
+fn numeric_order(left: &Value, right: &Value) -> Option<Ordering> {
+    fn integer(v: &Value) -> Option<i128> {
+        v.as_i64()
+            .map(i128::from)
+            .or_else(|| v.as_u64().map(i128::from))
+    }
+    fn mixed(i: i128, f: f64) -> Ordering {
+        let order = i.cmp(&(f.trunc() as i128));
+        if order == Ordering::Equal {
+            0.0_f64.partial_cmp(&f.fract()).expect("finite JSON number")
+        } else {
+            order
+        }
+    }
+    let a = left.as_f64().filter(|f| f.is_finite())?;
+    let b = right.as_f64().filter(|f| f.is_finite())?;
+    Some(match (integer(left), integer(right)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        (Some(a), None) => mixed(a, b),
+        (None, Some(b)) => mixed(b, a).reverse(),
+        (None, None) => a.partial_cmp(&b)?,
+    })
+}
+
+fn equal_scalar(left: &Value, right: &Value) -> bool {
+    if left.is_number() && right.is_number() {
+        numeric_order(left, right) == Some(Ordering::Equal)
+    } else {
+        left == right
+    }
+}
+
+fn constraints(property: &Value, value: &Value) -> bool {
+    property.get("enum").is_none_or(|values| {
+        values
+            .as_array()
+            .is_some_and(|a| a.iter().any(|v| equal_scalar(v, value)))
+    }) && property
+        .get("minimum")
+        .is_none_or(|min| numeric_order(value, min).is_some_and(|o| o != Ordering::Less))
+        && property
+            .get("maximum")
+            .is_none_or(|max| numeric_order(value, max).is_some_and(|o| o != Ordering::Greater))
+}
+
 fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
     let invalid = SchemaError::Unsupported;
     if serde_json::to_vec(schema).map_err(|_| invalid)?.len() > 8192
@@ -77,10 +144,14 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
                 "required",
                 "additionalProperties",
                 "description",
+                "$schema",
+                "title",
             ],
         )
         || schema.get("type").and_then(Value::as_str) != Some("object")
         || !text(schema.get("description"), 512)
+        || !text(schema.get("$schema"), 512)
+        || !text(schema.get("title"), 512)
         || schema
             .get("additionalProperties")
             .is_some_and(|v| v != &Value::Bool(false))
@@ -106,8 +177,23 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
     }
     let mut headers = HashSet::new();
     for property in properties.values() {
-        if !keys(property, &["type", "description", "items", "x-mcp-header"])
-            || !text(property.get("description"), 512)
+        if !keys(
+            property,
+            &[
+                "type",
+                "description",
+                "items",
+                "x-mcp-header",
+                "title",
+                "format",
+                "default",
+                "enum",
+                "minimum",
+                "maximum",
+            ],
+        ) || !text(property.get("description"), 512)
+            || !text(property.get("title"), 512)
+            || !text(property.get("format"), 512)
         {
             return Err(invalid);
         }
@@ -130,6 +216,38 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
                 }
             }
             _ => return Err(invalid),
+        }
+        // Defaults and format/title are annotations only. Defaults are checked
+        // for type compatibility, but are never inserted into caller arguments.
+        if property
+            .get("default")
+            .is_some_and(|v| !typed_value(kind, v))
+        {
+            return Err(invalid);
+        }
+        if let Some(values) = property.get("enum") {
+            let values = values.as_array().ok_or(invalid)?;
+            if kind == "array"
+                || values.is_empty()
+                || values.len() > 64
+                || values
+                    .iter()
+                    .any(|v| !typed_value(kind, v) || v.is_string() && !text(Some(v), 512))
+            {
+                return Err(invalid);
+            }
+        }
+        for bound in ["minimum", "maximum"] {
+            if let Some(value) = property.get(bound) {
+                if !matches!(kind, "number" | "integer") || !typed_value("number", value) {
+                    return Err(invalid);
+                }
+            }
+        }
+        if let (Some(min), Some(max)) = (property.get("minimum"), property.get("maximum")) {
+            if numeric_order(min, max) == Some(Ordering::Greater) {
+                return Err(invalid);
+            }
         }
         if let Some(header) = property.get("x-mcp-header") {
             let header = header.as_str().ok_or(invalid)?;
@@ -171,23 +289,9 @@ pub(crate) fn validate_arguments(schema: &Value, arguments: &Value) -> Result<()
             }
             continue;
         };
-        let valid = match property["type"].as_str() {
-            Some("string") => value.is_string(),
-            Some("number") => value.is_number(),
-            Some("integer") => {
-                value.as_i64().is_some()
-                    || value.as_u64().is_some()
-                    || value
-                        .as_f64()
-                        .is_some_and(|v| v.is_finite() && v.fract() == 0.0)
-            }
-            Some("boolean") => value.is_boolean(),
-            Some("array") => value
-                .as_array()
-                .is_some_and(|a| a.iter().all(Value::is_string)),
-            _ => false,
-        };
-        if !valid {
+        if !typed_value(property["type"].as_str().unwrap_or(""), value)
+            || !constraints(property, value)
+        {
             return Err(invalid);
         }
         // Wire header integers use the exact JSON-safe range, and strings
@@ -227,6 +331,95 @@ mod tests {
     fn schema() -> Value {
         json!({"type":"object","properties":{"count":{"type":"integer","x-mcp-header":"Count"},"tags":{"type":"array","items":{"type":"string"}}},"required":["count"],"additionalProperties":false})
     }
+    #[test]
+    fn reference_everything_catalog_accepts_all_thirteen_real_schemas() {
+        let reply: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/mcp-client/server-everything-2026.8.31-tools-list.json"
+        ))
+        .unwrap();
+        let tools = reply["result"]["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 13);
+        for tool in tools {
+            discover(&reply["result"], tool["name"].as_str().unwrap()).unwrap();
+        }
+    }
+
+    #[test]
+    fn scalar_constraints_are_enforced_and_defaults_are_never_inserted() {
+        let s = json!({"$schema":"http://json-schema.org/draft-07/schema#","title":"Fixture","type":"object","properties":{
+            "city":{"type":"string","title":"City","format":"uri","enum":["Rome","Paris"],"default":"Rome"},
+            "n":{"type":"number","minimum":1,"maximum":10,"default":3},
+            "flag":{"type":"boolean","enum":[true]},
+            "count":{"type":"integer","enum":[1,2]}
+        }});
+        let omitted = json!({});
+        validate_arguments(&s, &omitted).unwrap();
+        assert_eq!(omitted, json!({}));
+        validate_arguments(&s, &json!({"city":"Paris","n":1,"flag":true,"count":2.0})).unwrap();
+        validate_arguments(&s, &json!({"n":10})).unwrap();
+        for args in [
+            json!({"city":"Berlin"}),
+            json!({"n":0.99}),
+            json!({"n":10.01}),
+            json!({"flag":false}),
+            json!({"count":3}),
+        ] {
+            assert_eq!(validate_arguments(&s, &args), Err(SchemaError::Arguments));
+        }
+        for (pointer, value) in [
+            ("/title", json!("Changed")),
+            ("/$schema", json!("other")),
+            ("/properties/city/title", json!("Changed")),
+            ("/properties/city/format", json!("email")),
+            ("/properties/city/default", json!("Paris")),
+            ("/properties/city/enum", json!(["Rome"])),
+            ("/properties/n/minimum", json!(2)),
+            ("/properties/n/maximum", json!(9)),
+        ] {
+            let mut changed = s.clone();
+            *changed.pointer_mut(pointer).unwrap() = value;
+            assert_ne!(revision(&s, &[3; 32]), revision(&changed, &[3; 32]));
+        }
+    }
+
+    #[test]
+    fn malformed_metadata_defaults_enums_and_ranges_fail_closed() {
+        for property in [
+            json!({"type":"string","default":2}),
+            json!({"type":"integer","default":1.5}),
+            json!({"type":"array","items":{"type":"string"},"default":[1]}),
+            json!({"type":"string","enum":[]}),
+            json!({"type":"string","enum":[true]}),
+            json!({"type":"string","enum":vec!["x";65]}),
+            json!({"type":"string","enum":["x".repeat(513)]}),
+            json!({"type":"array","items":{"type":"string"},"enum":[["x"]]}),
+            json!({"type":"string","minimum":0}),
+            json!({"type":"number","minimum":"0"}),
+            json!({"type":"number","minimum":5,"maximum":4}),
+            json!({"type":"boolean","maximum":1}),
+            json!({"type":"string","title":false}),
+            json!({"type":"string","format":"bad\n"}),
+        ] {
+            let s = json!({"type":"object","properties":{"value":property}});
+            assert_eq!(validate_schema(&s), Err(SchemaError::Unsupported), "{s}");
+        }
+    }
+
+    #[test]
+    fn numeric_constraints_do_not_round_large_integer_arguments() {
+        let s = json!({"type":"object","properties":{"n":{"type":"integer","maximum":9007199254740992_u64}}});
+        validate_arguments(&s, &json!({"n":9007199254740992_u64})).unwrap();
+        assert_eq!(
+            validate_arguments(&s, &json!({"n":9007199254740993_u64})),
+            Err(SchemaError::Arguments)
+        );
+        let s = json!({"type":"object","properties":{"n":{"type":"integer","enum":[9007199254740992_u64]}}});
+        assert_eq!(
+            validate_arguments(&s, &json!({"n":9007199254740993_u64})),
+            Err(SchemaError::Arguments)
+        );
+    }
+
     #[test]
     fn backend_enforces_required_integer_array_and_unknown_arguments() {
         assert!(validate_arguments(&schema(), &json!({"count":2,"tags":["a"]})).is_ok());
@@ -275,7 +468,7 @@ mod tests {
 
     #[test]
     fn unsupported_constraints_and_header_collisions_fail_closed() {
-        for key in ["$ref", "oneOf", "minimum", "pattern"] {
+        for key in ["$ref", "oneOf", "exclusiveMinimum", "pattern"] {
             let mut s = schema();
             s["properties"]["count"][key] = json!(1);
             assert_eq!(validate_schema(&s), Err(SchemaError::Unsupported));

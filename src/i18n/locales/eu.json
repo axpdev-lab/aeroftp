@@ -102,14 +102,9 @@
             "connectionFailed": "Konexioak huts egin du",
             "reconnecting": "Birkonektatzen...",
             "quickConnect": "Konexio Azkarra",
-            "savedServers": "Gordetako zerbitzariak",
-            "noSavedServers": "Ez dago gordetako zerbitzaririk",
             "saveServer": "Zerbitzaria Gorde",
-            "deleteServer": "Zerbitzaria Ezabatu",
-            "editServer": "Zerbitzaria Editatu",
             "serverName": "Zerbitzariaren Izena",
             "initialPath": "Hasierako Bidea",
-            "savedServersHelp": "Hautatu zerbitzari bat konektatzeko.",
             "selectSshKey": "Hautatu SSH gako pribatua",
             "allFiles": "Fitxategi guztiak",
             "sshKeys": "SSH gakoak",
@@ -132,7 +127,6 @@
             "emailAccount": "Posta-kontua",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Zure MEGA pasahitza",
-            "dismiss": "Baztertu",
             "authenticating": "Autentifikatzen...",
             "oauth2Connection": "OAuth2 konexioa",
             "securityTitle": "Kredentzial biltegiratze enkriptatua",
@@ -170,7 +164,6 @@
             "docs": "Dokumentazioa",
             "minutes": "minutu",
             "localPathPlaceholder": "/home/erabiltzailea/proiektuak",
-            "searchServers": "Zerbitzariak bilatu...",
             "fourshared": {
                 "backToExistingAccount": "Itzuli lehendik dagoen kontura",
                 "configureCredentials": "Konfiguratu OAuth 1.0 kredentzialak",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Aplikazioaren pasahitza",
             "koofrAppPasswordPlaceholder": "Itsatsi zure Koofr aplikazioaren pasahitza hemen",
             "koofrHelp": "Sortu aplikazioaren pasahitza app.koofr.net → Hobespenak → Pasahitza → Aplikazioaren pasahitzak",
-            "duplicateServer": "Zerbitzaria bikoiztu",
-            "duplicateCredentialMissing": "Kredentziala ez da bikoiztura kopiatu. Sartu pasahitza berriro konektatu aurretik.",
             "saveAsNew": "Gorde berri gisa",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Hasi saioa berriro",
             "twakeSignedIn": "Saioa hasita",
             "twakeWaitingBrowser": "Amaitu saioa hastea zure nabigatzailean...",
-            "twakeSignInHelp": "AeroFTPk Twake zure nabigatzailean irekitzen du eta zure fitxategietarako sarbidea baino ez du eskatzen. Twakek lehen aldiz errorea erakusten badu, hasi saioa Twaken nabigatzailean eta saiatu berriro. Sarbidea edonoiz ken dezakezu Twakeren ezarpenetan, Konektatutako gailuak."
+            "twakeSignInHelp": "AeroFTPk Twake zure nabigatzailean irekitzen du eta zure fitxategietarako sarbidea baino ez du eskatzen. Twakek lehen aldiz errorea erakusten badu, hasi saioa Twaken nabigatzailean eta saiatu berriro. Sarbidea edonoiz ken dezakezu Twakeren ezarpenetan, Konektatutako gailuak.",
+            "oauthKeysMissingTitle": "{provider} aplikazioaren gakoak falta dira",
+            "oauthKeysMissing": "Ez dago {provider} zerbitzuaren aplikazio-gakorik gordeta kutxa gotorrean, beraz AeroFTP ezin da saioa hasi. AeroFTP-k ez du bere gakorik ekartzen: sartu zure {provider} garatzaile-aplikazioaren gakoak hemen: {location}, eta konektatu berriro.",
+            "oauthKeysOpenSettings": "Ireki OAuth ezarpenak",
+            "oauthKeysReadFailedTitle": "Ezin dira {provider} zerbitzuaren aplikazio-gakoak irakurri",
+            "oauthKeysReadFailed": "AeroFTP-k ezin izan ditu {provider} zerbitzuaren aplikazio-gakoak kutxa gotorretik irakurri, beraz ezin du saioa hasi. Gakoak ez dira aldatu. Errorea: {error}"
         },
         "browser": {
             "remote": "Urrunekoa",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Aplikatutako gainidatziak: {count}",
             "uiTokensRejected": "Baztertutako sarrerak: {count}",
             "keystorePreferencesFailed": "Inportazioa amaitu da, baina ezin izan dira aplikazioaren hobespenak berrezarri: {error}",
-            "keystorePreviewBackupUnreadable": "Babeskopia honetako zerbitzari-zerrenda ezin da irakurri gailu honetan, beraz konparazioak babeskopiaren gordailuan gordetako zerrenda erabiltzen du. Inportazioak, hala ere, gailu honetako zerbitzari-zerrenda ordezkatzen du."
+            "keystorePreviewBackupUnreadable": "Babeskopia honetako zerbitzari-zerrenda ezin da irakurri gailu honetan, beraz konparazioak babeskopiaren gordailuan gordetako zerrenda erabiltzen du. Inportazioak, hala ere, gailu honetako zerbitzari-zerrenda ordezkatzen du.",
+            "filterServersPlaceholder": "Iragazi izenaren, ostalariaren, protokoloaren edo erabiltzailearen arabera",
+            "selectShown": "Hautatu erakutsitako {count}",
+            "deselectShown": "Desautatu erakutsitako {count}",
+            "filterShownCount": "{shown} erakutsita",
+            "selectedHiddenByFilter": "{count} hautatuta baina iragazkiak ezkutatuta, oraindik barne"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Zifratutako geruza blokeatuta",
             "aerocrypt_marker_migrate": "AeroCrypt marka .aerocrypt.tsv formatura bihurtzen…",
             "aerocrypt_marker_migrated": "AeroCrypt markatzailea .aerocrypt.tsv formatura bihurtu da",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} karpeta desblokeatzen..."
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Tokiko zerbitzaria ezin izan da abiarazi.",
                     "serverFailed": "Zerbitzaria gelditu da edo erantzun baliogabea bidali du.",
                     "httpUnauthorized": "Zerbitzariak gordetako kredentzialak baztertu ditu.",
-                    "unsupportedVersion": "Zerbitzariak AeroFTPk onartzen ez duen MCP bertsio bat erabiltzen du."
+                    "unsupportedVersion": "Zerbitzariak AeroFTPk onartzen ez duen MCP bertsio bat erabiltzen du.",
+                    "directoryInvalid": "Aukeratu loturarik edo aplikazioen fitxategi sentikorrik gabeko direktorio dedikatu bat.",
+                    "directoryChanged": "Baimendutako direktorioa aldatu da edo falta da. Hautatu berriro sarbidea berritzeko.",
+                    "permissionCommand": "Aldatu sarbidea direktorioen eta sarearen baimenen kontrolen bidez.",
+                    "installInvalid": "Kudeatutako instalazio hau ez dago erabilgarri edo bere manifestua baliogabea da.",
+                    "installIntegrity": "Paketearen osotasunaren egiaztapenak huts egin du. Kendu eta berrinstalatu zerbitzaria.",
+                    "installArchive": "Paketeak bide ez-seguruak, loturak edo hasierako fitxategi baliogabe bat ditu.",
+                    "installRuntime": "Beharrezko sistemaren exekuzio-ingurunea falta da.",
+                    "installDownload": "Paketearen deskargak huts egin du edo denbora-muga gainditu du.",
+                    "installLimit": "Paketeak instalazioaren mugak gainditzen ditu.",
+                    "installExists": "Kendu dagoen instalazioa berrinstalatu aurretik.",
+                    "installIo": "Ezin izan dira instalazioaren fitxategiak irakurri edo idatzi."
                 },
                 "routingNotice": "Gaitutako zerbitzariek beren tresnak eskaintzen dizkiote AeroAgent-i. Tresna-dei bakoitzak lehenik zure onespena eskatzen du.",
                 "checkNow": "Egiaztatu orain",
@@ -3089,7 +3102,19 @@
                 "healthError": "Ez dago erabilgarri: {reason}",
                 "healthReady": "Prest, AeroAgent-entzat erabilgarri dauden tresnak: {count}",
                 "healthUnsupported": "Onartzen ez diren eskemak dituzten tresnak: {count}",
-                "healthShowTools": "Erakutsi tresnak"
+                "healthShowTools": "Erakutsi tresnak",
+                "directoryTitle": "Irakurtzeko soilik diren direktorioak",
+                "grantDirectory": "Aukeratu direktorioa",
+                "confirmDirectory": "Zerbitzari honi {path} bideko fitxategi guztiak irakurtzeko sarbidea eman? Eman zerbitzari edo proiektu horretarako direktorio bat soilik.",
+                "noDirectories": "Ez dago direktorioetarako sarbiderik.",
+                "revokeDirectory": "Kendu sarbidea",
+                "confirmRevokeDirectory": "{path} biderako sarbidea kendu? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
+                "networkAccess": "Baimendu sarerako sarbidea (ostalari guztiak)",
+                "networkBlocked": "Sarerako sarbidea blokeatuta dago.",
+                "confirmNetwork": "{name} zerbitzariari sarerako sarbidea baimendu, tokiko zerbitzuak barne? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
+                "confirmBlockNetwork": "{name} zerbitzariaren sarerako sarbidea blokeatu? Aurreko tresna-onarpenak ez dira baliozkoak izango.",
+                "managedStatus": "Kudeatutako instalazioa: {version}",
+                "renewDirectory": "Berritu sarbidea"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Ikusi iturburua"
         },
         "savedServers": {
-            "dragToReorder": "Arrastatu berrordenatzeko",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Mesedez, konfiguratu 4shared kredentzialak Ezarpenak > Hodei hornitzaileak atalean.",
-            "oauthConfigError": "Mesedez, konfiguratu {provider} kredentzialak Ezarpenak > Hodei hornitzaileak atalean.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4455,16 +4474,23 @@
             "tagsPlaceholder": "Etiketa bat gehitu...",
             "tagsUpdated": "Etiketak eguneratu dira",
             "addTag": "Gehitu",
-            "noTags": "Etiketarik ez"
+            "noTags": "Etiketarik ez",
+            "collaborators": "Lankideak",
+            "noCollaborators": "Oraindik ez da inorekin partekatu",
+            "folderNotLocked": "Karpeta hau ez dago blokeatuta",
+            "roleEditor": "Editorea",
+            "roleViewer": "Ikuslea",
+            "rolePreviewer": "Aurreikuslea",
+            "roleUploader": "Igotzailea",
+            "rolePreviewerUploader": "Aurreikuslea eta igotzailea",
+            "roleViewerUploader": "Ikuslea eta igotzailea",
+            "roleCoOwner": "Jabekidea"
         },
         "googledrive": {
             "star": "Izartu",
             "unstar": "Izarra kendu",
             "starred": "Fitxategia izarrez markatua",
-            "unstarred": "Izarra kendua",
-            "addComment": "Iruzkina gehitu",
-            "commentPlaceholder": "Idatzi zure iruzkina...",
-            "commentAdded": "Iruzkina gehituta"
+            "unstarred": "Izarra kendua"
         },
         "dropbox": {
             "manageTags": "Etiketak kudeatu"
@@ -4787,7 +4813,14 @@
             "participants": "parte-hartzaileak",
             "saving": "Gordetzen...",
             "saved": "Gordeta",
-            "saveNow": "Gorde orain"
+            "saveNow": "Gorde orain",
+            "noteType": "Ohar mota",
+            "addTag": "Gehitu etiketa",
+            "newTag": "Etiketa berria...",
+            "tagName": "Etiketaren izena",
+            "removeTag": "Kendu etiketa",
+            "manageTags": "Kudeatu etiketak",
+            "deleteTagConfirm": "«{name}» etiketa ezabatu? Oharrek testua mantentzen dute."
         },
         "shareLinkModal": {
             "title": "Partekatzeko esteka",
@@ -4980,7 +5013,8 @@
                 "rename": "Aldatu taldearen izena",
                 "delete": "Ezabatu taldea",
                 "confirmDelete": "Ezabatu \"{name}\" taldea? Bertako zerbitzariak mantenduko dira, taldea baino ez da kenduko.",
-                "chipHint": "Egin klik iragazteko; eskuin-klika izena aldatzeko edo ezabatzeko"
+                "chipHint": "Egin klik iragazteko; egin eskuineko klik izena aldatzeko, esportatzeko edo ezabatzeko",
+                "export": "Esportatu taldea..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5039,8 @@
                 "offTitle": "Bucket honek ez du enkriptatze lehenetsirik. Hori ez da enkriptatu gabe egotearen gauza bera: ezarpen honek ez du SSE-C ez bezero aldeko enkriptatzearen berri ematen.",
                 "unknownKeyTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, aplikazioaren gakoak ez baitu readBucketEncryption gaitasuna. Ikusteko baimenik ez dugun balio batek ez du esan nahi enkriptatzea itzalita dagoenik.",
                 "unknownShapeTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, erantzunak ez baitzuen dokumentatutako formarik. Gakoak irakurtzeko baimena zuen, beraz, kontua erantzuna da eta ez baimenak."
-            }
+            },
+            "exportProfile": "Esportatu..."
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",
@@ -6061,6 +6096,10 @@
             "scopeSession": "Tresna hau txat-saioaren gainerakoan onesten du.",
             "approve": "Onetsi",
             "rememberForChat": "Baimendu tresna hau txat honen gainerakoan"
+        },
+        "fileComments": {
+            "title": "Iruzkinak",
+            "empty": "Oraindik ez dago iruzkinik"
         }
     }
 }

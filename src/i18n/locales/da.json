@@ -102,14 +102,9 @@
             "connectionFailed": "Forbindelse mislykkedes",
             "reconnecting": "Genopretter forbindelse...",
             "quickConnect": "Hurtig forbindelse",
-            "savedServers": "Gemte servere",
-            "noSavedServers": "Ingen gemte servere",
             "saveServer": "Gem server",
-            "deleteServer": "Slet server",
-            "editServer": "Redigér server",
             "serverName": "Servernavn",
             "initialPath": "Startsti",
-            "savedServersHelp": "Vælg en server at oprette forbindelse til.",
             "selectSshKey": "Vælg SSH privat nøgle",
             "allFiles": "Alle filer",
             "sshKeys": "SSH-nøgler",
@@ -132,7 +127,6 @@
             "emailAccount": "E-mailkonto",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Din MEGA-adgangskode",
-            "dismiss": "Afvis",
             "authenticating": "Godkender...",
             "oauth2Connection": "OAuth2-forbindelse",
             "securityTitle": "Krypteret legitimationslagring",
@@ -170,7 +164,6 @@
             "docs": "Dokumentation",
             "minutes": "minutter",
             "localPathPlaceholder": "/home/bruger/projekter",
-            "searchServers": "Søg servere...",
             "fourshared": {
                 "backToExistingAccount": "Tilbage til eksisterende konto",
                 "configureCredentials": "Konfigurér OAuth 1.0-legitimationsoplysninger",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "App-adgangskode",
             "koofrAppPasswordPlaceholder": "Indsæt din Koofr app-adgangskode her",
             "koofrHelp": "Generér en app-adgangskode på app.koofr.net → Indstillinger → Adgangskode → App-adgangskoder",
-            "duplicateServer": "Dupliker server",
-            "duplicateCredentialMissing": "Legitimationsoplysninger ikke kopieret til kopien. Indtast adgangskoden igen før tilslutning.",
             "saveAsNew": "Gem som ny",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Log ind igen",
             "twakeSignedIn": "Logget ind",
             "twakeWaitingBrowser": "Afslut login i din browser...",
-            "twakeSignInHelp": "AeroFTP åbner Twake i din browser og beder kun om adgang til dine filer. Hvis Twake viser en fejl første gang, så log ind på Twake i browseren og log ind igen. Du kan til enhver tid tilbagekalde adgangen under Twake-indstillinger, Tilsluttede enheder."
+            "twakeSignInHelp": "AeroFTP åbner Twake i din browser og beder kun om adgang til dine filer. Hvis Twake viser en fejl første gang, så log ind på Twake i browseren og log ind igen. Du kan til enhver tid tilbagekalde adgangen under Twake-indstillinger, Tilsluttede enheder.",
+            "oauthKeysMissingTitle": "Appnøgler til {provider} mangler",
+            "oauthKeysMissing": "Der er ingen appnøgler til {provider} gemt i boksen, så AeroFTP kan ikke logge ind. AeroFTP leveres ikke med egne nøgler: indtast nøglerne til din {provider}-udviklerapp i {location}, og opret forbindelse igen.",
+            "oauthKeysOpenSettings": "Åbn OAuth-indstillinger",
+            "oauthKeysReadFailedTitle": "Kan ikke læse appnøgler til {provider}",
+            "oauthKeysReadFailed": "AeroFTP kunne ikke læse appnøglerne til {provider} fra boksen, så den kan ikke logge ind. Nøglerne er ikke ændret. Fejl: {error}"
         },
         "browser": {
             "remote": "Ekstern",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
             "uiTokensRejected": "Afviste poster: {count}",
             "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}",
-            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhedskopi kan ikke læses på denne enhed, så sammenligningen bruger den liste, der er gemt i sikkerhedskopiens boks. Importen erstatter stadig serverlisten på denne enhed."
+            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhedskopi kan ikke læses på denne enhed, så sammenligningen bruger den liste, der er gemt i sikkerhedskopiens boks. Importen erstatter stadig serverlisten på denne enhed.",
+            "filterServersPlaceholder": "Filtrer efter navn, vært, protokol eller bruger",
+            "selectShown": "Vælg de {count} viste",
+            "deselectShown": "Fravælg de {count} viste",
+            "filterShownCount": "{shown} vist",
+            "selectedHiddenByFilter": "{count} valgt, men skjult af filteret, stadig inkluderet"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Krypteret overlay låst",
             "aerocrypt_marker_migrate": "Konverterer AeroCrypt-markør til .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markør konverteret til .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Låser mappen {filename} op..."
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Den lokale server kunne ikke startes.",
                     "serverFailed": "Serveren stoppede eller sendte et ugyldigt svar.",
                     "httpUnauthorized": "Serveren afviste de gemte legitimationsoplysninger.",
-                    "unsupportedVersion": "Serveren bruger en MCP-version, som AeroFTP ikke understøtter."
+                    "unsupportedVersion": "Serveren bruger en MCP-version, som AeroFTP ikke understøtter.",
+                    "directoryInvalid": "Vælg en dedikeret mappe uden links eller følsomme programfiler.",
+                    "directoryChanged": "Den godkendte mappe er ændret eller mangler. Vælg den igen for at forny adgangen.",
+                    "permissionCommand": "Skift adgang via indstillingerne for mappe- og netværkstilladelser.",
+                    "installInvalid": "Denne administrerede installation er utilgængelig, eller dens manifest er ugyldigt.",
+                    "installIntegrity": "Pakkens integritetskontrol mislykkedes. Fjern og geninstaller serveren.",
+                    "installArchive": "Pakken indeholder usikre stier, links eller en ugyldig startfil.",
+                    "installRuntime": "Det nødvendige systemkørselsmiljø mangler.",
+                    "installDownload": "Download af pakken mislykkedes eller overskred tidsgrænsen.",
+                    "installLimit": "Pakken overskrider installationsgrænserne.",
+                    "installExists": "Fjern den eksisterende installation før geninstallation.",
+                    "installIo": "Installationsfilerne kunne ikke læses eller skrives."
                 },
                 "routingNotice": "Aktiverede servere stiller deres værktøjer til rådighed for AeroAgent. Hvert værktøjskald beder først om din godkendelse.",
                 "checkNow": "Tjek nu",
@@ -3089,7 +3102,19 @@
                 "healthError": "Ikke tilgængelig: {reason}",
                 "healthReady": "Klar, værktøjer tilgængelige for AeroAgent: {count}",
                 "healthUnsupported": "Værktøjer med ikke-understøttede skemaer: {count}",
-                "healthShowTools": "Vis værktøjer"
+                "healthShowTools": "Vis værktøjer",
+                "directoryTitle": "Skrivebeskyttede mapper",
+                "grantDirectory": "Vælg mappe",
+                "confirmDirectory": "Give denne server læseadgang til alle filer i {path}? Giv kun adgang til en særskilt server- eller projektmappe.",
+                "noDirectories": "Ingen mappeadgang.",
+                "revokeDirectory": "Tilbagekald adgang",
+                "confirmRevokeDirectory": "Tilbagekalde adgang til {path}? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
+                "networkAccess": "Tillad netværksadgang (alle værter)",
+                "networkBlocked": "Netværksadgang er blokeret.",
+                "confirmNetwork": "Tillade {name} at tilgå netværket, herunder lokale tjenester? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
+                "confirmBlockNetwork": "Blokere netværksadgang for {name}? Tidligere godkendelser af værktøjer vil ikke længere være gyldige.",
+                "managedStatus": "Administreret installation: {version}",
+                "renewDirectory": "Forny adgang"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Vis kilde"
         },
         "savedServers": {
-            "dragToReorder": "Træk for at omarrangere",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Konfigurér venligst 4shared-legitimationsoplysninger under Indstillinger > Cloududbydere.",
-            "oauthConfigError": "Konfigurér venligst {provider}-legitimationsoplysninger under Indstillinger > Cloududbydere.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4455,23 @@
             "tagsPlaceholder": "Tilføj et tag...",
             "tagsUpdated": "Tags opdateret",
             "addTag": "Tilføj",
-            "noTags": "Ingen tags"
+            "noTags": "Ingen tags",
+            "collaborators": "Samarbejdspartnere",
+            "noCollaborators": "Ikke delt med nogen endnu",
+            "folderNotLocked": "Denne mappe er ikke låst",
+            "roleEditor": "Redaktør",
+            "roleViewer": "Fremviser",
+            "rolePreviewer": "Forhåndsviser",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Forhåndsviser og uploader",
+            "roleViewerUploader": "Fremviser og uploader",
+            "roleCoOwner": "Medejer"
         },
         "googledrive": {
             "star": "Markér med stjerne",
             "unstar": "Fjern stjerne",
             "starred": "Fil markeret med stjerne",
-            "unstarred": "Stjerne fjernet fra fil",
-            "addComment": "Tilføj kommentar",
-            "commentPlaceholder": "Skriv din kommentar...",
-            "commentAdded": "Kommentar tilføjet"
+            "unstarred": "Stjerne fjernet fra fil"
         },
         "dropbox": {
             "manageTags": "Administrer tags"
@@ -4768,7 +4794,14 @@
             "participants": "deltagere",
             "saving": "Gemmer...",
             "saved": "Gemt",
-            "saveNow": "Gem nu"
+            "saveNow": "Gem nu",
+            "noteType": "Notetype",
+            "addTag": "Tilføj tag",
+            "newTag": "Nyt tag...",
+            "tagName": "Tagnavn",
+            "removeTag": "Fjern tag",
+            "manageTags": "Administrer tags",
+            "deleteTagConfirm": "Slet tagget »{name}«? Noter beholder deres tekst."
         },
         "shareLinkModal": {
             "title": "Delingslink",
@@ -4961,7 +4994,8 @@
                 "rename": "Omdøb gruppe",
                 "delete": "Slet gruppe",
                 "confirmDelete": "Slet gruppen \"{name}\"? Serverne i den bevares, kun gruppen fjernes.",
-                "chipHint": "Klik for at filtrere; højreklik for at omdøbe eller slette"
+                "chipHint": "Klik for at filtrere; højreklik for at omdøbe, eksportere eller slette",
+                "export": "Eksportér gruppe..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5020,8 @@
                 "offTitle": "Denne bucket har ingen standardkryptering. Det er ikke det samme som ukrypteret: SSE-C og kryptering på klientsiden rapporteres ikke af denne indstilling.",
                 "unknownKeyTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi applikationsnøglen ikke har rettigheden readBucketEncryption. En værdi, vi ikke har lov til at se, betyder ikke, at kryptering er slået fra.",
                 "unknownShapeTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi svaret ikke havde en dokumenteret form. Nøglen havde lov til at læse den, så det handler om svaret og ikke om rettigheder."
-            }
+            },
+            "exportProfile": "Eksportér..."
         },
         "gitlab": {
             "projectPath": "Projektsti",
@@ -6042,6 +6077,10 @@
             "scopeSession": "Godkender dette værktøj resten af chatsessionen.",
             "approve": "Godkend",
             "rememberForChat": "Tillad dette værktøj resten af denne chat"
+        },
+        "fileComments": {
+            "title": "Kommentarer",
+            "empty": "Ingen kommentarer endnu"
         }
     }
 }

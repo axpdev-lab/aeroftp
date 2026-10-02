@@ -102,14 +102,9 @@
             "connectionFailed": "Tenging mistókst",
             "reconnecting": "Endurtengist...",
             "quickConnect": "Flýtitenging",
-            "savedServers": "Vistaðir þjónar",
-            "noSavedServers": "Engir vistaðir þjónar",
             "saveServer": "Vista þjón",
-            "deleteServer": "Eyða þjóni",
-            "editServer": "Breyta þjóni",
             "serverName": "Nafn þjóns",
             "initialPath": "Upphafsslóð",
-            "savedServersHelp": "Veldu þjón til að tengjast.",
             "selectSshKey": "Velja SSH einkalykil",
             "allFiles": "Allar skrár",
             "sshKeys": "SSH-lyklar",
@@ -132,7 +127,6 @@
             "emailAccount": "Tölvupóstreikningur",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "MEGA lykilorðið þitt",
-            "dismiss": "Hafna",
             "authenticating": "Auðkenni...",
             "oauth2Connection": "OAuth2-tenging",
             "securityTitle": "Dulkóðuð geymsla skilríkja",
@@ -170,7 +164,6 @@
             "docs": "Skjöl",
             "minutes": "mínútur",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Leita að netþjónum...",
             "fourshared": {
                 "backToExistingAccount": "Til baka i fyrirliggjandi reikning",
                 "configureCredentials": "Stilla OAuth 1.0 auðkenni",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Forritaaðgangsorð",
             "koofrAppPasswordPlaceholder": "Límdu Koofr forritaaðgangsorðið þitt hér",
             "koofrHelp": "Búðu til forritaaðgangsorð á app.koofr.net → Kjörstillingar → Aðgangsorð → Forritaaðgangsorð",
-            "duplicateServer": "Afrita þjón",
-            "duplicateCredentialMissing": "Auðkennið var ekki afritað í afritið. Sláðu inn lykilorðið aftur áður en þú tengist.",
             "saveAsNew": "Vista sem nýtt",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Skrá inn aftur",
             "twakeSignedIn": "Innskráð/ur",
             "twakeWaitingBrowser": "Kláraðu innskráningu í vafranum þínum...",
-            "twakeSignInHelp": "AeroFTP opnar Twake í vafranum þínum og biður aðeins um aðgang að skránum þínum. Ef Twake sýnir villu í fyrsta skipti skaltu skrá þig inn á Twake í vafranum og reyna aftur. Þú getur afturkallað aðgang hvenær sem er í Twake stillingum, Tengd tæki."
+            "twakeSignInHelp": "AeroFTP opnar Twake í vafranum þínum og biður aðeins um aðgang að skránum þínum. Ef Twake sýnir villu í fyrsta skipti skaltu skrá þig inn á Twake í vafranum og reyna aftur. Þú getur afturkallað aðgang hvenær sem er í Twake stillingum, Tengd tæki.",
+            "oauthKeysMissingTitle": "Forritslykla vantar fyrir {provider}",
+            "oauthKeysMissing": "Engir forritslyklar fyrir {provider} eru vistaðir í öryggisgeymslunni, svo AeroFTP getur ekki skráð sig inn. AeroFTP fylgir ekki með eigin lyklum: sláðu inn lykla þróunarforritsins þíns hjá {provider} í {location} og tengdu aftur.",
+            "oauthKeysOpenSettings": "Opna OAuth stillingar",
+            "oauthKeysReadFailedTitle": "Ekki tókst að lesa forritslykla fyrir {provider}",
+            "oauthKeysReadFailed": "AeroFTP gat ekki lesið forritslykla fyrir {provider} úr hvelfingunni og getur því ekki skráð sig inn. Lyklunum var ekki breytt. Villa: {error}"
         },
         "browser": {
             "remote": "Fjartengdur",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Beittar yfirskrifanir: {count}",
             "uiTokensRejected": "Hafnaðar færslur: {count}",
             "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}",
-            "keystorePreviewBackupUnreadable": "Ekki er hægt að lesa netþjónalista þessa afrits á þessu tæki, svo samanburðurinn notar listann sem er geymdur í hvelfingu afritsins. Innflutningurinn kemur samt í stað netþjónalista þessa tækis."
+            "keystorePreviewBackupUnreadable": "Ekki er hægt að lesa netþjónalista þessa afrits á þessu tæki, svo samanburðurinn notar listann sem er geymdur í hvelfingu afritsins. Innflutningurinn kemur samt í stað netþjónalista þessa tækis.",
+            "filterServersPlaceholder": "Sía eftir nafni, hýsli, samskiptareglu eða notanda",
+            "selectShown": "Velja þessa {count} sem eru sýnd",
+            "deselectShown": "Afvelja þessa {count} sem eru sýnd",
+            "filterShownCount": "{shown} sýnd",
+            "selectedHiddenByFilter": "{count} valin en falin af síunni, eru samt með"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Dulkóðað yfirlag læst",
             "aerocrypt_marker_migrate": "Umbreyti AeroCrypt-merki í .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-merki umbreytt í .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Aflæsi möppu {filename}..."
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Ekki tókst að ræsa staðbundna netþjóninn.",
                     "serverFailed": "Netþjónninn stöðvaðist eða sendi ógilt svar.",
                     "httpUnauthorized": "Netþjónninn hafnaði vistuðu auðkennisupplýsingunum.",
-                    "unsupportedVersion": "Netþjónninn notar MCP útgáfu sem AeroFTP styður ekki."
+                    "unsupportedVersion": "Netþjónninn notar MCP útgáfu sem AeroFTP styður ekki.",
+                    "directoryInvalid": "Veldu sérstaka möppu án tengla eða viðkvæmra forritsskráa.",
+                    "directoryChanged": "Mappan sem veittur var aðgangur að hefur breyst eða vantar. Veldu hana aftur til að endurnýja aðgang.",
+                    "permissionCommand": "Breyttu aðgangi með stillingum fyrir möppu- og netheimildir.",
+                    "installInvalid": "Þessi stýrða uppsetning er ekki tiltæk eða skráalýsing hennar er ógild.",
+                    "installIntegrity": "Sannprófun á heilleika pakkans mistókst. Fjarlægðu þjóninn og settu hann upp aftur.",
+                    "installArchive": "Pakkinn inniheldur óöruggar slóðir, tengla eða ógilda ræsiskrá.",
+                    "installRuntime": "Nauðsynlegt keyrsluumhverfi kerfisins vantar.",
+                    "installDownload": "Niðurhal pakkans mistókst eða rann út á tíma.",
+                    "installLimit": "Pakkinn fer yfir uppsetningarmörkin.",
+                    "installExists": "Fjarlægðu núverandi uppsetningu áður en þú setur upp aftur.",
+                    "installIo": "Ekki tókst að lesa eða skrifa uppsetningarskrárnar."
                 },
                 "routingNotice": "Virkir netþjónar bjóða AeroAgent verkfæri sín. Hvert verkfærakall biður fyrst um samþykki þitt.",
                 "checkNow": "Athuga núna",
@@ -3089,7 +3102,19 @@
                 "healthError": "Ekki tiltækt: {reason}",
                 "healthReady": "Tilbúið, verkfæri í boði fyrir AeroAgent: {count}",
                 "healthUnsupported": "Verkfæri með óstudd skema: {count}",
-                "healthShowTools": "Sýna verkfæri"
+                "healthShowTools": "Sýna verkfæri",
+                "directoryTitle": "Skráasöfn með lesaðgangi eingöngu",
+                "grantDirectory": "Velja skráasafn",
+                "confirmDirectory": "Veita þessum þjóni lesaðgang að öllum skrám í {path}? Veittu aðeins aðgang að sérstöku skráasafni fyrir þjóninn eða verkefnið.",
+                "noDirectories": "Enginn aðgangur að skráasöfnum.",
+                "revokeDirectory": "Afturkalla aðgang",
+                "confirmRevokeDirectory": "Afturkalla aðgang að {path}? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
+                "networkAccess": "Leyfa netaðgang (allir hýslar)",
+                "networkBlocked": "Netaðgangur er lokaður.",
+                "confirmNetwork": "Leyfa {name} netaðgang, þar á meðal að staðbundinni þjónustu? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
+                "confirmBlockNetwork": "Loka netaðgangi fyrir {name}? Fyrri samþykki fyrir verkfærum verða ekki lengur gild.",
+                "managedStatus": "Stýrð uppsetning: {version}",
+                "renewDirectory": "Endurnýja aðgang"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Skoða uppruna"
         },
         "savedServers": {
-            "dragToReorder": "Dragðu til að endurraða",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Vinsamlegast stilltu 4shared auðkenni í Stillingar > Skýjaþjónustur.",
-            "oauthConfigError": "Vinsamlegast stilltu {provider} auðkenni í Stillingar > Skýjaþjónustur.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4455,16 +4474,23 @@
             "tagsPlaceholder": "Bæta við merki...",
             "tagsUpdated": "Merki uppfærð",
             "addTag": "Bæta við",
-            "noTags": "Engin merki"
+            "noTags": "Engin merki",
+            "collaborators": "Samstarfsaðilar",
+            "noCollaborators": "Ekki deilt með neinum enn",
+            "folderNotLocked": "Þessi mappa er ekki læst",
+            "roleEditor": "Ritstjóri",
+            "roleViewer": "Áhorfandi",
+            "rolePreviewer": "Forskoðandi",
+            "roleUploader": "Upphleðsluaðili",
+            "rolePreviewerUploader": "Forskoðandi og upphleðsluaðili",
+            "roleViewerUploader": "Áhorfandi og upphleðsluaðili",
+            "roleCoOwner": "Meðeigandi"
         },
         "googledrive": {
             "star": "Stjarnmerkja",
             "unstar": "Afmerkja stjörnu",
             "starred": "Skrá stjörnumerkt",
-            "unstarred": "Stjörnumerking fjarlægð",
-            "addComment": "Bæta við athugasemd",
-            "commentPlaceholder": "Skrifaðu athugasemd...",
-            "commentAdded": "Athugasemd bætt við"
+            "unstarred": "Stjörnumerking fjarlægð"
         },
         "dropbox": {
             "manageTags": "Stjórna merkjum"
@@ -4787,7 +4813,14 @@
             "participants": "þátttakendur",
             "saving": "Vista...",
             "saved": "Vistað",
-            "saveNow": "Vista núna"
+            "saveNow": "Vista núna",
+            "noteType": "Tegund minnismiða",
+            "addTag": "Bæta við merki",
+            "newTag": "Nýtt merki...",
+            "tagName": "Heiti merkis",
+            "removeTag": "Fjarlægja merki",
+            "manageTags": "Sýsla með merki",
+            "deleteTagConfirm": "Eyða merkinu „{name}“? Minnismiðar halda textanum sínum."
         },
         "shareLinkModal": {
             "title": "Deilitengill",
@@ -4980,7 +5013,8 @@
                 "rename": "Endurnefna hóp",
                 "delete": "Eyða hópi",
                 "confirmDelete": "Eyða hópnum „{name}“? Netþjónunum í honum er haldið, aðeins hópurinn er fjarlægður.",
-                "chipHint": "Smelltu til að sía; hægrismelltu til að endurnefna eða eyða"
+                "chipHint": "Smelltu til að sía; hægrismelltu til að endurnefna, flytja út eða eyða",
+                "export": "Flytja út hóp..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5039,8 @@
                 "offTitle": "Þessi fata hefur enga sjálfgefna dulkóðun. Það er ekki það sama og ódulkóðuð: SSE-C og dulkóðun viðskiptavinarmegin koma ekki fram í þessari stillingu.",
                 "unknownKeyTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því forritslykillinn hefur ekki heimildina readBucketEncryption. Gildi sem við megum ekki sjá þýðir ekki að dulkóðun sé slökkt.",
                 "unknownShapeTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því svarið hafði ekki skjalfest form. Lykillinn mátti lesa hana, svo þetta snýst um svarið en ekki um heimildir."
-            }
+            },
+            "exportProfile": "Flytja út..."
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",
@@ -6061,6 +6096,10 @@
             "scopeSession": "Samþykkir þetta verkfæri það sem eftir er af spjallinu.",
             "approve": "Samþykkja",
             "rememberForChat": "Leyfa þetta verkfæri það sem eftir er af þessu spjalli"
+        },
+        "fileComments": {
+            "title": "Athugasemdir",
+            "empty": "Engar athugasemdir enn"
         }
     }
 }

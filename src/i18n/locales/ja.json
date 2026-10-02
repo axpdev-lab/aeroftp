@@ -102,14 +102,9 @@
             "connectionFailed": "接続失敗",
             "reconnecting": "再接続中...",
             "quickConnect": "クイック接続",
-            "savedServers": "保存済みサーバー",
-            "noSavedServers": "保存済みサーバーなし",
             "saveServer": "サーバーを保存",
-            "deleteServer": "サーバーを削除",
-            "editServer": "サーバーを編集",
             "serverName": "サーバー名",
             "initialPath": "初期パス",
-            "savedServersHelp": "接続するサーバーを選択してください。",
             "selectSshKey": "SSH秘密鍵を選択",
             "allFiles": "すべてのファイル",
             "sshKeys": "SSHキー",
@@ -132,7 +127,6 @@
             "emailAccount": "メールアカウント",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "MEGAのパスワード",
-            "dismiss": "閉じる",
             "authenticating": "認証中...",
             "oauth2Connection": "OAuth2 Connection",
             "securityTitle": "暗号化された資格情報の保存",
@@ -170,7 +164,6 @@
             "docs": "ドキュメント",
             "minutes": "分",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "サーバーを検索...",
             "fourshared": {
                 "backToExistingAccount": "既存のアカウントに戻る",
                 "configureCredentials": "OAuth 1.0 資格情報を設定",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "アプリパスワード",
             "koofrAppPasswordPlaceholder": "Koofr アプリパスワードをここに貼り付け",
             "koofrHelp": "app.koofr.net → 環境設定 → パスワード → アプリパスワード でアプリパスワードを生成してください",
-            "duplicateServer": "サーバーを複製",
-            "duplicateCredentialMissing": "認証情報が複製にコピーされませんでした。接続する前にパスワードを再入力してください。",
             "saveAsNew": "新規として保存",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "再度サインイン",
             "twakeSignedIn": "サインイン済み",
             "twakeWaitingBrowser": "ブラウザでサインインを完了してください...",
-            "twakeSignInHelp": "AeroFTPはブラウザでTwakeを開き、ファイルへのアクセスのみを要求します。初回にTwakeでエラーが表示された場合は、ブラウザでTwakeにログインしてから再度サインインしてください。アクセス権はいつでもTwakeの設定の「接続済みデバイス」から取り消せます。"
+            "twakeSignInHelp": "AeroFTPはブラウザでTwakeを開き、ファイルへのアクセスのみを要求します。初回にTwakeでエラーが表示された場合は、ブラウザでTwakeにログインしてから再度サインインしてください。アクセス権はいつでもTwakeの設定の「接続済みデバイス」から取り消せます。",
+            "oauthKeysMissingTitle": "{provider} のアプリキーがありません",
+            "oauthKeysMissing": "{provider} のアプリキーが保管庫に保存されていないため、AeroFTP はサインインできません。AeroFTP は独自のキーを同梱していません。{location} に {provider} の開発者アプリのキーを入力してから、もう一度接続してください。",
+            "oauthKeysOpenSettings": "OAuth 設定を開く",
+            "oauthKeysReadFailedTitle": "{provider} のアプリキーを読み取れません",
+            "oauthKeysReadFailed": "AeroFTP は保管庫から {provider} のアプリキーを読み取れなかったため、サインインできません。キーは変更されていません。エラー: {error}"
         },
         "browser": {
             "remote": "リモート",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "適用された上書き: {count}",
             "uiTokensRejected": "拒否されたエントリー: {count}",
             "keystorePreferencesFailed": "インポートは完了しましたが、アプリの設定を復元できませんでした: {error}",
-            "keystorePreviewBackupUnreadable": "このバックアップのサーバー一覧はこのデバイスで読み取れないため、比較にはバックアップの保管庫に保存された一覧を使用します。インポートは、それでもこのデバイスのサーバー一覧を置き換えます。"
+            "keystorePreviewBackupUnreadable": "このバックアップのサーバー一覧はこのデバイスで読み取れないため、比較にはバックアップの保管庫に保存された一覧を使用します。インポートは、それでもこのデバイスのサーバー一覧を置き換えます。",
+            "filterServersPlaceholder": "名前、ホスト、プロトコル、ユーザーで絞り込み",
+            "selectShown": "表示中の{count}件を選択",
+            "deselectShown": "表示中の{count}件の選択を解除",
+            "filterShownCount": "{shown}件表示",
+            "selectedHiddenByFilter": "{count}件は選択済みですが、フィルターで非表示になっています。引き続き含まれます"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "暗号化オーバーレイをロックしました",
             "aerocrypt_marker_migrate": "AeroCrypt マーカーを .aerocrypt.tsv に変換しています…",
             "aerocrypt_marker_migrated": "AeroCrypt マーカーを .aerocrypt.tsv に変換しました",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] フォルダ {filename} のロックを解除しています..."
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -3045,7 +3047,18 @@
                     "startFailed": "ローカルサーバーを起動できませんでした。",
                     "serverFailed": "サーバーが停止したか、無効な応答を送信しました。",
                     "httpUnauthorized": "サーバーが保存済みの認証情報を拒否しました。",
-                    "unsupportedVersion": "サーバーはAeroFTPが対応していないMCPバージョンを使用しています。"
+                    "unsupportedVersion": "サーバーはAeroFTPが対応していないMCPバージョンを使用しています。",
+                    "directoryInvalid": "リンクや機密性の高いアプリケーションファイルを含まない専用ディレクトリを選択してください。",
+                    "directoryChanged": "許可したディレクトリが変更されたか、見つかりません。再選択してアクセス権を更新してください。",
+                    "permissionCommand": "ディレクトリとネットワークの権限設定でアクセス権を変更してください。",
+                    "installInvalid": "この管理対象のインストールは利用できないか、マニフェストが無効です。",
+                    "installIntegrity": "パッケージの整合性検証に失敗しました。サーバーを削除して再インストールしてください。",
+                    "installArchive": "パッケージに安全でないパス、リンク、または無効な起動ファイルが含まれています。",
+                    "installRuntime": "必要なシステムランタイムが見つかりません。",
+                    "installDownload": "パッケージのダウンロードに失敗したか、タイムアウトしました。",
+                    "installLimit": "パッケージがインストールの制限を超えています。",
+                    "installExists": "再インストールする前に既存のインストールを削除してください。",
+                    "installIo": "インストールファイルを読み書きできませんでした。"
                 },
                 "routingNotice": "有効なサーバーは、そのツールを AeroAgent に提供します。ツールを呼び出すたびに、まずあなたの承認が求められます。",
                 "checkNow": "今すぐ確認",
@@ -3054,7 +3067,19 @@
                 "healthError": "利用できません: {reason}",
                 "healthReady": "準備完了、AeroAgent が使えるツール: {count}",
                 "healthUnsupported": "未対応のスキーマを持つツール: {count}",
-                "healthShowTools": "ツールを表示"
+                "healthShowTools": "ツールを表示",
+                "directoryTitle": "読み取り専用ディレクトリ",
+                "grantDirectory": "ディレクトリを選択",
+                "confirmDirectory": "このサーバーに {path} 内のすべてのファイルへの読み取り専用アクセスを許可しますか？サーバーまたはプロジェクト専用のディレクトリのみ許可してください。",
+                "noDirectories": "ディレクトリへのアクセス権がありません。",
+                "revokeDirectory": "アクセス権を取り消す",
+                "confirmRevokeDirectory": "{path} へのアクセス権を取り消しますか？以前のツール承認は無効になります。",
+                "networkAccess": "ネットワークアクセスを許可（すべてのホスト）",
+                "networkBlocked": "ネットワークアクセスはブロックされています。",
+                "confirmNetwork": "{name} にローカルサービスを含むネットワークへのアクセスを許可しますか？以前のツール承認は無効になります。",
+                "confirmBlockNetwork": "{name} のネットワークアクセスをブロックしますか？以前のツール承認は無効になります。",
+                "managedStatus": "管理対象のインストール: {version}",
+                "renewDirectory": "アクセス権を更新"
             }
         },
         "archive": {
@@ -4062,12 +4087,6 @@
             "viewSource": "ソースを表示"
         },
         "savedServers": {
-            "dragToReorder": "ドラッグで並べ替え",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Settings > Cloud Providers で 4shared の資格情報を設定してください。",
-            "oauthConfigError": "Settings > Cloud Providers で {provider} の資格情報を設定してください。",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4455,23 @@
             "tagsPlaceholder": "タグを追加...",
             "tagsUpdated": "タグが更新されました",
             "addTag": "追加",
-            "noTags": "タグなし"
+            "noTags": "タグなし",
+            "collaborators": "共同作業者",
+            "noCollaborators": "まだ誰とも共有されていません",
+            "folderNotLocked": "このフォルダはロックされていません",
+            "roleEditor": "編集者",
+            "roleViewer": "閲覧者",
+            "rolePreviewer": "プレビューア",
+            "roleUploader": "アップローダー",
+            "rolePreviewerUploader": "プレビューア・アップローダー",
+            "roleViewerUploader": "閲覧者・アップローダー",
+            "roleCoOwner": "共同所有者"
         },
         "googledrive": {
             "star": "スターを付ける",
             "unstar": "スターを外す",
             "starred": "ファイルにスターを付けました",
-            "unstarred": "ファイルのスターを外しました",
-            "addComment": "コメントを追加",
-            "commentPlaceholder": "コメントを入力...",
-            "commentAdded": "コメントを追加しました"
+            "unstarred": "ファイルのスターを外しました"
         },
         "dropbox": {
             "manageTags": "タグを管理"
@@ -4768,7 +4794,14 @@
             "participants": "参加者",
             "saving": "保存中...",
             "saved": "保存済み",
-            "saveNow": "今すぐ保存"
+            "saveNow": "今すぐ保存",
+            "noteType": "ノートの種類",
+            "addTag": "タグを追加",
+            "newTag": "新しいタグ...",
+            "tagName": "タグ名",
+            "removeTag": "タグを外す",
+            "manageTags": "タグを管理",
+            "deleteTagConfirm": "タグ「{name}」を削除しますか？ノートの本文は残ります。"
         },
         "shareLinkModal": {
             "title": "共有リンク",
@@ -4961,7 +4994,8 @@
                 "rename": "グループ名の変更",
                 "delete": "グループの削除",
                 "confirmDelete": "グループ「{name}」を削除しますか？ 含まれるサーバーは保持され、グループのみが削除されます。",
-                "chipHint": "クリックで絞り込み、右クリックで名前変更または削除"
+                "chipHint": "クリックで絞り込み、右クリックで名前変更、エクスポート、削除",
+                "export": "グループをエクスポート..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5020,8 @@
                 "offTitle": "このバケットには既定の暗号化がありません。これは暗号化されていないという意味ではありません。SSE-C とクライアント側の暗号化は、この設定には反映されません。",
                 "unknownKeyTitle": "このバケットの暗号化設定を読み取れませんでした。アプリケーションキーに readBucketEncryption 権限がないためです。閲覧を許可されていない値は、暗号化が無効であることを意味しません。",
                 "unknownShapeTitle": "このバケットの暗号化設定を読み取れませんでした。応答が文書化された形式ではなかったためです。キーには読み取りが許可されていたため、これは応答の問題であり、権限の問題ではありません。"
-            }
+            },
+            "exportProfile": "エクスポート..."
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",
@@ -6042,6 +6077,10 @@
             "scopeSession": "このチャットセッションの残りの間、このツールを承認します。",
             "approve": "承認",
             "rememberForChat": "このチャットの残りの間、このツールを許可する"
+        },
+        "fileComments": {
+            "title": "コメント",
+            "empty": "コメントはまだありません"
         }
     }
 }

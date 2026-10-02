@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it, vi } from 'vitest';
+import everything from '../../../src-tauri/tests/fixtures/mcp-client/server-everything-2026.8.31-tools-list.json';
 import { AGENT_TOOLS, generateToolsPrompt, toJSONSchema } from '../../types/tools';
 import type { PluginManifest } from '../../types/plugins';
 import { DEFAULT_MACROS } from './aiChatToolMacros';
@@ -24,6 +25,41 @@ const mcp = (id: string, name = 'remote.read'): McpServerSnapshot => ({
 });
 
 describe('untrusted MCP registry snapshot', () => {
+    it('exposes all thirteen real reference tools and preserves enforceable constraints', () => {
+        const server = mcp('everything');
+        server.tools = everything.result.tools.map(tool => ({ name: tool.name, description: tool.description,
+            enabled: true, schemaRevision: 'a'.repeat(64), inputSchema: tool.inputSchema }));
+        const entries = buildToolRegistry([], [], [server]).filter(entry => entry.source.kind === 'mcp');
+        expect(entries).toHaveLength(13);
+        const links = entries.find(entry => entry.source.kind === 'mcp' && entry.source.toolName === 'get-resource-links')!;
+        expect((toJSONSchema(links.tool).properties as Record<string, unknown>).count).toEqual({
+            type: 'number', description: 'Number of resource links to return (1-10)', minimum: 1, maximum: 10,
+        });
+        const weather = entries.find(entry => entry.source.kind === 'mcp' && entry.source.toolName === 'get-structured-content')!;
+        expect((toJSONSchema(weather.tool).properties as Record<string, unknown>).location).toEqual({
+            type: 'string', description: 'Choose city', enum: ['New York', 'Chicago', 'Los Angeles'],
+        });
+        expect(JSON.stringify(toJSONSchema(links.tool))).not.toContain('default');
+        expect(JSON.stringify(toJSONSchema(weather.tool))).not.toContain('$schema');
+    });
+
+    it('rejects malformed accepted metadata and scalar constraints', () => {
+        for (const property of [
+            { type: 'string', title: false }, { type: 'string', format: 'bad\n' },
+            { type: 'string', default: 1 }, { type: 'integer', default: 1.5 },
+            { type: 'array', items: { type: 'string' }, default: [1] },
+            { type: 'string', enum: [true] }, { type: 'string', enum: Array(65).fill('x') },
+            { type: 'string', enum: ['x'.repeat(513)] },
+            { type: 'array', items: { type: 'string' }, enum: [['x']] },
+            { type: 'number', minimum: '0' }, { type: 'string', maximum: 3 },
+            { type: 'number', minimum: 5, maximum: 4 },
+        ]) {
+            const server = mcp('invalid');
+            server.tools[0].inputSchema = { type: 'object', properties: { value: property } };
+            expect(buildToolRegistry([], [], [server]).some(entry => entry.source.kind === 'mcp')).toBe(false);
+        }
+    });
+
     it('namespaces equal tool names by server, keeps the alias stable and never trusts a safe claim', () => {
         const registry = buildToolRegistry([], [], [mcp('alpha'), mcp('beta')]);
         const tools = registry.filter(entry => entry.source.kind === 'mcp');
@@ -92,7 +128,7 @@ describe('untrusted MCP registry snapshot', () => {
         expect(schema(base)).toBe(true);
         for (const invalid of [
             { ...base, properties: { path: { type: 'object', properties: {} } } },
-            { ...base, properties: { path: { type: 'string', enum: ['yes'] } } },
+            { ...base, properties: { path: { type: 'string', enum: [] } } },
             { ...base, properties: { path: { type: 'array', items: { type: 'object' } } } },
             { ...base, oneOf: [base] }, { ...base, required: ['unknown'] },
             { ...base, properties: Object.fromEntries(Array.from({ length: 17 }, (_, i) => [`p${i}`, { type: 'string' }])) },
@@ -153,7 +189,7 @@ describe('untrusted MCP registry snapshot', () => {
                 type: 'string', 'x-mcp-header': 'Region',
             } } } },
             { type: 'object', properties: { region: {
-                type: 'string', 'x-mcp-header': 'Region', enum: ['eu'],
+                type: 'string', 'x-mcp-header': 'Region', enum: [1],
             } } },
         ]) expect(accepted(invalid)).toBe(false);
     });

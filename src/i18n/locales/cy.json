@@ -102,14 +102,9 @@
             "connectionFailed": "Methwyd cysylltu",
             "reconnecting": "Yn ailgysylltu...",
             "quickConnect": "Cysylltiad Cyflym",
-            "savedServers": "Gweinyddion wedi'u cadw",
-            "noSavedServers": "Dim gweinyddion wedi'u cadw",
             "saveServer": "Cadw Gweinydd",
-            "deleteServer": "Dileu Gweinydd",
-            "editServer": "Golygu Gweinydd",
             "serverName": "Enw'r Gweinydd",
             "initialPath": "Llwybr Cychwynnol",
-            "savedServersHelp": "Dewiswch weinydd i gysylltu.",
             "selectSshKey": "Dewiswch Allwedd Breifat SSH",
             "allFiles": "Pob ffeil",
             "sshKeys": "Allweddi SSH",
@@ -132,7 +127,6 @@
             "emailAccount": "Cyfrif e-bost",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Eich cyfrinair MEGA",
-            "dismiss": "Diystyru",
             "authenticating": "Dilysu...",
             "oauth2Connection": "Cysylltiad OAuth2",
             "securityTitle": "Storfa gyfrineiriau wedi'i hamgryptio",
@@ -170,7 +164,6 @@
             "docs": "Dogfennau",
             "minutes": "munudau",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Chwilio gweinyddion...",
             "fourshared": {
                 "backToExistingAccount": "Yn ôl i'r cyfrif presennol",
                 "configureCredentials": "Ffurfweddu manylion OAuth 1.0",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Cyfrinair Ap",
             "koofrAppPasswordPlaceholder": "Gludiodd eich cyfrinair ap Koofr yma",
             "koofrHelp": "Cynhyrchu cyfrinair ap ar app.koofr.net → Dewisiadau → Cyfrinair → Cyfrineiriau Ap",
-            "duplicateServer": "Dyblygu gweinydd",
-            "duplicateCredentialMissing": "Ni chopïwyd y manylion i'r dyblyg. Rhowch y cyfrinair eto cyn cysylltu.",
             "saveAsNew": "Cadw fel newydd",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Mewngofnodi eto",
             "twakeSignedIn": "Wedi mewngofnodi",
             "twakeWaitingBrowser": "Gorffennwch fewngofnodi yn eich porwr...",
-            "twakeSignInHelp": "Mae AeroFTP yn agor Twake yn eich porwr ac yn gofyn am fynediad i'ch ffeiliau yn unig. Os yw Twake yn dangos gwall y tro cyntaf, mewngofnodwch i Twake yn y porwr a mewngofnodwch eto. Gallwch ddiddymu mynediad unrhyw bryd yng Ngosodiadau Twake, Dyfeisiau Cysylltiedig."
+            "twakeSignInHelp": "Mae AeroFTP yn agor Twake yn eich porwr ac yn gofyn am fynediad i'ch ffeiliau yn unig. Os yw Twake yn dangos gwall y tro cyntaf, mewngofnodwch i Twake yn y porwr a mewngofnodwch eto. Gallwch ddiddymu mynediad unrhyw bryd yng Ngosodiadau Twake, Dyfeisiau Cysylltiedig.",
+            "oauthKeysMissingTitle": "Allweddi ap {provider} ar goll",
+            "oauthKeysMissing": "Nid oes allweddi ap ar gyfer {provider} wedi'u storio yn y gladdgell, felly ni all AeroFTP fewngofnodi. Nid yw AeroFTP yn cynnwys ei allweddi ei hun: rhowch allweddi eich ap datblygwr {provider} yn {location}, yna cysylltwch eto.",
+            "oauthKeysOpenSettings": "Agor gosodiadau OAuth",
+            "oauthKeysReadFailedTitle": "Methu darllen allweddi ap {provider}",
+            "oauthKeysReadFailed": "Methodd AeroFTP â darllen allweddi ap {provider} o'r gladdgell, felly ni all fewngofnodi. Ni newidiwyd yr allweddi. Gwall: {error}"
         },
         "browser": {
             "remote": "Pell",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Diysgrifiadau a gymhwyswyd: {count}",
             "uiTokensRejected": "Cofnodion a wrthodwyd: {count}",
             "keystorePreferencesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer eich dewisiadau ar gyfer y rhaglen: {error}",
-            "keystorePreviewBackupUnreadable": "Ni ellir darllen rhestr gweinyddion y copi hwn ar y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr sydd wedi'i chadw yng nghladdgell y copi. Mae'r mewnforio'n dal i ddisodli rhestr gweinyddion y ddyfais hon."
+            "keystorePreviewBackupUnreadable": "Ni ellir darllen rhestr gweinyddion y copi hwn ar y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr sydd wedi'i chadw yng nghladdgell y copi. Mae'r mewnforio'n dal i ddisodli rhestr gweinyddion y ddyfais hon.",
+            "filterServersPlaceholder": "Hidlo yn ôl enw, gwesteiwr, protocol neu ddefnyddiwr",
+            "selectShown": "Dewis y {count} a ddangosir",
+            "deselectShown": "Dad-ddewis y {count} a ddangosir",
+            "filterShownCount": "{shown} wedi'u dangos",
+            "selectedHiddenByFilter": "{count} wedi'u dewis ond wedi'u cuddio gan yr hidlydd, wedi'u cynnwys o hyd"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Haen wedi'i hamgryptio wedi'i chloi",
             "aerocrypt_marker_migrate": "Wrthi'n trosi marc AeroCrypt yn .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marciwr AeroCrypt wedi'i drosi i .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Datgloi'r ffolder {filename}..."
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "Nid oedd modd cychwyn y gweinydd lleol.",
                     "serverFailed": "Stopiodd y gweinydd neu anfonodd ateb annilys.",
                     "httpUnauthorized": "Gwrthododd y gweinydd y manylion adnabod a gadwyd.",
-                    "unsupportedVersion": "Mae'r gweinydd yn defnyddio fersiwn MCP nad yw AeroFTP yn ei chefnogi."
+                    "unsupportedVersion": "Mae'r gweinydd yn defnyddio fersiwn MCP nad yw AeroFTP yn ei chefnogi.",
+                    "directoryInvalid": "Dewiswch gyfeiriadur penodol heb ddolenni na ffeiliau cymhwysiad sensitif.",
+                    "directoryChanged": "Mae’r cyfeiriadur a awdurdodwyd wedi newid neu ar goll. Dewiswch ef eto i adnewyddu mynediad.",
+                    "permissionCommand": "Newidiwch fynediad gan ddefnyddio rheolyddion caniatâd cyfeiriaduron a rhwydwaith.",
+                    "installInvalid": "Nid yw’r gosodiad rheoledig hwn ar gael neu mae ei faniffest yn annilys.",
+                    "installIntegrity": "Methodd dilysu cyfanrwydd y pecyn. Tynnwch y gweinydd ac ailosodwch ef.",
+                    "installArchive": "Mae’r pecyn yn cynnwys llwybrau anniogel, dolenni, neu ffeil gychwyn annilys.",
+                    "installRuntime": "Mae’r amgylchedd rhedeg system gofynnol ar goll.",
+                    "installDownload": "Methodd lawrlwytho’r pecyn neu daeth yr amser i ben.",
+                    "installLimit": "Mae’r pecyn yn fwy na’r terfynau gosod.",
+                    "installExists": "Tynnwch y gosodiad presennol cyn ailosod.",
+                    "installIo": "Methu darllen neu ysgrifennu’r ffeiliau gosod."
                 },
                 "routingNotice": "Mae gweinyddion wedi'u galluogi yn cynnig eu hoffer i AeroAgent. Mae pob galwad offeryn yn gofyn am eich cymeradwyaeth yn gyntaf.",
                 "checkNow": "Gwirio nawr",
@@ -3089,7 +3102,19 @@
                 "healthError": "Ddim ar gael: {reason}",
                 "healthReady": "Yn barod, offer ar gael i AeroAgent: {count}",
                 "healthUnsupported": "Offer â sgemâu heb eu cefnogi: {count}",
-                "healthShowTools": "Dangos yr offer"
+                "healthShowTools": "Dangos yr offer",
+                "directoryTitle": "Cyfeiriaduron darllen yn unig",
+                "grantDirectory": "Dewis cyfeiriadur",
+                "confirmDirectory": "Rhoi mynediad darllen yn unig i’r gweinydd hwn at bob ffeil yn {path}? Rhowch gyfeiriadur penodol i’r gweinydd neu’r prosiect yn unig.",
+                "noDirectories": "Dim mynediad at gyfeiriaduron.",
+                "revokeDirectory": "Diddymu mynediad",
+                "confirmRevokeDirectory": "Diddymu mynediad at {path}? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
+                "networkAccess": "Caniatáu mynediad rhwydwaith (pob gwesteiwr)",
+                "networkBlocked": "Mae mynediad rhwydwaith wedi’i rwystro.",
+                "confirmNetwork": "Caniatáu i {name} gyrchu’r rhwydwaith, gan gynnwys gwasanaethau lleol? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
+                "confirmBlockNetwork": "Rhwystro mynediad rhwydwaith i {name}? Ni fydd cymeradwyaethau blaenorol yr offer yn ddilys mwyach.",
+                "managedStatus": "Gosodiad wedi’i reoli: {version}",
+                "renewDirectory": "Adnewyddu mynediad"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Gweld ffynhonnell"
         },
         "savedServers": {
-            "dragToReorder": "Llusgwch i ail-drefnu",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Ffurfweddwch fanylion 4shared yn Gosodiadau > Darparwyr Cwmwl.",
-            "oauthConfigError": "Ffurfweddwch fanylion {provider} yn Gosodiadau > Darparwyr Cwmwl.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4455,16 +4474,23 @@
             "tagsPlaceholder": "Ychwanegu tag...",
             "tagsUpdated": "Tagiau wedi'u diweddaru",
             "addTag": "Ychwanegu",
-            "noTags": "Dim tagiau"
+            "noTags": "Dim tagiau",
+            "collaborators": "Cydweithwyr",
+            "noCollaborators": "Heb ei rannu ag unrhyw un eto",
+            "folderNotLocked": "Nid yw'r ffolder hon wedi'i chloi",
+            "roleEditor": "Golygydd",
+            "roleViewer": "Gwyliwr",
+            "rolePreviewer": "Rhagolygwr",
+            "roleUploader": "Uwchlwythwr",
+            "rolePreviewerUploader": "Rhagolygwr Uwchlwythwr",
+            "roleViewerUploader": "Gwyliwr Uwchlwythwr",
+            "roleCoOwner": "Cyd-berchennog"
         },
         "googledrive": {
             "star": "Serennu",
             "unstar": "Dad-serennu",
             "starred": "Ffeil wedi'i serennu",
-            "unstarred": "Seren wedi'i thynnu",
-            "addComment": "Ychwanegu Sylw",
-            "commentPlaceholder": "Ysgrifennwch eich sylw...",
-            "commentAdded": "Sylw wedi'i ychwanegu"
+            "unstarred": "Seren wedi'i thynnu"
         },
         "dropbox": {
             "manageTags": "Rheoli Tagiau"
@@ -4787,7 +4813,14 @@
             "participants": "cyfranogwyr",
             "saving": "Yn cadw...",
             "saved": "Wedi'i gadw",
-            "saveNow": "Cadw nawr"
+            "saveNow": "Cadw nawr",
+            "noteType": "Math o nodyn",
+            "addTag": "Ychwanegu tag",
+            "newTag": "Tag newydd...",
+            "tagName": "Enw'r tag",
+            "removeTag": "Tynnu'r tag",
+            "manageTags": "Rheoli tagiau",
+            "deleteTagConfirm": "Dileu'r tag “{name}”? Mae'r nodiadau'n cadw eu testun."
         },
         "shareLinkModal": {
             "title": "Dolen Rhannu",
@@ -4980,7 +5013,8 @@
                 "rename": "Ailenwi grŵp",
                 "delete": "Dileu grŵp",
                 "confirmDelete": "Dileu'r grŵp \"{name}\"? Cedwir y gweinyddwyr ynddo, dim ond y grŵp a gaiff ei dynnu.",
-                "chipHint": "Cliciwch i hidlo; de-gliciwch i ailenwi neu ddileu"
+                "chipHint": "Cliciwch i hidlo; de-gliciwch i ailenwi, allforio neu ddileu",
+                "export": "Allforio grŵp..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5039,8 @@
                 "offTitle": "Nid oes gan y bwced hwn amgryptio diofyn. Nid yw hynny'r un peth â bod heb ei amgryptio: nid yw'r gosodiad hwn yn adrodd am SSE-C nac am amgryptio ar ochr y cleient.",
                 "unknownKeyTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oes gan yr allwedd rhaglen y gallu readBucketEncryption. Nid yw gwerth nad oes hawl gennym i'w weld yn golygu bod amgryptio wedi ei ddiffodd.",
                 "unknownShapeTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oedd gan yr ateb siâp wedi ei ddogfennu. Roedd gan yr allwedd hawl i'w ddarllen, felly mae hyn yn ymwneud â'r ateb ac nid â chaniatâd."
-            }
+            },
+            "exportProfile": "Allforio..."
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",
@@ -6061,6 +6096,10 @@
             "scopeSession": "Yn cymeradwyo'r offeryn hwn am weddill y sesiwn sgwrsio.",
             "approve": "Cymeradwyo",
             "rememberForChat": "Caniatáu'r offeryn hwn am weddill y sgwrs hon"
+        },
+        "fileComments": {
+            "title": "Sylwadau",
+            "empty": "Dim sylwadau eto"
         }
     }
 }

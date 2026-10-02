@@ -3,6 +3,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { McpPermissions, type SandboxConfig } from './McpPermissions';
+import { McpManagedInstalls } from './McpManagedInstalls';
 import { Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { ConfirmOverlay } from '../common/ConfirmOverlay';
@@ -14,13 +16,14 @@ import { McpHealthLine, McpHealthProvider, useMcpHealthState } from './mcpHealth
 import { notifyMcpServersChanged } from '../DevTools/aiChatMcp';
 
 interface SecretRef { vault_account: string }
-interface ServerConfig {
+export interface ServerConfig {
     id: string;
     command: string;
     args: string[];
     env: Record<string, SecretRef>;
     enabled: boolean;
     revision: number;
+    sandbox?: SandboxConfig;
 }
 
 const idValid = (value: string) => /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(value);
@@ -87,13 +90,13 @@ function ServerCard({ server, refresh }: { server: ServerConfig; refresh: () => 
         </div>
         <label className="block text-xs text-gray-300">{t('ai.mcpClient.executablePath')}
             <input className="mt-1 w-full rounded bg-gray-900 border border-gray-600 p-2 text-sm" value={command}
-                onChange={event => setCommand(event.target.value)} disabled={busy} />
+                onChange={event => setCommand(event.target.value)} disabled={busy || !!server.sandbox?.managed} />
         </label>
         <label className="block text-xs text-gray-300">{t('ai.mcpClient.arguments')}
             <textarea className="mt-1 w-full rounded bg-gray-900 border border-gray-600 p-2 text-sm" rows={2}
-                value={args} onChange={event => setArgs(event.target.value)} disabled={busy} />
+                value={args} onChange={event => setArgs(event.target.value)} disabled={busy || !!server.sandbox?.managed} />
         </label>
-        <button type="button" disabled={busy} className="flex items-center gap-1 rounded bg-purple-700 px-3 py-1.5 text-sm disabled:opacity-50"
+        <button type="button" disabled={busy || !!server.sandbox?.managed} className="flex items-center gap-1 rounded bg-purple-700 px-3 py-1.5 text-sm disabled:opacity-50"
             onClick={() => perform(() => edit({ command, args: args.split('\n').filter(Boolean) }))}><Save size={14} /> {t('ai.mcpClient.saveServer')}</button>
         <div className="border-t border-gray-700 pt-3 space-y-2">
             <p className="text-xs text-gray-400">{t('ai.mcpClient.secretsHint')}</p>
@@ -113,6 +116,7 @@ function ServerCard({ server, refresh }: { server: ServerConfig; refresh: () => 
                     onClick={() => void saveSecret()}>{t('ai.mcpClient.saveSecret')}</button>
             </div>
         </div>
+        <McpPermissions server={server} busy={busy} perform={perform} />
         {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
         {pendingRemoval && createPortal(<ConfirmOverlay
             message={pendingRemoval.kind === 'server'
@@ -173,6 +177,7 @@ export function McpServersPanel() {
                 className="flex shrink-0 items-center gap-1 rounded bg-gray-700 px-3 py-1.5 text-sm disabled:opacity-50">
                 <RefreshCw size={14} /> {t('ai.mcpClient.checkNow')}</button>
         </div>
+        <McpManagedInstalls installedIds={servers.map(server => server.id)} refresh={refresh} />
         {health.failure && <p role="alert" className="text-xs text-red-400">{describeMcpError(t, health.failure)}</p>}
         <div className="flex items-center justify-between">
             <div><h2 className="font-medium text-white">{t('ai.mcpClient.stdioTitle')}</h2><p className="text-xs text-gray-400">{t('ai.mcpClient.stdioSubtitle')}</p></div>

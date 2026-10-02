@@ -102,14 +102,9 @@
             "connectionFailed": "Csatlakozás sikertelen",
             "reconnecting": "Újracsatlakozás...",
             "quickConnect": "Gyors csatlakozás",
-            "savedServers": "Mentett szerverek",
-            "noSavedServers": "Nincs mentett szerver",
             "saveServer": "Szerver mentése",
-            "deleteServer": "Szerver törlése",
-            "editServer": "Szerver szerkesztése",
             "serverName": "Szerver neve",
             "initialPath": "Kezdő útvonal",
-            "savedServersHelp": "Válasszon szervert a csatlakozáshoz.",
             "selectSshKey": "SSH privát kulcs kiválasztása",
             "allFiles": "Minden fájl",
             "sshKeys": "SSH kulcsok",
@@ -132,7 +127,6 @@
             "emailAccount": "E-mail fiók",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Az Ön MEGA jelszava",
-            "dismiss": "Elvetés",
             "authenticating": "Hitelesítés...",
             "oauth2Connection": "OAuth2-kapcsolat",
             "securityTitle": "Titkosított hitelesítõ tárolás",
@@ -170,7 +164,6 @@
             "docs": "Dokumentáció",
             "minutes": "perc",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Szerverek keresése...",
             "fourshared": {
                 "backToExistingAccount": "Vissza a meglévő fiókhoz",
                 "configureCredentials": "OAuth 1.0 hitelesítő adatok beállítása",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Alkalmazáshesszó",
             "koofrAppPasswordPlaceholder": "Másolja ide a Koofr alkalmazáshesszót",
             "koofrHelp": "Alkalmazáshesszót generálhat az app.koofr.net → Beállítások → Jelszó → Alkalmazáshesszók helyen",
-            "duplicateServer": "Szerver duplikálása",
-            "duplicateCredentialMissing": "A hitelesítő adat nem másolódott át a másolatba. Adja meg újra a jelszót a csatlakozás előtt.",
             "saveAsNew": "Mentés újként",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Jelentkezz be újra",
             "twakeSignedIn": "Bejelentkezve",
             "twakeWaitingBrowser": "Fejezd be a bejelentkezést a böngésződben...",
-            "twakeSignInHelp": "Az AeroFTP megnyitja a Twake-et a böngésződben, és csak a fájljaidhoz kér hozzáférést. Ha a Twake először hibát jelez, jelentkezz be a Twake-be a böngészőben, majd jelentkezz be újra. A hozzáférést bármikor visszavonhatod a Twake beállításokban, a Csatlakoztatott eszközök menüpontban."
+            "twakeSignInHelp": "Az AeroFTP megnyitja a Twake-et a böngésződben, és csak a fájljaidhoz kér hozzáférést. Ha a Twake először hibát jelez, jelentkezz be a Twake-be a böngészőben, majd jelentkezz be újra. A hozzáférést bármikor visszavonhatod a Twake beállításokban, a Csatlakoztatott eszközök menüpontban.",
+            "oauthKeysMissingTitle": "Hiányoznak a(z) {provider} alkalmazáskulcsai",
+            "oauthKeysMissing": "A széfben nincs mentve alkalmazáskulcs a(z) {provider} szolgáltatáshoz, ezért az AeroFTP nem tud bejelentkezni. Az AeroFTP nem szállít saját kulcsokat: adja meg a(z) {provider} fejlesztői alkalmazásának kulcsait itt: {location}, majd csatlakozzon újra.",
+            "oauthKeysOpenSettings": "OAuth-beállítások megnyitása",
+            "oauthKeysReadFailedTitle": "A(z) {provider} alkalmazáskulcsai nem olvashatók",
+            "oauthKeysReadFailed": "Az AeroFTP nem tudta beolvasni a(z) {provider} alkalmazáskulcsait a széfből, ezért nem tud bejelentkezni. A kulcsok nem változtak. Hiba: {error}"
         },
         "browser": {
             "remote": "Távoli",
@@ -1197,7 +1193,12 @@
             "uiTokensApplied": "Alkalmazott felülírások: {count}",
             "uiTokensRejected": "Elutasított bejegyzések: {count}",
             "keystorePreferencesFailed": "Az importálás befejeződött, de az alkalmazás beállításait nem sikerült visszaállítani: {error}",
-            "keystorePreviewBackupUnreadable": "Ennek a mentésnek a kiszolgálólistája nem olvasható ezen az eszközön, ezért az összehasonlítás a mentés széfjében tárolt listát használja. Az importálás ennek ellenére lecseréli az eszköz kiszolgálólistáját."
+            "keystorePreviewBackupUnreadable": "Ennek a mentésnek a kiszolgálólistája nem olvasható ezen az eszközön, ezért az összehasonlítás a mentés széfjében tárolt listát használja. Az importálás ennek ellenére lecseréli az eszköz kiszolgálólistáját.",
+            "filterServersPlaceholder": "Szűrés név, gazda, protokoll vagy felhasználó szerint",
+            "selectShown": "A megjelenített {count} kijelölése",
+            "deselectShown": "A megjelenített {count} kijelölésének törlése",
+            "filterShownCount": "{shown} megjelenítve",
+            "selectedHiddenByFilter": "{count} kijelölve, de a szűrő elrejti, továbbra is szerepel"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1714,7 +1715,8 @@
             "overlay_locked": "Titkosított réteg zárolva",
             "aerocrypt_marker_migrate": "AeroCrypt-jelölő átalakítása .aerocrypt.tsv formátumba…",
             "aerocrypt_marker_migrated": "Az AeroCrypt jelölő átalakítva .aerocrypt.tsv formátumra",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] A(z) {filename} mappa zárolásának feloldása..."
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -3080,7 +3082,18 @@
                     "startFailed": "A helyi szervert nem sikerült elindítani.",
                     "serverFailed": "A szerver leállt, vagy érvénytelen választ küldött.",
                     "httpUnauthorized": "A szerver elutasította a mentett hitelesítő adatokat.",
-                    "unsupportedVersion": "A szerver olyan MCP-verziót használ, amelyet az AeroFTP nem támogat."
+                    "unsupportedVersion": "A szerver olyan MCP-verziót használ, amelyet az AeroFTP nem támogat.",
+                    "directoryInvalid": "Válasszon külön könyvtárat hivatkozások és érzékeny alkalmazásfájlok nélkül.",
+                    "directoryChanged": "Az engedélyezett könyvtár megváltozott vagy hiányzik. Válassza ki újra a hozzáférés megújításához.",
+                    "permissionCommand": "A hozzáférést a könyvtár- és hálózati jogosultságok beállításaival módosíthatja.",
+                    "installInvalid": "Ez a felügyelt telepítés nem érhető el, vagy a jegyzékfájlja érvénytelen.",
+                    "installIntegrity": "A csomag sértetlenségének ellenőrzése sikertelen. Távolítsa el, majd telepítse újra a kiszolgálót.",
+                    "installArchive": "A csomag nem biztonságos útvonalakat, hivatkozásokat vagy érvénytelen indítófájlt tartalmaz.",
+                    "installRuntime": "Hiányzik a szükséges rendszer-futtatókörnyezet.",
+                    "installDownload": "A csomag letöltése sikertelen, vagy túllépte az időkorlátot.",
+                    "installLimit": "A csomag túllépi a telepítési korlátokat.",
+                    "installExists": "Újratelepítés előtt távolítsa el a meglévő telepítést.",
+                    "installIo": "A telepítési fájlokat nem sikerült olvasni vagy írni."
                 },
                 "routingNotice": "Az engedélyezett szerverek felkínálják eszközeiket az AeroAgentnek. Minden eszközhívás előbb a jóváhagyásodat kéri.",
                 "checkNow": "Ellenőrzés most",
@@ -3089,7 +3102,19 @@
                 "healthError": "Nem érhető el: {reason}",
                 "healthReady": "Kész, az AeroAgent számára elérhető eszközök: {count}",
                 "healthUnsupported": "Nem támogatott sémájú eszközök: {count}",
-                "healthShowTools": "Eszközök megjelenítése"
+                "healthShowTools": "Eszközök megjelenítése",
+                "directoryTitle": "Csak olvasható könyvtárak",
+                "grantDirectory": "Könyvtár kiválasztása",
+                "confirmDirectory": "Kapjon ez a szerver olvasási hozzáférést a(z) {path} összes fájljához? Csak külön szerver- vagy projektkönyvtárhoz adjon hozzáférést.",
+                "noDirectories": "Nincs könyvtár-hozzáférés.",
+                "revokeDirectory": "Hozzáférés visszavonása",
+                "confirmRevokeDirectory": "Visszavonja a(z) {path} hozzáférését? A korábbi eszközjóváhagyások érvényüket vesztik.",
+                "networkAccess": "Hálózati hozzáférés engedélyezése (minden gép)",
+                "networkBlocked": "A hálózati hozzáférés le van tiltva.",
+                "confirmNetwork": "Engedélyezi a(z) {name} hálózati hozzáférését, a helyi szolgáltatásokat is beleértve? A korábbi eszközjóváhagyások érvényüket vesztik.",
+                "confirmBlockNetwork": "Letiltja a(z) {name} hálózati hozzáférését? A korábbi eszközjóváhagyások érvényüket vesztik.",
+                "managedStatus": "Felügyelt telepítés: {version}",
+                "renewDirectory": "Hozzáférés megújítása"
             }
         },
         "archive": {
@@ -4097,12 +4122,6 @@
             "viewSource": "Forrás Megtekintése"
         },
         "savedServers": {
-            "dragToReorder": "Húzza az átrendezéshez",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Kérjük, konfigurálja a 4shared hitelesítő adatokat a Beállítások > Felhőszolgáltatók menüben.",
-            "oauthConfigError": "Kérjük, konfigurálja a {provider} hitelesítő adatokat a Beállítások > Felhőszolgáltatók menüben.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4455,23 @@
             "tagsPlaceholder": "Címke hozzáadása...",
             "tagsUpdated": "Címkék frissítve",
             "addTag": "Hozzáadás",
-            "noTags": "Nincsenek címkék"
+            "noTags": "Nincsenek címkék",
+            "collaborators": "Együttműködők",
+            "noCollaborators": "Még nincs megosztva senkivel",
+            "folderNotLocked": "Ez a mappa nincs zárolva",
+            "roleEditor": "Szerkesztő",
+            "roleViewer": "Megtekintő",
+            "rolePreviewer": "Előnézet-megtekintő",
+            "roleUploader": "Feltöltő",
+            "rolePreviewerUploader": "Előnézet-megtekintő és feltöltő",
+            "roleViewerUploader": "Megtekintő és feltöltő",
+            "roleCoOwner": "Társtulajdonos"
         },
         "googledrive": {
             "star": "Csillagozás",
             "unstar": "Csillag eltávolítása",
             "starred": "Fájl csillagozva",
-            "unstarred": "Csillag eltávolítva",
-            "addComment": "Megjegyzés hozzáadása",
-            "commentPlaceholder": "Írja meg megjegyzését...",
-            "commentAdded": "Megjegyzés hozzáadva"
+            "unstarred": "Csillag eltávolítva"
         },
         "dropbox": {
             "manageTags": "Címkék kezelése"
@@ -4768,7 +4794,14 @@
             "participants": "résztvevők",
             "saving": "Mentés...",
             "saved": "Mentve",
-            "saveNow": "Mentés most"
+            "saveNow": "Mentés most",
+            "noteType": "Jegyzet típusa",
+            "addTag": "Címke hozzáadása",
+            "newTag": "Új címke...",
+            "tagName": "Címke neve",
+            "removeTag": "Címke eltávolítása",
+            "manageTags": "Címkék kezelése",
+            "deleteTagConfirm": "Törlöd a(z) „{name}” címkét? A jegyzetek megőrzik a szövegüket."
         },
         "shareLinkModal": {
             "title": "Megosztási hivatkozás",
@@ -4961,7 +4994,8 @@
                 "rename": "Csoport átnevezése",
                 "delete": "Csoport törlése",
                 "confirmDelete": "Törli a(z) „{name}” csoportot? A benne lévő kiszolgálók megmaradnak, csak a csoport törlődik.",
-                "chipHint": "Kattintson a szűréshez; jobb kattintás az átnevezéshez vagy törléshez"
+                "chipHint": "Kattintson a szűréshez; jobb kattintással átnevezheti, exportálhatja vagy törölheti",
+                "export": "Csoport exportálása..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5020,8 @@
                 "offTitle": "Ennek a tárolónak nincs alapértelmezett titkosítása. Ez nem ugyanaz, mint a titkosítatlan: az SSE-C és az ügyféloldali titkosítás nem jelenik meg ebben a beállításban.",
                 "unknownKeyTitle": "Nem tudtuk beolvasni ennek a tárolónak a titkosítási beállítását, mert az alkalmazáskulcs nem rendelkezik a readBucketEncryption képességgel. Az az érték, amelyet nem láthatunk, nem jelenti azt, hogy a titkosítás ki van kapcsolva.",
                 "unknownShapeTitle": "Nem tudtuk beolvasni ennek a tárolónak a titkosítási beállítását, mert a válasznak nem volt dokumentált formája. A kulcs olvashatta volna, tehát a válaszról van szó, nem a jogosultságokról."
-            }
+            },
+            "exportProfile": "Exportálás..."
         },
         "gitlab": {
             "projectPath": "Projekt útvonal",
@@ -6042,6 +6077,10 @@
             "scopeSession": "Ezt az eszközt a csevegés hátralévő részére hagyja jóvá.",
             "approve": "Jóváhagyás",
             "rememberForChat": "Az eszköz engedélyezése a csevegés hátralévő részére"
+        },
+        "fileComments": {
+            "title": "Megjegyzések",
+            "empty": "Még nincsenek megjegyzések"
         }
     }
 }
