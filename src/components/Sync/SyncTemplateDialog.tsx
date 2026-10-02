@@ -848,9 +848,13 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                             setPendingDelete(null);
                             void (async () => {
                                 try {
-                                    const left = await deleteSavedSyncProfile(invoke, target);
+                                    const { left, reloadError } = await deleteSavedSyncProfile(invoke, target, syncProfiles);
                                     setSyncProfiles(left);
-                                    setPresetId(left[0]?.id || '');
+                                    // A preset picked while the delete ran stays picked.
+                                    setPresetId(current =>
+                                        left.some(p => p.id === current) ? current : left[0]?.id || '',
+                                    );
+                                    if (reloadError) setResult({ success: false, message: reloadError });
                                 } catch (err) {
                                     setResult({ success: false, message: String(err) });
                                 }

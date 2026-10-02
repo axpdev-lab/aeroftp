@@ -14,14 +14,25 @@ export function isDeletableSyncProfile(profile: Pick<SyncProfile, 'builtin'>): b
 }
 
 /**
- * Delete a saved sync preset and return the list as the backend now has it.
- * Every import of the same script saves another `-imported-N` copy, and until
- * this existed nothing could remove one.
+ * Delete a saved sync preset and return the list as the backend now has it
+ * (or, when that reload fails, the shown list without the deleted preset and
+ * the reload error). Every import of the same script saves another
+ * `-imported-N` copy, and until this existed nothing could remove one.
  */
-export async function deleteSavedSyncProfile(invoke: Invoke, profile: SyncProfile): Promise<SyncProfile[]> {
+export async function deleteSavedSyncProfile(
+    invoke: Invoke,
+    profile: SyncProfile,
+    shown: SyncProfile[],
+): Promise<{ left: SyncProfile[]; reloadError: string | null }> {
     if (!isDeletableSyncProfile(profile)) {
         throw new Error(`"${profile.name}" is built in and cannot be deleted`);
     }
     await invoke('delete_sync_profile_cmd', { id: profile.id });
-    return invoke<SyncProfile[]>('load_sync_profiles_cmd');
+    try {
+        return { left: await invoke<SyncProfile[]>('load_sync_profiles_cmd'), reloadError: null };
+    } catch (err) {
+        // The preset is gone: a failed reload must not leave it selectable,
+        // where Export would send its id.
+        return { left: shown.filter((p) => p.id !== profile.id), reloadError: String(err) };
+    }
 }

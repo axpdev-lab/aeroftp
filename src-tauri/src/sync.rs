@@ -5555,6 +5555,78 @@ pub fn journal_sig_filename(local_path: &str, remote_path: &str) -> String {
     format!("journal_{}.sig", stable_path_hash(&combined))
 }
 
+static SIGNING_KEY_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
+/// Hex length of the 32-byte journal signing secret.
+const SIGNING_SECRET_HEX_LEN: usize = 64;
+
+/// The journal signing secret in `key_file`, created on first use.
+///
+/// First-use callers can race: two sync jobs, or a job and the transfer-DAG
+/// observer, each finding no file and signing with a secret of their own, so
+/// one journal later verifies as tampered. In this process the lock makes one
+/// of them create the file; across processes `create_new` does, and a caller
+/// that lost reads the winner's secret only once it is complete. The file is
+/// owner-only from the moment it exists (mode at open, not set afterwards).
+fn load_or_create_signing_secret(key_file: &Path) -> Result<String, String> {
+    let _guard = SIGNING_KEY_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match std::fs::metadata(key_file) {
+        Ok(_) => return read_complete_signing_secret(key_file),
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(format!("Failed to read signing key: {e}"));
+        }
+        Err(_) => {}
+    }
+
+    use rand::RngCore;
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let hex_key = hex::encode(bytes);
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    match options.open(key_file) {
+        Ok(mut file) => {
+            let written = file
+                .write_all(hex_key.as_bytes())
+                .and_then(|()| file.sync_all());
+            if let Err(e) = written {
+                // A partial secret would make every later signature invalid.
+                drop(file);
+                let _ = std::fs::remove_file(key_file);
+                return Err(format!("Failed to write signing key: {e}"));
+            }
+            Ok(hex_key)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            read_complete_signing_secret(key_file)
+        }
+        Err(e) => Err(format!("Failed to write signing key: {e}")),
+    }
+}
+
+/// Read a signing secret another process may still be writing: wait (at most
+/// about a second) until it holds the whole hex secret.
+fn read_complete_signing_secret(key_file: &Path) -> Result<String, String> {
+    for _ in 0..100 {
+        let secret = std::fs::read_to_string(key_file)
+            .map_err(|e| format!("Failed to read signing key: {e}"))?;
+        if secret.trim().len() >= SIGNING_SECRET_HEX_LEN {
+            return Ok(secret);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    Err("Invalid signing key: the file is incomplete".to_string())
+}
+
 /// The per-pair journal signing key, hex-encoded: HMAC-SHA256 of the pair
 /// under a random secret kept in the journal directory (created on first use,
 /// owner-only on Unix). The secret never leaves the process (A5-06).
@@ -5570,24 +5642,7 @@ fn journal_signing_key_in(
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
 
-    let key_file = dir.join("signing.key");
-    let secret = if key_file.exists() {
-        std::fs::read_to_string(&key_file)
-            .map_err(|e| format!("Failed to read signing key: {}", e))?
-    } else {
-        use rand::RngCore;
-        let mut bytes = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut bytes);
-        let hex_key = hex::encode(bytes);
-        std::fs::write(&key_file, &hex_key)
-            .map_err(|e| format!("Failed to write signing key: {}", e))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&key_file, std::fs::Permissions::from_mode(0o600)).ok();
-        }
-        hex_key
-    };
+    let secret = load_or_create_signing_secret(&dir.join("signing.key"))?;
 
     let data = format!("{}|{}|aeroftp-journal-signing", local_path, remote_path);
     let key_bytes =
@@ -5670,6 +5725,44 @@ mod tests {
         journal.completed = true;
         save_sync_journal_in(dir.path(), &journal).unwrap();
         assert!(verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
+    }
+
+    /// Two first-use callers (two sync jobs, or a job and the transfer-DAG
+    /// observer) used to each find no signing.key, write their own secret and
+    /// sign with it, so one of them later verified as tampered. Every caller
+    /// now gets the one secret that landed, and the file is owner-only.
+    #[test]
+    fn concurrent_first_use_agrees_on_one_signing_key() {
+        for _ in 0..20 {
+            let dir = tempfile::tempdir().unwrap();
+            let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+            let keys: Vec<String> = (0..8)
+                .map(|_| {
+                    let start = start.clone();
+                    let dir = dir.path().to_path_buf();
+                    std::thread::spawn(move || {
+                        start.wait();
+                        journal_signing_key_in(&dir, "/l", "/r").unwrap()
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|t| t.join().unwrap())
+                .collect();
+            assert!(
+                keys.iter().all(|k| k == &keys[0]),
+                "first-use callers signed with different secrets"
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = std::fs::metadata(dir.path().join("signing.key"))
+                    .unwrap()
+                    .permissions()
+                    .mode();
+                assert_eq!(mode & 0o777, 0o600);
+            }
+        }
     }
 
     #[test]
