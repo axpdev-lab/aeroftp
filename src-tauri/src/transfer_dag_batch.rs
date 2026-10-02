@@ -238,11 +238,6 @@ where
 
     let entries = Arc::new(entries);
 
-    // DAG-P2-07 (block F): keep a handle to the same profile-bound controller
-    // the run uses, so the slow optimization loop can feed this job's realized
-    // telemetry back to the exact endpoint/workload key after the run drains.
-    let aimd_for_slow_loop = Arc::clone(&aimd);
-
     // Everything shared across the whole batch. Only a file's subgraph, its
     // node bindings, and its multipart runtime are built fresh on admission.
     let ctx = Arc::new(BatchStreamContext {
@@ -271,10 +266,6 @@ where
     // the whole frontier, so every per-file subgraph's execute_dag nests and
     // each real HTTP first-byte sample is counted exactly once for the job
     // (per-file subgraph metrics report ttfb_samples == 0). Folded below.
-    // DAG-P2-07 (block F): bracket the transfer phase with its own clock. The
-    // slow-loop throughput denominator must exclude the pre-frontier setup
-    // (caps/identity/AIMD construction) that `started_at` spans.
-    let transfer_started_at = Instant::now();
     let ttfb_guard = crate::transfer_dag::ttfb::TtfbRecorder::install();
     let mut streaming_summary =
         crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
@@ -292,23 +283,11 @@ where
         .metrics
         .ttfb_samples
         .saturating_add(u32::try_from(ttfb_samples).unwrap_or(u32::MAX));
-    // DAG-P2-07 (block F): feed this job's populated throughput/wait/plateau
-    // telemetry into the slow optimization loop, but only on a job that
-    // actually drained clean: never on cancellation (a torn-down run cannot
-    // poison the learned profile) and never with per-file failures (a
-    // retry-storm file can depress or inflate the baseline). The controller
-    // itself is the guard for `--aimd-disable` and for the no-profile
-    // (test-injected) case.
+    // The frontier's fold keeps the max of per-file `slot_peak`, which is 1
+    // for a whole file whatever ran beside it. The job-level value is the
+    // most files that held a transfer session together (#591).
+    streaming_summary.metrics.slot_peak = progress.lock().await.peak_active;
     let cancelled = cancel.load(Ordering::Relaxed);
-    let failed = progress.lock().await.failed;
-    if !cancelled && failed == 0 {
-        if let Some(obs) = crate::transfer_dag::JobThroughputObservation::from_metrics(
-            &streaming_summary.metrics,
-            transfer_started_at.elapsed(),
-        ) {
-            aimd_for_slow_loop.observe_job(crate::transfer_dag::AdaptiveClass::File, obs);
-        }
-    }
 
     // DAG-P2-07 (block E): the frontier folded every per-file subgraph metrics
     // into one job-level total. Combine it with the wall clock and the process
@@ -697,10 +676,7 @@ where
         .acquire_job(endpoint, TransferPriority::Background, [disk_request])
         .await;
 
-    {
-        let mut snapshot = progress.lock().await;
-        snapshot.active += 1;
-    }
+    mark_file_active(&mut *progress.lock().await);
 
     let outcome = executor
         .execute_with_session(entry.clone(), session_lease)
@@ -725,6 +701,16 @@ where
     let node_outcome = node_outcome_for_file_result(&outcome);
     account_outcome(progress, sink, progress_observer, outcome, bytes, true).await;
     node_outcome
+}
+
+/// A file now holds a transfer session: count it and keep the high-water.
+///
+/// `peak_active` is the job's real file concurrency. The streaming frontier
+/// cannot measure it: it folds per-file subgraphs, each of which runs one
+/// transfer node, so their `slot_peak` is 1 whatever ran beside them.
+fn mark_file_active(snapshot: &mut BatchProgressSnapshot) {
+    snapshot.active += 1;
+    snapshot.peak_active = snapshot.peak_active.max(snapshot.active);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -827,8 +813,7 @@ where
                 match session_pool.acquire().await {
                     Ok(lease) => {
                         *slot = SessionLeaseSlot::Held(lease);
-                        let mut snapshot = progress.lock().await;
-                        snapshot.active += 1;
+                        mark_file_active(&mut *progress.lock().await);
                     }
                     Err(error) => {
                         tracing::warn!("Multipart session acquisition failed: {}", error);
@@ -1725,88 +1710,98 @@ mod tests {
         );
     }
 
-    /// DAG-P2-07 (block F) wiring: a drained successful batch feeds its
-    /// realized telemetry into the shared BatchSyncFile profile key through
-    /// `observe_job`.
-    #[tokio::test]
-    async fn batch_dag_drained_success_records_the_slow_loop_baseline() {
-        use crate::transfer_dag::{
-            AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry, AdaptiveWorkload,
-            EndpointIdentity, TransferBudget,
-        };
-        let registry = Arc::new(AdaptiveProfileRegistry::new(
-            AdaptiveProfileConfig::default(),
-        ));
-        let endpoint = EndpointIdentity::new("mock", "slow-loop-host", "slow-loop-acct");
+    /// Runs one batch of `files` entries at `max_concurrent` against
+    /// `endpoint`, building its controller from `registry` exactly as
+    /// production builds it from the process-global one, and returns the most
+    /// files the executor saw in flight together.
+    async fn run_learning_job(
+        registry: &Arc<crate::transfer_dag::AdaptiveProfileRegistry>,
+        endpoint: &crate::transfer_dag::EndpointIdentity,
+        files: usize,
+        max_concurrent: u32,
+    ) -> (TransferBatchResult, usize) {
         let aimd = batch_aimd_controller(
-            &TransferBudget::from_file_slots(2),
-            Some(crate::providers::ProviderType::S3),
+            &crate::transfer_dag::TransferBudget::from_file_slots(max_concurrent as u16),
+            Some(crate::providers::ProviderType::WebDav),
             endpoint.clone(),
-            registry.clone(),
+            Arc::clone(registry),
             AimdConfig::default(),
         );
-        let executor = Arc::new(MockExecutor::new(4));
+        let executor = Arc::new(MockExecutor::new(8));
+        let entries = (0..files).map(|i| entry(&format!("f{i}"), 1_000)).collect();
         let result = execute_batch_dag_with_aimd(
             Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(vec![entry("a", 100), entry("b", 200)], 2),
+            batch(entries, max_concurrent),
             Arc::clone(&executor),
             Arc::new(AtomicBool::new(false)),
             None,
             aimd,
         )
         .await;
-
-        assert_eq!(result.completed, 2);
-        assert_eq!(result.failed, 0);
-        let snapshot = registry.snapshot();
-        assert_eq!(
-            snapshot.len(),
-            1,
-            "a drained successful batch records exactly one profile entry"
-        );
-        assert_eq!(
-            snapshot[0].key,
-            AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::BatchSyncFile)
-        );
+        (result, executor.peak())
     }
 
-    /// DAG-P2-07 (block F) no-poison guard: a batch that drained with a
-    /// per-file failure records nothing into the slow-loop registry (a
-    /// retry-storm file can depress or inflate the learned baseline).
+    /// #591: what a batch learns about a server must not make the next one
+    /// slower without a congestion signal. The former job-end loop compared
+    /// throughput across unlike jobs and, fed a concurrency of 1 by the
+    /// frontier's fold, taught a server "one file at a time" after any two
+    /// batches: a one-file job, then a faster eight-file job, and every batch
+    /// after that ran serially. Each sequence here failed that way.
     #[tokio::test]
-    async fn batch_dag_drained_with_a_failed_file_records_nothing_in_the_slow_loop() {
-        use crate::transfer_dag::{
-            AdaptiveProfileConfig, AdaptiveProfileRegistry, EndpointIdentity, TransferBudget,
-        };
-        let registry = Arc::new(AdaptiveProfileRegistry::new(
-            AdaptiveProfileConfig::default(),
-        ));
-        let aimd = batch_aimd_controller(
-            &TransferBudget::from_file_slots(2),
-            Some(crate::providers::ProviderType::S3),
-            EndpointIdentity::new("mock", "slow-loop-host", "slow-loop-acct"),
-            registry.clone(),
-            AimdConfig::default(),
-        );
-        let mut executor = MockExecutor::new(4);
-        executor.fail.insert("bad".to_string());
-        let executor = Arc::new(executor);
-        let result = execute_batch_dag_with_aimd(
-            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(vec![entry("bad", 100), entry("good", 200)], 2),
-            Arc::clone(&executor),
-            Arc::new(AtomicBool::new(false)),
-            None,
-            aimd,
-        )
-        .await;
+    async fn job_history_without_congestion_never_narrows_the_next_batch() {
+        let sequences: [(&str, &[(usize, u32)]); 3] = [
+            (
+                "one file, then a selection",
+                &[(1, 8), (8, 8), (8, 8), (2, 8), (8, 8)],
+            ),
+            (
+                "setting raised from 1 to 8",
+                &[(8, 1), (8, 8), (8, 2), (8, 8)],
+            ),
+            (
+                "lower setting, then wider",
+                &[(8, 3), (8, 8), (3, 8), (16, 8), (16, 8)],
+            ),
+        ];
+        for (name, jobs) in sequences {
+            let registry = Arc::new(crate::transfer_dag::AdaptiveProfileRegistry::new(
+                crate::transfer_dag::AdaptiveProfileConfig::default(),
+            ));
+            let endpoint = crate::transfer_dag::EndpointIdentity::new("webdav", name, "");
+            for (job, &(files, max_concurrent)) in jobs.iter().enumerate() {
+                let (result, peak) =
+                    run_learning_job(&registry, &endpoint, files, max_concurrent).await;
+                assert_eq!(result.completed as usize, files, "{name}, job {job}");
+                assert_eq!(
+                    peak,
+                    files.min(max_concurrent as usize),
+                    "{name}, job {job}: {files} files at {max_concurrent} slots"
+                );
+            }
+            assert!(
+                registry.is_empty(),
+                "{name}: a job without congestion teaches the server nothing"
+            );
+        }
+    }
 
-        assert_eq!(result.failed, 1);
-        assert_eq!(result.completed, 1);
-        assert!(
-            registry.is_empty(),
-            "a batch with per-file failures must not feed the slow loop"
-        );
+    /// The job's `slot_peak` is the most files that transferred together.
+    /// The frontier folds per-file subgraphs, each of which reports 1 for a
+    /// whole file, so before this the engine stats said 1 for every batch.
+    #[tokio::test]
+    async fn engine_stats_report_the_files_that_ran_together() {
+        let registry = Arc::new(crate::transfer_dag::AdaptiveProfileRegistry::new(
+            crate::transfer_dag::AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = crate::transfer_dag::EndpointIdentity::new("webdav", "slot-peak", "");
+        let (result, peak) = run_learning_job(&registry, &endpoint, 8, 8).await;
+        assert_eq!(peak, 8);
+        let stats = result.engine_stats.expect("a drained batch has stats");
+        assert_eq!(stats.metrics.slot_peak, 8);
+
+        let (result, peak) = run_learning_job(&registry, &endpoint, 6, 2).await;
+        assert_eq!(peak, 2);
+        assert_eq!(result.engine_stats.expect("stats").metrics.slot_peak, 2);
     }
 
     #[tokio::test]
