@@ -425,27 +425,16 @@ fn trim_separators(path: &str) -> &str {
     }
 }
 
-/// `path` escaped for a LIKE pattern with `\\` as the escape character, so a
-/// `%` or `_` in a file name matches only itself.
-fn like_escape(path: &str) -> String {
-    let mut out = String::with_capacity(path.len());
-    for c in path.chars() {
-        if matches!(c, '%' | '_' | '\\') {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
-}
-
 /// Every tag row of `path` and of anything under it, whichever separator the
-/// stored paths use.
-const UNDER_PATH: &str =
-    "file_path = ?1 OR file_path LIKE ?2 ESCAPE '\\' OR file_path LIKE ?3 ESCAPE '\\'";
+/// stored paths use. An exact prefix comparison, not LIKE: LIKE folds ASCII
+/// case and would match `/data/Foo` for `/data/foo`, and `%` or `_` in a name
+/// would need escaping.
+const UNDER_PATH: &str = "file_path = ?1 \
+     OR substr(file_path, 1, length(?2)) = ?2 \
+     OR substr(file_path, 1, length(?3)) = ?3";
 
 fn under_patterns(path: &str) -> (String, String) {
-    let base = like_escape(path);
-    (format!("{base}/%"), format!("{base}\\\\%"))
+    (format!("{path}/"), format!("{path}\\"))
 }
 
 /// Drop the tags of `path` and of everything under it.
@@ -661,6 +650,28 @@ mod tests {
                 ("/d/aXb/y".to_string(), 4),
                 ("/d/c/x".to_string(), 3),
                 ("/d/old.txt".to_string(), 1),
+            ]
+        );
+    }
+
+    /// Paths are case-sensitive here: SQLite's LIKE folds ASCII case, so a
+    /// move of `/data/foo` also took the tags of the distinct `/data/Foo`.
+    #[test]
+    fn a_move_leaves_a_case_distinct_sibling_alone() {
+        let mut conn = db();
+        tag(&conn, "/data/foo/y", 1);
+        tag(&conn, "/data/Foo/x", 2);
+        tag(&conn, "/data/FOO", 3);
+
+        move_tags_in_conn(&mut conn, "/data/foo", "/data/bar").unwrap();
+        forget_tags_in_conn(&conn, "/data/fOo").unwrap();
+
+        assert_eq!(
+            tagged(&conn),
+            [
+                ("/data/FOO".to_string(), 3),
+                ("/data/Foo/x".to_string(), 2),
+                ("/data/bar/y".to_string(), 1),
             ]
         );
     }
