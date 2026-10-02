@@ -1345,7 +1345,7 @@ const App: React.FC = () => {
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
-  const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerType?: string; providerIcon?: React.ReactNode } | null>(null);
+  const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
   } | null>(null);
@@ -14108,7 +14108,7 @@ const App: React.FC = () => {
               default: return currentProtocol?.toUpperCase() || 'Provider';
             }
           })();
-          setShareLinkDialog({ path: file.path, fileName: file.name, providerName: providerLabel, providerType: currentProtocol || undefined, providerIcon: shareIcon });
+          setShareLinkDialog({ path: file.path, fileName: file.name, providerName: providerLabel, providerIcon: shareIcon });
         }
       });
       }
@@ -16984,7 +16984,6 @@ const App: React.FC = () => {
             path={shareLinkDialog.path}
             fileName={shareLinkDialog.fileName}
             providerName={shareLinkDialog.providerName}
-            providerType={shareLinkDialog.providerType}
             providerIcon={shareLinkDialog.providerIcon}
             onClose={() => setShareLinkDialog(null)}
           />

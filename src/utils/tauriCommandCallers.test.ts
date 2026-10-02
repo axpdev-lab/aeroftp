@@ -273,7 +273,6 @@ const INHERITED_UNCALLED: string[] = [
     'provider_resume_download',
     'provider_resume_upload',
     'provider_server_info',
-    'provider_share_link_capabilities',
     'provider_stat',
     'provider_supports_resume',
     'provider_supports_server_copy',

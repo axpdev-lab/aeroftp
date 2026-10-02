@@ -3342,7 +3342,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
             supports_list_links: true,
-            supports_revoke: true,
+            // No `remove_share_link` here: the trait default refuses it, so a
+            // Revoke button would only ever fail.
+            supports_revoke: false,
         }
     }
 
