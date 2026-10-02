@@ -81,4 +81,12 @@ describe('Share Link capabilities come from the provider', () => {
         expect(modalSource).not.toMatch(/case '(googledrive|dropbox|onedrive|box|pcloud|filen|proton|b2)'/);
         expect(modalSource).not.toMatch(/providerType/);
     });
+
+    it('revokes a listed link by the shared item path plus that link id', () => {
+        // Every provider's remove_share_link takes the item path; the id was
+        // sent in its place, so Box resolved a file id as a file name and
+        // pCloud, Koofr and Zoho could not tell two links on one item apart.
+        expect(modalSource).toContain("invoke('provider_remove_share_link', { path, linkId })");
+        expect(modalSource).not.toMatch(/provider_remove_share_link', \{ path: /);
+    });
 });

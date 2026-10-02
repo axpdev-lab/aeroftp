@@ -97,13 +97,15 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     }
   }, [path]);
 
-  const handleRevoke = useCallback(async (linkPath: string) => {
-    setRevokingId(linkPath);
+  const handleRevoke = useCallback(async (linkId: string) => {
+    setRevokingId(linkId);
     const log = humanLogRef.current;
     const logId = log.logRaw('activity.share_link_deleting', 'INFO', { provider: providerName, filename: fileName }, 'running');
     try {
-      await invoke('provider_remove_share_link', { path: linkPath });
-      setExistingLinks(prev => prev.filter(l => l.id !== linkPath));
+      // The backend removes by the shared item's path; the id picks one link
+      // where a provider keeps several on the same item.
+      await invoke('provider_remove_share_link', { path, linkId });
+      setExistingLinks(prev => prev.filter(l => l.id !== linkId));
       log.updateEntry(logId, { status: 'success', message: t('activity.share_link_deleted', { provider: providerName, filename: fileName }) });
     } catch (err) {
       setManageError(String(err));
@@ -111,7 +113,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     } finally {
       setRevokingId(null);
     }
-  }, [fileName, providerName, t]);
+  }, [path, fileName, providerName, t]);
 
   // Load links when switching to manage tab
   useEffect(() => {

@@ -6478,16 +6478,20 @@ pub async fn provider_share_link_capabilities(
 pub async fn provider_remove_share_link(
     state: State<'_, ProviderState>,
     path: String,
+    link_id: Option<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider
-        .remove_share_link(&path)
-        .await
-        .map_err(|e| format!("Failed to remove share link: {}", e))?;
+    // `path` is always the shared item; `link_id`, when the caller picked one
+    // link out of `provider_list_share_links`, says which of its links to drop.
+    match link_id.as_deref() {
+        Some(id) => provider.remove_share_link_by_id(&path, id).await,
+        None => provider.remove_share_link(&path).await,
+    }
+    .map_err(|e| format!("Failed to remove share link: {}", e))?;
 
     info!("Removed share link for {}", path);
     Ok(())

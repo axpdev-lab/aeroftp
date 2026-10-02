@@ -12,8 +12,8 @@
 //!
 //! - `supports_list_links` is true exactly when the file defines
 //!   `list_share_links`;
-//! - `supports_revoke` (revoking a listed link by its id) needs
-//!   `remove_share_link`;
+//! - `supports_revoke` (revoking a listed link) needs `remove_share_link`
+//!   or `remove_share_link_by_id`;
 //! - any advanced option (`supports_expiration`, `supports_password`,
 //!   `supports_permissions`) needs `create_share_link`.
 //!
@@ -98,9 +98,12 @@ fn share_link_flags_match_the_methods_each_provider_defines() {
                 }
             ));
         }
-        if flag(body, "supports_revoke") && !defines("remove_share_link") {
+        if flag(body, "supports_revoke")
+            && !defines("remove_share_link")
+            && !defines("remove_share_link_by_id")
+        {
             mismatches.push(format!(
-                "{name}: supports_revoke is true but remove_share_link is not defined"
+                "{name}: supports_revoke is true but neither remove_share_link nor remove_share_link_by_id is defined"
             ));
         }
         for option in [
