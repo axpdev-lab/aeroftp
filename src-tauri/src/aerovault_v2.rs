@@ -488,7 +488,13 @@ pub async fn vault_v2_delete_entries(
     let removed = vault
         .delete_entries(&names, recursive)
         .map_err(|e| e.to_string())?;
-    let reclaimed = reclaim_deleted_v2(&vault)?;
+    // Names already gone remove nothing, and compaction would re-encrypt
+    // every surviving entry for no reclaimed byte.
+    let reclaimed = if removed == 0 {
+        0
+    } else {
+        reclaim_deleted_v2(&vault)?
+    };
     let remaining = vault.list().map_err(|e| e.to_string())?.len();
 
     Ok(serde_json::json!({
@@ -1733,5 +1739,40 @@ mod tests {
         let v = super::Vault::open(&vault, pw).unwrap();
         let names: Vec<String> = v.list().unwrap().into_iter().map(|e| e.name).collect();
         assert_eq!(names, ["keep.txt"]);
+    }
+
+    /// A batch delete whose names are already gone removes nothing, and the
+    /// crate then leaves the file alone. Compacting after it anyway re-read
+    /// and re-encrypted every surviving entry for no reclaimed byte.
+    #[test]
+    fn a_delete_that_removes_nothing_does_not_rewrite_the_v2_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("noop.aerovault");
+        let pw = "v2-noop-delete-pw-123456";
+        build_v2_vault(
+            &vault,
+            pw,
+            false,
+            &[],
+            &[("keep.bin", incompressible(64 * 1024))],
+            dir.path(),
+        );
+        let before = fs::read(&vault).unwrap();
+
+        let out = rt()
+            .block_on(super::vault_v2_delete_entries(
+                vault.to_string_lossy().to_string(),
+                pw.into(),
+                vec!["gone.bin".into()],
+                true,
+            ))
+            .unwrap();
+
+        assert_eq!(out["removed"], 0);
+        assert_eq!(out["reclaimed_bytes"], 0);
+        assert!(
+            fs::read(&vault).unwrap() == before,
+            "a delete that removed nothing rewrote the vault"
+        );
     }
 }
