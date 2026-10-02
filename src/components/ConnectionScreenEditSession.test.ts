@@ -70,6 +70,26 @@ describe('ConnectionScreen edit sessions', () => {
         expect(bodyOf('oauthEditHasChanges')).toMatch(/\?\?\s*\(editingProfile\?\.id === editingProfileId \? editingProfile : undefined\)/);
     });
 
+    it('reports a failed OAuth edit Save instead of closing the editor as saved', () => {
+        // The OAuth edit Save only became reachable when it started enabling.
+        // It swallowed a failed profile write, logged "Profile updated" and
+        // closed the editor, and a profile it could not find (or a vault it
+        // could not read, which the plain read answers with []) returned
+        // without a word.
+        const save = bodyOf('handleOAuthMetadataSave');
+        expect(save, 'a read-modify-write uses the strict read').toContain('await loadSavedServerProfilesStrict()');
+        expect(save, 'no swallowed write').not.toMatch(/storeSavedServerProfiles\([^)]*\)\.catch\(\s*\(\)\s*=>\s*\{\s*\}\s*\)/);
+        expect(save).toMatch(/if \(!prevProfile\) \{[^}]*setGitHubAlert\(/);
+        const failures = save.match(/\} catch \(\w+\) \{[^}]*setGitHubAlert\(\{[^}]*type: 'error'[^}]*\}\);\s*return;/g) ?? [];
+        expect(failures, 'the read and the write each alert and stop').toHaveLength(2);
+        // The success activity and the editor close come only after the write.
+        const write = save.indexOf('await storeSavedServerProfiles(updated)');
+        expect(write).toBeGreaterThan(-1);
+        for (const after of ["'PROFILE_SAVE'", 'onFormSaved()']) {
+            expect(save.indexOf(after), after).toBeGreaterThan(write);
+        }
+    });
+
     it('asks before changing a recorded form on a bound profile, for both secrets', () => {
         const choices = source.match(/<CryptSecretFormChoice[\s\S]*?\/>/g) ?? [];
         expect(choices).toHaveLength(2);

@@ -50,7 +50,7 @@ import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDef
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { carryFavoriteServer } from '../utils/favoriteServers';
 import { carryServerGroups } from '../utils/serverGroups';
 import { getStorageDedupKey } from '../utils/storageDedup';
@@ -1923,9 +1923,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Overlays Remote Path (#369), and default-salt intent the backend
         // would reject for entropy (#276).
         if (oauthOverlaySaveBlocked) return;
-        const existingServers = await loadSavedServerProfiles();
+        // A read-modify-write: the strict read refuses a vault it could not
+        // reach instead of answering [], which would read as "not found".
+        let existingServers: ServerProfile[];
+        try {
+            existingServers = await loadSavedServerProfilesStrict();
+        } catch (err) {
+            logger.warn('Saved profiles could not be read for the OAuth edit Save', err);
+            setGitHubAlert({ title: t('toast.saveFailed'), message: String(err), type: 'error' });
+            return;
+        }
         const prevProfile = existingServers.find((s) => s.id === editingProfileId);
-        if (!prevProfile) return;
+        if (!prevProfile) {
+            setGitHubAlert({ title: t('toast.saveFailed'), message: t('toast.serverNotFound'), type: 'error' });
+            return;
+        }
         const saveName = connectionName || prevProfile.name;
         const overlayFields = await aeroCryptOverlayFields(
             editingProfileId,
@@ -1945,7 +1957,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 }
                 : s,
         );
-        await storeSavedServerProfiles(updated).catch(() => { });
+        // A failed write keeps the editor open with the edits, and logs no
+        // "Profile updated".
+        try {
+            await storeSavedServerProfiles(updated);
+        } catch (err) {
+            logger.warn('Saved profiles could not be written for the OAuth edit Save', err);
+            setGitHubAlert({ title: t('toast.saveFailed'), message: String(err), type: 'error' });
+            return;
+        }
         setSavedServersUpdate(Date.now());
         const savedServer = updated.find((s) => s.id === editingProfileId);
         if (savedServer) {
