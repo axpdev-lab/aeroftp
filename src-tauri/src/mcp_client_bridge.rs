@@ -1224,7 +1224,7 @@ mod http_wire_tests {
         let addr = listener.local_addr().unwrap();
         let response_schema = input.clone();
         let server = tokio::spawn(async move {
-            for id in 1..=if legacy { 6 } else { 3 } {
+            for id in 1..=if legacy { 6 } else { 4 } {
                 let (mut stream, _) = listener.accept().await.unwrap();
                 let mut bytes = vec![];
                 let mut buf = [0; 4096];
@@ -1277,7 +1277,10 @@ mod http_wire_tests {
                         .to_ascii_lowercase()
                         .contains("mcp-session-id: bridge-session"));
                 }
-                let result = if id < if legacy { 6 } else { 3 } {
+                let result = if !legacy && id == 1 {
+                    assert_eq!(body["method"], "server/discover");
+                    json!({"resultType":"complete","supportedVersions":[crate::mcp_client_protocol::MODERN_VERSION],"capabilities":{},"ttlMs":0,"cacheScope":"private"})
+                } else if id < if legacy { 6 } else { 4 } {
                     assert_eq!(body["method"], "tools/list");
                     assert!(!headers.to_ascii_lowercase().contains("mcp-param-fresh"));
                     json!({"resultType":"complete","tools":[{"name":"echo","inputSchema":response_schema}]})

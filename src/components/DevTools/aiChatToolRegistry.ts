@@ -101,10 +101,12 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
     let json: string;
     try { json = JSON.stringify(input); } catch { return undefined; }
     if (!json || new TextEncoder().encode(json).length > MCP_MAX_SCHEMA_BYTES
-        || !keysOnly(input, ['type', 'properties', 'required', 'additionalProperties', 'description'])
+        || !keysOnly(input, ['type', 'properties', 'required', 'additionalProperties', 'description', '$schema', 'title'])
         || input.type !== 'object' || !object(input.properties)
         || input.additionalProperties !== false && input.additionalProperties !== undefined
-        || input.description !== undefined && !shortText(input.description, 512)) return undefined;
+        || input.description !== undefined && !shortText(input.description, 512)
+        || input.$schema !== undefined && !shortText(input.$schema, 512)
+        || input.title !== undefined && !shortText(input.title, 512)) return undefined;
     const names = Object.keys(input.properties);
     if (names.length > MCP_MAX_PARAMETERS || !names.every(name => PARAM_NAME.test(name))) return undefined;
     if (!Array.isArray(input.required) && input.required !== undefined) return undefined;
@@ -114,8 +116,10 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
     const headerNames = new Set<string>();
     for (const name of names) {
         const property = input.properties[name];
-        if (!object(property) || !keysOnly(property, ['type', 'description', 'items', 'x-mcp-header'])
-            || property.description !== undefined && !shortText(property.description, 512)) return undefined;
+        if (!object(property) || !keysOnly(property, ['type', 'description', 'items', 'x-mcp-header', 'title', 'format', 'default', 'enum', 'minimum', 'maximum'])
+            || property.description !== undefined && !shortText(property.description, 512)
+            || property.title !== undefined && !shortText(property.title, 512)
+            || property.format !== undefined && !shortText(property.format, 512)) return undefined;
         const type = property.type;
         if (!['string', 'number', 'integer', 'boolean', 'array'].includes(type as string)) return undefined;
         if (Object.prototype.hasOwnProperty.call(property, 'x-mcp-header')) {
@@ -128,8 +132,28 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
         if (type === 'array') {
             if (!object(property.items) || !keysOnly(property.items, ['type']) || property.items.type !== 'string') return undefined;
         } else if (property.items !== undefined) return undefined;
+        const typed = (value: unknown) => type === 'string' ? typeof value === 'string'
+            : type === 'boolean' ? typeof value === 'boolean'
+            : type === 'number' ? typeof value === 'number' && Number.isFinite(value)
+            : type === 'integer' ? typeof value === 'number' && Number.isInteger(value)
+            : Array.isArray(value) && value.every(item => typeof item === 'string');
+        if (Object.prototype.hasOwnProperty.call(property, 'default') && !typed(property.default)) return undefined;
+        if (property.enum !== undefined && (type === 'array' || !Array.isArray(property.enum)
+            || !property.enum.length || property.enum.length > 64
+            || !property.enum.every(value => typed(value) && (typeof value !== 'string' || shortText(value, 512))))) return undefined;
+        for (const bound of ['minimum', 'maximum']) {
+            if (property[bound] !== undefined && (!['number', 'integer'].includes(type as string)
+                || typeof property[bound] !== 'number' || !Number.isFinite(property[bound]))) return undefined;
+        }
+        if (typeof property.minimum === 'number' && typeof property.maximum === 'number'
+            && property.minimum > property.maximum) return undefined;
+        // Annotation-only metadata and defaults never become model instructions or argument values.
         parameters.push({ name, type: type as AITool['parameters'][number]['type'],
-            description: (property.description as string | undefined) ?? '', required: required.includes(name) });
+            description: (property.description as string | undefined) ?? '', required: required.includes(name),
+            ...(property.enum !== undefined ? { enum: property.enum as (string | number | boolean)[] } : {}),
+            ...(property.minimum !== undefined ? { minimum: property.minimum as number } : {}),
+            ...(property.maximum !== undefined ? { maximum: property.maximum as number } : {}),
+        });
     }
     return { parameters, ...(input.additionalProperties === false ? { additionalProperties: false as const } : {}) };
 }
