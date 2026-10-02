@@ -102,14 +102,9 @@
             "connectionFailed": "Nepavyko prisijungti",
             "reconnecting": "Persijungiama...",
             "quickConnect": "Greitas prisijungimas",
-            "savedServers": "Išsaugoti serveriai",
-            "noSavedServers": "Nėra išsaugotų serverių",
             "saveServer": "Išsaugoti serverį",
-            "deleteServer": "Ištrinti serverį",
-            "editServer": "Redaguoti serverį",
             "serverName": "Serverio pavadinimas",
             "initialPath": "Pradinis kelias",
-            "savedServersHelp": "Pasirinkite serverį prisijungimui.",
             "selectSshKey": "Pasirinkite SSH privatų raktą",
             "allFiles": "Visi failai",
             "sshKeys": "SSH raktai",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Paverskite bet kurį serverį savo asmeniniu debesiu su automatiniu sinchronizavimu",
             "configureAerocloud": "Konfigūruoti AeroCloud",
             "aerocloudHelp": "AeroCloud taip pat galite konfigūruoti iš būsenos juostos",
-            "selectProviderPrompt": "Pasirinkite tiekėją aukščiau arba pasirinkite \"Pasirinktinis\" rankinei konfigūracijai",
-            "custom": "Pasirinktinis",
             "change": "Keisti",
             "emailAccount": "El. pašto paskyra",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Jūsų MEGA slaptažodis",
-            "dismiss": "Atmesti",
             "authenticating": "Autentifikavimas...",
             "oauth2Connection": "OAuth2 ryšys",
             "securityTitle": "Užkoduotas prisijungimo duomenų saugojimas",
@@ -170,7 +162,6 @@
             "docs": "Dokumentacija",
             "minutes": "minučių",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Ieškoti serverių...",
             "fourshared": {
                 "backToExistingAccount": "Grįžti prie esamos paskyros",
                 "configureCredentials": "Konfigūruoti OAuth 1.0 kredencialus",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "Programos slaptažodis",
             "koofrAppPasswordPlaceholder": "Įklijuokite savo Koofr programos slaptažodį čia",
             "koofrHelp": "Sukurkite programos slaptažodį adresu app.koofr.net → Nustatymai → Slaptažodis → Programų slaptažodžiai",
-            "duplicateServer": "Dubliuoti serverį",
-            "duplicateCredentialMissing": "Kredencialas nenukopijuotas į kopiją. Prieš prisijungdami iš naujo įveskite slaptažodį.",
             "saveAsNew": "Išsaugoti kaip naują",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Sugeneruokite API raktą Immich → User Settings → API Keys",
             "immichOps": "Naršymas, įkėlimas, atsisiuntimas, trynimas, albumai, paieška, bendrinimo nuorodos. Pervadinimas ir perkėlimas nepalaikomi.",
             "generatePassword": "Generuoti slaptažodį",
-            "saveAndConnect": "Įrašyti ir prisijungti",
-            "saveDisabledTotp": "TOTP kodai yra vienkartiniai. Naudokite Įrašyti ir prisijungti, kad pritaikytumėte šį kodą dabar.",
             "generatePersonalLoginToken": "Generuoti asmeninį prisijungimo žetoną",
             "endpointUrl": "Galinio taško URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 vietinė API: papildomos funkcijos, palyginti su S3 suderinama",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Prisijunkite iš naujo",
             "twakeSignedIn": "Prisijungta",
             "twakeWaitingBrowser": "Baikite prisijungimą naršyklėje...",
-            "twakeSignInHelp": "AeroFTP atidaro Twake jūsų naršyklėje ir prašo prieigos tik prie jūsų failų. Jei Twake pirmą kartą rodo klaidą, prisijunkite prie Twake naršyklėje ir prisijunkite iš naujo. Prieigą galite atšaukti bet kada Twake nustatymuose, Prijungti įrenginiai."
+            "twakeSignInHelp": "AeroFTP atidaro Twake jūsų naršyklėje ir prašo prieigos tik prie jūsų failų. Jei Twake pirmą kartą rodo klaidą, prisijunkite prie Twake naršyklėje ir prisijunkite iš naujo. Prieigą galite atšaukti bet kada Twake nustatymuose, Prijungti įrenginiai.",
+            "oauthKeysMissingTitle": "Trūksta „{provider}“ programos raktų",
+            "oauthKeysMissing": "Saugykloje nėra išsaugotų „{provider}“ programos raktų, todėl AeroFTP negali prisijungti. AeroFTP nepateikia savų raktų: įveskite savo „{provider}“ kūrėjo programos raktus čia: {location}, tada prisijunkite iš naujo.",
+            "oauthKeysOpenSettings": "Atidaryti OAuth nustatymus",
+            "oauthKeysReadFailedTitle": "Nepavyko nuskaityti „{provider}“ programos raktų",
+            "oauthKeysReadFailed": "AeroFTP nepavyko nuskaityti „{provider}“ programos raktų iš saugyklos, todėl negali prisijungti. Raktai nebuvo pakeisti. Klaida: {error}"
         },
         "browser": {
             "remote": "Nuotolinis",
@@ -1474,6 +1466,7 @@
             "extracted": "Išskleista!",
             "extractedTo": "Failai išskleisti į {dest}",
             "fileLocked": "Failas užrakintas",
+            "cutPartial": "Perkelta {moved} iš {total} elementų; kiti lieka savo vietoje",
             "fileSkipped": "{count} failų praleista",
             "fileUnlocked": "Failas atrakintas",
             "loadTrashFailed": "Nepavyko įkelti šiukšliadėžės",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Šifruotas sluoksnis užrakintas",
             "aerocrypt_marker_migrate": "AeroCrypt žymuo konvertuojamas į .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt žymuo konvertuotas į .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Atrakinamas aplankas {filename}..."
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "Nepavyko paleisti vietinio serverio.",
                     "serverFailed": "Serveris sustojo arba atsiuntė netinkamą atsakymą.",
                     "httpUnauthorized": "Serveris atmetė išsaugotus prisijungimo duomenis.",
-                    "unsupportedVersion": "Serveris naudoja MCP versiją, kurios AeroFTP nepalaiko."
+                    "unsupportedVersion": "Serveris naudoja MCP versiją, kurios AeroFTP nepalaiko.",
+                    "directoryInvalid": "Pasirinkite atskirą katalogą be nuorodų ar neskelbtinų programų failų.",
+                    "directoryChanged": "Katalogas, kuriam suteikta prieiga, pasikeitė arba jo nėra. Pasirinkite jį dar kartą, kad atnaujintumėte prieigą.",
+                    "permissionCommand": "Keiskite prieigą naudodami katalogų ir tinklo leidimų valdiklius.",
+                    "installInvalid": "Šis valdomas diegimas nepasiekiamas arba jo manifestas netinkamas.",
+                    "installIntegrity": "Paketo vientisumo patikra nepavyko. Pašalinkite serverį ir įdiekite jį iš naujo.",
+                    "installArchive": "Pakete yra nesaugių kelių, nuorodų arba netinkamas paleidimo failas.",
+                    "installRuntime": "Trūksta būtinos sistemos vykdymo aplinkos.",
+                    "installDownload": "Paketo atsisiųsti nepavyko arba baigėsi skirtasis laikas.",
+                    "installLimit": "Paketas viršija diegimo ribas.",
+                    "installExists": "Prieš diegdami iš naujo pašalinkite esamą diegimą.",
+                    "installIo": "Nepavyko perskaityti arba įrašyti diegimo failų."
                 },
                 "routingNotice": "Įjungti serveriai teikia savo įrankius AeroAgent. Kiekvienas įrankio iškvietimas pirmiausia prašo jūsų patvirtinimo.",
                 "checkNow": "Tikrinti dabar",
@@ -3094,7 +3099,19 @@
                 "healthError": "Nepasiekiamas: {reason}",
                 "healthReady": "Paruoštas, AeroAgent prieinami įrankiai: {count}",
                 "healthUnsupported": "Įrankiai su nepalaikomomis schemomis: {count}",
-                "healthShowTools": "Rodyti įrankius"
+                "healthShowTools": "Rodyti įrankius",
+                "directoryTitle": "Tik skaitomi katalogai",
+                "grantDirectory": "Pasirinkti katalogą",
+                "confirmDirectory": "Suteikti šiam serveriui tik skaitymo prieigą prie visų failų kataloge {path}? Suteikite prieigą tik prie serveriui ar projektui skirto katalogo.",
+                "noDirectories": "Prieigos prie katalogų nėra.",
+                "revokeDirectory": "Atšaukti prieigą",
+                "confirmRevokeDirectory": "Atšaukti prieigą prie {path}? Ankstesni įrankių patvirtinimai nebegalios.",
+                "networkAccess": "Leisti tinklo prieigą (visi pagrindiniai kompiuteriai)",
+                "networkBlocked": "Tinklo prieiga užblokuota.",
+                "confirmNetwork": "Leisti {name} prieigą prie tinklo, įskaitant vietines paslaugas? Ankstesni įrankių patvirtinimai nebegalios.",
+                "confirmBlockNetwork": "Užblokuoti {name} tinklo prieigą? Ankstesni įrankių patvirtinimai nebegalios.",
+                "managedStatus": "Valdomas diegimas: {version}",
+                "renewDirectory": "Atnaujinti prieigą"
             }
         },
         "archive": {
@@ -4102,12 +4119,6 @@
             "viewSource": "Peržiūrėti šaltinį"
         },
         "savedServers": {
-            "dragToReorder": "Vilkite, kad pakeistumėte tvarką",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Sukonfigūruokite 4shared kredencialus Settings > Cloud Providers.",
-            "oauthConfigError": "Sukonfigūruokite {provider} kredencialus Settings > Cloud Providers.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,16 +4452,23 @@
             "tagsPlaceholder": "Pridėti žymą...",
             "tagsUpdated": "Žymos atnaujintos",
             "addTag": "Pridėti",
-            "noTags": "Nėra žymų"
+            "noTags": "Nėra žymų",
+            "collaborators": "Bendradarbiai",
+            "noCollaborators": "Dar niekam nepasidalinta",
+            "folderNotLocked": "Šis aplankas neužrakintas",
+            "roleEditor": "Redaktorius",
+            "roleViewer": "Žiūrėtojas",
+            "rolePreviewer": "Peržiūrėtojas",
+            "roleUploader": "Įkėlėjas",
+            "rolePreviewerUploader": "Peržiūrėtojas ir įkėlėjas",
+            "roleViewerUploader": "Žiūrėtojas ir įkėlėjas",
+            "roleCoOwner": "Bendrasavininkis"
         },
         "googledrive": {
             "star": "Pažymėti žvaigždute",
             "unstar": "Pašalinti žvaigždutę",
             "starred": "Failas pažymėtas žvaigždute",
-            "unstarred": "Žvaigždutė pašalinta",
-            "addComment": "Pridėti komentarą",
-            "commentPlaceholder": "Rašykite komentarą...",
-            "commentAdded": "Komentaras pridėtas"
+            "unstarred": "Žvaigždutė pašalinta"
         },
         "dropbox": {
             "manageTags": "Tvarkyti žymas"
@@ -4773,7 +4791,14 @@
             "participants": "dalyviai",
             "saving": "Saugoma...",
             "saved": "Išsaugota",
-            "saveNow": "Išsaugoti dabar"
+            "saveNow": "Išsaugoti dabar",
+            "noteType": "Užrašo tipas",
+            "addTag": "Pridėti žymą",
+            "newTag": "Nauja žyma...",
+            "tagName": "Žymos pavadinimas",
+            "removeTag": "Pašalinti žymą",
+            "manageTags": "Tvarkyti žymas",
+            "deleteTagConfirm": "Ištrinti žymą „{name}“? Užrašai išsaugo savo tekstą."
         },
         "shareLinkModal": {
             "title": "Bendrinimo nuoroda",
@@ -6049,6 +6074,27 @@
             "scopeSession": "Patvirtina šį įrankį iki pokalbio seanso pabaigos.",
             "approve": "Patvirtinti",
             "rememberForChat": "Leisti šį įrankį iki šio pokalbio pabaigos"
+        },
+        "s3": {
+            "storageClass": "Saugyklos klasė",
+            "storageClassChanged": "Saugyklos klasė pakeista į {storageClass}",
+            "restoreFromGlacier": "Atkurti iš Glacier",
+            "restoreTier": "Gavimo lygis",
+            "restoreDays": "Atkurtos kopijos laikymo dienos",
+            "restoreStarted": "Atkūrimas užklaustas: kai bus paruošta, kopiją bus galima skaityti {days} d.",
+            "objectTags": "Objekto žymos",
+            "noTags": "Žymų nėra",
+            "tagKey": "Raktas",
+            "tagValue": "Reikšmė",
+            "tagsSaved": "Žymos išsaugotos"
+        },
+        "azure": {
+            "accessTier": "Prieigos lygis",
+            "accessTierChanged": "Prieigos lygis nustatytas į {tier}"
+        },
+        "fileComments": {
+            "title": "Komentarai",
+            "empty": "Komentarų dar nėra"
         }
     }
 }

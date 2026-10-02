@@ -374,20 +374,6 @@ export function IntroHub(props: IntroHubProps) {
         // no-op: CommandPalette removed
     }, []);
 
-    // Connect from Command Palette (saved server)
-    const handlePaletteConnect = useCallback(async (server: ServerProfile) => {
-        const params: ConnectionParams = {
-            server: server.host || '',
-            port: server.port || 21,
-            username: server.username || '',
-            password: '',
-            protocol: server.protocol || 'ftp',
-            options: server.options || {},
-            providerId: server.providerId,
-        };
-        await onSavedServerConnect(params, server.initialPath, server.localInitialPath);
-    }, [onSavedServerConnect]);
-
     // Keyboard shortcuts
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -508,11 +494,11 @@ export function IntroHub(props: IntroHubProps) {
                             form to the original profile, so the unified mode
                             tabs disappeared and the switch was lost (#215
                             follow-up). handleProtocolChange already syncs the
-                            form on protocol change, and handleProtocolSelectorOpenChange
-                            is formOnly-guarded, so no remount is needed. */}
+                            form on protocol change, and opening the protocol
+                            selector no longer clears the form, so no remount
+                            is needed. */}
                         <ConnectionScreen
                             key={activeFormTab.id}
-                            formOnly
                             connectionParams={activeFormTab.connectionParams}
                             quickConnectDirs={activeFormTab.quickConnectDirs}
                             loading={loading}
@@ -531,23 +517,12 @@ export function IntroHub(props: IntroHubProps) {
                                 onConnect(overrideParams || activeFormTab.connectionParams);
                                 handleCloseFormTab(activeFormTab.id);
                             }}
-                            onSavedServerConnect={async (params, initialPath, localInitialPath) => {
-                                handleCloseFormTab(activeFormTab.id);
-                                await onSavedServerConnect(params, initialPath, localInitialPath);
-                            }}
                             onFormSaved={() => {
                                 handleCloseFormTab(activeFormTab.id);
                                 setActiveTab('my-servers');
                                 onServersChanged?.();
                             }}
-                            onSkipToFileManager={() => { handleCloseFormTab(activeFormTab.id); onSkipToFileManager(); }}
-                            onAeroFile={onAeroFile}
-                            onAeroCloud={onAeroCloud}
-                            isAeroCloudConfigured={isAeroCloudConfigured}
-                            isAeroCloudConnected={isAeroCloudConnected}
                             onOpenCloudPanel={onOpenCloudPanel}
-                            hasExistingSessions={hasExistingSessions}
-                            sessionCount={sessionCount}
                             serversRefreshKey={serversRefreshKey}
                         />
                     </div>

@@ -102,14 +102,9 @@
             "connectionFailed": "Tilkobling mislyktes",
             "reconnecting": "Kobler til på nytt...",
             "quickConnect": "Hurtigtilkobling",
-            "savedServers": "Lagrede servere",
-            "noSavedServers": "Ingen lagrede servere",
             "saveServer": "Lagre server",
-            "deleteServer": "Slett server",
-            "editServer": "Rediger server",
             "serverName": "Servernavn",
             "initialPath": "Startsti",
-            "savedServersHelp": "Velg en server å koble til.",
             "selectSshKey": "Velg SSH privat nøkkel",
             "allFiles": "Alle filer",
             "sshKeys": "SSH-nøkler",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Gjør hvilken som helst server til din personlige sky med automatisk synkronisering",
             "configureAerocloud": "Konfigurer AeroCloud",
             "aerocloudHelp": "Du kan også konfigurere AeroCloud fra statuslinjen",
-            "selectProviderPrompt": "Velg en leverandør ovenfor, eller velg \"Egendefinert\" for manuell konfigurasjon",
-            "custom": "Egendefinert",
             "change": "Endre",
             "emailAccount": "E-postkonto",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ditt MEGA-passord",
-            "dismiss": "Avvis",
             "authenticating": "Autentiserer...",
             "oauth2Connection": "OAuth2-tilkobling",
             "securityTitle": "Kryptert lagring av legitimasjon",
@@ -170,7 +162,6 @@
             "docs": "Dokumentasjon",
             "minutes": "minutter",
             "localPathPlaceholder": "/home/bruker/prosjekter",
-            "searchServers": "Søk etter servere...",
             "fourshared": {
                 "backToExistingAccount": "Tilbake til eksisterende konto",
                 "configureCredentials": "Konfigurer OAuth 1.0-legitimasjon",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "App-passord",
             "koofrAppPasswordPlaceholder": "Lim inn ditt Koofr app-passord her",
             "koofrHelp": "Generer app-passord på app.koofr.net → Innstillinger → Passord → App-passord",
-            "duplicateServer": "Dupliser server",
-            "duplicateCredentialMissing": "Legitimasjonen ble ikke kopiert til duplikatet. Skriv inn passordet på nytt før du kobler til.",
             "saveAsNew": "Lagre som ny",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Generer en API-nøkkel i Immich → User Settings → API Keys",
             "immichOps": "Bla gjennom, last opp, last ned, slett, album, søk, delingslenker. Gi nytt navn og flytt støttes ikke.",
             "generatePassword": "Generer passord",
-            "saveAndConnect": "Lagre og koble til",
-            "saveDisabledTotp": "TOTP-koder er engangskoder. Bruk Lagre og koble til for å bruke denne koden nå.",
             "generatePersonalLoginToken": "Generer personlig pålogginstoken",
             "endpointUrl": "Endepunkt-URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 native API: ekstra funksjoner utover S3-kompatibel",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Logg inn igjen",
             "twakeSignedIn": "Logget inn",
             "twakeWaitingBrowser": "Fullfør innloggingen i nettleseren din...",
-            "twakeSignInHelp": "AeroFTP åpner Twake i nettleseren din og ber bare om tilgang til filene dine. Hvis Twake viser en feil første gang, logg inn på Twake i nettleseren og logg inn igjen. Du kan når som helst tilbakekalle tilgangen i Twake-innstillinger, Tilkoblede enheter."
+            "twakeSignInHelp": "AeroFTP åpner Twake i nettleseren din og ber bare om tilgang til filene dine. Hvis Twake viser en feil første gang, logg inn på Twake i nettleseren og logg inn igjen. Du kan når som helst tilbakekalle tilgangen i Twake-innstillinger, Tilkoblede enheter.",
+            "oauthKeysMissingTitle": "Appnøkler for {provider} mangler",
+            "oauthKeysMissing": "Ingen appnøkler for {provider} er lagret i hvelvet, så AeroFTP kan ikke logge inn. AeroFTP leveres ikke med egne nøkler: skriv inn nøklene til din {provider}-utviklerapp i {location}, og koble til på nytt.",
+            "oauthKeysOpenSettings": "Åpne OAuth-innstillinger",
+            "oauthKeysReadFailedTitle": "Kan ikke lese appnøkler for {provider}",
+            "oauthKeysReadFailed": "AeroFTP kunne ikke lese appnøklene for {provider} fra hvelvet, så den kan ikke logge på. Nøklene ble ikke endret. Feil: {error}"
         },
         "browser": {
             "remote": "Ekstern",
@@ -1474,6 +1466,7 @@
             "extracted": "Pakket ut!",
             "extractedTo": "Filer pakket ut til {dest}",
             "fileLocked": "Fil låst",
+            "cutPartial": "Flyttet {moved} av {total} elementer; resten blir liggende",
             "fileSkipped": "{count} fil(er) hoppet over",
             "fileUnlocked": "Fil låst opp",
             "loadTrashFailed": "Lasting av papirkurv mislyktes",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Kryptert overlegg låst",
             "aerocrypt_marker_migrate": "Konverterer AeroCrypt-markør til .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markør konvertert til .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Låser opp mappen {filename}..."
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "Den lokale serveren kunne ikke startes.",
                     "serverFailed": "Serveren stoppet eller sendte et ugyldig svar.",
                     "httpUnauthorized": "Serveren avviste den lagrede legitimasjonen.",
-                    "unsupportedVersion": "Serveren bruker en MCP-versjon som AeroFTP ikke støtter."
+                    "unsupportedVersion": "Serveren bruker en MCP-versjon som AeroFTP ikke støtter.",
+                    "directoryInvalid": "Velg en egen mappe uten lenker eller sensitive programfiler.",
+                    "directoryChanged": "Den godkjente mappen er endret eller mangler. Velg den på nytt for å fornye tilgangen.",
+                    "permissionCommand": "Endre tilgang via innstillingene for mappe- og nettverkstillatelser.",
+                    "installInvalid": "Denne administrerte installasjonen er utilgjengelig, eller manifestet er ugyldig.",
+                    "installIntegrity": "Pakkens integritetskontroll mislyktes. Fjern og installer serveren på nytt.",
+                    "installArchive": "Pakken inneholder usikre stier, lenker eller en ugyldig startfil.",
+                    "installRuntime": "Det nødvendige systemkjøremiljøet mangler.",
+                    "installDownload": "Nedlastingen av pakken mislyktes eller overskred tidsgrensen.",
+                    "installLimit": "Pakken overskrider installasjonsgrensene.",
+                    "installExists": "Fjern den eksisterende installasjonen før du installerer på nytt.",
+                    "installIo": "Installasjonsfilene kunne ikke leses eller skrives."
                 },
                 "routingNotice": "Aktiverte servere gir AeroAgent tilgang til verktøyene sine. Hvert verktøykall ber først om din godkjenning.",
                 "checkNow": "Sjekk nå",
@@ -3094,7 +3099,19 @@
                 "healthError": "Utilgjengelig: {reason}",
                 "healthReady": "Klar, verktøy tilgjengelige for AeroAgent: {count}",
                 "healthUnsupported": "Verktøy med ustøttede skjemaer: {count}",
-                "healthShowTools": "Vis verktøy"
+                "healthShowTools": "Vis verktøy",
+                "directoryTitle": "Skrivebeskyttede mapper",
+                "grantDirectory": "Velg mappe",
+                "confirmDirectory": "Gi denne serveren lesetilgang til alle filer i {path}? Gi bare tilgang til en egen server- eller prosjektmappe.",
+                "noDirectories": "Ingen mappetilgang.",
+                "revokeDirectory": "Trekk tilbake tilgang",
+                "confirmRevokeDirectory": "Trekke tilbake tilgang til {path}? Tidligere verktøygodkjenninger vil ikke lenger være gyldige.",
+                "networkAccess": "Tillat nettverkstilgang (alle verter)",
+                "networkBlocked": "Nettverkstilgang er blokkert.",
+                "confirmNetwork": "Tillate {name} å få tilgang til nettverket, inkludert lokale tjenester? Tidligere verktøygodkjenninger vil ikke lenger være gyldige.",
+                "confirmBlockNetwork": "Blokkere nettverkstilgang for {name}? Tidligere verktøygodkjenninger vil ikke lenger være gyldige.",
+                "managedStatus": "Administrert installasjon: {version}",
+                "renewDirectory": "Forny tilgang"
             }
         },
         "archive": {
@@ -4102,12 +4119,6 @@
             "viewSource": "Vis kilde"
         },
         "savedServers": {
-            "dragToReorder": "Dra for å omordne",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Konfigurer 4shared-legitimasjon i Innstillinger > Skyleverandører.",
-            "oauthConfigError": "Konfigurer {provider}-legitimasjon i Innstillinger > Skyleverandører.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4460,16 +4471,23 @@
             "tagsPlaceholder": "Legg til en tagg...",
             "tagsUpdated": "Tagger oppdatert",
             "addTag": "Legg til",
-            "noTags": "Ingen tagger"
+            "noTags": "Ingen tagger",
+            "collaborators": "Samarbeidspartnere",
+            "noCollaborators": "Ikke delt med noen ennå",
+            "folderNotLocked": "Denne mappen er ikke låst",
+            "roleEditor": "Redaktør",
+            "roleViewer": "Seer",
+            "rolePreviewer": "Forhåndsviser",
+            "roleUploader": "Opplaster",
+            "rolePreviewerUploader": "Forhåndsviser og opplaster",
+            "roleViewerUploader": "Seer og opplaster",
+            "roleCoOwner": "Medeier"
         },
         "googledrive": {
             "star": "Merk med stjerne",
             "unstar": "Fjern stjerne",
             "starred": "Filen er stjernemerket",
-            "unstarred": "Stjernemerking fjernet",
-            "addComment": "Legg til kommentar",
-            "commentPlaceholder": "Skriv kommentaren din...",
-            "commentAdded": "Kommentar lagt til"
+            "unstarred": "Stjernemerking fjernet"
         },
         "dropbox": {
             "manageTags": "Administrer etiketter"
@@ -4792,7 +4810,14 @@
             "participants": "deltakere",
             "saving": "Lagrer...",
             "saved": "Lagret",
-            "saveNow": "Lagre nå"
+            "saveNow": "Lagre nå",
+            "noteType": "Notattype",
+            "addTag": "Legg til merkelapp",
+            "newTag": "Ny merkelapp...",
+            "tagName": "Navn på merkelapp",
+            "removeTag": "Fjern merkelapp",
+            "manageTags": "Administrer merkelapper",
+            "deleteTagConfirm": "Slette merkelappen «{name}»? Notater beholder teksten sin."
         },
         "shareLinkModal": {
             "title": "Delingslenke",
@@ -6068,6 +6093,27 @@
             "scopeSession": "Godkjenner dette verktøyet resten av chatøkten.",
             "approve": "Godkjenn",
             "rememberForChat": "Tillat dette verktøyet resten av denne chatten"
+        },
+        "s3": {
+            "storageClass": "Lagringsklasse",
+            "storageClassChanged": "Lagringsklasse endret til {storageClass}",
+            "restoreFromGlacier": "Gjenopprett fra Glacier",
+            "restoreTier": "Hentenivå",
+            "restoreDays": "Dager den gjenopprettede kopien beholdes",
+            "restoreStarted": "Gjenoppretting forespurt: når den er klar, kan kopien leses i {days} dager",
+            "objectTags": "Objekttagger",
+            "noTags": "Ingen tagger",
+            "tagKey": "Nøkkel",
+            "tagValue": "Verdi",
+            "tagsSaved": "Tagger lagret"
+        },
+        "azure": {
+            "accessTier": "Tilgangsnivå",
+            "accessTierChanged": "Tilgangsnivå satt til {tier}"
+        },
+        "fileComments": {
+            "title": "Kommentarer",
+            "empty": "Ingen kommentarer ennå"
         }
     }
 }

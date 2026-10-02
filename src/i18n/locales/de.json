@@ -102,14 +102,9 @@
             "connectionFailed": "Verbindung fehlgeschlagen",
             "reconnecting": "Verbinde erneut...",
             "quickConnect": "Schnellverbindung",
-            "savedServers": "Gespeicherte Server",
-            "noSavedServers": "Keine gespeicherten Server",
             "saveServer": "Server speichern",
-            "deleteServer": "Server löschen",
-            "editServer": "Server bearbeiten",
             "serverName": "Servername",
             "initialPath": "Anfangspfad",
-            "savedServersHelp": "Server zum Verbinden auswählen.",
             "selectSshKey": "Privaten SSH-Schlüssel auswählen",
             "allFiles": "Alle Dateien",
             "sshKeys": "SSH-Schlüssel",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Verwandeln Sie jeden Server in Ihre persönliche Cloud mit automatischer Synchronisierung",
             "configureAerocloud": "AeroCloud konfigurieren",
             "aerocloudHelp": "Sie können AeroCloud auch über die Statusleiste konfigurieren",
-            "selectProviderPrompt": "Wählen Sie oben einen Anbieter oder wählen Sie \"Benutzerdefiniert\" für die manuelle Konfiguration",
-            "custom": "Benutzerdefiniert",
             "change": "Ändern",
             "emailAccount": "E-Mail-Konto",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ihr MEGA-Passwort",
-            "dismiss": "Verwerfen",
             "authenticating": "Authentifizierung...",
             "oauth2Connection": "OAuth2-Verbindung",
             "securityTitle": "Verschlüsselte Anmeldedaten-Speicherung",
@@ -170,7 +162,6 @@
             "docs": "Dokumentation",
             "minutes": "Minuten",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Server suchen...",
             "fourshared": {
                 "backToExistingAccount": "Zurück zum bestehenden Konto",
                 "configureCredentials": "OAuth 1.0-Anmeldedaten konfigurieren",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "App-Passwort",
             "koofrAppPasswordPlaceholder": "Fügen Sie hier Ihr Koofr App-Passwort ein",
             "koofrHelp": "Erstellen Sie ein App-Passwort auf app.koofr.net → Einstellungen → Passwort → App-Passwörter",
-            "duplicateServer": "Server duplizieren",
-            "duplicateCredentialMissing": "Anmeldedaten nicht in die Kopie übernommen. Geben Sie das Passwort vor dem Verbinden erneut ein.",
             "saveAsNew": "Als neu speichern",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Erstellen Sie einen API-Schlüssel in Immich → User Settings → API Keys",
             "immichOps": "Durchsuchen, Hochladen, Herunterladen, Löschen, Alben, Suche, Freigabelinks. Umbenennen und Verschieben werden nicht unterstützt.",
             "generatePassword": "Passwort generieren",
-            "saveAndConnect": "Speichern & Verbinden",
-            "saveDisabledTotp": "TOTP-Codes sind einmalig gültig. Nutzen Sie „Speichern & Verbinden“, um diesen Code jetzt anzuwenden.",
             "generatePersonalLoginToken": "Persönliches Anmelde-Token generieren",
             "endpointUrl": "Endpunkt-URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 native API: zusätzliche Funktionen gegenüber S3-kompatibel",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Erneut anmelden",
             "twakeSignedIn": "Angemeldet",
             "twakeWaitingBrowser": "Schließen Sie die Anmeldung in Ihrem Browser ab...",
-            "twakeSignInHelp": "AeroFTP öffnet Twake in Ihrem Browser und bittet nur um Zugriff auf Ihre Dateien. Wenn Twake beim ersten Mal einen Fehler anzeigt, melden Sie sich im Browser bei Twake an und melden Sie sich erneut an. Sie können den Zugriff jederzeit in den Twake-Einstellungen unter Verbundene Geräte widerrufen."
+            "twakeSignInHelp": "AeroFTP öffnet Twake in Ihrem Browser und bittet nur um Zugriff auf Ihre Dateien. Wenn Twake beim ersten Mal einen Fehler anzeigt, melden Sie sich im Browser bei Twake an und melden Sie sich erneut an. Sie können den Zugriff jederzeit in den Twake-Einstellungen unter Verbundene Geräte widerrufen.",
+            "oauthKeysMissingTitle": "App-Schlüssel für {provider} fehlen",
+            "oauthKeysMissing": "Im Tresor sind keine App-Schlüssel für {provider} gespeichert, daher kann sich AeroFTP nicht anmelden. AeroFTP liefert keine eigenen Schlüssel mit: Geben Sie die Schlüssel Ihrer {provider}-Entwickler-App unter {location} ein und verbinden Sie sich erneut.",
+            "oauthKeysOpenSettings": "OAuth-Einstellungen öffnen",
+            "oauthKeysReadFailedTitle": "App-Schlüssel für {provider} können nicht gelesen werden",
+            "oauthKeysReadFailed": "AeroFTP konnte die App-Schlüssel für {provider} nicht aus dem Tresor lesen und kann sich daher nicht anmelden. Die Schlüssel wurden nicht geändert. Fehler: {error}"
         },
         "browser": {
             "remote": "Remote",
@@ -1474,6 +1466,7 @@
             "extracted": "Entpackt!",
             "extractedTo": "Dateien entpackt nach {dest}",
             "fileLocked": "Datei gesperrt",
+            "cutPartial": "{moved} von {total} Elementen verschoben; der Rest bleibt an seinem Platz",
             "fileSkipped": "{count} Datei(en) übersprungen",
             "fileUnlocked": "Datei entsperrt",
             "loadTrashFailed": "Papierkorb konnte nicht geladen werden",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Verschlüsselte Überlagerung gesperrt",
             "aerocrypt_marker_migrate": "AeroCrypt-Markierung wird in .aerocrypt.tsv konvertiert…",
             "aerocrypt_marker_migrated": "AeroCrypt-Marker in .aerocrypt.tsv konvertiert",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Ordner {filename} wird entsperrt..."
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "Der lokale Server konnte nicht gestartet werden.",
                     "serverFailed": "Der Server wurde beendet oder hat eine ungültige Antwort gesendet.",
                     "httpUnauthorized": "Der Server hat die gespeicherten Anmeldedaten abgelehnt.",
-                    "unsupportedVersion": "Der Server verwendet eine MCP-Version, die AeroFTP nicht unterstützt."
+                    "unsupportedVersion": "Der Server verwendet eine MCP-Version, die AeroFTP nicht unterstützt.",
+                    "directoryInvalid": "Wähle ein eigenes Verzeichnis ohne Verknüpfungen oder sensible Anwendungsdateien.",
+                    "directoryChanged": "Das freigegebene Verzeichnis wurde geändert oder fehlt. Wähle es erneut aus, um den Zugriff zu erneuern.",
+                    "permissionCommand": "Ändere den Zugriff über die Berechtigungen für Verzeichnisse und Netzwerk.",
+                    "installInvalid": "Diese verwaltete Installation ist nicht verfügbar oder ihr Manifest ist ungültig.",
+                    "installIntegrity": "Die Integritätsprüfung des Pakets ist fehlgeschlagen. Entferne den Server und installiere ihn erneut.",
+                    "installArchive": "Das Paket enthält unsichere Pfade, Verknüpfungen oder eine ungültige Startdatei.",
+                    "installRuntime": "Die erforderliche Systemlaufzeit fehlt.",
+                    "installDownload": "Der Paketdownload ist fehlgeschlagen oder hat das Zeitlimit überschritten.",
+                    "installLimit": "Das Paket überschreitet die Installationslimits.",
+                    "installExists": "Entferne die vorhandene Installation vor der Neuinstallation.",
+                    "installIo": "Die Installationsdateien konnten nicht gelesen oder geschrieben werden."
                 },
                 "routingNotice": "Aktivierte Server stellen AeroAgent ihre Tools zur Verfügung. Jeder Tool-Aufruf erfordert zuerst Ihre Genehmigung.",
                 "checkNow": "Jetzt prüfen",
@@ -3094,7 +3099,19 @@
                 "healthError": "Nicht verfügbar: {reason}",
                 "healthReady": "Bereit, für AeroAgent verfügbare Tools: {count}",
                 "healthUnsupported": "Tools mit nicht unterstützten Schemas: {count}",
-                "healthShowTools": "Tools anzeigen"
+                "healthShowTools": "Tools anzeigen",
+                "directoryTitle": "Schreibgeschützte Verzeichnisse",
+                "grantDirectory": "Verzeichnis auswählen",
+                "confirmDirectory": "Diesem Server Lesezugriff auf jede Datei in {path} gewähren? Gewähre nur Zugriff auf ein eigenes Server- oder Projektverzeichnis.",
+                "noDirectories": "Kein Verzeichniszugriff.",
+                "revokeDirectory": "Zugriff entziehen",
+                "confirmRevokeDirectory": "Zugriff auf {path} entziehen? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
+                "networkAccess": "Netzwerkzugriff erlauben (alle Hosts)",
+                "networkBlocked": "Netzwerkzugriff ist gesperrt.",
+                "confirmNetwork": "{name} den Netzwerkzugriff einschließlich lokaler Dienste erlauben? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
+                "confirmBlockNetwork": "Netzwerkzugriff für {name} sperren? Frühere Werkzeugfreigaben sind dann nicht mehr gültig.",
+                "managedStatus": "Verwaltete Installation: {version}",
+                "renewDirectory": "Zugriff erneuern"
             }
         },
         "archive": {
@@ -4102,12 +4119,6 @@
             "viewSource": "Quelle anzeigen"
         },
         "savedServers": {
-            "dragToReorder": "Ziehen zum Neuordnen",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Bitte konfigurieren Sie die 4shared-Anmeldedaten unter Einstellungen > Cloud-Anbieter.",
-            "oauthConfigError": "Bitte konfigurieren Sie die {provider}-Anmeldedaten unter Einstellungen > Cloud-Anbieter.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,16 +4452,23 @@
             "tagsPlaceholder": "Tag hinzufügen...",
             "tagsUpdated": "Tags aktualisiert",
             "addTag": "Hinzufügen",
-            "noTags": "Keine Tags"
+            "noTags": "Keine Tags",
+            "collaborators": "Mitarbeiter",
+            "noCollaborators": "Noch mit niemandem geteilt",
+            "folderNotLocked": "Dieser Ordner ist nicht gesperrt",
+            "roleEditor": "Editor",
+            "roleViewer": "Betrachter",
+            "rolePreviewer": "Vorschauer",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Vorschauer und Uploader",
+            "roleViewerUploader": "Betrachter und Uploader",
+            "roleCoOwner": "Miteigentümer"
         },
         "googledrive": {
             "star": "Mit Stern markieren",
             "unstar": "Stern entfernen",
             "starred": "Datei mit Stern markiert",
-            "unstarred": "Stern von Datei entfernt",
-            "addComment": "Kommentar hinzufügen",
-            "commentPlaceholder": "Schreiben Sie Ihren Kommentar...",
-            "commentAdded": "Kommentar hinzugefügt"
+            "unstarred": "Stern von Datei entfernt"
         },
         "dropbox": {
             "manageTags": "Tags verwalten"
@@ -4773,7 +4791,14 @@
             "participants": "Teilnehmer",
             "saving": "Speichern...",
             "saved": "Gespeichert",
-            "saveNow": "Jetzt speichern"
+            "saveNow": "Jetzt speichern",
+            "noteType": "Notizart",
+            "addTag": "Tag hinzufügen",
+            "newTag": "Neuer Tag...",
+            "tagName": "Tag-Name",
+            "removeTag": "Tag entfernen",
+            "manageTags": "Tags verwalten",
+            "deleteTagConfirm": "Den Tag „{name}“ löschen? Notizen behalten ihren Text."
         },
         "shareLinkModal": {
             "title": "Freigabelink",
@@ -6049,6 +6074,27 @@
             "scopeSession": "Gibt dieses Werkzeug für den Rest der Chatsitzung frei.",
             "approve": "Freigeben",
             "rememberForChat": "Dieses Werkzeug für den Rest dieses Chats erlauben"
+        },
+        "s3": {
+            "storageClass": "Speicherklasse",
+            "storageClassChanged": "Speicherklasse auf {storageClass} geändert",
+            "restoreFromGlacier": "Aus Glacier wiederherstellen",
+            "restoreTier": "Abrufstufe",
+            "restoreDays": "Tage, die die wiederhergestellte Kopie erhalten bleibt",
+            "restoreStarted": "Wiederherstellung angefordert: Sobald sie bereit ist, bleibt die Kopie {days} Tage lesbar",
+            "objectTags": "Objekt-Tags",
+            "noTags": "Keine Tags",
+            "tagKey": "Schlüssel",
+            "tagValue": "Wert",
+            "tagsSaved": "Tags gespeichert"
+        },
+        "azure": {
+            "accessTier": "Zugriffsebene",
+            "accessTierChanged": "Zugriffsebene auf {tier} gesetzt"
+        },
+        "fileComments": {
+            "title": "Kommentare",
+            "empty": "Noch keine Kommentare"
         }
     }
 }

@@ -102,14 +102,9 @@
             "connectionFailed": "Verbinding mislukt",
             "reconnecting": "Opnieuw verbinden...",
             "quickConnect": "Snel Verbinden",
-            "savedServers": "Opgeslagen Servers",
-            "noSavedServers": "Geen opgeslagen servers",
             "saveServer": "Server Opslaan",
-            "deleteServer": "Server Verwijderen",
-            "editServer": "Server Bewerken",
             "serverName": "Servernaam",
             "initialPath": "Beginpad",
-            "savedServersHelp": "Selecteer een server om verbinding te maken.",
             "selectSshKey": "Selecteer SSH-privésleutel",
             "allFiles": "Alle bestanden",
             "sshKeys": "SSH-sleutels",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Maak van elke server uw persoonlijke cloud met automatische synchronisatie",
             "configureAerocloud": "AeroCloud configureren",
             "aerocloudHelp": "U kunt AeroCloud ook configureren vanuit de statusbalk",
-            "selectProviderPrompt": "Selecteer hierboven een provider of kies \"Aangepast\" voor handmatige configuratie",
-            "custom": "Aangepast",
             "change": "Wijzigen",
             "emailAccount": "E-mailaccount",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Uw MEGA-wachtwoord",
-            "dismiss": "Sluiten",
             "authenticating": "Authenticeren...",
             "oauth2Connection": "OAuth2-verbinding",
             "securityTitle": "Versleutelde opslag van inloggegevens",
@@ -170,7 +162,6 @@
             "docs": "Documentatie",
             "minutes": "minuten",
             "localPathPlaceholder": "/home/gebruiker/projecten",
-            "searchServers": "Servers zoeken...",
             "fourshared": {
                 "backToExistingAccount": "Terug naar bestaand account",
                 "configureCredentials": "OAuth 1.0-referenties configureren",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "App-wachtwoord",
             "koofrAppPasswordPlaceholder": "Plak hier uw Koofr app-wachtwoord",
             "koofrHelp": "Genereer een app-wachtwoord op app.koofr.net → Instellingen → Wachtwoord → App-wachtwoorden",
-            "duplicateServer": "Server dupliceren",
-            "duplicateCredentialMissing": "Inloggegevens niet gekopieerd naar het duplicaat. Voer het wachtwoord opnieuw in voordat u verbindt.",
             "saveAsNew": "Opslaan als nieuw",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Maak een API-sleutel aan in Immich → User Settings → API Keys",
             "immichOps": "Bladeren, uploaden, downloaden, verwijderen, albums, zoeken, deellinks. Hernoemen en verplaatsen worden niet ondersteund.",
             "generatePassword": "Wachtwoord genereren",
-            "saveAndConnect": "Opslaan en verbinden",
-            "saveDisabledTotp": "TOTP-codes zijn eenmalig bruikbaar. Gebruik Opslaan en verbinden om deze code nu toe te passen.",
             "generatePersonalLoginToken": "Persoonlijk login-token genereren",
             "endpointUrl": "Endpoint-URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 native API: extra functies vergeleken met S3-compatibel",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Opnieuw inloggen",
             "twakeSignedIn": "Ingelogd",
             "twakeWaitingBrowser": "Rond het inloggen in uw browser af...",
-            "twakeSignInHelp": "AeroFTP opent Twake in uw browser en vraagt alleen toegang tot uw bestanden. Als Twake de eerste keer een fout toont, log dan in bij Twake in de browser en log opnieuw in. U kunt toegang op elk moment intrekken via Twake-instellingen, Verbonden apparaten."
+            "twakeSignInHelp": "AeroFTP opent Twake in uw browser en vraagt alleen toegang tot uw bestanden. Als Twake de eerste keer een fout toont, log dan in bij Twake in de browser en log opnieuw in. U kunt toegang op elk moment intrekken via Twake-instellingen, Verbonden apparaten.",
+            "oauthKeysMissingTitle": "App-sleutels voor {provider} ontbreken",
+            "oauthKeysMissing": "Er zijn geen app-sleutels voor {provider} opgeslagen in de kluis, dus AeroFTP kan niet inloggen. AeroFTP levert geen eigen sleutels mee: voer de sleutels van je {provider}-ontwikkelaarsapp in bij {location} en verbind opnieuw.",
+            "oauthKeysOpenSettings": "OAuth-instellingen openen",
+            "oauthKeysReadFailedTitle": "Kan app-sleutels voor {provider} niet lezen",
+            "oauthKeysReadFailed": "AeroFTP kon de app-sleutels voor {provider} niet uit de kluis lezen en kan daarom niet inloggen. De sleutels zijn niet gewijzigd. Fout: {error}"
         },
         "browser": {
             "remote": "Extern",
@@ -1474,6 +1466,7 @@
             "extracted": "Uitgepakt!",
             "extractedTo": "Bestanden uitgepakt naar {dest}",
             "fileLocked": "Bestand vergrendeld",
+            "cutPartial": "{moved} van {total} items verplaatst; de rest blijft staan",
             "fileSkipped": "{count} bestand(en) overgeslagen",
             "fileUnlocked": "Bestand ontgrendeld",
             "loadTrashFailed": "Prullenbak laden mislukt",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Versleutelde overlay vergrendeld",
             "aerocrypt_marker_migrate": "AeroCrypt-markering wordt geconverteerd naar .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-marker geconverteerd naar .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Map {filename} ontgrendelen..."
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "De lokale server kon niet worden gestart.",
                     "serverFailed": "De server is gestopt of heeft een ongeldig antwoord gestuurd.",
                     "httpUnauthorized": "De server heeft de opgeslagen inloggegevens geweigerd.",
-                    "unsupportedVersion": "De server gebruikt een MCP-versie die AeroFTP niet ondersteunt."
+                    "unsupportedVersion": "De server gebruikt een MCP-versie die AeroFTP niet ondersteunt.",
+                    "directoryInvalid": "Kies een aparte map zonder koppelingen of gevoelige toepassingsbestanden.",
+                    "directoryChanged": "De toegestane map is gewijzigd of ontbreekt. Selecteer deze opnieuw om de toegang te vernieuwen.",
+                    "permissionCommand": "Wijzig de toegang via de machtigingen voor mappen en netwerk.",
+                    "installInvalid": "Deze beheerde installatie is niet beschikbaar of het manifest is ongeldig.",
+                    "installIntegrity": "De integriteitscontrole van het pakket is mislukt. Verwijder de server en installeer deze opnieuw.",
+                    "installArchive": "Het pakket bevat onveilige paden, koppelingen of een ongeldig startbestand.",
+                    "installRuntime": "De vereiste systeemruntime ontbreekt.",
+                    "installDownload": "De pakketdownload is mislukt of heeft de tijdslimiet overschreden.",
+                    "installLimit": "Het pakket overschrijdt de installatielimieten.",
+                    "installExists": "Verwijder de bestaande installatie voordat je opnieuw installeert.",
+                    "installIo": "De installatiebestanden konden niet worden gelezen of geschreven."
                 },
                 "routingNotice": "Ingeschakelde servers bieden hun tools aan AeroAgent aan. Elke toolaanroep vraagt eerst om jouw goedkeuring.",
                 "checkNow": "Nu controleren",
@@ -3094,7 +3099,19 @@
                 "healthError": "Niet beschikbaar: {reason}",
                 "healthReady": "Gereed, tools beschikbaar voor AeroAgent: {count}",
                 "healthUnsupported": "Tools met niet-ondersteunde schema's: {count}",
-                "healthShowTools": "Tools tonen"
+                "healthShowTools": "Tools tonen",
+                "directoryTitle": "Mappen met alleen leestoegang",
+                "grantDirectory": "Map kiezen",
+                "confirmDirectory": "Deze server leestoegang geven tot elk bestand in {path}? Geef alleen toegang tot een aparte server- of projectmap.",
+                "noDirectories": "Geen toegang tot mappen.",
+                "revokeDirectory": "Toegang intrekken",
+                "confirmRevokeDirectory": "Toegang tot {path} intrekken? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
+                "networkAccess": "Netwerktoegang toestaan (alle hosts)",
+                "networkBlocked": "Netwerktoegang is geblokkeerd.",
+                "confirmNetwork": "{name} toegang geven tot het netwerk, inclusief lokale diensten? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
+                "confirmBlockNetwork": "Netwerktoegang voor {name} blokkeren? Eerdere goedkeuringen voor tools zijn dan niet meer geldig.",
+                "managedStatus": "Beheerde installatie: {version}",
+                "renewDirectory": "Toegang vernieuwen"
             }
         },
         "archive": {
@@ -4102,12 +4119,6 @@
             "viewSource": "Bron bekijken"
         },
         "savedServers": {
-            "dragToReorder": "Sleep om te herordenen",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Configureer de 4shared-referenties in Instellingen > Cloudproviders.",
-            "oauthConfigError": "Configureer de {provider}-referenties in Instellingen > Cloudproviders.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,16 +4452,23 @@
             "tagsPlaceholder": "Tag toevoegen...",
             "tagsUpdated": "Tags bijgewerkt",
             "addTag": "Toevoegen",
-            "noTags": "Geen tags"
+            "noTags": "Geen tags",
+            "collaborators": "Medewerkers",
+            "noCollaborators": "Nog met niemand gedeeld",
+            "folderNotLocked": "Deze map is niet vergrendeld",
+            "roleEditor": "Editor",
+            "roleViewer": "Kijker",
+            "rolePreviewer": "Voorvertoner",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Voorvertoner en uploader",
+            "roleViewerUploader": "Kijker en uploader",
+            "roleCoOwner": "Mede-eigenaar"
         },
         "googledrive": {
             "star": "Ster toevoegen",
             "unstar": "Ster verwijderen",
             "starred": "Bestand gemarkeerd met ster",
-            "unstarred": "Ster verwijderd van bestand",
-            "addComment": "Opmerking toevoegen",
-            "commentPlaceholder": "Schrijf je opmerking...",
-            "commentAdded": "Opmerking toegevoegd"
+            "unstarred": "Ster verwijderd van bestand"
         },
         "dropbox": {
             "manageTags": "Tags beheren"
@@ -4773,7 +4791,14 @@
             "participants": "deelnemers",
             "saving": "Opslaan...",
             "saved": "Opgeslagen",
-            "saveNow": "Nu opslaan"
+            "saveNow": "Nu opslaan",
+            "noteType": "Notitietype",
+            "addTag": "Tag toevoegen",
+            "newTag": "Nieuwe tag...",
+            "tagName": "Tagnaam",
+            "removeTag": "Tag verwijderen",
+            "manageTags": "Tags beheren",
+            "deleteTagConfirm": "De tag “{name}” verwijderen? Notities behouden hun tekst."
         },
         "shareLinkModal": {
             "title": "Deellink",
@@ -6049,6 +6074,27 @@
             "scopeSession": "Keurt dit hulpmiddel goed voor de rest van de chatsessie.",
             "approve": "Goedkeuren",
             "rememberForChat": "Dit hulpmiddel toestaan voor de rest van deze chat"
+        },
+        "s3": {
+            "storageClass": "Opslagklasse",
+            "storageClassChanged": "Opslagklasse gewijzigd naar {storageClass}",
+            "restoreFromGlacier": "Herstellen uit Glacier",
+            "restoreTier": "Ophaalniveau",
+            "restoreDays": "Dagen om de herstelde kopie te bewaren",
+            "restoreStarted": "Herstel aangevraagd: zodra de kopie gereed is, blijft ze {days} dagen leesbaar",
+            "objectTags": "Objecttags",
+            "noTags": "Geen tags",
+            "tagKey": "Sleutel",
+            "tagValue": "Waarde",
+            "tagsSaved": "Tags opgeslagen"
+        },
+        "azure": {
+            "accessTier": "Toegangsniveau",
+            "accessTierChanged": "Toegangsniveau ingesteld op {tier}"
+        },
+        "fileComments": {
+            "title": "Opmerkingen",
+            "empty": "Nog geen opmerkingen"
         }
     }
 }

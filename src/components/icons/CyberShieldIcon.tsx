@@ -3,8 +3,9 @@
 
 import * as React from 'react';
 
-/** Cyber shield glyph shared by the titlebar Security Tools easter-egg button
- *  (Cyber theme only) and the AeroTools toolbar launcher (all themes). */
+/** Cyber shield glyph of Security Tools: the titlebar easter-egg button (Cyber
+ *  theme only), the AeroTools toolbar launcher (all themes), and the headers of
+ *  the Security Tools window and panel. */
 export const CyberShieldIcon: React.FC<{ size?: number; className?: string }> = ({ size = 14, className }) => (
     <svg viewBox="0 0 120 120" width={size} height={size} fill="currentColor" className={className}>
         <path d="M126.3,13.2C97.8,18 78.1,45.1 82.4,73.6c1.1,7.3 4.4,16.1 8.1,21.5l1,1.4-39.9,39.9c-21.9,22-40.3,40.7-40.7,41.5-0.5,1-0.8,2.6-0.8,4.4 0,7.9 8.3,12.5 15,8.1l2-1.3 9,8.9c8,7.9 9.2,8.9 11.2,9.4 1.2,0.3 2.5,0.6 3,0.6 3.2,0 7.2-2.7 8.7-5.8 0.9-2 1-6 0.1-8.1-0.4-0.9-2.4-3.4-4.5-5.7l-3.9-4 5.6-5.6 5.6-5.6 3.8,3.8c5.5,5.4 7.9,6.4 12.5,5 6.2-1.8 8.9-9.2 5.4-14.8-0.5-0.7-4.5-5-9-9.5l-8.1-8.1 18.6-18.7c17.6-17.6 18.7-18.9 19.8-21.6 1.8-4.4 3.9-7.8 7.3-11.3l3-3.2-4.2-4.2c-4.8-4.8-7.2-8.5-8.9-13.9-3-9.6-1.9-20 3.1-28.5 2.8-4.8 8.4-10.3 13.1-12.6 6.3-3.2 9.7-4.1 16.6-4.1 5,0 6.6,0.2 9.5,1.1 4.7,1.5 9.9,4.2 12.8,6.8l2.4,2.1 2.7-0.7c4.2-1.1 11.4-1.7 15.5-1.4 3.1,0.3 3.6,0.2 3.3-0.3-3-5.1-9-11.9-13.6-15.4-6.4-4.9-16.2-9.2-24-10.4-3.4-0.7-13.9-0.7-17.2-0.1z" transform="matrix(0.509,0,0,0.509,-5.137,-5.118)"/>

@@ -38,6 +38,7 @@ import { useResponsiveColumns } from '../../hooks/useResponsiveColumns';
 import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 import { matchLiveDevice } from '../../utils/mtpFingerprint';
+import { keyReadFailure, notifyOAuthKeysUnavailable } from '../../utils/oauthKeysMissing';
 import type { MtpDeviceInfo } from '../../types/aerofile';
 import { loadFavoriteServers, saveFavoriteServers } from '../../utils/favoriteServers';
 import {
@@ -1071,13 +1072,15 @@ export function MyServersPanel({
         // OAuth2 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho, kDrive)
         if (server.protocol && isOAuthProvider(server.protocol)) {
             let credentials: { clientId: string; clientSecret: string } | null = null;
+            let keyReadError: unknown = null;
             try {
                 const clientId = await getCredentialWithRetry(`oauth_${server.protocol}_client_id`);
                 const clientSecret = await getCredentialWithRetry(`oauth_${server.protocol}_client_secret`);
                 if (clientId && clientSecret) credentials = { clientId, clientSecret };
-            } catch { /* not found */ }
+            } catch (e) { keyReadError = keyReadFailure(e); }
 
             if (!credentials) {
+                notifyOAuthKeysUnavailable(t, server.protocol, keyReadError);
                 setConnectingId(null);
                 return;
             }
@@ -1147,11 +1150,16 @@ export function MyServersPanel({
         // 4shared OAuth 1.0
         if (server.protocol && isFourSharedProvider(server.protocol)) {
             let consumerKey = '', consumerSecret = '';
+            let keyReadError: unknown = null;
             try {
                 consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
                 consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
-            } catch { /* ignore */ }
-            if (!consumerKey || !consumerSecret) { setConnectingId(null); return; }
+            } catch (e) { keyReadError = keyReadFailure(e); }
+            if (!consumerKey || !consumerSecret) {
+                notifyOAuthKeysUnavailable(t, server.protocol, keyReadError);
+                setConnectingId(null);
+                return;
+            }
 
             setOauthConnecting(server.id);
             try {

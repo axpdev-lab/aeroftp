@@ -102,14 +102,9 @@
             "connectionFailed": "ការតភ្ជាប់បរាជ័យ",
             "reconnecting": "កំពុងតភ្ជាប់ឡើងវិញ...",
             "quickConnect": "តភ្ជាប់រហ័ស",
-            "savedServers": "ម៉ាស៊ីនបម្រើដែលបានរក្សាទុក",
-            "noSavedServers": "គ្មានម៉ាស៊ីនបម្រើដែលបានរក្សាទុក",
             "saveServer": "រក្សាទុកម៉ាស៊ីនបម្រើ",
-            "deleteServer": "លុបម៉ាស៊ីនបម្រើ",
-            "editServer": "កែសម្រួលម៉ាស៊ីនបម្រើ",
             "serverName": "ឈ្មោះម៉ាស៊ីនបម្រើ",
             "initialPath": "ផ្លូវចាប់ផ្តើម",
-            "savedServersHelp": "ជ្រើសរើសម៉ាស៊ីនមេដើម្បីភ្ជាប់។",
             "selectSshKey": "ជ្រើសរើសសោឯកជន SSH",
             "allFiles": "ឯកសារទាំងអស់",
             "sshKeys": "សោ SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "ប្រែប្រួលម៉ាស៊ីឨ្វឺណាមួយឲ្យជាព្រែក្រប់ឧបករណ៍ស្តុកអាកាសផ្ទាល់ខ្លួនជាមួយការសូសេរក្រំសៅស្វ័យប្រវត្តិ",
             "configureAerocloud": "កំណត់រចនាសម្ព័ន្ធ AeroCloud",
             "aerocloudHelp": "អ្នកក៏អាចកំណត់រចនាសម្ព័ន្ធ AeroCloud ពីរបារស្ថានភាពផងដែរ",
-            "selectProviderPrompt": "ជ្រើសរើសអ្នកផ្តល់សេវាខាងលើ ឬជ្រើសរើស \"Custom\" សម្រាប់ការកំណត់រចនាសម្ព័ន្ធដោយដៃ",
-            "custom": "ផ្ទាល់ខ្លួន",
             "change": "ផ្លាស់ប្តូរ",
             "emailAccount": "គណនីអ៊ីមែល",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "ពាក្យសម្ងាត់ MEGA របស់អ្នក",
-            "dismiss": "បិទ",
             "authenticating": "កំពុងផ្ទៀងផ្ទាត់...",
             "oauth2Connection": "ការតភ្ជាប់ OAuth2",
             "securityTitle": "ការផ្ទុកព័ត៌មានសម្ងាត់ដែលបានអ៊ិនគ្រីប",
@@ -170,7 +162,6 @@
             "docs": "ឯកសារ",
             "minutes": "នាទី",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "ស្វែងរកម៉ាស៊ីនបម្រើ...",
             "fourshared": {
                 "backToExistingAccount": "ត្រឡប់ទៅគណនីដែលមានស្រាប់",
                 "configureCredentials": "កំណត់រចនាសម្ព័ន្ធព័ត៌មានសម្គាល់ OAuth 1.0",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "ពាក្យសម្ងាត់របស់កម្មវិធី",
             "koofrAppPasswordPlaceholder": "ដាក់ពាក្យសម្ងាត់កម្មវិធី Koofr របស់អ្នកនៅទីនេះ",
             "koofrHelp": "បង្កើតពាក្យសម្ងាត់កម្មវិធីនៅ app.koofr.net → ចម្លងលម្អិត → ពាក្យសម្ងាត់ → ពាក្យសម្ងាត់កម្មវិធី",
-            "duplicateServer": "ចម្លងម៉ាស៊ីនមេ",
-            "duplicateCredentialMissing": "ព័ត៌មានសម្គាល់មិនបានចម្លងទៅច្បាប់ចម្លងទេ។ បញ្ចូលពាក្យសម្ងាត់ម្ដងទៀតមុនពេលតភ្ជាប់។",
             "saveAsNew": "រក្សាទុកជាថ្មី",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "បង្កើតសោ API នៅក្នុង Immich → User Settings → API Keys",
             "immichOps": "រុករក, ផ្ទុកឡើង, ទាញយក, លុប, អាល់ប៊ុម, ស្វែងរក, តំណចែករំលែក។ ការប្តូរឈ្មោះ និងការផ្លាស់ទីមិនត្រូវបានគាំទ្រ។",
             "generatePassword": "បង្កើតពាក្យសម្ងាត់",
-            "saveAndConnect": "រក្សាទុក និងភ្ជាប់",
-            "saveDisabledTotp": "កូដ TOTP ប្រើបានតែម្តងគត់។ ប្រើ រក្សាទុក និងភ្ជាប់ ដើម្បីអនុវត្តកូដនេះឥឡូវនេះ។",
             "generatePersonalLoginToken": "បង្កើតនិមិត្តសញ្ញាចូលផ្ទាល់ខ្លួន",
             "endpointUrl": "URL ចំណុចបញ្ចប់",
             "b2NativeAdvantagesTitle": "API ដើមរបស់ Backblaze B2៖ លក្ខណៈពិសេសបន្ថែមលើស S3-ដែលឆបគ្នា",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "ចូលគណនីម្តងទៀត",
             "twakeSignedIn": "បានចូលគណនី",
             "twakeWaitingBrowser": "សូមបញ្ចប់ការចូលគណនីនៅក្នុងកម្មវិធីរុករករបស់អ្នក...",
-            "twakeSignInHelp": "AeroFTP បើក Twake នៅក្នុងកម្មវិធីរុករករបស់អ្នក ហើយស្នើសុំសិទ្ធិចូលប្រើតែឯកសាររបស់អ្នកប៉ុណ្ណោះ។ ប្រសិនបើ Twake បង្ហាញកំហុសលើកដំបូង សូមចូលគណនី Twake នៅក្នុងកម្មវិធីរុករក ហើយចូលគណនីម្តងទៀត។ អ្នកអាចដកហូតសិទ្ធិចូលប្រើនៅពេលណាក៏បាននៅក្នុងការកំណត់ Twake ឧបករណ៍ដែលបានភ្ជាប់។"
+            "twakeSignInHelp": "AeroFTP បើក Twake នៅក្នុងកម្មវិធីរុករករបស់អ្នក ហើយស្នើសុំសិទ្ធិចូលប្រើតែឯកសាររបស់អ្នកប៉ុណ្ណោះ។ ប្រសិនបើ Twake បង្ហាញកំហុសលើកដំបូង សូមចូលគណនី Twake នៅក្នុងកម្មវិធីរុករក ហើយចូលគណនីម្តងទៀត។ អ្នកអាចដកហូតសិទ្ធិចូលប្រើនៅពេលណាក៏បាននៅក្នុងការកំណត់ Twake ឧបករណ៍ដែលបានភ្ជាប់។",
+            "oauthKeysMissingTitle": "បាត់សោកម្មវិធីរបស់ {provider}",
+            "oauthKeysMissing": "មិនមានសោកម្មវិធីសម្រាប់ {provider} ត្រូវបានរក្សាទុកក្នុងឃ្លាំងសុវត្ថិភាពទេ ដូច្នេះ AeroFTP មិនអាចចូលគណនីបានទេ។ AeroFTP មិនមានសោផ្ទាល់ខ្លួនទេ៖ សូមបញ្ចូលសោនៃកម្មវិធីអ្នកអភិវឌ្ឍន៍ {provider} របស់អ្នកនៅ {location} រួចភ្ជាប់ម្តងទៀត។",
+            "oauthKeysOpenSettings": "បើកការកំណត់ OAuth",
+            "oauthKeysReadFailedTitle": "មិនអាចអានសោកម្មវិធីរបស់ {provider} បានទេ",
+            "oauthKeysReadFailed": "AeroFTP មិនអាចអានសោកម្មវិធីរបស់ {provider} ពីឃ្លាំងសុវត្ថិភាពបានទេ ដូច្នេះមិនអាចចូលគណនីបានទេ។ សោមិនត្រូវបានផ្លាស់ប្តូរទេ។ កំហុស៖ {error}"
         },
         "browser": {
             "remote": "ពីចម្ងាយ",
@@ -1474,6 +1466,7 @@
             "extracted": "បានស្រង់ចេញ!",
             "extractedTo": "ឯកសារបានស្រង់ទៅ {dest}",
             "fileLocked": "ឯកសារបានចាក់សោ",
+            "cutPartial": "បានផ្លាស់ទី {moved} ក្នុងចំណោម {total} ធាតុ; ធាតុដែលនៅសល់នៅកន្លែងដដែល",
             "fileSkipped": "{count} ឯកសារត្រូវបានរំលង",
             "fileUnlocked": "ឯកសារបានដោះសោ",
             "loadTrashFailed": "ការផ្ទុកធុងសម្រាមបានបរាជ័យ",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "ស្រទាប់អ៊ិនគ្រីបត្រូវបានចាក់សោ",
             "aerocrypt_marker_migrate": "កំពុងបំប្លែងសញ្ញាសម្គាល់ AeroCrypt ទៅជា .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "សញ្ញាសម្គាល់ AeroCrypt ត្រូវបានបម្លែងទៅជា .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] កំពុងដោះសោថត {filename}..."
         },
         "protocol": {
             "selectProtocol": "ជ្រើសរើសពិធីការ...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "មិនអាចចាប់ផ្តើមម៉ាស៊ីនមេមូលដ្ឋានបានទេ។",
                     "serverFailed": "ម៉ាស៊ីនមេបានឈប់ ឬបានផ្ញើការឆ្លើយតបមិនត្រឹមត្រូវ។",
                     "httpUnauthorized": "ម៉ាស៊ីនមេបានបដិសេធព័ត៌មានសម្គាល់ដែលបានរក្សាទុក។",
-                    "unsupportedVersion": "ម៉ាស៊ីនមេប្រើកំណែ MCP ដែល AeroFTP មិនគាំទ្រ។"
+                    "unsupportedVersion": "ម៉ាស៊ីនមេប្រើកំណែ MCP ដែល AeroFTP មិនគាំទ្រ។",
+                    "directoryInvalid": "ជ្រើសថតដាច់ដោយឡែកដែលគ្មានតំណ ឬឯកសាររសើបរបស់កម្មវិធី។",
+                    "directoryChanged": "ថតដែលបានផ្តល់សិទ្ធិបានផ្លាស់ប្តូរ ឬបាត់។ ជ្រើសវាម្តងទៀតដើម្បីបន្តសិទ្ធិចូលប្រើ។",
+                    "permissionCommand": "ផ្លាស់ប្តូរសិទ្ធិចូលប្រើតាមរយៈការគ្រប់គ្រងសិទ្ធិថត និងបណ្តាញ។",
+                    "installInvalid": "ការដំឡើងដែលបានគ្រប់គ្រងនេះមិនអាចប្រើបាន ឬឯកសារបញ្ជីរបស់វាមិនត្រឹមត្រូវ។",
+                    "installIntegrity": "ការផ្ទៀងផ្ទាត់ភាពត្រឹមត្រូវនៃកញ្ចប់បានបរាជ័យ។ លុបម៉ាស៊ីនមេ ហើយដំឡើងឡើងវិញ។",
+                    "installArchive": "កញ្ចប់មានផ្លូវមិនមានសុវត្ថិភាព តំណ ឬឯកសារចាប់ផ្តើមមិនត្រឹមត្រូវ។",
+                    "installRuntime": "ខ្វះបរិស្ថានដំណើរការរបស់ប្រព័ន្ធដែលត្រូវការ។",
+                    "installDownload": "ការទាញយកកញ្ចប់បានបរាជ័យ ឬផុតពេលកំណត់។",
+                    "installLimit": "កញ្ចប់លើសដែនកំណត់នៃការដំឡើង។",
+                    "installExists": "លុបការដំឡើងដែលមានស្រាប់ មុនពេលដំឡើងឡើងវិញ។",
+                    "installIo": "មិនអាចអាន ឬសរសេរឯកសារដំឡើងបានទេ។"
                 },
                 "routingNotice": "ម៉ាស៊ីនមេដែលបានបើកផ្តល់ឧបករណ៍របស់ពួកវាដល់ AeroAgent។ រាល់ការហៅឧបករណ៍នីមួយៗនឹងសុំការយល់ព្រមរបស់អ្នកជាមុន។",
                 "checkNow": "ពិនិត្យឥឡូវនេះ",
@@ -3094,7 +3099,19 @@
                 "healthError": "មិនអាចប្រើបាន៖ {reason}",
                 "healthReady": "រួចរាល់ ឧបករណ៍ដែល AeroAgent អាចប្រើបាន៖ {count}",
                 "healthUnsupported": "ឧបករណ៍ដែលមានគ្រោងការណ៍មិនគាំទ្រ៖ {count}",
-                "healthShowTools": "បង្ហាញឧបករណ៍"
+                "healthShowTools": "បង្ហាញឧបករណ៍",
+                "directoryTitle": "ថតសម្រាប់តែអាន",
+                "grantDirectory": "ជ្រើសរើសថត",
+                "confirmDirectory": "ផ្ដល់សិទ្ធិឱ្យម៉ាស៊ីនមេនេះអានឯកសារទាំងអស់ក្នុង {path} តែប៉ុណ្ណោះឬ? ផ្ដល់សិទ្ធិតែថតដែលរៀបចំជាពិសេសសម្រាប់ម៉ាស៊ីនមេ ឬគម្រោងប៉ុណ្ណោះ។",
+                "noDirectories": "គ្មានសិទ្ធិចូលប្រើថត។",
+                "revokeDirectory": "ដកសិទ្ធិចូលប្រើ",
+                "confirmRevokeDirectory": "ដកសិទ្ធិចូលប្រើ {path} ឬ? ការអនុម័តឧបករណ៍ពីមុននឹងលែងមានសុពលភាព។",
+                "networkAccess": "អនុញ្ញាតឱ្យចូលប្រើបណ្ដាញ (ម៉ាស៊ីនទាំងអស់)",
+                "networkBlocked": "ការចូលប្រើបណ្ដាញត្រូវបានរារាំង។",
+                "confirmNetwork": "អនុញ្ញាតឱ្យ {name} ចូលប្រើបណ្ដាញ រួមទាំងសេវាកម្មមូលដ្ឋានឬ? ការអនុម័តឧបករណ៍ពីមុននឹងលែងមានសុពលភាព។",
+                "confirmBlockNetwork": "រារាំងការចូលប្រើបណ្ដាញរបស់ {name} ឬ? ការអនុម័តឧបករណ៍ពីមុននឹងលែងមានសុពលភាព។",
+                "managedStatus": "ការដំឡើងដែលបានគ្រប់គ្រង៖ {version}",
+                "renewDirectory": "បន្តសិទ្ធិចូលប្រើ"
             }
         },
         "archive": {
@@ -4102,12 +4119,6 @@
             "viewSource": "មើលប្រភព"
         },
         "savedServers": {
-            "dragToReorder": "អូសដើម្បីរៀបចំឡើងវិញ",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "សូមកំណត់រចនាសម្ព័ន្ធព័ត៌មានសម្គាល់ 4shared នៅ Settings > Cloud Providers។",
-            "oauthConfigError": "សូមកំណត់រចនាសម្ព័ន្ធព័ត៌មានសម្គាល់ {provider} នៅ Settings > Cloud Providers។",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4460,16 +4471,23 @@
             "tagsPlaceholder": "បន្ថែមស្លាក...",
             "tagsUpdated": "ស្លាកត្រូវបានធ្វើបច្ចុប្បន្នភាព",
             "addTag": "បន្ថែម",
-            "noTags": "គ្មានស្លាក"
+            "noTags": "គ្មានស្លាក",
+            "collaborators": "អ្នករួមការងារ",
+            "noCollaborators": "មិនទាន់បានចែករំលែកជាមួយអ្នកណាម្នាក់នៅឡើយ",
+            "folderNotLocked": "ថតនេះមិនត្រូវបានចាក់សោទេ",
+            "roleEditor": "អ្នកកែសម្រួល",
+            "roleViewer": "អ្នកមើល",
+            "rolePreviewer": "អ្នកមើលជាមុន",
+            "roleUploader": "អ្នកផ្ទុកឡើង",
+            "rolePreviewerUploader": "អ្នកមើលជាមុន និងអ្នកផ្ទុកឡើង",
+            "roleViewerUploader": "អ្នកមើល និងអ្នកផ្ទុកឡើង",
+            "roleCoOwner": "សហម្ចាស់"
         },
         "googledrive": {
             "star": "ដាក់ផ្កាយ",
             "unstar": "ដកផ្កាយ",
             "starred": "ឯកសារត្រូវបានដាក់ផ្កាយ",
-            "unstarred": "ឯកសារត្រូវបានដកផ្កាយ",
-            "addComment": "បន្ថែមមតិយោបល់",
-            "commentPlaceholder": "សរសេរមតិយោបល់របស់អ្នក...",
-            "commentAdded": "មតិយោបល់ត្រូវបានបន្ថែម"
+            "unstarred": "ឯកសារត្រូវបានដកផ្កាយ"
         },
         "dropbox": {
             "manageTags": "គ្រប់គ្រងស្លាក"
@@ -4792,7 +4810,14 @@
             "participants": "អ្នកចូលរួម",
             "saving": "កំពុងរក្សាទុក...",
             "saved": "បានរក្សាទុក",
-            "saveNow": "រក្សាទុកឥឡូវ"
+            "saveNow": "រក្សាទុកឥឡូវ",
+            "noteType": "ប្រភេទកំណត់ចំណាំ",
+            "addTag": "បន្ថែមស្លាក",
+            "newTag": "ស្លាកថ្មី...",
+            "tagName": "ឈ្មោះស្លាក",
+            "removeTag": "ដកស្លាកចេញ",
+            "manageTags": "គ្រប់គ្រងស្លាក",
+            "deleteTagConfirm": "លុបស្លាក “{name}” ឬ? កំណត់ចំណាំនៅរក្សាអត្ថបទរបស់វា។"
         },
         "shareLinkModal": {
             "title": "តំណចែករំលែក",
@@ -6068,6 +6093,27 @@
             "scopeSession": "អនុម័តឧបករណ៍នេះសម្រាប់រយៈពេលដែលនៅសល់នៃការជជែក។",
             "approve": "អនុម័ត",
             "rememberForChat": "អនុញ្ញាតឧបករណ៍នេះសម្រាប់ការជជែកនេះដែលនៅសល់"
+        },
+        "s3": {
+            "storageClass": "ថ្នាក់ផ្ទុកទិន្នន័យ",
+            "storageClassChanged": "បានប្តូរថ្នាក់ផ្ទុកទិន្នន័យទៅ {storageClass}",
+            "restoreFromGlacier": "ស្ដារពី Glacier",
+            "restoreTier": "កម្រិតនៃការទាញយក",
+            "restoreDays": "ចំនួនថ្ងៃរក្សាច្បាប់ចម្លងដែលបានស្ដារ",
+            "restoreStarted": "បានស្នើសុំការស្ដារ៖ នៅពេលរួចរាល់ ច្បាប់ចម្លងនឹងអាចអានបានរយៈពេល {days} ថ្ងៃ",
+            "objectTags": "ស្លាកវត្ថុ",
+            "noTags": "គ្មានស្លាក",
+            "tagKey": "សោ",
+            "tagValue": "តម្លៃ",
+            "tagsSaved": "បានរក្សាទុកស្លាក"
+        },
+        "azure": {
+            "accessTier": "កម្រិតចូលប្រើ",
+            "accessTierChanged": "បានកំណត់កម្រិតចូលប្រើទៅ {tier}"
+        },
+        "fileComments": {
+            "title": "មតិយោបល់",
+            "empty": "មិនទាន់មានមតិយោបល់នៅឡើយ"
         }
     }
 }

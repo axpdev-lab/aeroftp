@@ -102,14 +102,9 @@
             "connectionFailed": "连接失败",
             "reconnecting": "重新连接中...",
             "quickConnect": "快速连接",
-            "savedServers": "已保存的服务器",
-            "noSavedServers": "没有已保存的服务器",
             "saveServer": "保存服务器",
-            "deleteServer": "删除服务器",
-            "editServer": "编辑服务器",
             "serverName": "服务器名称",
             "initialPath": "初始路径",
-            "savedServersHelp": "选择一个服务器进行连接。",
             "selectSshKey": "选择 SSH 私钥",
             "allFiles": "所有文件",
             "sshKeys": "SSH 密钥",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "将任何服务器转变为带自动同步的个人云盘",
             "configureAerocloud": "配置 AeroCloud",
             "aerocloudHelp": "您也可以从状态栏配置 AeroCloud",
-            "selectProviderPrompt": "请在上方选择提供商，或选择\"自定义\"进行手动配置",
-            "custom": "自定义",
             "change": "更改",
             "emailAccount": "电子邮箱账户",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "您的 MEGA 密码",
-            "dismiss": "关闭",
             "authenticating": "正在认证...",
             "oauth2Connection": "OAuth2 连接",
             "securityTitle": "加密凭据存储",
@@ -170,7 +162,6 @@
             "docs": "文档",
             "minutes": "分钟",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "搜索服务器...",
             "fourshared": {
                 "backToExistingAccount": "返回已有账户",
                 "configureCredentials": "配置 OAuth 1.0 凭据",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "应用密码",
             "koofrAppPasswordPlaceholder": "在此粘贴您的 Koofr 应用密码",
             "koofrHelp": "在 app.koofr.net → Preferences → Password → App Passwords 生成应用密码",
-            "duplicateServer": "复制服务器",
-            "duplicateCredentialMissing": "凭证未复制到副本。连接前请重新输入密码。",
             "saveAsNew": "另存为新",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "在 Immich → User Settings → API Keys 中生成 API 密钥",
             "immichOps": "浏览、上传、下载、删除、相册、搜索、共享链接。不支持重命名和移动。",
             "generatePassword": "生成密码",
-            "saveAndConnect": "保存并连接",
-            "saveDisabledTotp": "TOTP 验证码为一次性使用。请使用“保存并连接”立即应用此验证码。",
             "generatePersonalLoginToken": "生成个人登录令牌",
             "endpointUrl": "端点 URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 原生 API：相比 S3 兼容模式的额外功能",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "重新登录",
             "twakeSignedIn": "已登录",
             "twakeWaitingBrowser": "请在浏览器中完成登录...",
-            "twakeSignInHelp": "AeroFTP 会在浏览器中打开 Twake,并且只请求访问您的文件。如果 Twake 第一次显示错误,请在浏览器中登录 Twake,然后重新登录。您可以随时在 Twake 设置的“已连接设备”中撤销访问权限。"
+            "twakeSignInHelp": "AeroFTP 会在浏览器中打开 Twake,并且只请求访问您的文件。如果 Twake 第一次显示错误,请在浏览器中登录 Twake,然后重新登录。您可以随时在 Twake 设置的“已连接设备”中撤销访问权限。",
+            "oauthKeysMissingTitle": "缺少 {provider} 应用密钥",
+            "oauthKeysMissing": "密码库中没有保存 {provider} 的应用密钥，因此 AeroFTP 无法登录。AeroFTP 不自带密钥：请在 {location} 中输入您的 {provider} 开发者应用的密钥，然后重新连接。",
+            "oauthKeysOpenSettings": "打开 OAuth 设置",
+            "oauthKeysReadFailedTitle": "无法读取 {provider} 应用密钥",
+            "oauthKeysReadFailed": "AeroFTP 无法从保险库中读取 {provider} 应用密钥，因此无法登录。密钥未被更改。错误：{error}"
         },
         "browser": {
             "remote": "远程",
@@ -1474,6 +1466,7 @@
             "extracted": "已解压！",
             "extractedTo": "文件已解压到 {dest}",
             "fileLocked": "文件已锁定",
+            "cutPartial": "已移动 {moved}/{total} 项；其余项目保留在原位置",
             "fileSkipped": "已跳过 {count} 个文件",
             "fileUnlocked": "文件已解锁",
             "loadTrashFailed": "加载回收站失败",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "已锁定加密叠加层",
             "aerocrypt_marker_migrate": "正在将 AeroCrypt 标记转换为 .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt 标记已转换为 .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] 正在解锁文件夹 {filename}..."
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "无法启动本地服务器。",
                     "serverFailed": "服务器已停止或发送了无效的回复。",
                     "httpUnauthorized": "服务器拒绝了已保存的凭据。",
-                    "unsupportedVersion": "服务器使用的 MCP 版本不受 AeroFTP 支持。"
+                    "unsupportedVersion": "服务器使用的 MCP 版本不受 AeroFTP 支持。",
+                    "directoryInvalid": "请选择不含链接或敏感应用文件的专用目录。",
+                    "directoryChanged": "已授权的目录已更改或不存在。请重新选择以更新访问权限。",
+                    "permissionCommand": "请通过目录和网络权限控件更改访问权限。",
+                    "installInvalid": "此托管安装不可用或其清单无效。",
+                    "installIntegrity": "软件包完整性验证失败。请移除并重新安装服务器。",
+                    "installArchive": "软件包包含不安全的路径、链接或无效的入口文件。",
+                    "installRuntime": "缺少所需的系统运行时。",
+                    "installDownload": "软件包下载失败或超时。",
+                    "installLimit": "软件包超出安装限制。",
+                    "installExists": "请先移除现有安装再重新安装。",
+                    "installIo": "无法读取或写入安装文件。"
                 },
                 "routingNotice": "已启用的服务器会向 AeroAgent 提供其工具。每次调用工具前都会先征求你的批准。",
                 "checkNow": "立即检查",
@@ -3094,7 +3099,19 @@
                 "healthError": "不可用：{reason}",
                 "healthReady": "已就绪，AeroAgent 可用的工具：{count}",
                 "healthUnsupported": "架构不受支持的工具：{count}",
-                "healthShowTools": "显示工具"
+                "healthShowTools": "显示工具",
+                "directoryTitle": "只读目录",
+                "grantDirectory": "选择目录",
+                "confirmDirectory": "允许此服务器只读访问 {path} 中的所有文件吗？请仅授权服务器或项目专用目录。",
+                "noDirectories": "无目录访问权限。",
+                "revokeDirectory": "撤销访问权限",
+                "confirmRevokeDirectory": "撤销对 {path} 的访问权限吗？此前的工具批准将失效。",
+                "networkAccess": "允许网络访问（所有主机）",
+                "networkBlocked": "网络访问已被阻止。",
+                "confirmNetwork": "允许 {name} 访问网络，包括本地服务吗？此前的工具批准将失效。",
+                "confirmBlockNetwork": "阻止 {name} 的网络访问吗？此前的工具批准将失效。",
+                "managedStatus": "托管安装：{version}",
+                "renewDirectory": "续期访问权限"
             }
         },
         "archive": {
@@ -4102,12 +4119,6 @@
             "viewSource": "查看源代码"
         },
         "savedServers": {
-            "dragToReorder": "拖动以重新排序",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "请在设置 > 云服务提供商中配置 4shared 凭据。",
-            "oauthConfigError": "请在设置 > 云服务提供商中配置 {provider} 凭据。",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,16 +4452,23 @@
             "tagsPlaceholder": "添加标签...",
             "tagsUpdated": "标签已更新",
             "addTag": "添加",
-            "noTags": "暂无标签"
+            "noTags": "暂无标签",
+            "collaborators": "协作者",
+            "noCollaborators": "尚未与任何人共享",
+            "folderNotLocked": "此文件夹未被锁定",
+            "roleEditor": "编辑者",
+            "roleViewer": "查看者",
+            "rolePreviewer": "预览者",
+            "roleUploader": "上传者",
+            "rolePreviewerUploader": "预览者兼上传者",
+            "roleViewerUploader": "查看者兼上传者",
+            "roleCoOwner": "共同所有者"
         },
         "googledrive": {
             "star": "加星标",
             "unstar": "取消星标",
             "starred": "文件已加星标",
-            "unstarred": "文件已取消星标",
-            "addComment": "添加评论",
-            "commentPlaceholder": "写下您的评论...",
-            "commentAdded": "评论已添加"
+            "unstarred": "文件已取消星标"
         },
         "dropbox": {
             "manageTags": "管理标签"
@@ -4773,7 +4791,14 @@
             "participants": "参与者",
             "saving": "保存中...",
             "saved": "已保存",
-            "saveNow": "立即保存"
+            "saveNow": "立即保存",
+            "noteType": "笔记类型",
+            "addTag": "添加标签",
+            "newTag": "新建标签...",
+            "tagName": "标签名称",
+            "removeTag": "移除标签",
+            "manageTags": "管理标签",
+            "deleteTagConfirm": "删除标签“{name}”？笔记会保留其文本。"
         },
         "shareLinkModal": {
             "title": "共享链接",
@@ -6049,6 +6074,27 @@
             "scopeSession": "在本次聊天会话剩余时间内批准此工具。",
             "approve": "批准",
             "rememberForChat": "在本次聊天的剩余时间内允许此工具"
+        },
+        "s3": {
+            "storageClass": "存储类别",
+            "storageClassChanged": "存储类别已更改为 {storageClass}",
+            "restoreFromGlacier": "从 Glacier 恢复",
+            "restoreTier": "取回层级",
+            "restoreDays": "已恢复副本的保留天数",
+            "restoreStarted": "已请求恢复：就绪后，副本将保持可读 {days} 天",
+            "objectTags": "对象标签",
+            "noTags": "无标签",
+            "tagKey": "键",
+            "tagValue": "值",
+            "tagsSaved": "标签已保存"
+        },
+        "azure": {
+            "accessTier": "访问层",
+            "accessTierChanged": "访问层已设置为 {tier}"
+        },
+        "fileComments": {
+            "title": "评论",
+            "empty": "暂无评论"
         }
     }
 }

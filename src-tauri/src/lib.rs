@@ -67,6 +67,8 @@ mod mcp_client_gate;
 mod mcp_client_http_commands;
 mod mcp_client_http_config;
 mod mcp_client_http_transport;
+mod mcp_client_install;
+mod mcp_client_install_paths;
 mod mcp_client_oauth;
 pub mod mcp_client_protocol;
 mod mcp_client_routing;
@@ -4695,7 +4697,7 @@ async fn download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: DownloadFolderParams,
-) -> Result<String, String> {
+) -> Result<transfer_domain::FolderTransferOutcome, String> {
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -4798,7 +4800,12 @@ async fn download_folder(
     };
 
     if scan_result.cancelled {
-        return Ok("Download cancelled after 0 files".to_string());
+        return Ok(transfer_domain::FolderTransferOutcome::cancelled(
+            0,
+            0,
+            0,
+            "Download cancelled after 0 files".to_string(),
+        ));
     }
 
     let batch = transfer_orchestrator::TransferBatch {
@@ -4929,7 +4936,13 @@ async fn download_folder(
         },
     );
 
-    Ok(result_message)
+    Ok(transfer_domain::FolderTransferOutcome {
+        completed: files_downloaded,
+        skipped: scan_result.files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 /// Upload an entire folder to the FTP server with full recursive support.
@@ -5237,7 +5250,7 @@ async fn upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: UploadFolderParams,
-) -> Result<String, String> {
+) -> Result<transfer_domain::FolderTransferOutcome, String> {
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -5340,7 +5353,12 @@ async fn upload_folder(
     };
 
     if prep_result.cancelled {
-        return Ok("Upload cancelled after 0 files".to_string());
+        return Ok(transfer_domain::FolderTransferOutcome::cancelled(
+            0,
+            0,
+            0,
+            "Upload cancelled after 0 files".to_string(),
+        ));
     }
 
     let batch = transfer_orchestrator::TransferBatch {
@@ -5474,7 +5492,13 @@ async fn upload_folder(
         },
     );
 
-    Ok(result_message)
+    Ok(transfer_domain::FolderTransferOutcome {
+        completed: files_uploaded,
+        skipped: prep_result.files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 #[tauri::command]
@@ -5486,6 +5510,19 @@ async fn cancel_transfer(
     state.request_cancel().await;
     provider_state.request_cancel().await;
     info!("Transfer cancellation requested");
+    Ok(())
+}
+
+/// First Stop of the two-level cancel ("finish the current file, start no
+/// other"). A backend batch, folder or file list, checks this flag before it
+/// starts each file; files already in flight run to the end. The second Stop
+/// is `cancel_transfer`, which also aborts them.
+#[tauri::command]
+async fn stop_starting_transfers(
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    provider_state.request_batch_stop();
+    info!("Soft stop requested: no further file will start");
     Ok(())
 }
 
@@ -11278,8 +11315,18 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
     }
 }
 
+/// Whether the user turned the native menu bar on for the main window
+/// (Settings, through `toggle_menu_bar`). Off by default: the titlebar menus
+/// replace it. `rebuild_menu` reads it, because a global `set_menu` reaches
+/// every window on Linux and would otherwise show the bar the user hid.
+static MAIN_MENU_BAR_VISIBLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[tauri::command]
 fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
+    if window.label() == "main" {
+        MAIN_MENU_BAR_VISIBLE.store(visible, Ordering::SeqCst);
+    }
     if visible {
         if let Some(menu) = app.menu() {
             let _ = window.set_menu(menu);
@@ -11552,6 +11599,14 @@ fn rebuild_menu_on_main(
         }
     } else {
         app.set_menu(menu).map_err(|e| e.to_string())?;
+        // GTK just gave the main window the menu too; keep the bar hidden
+        // unless the user turned it on. (macOS has one app-wide menu bar and
+        // ignores per-window menus.)
+        if !MAIN_MENU_BAR_VISIBLE.load(Ordering::SeqCst) {
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.remove_menu();
+            }
+        }
     }
 
     // Splash, extract and approval windows: GTK just gave them the menu too.
@@ -20029,6 +20084,7 @@ pub fn run() {
             download_folder,
             upload_folder,
             cancel_transfer,
+            stop_starting_transfers,
             reset_cancel_flag,
             set_speed_limit,
             get_speed_limit,
@@ -20224,6 +20280,10 @@ pub fn run() {
             mcp_client_commands::mcp_client_upsert_server,
             mcp_client_commands::mcp_client_remove_server,
             mcp_client_commands::mcp_client_set_secret,
+            mcp_client_commands::mcp_client_set_permissions,
+            mcp_client_install::mcp_client_install_manifests,
+            mcp_client_install::mcp_client_install_server,
+            mcp_client_install::mcp_client_install_cancel,
             mcp_client_http_commands::mcp_client_http_list_servers,
             mcp_client_http_commands::mcp_client_http_upsert_server,
             mcp_client_http_commands::mcp_client_http_remove_server,
@@ -20523,6 +20583,8 @@ pub fn run() {
             provider_commands::provider_detect_archive_meta_remote,
             provider_commands::provider_download_folder,
             provider_commands::provider_upload_folder,
+            provider_commands::provider_download_files_batch,
+            provider_commands::provider_upload_files_batch,
             provider_commands::provider_upload_file,
             provider_commands::provider_mkdir,
             provider_commands::provider_delete_file,

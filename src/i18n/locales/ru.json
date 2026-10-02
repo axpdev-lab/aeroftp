@@ -102,14 +102,9 @@
             "connectionFailed": "Ошибка подключения",
             "reconnecting": "Переподключение...",
             "quickConnect": "Быстрое подключение",
-            "savedServers": "Сохранённые серверы",
-            "noSavedServers": "Нет сохранённых серверов",
             "saveServer": "Сохранить сервер",
-            "deleteServer": "Удалить сервер",
-            "editServer": "Редактировать сервер",
             "serverName": "Имя сервера",
             "initialPath": "Начальный путь",
-            "savedServersHelp": "Выберите сервер для подключения.",
             "selectSshKey": "Выберите закрытый ключ SSH",
             "allFiles": "Все файлы",
             "sshKeys": "Ключи SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Превратите любой сервер в персональное облако с автоматической синхронизацией",
             "configureAerocloud": "Настроить AeroCloud",
             "aerocloudHelp": "Вы также можете настроить AeroCloud из строки состояния",
-            "selectProviderPrompt": "Выберите провайдера выше или выберите \"Custom\" для ручной настройки",
-            "custom": "Пользовательское",
             "change": "Изменить",
             "emailAccount": "Учётная запись электронной почты",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ваш пароль MEGA",
-            "dismiss": "Отклонить",
             "authenticating": "Аутентификация...",
             "oauth2Connection": "OAuth2 подключение",
             "securityTitle": "Зашифрованное хранение учётных данных",
@@ -170,7 +162,6 @@
             "docs": "Документация",
             "minutes": "минут",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Поиск серверов...",
             "fourshared": {
                 "backToExistingAccount": "Вернуться к существующему аккаунту",
                 "configureCredentials": "Настроить учетные данные OAuth 1.0",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "Пароль приложения",
             "koofrAppPasswordPlaceholder": "Вставьте пароль приложения Koofr здесь",
             "koofrHelp": "Создайте пароль приложения на app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Дублировать сервер",
-            "duplicateCredentialMissing": "Учётные данные не скопированы в дубликат. Введите пароль повторно перед подключением.",
             "saveAsNew": "Сохранить как новый",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Создайте API-ключ в Immich → User Settings → API Keys",
             "immichOps": "Обзор, загрузка, скачивание, удаление, альбомы, поиск, ссылки для обмена. Переименование и перемещение не поддерживаются.",
             "generatePassword": "Сгенерировать пароль",
-            "saveAndConnect": "Сохранить и подключиться",
-            "saveDisabledTotp": "Коды TOTP одноразовые. Используйте «Сохранить и подключиться», чтобы применить этот код сейчас.",
             "generatePersonalLoginToken": "Создать персональный токен входа",
             "endpointUrl": "URL конечной точки",
             "b2NativeAdvantagesTitle": "Нативный API Backblaze B2: дополнительные возможности по сравнению с S3-совместимым",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Войти снова",
             "twakeSignedIn": "Вход выполнен",
             "twakeWaitingBrowser": "Завершите вход в браузере...",
-            "twakeSignInHelp": "AeroFTP открывает Twake в вашем браузере и запрашивает доступ только к вашим файлам. Если Twake покажет ошибку в первый раз, войдите в Twake в браузере и повторите вход. Вы можете отозвать доступ в любой момент в настройках Twake, раздел Подключённые устройства."
+            "twakeSignInHelp": "AeroFTP открывает Twake в вашем браузере и запрашивает доступ только к вашим файлам. Если Twake покажет ошибку в первый раз, войдите в Twake в браузере и повторите вход. Вы можете отозвать доступ в любой момент в настройках Twake, раздел Подключённые устройства.",
+            "oauthKeysMissingTitle": "Нет ключей приложения {provider}",
+            "oauthKeysMissing": "В хранилище нет ключей приложения для {provider}, поэтому AeroFTP не может выполнить вход. AeroFTP не поставляется со своими ключами: введите ключи вашего приложения разработчика {provider} в {location} и подключитесь снова.",
+            "oauthKeysOpenSettings": "Открыть настройки OAuth",
+            "oauthKeysReadFailedTitle": "Не удалось прочитать ключи приложения {provider}",
+            "oauthKeysReadFailed": "AeroFTP не смог прочитать ключи приложения {provider} из хранилища, поэтому не может выполнить вход. Ключи не были изменены. Ошибка: {error}"
         },
         "browser": {
             "remote": "Удалённый",
@@ -1474,6 +1466,7 @@
             "extracted": "Извлечено!",
             "extractedTo": "Файлы извлечены в {dest}",
             "fileLocked": "Файл заблокирован",
+            "cutPartial": "Перемещено {moved} из {total} элементов; остальные остались на месте",
             "fileSkipped": "Пропущено файлов: {count}",
             "fileUnlocked": "Файл разблокирован",
             "loadTrashFailed": "Не удалось загрузить корзину",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Зашифрованный слой заблокирован",
             "aerocrypt_marker_migrate": "Преобразование маркера AeroCrypt в .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Маркер AeroCrypt преобразован в .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Разблокировка папки {filename}..."
         },
         "protocol": {
             "selectProtocol": "Выберите протокол...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "Не удалось запустить локальный сервер.",
                     "serverFailed": "Сервер остановился или отправил недопустимый ответ.",
                     "httpUnauthorized": "Сервер отклонил сохранённые учётные данные.",
-                    "unsupportedVersion": "Сервер использует версию MCP, которую AeroFTP не поддерживает."
+                    "unsupportedVersion": "Сервер использует версию MCP, которую AeroFTP не поддерживает.",
+                    "directoryInvalid": "Выберите отдельный каталог без ссылок и конфиденциальных файлов приложений.",
+                    "directoryChanged": "Разрешённый каталог изменён или отсутствует. Выберите его снова, чтобы возобновить доступ.",
+                    "permissionCommand": "Измените доступ с помощью настроек разрешений для каталогов и сети.",
+                    "installInvalid": "Эта управляемая установка недоступна или её манифест недействителен.",
+                    "installIntegrity": "Проверка целостности пакета не пройдена. Удалите и переустановите сервер.",
+                    "installArchive": "Пакет содержит небезопасные пути, ссылки или недопустимый файл запуска.",
+                    "installRuntime": "Отсутствует необходимая системная среда выполнения.",
+                    "installDownload": "Не удалось скачать пакет или истекло время ожидания.",
+                    "installLimit": "Пакет превышает ограничения установки.",
+                    "installExists": "Удалите существующую установку перед переустановкой.",
+                    "installIo": "Не удалось прочитать или записать файлы установки."
                 },
                 "routingNotice": "Включённые серверы предоставляют свои инструменты AeroAgent. Каждый вызов инструмента сначала запрашивает ваше одобрение.",
                 "checkNow": "Проверить сейчас",
@@ -3094,7 +3099,19 @@
                 "healthError": "Недоступен: {reason}",
                 "healthReady": "Готов, инструментов, доступных AeroAgent: {count}",
                 "healthUnsupported": "Инструменты с неподдерживаемыми схемами: {count}",
-                "healthShowTools": "Показать инструменты"
+                "healthShowTools": "Показать инструменты",
+                "directoryTitle": "Каталоги только для чтения",
+                "grantDirectory": "Выбрать каталог",
+                "confirmDirectory": "Разрешить этому серверу доступ только для чтения ко всем файлам в {path}? Предоставляйте доступ только к отдельному каталогу сервера или проекта.",
+                "noDirectories": "Нет доступа к каталогам.",
+                "revokeDirectory": "Отозвать доступ",
+                "confirmRevokeDirectory": "Отозвать доступ к {path}? Предыдущие разрешения на использование инструментов станут недействительными.",
+                "networkAccess": "Разрешить доступ к сети (все узлы)",
+                "networkBlocked": "Доступ к сети заблокирован.",
+                "confirmNetwork": "Разрешить {name} доступ к сети, включая локальные службы? Предыдущие разрешения на использование инструментов станут недействительными.",
+                "confirmBlockNetwork": "Заблокировать доступ к сети для {name}? Предыдущие разрешения на использование инструментов станут недействительными.",
+                "managedStatus": "Управляемая установка: {version}",
+                "renewDirectory": "Обновить доступ"
             }
         },
         "archive": {
@@ -4102,12 +4119,6 @@
             "viewSource": "Просмотреть исходный код"
         },
         "savedServers": {
-            "dragToReorder": "Перетащите для изменения порядка",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Настройте учетные данные 4shared в Настройки > Облачные провайдеры.",
-            "oauthConfigError": "Настройте учетные данные {provider} в Настройки > Облачные провайдеры.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,16 +4452,23 @@
             "tagsPlaceholder": "Добавить тег...",
             "tagsUpdated": "Теги обновлены",
             "addTag": "Добавить",
-            "noTags": "Нет тегов"
+            "noTags": "Нет тегов",
+            "collaborators": "Соавторы",
+            "noCollaborators": "Пока ни с кем не поделились",
+            "folderNotLocked": "Эта папка не заблокирована",
+            "roleEditor": "Редактор",
+            "roleViewer": "Просмотр",
+            "rolePreviewer": "Предпросмотр",
+            "roleUploader": "Загрузка",
+            "rolePreviewerUploader": "Предпросмотр и загрузка",
+            "roleViewerUploader": "Просмотр и загрузка",
+            "roleCoOwner": "Совладелец"
         },
         "googledrive": {
             "star": "Добавить в избранное",
             "unstar": "Убрать из избранного",
             "starred": "Файл добавлен в избранное",
-            "unstarred": "Файл убран из избранного",
-            "addComment": "Добавить комментарий",
-            "commentPlaceholder": "Напишите комментарий...",
-            "commentAdded": "Комментарий добавлен"
+            "unstarred": "Файл убран из избранного"
         },
         "dropbox": {
             "manageTags": "Управление тегами"
@@ -4773,7 +4791,14 @@
             "participants": "участников",
             "saving": "Сохранение...",
             "saved": "Сохранено",
-            "saveNow": "Сохранить сейчас"
+            "saveNow": "Сохранить сейчас",
+            "noteType": "Тип заметки",
+            "addTag": "Добавить тег",
+            "newTag": "Новый тег...",
+            "tagName": "Название тега",
+            "removeTag": "Убрать тег",
+            "manageTags": "Управление тегами",
+            "deleteTagConfirm": "Удалить тег «{name}»? Заметки сохранят свой текст."
         },
         "shareLinkModal": {
             "title": "Ссылка для общего доступа",
@@ -6049,6 +6074,27 @@
             "scopeSession": "Разрешает этот инструмент до конца сеанса чата.",
             "approve": "Разрешить",
             "rememberForChat": "Разрешить этот инструмент до конца этого чата"
+        },
+        "s3": {
+            "storageClass": "Класс хранилища",
+            "storageClassChanged": "Класс хранилища изменён на {storageClass}",
+            "restoreFromGlacier": "Восстановить из Glacier",
+            "restoreTier": "Уровень извлечения",
+            "restoreDays": "Дней хранения восстановленной копии",
+            "restoreStarted": "Восстановление запрошено: когда копия будет готова, она останется доступной для чтения {days} дн.",
+            "objectTags": "Теги объекта",
+            "noTags": "Нет тегов",
+            "tagKey": "Ключ",
+            "tagValue": "Значение",
+            "tagsSaved": "Теги сохранены"
+        },
+        "azure": {
+            "accessTier": "Уровень доступа",
+            "accessTierChanged": "Уровень доступа установлен: {tier}"
+        },
+        "fileComments": {
+            "title": "Комментарии",
+            "empty": "Комментариев пока нет"
         }
     }
 }

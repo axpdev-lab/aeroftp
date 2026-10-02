@@ -222,13 +222,7 @@
             "connectionFailed": "Connessione fallita",
             "reconnecting": "Riconnessione in corso...",
             "quickConnect": "Connessione Rapida",
-            "savedServers": "Server Salvati",
-            "savedServersHelp": "Seleziona un server per connetterti.",
-            "searchServers": "Cerca server...",
-            "noSavedServers": "Nessun server salvato",
             "saveServer": "Salva Server",
-            "deleteServer": "Elimina Server",
-            "editServer": "Modifica Server",
             "serverName": "Nome Server",
             "initialPath": "Percorso Iniziale",
             "selectSshKey": "Seleziona Chiave Privata SSH",
@@ -256,13 +250,10 @@
             "aerocloudDesc": "Trasforma qualsiasi server nel tuo cloud personale con sincronizzazione automatica",
             "configureAerocloud": "Configura AeroCloud",
             "aerocloudHelp": "Puoi anche configurare AeroCloud dalla barra di stato",
-            "selectProviderPrompt": "Seleziona un provider sopra o scegli \"Personalizzato\"",
-            "custom": "Personalizzato",
             "change": "Cambia",
             "emailAccount": "Account Email",
             "megaEmailPlaceholder": "la-tua-email@mega.nz",
             "megaPasswordPlaceholder": "La tua password MEGA",
-            "dismiss": "Chiudi",
             "authenticating": "Autenticazione...",
             "oauth2Connection": "Connessione OAuth2",
             "twoFactorCode": "TOTP a 6 cifre (opzionale, non salvato)",
@@ -277,8 +268,6 @@
             "saveToServers": "Salva nei Server Salvati",
             "connectionNamePlaceholder": "Nome Connessione (es. Il Mio Filen Cloud)",
             "secureLogin": "Login Sicuro",
-            "saveAndConnect": "Salva e Connetti",
-            "saveDisabledTotp": "I codici TOTP sono monouso. Usa Salva e Connetti per applicare il codice ora.",
             "endToEndAes": "Crittografia end-to-end con AES-256-GCM",
             "megaConnectionMode": "Backend di connessione",
             "megaModeNative": "API native",
@@ -374,8 +363,6 @@
             "yandexdiskToken": "Token OAuth",
             "yandexdiskTokenPlaceholder": "Incolla qui il tuo token OAuth di Yandex",
             "yandexdiskHelp": "Crea un'app su oauth.yandex.com → Autorizza → Copia il token OAuth (valido 1 anno)",
-            "duplicateServer": "Duplica server",
-            "duplicateCredentialMissing": "Credenziale non copiata nel duplicato. Reinserisci la password prima di connetterti.",
             "saveAsNew": "Salva come nuovo",
             "immichServerUrl": "URL del server",
             "immichApiKeyPlaceholder": "Incolla la tua chiave API qui",
@@ -453,7 +440,12 @@
             "twakeSignInAgain": "Accedi di nuovo",
             "twakeSignedIn": "Accesso effettuato",
             "twakeWaitingBrowser": "Completa l'accesso nel browser...",
-            "twakeSignInHelp": "AeroFTP apre Twake nel browser e chiede l'accesso solo ai tuoi file. Se la prima volta Twake mostra un errore, accedi a Twake nel browser e riprova. Puoi revocare l'accesso in qualsiasi momento dalle Impostazioni di Twake, Dispositivi collegati."
+            "twakeSignInHelp": "AeroFTP apre Twake nel browser e chiede l'accesso solo ai tuoi file. Se la prima volta Twake mostra un errore, accedi a Twake nel browser e riprova. Puoi revocare l'accesso in qualsiasi momento dalle Impostazioni di Twake, Dispositivi collegati.",
+            "oauthKeysMissingTitle": "Chiavi dell'app {provider} mancanti",
+            "oauthKeysMissing": "Nel vault non sono salvate chiavi dell'app per {provider}, quindi AeroFTP non può accedere. AeroFTP non include chiavi proprie: inserisci le chiavi della tua app sviluppatore {provider} in {location}, poi riconnettiti.",
+            "oauthKeysOpenSettings": "Apri impostazioni OAuth",
+            "oauthKeysReadFailedTitle": "Impossibile leggere le chiavi dell'app {provider}",
+            "oauthKeysReadFailed": "AeroFTP non è riuscito a leggere dal vault le chiavi dell'app {provider}, quindi non può accedere. Le chiavi non sono state modificate. Errore: {error}"
         },
         "twoFactor": {
             "title": "Autenticazione a due fattori richiesta",
@@ -1997,6 +1989,7 @@
             "sizeFailed": "Calcolo dimensione fallito",
             "copyFailed": "Copia fallita",
             "copyNotSupported": "Copia lato server non supportata",
+            "cutPartial": "Spostati {moved} elementi su {total}; gli altri restano dove sono",
             "fileSkipped": "{count} file ignorati",
             "fileUnlocked": "File sbloccato",
             "fileLocked": "File bloccato",
@@ -2238,7 +2231,8 @@
             "overlay_locked": "Overlay cifrato bloccato",
             "aerocrypt_marker_migrate": "Conversione del marcatore AeroCrypt in .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcatore AeroCrypt convertito in .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Sblocco della cartella {filename}..."
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",
@@ -3281,7 +3275,18 @@
                     "startFailed": "Non è stato possibile avviare il server locale.",
                     "serverFailed": "Il server si è arrestato o ha inviato una risposta non valida.",
                     "httpUnauthorized": "Il server ha rifiutato le credenziali salvate.",
-                    "unsupportedVersion": "Il server usa una versione di MCP che AeroFTP non supporta."
+                    "unsupportedVersion": "Il server usa una versione di MCP che AeroFTP non supporta.",
+                    "directoryInvalid": "Scegli una directory dedicata senza collegamenti o file sensibili delle applicazioni.",
+                    "directoryChanged": "La directory autorizzata è cambiata o non esiste. Selezionala di nuovo per rinnovare l’accesso.",
+                    "permissionCommand": "Modifica l’accesso con i controlli dei permessi per directory e rete.",
+                    "installInvalid": "Questa installazione gestita non è disponibile o il suo manifesto non è valido.",
+                    "installIntegrity": "Verifica dell’integrità del pacchetto non riuscita. Rimuovi e reinstalla il server.",
+                    "installArchive": "Il pacchetto contiene percorsi non sicuri, collegamenti o un file di avvio non valido.",
+                    "installRuntime": "Il runtime di sistema richiesto non è disponibile.",
+                    "installDownload": "Il download del pacchetto non è riuscito o è scaduto.",
+                    "installLimit": "Il pacchetto supera i limiti di installazione.",
+                    "installExists": "Rimuovi l’installazione esistente prima di reinstallare.",
+                    "installIo": "Impossibile leggere o scrivere i file di installazione."
                 },
                 "routingNotice": "I server abilitati offrono i loro strumenti ad AeroAgent. Ogni chiamata a uno strumento chiede prima la tua approvazione.",
                 "checkNow": "Verifica ora",
@@ -3290,7 +3295,19 @@
                 "healthError": "Non disponibile: {reason}",
                 "healthReady": "Pronto, strumenti disponibili per AeroAgent: {count}",
                 "healthUnsupported": "Strumenti con schemi non supportati: {count}",
-                "healthShowTools": "Mostra strumenti"
+                "healthShowTools": "Mostra strumenti",
+                "directoryTitle": "Directory in sola lettura",
+                "grantDirectory": "Scegli directory",
+                "confirmDirectory": "Concedere a questo server accesso in sola lettura a ogni file in {path}? Concedi solo una directory dedicata al server o al progetto.",
+                "noDirectories": "Nessun accesso alle directory.",
+                "revokeDirectory": "Revoca accesso",
+                "confirmRevokeDirectory": "Revocare l’accesso a {path}? Le precedenti approvazioni degli strumenti non saranno più valide.",
+                "networkAccess": "Consenti accesso alla rete (tutti gli host)",
+                "networkBlocked": "L’accesso alla rete è bloccato.",
+                "confirmNetwork": "Consentire a {name} di accedere alla rete, inclusi i servizi locali? Le precedenti approvazioni degli strumenti non saranno più valide.",
+                "confirmBlockNetwork": "Bloccare l’accesso alla rete per {name}? Le precedenti approvazioni degli strumenti non saranno più valide.",
+                "managedStatus": "Installazione gestita: {version}",
+                "renewDirectory": "Rinnova accesso"
             }
         },
         "archive": {
@@ -4564,10 +4581,6 @@
             }
         },
         "savedServers": {
-            "dragToReorder": "Trascina per riordinare",
-            "oauthError": "OAuth - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "e2eAes128": "E2E AES-128 - {username}",
             "s3Provider": "{bucket} - {provider}",
             "opendriveDisplay": "OpenDrive {username}",
             "hideCredentials": "Nascondi credenziali",
@@ -4576,8 +4589,6 @@
             "hideUsername": "Nascondi username sulle card",
             "webdavDisplay": "{username}@{host}",
             "standardDisplay": "{username}@{host}:{port}",
-            "oauthConfigError": "Configura le credenziali {provider} in Impostazioni > Provider Cloud.",
-            "foursharedConfigError": "Configura le credenziali 4shared in Impostazioni > Provider Cloud.",
             "expBadge": "EXP",
             "sessionExpired": "Sessione scaduta (24h)",
             "clickToRenew": "Clicca per rinnovare la sessione e connetterti",
@@ -4767,16 +4778,23 @@
             "tagsPlaceholder": "Aggiungi un tag...",
             "tagsUpdated": "Tag aggiornati",
             "addTag": "Aggiungi",
-            "noTags": "Nessun tag"
+            "noTags": "Nessun tag",
+            "collaborators": "Collaboratori",
+            "noCollaborators": "Non ancora condiviso con nessuno",
+            "folderNotLocked": "Questa cartella non ha blocchi",
+            "roleEditor": "Editor",
+            "roleViewer": "Visualizzatore",
+            "rolePreviewer": "Visualizzatore anteprima",
+            "roleUploader": "Caricatore",
+            "rolePreviewerUploader": "Visualizzatore anteprima e caricatore",
+            "roleViewerUploader": "Visualizzatore e caricatore",
+            "roleCoOwner": "Comproprietario"
         },
         "googledrive": {
             "star": "Aggiungi a Speciali",
             "unstar": "Rimuovi da Speciali",
             "starred": "File aggiunto ai preferiti",
-            "unstarred": "File rimosso dai preferiti",
-            "addComment": "Aggiungi commento",
-            "commentPlaceholder": "Scrivi il tuo commento...",
-            "commentAdded": "Commento aggiunto"
+            "unstarred": "File rimosso dai preferiti"
         },
         "dropbox": {
             "manageTags": "Gestisci tag"
@@ -5093,7 +5111,14 @@
                 "pinned": "Fissate",
                 "archived": "Archiviate",
                 "trash": "Cestino"
-            }
+            },
+            "noteType": "Tipo di nota",
+            "addTag": "Aggiungi tag",
+            "newTag": "Nuovo tag...",
+            "tagName": "Nome del tag",
+            "removeTag": "Rimuovi tag",
+            "manageTags": "Gestisci tag",
+            "deleteTagConfirm": "Eliminare il tag \"{name}\"? Le note mantengono il loro testo."
         },
         "shareLinkModal": {
             "title": "Link di condivisione",
@@ -6049,6 +6074,27 @@
             "scopeSession": "Approva questo strumento per il resto della sessione di chat.",
             "approve": "Approva",
             "rememberForChat": "Consenti questo strumento per il resto di questa chat"
+        },
+        "s3": {
+            "storageClass": "Classe di archiviazione",
+            "storageClassChanged": "Classe di archiviazione modificata in {storageClass}",
+            "restoreFromGlacier": "Ripristina da Glacier",
+            "restoreTier": "Livello di recupero",
+            "restoreDays": "Giorni di conservazione della copia ripristinata",
+            "restoreStarted": "Ripristino richiesto: quando pronta, la copia resterà leggibile per {days} giorni",
+            "objectTags": "Tag dell'oggetto",
+            "noTags": "Nessun tag",
+            "tagKey": "Chiave",
+            "tagValue": "Valore",
+            "tagsSaved": "Tag salvati"
+        },
+        "azure": {
+            "accessTier": "Livello di accesso",
+            "accessTierChanged": "Livello di accesso impostato su {tier}"
+        },
+        "fileComments": {
+            "title": "Commenti",
+            "empty": "Ancora nessun commento"
         }
     }
 }
