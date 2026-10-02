@@ -141,14 +141,16 @@ function checkOauthSettingsLeakGuard() {
 
   // SEC-P1-03: vault only, no localStorage fallback for OAuth client credentials.
   // Every `oauth_` key in the file must sit in a vault read, so a key built
-  // into a variable and handed to localStorage elsewhere fails here too.
+  // into a variable and handed to localStorage elsewhere fails here too; and
+  // a line that touches browser storage fails even if it also reads the vault.
   const strayOauthKeys = myServers
     .split('\n')
     .map((line, i) => ({ line, n: i + 1 }))
-    .filter(({ line }) => line.includes('oauth_') && !/getCredentialWithRetry\(|'get_credential'/.test(line));
+    .filter(({ line }) => line.includes('oauth_')
+      && (/\b(localStorage|sessionStorage)\b/.test(line) || !/getCredentialWithRetry\(|'get_credential'/.test(line)));
   assert(
     strayOauthKeys.length === 0,
-    `oauth leak guard regression: oauth_ key outside a vault read in ${myServersFile} at line(s) ${strayOauthKeys.map((s) => s.n).join(', ')}`
+    `oauth leak guard regression: oauth_ key outside a vault read, or next to browser storage, in ${myServersFile} at line(s) ${strayOauthKeys.map((s) => s.n).join(', ')}`
   );
 }
 
