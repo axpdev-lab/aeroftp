@@ -1469,6 +1469,7 @@
             "extracted": "Đã giải nén!",
             "extractedTo": "Đã giải nén tệp đến {dest}",
             "fileLocked": "Tệp đã khóa",
+            "cutPartial": "Đã di chuyển {moved}/{total} mục; các mục còn lại vẫn ở nguyên chỗ",
             "fileSkipped": "Đã bỏ qua {count} tệp",
             "fileUnlocked": "Tệp đã mở khóa",
             "loadTrashFailed": "Không thể tải thùng rác",

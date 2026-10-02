@@ -1469,6 +1469,7 @@
             "extracted": "Izvilkts!",
             "extractedTo": "Faili izvilkti uz {dest}",
             "fileLocked": "Fails bloķēts",
+            "cutPartial": "Pārvietoti {moved} no {total} vienumiem; pārējie paliek savā vietā",
             "fileSkipped": "{count} fails(-i) izlaists(-i)",
             "fileUnlocked": "Fails atbloķēts",
             "loadTrashFailed": "Neizdevās ielādēt atkritni",

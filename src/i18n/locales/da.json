@@ -1469,6 +1469,7 @@
             "extracted": "Udpakket!",
             "extractedTo": "Filer udpakket til {dest}",
             "fileLocked": "Fil låst",
+            "cutPartial": "Flyttede {moved} af {total} elementer; resten bliver liggende",
             "fileSkipped": "{count} fil(er) sprunget over",
             "fileUnlocked": "Fil låst op",
             "loadTrashFailed": "Kunne ikke indlæse papirkurv",

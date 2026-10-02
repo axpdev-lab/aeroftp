@@ -1469,6 +1469,7 @@
             "extracted": "Rozbaleno!",
             "extractedTo": "Soubory rozbaleny do {dest}",
             "fileLocked": "Soubor uzamčen",
+            "cutPartial": "Přesunuto {moved} z {total} položek; ostatní zůstávají na místě",
             "fileSkipped": "{count} soubor(ů) přeskočeno",
             "fileUnlocked": "Soubor odemčen",
             "loadTrashFailed": "Načtení koše selhalo",

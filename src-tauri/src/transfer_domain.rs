@@ -294,6 +294,33 @@ impl TransferBatchConfig {
     }
 }
 
+/// What a folder transfer command answers the GUI (#591).
+///
+/// The GUI used to read "Downloaded 5 files, 0 skipped, 0 errors" back out of
+/// the message to decide whether a "cut" paste may delete the source folder.
+/// The counts now travel as fields; `message` stays the human line.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FolderTransferOutcome {
+    pub completed: u32,
+    pub skipped: u32,
+    pub failed: u32,
+    pub cancelled: bool,
+    pub message: String,
+}
+
+impl FolderTransferOutcome {
+    /// A run stopped by the user, with what had been done until then.
+    pub fn cancelled(completed: u32, skipped: u32, failed: u32, message: String) -> Self {
+        Self {
+            completed,
+            skipped,
+            failed,
+            cancelled: true,
+            message,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferEntry {
     pub id: String,

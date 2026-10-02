@@ -1462,6 +1462,7 @@
             "extracted": "Հանվեց!",
             "extractedTo": "Ֆայլերը հանվեցին {dest}",
             "fileLocked": "Ֆայլը կողպված է",
+            "cutPartial": "Տեղափոխվել է {moved}-ը {total}-ից. մնացածը մնում են իրենց տեղում",
             "fileSkipped": "{count} ֆայլ բաց թողվեց",
             "fileUnlocked": "Ֆայլը ապակողպված է",
             "loadTrashFailed": "Աղբամանի բեռնման ձախողում",

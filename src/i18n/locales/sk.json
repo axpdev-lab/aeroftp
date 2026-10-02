@@ -1469,6 +1469,7 @@
             "extracted": "Extrahované!",
             "extractedTo": "Súbory extrahované do {dest}",
             "fileLocked": "Súbor zamknutý",
+            "cutPartial": "Presunutých {moved} z {total} položiek; ostatné zostávajú na mieste",
             "fileSkipped": "Preskočených súborov: {count}",
             "fileUnlocked": "Súbor odomknutý",
             "loadTrashFailed": "Načítanie koša zlyhalo",

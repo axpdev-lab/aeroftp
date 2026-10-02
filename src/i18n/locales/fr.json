@@ -1469,6 +1469,7 @@
             "extracted": "Extrait !",
             "extractedTo": "Fichiers extraits dans {dest}",
             "fileLocked": "Fichier verrouillé",
+            "cutPartial": "{moved} élément(s) déplacé(s) sur {total} ; les autres restent en place",
             "fileSkipped": "{count} fichier(s) ignoré(s)",
             "fileUnlocked": "Fichier déverrouillé",
             "loadTrashFailed": "Échec du chargement de la corbeille",

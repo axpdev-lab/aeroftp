@@ -1469,6 +1469,7 @@
             "extracted": "แตกไฟล์แล้ว!",
             "extractedTo": "แตกไฟล์ไปที่ {dest}",
             "fileLocked": "ไฟล์ถูกล็อก",
+            "cutPartial": "ย้ายแล้ว {moved} จาก {total} รายการ ส่วนที่เหลืออยู่ที่เดิม",
             "fileSkipped": "ข้าม {count} ไฟล์",
             "fileUnlocked": "ปลดล็อกไฟล์แล้ว",
             "loadTrashFailed": "การโหลดถังขยะล้มเหลว",

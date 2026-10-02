@@ -1469,6 +1469,7 @@
             "extracted": "Izvlečeno!",
             "extractedTo": "Datoteke izvlečene v {dest}",
             "fileLocked": "Datoteka zaklenjena",
+            "cutPartial": "Premaknjenih {moved} od {total} elementov; ostali ostanejo na mestu",
             "fileSkipped": "{count} datotek(e) preskočenih",
             "fileUnlocked": "Datoteka odklenjena",
             "loadTrashFailed": "Nalaganje koša neuspešno",

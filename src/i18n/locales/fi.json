@@ -1469,6 +1469,7 @@
             "extracted": "Purettu!",
             "extractedTo": "Tiedostot purettu kohteeseen {dest}",
             "fileLocked": "Tiedosto lukittu",
+            "cutPartial": "Siirretty {moved}/{total} kohdetta; loput jäävät paikalleen",
             "fileSkipped": "{count} tiedosto(a) ohitettu",
             "fileUnlocked": "Tiedoston lukitus avattu",
             "loadTrashFailed": "Roskakorin lataus epäonnistui",

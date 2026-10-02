@@ -1469,6 +1469,7 @@
             "extracted": "Kibontva!",
             "extractedTo": "Fájlok kibontva ide: {dest}",
             "fileLocked": "Fájl zárolva",
+            "cutPartial": "{moved}/{total} elem áthelyezve; a többi a helyén marad",
             "fileSkipped": "{count} fájl kihagyva",
             "fileUnlocked": "Fájl feloldva",
             "loadTrashFailed": "Lomtár betöltése sikertelen",

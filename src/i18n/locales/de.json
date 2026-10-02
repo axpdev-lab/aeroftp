@@ -1469,6 +1469,7 @@
             "extracted": "Entpackt!",
             "extractedTo": "Dateien entpackt nach {dest}",
             "fileLocked": "Datei gesperrt",
+            "cutPartial": "{moved} von {total} Elementen verschoben; der Rest bleibt an seinem Platz",
             "fileSkipped": "{count} Datei(en) übersprungen",
             "fileUnlocked": "Datei entsperrt",
             "loadTrashFailed": "Papierkorb konnte nicht geladen werden",

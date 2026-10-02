@@ -1469,6 +1469,7 @@
             "extracted": "Na-extract na!",
             "extractedTo": "Na-extract ang mga file sa {dest}",
             "fileLocked": "Naka-lock ang file",
+            "cutPartial": "Nailipat ang {moved} sa {total} item; nananatili sa lugar ang iba",
             "fileSkipped": "{count} (mga) file ang nilaktawan",
             "fileUnlocked": "Na-unlock ang file",
             "loadTrashFailed": "Nabigong i-load ang basurahan",

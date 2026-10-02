@@ -4167,6 +4167,7 @@
             "fileSaved": "File Saved",
             "fileSavedLocal": "{name} saved locally",
             "fileSavedRemote": "{name} saved to server",
+            "cutPartial": "Moved {moved} of {total} items; the rest stay in place",
             "fileSkipped": "{count} file(s) skipped",
             "fileUnlocked": "File unlocked",
             "fillBucket": "Please fill in bucket name",

@@ -1469,6 +1469,7 @@
             "extracted": "Извлечено!",
             "extractedTo": "Файлы извлечены в {dest}",
             "fileLocked": "Файл заблокирован",
+            "cutPartial": "Перемещено {moved} из {total} элементов; остальные остались на месте",
             "fileSkipped": "Пропущено файлов: {count}",
             "fileUnlocked": "Файл разблокирован",
             "loadTrashFailed": "Не удалось загрузить корзину",

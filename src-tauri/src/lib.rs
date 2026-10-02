@@ -4699,7 +4699,7 @@ async fn download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: DownloadFolderParams,
-) -> Result<String, String> {
+) -> Result<transfer_domain::FolderTransferOutcome, String> {
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -4802,7 +4802,12 @@ async fn download_folder(
     };
 
     if scan_result.cancelled {
-        return Ok("Download cancelled after 0 files".to_string());
+        return Ok(transfer_domain::FolderTransferOutcome::cancelled(
+            0,
+            0,
+            0,
+            "Download cancelled after 0 files".to_string(),
+        ));
     }
 
     let batch = transfer_orchestrator::TransferBatch {
@@ -4933,7 +4938,13 @@ async fn download_folder(
         },
     );
 
-    Ok(result_message)
+    Ok(transfer_domain::FolderTransferOutcome {
+        completed: files_downloaded,
+        skipped: scan_result.files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 /// Upload an entire folder to the FTP server with full recursive support.
@@ -5241,7 +5252,7 @@ async fn upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: UploadFolderParams,
-) -> Result<String, String> {
+) -> Result<transfer_domain::FolderTransferOutcome, String> {
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -5344,7 +5355,12 @@ async fn upload_folder(
     };
 
     if prep_result.cancelled {
-        return Ok("Upload cancelled after 0 files".to_string());
+        return Ok(transfer_domain::FolderTransferOutcome::cancelled(
+            0,
+            0,
+            0,
+            "Upload cancelled after 0 files".to_string(),
+        ));
     }
 
     let batch = transfer_orchestrator::TransferBatch {
@@ -5478,7 +5494,13 @@ async fn upload_folder(
         },
     );
 
-    Ok(result_message)
+    Ok(transfer_domain::FolderTransferOutcome {
+        completed: files_uploaded,
+        skipped: prep_result.files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 #[tauri::command]
@@ -5491,6 +5513,16 @@ async fn cancel_transfer(
     provider_state.request_cancel().await;
     info!("Transfer cancellation requested");
     Ok(())
+}
+
+/// First Stop of the two-level cancel ("finish the current file, start no
+/// other"). A backend batch, folder or file list, checks this flag before it
+/// starts each file; files already in flight run to the end. The second Stop
+/// is `cancel_transfer`, which also aborts them.
+#[tauri::command]
+fn stop_starting_transfers(provider_state: State<'_, provider_commands::ProviderState>) {
+    provider_state.request_batch_stop();
+    info!("Soft stop requested: no further file will start");
 }
 
 #[tauri::command]
@@ -19983,6 +20015,7 @@ pub fn run() {
             download_folder,
             upload_folder,
             cancel_transfer,
+            stop_starting_transfers,
             reset_cancel_flag,
             set_speed_limit,
             get_speed_limit,
@@ -20484,6 +20517,8 @@ pub fn run() {
             provider_commands::provider_detect_archive_meta_remote,
             provider_commands::provider_download_folder,
             provider_commands::provider_upload_folder,
+            provider_commands::provider_download_files_batch,
+            provider_commands::provider_upload_files_batch,
             provider_commands::provider_upload_file,
             provider_commands::provider_mkdir,
             provider_commands::provider_delete_file,

@@ -1469,6 +1469,7 @@
             "extracted": "Εξήχθη!",
             "extractedTo": "Τα αρχεία εξήχθησαν στο {dest}",
             "fileLocked": "Αρχείο κλειδωμένο",
+            "cutPartial": "Μετακινήθηκαν {moved} από {total} στοιχεία· τα υπόλοιπα μένουν στη θέση τους",
             "fileSkipped": "{count} αρχείο(α) παραλείφθηκαν",
             "fileUnlocked": "Αρχείο ξεκλείδωτο",
             "loadTrashFailed": "Αποτυχία φόρτωσης κάδου",

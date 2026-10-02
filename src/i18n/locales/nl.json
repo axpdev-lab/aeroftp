@@ -1469,6 +1469,7 @@
             "extracted": "Uitgepakt!",
             "extractedTo": "Bestanden uitgepakt naar {dest}",
             "fileLocked": "Bestand vergrendeld",
+            "cutPartial": "{moved} van {total} items verplaatst; de rest blijft staan",
             "fileSkipped": "{count} bestand(en) overgeslagen",
             "fileUnlocked": "Bestand ontgrendeld",
             "loadTrashFailed": "Prullenbak laden mislukt",

@@ -1469,6 +1469,7 @@
             "extracted": "已解压！",
             "extractedTo": "文件已解压到 {dest}",
             "fileLocked": "文件已锁定",
+            "cutPartial": "已移动 {moved}/{total} 项；其余项目保留在原位置",
             "fileSkipped": "已跳过 {count} 个文件",
             "fileUnlocked": "文件已解锁",
             "loadTrashFailed": "加载回收站失败",

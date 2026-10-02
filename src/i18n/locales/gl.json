@@ -1469,6 +1469,7 @@
             "extracted": "Extraído!",
             "extractedTo": "Ficheiros extraídos en {dest}",
             "fileLocked": "Ficheiro bloqueado",
+            "cutPartial": "Movéronse {moved} de {total} elementos; o resto queda no seu sitio",
             "fileSkipped": "{count} ficheiro(s) omitido(s)",
             "fileUnlocked": "Ficheiro desbloqueado",
             "loadTrashFailed": "Erro ao cargar o lixo",

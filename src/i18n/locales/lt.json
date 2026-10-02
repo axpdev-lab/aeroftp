@@ -1469,6 +1469,7 @@
             "extracted": "Išskleista!",
             "extractedTo": "Failai išskleisti į {dest}",
             "fileLocked": "Failas užrakintas",
+            "cutPartial": "Perkelta {moved} iš {total} elementų; kiti lieka savo vietoje",
             "fileSkipped": "{count} failų praleista",
             "fileUnlocked": "Failas atrakintas",
             "loadTrashFailed": "Nepavyko įkelti šiukšliadėžės",

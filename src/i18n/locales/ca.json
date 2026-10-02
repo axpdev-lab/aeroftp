@@ -1469,6 +1469,7 @@
             "extracted": "Extret!",
             "extractedTo": "Fitxers extrets a {dest}",
             "fileLocked": "Fitxer blocat",
+            "cutPartial": "S'han mogut {moved} de {total} elements; la resta es queda al seu lloc",
             "fileSkipped": "{count} fitxer(s) omès(os)",
             "fileUnlocked": "Fitxer desblocat",
             "loadTrashFailed": "Error en carregar la paperera",

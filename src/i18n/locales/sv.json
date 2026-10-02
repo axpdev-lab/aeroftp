@@ -1469,6 +1469,7 @@
             "extracted": "Extraherat!",
             "extractedTo": "Filer extraherade till {dest}",
             "fileLocked": "Fil låst",
+            "cutPartial": "Flyttade {moved} av {total} objekt; resten ligger kvar",
             "fileSkipped": "{count} fil(er) hoppades över",
             "fileUnlocked": "Fil olåst",
             "loadTrashFailed": "Inläsning av papperskorgen misslyckades",

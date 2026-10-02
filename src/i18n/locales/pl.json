@@ -1469,6 +1469,7 @@
             "extracted": "Wypakowano!",
             "extractedTo": "Pliki wypakowane do {dest}",
             "fileLocked": "Plik zablokowany",
+            "cutPartial": "Przeniesiono {moved} z {total} elementów; pozostałe zostają na miejscu",
             "fileSkipped": "Pominięto {count} plik(ów)",
             "fileUnlocked": "Plik odblokowany",
             "loadTrashFailed": "Nie udało się załadować kosza",

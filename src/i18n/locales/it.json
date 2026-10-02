@@ -1990,6 +1990,7 @@
             "sizeFailed": "Calcolo dimensione fallito",
             "copyFailed": "Copia fallita",
             "copyNotSupported": "Copia lato server non supportata",
+            "cutPartial": "Spostati {moved} elementi su {total}; gli altri restano dove sono",
             "fileSkipped": "{count} file ignorati",
             "fileUnlocked": "File sbloccato",
             "fileLocked": "File bloccato",

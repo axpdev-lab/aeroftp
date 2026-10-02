@@ -1469,6 +1469,7 @@
             "extracted": "Ateratuta!",
             "extractedTo": "Fitxategiak {dest}-era aterata",
             "fileLocked": "Fitxategia blokeatuta",
+            "cutPartial": "{total} elementuetatik {moved} mugitu dira; gainerakoak bere lekuan geratzen dira",
             "fileSkipped": "{count} fitxategi saltatu d(ir)a",
             "fileUnlocked": "Fitxategia desblokeatuta",
             "loadTrashFailed": "Zakarrontzia kargatzeak huts egin du",

@@ -1469,6 +1469,7 @@
             "extracted": "निकाला गया!",
             "extractedTo": "फ़ाइलें {dest} में निकाली गईं",
             "fileLocked": "फ़ाइल लॉक है",
+            "cutPartial": "{total} में से {moved} आइटम स्थानांतरित किए गए; बाकी अपनी जगह पर हैं",
             "fileSkipped": "{count} फ़ाइल(लें) छोड़ी गईं",
             "fileUnlocked": "फ़ाइल अनलॉक हुई",
             "loadTrashFailed": "ट्रैश लोड करना विफल",

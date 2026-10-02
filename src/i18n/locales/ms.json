@@ -1469,6 +1469,7 @@
             "extracted": "Diekstrak!",
             "extractedTo": "Fail diekstrak ke {dest}",
             "fileLocked": "Fail dikunci",
+            "cutPartial": "Memindahkan {moved} daripada {total} item; selebihnya kekal di tempatnya",
             "fileSkipped": "{count} fail dilangkau",
             "fileUnlocked": "Fail dibuka kunci",
             "loadTrashFailed": "Gagal memuatkan tong sampah",

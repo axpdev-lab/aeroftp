@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { guardedUnlisten } from './useTauriListener';
 import { TransferEvent, TransferProgress } from '../types';
@@ -9,6 +9,7 @@ import { dispatchTransferToast } from '../components/Transfer/TransferToastConta
 import { localizeRestrictedCharError } from '../utils/restrictedCharError';
 import { READ_ONLY_ERROR_PREFIX } from '../utils/aeroShare';
 import { createDeferredRefresh } from '../utils/deferredRefresh';
+import { rowForFileStart } from '../components/transferQueueActions';
 import type { TransferToastLane, TransferToastState } from '../components/Transfer';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
@@ -436,7 +437,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           i.filename === data.filename && (i.status === 'pending' || i.status === 'transferring'));
         if (queueItem) {
           transferIdToQueueId.current.set(data.transfer_id, queueItem.id);
-          transferQueue.markAsFolder(queueItem.id);
+          // Only a folder command's start describes a folder row; the
+          // single-file commands (pdl-/pul-) send `start` too, and a file row
+          // they matched by name used to be shown as a folder (#591).
+          if (data.transfer_id.includes('-folder-')) transferQueue.markAsFolder(queueItem.id);
           if (queueItem.status === 'pending') transferQueue.startTransfer(queueItem.id);
         }
       } else if (data.event_type === 'scanning') {
@@ -483,20 +487,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         const fileDirection = data.direction === 'upload' ? 'upload' : 'download';
         const fileSize = data.progress?.total || 0;
         const queuePath = data.path || '';
-        const existingPendingItem = transferQueue.items.find((item: {
-          id: string;
-          filename: string;
-          path: string;
-          status: string;
-          type: string;
-        }) =>
-          item.status === 'pending'
-          && item.type === fileDirection
-          && item.filename === data.filename
-          && item.path === queuePath
-        );
-        const fileQueueId = existingPendingItem?.id
-          || transferQueue.addItem(data.filename, queuePath, fileSize, fileDirection);
+        // A file-list batch registered this event id against its row before
+        // the backend started (registerFileBatchRows): that row is the one,
+        // whatever the timing. Otherwise match a pending row or create one.
+        const fileQueueId = rowForFileStart(
+          transferIdToQueueId.current.get(data.transfer_id),
+          transferQueue.items,
+          { filename: data.filename, path: queuePath, type: fileDirection },
+        ) ?? transferQueue.addItem(data.filename, queuePath, fileSize, fileDirection);
         transferQueue.startTransfer(fileQueueId);
         transferIdToQueueId.current.set(fileKey, fileQueueId);
         transferIdToQueueId.current.set(data.transfer_id, fileQueueId);
@@ -567,8 +565,20 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       } else if (data.event_type === 'file_error') {
         const loc = data.direction === 'remote' ? t('browser.remote') : t('browser.local');
         const displayName = data.path || data.filename;
-        humanLog.logRaw(data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error',
-          'ERROR', { filename: displayName, location: loc }, 'error');
+        const errorKey = data.direction === 'download' ? 'activity.download_error' : 'activity.upload_error';
+        // Close the file's own "Downloading..." entry, as file_complete does:
+        // logging a second line and leaving the first one running kept the
+        // Activity Log's "ACTIVE" badge lit forever after any failed file.
+        const trackedLog = findTrackedEntry(pendingFileLogIds.current, data.transfer_id, data.path, data.filename);
+        if (trackedLog) {
+          activityLog.updateEntry(trackedLog.value, {
+            status: 'error',
+            message: t(errorKey, { filename: displayName, location: loc }),
+          });
+          pendingFileLogIds.current.delete(trackedLog.key);
+        } else {
+          humanLog.logRaw(errorKey, 'ERROR', { filename: displayName, location: loc }, 'error');
+        }
 
         const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
         if (trackedQueue) {
@@ -982,5 +992,15 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { pendingFileLogIds, pendingDeleteLogIds };
+  // #591: a file-list batch knows its queue rows before the backend starts.
+  // Register `<batchId>-<index>` -> row so every file event settles exactly
+  // that row instead of being matched by name against a queue snapshot that
+  // may not list the new rows yet.
+  const registerFileBatchRows = useCallback((batchId: string, queueIds: readonly string[]) => {
+    queueIds.forEach((queueId, index) => {
+      transferIdToQueueId.current.set(`${batchId}-${index}`, queueId);
+    });
+  }, []);
+
+  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows };
 }

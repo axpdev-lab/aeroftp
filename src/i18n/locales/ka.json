@@ -1469,6 +1469,7 @@
             "extracted": "ამოღებულია!",
             "extractedTo": "ფაილები ამოღებულია {dest}-ში",
             "fileLocked": "ფაილი დაბლოკილია",
+            "cutPartial": "გადატანილია {moved} {total}-დან; დანარჩენი თავის ადგილზე რჩება",
             "fileSkipped": "{count} ფაილი გამოტოვებულია",
             "fileUnlocked": "ფაილი განბლოკილია",
             "loadTrashFailed": "ნაგვის ჩატვირთვა ვერ მოხერხდა",

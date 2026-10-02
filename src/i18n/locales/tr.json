@@ -1469,6 +1469,7 @@
             "extracted": "Çıkarıldı!",
             "extractedTo": "Dosyalar {dest} konumuna çıkarıldı",
             "fileLocked": "Dosya kilitlendi",
+            "cutPartial": "{total} öğeden {moved} tanesi taşındı; diğerleri yerinde kalıyor",
             "fileSkipped": "{count} dosya atlandı",
             "fileUnlocked": "Dosya kilidi açıldı",
             "loadTrashFailed": "Çöp kutusu yüklenemedi",

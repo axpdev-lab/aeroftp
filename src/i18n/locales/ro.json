@@ -1469,6 +1469,7 @@
             "extracted": "Extras!",
             "extractedTo": "Fișiere extrase în {dest}",
             "fileLocked": "Fișier blocat",
+            "cutPartial": "Mutate {moved} din {total} elemente; restul rămân pe loc",
             "fileSkipped": "{count} fișier(e) omis(e)",
             "fileUnlocked": "Fișier deblocat",
             "loadTrashFailed": "Încărcarea coșului a eșuat",

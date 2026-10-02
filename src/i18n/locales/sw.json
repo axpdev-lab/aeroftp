@@ -1469,6 +1469,7 @@
             "extracted": "Imetolewa!",
             "extractedTo": "Faili zimetolewa kwenye {dest}",
             "fileLocked": "Faili imefungwa",
+            "cutPartial": "Vipengee {moved} kati ya {total} vimehamishwa; vilivyobaki vinabaki mahali pake",
             "fileSkipped": "Faili {count} zimerukwa",
             "fileUnlocked": "Faili imefunguliwa",
             "loadTrashFailed": "Kupakia takataka kumeshindikana",

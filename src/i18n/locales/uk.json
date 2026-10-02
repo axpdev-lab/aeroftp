@@ -1469,6 +1469,7 @@
             "extracted": "Розпаковано!",
             "extractedTo": "Файли розпаковано до {dest}",
             "fileLocked": "Файл заблоковано",
+            "cutPartial": "Переміщено {moved} з {total} елементів; решта залишилася на місці",
             "fileSkipped": "{count} файл(ів) пропущено",
             "fileUnlocked": "Файл розблоковано",
             "loadTrashFailed": "Не вдалося завантажити кошик",

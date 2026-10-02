@@ -1469,6 +1469,7 @@
             "extracted": "Afþjappað!",
             "extractedTo": "Skrár afþjappaðar í {dest}",
             "fileLocked": "Skrá læst",
+            "cutPartial": "Færði {moved} af {total} atriðum; hin eru áfram á sínum stað",
             "fileSkipped": "{count} skrá(r) sleppt",
             "fileUnlocked": "Skrá aflæst",
             "loadTrashFailed": "Hleðsla ruslafötu mistókst",

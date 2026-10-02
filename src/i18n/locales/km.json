@@ -1469,6 +1469,7 @@
             "extracted": "បានស្រង់ចេញ!",
             "extractedTo": "ឯកសារបានស្រង់ទៅ {dest}",
             "fileLocked": "ឯកសារបានចាក់សោ",
+            "cutPartial": "បានផ្លាស់ទី {moved} ក្នុងចំណោម {total} ធាតុ; ធាតុដែលនៅសល់នៅកន្លែងដដែល",
             "fileSkipped": "{count} ឯកសារត្រូវបានរំលង",
             "fileUnlocked": "ឯកសារបានដោះសោ",
             "loadTrashFailed": "ការផ្ទុកធុងសម្រាមបានបរាជ័យ",

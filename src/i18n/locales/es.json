@@ -1469,6 +1469,7 @@
             "extracted": "Extraído!",
             "extractedTo": "Archivos extraídos en {dest}",
             "fileLocked": "Archivo bloqueado",
+            "cutPartial": "Movidos {moved} de {total} elementos; el resto se queda en su sitio",
             "fileSkipped": "{count} archivo(s) omitido(s)",
             "fileUnlocked": "Archivo desbloqueado",
             "loadTrashFailed": "Error al cargar la papelera",

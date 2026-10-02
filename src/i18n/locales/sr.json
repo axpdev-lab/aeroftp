@@ -1469,6 +1469,7 @@
             "extracted": "Извучено!",
             "extractedTo": "Датотеке извучене у {dest}",
             "fileLocked": "Датотека закључана",
+            "cutPartial": "Премештено {moved} од {total} ставки; остале остају на месту",
             "fileSkipped": "{count} датотека прескочено",
             "fileUnlocked": "Датотека откључана",
             "loadTrashFailed": "Учитавање корпе неуспешно",

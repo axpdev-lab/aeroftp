@@ -1469,6 +1469,7 @@
             "extracted": "展開しました！",
             "extractedTo": "{dest} にファイルを展開しました",
             "fileLocked": "ファイルがロックされています",
+            "cutPartial": "{total} 件中 {moved} 件を移動しました。残りは元の場所に残っています",
             "fileSkipped": "{count} 個のファイルをスキップしました",
             "fileUnlocked": "ファイルのロックが解除されました",
             "loadTrashFailed": "ゴミ箱の読み込みに失敗しました",

@@ -1469,6 +1469,7 @@
             "extracted": "Pakket ut!",
             "extractedTo": "Filer pakket ut til {dest}",
             "fileLocked": "Fil låst",
+            "cutPartial": "Flyttet {moved} av {total} elementer; resten blir liggende",
             "fileSkipped": "{count} fil(er) hoppet over",
             "fileUnlocked": "Fil låst opp",
             "loadTrashFailed": "Lasting av papirkurv mislyktes",

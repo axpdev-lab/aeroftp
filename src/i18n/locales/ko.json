@@ -1469,6 +1469,7 @@
             "extracted": "추출 완료!",
             "extractedTo": "{dest}에 파일 추출됨",
             "fileLocked": "파일 잠김",
+            "cutPartial": "{total}개 중 {moved}개를 이동했습니다. 나머지는 원래 위치에 남아 있습니다",
             "fileSkipped": "{count}개 파일 건너뜀",
             "fileUnlocked": "파일 잠금 해제됨",
             "loadTrashFailed": "휴지통 로드 실패",
