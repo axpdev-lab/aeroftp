@@ -6042,6 +6042,23 @@
             "scopeSession": "ადასტურებს ამ ხელსაწყოს ჩატის სესიის დასრულებამდე.",
             "approve": "დადასტურება",
             "rememberForChat": "ამ ხელსაწყოს დაშვება ამ ჩატის დასრულებამდე"
+        },
+        "s3": {
+            "storageClass": "შენახვის კლასი",
+            "storageClassChanged": "შენახვის კლასი შეიცვალა: {storageClass}",
+            "restoreFromGlacier": "აღდგენა Glacier-იდან",
+            "restoreTier": "აღდგენის დონე",
+            "restoreDays": "აღდგენილი ასლის შენახვის დღეები",
+            "restoreStarted": "აღდგენა მოთხოვნილია: მზადყოფნის შემდეგ ასლი {days} დღის განმავლობაში იქნება წაკითხვადი",
+            "objectTags": "ობიექტის ტეგები",
+            "noTags": "ტეგები არ არის",
+            "tagKey": "გასაღები",
+            "tagValue": "მნიშვნელობა",
+            "tagsSaved": "ტეგები შენახულია"
+        },
+        "azure": {
+            "accessTier": "წვდომის დონე",
+            "accessTierChanged": "წვდომის დონე დაყენდა: {tier}"
         }
     }
 }

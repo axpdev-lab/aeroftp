@@ -6042,6 +6042,23 @@
             "scopeSession": "Разрешает этот инструмент до конца сеанса чата.",
             "approve": "Разрешить",
             "rememberForChat": "Разрешить этот инструмент до конца этого чата"
+        },
+        "s3": {
+            "storageClass": "Класс хранилища",
+            "storageClassChanged": "Класс хранилища изменён на {storageClass}",
+            "restoreFromGlacier": "Восстановить из Glacier",
+            "restoreTier": "Уровень извлечения",
+            "restoreDays": "Дней хранения восстановленной копии",
+            "restoreStarted": "Восстановление запрошено: когда копия будет готова, она останется доступной для чтения {days} дн.",
+            "objectTags": "Теги объекта",
+            "noTags": "Нет тегов",
+            "tagKey": "Ключ",
+            "tagValue": "Значение",
+            "tagsSaved": "Теги сохранены"
+        },
+        "azure": {
+            "accessTier": "Уровень доступа",
+            "accessTierChanged": "Уровень доступа установлен: {tier}"
         }
     }
 }

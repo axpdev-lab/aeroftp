@@ -6042,6 +6042,23 @@
             "scopeSession": "Schválí tento nástroj po zbytek relace chatu.",
             "approve": "Schválit",
             "rememberForChat": "Povolit tento nástroj po zbytek tohoto chatu"
+        },
+        "s3": {
+            "storageClass": "Třída úložiště",
+            "storageClassChanged": "Třída úložiště změněna na {storageClass}",
+            "restoreFromGlacier": "Obnovit z Glacier",
+            "restoreTier": "Úroveň obnovení",
+            "restoreDays": "Počet dní uchování obnovené kopie",
+            "restoreStarted": "Obnovení vyžádáno: po dokončení bude kopie čitelná {days} dní",
+            "objectTags": "Značky objektu",
+            "noTags": "Žádné značky",
+            "tagKey": "Klíč",
+            "tagValue": "Hodnota",
+            "tagsSaved": "Značky uloženy"
+        },
+        "azure": {
+            "accessTier": "Přístupová úroveň",
+            "accessTierChanged": "Přístupová úroveň nastavena na {tier}"
         }
     }
 }

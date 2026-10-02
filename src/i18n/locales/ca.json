@@ -6061,6 +6061,23 @@
             "scopeSession": "Aprova aquesta eina per a la resta de la sessió de xat.",
             "approve": "Aprova",
             "rememberForChat": "Permet aquesta eina durant la resta d'aquest xat"
+        },
+        "s3": {
+            "storageClass": "Classe d'emmagatzematge",
+            "storageClassChanged": "Classe d'emmagatzematge canviada a {storageClass}",
+            "restoreFromGlacier": "Restaura des de Glacier",
+            "restoreTier": "Nivell de recuperació",
+            "restoreDays": "Dies per conservar la còpia restaurada",
+            "restoreStarted": "Restauració sol·licitada: quan estigui llesta, la còpia es podrà llegir durant {days} dies",
+            "objectTags": "Etiquetes de l'objecte",
+            "noTags": "Cap etiqueta",
+            "tagKey": "Clau",
+            "tagValue": "Valor",
+            "tagsSaved": "Etiquetes desades"
+        },
+        "azure": {
+            "accessTier": "Nivell d'accés",
+            "accessTierChanged": "Nivell d'accés establert a {tier}"
         }
     }
 }

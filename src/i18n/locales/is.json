@@ -6061,6 +6061,23 @@
             "scopeSession": "Samþykkir þetta verkfæri það sem eftir er af spjallinu.",
             "approve": "Samþykkja",
             "rememberForChat": "Leyfa þetta verkfæri það sem eftir er af þessu spjalli"
+        },
+        "s3": {
+            "storageClass": "Geymsluflokkur",
+            "storageClassChanged": "Geymsluflokki breytt í {storageClass}",
+            "restoreFromGlacier": "Endurheimta úr Glacier",
+            "restoreTier": "Endurheimtustig",
+            "restoreDays": "Dagar sem endurheimta afritið er geymt",
+            "restoreStarted": "Endurheimt óskað: þegar afritið er tilbúið er hægt að lesa það í {days} daga",
+            "objectTags": "Merki hlutar",
+            "noTags": "Engin merki",
+            "tagKey": "Lykill",
+            "tagValue": "Gildi",
+            "tagsSaved": "Merki vistuð"
+        },
+        "azure": {
+            "accessTier": "Aðgangsstig",
+            "accessTierChanged": "Aðgangsstig stillt á {tier}"
         }
     }
 }

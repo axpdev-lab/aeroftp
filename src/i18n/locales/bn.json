@@ -6042,6 +6042,23 @@
             "scopeSession": "চ্যাট সেশনের বাকি সময়ের জন্য এই টুলটি অনুমোদন করে।",
             "approve": "অনুমোদন করুন",
             "rememberForChat": "এই চ্যাটের বাকি সময়ের জন্য এই টুলটি অনুমোদন করুন"
+        },
+        "s3": {
+            "storageClass": "স্টোরেজ ক্লাস",
+            "storageClassChanged": "স্টোরেজ ক্লাস {storageClass}-এ পরিবর্তিত হয়েছে",
+            "restoreFromGlacier": "Glacier থেকে পুনরুদ্ধার",
+            "restoreTier": "পুনরুদ্ধারের স্তর",
+            "restoreDays": "পুনরুদ্ধার করা কপি রাখার দিন",
+            "restoreStarted": "পুনরুদ্ধারের অনুরোধ করা হয়েছে: প্রস্তুত হলে কপিটি {days} দিন পড়ার জন্য থাকবে",
+            "objectTags": "অবজেক্ট ট্যাগ",
+            "noTags": "কোনো ট্যাগ নেই",
+            "tagKey": "কী",
+            "tagValue": "মান",
+            "tagsSaved": "ট্যাগ সংরক্ষিত হয়েছে"
+        },
+        "azure": {
+            "accessTier": "অ্যাক্সেস টিয়ার",
+            "accessTierChanged": "অ্যাক্সেস টিয়ার {tier} সেট করা হয়েছে"
         }
     }
 }

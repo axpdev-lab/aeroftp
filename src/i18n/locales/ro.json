@@ -6042,6 +6042,23 @@
             "scopeSession": "Aprobă acest instrument pentru restul sesiunii de chat.",
             "approve": "Aprobă",
             "rememberForChat": "Permite acest instrument pentru restul acestui chat"
+        },
+        "s3": {
+            "storageClass": "Clasă de stocare",
+            "storageClassChanged": "Clasa de stocare a fost schimbată în {storageClass}",
+            "restoreFromGlacier": "Restaurează din Glacier",
+            "restoreTier": "Nivel de recuperare",
+            "restoreDays": "Zile de păstrare a copiei restaurate",
+            "restoreStarted": "Restaurare solicitată: când este gata, copia rămâne lizibilă timp de {days} zile",
+            "objectTags": "Etichete obiect",
+            "noTags": "Fără etichete",
+            "tagKey": "Cheie",
+            "tagValue": "Valoare",
+            "tagsSaved": "Etichete salvate"
+        },
+        "azure": {
+            "accessTier": "Nivel de acces",
+            "accessTierChanged": "Nivelul de acces a fost setat la {tier}"
         }
     }
 }

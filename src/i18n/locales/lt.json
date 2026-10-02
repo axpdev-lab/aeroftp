@@ -6042,6 +6042,23 @@
             "scopeSession": "Patvirtina šį įrankį iki pokalbio seanso pabaigos.",
             "approve": "Patvirtinti",
             "rememberForChat": "Leisti šį įrankį iki šio pokalbio pabaigos"
+        },
+        "s3": {
+            "storageClass": "Saugyklos klasė",
+            "storageClassChanged": "Saugyklos klasė pakeista į {storageClass}",
+            "restoreFromGlacier": "Atkurti iš Glacier",
+            "restoreTier": "Gavimo lygis",
+            "restoreDays": "Atkurtos kopijos laikymo dienos",
+            "restoreStarted": "Atkūrimas užklaustas: kai bus paruošta, kopiją bus galima skaityti {days} d.",
+            "objectTags": "Objekto žymos",
+            "noTags": "Žymų nėra",
+            "tagKey": "Raktas",
+            "tagValue": "Reikšmė",
+            "tagsSaved": "Žymos išsaugotos"
+        },
+        "azure": {
+            "accessTier": "Prieigos lygis",
+            "accessTierChanged": "Prieigos lygis nustatytas į {tier}"
         }
     }
 }

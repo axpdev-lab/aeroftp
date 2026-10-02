@@ -5338,6 +5338,23 @@
             "commentPlaceholder": "Write your comment...",
             "commentAdded": "Comment added"
         },
+        "s3": {
+            "storageClass": "Storage Class",
+            "storageClassChanged": "Storage class changed to {storageClass}",
+            "restoreFromGlacier": "Restore from Glacier",
+            "restoreTier": "Retrieval tier",
+            "restoreDays": "Days to keep the restored copy",
+            "restoreStarted": "Restore requested: once ready, the copy stays readable for {days} days",
+            "objectTags": "Object Tags",
+            "noTags": "No tags",
+            "tagKey": "Key",
+            "tagValue": "Value",
+            "tagsSaved": "Tags saved"
+        },
+        "azure": {
+            "accessTier": "Access Tier",
+            "accessTierChanged": "Access tier set to {tier}"
+        },
         "dropbox": {
             "manageTags": "Manage Tags"
         },

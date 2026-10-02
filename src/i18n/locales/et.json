@@ -6042,6 +6042,23 @@
             "scopeSession": "Kinnitab selle tööriista vestluse lõpuni.",
             "approve": "Kinnita",
             "rememberForChat": "Luba see tööriist selle vestluse lõpuni"
+        },
+        "s3": {
+            "storageClass": "Salvestusklass",
+            "storageClassChanged": "Salvestusklass muudetud: {storageClass}",
+            "restoreFromGlacier": "Taasta Glacierist",
+            "restoreTier": "Taastetase",
+            "restoreDays": "Taastatud koopia säilitamise päevad",
+            "restoreStarted": "Taaste taotletud: kui see on valmis, jääb koopia loetavaks {days} päeva",
+            "objectTags": "Objekti sildid",
+            "noTags": "Silte pole",
+            "tagKey": "Võti",
+            "tagValue": "Väärtus",
+            "tagsSaved": "Sildid salvestatud"
+        },
+        "azure": {
+            "accessTier": "Juurdepääsutase",
+            "accessTierChanged": "Juurdepääsutase määratud: {tier}"
         }
     }
 }

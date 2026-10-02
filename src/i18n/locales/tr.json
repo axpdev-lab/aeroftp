@@ -6042,6 +6042,23 @@
             "scopeSession": "Bu aracı sohbet oturumunun geri kalanı için onaylar.",
             "approve": "Onayla",
             "rememberForChat": "Bu sohbetin geri kalanı için bu araca izin ver"
+        },
+        "s3": {
+            "storageClass": "Depolama Sınıfı",
+            "storageClassChanged": "Depolama sınıfı {storageClass} olarak değiştirildi",
+            "restoreFromGlacier": "Glacier'dan geri yükle",
+            "restoreTier": "Alma katmanı",
+            "restoreDays": "Geri yüklenen kopyanın saklanacağı gün sayısı",
+            "restoreStarted": "Geri yükleme istendi: hazır olduğunda kopya {days} gün boyunca okunabilir kalır",
+            "objectTags": "Nesne Etiketleri",
+            "noTags": "Etiket yok",
+            "tagKey": "Anahtar",
+            "tagValue": "Değer",
+            "tagsSaved": "Etiketler kaydedildi"
+        },
+        "azure": {
+            "accessTier": "Erişim Katmanı",
+            "accessTierChanged": "Erişim katmanı {tier} olarak ayarlandı"
         }
     }
 }

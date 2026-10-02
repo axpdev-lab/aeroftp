@@ -6042,6 +6042,23 @@
             "scopeSession": "Ezt az eszközt a csevegés hátralévő részére hagyja jóvá.",
             "approve": "Jóváhagyás",
             "rememberForChat": "Az eszköz engedélyezése a csevegés hátralévő részére"
+        },
+        "s3": {
+            "storageClass": "Tárolási osztály",
+            "storageClassChanged": "A tárolási osztály módosítva: {storageClass}",
+            "restoreFromGlacier": "Visszaállítás a Glacierből",
+            "restoreTier": "Lekérési szint",
+            "restoreDays": "A visszaállított másolat megőrzési napjai",
+            "restoreStarted": "Visszaállítás kérve: ha elkészült, a másolat {days} napig olvasható marad",
+            "objectTags": "Objektumcímkék",
+            "noTags": "Nincs címke",
+            "tagKey": "Kulcs",
+            "tagValue": "Érték",
+            "tagsSaved": "Címkék mentve"
+        },
+        "azure": {
+            "accessTier": "Hozzáférési szint",
+            "accessTierChanged": "Hozzáférési szint beállítva: {tier}"
         }
     }
 }

@@ -6042,6 +6042,23 @@
             "scopeSession": "Inaidhinisha zana hii kwa muda uliobaki wa kikao cha mazungumzo.",
             "approve": "Idhinisha",
             "rememberForChat": "Ruhusu zana hii kwa muda uliobaki wa mazungumzo haya"
+        },
+        "s3": {
+            "storageClass": "Daraja la Hifadhi",
+            "storageClassChanged": "Daraja la hifadhi limebadilishwa kuwa {storageClass}",
+            "restoreFromGlacier": "Rejesha kutoka Glacier",
+            "restoreTier": "Kiwango cha urejeshaji",
+            "restoreDays": "Siku za kuhifadhi nakala iliyorejeshwa",
+            "restoreStarted": "Urejeshaji umeombwa: ikiwa tayari, nakala itabaki kusomeka kwa siku {days}",
+            "objectTags": "Lebo za Kipengee",
+            "noTags": "Hakuna lebo",
+            "tagKey": "Ufunguo",
+            "tagValue": "Thamani",
+            "tagsSaved": "Lebo zimehifadhiwa"
+        },
+        "azure": {
+            "accessTier": "Kiwango cha Ufikiaji",
+            "accessTierChanged": "Kiwango cha ufikiaji kimewekwa kuwa {tier}"
         }
     }
 }

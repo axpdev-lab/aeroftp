@@ -6042,6 +6042,23 @@
             "scopeSession": "Godkänner det här verktyget under resten av chattsessionen.",
             "approve": "Godkänn",
             "rememberForChat": "Tillåt det här verktyget under resten av chatten"
+        },
+        "s3": {
+            "storageClass": "Lagringsklass",
+            "storageClassChanged": "Lagringsklass ändrad till {storageClass}",
+            "restoreFromGlacier": "Återställ från Glacier",
+            "restoreTier": "Hämtningsnivå",
+            "restoreDays": "Dagar att behålla den återställda kopian",
+            "restoreStarted": "Återställning begärd: när den är klar förblir kopian läsbar i {days} dagar",
+            "objectTags": "Objekttaggar",
+            "noTags": "Inga taggar",
+            "tagKey": "Nyckel",
+            "tagValue": "Värde",
+            "tagsSaved": "Taggar sparade"
+        },
+        "azure": {
+            "accessTier": "Åtkomstnivå",
+            "accessTierChanged": "Åtkomstnivå inställd på {tier}"
         }
     }
 }

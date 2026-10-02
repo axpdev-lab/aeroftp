@@ -6042,6 +6042,23 @@
             "scopeSession": "Одобрава ову алатку до краја сесије ћаскања.",
             "approve": "Одобри",
             "rememberForChat": "Дозволи ову алатку до краја овог ћаскања"
+        },
+        "s3": {
+            "storageClass": "Класа складишта",
+            "storageClassChanged": "Класа складишта је промењена у {storageClass}",
+            "restoreFromGlacier": "Врати из Glacier",
+            "restoreTier": "Ниво преузимања",
+            "restoreDays": "Дани чувања враћене копије",
+            "restoreStarted": "Враћање је затражено: када буде спремна, копија остаје читљива {days} дана",
+            "objectTags": "Ознаке објекта",
+            "noTags": "Нема ознака",
+            "tagKey": "Кључ",
+            "tagValue": "Вредност",
+            "tagsSaved": "Ознаке су сачуване"
+        },
+        "azure": {
+            "accessTier": "Ниво приступа",
+            "accessTierChanged": "Ниво приступа је постављен на {tier}"
         }
     }
 }

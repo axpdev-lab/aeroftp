@@ -6061,6 +6061,23 @@
             "scopeSession": "Tresna hau txat-saioaren gainerakoan onesten du.",
             "approve": "Onetsi",
             "rememberForChat": "Baimendu tresna hau txat honen gainerakoan"
+        },
+        "s3": {
+            "storageClass": "Biltegiratze-klasea",
+            "storageClassChanged": "Biltegiratze-klasea honetara aldatu da: {storageClass}",
+            "restoreFromGlacier": "Berreskuratu Glacier-etik",
+            "restoreTier": "Berreskuratze-maila",
+            "restoreDays": "Berreskuratutako kopia gordetzeko egunak",
+            "restoreStarted": "Berreskuratzea eskatu da: prest dagoenean, kopia irakurgai egongo da {days} egunez",
+            "objectTags": "Objektuaren etiketak",
+            "noTags": "Etiketarik ez",
+            "tagKey": "Gakoa",
+            "tagValue": "Balioa",
+            "tagsSaved": "Etiketak gorde dira"
+        },
+        "azure": {
+            "accessTier": "Sarbide-maila",
+            "accessTierChanged": "Sarbide-maila honetara ezarri da: {tier}"
         }
     }
 }

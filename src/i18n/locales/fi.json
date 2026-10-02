@@ -6042,6 +6042,23 @@
             "scopeSession": "Hyväksyy tämän työkalun keskustelun loppuajaksi.",
             "approve": "Hyväksy",
             "rememberForChat": "Salli tämä työkalu tämän keskustelun loppuun"
+        },
+        "s3": {
+            "storageClass": "Tallennusluokka",
+            "storageClassChanged": "Tallennusluokaksi vaihdettu {storageClass}",
+            "restoreFromGlacier": "Palauta Glacierista",
+            "restoreTier": "Noutotaso",
+            "restoreDays": "Palautetun kopion säilytyspäivät",
+            "restoreStarted": "Palautus pyydetty: kun kopio on valmis, se pysyy luettavissa {days} päivää",
+            "objectTags": "Objektin tunnisteet",
+            "noTags": "Ei tunnisteita",
+            "tagKey": "Avain",
+            "tagValue": "Arvo",
+            "tagsSaved": "Tunnisteet tallennettu"
+        },
+        "azure": {
+            "accessTier": "Käyttötaso",
+            "accessTierChanged": "Käyttötasoksi asetettu {tier}"
         }
     }
 }

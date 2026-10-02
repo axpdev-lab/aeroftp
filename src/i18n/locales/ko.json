@@ -6042,6 +6042,23 @@
             "scopeSession": "이 채팅 세션이 끝날 때까지 이 도구를 승인합니다.",
             "approve": "승인",
             "rememberForChat": "이 채팅이 끝날 때까지 이 도구 허용"
+        },
+        "s3": {
+            "storageClass": "스토리지 클래스",
+            "storageClassChanged": "스토리지 클래스가 {storageClass}(으)로 변경되었습니다",
+            "restoreFromGlacier": "Glacier에서 복원",
+            "restoreTier": "검색 계층",
+            "restoreDays": "복원된 사본 보관 일수",
+            "restoreStarted": "복원이 요청되었습니다: 준비되면 사본을 {days}일 동안 읽을 수 있습니다",
+            "objectTags": "객체 태그",
+            "noTags": "태그 없음",
+            "tagKey": "키",
+            "tagValue": "값",
+            "tagsSaved": "태그가 저장되었습니다"
+        },
+        "azure": {
+            "accessTier": "액세스 계층",
+            "accessTierChanged": "액세스 계층이 {tier}(으)로 설정되었습니다"
         }
     }
 }

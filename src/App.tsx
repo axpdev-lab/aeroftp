@@ -268,6 +268,9 @@ import { FileLuTrashManager } from './components/FileLuTrashManager';
 import { GoogleDriveTrashManager } from './components/GoogleDriveTrashManager';
 import { BoxTrashManager } from './components/BoxTrashManager';
 import { BoxTagsDialog } from './components/BoxTagsDialog';
+import { ObjectTierDialog, type ObjectTierMode } from './components/ObjectTierDialog';
+import { S3TagsDialog } from './components/S3TagsDialog';
+import { needsGlacierRestore } from './utils/cloudTiers';
 import { DropboxTrashManager } from './components/DropboxTrashManager';
 import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
@@ -325,7 +328,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
   Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
+  MoreHorizontal, Tag, Layers, Snowflake, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
 } from 'lucide-react';
 
 /**
@@ -1331,6 +1334,8 @@ const App: React.FC = () => {
   const [showMegaTrash, setShowMegaTrash] = useState(false);
   const [showGDriveTrash, setShowGDriveTrash] = useState(false);
   const [showBoxTrash, setShowBoxTrash] = useState(false);
+  const [objectTierTarget, setObjectTierTarget] = useState<{ mode: ObjectTierMode; path: string; name: string; current?: string } | null>(null);
+  const [s3TagsTarget, setS3TagsTarget] = useState<{ path: string; name: string } | null>(null);
   const [boxTagsTarget, setBoxTagsTarget] = useState<{ path: string; tags: string[]; command?: string; providerName?: string } | null>(null);
   const [showDropboxTrash, setShowDropboxTrash] = useState(false);
   const [showOneDriveTrash, setShowOneDriveTrash] = useState(false);
@@ -14334,6 +14339,38 @@ const App: React.FC = () => {
       }
     }
 
+    // S3: storage class, object tags, Glacier / Deep Archive restore (single object)
+    if (currentProtocol === 's3' && filesToUse.length === 1 && !file.is_dir) {
+      const storageClass = file.metadata?.storage_class;
+      items.push({
+        label: t('s3.storageClass'),
+        icon: <Layers size={14} className="text-cyan-500" />,
+        action: () => setObjectTierTarget({ mode: 's3-class', path: file.path, name: file.name, current: storageClass ?? 'STANDARD' }),
+        divider: true,
+      });
+      items.push({
+        label: t('s3.objectTags'),
+        icon: <Tag size={14} className="text-cyan-500" />,
+        action: () => setS3TagsTarget({ path: file.path, name: file.name }),
+      });
+      if (needsGlacierRestore(storageClass)) {
+        items.push({
+          label: t('s3.restoreFromGlacier'),
+          icon: <Snowflake size={14} className="text-cyan-500" />,
+          action: () => setObjectTierTarget({ mode: 's3-restore', path: file.path, name: file.name }),
+        });
+      }
+    }
+    // Azure: blob access tier (single blob)
+    if (currentProtocol === 'azure' && filesToUse.length === 1 && !file.is_dir) {
+      items.push({
+        label: t('azure.accessTier'),
+        icon: <Layers size={14} className="text-cyan-500" />,
+        action: () => setObjectTierTarget({ mode: 'azure-tier', path: file.path, name: file.name }),
+        divider: true,
+      });
+    }
+
     if (currentProtocol === 'googledrive') {
       // Google Drive: Star/Unstar (single file)
       if (filesToUse.length === 1) {
@@ -16942,6 +16979,27 @@ const App: React.FC = () => {
           <OneDriveTrashManager
             onClose={() => setShowOneDriveTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
+          />
+        )}
+        {objectTierTarget && (
+          <ObjectTierDialog
+            mode={objectTierTarget.mode}
+            path={objectTierTarget.path}
+            name={objectTierTarget.name}
+            current={objectTierTarget.current}
+            onClose={() => setObjectTierTarget(null)}
+            onDone={(message) => {
+              notify.success(message);
+              loadRemoteFiles(undefined, true);
+            }}
+          />
+        )}
+        {s3TagsTarget && (
+          <S3TagsDialog
+            path={s3TagsTarget.path}
+            name={s3TagsTarget.name}
+            onClose={() => setS3TagsTarget(null)}
+            onSaved={() => notify.success(t('s3.tagsSaved'))}
           />
         )}
         {boxTagsTarget && (

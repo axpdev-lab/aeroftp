@@ -6042,6 +6042,23 @@
             "scopeSession": "Apstiprina šo rīku līdz tērzēšanas sesijas beigām.",
             "approve": "Apstiprināt",
             "rememberForChat": "Atļaut šo rīku līdz šīs tērzēšanas beigām"
+        },
+        "s3": {
+            "storageClass": "Krātuves klase",
+            "storageClassChanged": "Krātuves klase nomainīta uz {storageClass}",
+            "restoreFromGlacier": "Atjaunot no Glacier",
+            "restoreTier": "Izguves līmenis",
+            "restoreDays": "Dienas, cik ilgi glabāt atjaunoto kopiju",
+            "restoreStarted": "Atjaunošana pieprasīta: kad kopija būs gatava, tā būs lasāma {days} dienas",
+            "objectTags": "Objekta tagi",
+            "noTags": "Nav tagu",
+            "tagKey": "Atslēga",
+            "tagValue": "Vērtība",
+            "tagsSaved": "Tagi saglabāti"
+        },
+        "azure": {
+            "accessTier": "Piekļuves līmenis",
+            "accessTierChanged": "Piekļuves līmenis iestatīts uz {tier}"
         }
     }
 }

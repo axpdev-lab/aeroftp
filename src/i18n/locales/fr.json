@@ -6042,6 +6042,23 @@
             "scopeSession": "Approuve cet outil pour le reste de la session de chat.",
             "approve": "Approuver",
             "rememberForChat": "Autoriser cet outil pour le reste de cette conversation"
+        },
+        "s3": {
+            "storageClass": "Classe de stockage",
+            "storageClassChanged": "Classe de stockage changée en {storageClass}",
+            "restoreFromGlacier": "Restaurer depuis Glacier",
+            "restoreTier": "Niveau de récupération",
+            "restoreDays": "Jours de conservation de la copie restaurée",
+            "restoreStarted": "Restauration demandée : une fois prête, la copie restera lisible pendant {days} jours",
+            "objectTags": "Balises de l'objet",
+            "noTags": "Aucune balise",
+            "tagKey": "Clé",
+            "tagValue": "Valeur",
+            "tagsSaved": "Balises enregistrées"
+        },
+        "azure": {
+            "accessTier": "Niveau d'accès",
+            "accessTierChanged": "Niveau d'accès défini sur {tier}"
         }
     }
 }

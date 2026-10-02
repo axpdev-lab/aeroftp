@@ -6042,6 +6042,23 @@
             "scopeSession": "Zatwierdza to narzędzie do końca sesji czatu.",
             "approve": "Zatwierdź",
             "rememberForChat": "Zezwól na to narzędzie do końca tego czatu"
+        },
+        "s3": {
+            "storageClass": "Klasa magazynowania",
+            "storageClassChanged": "Zmieniono klasę magazynowania na {storageClass}",
+            "restoreFromGlacier": "Przywróć z Glacier",
+            "restoreTier": "Warstwa pobierania",
+            "restoreDays": "Liczba dni przechowywania przywróconej kopii",
+            "restoreStarted": "Zażądano przywrócenia: gdy będzie gotowa, kopia pozostanie dostępna do odczytu przez {days} dni",
+            "objectTags": "Tagi obiektu",
+            "noTags": "Brak tagów",
+            "tagKey": "Klucz",
+            "tagValue": "Wartość",
+            "tagsSaved": "Zapisano tagi"
+        },
+        "azure": {
+            "accessTier": "Warstwa dostępu",
+            "accessTierChanged": "Ustawiono warstwę dostępu na {tier}"
         }
     }
 }

@@ -6061,6 +6061,23 @@
             "scopeSession": "Inaaprubahan ang tool na ito sa natitirang bahagi ng chat session.",
             "approve": "Aprubahan",
             "rememberForChat": "Payagan ang tool na ito sa natitirang bahagi ng chat na ito"
+        },
+        "s3": {
+            "storageClass": "Klase ng Storage",
+            "storageClassChanged": "Napalitan ang klase ng storage sa {storageClass}",
+            "restoreFromGlacier": "I-restore mula sa Glacier",
+            "restoreTier": "Antas ng pagkuha",
+            "restoreDays": "Mga araw na itatago ang naibalik na kopya",
+            "restoreStarted": "Hiniling ang pag-restore: kapag handa na, mababasa ang kopya sa loob ng {days} araw",
+            "objectTags": "Mga Tag ng Object",
+            "noTags": "Walang tag",
+            "tagKey": "Susi",
+            "tagValue": "Halaga",
+            "tagsSaved": "Naisave ang mga tag"
+        },
+        "azure": {
+            "accessTier": "Antas ng Access",
+            "accessTierChanged": "Itinakda ang antas ng access sa {tier}"
         }
     }
 }

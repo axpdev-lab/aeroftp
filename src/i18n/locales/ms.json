@@ -6042,6 +6042,23 @@
             "scopeSession": "Meluluskan alat ini untuk baki sesi sembang.",
             "approve": "Luluskan",
             "rememberForChat": "Benarkan alat ini untuk baki sembang ini"
+        },
+        "s3": {
+            "storageClass": "Kelas Storan",
+            "storageClassChanged": "Kelas storan ditukar kepada {storageClass}",
+            "restoreFromGlacier": "Pulihkan daripada Glacier",
+            "restoreTier": "Tahap capaian semula",
+            "restoreDays": "Hari untuk menyimpan salinan yang dipulihkan",
+            "restoreStarted": "Pemulihan diminta: apabila siap, salinan kekal boleh dibaca selama {days} hari",
+            "objectTags": "Tag Objek",
+            "noTags": "Tiada tag",
+            "tagKey": "Kunci",
+            "tagValue": "Nilai",
+            "tagsSaved": "Tag disimpan"
+        },
+        "azure": {
+            "accessTier": "Tahap Akses",
+            "accessTierChanged": "Tahap akses ditetapkan kepada {tier}"
         }
     }
 }

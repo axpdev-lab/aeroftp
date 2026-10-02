@@ -6061,6 +6061,23 @@
             "scopeSession": "អនុម័តឧបករណ៍នេះសម្រាប់រយៈពេលដែលនៅសល់នៃការជជែក។",
             "approve": "អនុម័ត",
             "rememberForChat": "អនុញ្ញាតឧបករណ៍នេះសម្រាប់ការជជែកនេះដែលនៅសល់"
+        },
+        "s3": {
+            "storageClass": "ថ្នាក់ផ្ទុកទិន្នន័យ",
+            "storageClassChanged": "បានប្តូរថ្នាក់ផ្ទុកទិន្នន័យទៅ {storageClass}",
+            "restoreFromGlacier": "ស្ដារពី Glacier",
+            "restoreTier": "កម្រិតនៃការទាញយក",
+            "restoreDays": "ចំនួនថ្ងៃរក្សាច្បាប់ចម្លងដែលបានស្ដារ",
+            "restoreStarted": "បានស្នើសុំការស្ដារ៖ នៅពេលរួចរាល់ ច្បាប់ចម្លងនឹងអាចអានបានរយៈពេល {days} ថ្ងៃ",
+            "objectTags": "ស្លាកវត្ថុ",
+            "noTags": "គ្មានស្លាក",
+            "tagKey": "សោ",
+            "tagValue": "តម្លៃ",
+            "tagsSaved": "បានរក្សាទុកស្លាក"
+        },
+        "azure": {
+            "accessTier": "កម្រិតចូលប្រើ",
+            "accessTierChanged": "បានកំណត់កម្រិតចូលប្រើទៅ {tier}"
         }
     }
 }

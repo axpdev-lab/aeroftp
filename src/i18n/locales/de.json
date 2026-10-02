@@ -6042,6 +6042,23 @@
             "scopeSession": "Gibt dieses Werkzeug für den Rest der Chatsitzung frei.",
             "approve": "Freigeben",
             "rememberForChat": "Dieses Werkzeug für den Rest dieses Chats erlauben"
+        },
+        "s3": {
+            "storageClass": "Speicherklasse",
+            "storageClassChanged": "Speicherklasse auf {storageClass} geändert",
+            "restoreFromGlacier": "Aus Glacier wiederherstellen",
+            "restoreTier": "Abrufstufe",
+            "restoreDays": "Tage, die die wiederhergestellte Kopie erhalten bleibt",
+            "restoreStarted": "Wiederherstellung angefordert: Sobald sie bereit ist, bleibt die Kopie {days} Tage lesbar",
+            "objectTags": "Objekt-Tags",
+            "noTags": "Keine Tags",
+            "tagKey": "Schlüssel",
+            "tagValue": "Wert",
+            "tagsSaved": "Tags gespeichert"
+        },
+        "azure": {
+            "accessTier": "Zugriffsebene",
+            "accessTierChanged": "Zugriffsebene auf {tier} gesetzt"
         }
     }
 }

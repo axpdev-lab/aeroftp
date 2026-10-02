@@ -6042,6 +6042,23 @@
             "scopeSession": "Odobri to orodje do konca seje klepeta.",
             "approve": "Odobri",
             "rememberForChat": "Dovoli to orodje do konca tega klepeta"
+        },
+        "s3": {
+            "storageClass": "Razred shrambe",
+            "storageClassChanged": "Razred shrambe spremenjen v {storageClass}",
+            "restoreFromGlacier": "Obnovi iz Glacier",
+            "restoreTier": "Raven pridobivanja",
+            "restoreDays": "Dnevi hrambe obnovljene kopije",
+            "restoreStarted": "Obnovitev zahtevana: ko bo pripravljena, bo kopija berljiva {days} dni",
+            "objectTags": "Oznake predmeta",
+            "noTags": "Ni oznak",
+            "tagKey": "Ključ",
+            "tagValue": "Vrednost",
+            "tagsSaved": "Oznake shranjene"
+        },
+        "azure": {
+            "accessTier": "Raven dostopa",
+            "accessTierChanged": "Raven dostopa nastavljena na {tier}"
         }
     }
 }

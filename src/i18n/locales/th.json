@@ -6042,6 +6042,23 @@
             "scopeSession": "อนุมัติเครื่องมือนี้ตลอดเซสชันแชตที่เหลือ",
             "approve": "อนุมัติ",
             "rememberForChat": "อนุญาตเครื่องมือนี้ตลอดแชตนี้ที่เหลือ"
+        },
+        "s3": {
+            "storageClass": "คลาสพื้นที่จัดเก็บ",
+            "storageClassChanged": "เปลี่ยนคลาสพื้นที่จัดเก็บเป็น {storageClass} แล้ว",
+            "restoreFromGlacier": "กู้คืนจาก Glacier",
+            "restoreTier": "ระดับการเรียกคืน",
+            "restoreDays": "จำนวนวันที่เก็บสำเนาที่กู้คืน",
+            "restoreStarted": "ขอกู้คืนแล้ว: เมื่อพร้อม สำเนาจะอ่านได้นาน {days} วัน",
+            "objectTags": "แท็กออบเจ็กต์",
+            "noTags": "ไม่มีแท็ก",
+            "tagKey": "คีย์",
+            "tagValue": "ค่า",
+            "tagsSaved": "บันทึกแท็กแล้ว"
+        },
+        "azure": {
+            "accessTier": "ระดับการเข้าถึง",
+            "accessTierChanged": "ตั้งระดับการเข้าถึงเป็น {tier} แล้ว"
         }
     }
 }

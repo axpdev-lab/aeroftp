@@ -6042,6 +6042,23 @@
             "scopeSession": "Phê duyệt công cụ này trong phần còn lại của phiên trò chuyện.",
             "approve": "Phê duyệt",
             "rememberForChat": "Cho phép công cụ này trong phần còn lại của cuộc trò chuyện"
+        },
+        "s3": {
+            "storageClass": "Lớp lưu trữ",
+            "storageClassChanged": "Đã đổi lớp lưu trữ thành {storageClass}",
+            "restoreFromGlacier": "Khôi phục từ Glacier",
+            "restoreTier": "Tầng truy xuất",
+            "restoreDays": "Số ngày giữ bản sao đã khôi phục",
+            "restoreStarted": "Đã yêu cầu khôi phục: khi sẵn sàng, bản sao sẽ đọc được trong {days} ngày",
+            "objectTags": "Thẻ đối tượng",
+            "noTags": "Không có thẻ",
+            "tagKey": "Khóa",
+            "tagValue": "Giá trị",
+            "tagsSaved": "Đã lưu thẻ"
+        },
+        "azure": {
+            "accessTier": "Tầng truy cập",
+            "accessTierChanged": "Đã đặt tầng truy cập thành {tier}"
         }
     }
 }
