@@ -84,6 +84,10 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const keysOnly = (value: Record<string, unknown>, allowed: string[]) => Object.keys(value).every(key => allowed.includes(key));
 const shortText = (value: unknown, max: number): value is string => typeof value === 'string'
     && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+// The backend compares schema numbers exactly. An integral value beyond 2^53 is
+// already rounded here, so the model would be offered a value the backend refuses.
+const exactNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+    && (!Number.isInteger(value) || Number.isSafeInteger(value));
 const prose = (value: unknown, max: number): value is string => typeof value === 'string'
     && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 
@@ -136,8 +140,8 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
         } else if (property.items !== undefined) return undefined;
         const typed = (value: unknown) => type === 'string' ? typeof value === 'string'
             : type === 'boolean' ? typeof value === 'boolean'
-            : type === 'number' ? typeof value === 'number' && Number.isFinite(value)
-            : type === 'integer' ? typeof value === 'number' && Number.isInteger(value)
+            : type === 'number' ? exactNumber(value)
+            : type === 'integer' ? typeof value === 'number' && Number.isSafeInteger(value)
             : Array.isArray(value) && value.every(item => typeof item === 'string');
         if (Object.prototype.hasOwnProperty.call(property, 'default') && !typed(property.default)) return undefined;
         if (property.enum !== undefined && (type === 'array' || !Array.isArray(property.enum)
@@ -145,7 +149,7 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
             || !property.enum.every(value => typed(value) && (typeof value !== 'string' || shortText(value, 512))))) return undefined;
         for (const bound of ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum']) {
             if (property[bound] !== undefined && (!['number', 'integer'].includes(type as string)
-                || typeof property[bound] !== 'number' || !Number.isFinite(property[bound]))) return undefined;
+                || !exactNumber(property[bound]))) return undefined;
         }
         if (typeof property.minimum === 'number' && typeof property.maximum === 'number'
             && property.minimum > property.maximum) return undefined;

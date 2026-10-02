@@ -140,6 +140,25 @@ describe('untrusted MCP registry snapshot', () => {
         ]) expect(schema(invalid)).toBe(false);
     });
 
+    it('refuses integer values JavaScript would round, keeps fractional bounds', () => {
+        const accepted = (property: Record<string, unknown>) => {
+            const server = mcp('unsafe');
+            server.tools[0].inputSchema = { type: 'object', properties: { value: property } };
+            return buildToolRegistry([], [], [server]).some(entry => entry.source.kind === 'mcp');
+        };
+        const unsafe = 2 ** 53;
+        for (const property of [
+            { type: 'integer', enum: [1, unsafe] }, { type: 'number', enum: [unsafe] },
+            { type: 'integer', default: unsafe },
+            { type: 'integer', minimum: -unsafe }, { type: 'number', maximum: unsafe },
+            { type: 'integer', exclusiveMinimum: -unsafe }, { type: 'number', exclusiveMaximum: unsafe },
+        ]) expect(accepted(property)).toBe(false);
+        for (const property of [
+            { type: 'integer', enum: [1, 2 ** 53 - 1] }, { type: 'number', minimum: 0.5, maximum: 2 ** 53 - 1 },
+            { type: 'number', exclusiveMinimum: -0.25 },
+        ]) expect(accepted(property)).toBe(true);
+    });
+
     it('keeps string lengths, exclusive bounds and wrapped descriptions', () => {
         const server = mcp('fetch', 'fetch');
         server.tools[0].description = 'Fetches a URL.\nThe page is read only.';
