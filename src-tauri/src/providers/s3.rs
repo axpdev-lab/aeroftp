@@ -10718,7 +10718,8 @@ mod tests {
         .await
         .expect_err("an object that changed under the reader must not be published");
         assert!(
-            err.contains("changed while it was being downloaded"),
+            err.to_string()
+                .contains("changed while it was being downloaded"),
             "{err}"
         );
         assert!(!out.exists(), "no file may be committed");
@@ -10840,7 +10841,7 @@ mod tests {
             "a server that ignores the range must not have its answer written at an offset",
         );
         assert!(
-            err.contains("ignored the range"),
+            err.to_string().contains("ignored the range"),
             "the refusal must name what happened: {err}"
         );
         assert!(!out.exists(), "no file may be committed");
@@ -10871,7 +10872,8 @@ mod tests {
         .await
         .expect_err("a plan built for another size must not run");
         assert!(
-            err.contains("planned for 8388608 bytes and the object now has 6291456"),
+            err.to_string()
+                .contains("planned for 8388608 bytes and the object now has 6291456"),
             "{err}"
         );
         assert!(!out.exists(), "no file may be committed");

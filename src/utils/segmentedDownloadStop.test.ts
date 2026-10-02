@@ -20,7 +20,8 @@ describe('GUI segmented download cancellation wiring', () => {
   it('returns a cancellation event and error before the legacy fallback', () => {
     const errorBranch = segmented.slice(segmented.indexOf('if let Err(ref e) = outcome'));
     expect(errorBranch).toContain("session_cancel.is_cancelled()");
-    expect(errorBranch).toContain("message_names_a_cancellation(e)");
+    expect(errorBranch).toContain("e.is_cancelled()");
+    expect(errorBranch).not.toContain("message_names_a_cancellation");
     const cancellationBranch = errorBranch.slice(0, errorBranch.indexOf('warn!('));
     expect(cancellationBranch).toContain('emit_gui_transfer_event');
     expect(cancellationBranch).toContain('event_type: "error"');

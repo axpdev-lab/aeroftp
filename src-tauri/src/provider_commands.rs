@@ -3529,9 +3529,7 @@ pub async fn provider_download_file(
             )
             .await;
             if let Err(ref e) = outcome {
-                if session_cancel.is_cancelled()
-                    || crate::transfer_dag::error::message_names_a_cancellation(e)
-                {
+                if session_cancel.is_cancelled() || e.is_cancelled() {
                     let message = format!("Download cancelled by user: {}", filename);
                     crate::transfer_event_sink::emit_gui_transfer_event(
                         &app,
@@ -3554,7 +3552,7 @@ pub async fn provider_download_file(
                     e
                 );
             }
-            segmented_result = Some(outcome);
+            segmented_result = Some(outcome.map_err(|e| e.to_string()));
         }
     }
 
