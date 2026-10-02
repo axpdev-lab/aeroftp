@@ -2800,11 +2800,20 @@ mod tests {
 
     /// Scripted download provider: fails the first `fail_first_n` attempts
     /// with a retryable error, optionally cancelling the run on a given call.
+    #[derive(Clone)]
+    struct ScriptedRanges {
+        started: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+        downloads: Arc<std::sync::atomic::AtomicUsize>,
+        fail: bool,
+    }
+
     struct FlakyDownloadProvider {
         calls: std::sync::atomic::AtomicUsize,
         fail_first_n: usize,
         cancel_on_call: Option<(usize, CancellationToken)>,
         reusable: bool,
+        ranges: Option<ScriptedRanges>,
     }
 
     impl FlakyDownloadProvider {
@@ -2814,6 +2823,7 @@ mod tests {
                 fail_first_n: n,
                 cancel_on_call: None,
                 reusable: false,
+                ranges: None,
             }
         }
 
@@ -2831,6 +2841,34 @@ mod tests {
 
     #[async_trait]
     impl StorageProvider for FlakyDownloadProvider {
+        fn clone_for_transfer(
+            &self,
+        ) -> Result<Box<dyn StorageProvider>, crate::providers::ProviderError> {
+            if self.ranges.is_none() {
+                return Err(crate::providers::ProviderError::NotSupported(
+                    "clone".to_string(),
+                ));
+            }
+            let mut worker = Self::fail_first(0);
+            worker.ranges = self.ranges.clone();
+            Ok(Box::new(worker))
+        }
+        async fn read_range(
+            &mut self,
+            _path: &str,
+            _offset: u64,
+            length: u64,
+        ) -> Result<Vec<u8>, crate::providers::ProviderError> {
+            let ranges = self.ranges.as_ref().expect("scripted range provider");
+            ranges.started.notify_one();
+            if ranges.fail {
+                return Err(crate::providers::ProviderError::TransferFailed(
+                    "scripted range failure".to_string(),
+                ));
+            }
+            ranges.release.notified().await;
+            Ok(vec![0; length as usize])
+        }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
         }
@@ -2873,6 +2911,11 @@ mod tests {
             local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), crate::providers::ProviderError> {
+            if let Some(ranges) = &self.ranges {
+                ranges
+                    .downloads
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
             let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             if call <= self.fail_first_n {
                 if let Some((cancel_call, token)) = &self.cancel_on_call {
@@ -2927,6 +2970,13 @@ mod tests {
             &mut self,
             _path: &str,
         ) -> Result<crate::providers::RemoteEntry, crate::providers::ProviderError> {
+            if self.ranges.is_some() {
+                return Ok(crate::providers::RemoteEntry::file(
+                    "large.bin".to_string(),
+                    "/large.bin".to_string(),
+                    2 * 1024 * 1024,
+                ));
+            }
             Err(crate::providers::ProviderError::NotSupported(
                 "stat".to_string(),
             ))
@@ -2943,6 +2993,98 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, crate::providers::ProviderError> {
             Ok("flaky-download".to_string())
         }
+    }
+
+    #[tokio::test]
+    async fn segmented_stop_interrupts_blocked_ranges_and_removes_temporary() {
+        let state = crate::provider_commands::ProviderState::new();
+        let session = state.current_cancel_token().await;
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+        };
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ranges.clone());
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("large.bin");
+        let temp = crate::providers::multi_thread::segmented_temp_path_for(&target);
+        let download = run_provider_segmented_download(
+            &mut provider,
+            "/large.bin",
+            target.to_str().unwrap(),
+            2 * 1024 * 1024,
+            2,
+            None,
+            session.child_token(),
+        );
+        tokio::pin!(download);
+        tokio::select! {
+            result = &mut download => panic!("blocked range completed before Stop: {result:?}"),
+            _ = tokio::time::sleep(Duration::from_secs(5)) => panic!("no range started"),
+            _ = ranges.started.notified() => {},
+        }
+        assert!(temp.exists(), "the in-flight temporary exists before Stop");
+        state.request_cancel().await;
+        let error = tokio::time::timeout(Duration::from_secs(1), &mut download)
+            .await
+            .expect("Stop must interrupt a blocked read promptly")
+            .unwrap_err();
+        assert!(
+            crate::transfer_dag::error::message_names_a_cancellation(&error),
+            "{error}"
+        );
+        assert!(!temp.exists(), "Stop removes the segmented temporary");
+        assert!(!target.exists(), "Stop does not publish a partial target");
+        assert_eq!(
+            ranges.downloads.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn segmented_failure_does_not_cancel_the_session_or_prevent_fallback() {
+        let session = CancellationToken::new();
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: true,
+        };
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ranges.clone());
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("large.bin");
+        let error = run_provider_segmented_download(
+            &mut provider,
+            "/large.bin",
+            target.to_str().unwrap(),
+            2 * 1024 * 1024,
+            2,
+            None,
+            session.child_token(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            !session.is_cancelled(),
+            "internal range fail-fast must stay operation-local"
+        );
+        assert!(
+            !crate::transfer_dag::error::message_names_a_cancellation(&error),
+            "{error}"
+        );
+        assert!(!crate::providers::multi_thread::segmented_temp_path_for(&target).exists());
+        provider
+            .download("/large.bin", target.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            ranges.downloads.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        assert_eq!(std::fs::read(target).unwrap(), b"ok");
     }
 
     #[tokio::test]

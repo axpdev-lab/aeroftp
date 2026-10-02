@@ -3513,7 +3513,11 @@ pub async fn provider_download_file(
                 "Segmented download: {} segments on {} ({} bytes)",
                 segments, filename, file_size
             );
-            let cancel = tokio_util::sync::CancellationToken::new();
+            // Stop reaches this run through the live session token. The range
+            // engine cancels its own token on failure to drain sibling workers,
+            // so keep that fail-fast cancellation off the session itself.
+            let session_cancel = state.current_cancel_token().await;
+            let cancel = session_cancel.child_token();
             let outcome = crate::provider_transfer_executor::run_provider_segmented_download(
                 provider.as_mut(),
                 &remote_path,
@@ -3525,6 +3529,26 @@ pub async fn provider_download_file(
             )
             .await;
             if let Err(ref e) = outcome {
+                if session_cancel.is_cancelled()
+                    || crate::transfer_dag::error::message_names_a_cancellation(e)
+                {
+                    let message = format!("Download cancelled by user: {}", filename);
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
+                            event_type: "error".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            direction: "download".to_string(),
+                            message: Some(message.clone()),
+                            progress: None,
+                            path: None,
+                            delta_stats: None,
+                            fallback_reason: None,
+                        },
+                    );
+                    return Err(message);
+                }
                 warn!(
                     "Segmented download failed, falling back to provider download: {}",
                     e
