@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Substitucions aplicades: {count}",
             "uiTokensRejected": "Entrades rebutjades: {count}",
             "keystorePreferencesFailed": "La importació ha acabat, però no s'han pogut restaurar les teves preferències de l'aplicació: {error}",
-            "keystorePreviewBackupUnreadable": "La llista de servidors d'aquesta còpia de seguretat no es pot llegir en aquest dispositiu, així que la comparació fa servir la llista desada a la caixa forta de la còpia de seguretat. La importació igualment substitueix la llista de servidors d'aquest dispositiu."
+            "keystorePreviewBackupUnreadable": "La llista de servidors d'aquesta còpia de seguretat no es pot llegir en aquest dispositiu, així que la comparació fa servir la llista desada a la caixa forta de la còpia de seguretat. La importació igualment substitueix la llista de servidors d'aquest dispositiu.",
+            "filterServersPlaceholder": "Filtra per nom, host, protocol o usuari",
+            "selectShown": "Selecciona els {count} mostrats",
+            "deselectShown": "Desselecciona els {count} mostrats",
+            "filterShownCount": "{shown} mostrats",
+            "selectedHiddenByFilter": "{count} seleccionats però amagats pel filtre, encara inclosos"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4980,7 +4985,8 @@
                 "rename": "Canvia el nom del grup",
                 "delete": "Elimina el grup",
                 "confirmDelete": "Voleu eliminar el grup «{name}»? Els servidors que conté es conserven, només s'elimina el grup.",
-                "chipHint": "Feu clic per filtrar; clic dret per canviar el nom o eliminar"
+                "chipHint": "Clic per filtrar; clic dret per canviar el nom, exportar o suprimir",
+                "export": "Exporta el grup..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5011,8 @@
                 "offTitle": "Aquest bucket no té xifratge predeterminat. Això no és el mateix que no xifrat: aquesta configuració no informa ni de SSE-C ni del xifratge del costat del client.",
                 "unknownKeyTitle": "No hem pogut llegir la configuració de xifratge d'aquest bucket, perquè la clau d'aplicació no té la capacitat readBucketEncryption. Un valor que no tenim permís per veure no vol dir que el xifratge estigui desactivat.",
                 "unknownShapeTitle": "No hem pogut llegir la configuració de xifratge d'aquest bucket, perquè la resposta no tenia una forma documentada. La clau sí que tenia permís per llegir-la, així que es tracta de la resposta i no dels permisos."
-            }
+            },
+            "exportProfile": "Exporta..."
         },
         "gitlab": {
             "projectPath": "Ruta del projecte",

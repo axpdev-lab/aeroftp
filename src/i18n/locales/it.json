@@ -1618,7 +1618,12 @@
             "uiTokensApplied": "Sostituzioni applicate: {count}",
             "uiTokensRejected": "Voci rifiutate: {count}",
             "keystorePreferencesFailed": "L'importazione è terminata, ma le tue preferenze dell'app non sono state ripristinate: {error}",
-            "keystorePreviewBackupUnreadable": "L'elenco dei server in questo backup non può essere letto su questo dispositivo, quindi il confronto usa la copia salvata nel vault del backup. L'importazione sostituisce comunque l'elenco dei server su questo dispositivo."
+            "keystorePreviewBackupUnreadable": "L'elenco dei server in questo backup non può essere letto su questo dispositivo, quindi il confronto usa la copia salvata nel vault del backup. L'importazione sostituisce comunque l'elenco dei server su questo dispositivo.",
+            "filterServersPlaceholder": "Filtra per nome, host, protocollo o utente",
+            "selectShown": "Seleziona i {count} mostrati",
+            "deselectShown": "Deseleziona i {count} mostrati",
+            "filterShownCount": "{shown} mostrati",
+            "selectedHiddenByFilter": "{count} selezionati ma nascosti dal filtro, ancora inclusi"
         },
         "appearance": {
             "patternCross": "Croce",
@@ -5178,7 +5183,8 @@
                 "rename": "Rinomina gruppo",
                 "delete": "Elimina gruppo",
                 "confirmDelete": "Eliminare il gruppo \"{name}\"? I server al suo interno vengono mantenuti, viene rimosso solo il gruppo.",
-                "chipHint": "Clic per filtrare; clic destro per rinominare o eliminare"
+                "chipHint": "Clic per filtrare; clic destro per rinominare, esportare o eliminare",
+                "export": "Esporta gruppo..."
             },
             "discoverTitle": "Scopri i servizi",
             "discoverDescription": "Esplora oltre 29 servizi cloud integrati, storage S3-compatibili, provider WebDAV e altro. Ogni servizio include impostazioni preconfigurate per una configurazione rapida.",
@@ -5304,7 +5310,8 @@
                 "offTitle": "Questo bucket non ha una crittografia predefinita. Non è la stessa cosa di non crittografato: SSE-C e la crittografia lato client non vengono segnalate da questa impostazione.",
                 "unknownKeyTitle": "Non siamo riusciti a leggere l'impostazione di crittografia di questo bucket, perché la chiave dell'applicazione non dispone della capacità readBucketEncryption. Un valore che non ci è consentito vedere non significa che la crittografia sia disattivata.",
                 "unknownShapeTitle": "Non siamo riusciti a leggere l'impostazione di crittografia di questo bucket, perché la risposta non aveva una forma documentata. La chiave era autorizzata a leggerla, quindi il problema riguarda la risposta e non i permessi."
-            }
+            },
+            "exportProfile": "Esporta..."
         },
         "gitlab": {
             "projectPath": "Percorso progetto",

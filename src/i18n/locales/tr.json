@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Uygulanan geçersiz kılmalar: {count}",
             "uiTokensRejected": "Reddedilen girdiler: {count}",
             "keystorePreferencesFailed": "İçe aktarma tamamlandı ancak uygulama tercihleriniz geri yüklenemedi: {error}",
-            "keystorePreviewBackupUnreadable": "Bu yedekteki sunucu listesi bu cihazda okunamıyor, bu yüzden karşılaştırma yedeğin kasasında saklanan listeyi kullanır. İçe aktarma yine de bu cihazdaki sunucu listesinin yerini alır."
+            "keystorePreviewBackupUnreadable": "Bu yedekteki sunucu listesi bu cihazda okunamıyor, bu yüzden karşılaştırma yedeğin kasasında saklanan listeyi kullanır. İçe aktarma yine de bu cihazdaki sunucu listesinin yerini alır.",
+            "filterServersPlaceholder": "Ad, ana bilgisayar, protokol veya kullanıcıya göre filtrele",
+            "selectShown": "Gösterilen {count} öğeyi seç",
+            "deselectShown": "Gösterilen {count} öğenin seçimini kaldır",
+            "filterShownCount": "{shown} gösteriliyor",
+            "selectedHiddenByFilter": "{count} seçili ancak filtre tarafından gizlendi, yine de dahil"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Grubu yeniden adlandır",
                 "delete": "Grubu sil",
                 "confirmDelete": "\"{name}\" grubu silinsin mi? İçindeki sunucular korunur, yalnızca grup kaldırılır.",
-                "chipHint": "Filtrelemek için tıklayın; yeniden adlandırmak veya silmek için sağ tıklayın"
+                "chipHint": "Filtrelemek için tıklayın; yeniden adlandırmak, dışa aktarmak veya silmek için sağ tıklayın",
+                "export": "Grubu dışa aktar..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Bu deponun varsayılan şifrelemesi yok. Bu, şifrelenmemiş olmakla aynı şey değildir: SSE-C ve istemci tarafı şifreleme bu ayarda bildirilmez.",
                 "unknownKeyTitle": "Bu deponun şifreleme ayarını okuyamadık, çünkü uygulama anahtarında readBucketEncryption yetkisi yok. Görmemize izin verilmeyen bir değer, şifrelemenin kapalı olduğu anlamına gelmez.",
                 "unknownShapeTitle": "Bu deponun şifreleme ayarını okuyamadık, çünkü yanıtın belgelenmiş bir biçimi yoktu. Anahtarın bunu okuma izni vardı, dolayısıyla konu yanıtla ilgilidir, izinlerle değil."
-            }
+            },
+            "exportProfile": "Dışa aktar..."
         },
         "gitlab": {
             "projectPath": "Proje Yolu",

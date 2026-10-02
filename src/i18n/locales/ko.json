@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "적용된 재정의: {count}",
             "uiTokensRejected": "거부된 항목: {count}",
             "keystorePreferencesFailed": "가져오기는 완료되었지만 앱 환경설정을 복원하지 못했습니다: {error}",
-            "keystorePreviewBackupUnreadable": "이 백업의 서버 목록은 이 기기에서 읽을 수 없어 비교에는 백업의 보관함에 저장된 목록을 사용합니다. 가져오기는 그래도 이 기기의 서버 목록을 대체합니다."
+            "keystorePreviewBackupUnreadable": "이 백업의 서버 목록은 이 기기에서 읽을 수 없어 비교에는 백업의 보관함에 저장된 목록을 사용합니다. 가져오기는 그래도 이 기기의 서버 목록을 대체합니다.",
+            "filterServersPlaceholder": "이름, 호스트, 프로토콜 또는 사용자로 필터링",
+            "selectShown": "표시된 {count}개 선택",
+            "deselectShown": "표시된 {count}개 선택 해제",
+            "filterShownCount": "{shown}개 표시됨",
+            "selectedHiddenByFilter": "{count}개가 선택되었지만 필터에 의해 숨겨져 있으며 계속 포함됩니다"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "그룹 이름 변경",
                 "delete": "그룹 삭제",
                 "confirmDelete": "\"{name}\" 그룹을 삭제할까요? 그룹에 속한 서버는 유지되고 그룹만 제거됩니다.",
-                "chipHint": "클릭하여 필터링, 마우스 오른쪽 클릭으로 이름 변경 또는 삭제"
+                "chipHint": "클릭하여 필터링, 오른쪽 클릭하여 이름 바꾸기, 내보내기 또는 삭제",
+                "export": "그룹 내보내기..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "이 버킷에는 기본 암호화가 없습니다. 이는 암호화되지 않았다는 뜻이 아닙니다. SSE-C와 클라이언트 측 암호화는 이 설정에 표시되지 않습니다.",
                 "unknownKeyTitle": "이 버킷의 암호화 설정을 읽을 수 없었습니다. 애플리케이션 키에 readBucketEncryption 권한이 없기 때문입니다. 볼 수 없는 값이라고 해서 암호화가 꺼져 있다는 뜻은 아닙니다.",
                 "unknownShapeTitle": "이 버킷의 암호화 설정을 읽을 수 없었습니다. 응답이 문서화된 형식이 아니었기 때문입니다. 키에는 읽을 권한이 있었으므로 이는 응답의 문제이지 권한의 문제가 아닙니다."
-            }
+            },
+            "exportProfile": "내보내기..."
         },
         "gitlab": {
             "projectPath": "프로젝트 경로",

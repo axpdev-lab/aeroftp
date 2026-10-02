@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Remplacements appliqués : {count}",
             "uiTokensRejected": "Entrées rejetées : {count}",
             "keystorePreferencesFailed": "L'importation est terminée, mais vos préférences de l'application n'ont pas pu être restaurées : {error}",
-            "keystorePreviewBackupUnreadable": "La liste de serveurs de cette sauvegarde ne peut pas être lue sur cet appareil : la comparaison utilise donc la liste enregistrée dans le coffre de la sauvegarde. L'importation remplace tout de même la liste de serveurs sur cet appareil."
+            "keystorePreviewBackupUnreadable": "La liste de serveurs de cette sauvegarde ne peut pas être lue sur cet appareil : la comparaison utilise donc la liste enregistrée dans le coffre de la sauvegarde. L'importation remplace tout de même la liste de serveurs sur cet appareil.",
+            "filterServersPlaceholder": "Filtrer par nom, hôte, protocole ou utilisateur",
+            "selectShown": "Sélectionner les {count} affichés",
+            "deselectShown": "Désélectionner les {count} affichés",
+            "filterShownCount": "{shown} affichés",
+            "selectedHiddenByFilter": "{count} sélectionnés mais masqués par le filtre, toujours inclus"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Renommer le groupe",
                 "delete": "Supprimer le groupe",
                 "confirmDelete": "Supprimer le groupe « {name} » ? Les serveurs qu'il contient sont conservés, seul le groupe est supprimé.",
-                "chipHint": "Cliquez pour filtrer ; clic droit pour renommer ou supprimer"
+                "chipHint": "Cliquer pour filtrer ; clic droit pour renommer, exporter ou supprimer",
+                "export": "Exporter le groupe..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Ce bucket n'a pas de chiffrement par défaut. Ce n'est pas la même chose que non chiffré : SSE-C et le chiffrement côté client ne sont pas signalés par ce paramètre.",
                 "unknownKeyTitle": "Nous n'avons pas pu lire le paramètre de chiffrement de ce bucket, car la clé d'application ne dispose pas de la capacité readBucketEncryption. Une valeur que nous n'avons pas le droit de voir ne signifie pas que le chiffrement est désactivé.",
                 "unknownShapeTitle": "Nous n'avons pas pu lire le paramètre de chiffrement de ce bucket, car la réponse n'avait pas de forme documentée. La clé avait le droit de le lire, il s'agit donc de la réponse et non des permissions."
-            }
+            },
+            "exportProfile": "Exporter..."
         },
         "gitlab": {
             "projectPath": "Chemin du projet",

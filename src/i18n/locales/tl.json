@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Mga na-apply na override: {count}",
             "uiTokensRejected": "Mga tinanggihang entry: {count}",
             "keystorePreferencesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga kagustuhan mo sa app: {error}",
-            "keystorePreviewBackupUnreadable": "Hindi mabasa ang listahan ng server sa backup na ito sa device na ito, kaya ang paghahambing ay gumagamit ng listahan na naka-save sa vault ng backup. Papalitan pa rin ng pag-import ang listahan ng server sa device na ito."
+            "keystorePreviewBackupUnreadable": "Hindi mabasa ang listahan ng server sa backup na ito sa device na ito, kaya ang paghahambing ay gumagamit ng listahan na naka-save sa vault ng backup. Papalitan pa rin ng pag-import ang listahan ng server sa device na ito.",
+            "filterServersPlaceholder": "I-filter ayon sa pangalan, host, protocol o user",
+            "selectShown": "Piliin ang {count} na ipinapakita",
+            "deselectShown": "Huwag piliin ang {count} na ipinapakita",
+            "filterShownCount": "{shown} ang ipinapakita",
+            "selectedHiddenByFilter": "{count} ang napili pero nakatago ng filter, kasama pa rin"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4980,7 +4985,8 @@
                 "rename": "Palitan ang pangalan ng grupo",
                 "delete": "Tanggalin ang grupo",
                 "confirmDelete": "Tanggalin ang grupong \"{name}\"? Pananatilihin ang mga server dito, ang grupo lang ang aalisin.",
-                "chipHint": "I-click para sa pag-filter; i-right-click para palitan ang pangalan o tanggalin"
+                "chipHint": "I-click para mag-filter; mag-right-click para palitan ang pangalan, i-export o burahin",
+                "export": "I-export ang grupo..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5011,8 @@
                 "offTitle": "Walang default na pag-encrypt ang bucket na ito. Hindi ito pareho sa hindi naka-encrypt: hindi iniuulat ng setting na ito ang SSE-C at ang pag-encrypt sa panig ng kliyente.",
                 "unknownKeyTitle": "Hindi namin nabasa ang setting ng pag-encrypt ng bucket na ito, dahil walang kakayahang readBucketEncryption ang application key. Ang halagang hindi kami pinapayagang makita ay hindi nangangahulugang naka-off ang pag-encrypt.",
                 "unknownShapeTitle": "Hindi namin nabasa ang setting ng pag-encrypt ng bucket na ito, dahil walang dokumentadong anyo ang sagot. Pinayagan ang key na basahin ito, kaya tungkol ito sa sagot at hindi sa mga pahintulot."
-            }
+            },
+            "exportProfile": "I-export..."
         },
         "gitlab": {
             "projectPath": "Path ng Project",

@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "適用された上書き: {count}",
             "uiTokensRejected": "拒否されたエントリー: {count}",
             "keystorePreferencesFailed": "インポートは完了しましたが、アプリの設定を復元できませんでした: {error}",
-            "keystorePreviewBackupUnreadable": "このバックアップのサーバー一覧はこのデバイスで読み取れないため、比較にはバックアップの保管庫に保存された一覧を使用します。インポートは、それでもこのデバイスのサーバー一覧を置き換えます。"
+            "keystorePreviewBackupUnreadable": "このバックアップのサーバー一覧はこのデバイスで読み取れないため、比較にはバックアップの保管庫に保存された一覧を使用します。インポートは、それでもこのデバイスのサーバー一覧を置き換えます。",
+            "filterServersPlaceholder": "名前、ホスト、プロトコル、ユーザーで絞り込み",
+            "selectShown": "表示中の{count}件を選択",
+            "deselectShown": "表示中の{count}件の選択を解除",
+            "filterShownCount": "{shown}件表示",
+            "selectedHiddenByFilter": "{count}件は選択済みですが、フィルターで非表示になっています。引き続き含まれます"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "グループ名の変更",
                 "delete": "グループの削除",
                 "confirmDelete": "グループ「{name}」を削除しますか？ 含まれるサーバーは保持され、グループのみが削除されます。",
-                "chipHint": "クリックで絞り込み、右クリックで名前変更または削除"
+                "chipHint": "クリックで絞り込み、右クリックで名前変更、エクスポート、削除",
+                "export": "グループをエクスポート..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "このバケットには既定の暗号化がありません。これは暗号化されていないという意味ではありません。SSE-C とクライアント側の暗号化は、この設定には反映されません。",
                 "unknownKeyTitle": "このバケットの暗号化設定を読み取れませんでした。アプリケーションキーに readBucketEncryption 権限がないためです。閲覧を許可されていない値は、暗号化が無効であることを意味しません。",
                 "unknownShapeTitle": "このバケットの暗号化設定を読み取れませんでした。応答が文書化された形式ではなかったためです。キーには読み取りが許可されていたため、これは応答の問題であり、権限の問題ではありません。"
-            }
+            },
+            "exportProfile": "エクスポート..."
         },
         "gitlab": {
             "projectPath": "プロジェクトパス",

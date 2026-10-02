@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Tulis ganti yang digunakan: {count}",
             "uiTokensRejected": "Entri yang ditolak: {count}",
             "keystorePreferencesFailed": "Import selesai, tetapi keutamaan aplikasi anda tidak dapat dipulihkan: {error}",
-            "keystorePreviewBackupUnreadable": "Senarai pelayan dalam sandaran ini tidak dapat dibaca pada peranti ini, jadi perbandingan menggunakan senarai yang disimpan dalam peti besi sandaran. Import tetap menggantikan senarai pelayan pada peranti ini."
+            "keystorePreviewBackupUnreadable": "Senarai pelayan dalam sandaran ini tidak dapat dibaca pada peranti ini, jadi perbandingan menggunakan senarai yang disimpan dalam peti besi sandaran. Import tetap menggantikan senarai pelayan pada peranti ini.",
+            "filterServersPlaceholder": "Tapis mengikut nama, hos, protokol atau pengguna",
+            "selectShown": "Pilih {count} yang dipaparkan",
+            "deselectShown": "Nyahpilih {count} yang dipaparkan",
+            "filterShownCount": "{shown} dipaparkan",
+            "selectedHiddenByFilter": "{count} dipilih tetapi disembunyikan oleh penapis, masih disertakan"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Namakan semula kumpulan",
                 "delete": "Padam kumpulan",
                 "confirmDelete": "Padam kumpulan \"{name}\"? Pelayan di dalamnya dikekalkan, hanya kumpulan dialih keluar.",
-                "chipHint": "Klik untuk menapis; klik kanan untuk menamakan semula atau memadam"
+                "chipHint": "Klik untuk menapis; klik kanan untuk menamakan semula, mengeksport atau memadam",
+                "export": "Eksport kumpulan..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Bucket ini tiada penyulitan lalai. Itu bukan bermakna tidak disulitkan: SSE-C dan penyulitan sebelah klien tidak dilaporkan oleh tetapan ini.",
                 "unknownKeyTitle": "Kami tidak dapat membaca tetapan penyulitan bucket ini, kerana kunci aplikasi tidak mempunyai keupayaan readBucketEncryption. Nilai yang tidak dibenarkan kami lihat tidak bermakna penyulitan dimatikan.",
                 "unknownShapeTitle": "Kami tidak dapat membaca tetapan penyulitan bucket ini, kerana jawapannya tidak mempunyai bentuk yang didokumenkan. Kunci itu dibenarkan membacanya, jadi ini tentang jawapan dan bukan tentang kebenaran."
-            }
+            },
+            "exportProfile": "Eksport..."
         },
         "gitlab": {
             "projectPath": "Laluan Projek",

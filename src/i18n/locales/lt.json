@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
             "uiTokensRejected": "Atmesti įrašai: {count}",
             "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}",
-            "keystorePreviewBackupUnreadable": "Šios atsarginės kopijos serverių sąrašo nepavyksta perskaityti šiame įrenginyje, todėl palyginimui naudojamas sąrašas, išsaugotas atsarginės kopijos saugykloje. Importavimas vis tiek pakeičia šio įrenginio serverių sąrašą."
+            "keystorePreviewBackupUnreadable": "Šios atsarginės kopijos serverių sąrašo nepavyksta perskaityti šiame įrenginyje, todėl palyginimui naudojamas sąrašas, išsaugotas atsarginės kopijos saugykloje. Importavimas vis tiek pakeičia šio įrenginio serverių sąrašą.",
+            "filterServersPlaceholder": "Filtruoti pagal pavadinimą, šeimininką, protokolą ar naudotoją",
+            "selectShown": "Pažymėti rodomus {count}",
+            "deselectShown": "Panaikinti rodomų {count} žymėjimą",
+            "filterShownCount": "rodoma: {shown}",
+            "selectedHiddenByFilter": "{count} pažymėta, bet paslėpta filtro, vis tiek įtraukta"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Pervadinti grupę",
                 "delete": "Ištrinti grupę",
                 "confirmDelete": "Ištrinti grupę „{name}“? Joje esantys serveriai išsaugomi, pašalinama tik grupė.",
-                "chipHint": "Spustelėkite, kad filtruotumėte; spustelėkite dešiniuoju pelės mygtuku, kad pervadintumėte arba ištrintumėte"
+                "chipHint": "Spustelėkite norėdami filtruoti; dešiniuoju pelės klavišu pervadinkite, eksportuokite ar ištrinkite",
+                "export": "Eksportuoti grupę..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Šis kibiras neturi numatytojo šifravimo. Tai nėra tas pat, kas nešifruotas: SSE-C ir šifravimo kliento pusėje šis nustatymas nerodo.",
                 "unknownKeyTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes programos raktas neturi readBucketEncryption galimybės. Reikšmė, kurios mums neleidžiama matyti, nereiškia, kad šifravimas išjungtas.",
                 "unknownShapeTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes atsakymas neturėjo dokumentuotos formos. Raktui buvo leista jį skaityti, todėl tai susiję su atsakymu, o ne su teisėmis."
-            }
+            },
+            "exportProfile": "Eksportuoti..."
         },
         "gitlab": {
             "projectPath": "Projekto kelias",

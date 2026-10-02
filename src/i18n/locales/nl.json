@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Toegepaste overschrijvingen: {count}",
             "uiTokensRejected": "Afgewezen vermeldingen: {count}",
             "keystorePreferencesFailed": "De import is voltooid, maar je app-voorkeuren konden niet worden hersteld: {error}",
-            "keystorePreviewBackupUnreadable": "De serverlijst in deze back-up kan niet worden gelezen op dit apparaat, dus de vergelijking gebruikt de lijst die is opgeslagen in de kluis van de back-up. De import vervangt de serverlijst op dit apparaat desondanks."
+            "keystorePreviewBackupUnreadable": "De serverlijst in deze back-up kan niet worden gelezen op dit apparaat, dus de vergelijking gebruikt de lijst die is opgeslagen in de kluis van de back-up. De import vervangt de serverlijst op dit apparaat desondanks.",
+            "filterServersPlaceholder": "Filter op naam, host, protocol of gebruiker",
+            "selectShown": "De {count} getoonde selecteren",
+            "deselectShown": "Selectie van de {count} getoonde opheffen",
+            "filterShownCount": "{shown} getoond",
+            "selectedHiddenByFilter": "{count} geselecteerd maar verborgen door het filter, nog steeds opgenomen"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Groep hernoemen",
                 "delete": "Groep verwijderen",
                 "confirmDelete": "De groep \"{name}\" verwijderen? De servers erin blijven behouden, alleen de groep wordt verwijderd.",
-                "chipHint": "Klik om te filteren; rechtsklik om te hernoemen of verwijderen"
+                "chipHint": "Klik om te filteren; rechtsklik om te hernoemen, exporteren of verwijderen",
+                "export": "Groep exporteren..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Deze bucket heeft geen standaardversleuteling. Dat is niet hetzelfde als onversleuteld: SSE-C en versleuteling aan de clientzijde worden door deze instelling niet gerapporteerd.",
                 "unknownKeyTitle": "We konden de versleutelingsinstelling van deze bucket niet lezen, omdat de applicatiesleutel niet over de mogelijkheid readBucketEncryption beschikt. Een waarde die we niet mogen zien, betekent niet dat versleuteling uit staat.",
                 "unknownShapeTitle": "We konden de versleutelingsinstelling van deze bucket niet lezen, omdat het antwoord geen gedocumenteerde vorm had. De sleutel mocht de instelling wel lezen, dus dit gaat over het antwoord en niet over rechten."
-            }
+            },
+            "exportProfile": "Exporteren..."
         },
         "gitlab": {
             "projectPath": "Projectpad",

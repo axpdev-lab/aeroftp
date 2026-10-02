@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Beittar yfirskrifanir: {count}",
             "uiTokensRejected": "Hafnaðar færslur: {count}",
             "keystorePreferencesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta stillingar þínar fyrir forritið: {error}",
-            "keystorePreviewBackupUnreadable": "Ekki er hægt að lesa netþjónalista þessa afrits á þessu tæki, svo samanburðurinn notar listann sem er geymdur í hvelfingu afritsins. Innflutningurinn kemur samt í stað netþjónalista þessa tækis."
+            "keystorePreviewBackupUnreadable": "Ekki er hægt að lesa netþjónalista þessa afrits á þessu tæki, svo samanburðurinn notar listann sem er geymdur í hvelfingu afritsins. Innflutningurinn kemur samt í stað netþjónalista þessa tækis.",
+            "filterServersPlaceholder": "Sía eftir nafni, hýsli, samskiptareglu eða notanda",
+            "selectShown": "Velja þessa {count} sem eru sýnd",
+            "deselectShown": "Afvelja þessa {count} sem eru sýnd",
+            "filterShownCount": "{shown} sýnd",
+            "selectedHiddenByFilter": "{count} valin en falin af síunni, eru samt með"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4980,7 +4985,8 @@
                 "rename": "Endurnefna hóp",
                 "delete": "Eyða hópi",
                 "confirmDelete": "Eyða hópnum „{name}“? Netþjónunum í honum er haldið, aðeins hópurinn er fjarlægður.",
-                "chipHint": "Smelltu til að sía; hægrismelltu til að endurnefna eða eyða"
+                "chipHint": "Smelltu til að sía; hægrismelltu til að endurnefna, flytja út eða eyða",
+                "export": "Flytja út hóp..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5011,8 @@
                 "offTitle": "Þessi fata hefur enga sjálfgefna dulkóðun. Það er ekki það sama og ódulkóðuð: SSE-C og dulkóðun viðskiptavinarmegin koma ekki fram í þessari stillingu.",
                 "unknownKeyTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því forritslykillinn hefur ekki heimildina readBucketEncryption. Gildi sem við megum ekki sjá þýðir ekki að dulkóðun sé slökkt.",
                 "unknownShapeTitle": "Við gátum ekki lesið dulkóðunarstillingu þessarar fötu, því svarið hafði ekki skjalfest form. Lykillinn mátti lesa hana, svo þetta snýst um svarið en ekki um heimildir."
-            }
+            },
+            "exportProfile": "Flytja út..."
         },
         "gitlab": {
             "projectPath": "Verkefnisslóð",

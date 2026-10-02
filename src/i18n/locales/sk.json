@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Použité prepísania: {count}",
             "uiTokensRejected": "Odmietnuté položky: {count}",
             "keystorePreferencesFailed": "Import sa skončil, ale vaše predvoľby aplikácie sa nepodarilo obnoviť: {error}",
-            "keystorePreviewBackupUnreadable": "Zoznam serverov v tejto zálohe sa na tomto zariadení nedá prečítať, preto porovnanie používa zoznam uložený v trezore zálohy. Import napriek tomu nahradí zoznam serverov na tomto zariadení."
+            "keystorePreviewBackupUnreadable": "Zoznam serverov v tejto zálohe sa na tomto zariadení nedá prečítať, preto porovnanie používa zoznam uložený v trezore zálohy. Import napriek tomu nahradí zoznam serverov na tomto zariadení.",
+            "filterServersPlaceholder": "Filtrovať podľa názvu, hostiteľa, protokolu alebo používateľa",
+            "selectShown": "Vybrať zobrazených {count}",
+            "deselectShown": "Zrušiť výber zobrazených {count}",
+            "filterShownCount": "zobrazených: {shown}",
+            "selectedHiddenByFilter": "{count} vybraných, ale skrytých filtrom, stále zahrnutých"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Premenovať skupinu",
                 "delete": "Odstrániť skupinu",
                 "confirmDelete": "Odstrániť skupinu „{name}“? Servery v nej zostanú zachované, odstráni sa iba skupina.",
-                "chipHint": "Kliknutím filtrujte; pravým tlačidlom premenujete alebo odstránite"
+                "chipHint": "Kliknutím filtrujte; pravým tlačidlom premenujete, exportujete alebo odstránite",
+                "export": "Exportovať skupinu..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Tento bucket nemá predvolené šifrovanie. Nie je to to isté ako nešifrovaný: SSE-C ani šifrovanie na strane klienta toto nastavenie nehlási.",
                 "unknownKeyTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože aplikačný kľúč nemá oprávnenie readBucketEncryption. Hodnota, ktorú nesmieme vidieť, neznamená, že je šifrovanie vypnuté.",
                 "unknownShapeTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože odpoveď nemala dokumentovaný tvar. Kľúč ju čítať smel, takže ide o odpoveď, nie o oprávnenia."
-            }
+            },
+            "exportProfile": "Exportovať..."
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",

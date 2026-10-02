@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Sobrescrituras aplicadas: {count}",
             "uiTokensRejected": "Entradas rechazadas: {count}",
             "keystorePreferencesFailed": "La importación terminó, pero no se pudieron restaurar tus preferencias de la aplicación: {error}",
-            "keystorePreviewBackupUnreadable": "La lista de servidores de esta copia de seguridad no se puede leer en este dispositivo, así que la comparación usa la que está guardada en la bóveda de la copia de seguridad. La importación igualmente reemplaza la lista de servidores en este dispositivo."
+            "keystorePreviewBackupUnreadable": "La lista de servidores de esta copia de seguridad no se puede leer en este dispositivo, así que la comparación usa la que está guardada en la bóveda de la copia de seguridad. La importación igualmente reemplaza la lista de servidores en este dispositivo.",
+            "filterServersPlaceholder": "Filtrar por nombre, host, protocolo o usuario",
+            "selectShown": "Seleccionar los {count} mostrados",
+            "deselectShown": "Deseleccionar los {count} mostrados",
+            "filterShownCount": "{shown} mostrados",
+            "selectedHiddenByFilter": "{count} seleccionados pero ocultos por el filtro, siguen incluidos"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Cambiar nombre del grupo",
                 "delete": "Eliminar grupo",
                 "confirmDelete": "¿Eliminar el grupo «{name}»? Los servidores que contiene se conservan, solo se elimina el grupo.",
-                "chipHint": "Haz clic para filtrar; clic derecho para renombrar o eliminar"
+                "chipHint": "Clic para filtrar; clic derecho para renombrar, exportar o eliminar",
+                "export": "Exportar grupo..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Este bucket no tiene cifrado predeterminado. Eso no es lo mismo que sin cifrar: SSE-C y el cifrado del lado del cliente no se reflejan en esta configuración.",
                 "unknownKeyTitle": "No hemos podido leer la configuración de cifrado de este bucket, porque la clave de aplicación no tiene la capacidad readBucketEncryption. Un valor que no se nos permite ver no significa que el cifrado esté desactivado.",
                 "unknownShapeTitle": "No hemos podido leer la configuración de cifrado de este bucket, porque la respuesta no tenía una forma documentada. La clave sí tenía permiso para leerla, así que se trata de la respuesta y no de los permisos."
-            }
+            },
+            "exportProfile": "Exportar..."
         },
         "gitlab": {
             "projectPath": "Ruta del proyecto",

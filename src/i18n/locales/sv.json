@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Tillämpade åsidosättningar: {count}",
             "uiTokensRejected": "Avvisade poster: {count}",
             "keystorePreferencesFailed": "Importen är klar, men dina appinställningar kunde inte återställas: {error}",
-            "keystorePreviewBackupUnreadable": "Serverlistan i den här säkerhetskopian kan inte läsas på den här enheten, så jämförelsen använder listan som finns i säkerhetskopians valv. Importen ersätter ändå serverlistan på den här enheten."
+            "keystorePreviewBackupUnreadable": "Serverlistan i den här säkerhetskopian kan inte läsas på den här enheten, så jämförelsen använder listan som finns i säkerhetskopians valv. Importen ersätter ändå serverlistan på den här enheten.",
+            "filterServersPlaceholder": "Filtrera efter namn, värd, protokoll eller användare",
+            "selectShown": "Markera de {count} visade",
+            "deselectShown": "Avmarkera de {count} visade",
+            "filterShownCount": "{shown} visas",
+            "selectedHiddenByFilter": "{count} markerade men dolda av filtret, ingår fortfarande"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Byt namn på grupp",
                 "delete": "Ta bort grupp",
                 "confirmDelete": "Ta bort gruppen \"{name}\"? Servrarna i den behålls, endast gruppen tas bort.",
-                "chipHint": "Klicka för att filtrera; högerklicka för att byta namn eller ta bort"
+                "chipHint": "Klicka för att filtrera; högerklicka för att byta namn, exportera eller ta bort",
+                "export": "Exportera grupp..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Den här bucketen har ingen standardkryptering. Det betyder inte att objekten är okrypterade: SSE-C och kryptering på klientsidan rapporteras inte av den här inställningen.",
                 "unknownKeyTitle": "Vi kunde inte läsa krypteringsinställningen för den här bucketen, eftersom applikationsnyckeln saknar behörigheten readBucketEncryption. Ett värde som vi inte får se betyder inte att krypteringen är avstängd.",
                 "unknownShapeTitle": "Vi kunde inte läsa krypteringsinställningen för den här bucketen, eftersom svaret inte hade en dokumenterad form. Nyckeln fick läsa den, så det handlar om svaret och inte om behörigheter."
-            }
+            },
+            "exportProfile": "Exportera..."
         },
         "gitlab": {
             "projectPath": "Projektsökväg",

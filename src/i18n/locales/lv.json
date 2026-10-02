@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Lietotie aizstājumi: {count}",
             "uiTokensRejected": "Noraidītie ieraksti: {count}",
             "keystorePreferencesFailed": "Importēšana ir pabeigta, bet neizdevās atjaunot jūsu lietotnes iestatījumus: {error}",
-            "keystorePreviewBackupUnreadable": "Šī dublējuma serveru sarakstu nevar nolasīt šajā ierīcē, tāpēc salīdzinājumā tiek izmantots dublējuma glabātavā saglabātais saraksts. Importēšana tomēr aizstāj šīs ierīces serveru sarakstu."
+            "keystorePreviewBackupUnreadable": "Šī dublējuma serveru sarakstu nevar nolasīt šajā ierīcē, tāpēc salīdzinājumā tiek izmantots dublējuma glabātavā saglabātais saraksts. Importēšana tomēr aizstāj šīs ierīces serveru sarakstu.",
+            "filterServersPlaceholder": "Filtrēt pēc nosaukuma, resursdatora, protokola vai lietotāja",
+            "selectShown": "Atlasīt attēlotos {count}",
+            "deselectShown": "Noņemt atlasi attēlotajiem {count}",
+            "filterShownCount": "attēloti: {shown}",
+            "selectedHiddenByFilter": "{count} atlasīti, bet filtrs tos slēpj, tie joprojām tiek iekļauti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Pārdēvēt grupu",
                 "delete": "Dzēst grupu",
                 "confirmDelete": "Dzēst grupu “{name}”? Tajā esošie serveri tiek saglabāti, tiek noņemta tikai grupa.",
-                "chipHint": "Noklikšķiniet, lai filtrētu; ar peles labo pogu, lai pārdēvētu vai dzēstu"
+                "chipHint": "Noklikšķiniet, lai filtrētu; ar peles labo pogu varat pārdēvēt, eksportēt vai dzēst",
+                "export": "Eksportēt grupu..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Šim spainītim nav noklusējuma šifrēšanas. Tas nav tas pats, kas nešifrēts: SSE-C un šifrēšanu klienta pusē šis iestatījums neatspoguļo.",
                 "unknownKeyTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo lietojumprogrammas atslēgai nav readBucketEncryption iespējas. Vērtība, kuru mums nav atļauts redzēt, nenozīmē, ka šifrēšana ir izslēgta.",
                 "unknownShapeTitle": "Mēs nevarējām nolasīt šī spainīša šifrēšanas iestatījumu, jo atbildei nebija dokumentētas formas. Atslēgai bija atļauts to lasīt, tāpēc runa ir par atbildi, nevis par atļaujām."
-            }
+            },
+            "exportProfile": "Eksportēt..."
         },
         "gitlab": {
             "projectPath": "Projekta ceļš",

@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Diysgrifiadau a gymhwyswyd: {count}",
             "uiTokensRejected": "Cofnodion a wrthodwyd: {count}",
             "keystorePreferencesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer eich dewisiadau ar gyfer y rhaglen: {error}",
-            "keystorePreviewBackupUnreadable": "Ni ellir darllen rhestr gweinyddion y copi hwn ar y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr sydd wedi'i chadw yng nghladdgell y copi. Mae'r mewnforio'n dal i ddisodli rhestr gweinyddion y ddyfais hon."
+            "keystorePreviewBackupUnreadable": "Ni ellir darllen rhestr gweinyddion y copi hwn ar y ddyfais hon, felly mae'r gymhariaeth yn defnyddio'r rhestr sydd wedi'i chadw yng nghladdgell y copi. Mae'r mewnforio'n dal i ddisodli rhestr gweinyddion y ddyfais hon.",
+            "filterServersPlaceholder": "Hidlo yn ôl enw, gwesteiwr, protocol neu ddefnyddiwr",
+            "selectShown": "Dewis y {count} a ddangosir",
+            "deselectShown": "Dad-ddewis y {count} a ddangosir",
+            "filterShownCount": "{shown} wedi'u dangos",
+            "selectedHiddenByFilter": "{count} wedi'u dewis ond wedi'u cuddio gan yr hidlydd, wedi'u cynnwys o hyd"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4980,7 +4985,8 @@
                 "rename": "Ailenwi grŵp",
                 "delete": "Dileu grŵp",
                 "confirmDelete": "Dileu'r grŵp \"{name}\"? Cedwir y gweinyddwyr ynddo, dim ond y grŵp a gaiff ei dynnu.",
-                "chipHint": "Cliciwch i hidlo; de-gliciwch i ailenwi neu ddileu"
+                "chipHint": "Cliciwch i hidlo; de-gliciwch i ailenwi, allforio neu ddileu",
+                "export": "Allforio grŵp..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5011,8 @@
                 "offTitle": "Nid oes gan y bwced hwn amgryptio diofyn. Nid yw hynny'r un peth â bod heb ei amgryptio: nid yw'r gosodiad hwn yn adrodd am SSE-C nac am amgryptio ar ochr y cleient.",
                 "unknownKeyTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oes gan yr allwedd rhaglen y gallu readBucketEncryption. Nid yw gwerth nad oes hawl gennym i'w weld yn golygu bod amgryptio wedi ei ddiffodd.",
                 "unknownShapeTitle": "Ni allem ddarllen gosodiad amgryptio'r bwced hwn, oherwydd nad oedd gan yr ateb siâp wedi ei ddogfennu. Roedd gan yr allwedd hawl i'w ddarllen, felly mae hyn yn ymwneud â'r ateb ac nid â chaniatâd."
-            }
+            },
+            "exportProfile": "Allforio..."
         },
         "gitlab": {
             "projectPath": "Llwybr y prosiect",

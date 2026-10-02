@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Brukte overstyringer: {count}",
             "uiTokensRejected": "Avviste oppføringer: {count}",
             "keystorePreferencesFailed": "Importen er ferdig, men appinnstillingene dine kunne ikke gjenopprettes: {error}",
-            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhetskopien kan ikke leses på denne enheten, så sammenligningen bruker listen som er lagret i hvelvet til sikkerhetskopien. Importen erstatter likevel serverlisten på denne enheten."
+            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhetskopien kan ikke leses på denne enheten, så sammenligningen bruker listen som er lagret i hvelvet til sikkerhetskopien. Importen erstatter likevel serverlisten på denne enheten.",
+            "filterServersPlaceholder": "Filtrer etter navn, vert, protokoll eller bruker",
+            "selectShown": "Velg de {count} viste",
+            "deselectShown": "Fjern valget for de {count} viste",
+            "filterShownCount": "{shown} vist",
+            "selectedHiddenByFilter": "{count} valgt, men skjult av filteret, fortsatt inkludert"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4980,7 +4985,8 @@
                 "rename": "Gi nytt navn til gruppe",
                 "delete": "Slett gruppe",
                 "confirmDelete": "Slette gruppen \"{name}\"? Serverne i den beholdes, bare gruppen fjernes.",
-                "chipHint": "Klikk for å filtrere; høyreklikk for å gi nytt navn eller slette"
+                "chipHint": "Klikk for å filtrere; høyreklikk for å gi nytt navn, eksportere eller slette",
+                "export": "Eksporter gruppe..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5011,8 @@
                 "offTitle": "Denne bøtta har ingen standardkryptering. Det er ikke det samme som ukryptert: SSE-C og kryptering på klientsiden rapporteres ikke av denne innstillingen.",
                 "unknownKeyTitle": "Vi kunne ikke lese krypteringsinnstillingen til denne bøtta, fordi applikasjonsnøkkelen ikke har rettigheten readBucketEncryption. En verdi vi ikke har lov til å se, betyr ikke at krypteringen er av.",
                 "unknownShapeTitle": "Vi kunne ikke lese krypteringsinnstillingen til denne bøtta, fordi svaret ikke hadde en dokumentert form. Nøkkelen hadde lov til å lese den, så dette handler om svaret og ikke om rettigheter."
-            }
+            },
+            "exportProfile": "Eksporter..."
         },
         "gitlab": {
             "projectPath": "Prosjektsti",

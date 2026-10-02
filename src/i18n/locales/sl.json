@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Uporabljene preglasitve: {count}",
             "uiTokensRejected": "Zavrnjeni vnosi: {count}",
             "keystorePreferencesFailed": "Uvoz je končan, vendar vaših nastavitev aplikacije ni bilo mogoče obnoviti: {error}",
-            "keystorePreviewBackupUnreadable": "Seznama strežnikov v tej varnostni kopiji ni mogoče prebrati na tej napravi, zato primerjava uporablja seznam, shranjen v trezorju varnostne kopije. Uvoz kljub temu zamenja seznam strežnikov na tej napravi."
+            "keystorePreviewBackupUnreadable": "Seznama strežnikov v tej varnostni kopiji ni mogoče prebrati na tej napravi, zato primerjava uporablja seznam, shranjen v trezorju varnostne kopije. Uvoz kljub temu zamenja seznam strežnikov na tej napravi.",
+            "filterServersPlaceholder": "Filtriraj po imenu, gostitelju, protokolu ali uporabniku",
+            "selectShown": "Izberi prikazanih {count}",
+            "deselectShown": "Prekliči izbiro prikazanih {count}",
+            "filterShownCount": "prikazanih: {shown}",
+            "selectedHiddenByFilter": "{count} izbranih, vendar skritih s filtrom, še vedno vključenih"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Preimenuj skupino",
                 "delete": "Izbriši skupino",
                 "confirmDelete": "Izbrišem skupino »{name}«? Strežniki v njej se ohranijo, odstrani se le skupina.",
-                "chipHint": "Kliknite za filtriranje; desni klik za preimenovanje ali brisanje"
+                "chipHint": "Kliknite za filtriranje; desni klik za preimenovanje, izvoz ali brisanje",
+                "export": "Izvozi skupino..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "To vedro nima privzetega šifriranja. To ni isto kot nešifrirano: SSE-C in šifriranja na strani odjemalca ta nastavitev ne prikazuje.",
                 "unknownKeyTitle": "Nastavitve šifriranja tega vedra nismo mogli prebrati, ker aplikacijski ključ nima zmožnosti readBucketEncryption. Vrednost, ki je ne smemo videti, ne pomeni, da je šifriranje izklopljeno.",
                 "unknownShapeTitle": "Nastavitve šifriranja tega vedra nismo mogli prebrati, ker odgovor ni imel dokumentirane oblike. Ključ jo je smel prebrati, zato gre za odgovor in ne za dovoljenja."
-            }
+            },
+            "exportProfile": "Izvozi..."
         },
         "gitlab": {
             "projectPath": "Pot projekta",

@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Suprascrieri aplicate: {count}",
             "uiTokensRejected": "Intrări respinse: {count}",
             "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}",
-            "keystorePreviewBackupUnreadable": "Lista de servere din această copie nu poate fi citită pe acest dispozitiv, așa că comparația folosește lista salvată în seiful copiei. Importul înlocuiește totuși lista de servere de pe acest dispozitiv."
+            "keystorePreviewBackupUnreadable": "Lista de servere din această copie nu poate fi citită pe acest dispozitiv, așa că comparația folosește lista salvată în seiful copiei. Importul înlocuiește totuși lista de servere de pe acest dispozitiv.",
+            "filterServersPlaceholder": "Filtrează după nume, gazdă, protocol sau utilizator",
+            "selectShown": "Selectează cele {count} afișate",
+            "deselectShown": "Deselectează cele {count} afișate",
+            "filterShownCount": "{shown} afișate",
+            "selectedHiddenByFilter": "{count} selectate, dar ascunse de filtru, încă incluse"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Redenumește grupul",
                 "delete": "Șterge grupul",
                 "confirmDelete": "Ștergeți grupul „{name}”? Serverele din el sunt păstrate, se elimină doar grupul.",
-                "chipHint": "Clic pentru filtrare; clic dreapta pentru redenumire sau ștergere"
+                "chipHint": "Clic pentru a filtra; clic dreapta pentru a redenumi, exporta sau șterge",
+                "export": "Exportă grupul..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Acest bucket nu are criptare implicită. Acest lucru nu este același lucru cu necriptat: SSE-C și criptarea de partea clientului nu sunt raportate de această setare.",
                 "unknownKeyTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece cheia de aplicație nu are capacitatea readBucketEncryption. O valoare pe care nu avem voie să o vedem nu înseamnă că criptarea este dezactivată.",
                 "unknownShapeTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece răspunsul nu a avut o formă documentată. Cheia avea dreptul să o citească, așadar este vorba despre răspuns și nu despre permisiuni."
-            }
+            },
+            "exportProfile": "Exportă..."
         },
         "gitlab": {
             "projectPath": "Calea proiectului",

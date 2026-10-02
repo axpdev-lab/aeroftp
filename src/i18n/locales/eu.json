@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Aplikatutako gainidatziak: {count}",
             "uiTokensRejected": "Baztertutako sarrerak: {count}",
             "keystorePreferencesFailed": "Inportazioa amaitu da, baina ezin izan dira aplikazioaren hobespenak berrezarri: {error}",
-            "keystorePreviewBackupUnreadable": "Babeskopia honetako zerbitzari-zerrenda ezin da irakurri gailu honetan, beraz konparazioak babeskopiaren gordailuan gordetako zerrenda erabiltzen du. Inportazioak, hala ere, gailu honetako zerbitzari-zerrenda ordezkatzen du."
+            "keystorePreviewBackupUnreadable": "Babeskopia honetako zerbitzari-zerrenda ezin da irakurri gailu honetan, beraz konparazioak babeskopiaren gordailuan gordetako zerrenda erabiltzen du. Inportazioak, hala ere, gailu honetako zerbitzari-zerrenda ordezkatzen du.",
+            "filterServersPlaceholder": "Iragazi izenaren, ostalariaren, protokoloaren edo erabiltzailearen arabera",
+            "selectShown": "Hautatu erakutsitako {count}",
+            "deselectShown": "Desautatu erakutsitako {count}",
+            "filterShownCount": "{shown} erakutsita",
+            "selectedHiddenByFilter": "{count} hautatuta baina iragazkiak ezkutatuta, oraindik barne"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4980,7 +4985,8 @@
                 "rename": "Aldatu taldearen izena",
                 "delete": "Ezabatu taldea",
                 "confirmDelete": "Ezabatu \"{name}\" taldea? Bertako zerbitzariak mantenduko dira, taldea baino ez da kenduko.",
-                "chipHint": "Egin klik iragazteko; eskuin-klika izena aldatzeko edo ezabatzeko"
+                "chipHint": "Egin klik iragazteko; egin eskuineko klik izena aldatzeko, esportatzeko edo ezabatzeko",
+                "export": "Esportatu taldea..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5011,8 @@
                 "offTitle": "Bucket honek ez du enkriptatze lehenetsirik. Hori ez da enkriptatu gabe egotearen gauza bera: ezarpen honek ez du SSE-C ez bezero aldeko enkriptatzearen berri ematen.",
                 "unknownKeyTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, aplikazioaren gakoak ez baitu readBucketEncryption gaitasuna. Ikusteko baimenik ez dugun balio batek ez du esan nahi enkriptatzea itzalita dagoenik.",
                 "unknownShapeTitle": "Ezin izan dugu bucket honen enkriptatze ezarpena irakurri, erantzunak ez baitzuen dokumentatutako formarik. Gakoak irakurtzeko baimena zuen, beraz, kontua erantzuna da eta ez baimenak."
-            }
+            },
+            "exportProfile": "Esportatu..."
         },
         "gitlab": {
             "projectPath": "Proiektuaren bidea",

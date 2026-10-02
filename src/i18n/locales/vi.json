@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
             "uiTokensRejected": "Các mục bị từ chối: {count}",
             "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}",
-            "keystorePreviewBackupUnreadable": "Không thể đọc danh sách máy chủ trong bản sao lưu này trên thiết bị này, nên việc so sánh dùng danh sách được lưu trong kho của bản sao lưu. Việc nhập vẫn thay thế danh sách máy chủ trên thiết bị này."
+            "keystorePreviewBackupUnreadable": "Không thể đọc danh sách máy chủ trong bản sao lưu này trên thiết bị này, nên việc so sánh dùng danh sách được lưu trong kho của bản sao lưu. Việc nhập vẫn thay thế danh sách máy chủ trên thiết bị này.",
+            "filterServersPlaceholder": "Lọc theo tên, máy chủ, giao thức hoặc người dùng",
+            "selectShown": "Chọn {count} mục đang hiển thị",
+            "deselectShown": "Bỏ chọn {count} mục đang hiển thị",
+            "filterShownCount": "{shown} đang hiển thị",
+            "selectedHiddenByFilter": "{count} đã chọn nhưng bị bộ lọc ẩn, vẫn được bao gồm"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Đổi tên nhóm",
                 "delete": "Xóa nhóm",
                 "confirmDelete": "Xóa nhóm \"{name}\"? Các máy chủ trong đó được giữ lại, chỉ nhóm bị xóa.",
-                "chipHint": "Nhấp để lọc; nhấp chuột phải để đổi tên hoặc xóa"
+                "chipHint": "Nhấp để lọc; nhấp chuột phải để đổi tên, xuất hoặc xóa",
+                "export": "Xuất nhóm..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Bucket này không có mã hóa mặc định. Điều đó không giống với việc không được mã hóa: SSE-C và mã hóa phía máy khách không được báo cáo bởi thiết lập này.",
                 "unknownKeyTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì khóa ứng dụng không có khả năng readBucketEncryption. Một giá trị mà chúng tôi không được phép xem không có nghĩa là mã hóa đã bị tắt.",
                 "unknownShapeTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì câu trả lời không có cấu trúc được ghi trong tài liệu. Khóa được phép đọc nó, nên đây là vấn đề của câu trả lời chứ không phải của quyền hạn."
-            }
+            },
+            "exportProfile": "Xuất..."
         },
         "gitlab": {
             "projectPath": "Đường dẫn dự án",

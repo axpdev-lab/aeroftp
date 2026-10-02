@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Zastosowane nadpisania: {count}",
             "uiTokensRejected": "Odrzucone wpisy: {count}",
             "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}",
-            "keystorePreviewBackupUnreadable": "Listy serwerów z tej kopii nie można odczytać na tym urządzeniu, więc porównanie korzysta z listy zapisanej w sejfie kopii. Import mimo to zastępuje listę serwerów na tym urządzeniu."
+            "keystorePreviewBackupUnreadable": "Listy serwerów z tej kopii nie można odczytać na tym urządzeniu, więc porównanie korzysta z listy zapisanej w sejfie kopii. Import mimo to zastępuje listę serwerów na tym urządzeniu.",
+            "filterServersPlaceholder": "Filtruj według nazwy, hosta, protokołu lub użytkownika",
+            "selectShown": "Zaznacz wyświetlone ({count})",
+            "deselectShown": "Odznacz wyświetlone ({count})",
+            "filterShownCount": "wyświetlono: {shown}",
+            "selectedHiddenByFilter": "Zaznaczone: {count}, ale ukryte przez filtr, nadal uwzględnione"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Zmień nazwę grupy",
                 "delete": "Usuń grupę",
                 "confirmDelete": "Usunąć grupę „{name}”? Serwery w niej pozostaną, usunięta zostanie tylko grupa.",
-                "chipHint": "Kliknij, aby filtrować; kliknij prawym przyciskiem, aby zmienić nazwę lub usunąć"
+                "chipHint": "Kliknij, aby filtrować; kliknij prawym przyciskiem, aby zmienić nazwę, wyeksportować lub usunąć",
+                "export": "Eksportuj grupę..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Ten zasobnik nie ma domyślnego szyfrowania. To nie to samo co niezaszyfrowany: SSE-C i szyfrowanie po stronie klienta nie są raportowane przez to ustawienie.",
                 "unknownKeyTitle": "Nie udało się odczytać ustawienia szyfrowania tego zasobnika, ponieważ klucz aplikacji nie ma uprawnienia readBucketEncryption. Wartość, której nie wolno nam zobaczyć, nie oznacza, że szyfrowanie jest wyłączone.",
                 "unknownShapeTitle": "Nie udało się odczytać ustawienia szyfrowania tego zasobnika, ponieważ odpowiedź nie miała udokumentowanej postaci. Klucz miał prawo ją odczytać, więc rzecz dotyczy odpowiedzi, a nie uprawnień."
-            }
+            },
+            "exportProfile": "Eksportuj..."
         },
         "gitlab": {
             "projectPath": "Ścieżka projektu",

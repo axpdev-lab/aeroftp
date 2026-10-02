@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Penggantian diterapkan: {count}",
             "uiTokensRejected": "Entri ditolak: {count}",
             "keystorePreferencesFailed": "Impor selesai, tetapi preferensi aplikasi Anda tidak dapat dipulihkan: {error}",
-            "keystorePreviewBackupUnreadable": "Daftar server dalam cadangan ini tidak dapat dibaca di perangkat ini, jadi perbandingan menggunakan daftar yang tersimpan di brankas cadangan. Impor tetap mengganti daftar server di perangkat ini."
+            "keystorePreviewBackupUnreadable": "Daftar server dalam cadangan ini tidak dapat dibaca di perangkat ini, jadi perbandingan menggunakan daftar yang tersimpan di brankas cadangan. Impor tetap mengganti daftar server di perangkat ini.",
+            "filterServersPlaceholder": "Filter berdasarkan nama, host, protokol, atau pengguna",
+            "selectShown": "Pilih {count} yang ditampilkan",
+            "deselectShown": "Batalkan pilihan {count} yang ditampilkan",
+            "filterShownCount": "{shown} ditampilkan",
+            "selectedHiddenByFilter": "{count} dipilih tetapi disembunyikan oleh filter, tetap disertakan"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Ganti nama grup",
                 "delete": "Hapus grup",
                 "confirmDelete": "Hapus grup \"{name}\"? Server di dalamnya tetap disimpan, hanya grup yang dihapus.",
-                "chipHint": "Klik untuk memfilter; klik kanan untuk mengganti nama atau menghapus"
+                "chipHint": "Klik untuk memfilter; klik kanan untuk mengganti nama, mengekspor, atau menghapus",
+                "export": "Ekspor grup..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Bucket ini tidak memiliki enkripsi default. Itu tidak sama dengan tidak terenkripsi: SSE-C dan enkripsi sisi klien tidak dilaporkan oleh pengaturan ini.",
                 "unknownKeyTitle": "Kami tidak dapat membaca pengaturan enkripsi bucket ini, karena kunci aplikasi tidak memiliki kemampuan readBucketEncryption. Nilai yang tidak boleh kami lihat tidak berarti enkripsi dimatikan.",
                 "unknownShapeTitle": "Kami tidak dapat membaca pengaturan enkripsi bucket ini, karena jawabannya tidak memiliki bentuk yang terdokumentasi. Kunci tersebut diizinkan membacanya, jadi ini tentang jawabannya dan bukan tentang izin."
-            }
+            },
+            "exportProfile": "Ekspor..."
         },
         "gitlab": {
             "projectPath": "Jalur Proyek",

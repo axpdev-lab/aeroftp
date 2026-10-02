@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Primijenjena nadjačavanja: {count}",
             "uiTokensRejected": "Odbijeni unosi: {count}",
             "keystorePreferencesFailed": "Uvoz je završen, ali vaše postavke aplikacije nije bilo moguće vratiti: {error}",
-            "keystorePreviewBackupUnreadable": "Popis poslužitelja u ovoj kopiji ne može se pročitati na ovom uređaju, pa usporedba koristi popis pohranjen u trezoru kopije. Uvoz ipak zamjenjuje popis poslužitelja na ovom uređaju."
+            "keystorePreviewBackupUnreadable": "Popis poslužitelja u ovoj kopiji ne može se pročitati na ovom uređaju, pa usporedba koristi popis pohranjen u trezoru kopije. Uvoz ipak zamjenjuje popis poslužitelja na ovom uređaju.",
+            "filterServersPlaceholder": "Filtriraj po nazivu, hostu, protokolu ili korisniku",
+            "selectShown": "Odaberi prikazanih {count}",
+            "deselectShown": "Poništi odabir prikazanih {count}",
+            "filterShownCount": "prikazano: {shown}",
+            "selectedHiddenByFilter": "{count} odabrano, ali skriveno filtrom, i dalje uključeno"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Preimenuj grupu",
                 "delete": "Izbriši grupu",
                 "confirmDelete": "Izbrisati grupu „{name}“? Poslužitelji u njoj se zadržavaju, uklanja se samo grupa.",
-                "chipHint": "Kliknite za filtriranje; desni klik za preimenovanje ili brisanje"
+                "chipHint": "Kliknite za filtriranje; desni klik za preimenovanje, izvoz ili brisanje",
+                "export": "Izvezi grupu..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Ovaj bucket nema zadano šifriranje. To nije isto što i nešifriran: SSE-C i šifriranje na strani klijenta ova postavka ne prijavljuje.",
                 "unknownKeyTitle": "Nismo mogli pročitati postavku šifriranja ovog bucketa jer aplikacijski ključ nema mogućnost readBucketEncryption. Vrijednost koju nam nije dopušteno vidjeti ne znači da je šifriranje isključeno.",
                 "unknownShapeTitle": "Nismo mogli pročitati postavku šifriranja ovog bucketa jer odgovor nije imao dokumentirani oblik. Ključ ju je smio pročitati, pa je riječ o odgovoru, a ne o dopuštenjima."
-            }
+            },
+            "exportProfile": "Izvezi..."
         },
         "gitlab": {
             "projectPath": "Putanja projekta",

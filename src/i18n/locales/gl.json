@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Substitucións aplicadas: {count}",
             "uiTokensRejected": "Entradas rexeitadas: {count}",
             "keystorePreferencesFailed": "A importación rematou, pero non se puideron restaurar as túas preferencias da aplicación: {error}",
-            "keystorePreviewBackupUnreadable": "A lista de servidores desta copia non se pode ler neste dispositivo, así que a comparación usa a lista gardada na caixa forte da copia. A importación substitúe igualmente a lista de servidores neste dispositivo."
+            "keystorePreviewBackupUnreadable": "A lista de servidores desta copia non se pode ler neste dispositivo, así que a comparación usa a lista gardada na caixa forte da copia. A importación substitúe igualmente a lista de servidores neste dispositivo.",
+            "filterServersPlaceholder": "Filtrar por nome, host, protocolo ou usuario",
+            "selectShown": "Seleccionar os {count} mostrados",
+            "deselectShown": "Deseleccionar os {count} mostrados",
+            "filterShownCount": "{shown} mostrados",
+            "selectedHiddenByFilter": "{count} seleccionados pero agochados polo filtro, seguen incluídos"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4980,7 +4985,8 @@
                 "rename": "Renomear grupo",
                 "delete": "Eliminar grupo",
                 "confirmDelete": "Eliminar o grupo «{name}»? Os servidores que contén consérvanse, só se elimina o grupo.",
-                "chipHint": "Fai clic para filtrar; clic dereito para renomear ou eliminar"
+                "chipHint": "Preme para filtrar; preme co botón dereito para renomear, exportar ou eliminar",
+                "export": "Exportar grupo..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -5005,7 +5011,8 @@
                 "offTitle": "Este bucket non ten cifrado predeterminado. Iso non é o mesmo que sen cifrar: SSE-C e o cifrado do lado do cliente non se reflicten nesta configuración.",
                 "unknownKeyTitle": "Non puidemos ler a configuración de cifrado deste bucket, porque a clave de aplicación non ten a capacidade readBucketEncryption. Un valor que non temos permiso para ver non significa que o cifrado estea desactivado.",
                 "unknownShapeTitle": "Non puidemos ler a configuración de cifrado deste bucket, porque a resposta non tiña unha forma documentada. A clave si tiña permiso para lela, así que se trata da resposta e non dos permisos."
-            }
+            },
+            "exportProfile": "Exportar..."
         },
         "gitlab": {
             "projectPath": "Ruta do proxecto",

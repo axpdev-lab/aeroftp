@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Substituições aplicadas: {count}",
             "uiTokensRejected": "Entradas rejeitadas: {count}",
             "keystorePreferencesFailed": "A importação terminou, mas suas preferências do aplicativo não puderam ser restauradas: {error}",
-            "keystorePreviewBackupUnreadable": "A lista de servidores deste backup não pode ser lida neste dispositivo, então a comparação usa a lista guardada no cofre do backup. A importação mesmo assim substitui a lista de servidores neste dispositivo."
+            "keystorePreviewBackupUnreadable": "A lista de servidores deste backup não pode ser lida neste dispositivo, então a comparação usa a lista guardada no cofre do backup. A importação mesmo assim substitui a lista de servidores neste dispositivo.",
+            "filterServersPlaceholder": "Filtrar por nome, host, protocolo ou usuário",
+            "selectShown": "Selecionar os {count} exibidos",
+            "deselectShown": "Desmarcar os {count} exibidos",
+            "filterShownCount": "{shown} exibidos",
+            "selectedHiddenByFilter": "{count} selecionados, mas ocultos pelo filtro, ainda incluídos"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4961,7 +4966,8 @@
                 "rename": "Renomear grupo",
                 "delete": "Excluir grupo",
                 "confirmDelete": "Excluir o grupo \"{name}\"? Os servidores nele são mantidos, apenas o grupo é removido.",
-                "chipHint": "Clique para filtrar; clique com o botão direito para renomear ou excluir"
+                "chipHint": "Clique para filtrar; clique com o botão direito para renomear, exportar ou excluir",
+                "export": "Exportar grupo..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +4992,8 @@
                 "offTitle": "Este bucket não tem criptografia padrão. Isso não é o mesmo que não criptografado: SSE-C e a criptografia do lado do cliente não são reportadas por esta configuração.",
                 "unknownKeyTitle": "Não foi possível ler a configuração de criptografia deste bucket, porque a chave de aplicação não tem a capacidade readBucketEncryption. Um valor que não temos permissão para ver não significa que a criptografia esteja desativada.",
                 "unknownShapeTitle": "Não foi possível ler a configuração de criptografia deste bucket, porque a resposta não tinha um formato documentado. A chave tinha permissão para lê-la, portanto isto é sobre a resposta e não sobre permissões."
-            }
+            },
+            "exportProfile": "Exportar..."
         },
         "gitlab": {
             "projectPath": "Caminho do projeto",
