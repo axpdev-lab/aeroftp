@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey } from 'lucide-react';
+import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey, Download } from 'lucide-react';
 import { Bucket } from '../connectionMethodIcons';
 import { AeroCryptRecoveryKitModal } from '../AeroCryptRecoveryKitModal';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay, NATIVE_PROVIDER_PROTOCOLS } from '../../types';
@@ -19,6 +19,7 @@ import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/s
 import { getStorageDedupKey } from '../../utils/storageDedup';
 import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
+import { deriveProviderId, getServerSearchText, filterServersByQuery } from '../../utils/serverListFilter';
 import { logger } from '../../utils/logger';
 import { isConnectCancelledError } from '../../utils/connectCancel';
 import { ServerHealthCheck } from '../ServerHealthCheck';
@@ -89,6 +90,7 @@ const MENU_ICON_GROUP_NEW    = <FolderPlus size={14} />;
 const MENU_ICON_GROUP_CHECK  = <Check size={14} className="text-emerald-500" />;
 const MENU_ICON_GROUP_BLANK  = <Folder size={14} className="opacity-40" />;
 const MENU_ICON_KIT          = <FileKey size={14} className="text-emerald-500" />;
+const MENU_ICON_EXPORT       = <Download size={14} />;
 
 /** Load credential from vault with retry if store not ready */
 const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
@@ -106,111 +108,6 @@ const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<
     }
     throw new Error('Failed to get credential after retries');
 };
-
-function deriveProviderId(server: ServerProfile): string | undefined {
-    const proto = server.protocol;
-    if (!proto) return undefined;
-    if (NATIVE_PROVIDER_PROTOCOLS.has(proto)) return proto;
-    const host = (server.host || '').toLowerCase();
-    if (proto === 's3') {
-        if (host.includes('backblaze')) return 'backblaze';
-        if (host.includes('r2.cloudflarestorage')) return 'cloudflare-r2';
-        if (host.includes('wasabi')) return 'wasabi';
-        if (host.includes('idrive')) return 'idrive-e2';
-        // Domain-boundary match: exact s3.filebase.io (+ optional port) or bucket subdomains; reject lookalikes
-        const s3Host = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
-        if (s3Host === 's3.filebase.io' || s3Host.endsWith('.s3.filebase.io')) return 'filebase';
-        if (host.includes('storj')) return 'storj';
-        if (host.includes('mega.io') || host.includes('mega.nz')) return 'mega-s4';
-        if (host.includes('amazonaws.com')) return 'amazon-s3';
-        if (host.includes('aliyuncs.com')) return 'alibaba-oss';
-        if (host.includes('myqcloud.com')) return 'tencent-cos';
-        if (host.includes('oraclecloud')) return 'oracle-cloud';
-        if (host.includes('digitaloceanspaces')) return 'digitalocean-spaces';
-        if (host.includes('storage.yandex')) return 'yandex-storage';
-        if (host.includes('filelu')) return 'filelu-s3';
-    }
-    if (proto === 'webdav') {
-        if (host.includes('koofr')) return 'koofr-webdav';
-        // Domain-boundary match (same pattern as the filebase S3 rule above):
-        // exact mail.ru or *.mail.ru subdomains, so webdav.cloud.mail.ru is not
-        // swallowed by the generic 'cloud.' Nextcloud rule below, and lookalikes
-        // like gmail.ru are rejected.
-        const davHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
-        if (davHost === 'mail.ru' || davHost.endsWith('.mail.ru')) return 'mailru-cloud';
-        if (host.includes('nextcloud') || host.includes('cloud.')) return 'nextcloud';
-        if (host.includes('seafile')) return 'seafile';
-        if (host.includes('jianguoyun')) return 'jianguoyun';
-        if (host.includes('cloudme')) return 'cloudme';
-        if (host.includes('drivehq')) return 'drivehq';
-        if (host.includes('infini-cloud') || host.includes('teracloud')) return 'infinicloud';
-        if (host.includes('filelu')) return 'filelu-webdav';
-        if (host.includes('felicloud')) return 'felicloud-webdav';
-        if (host.includes('tab.digital') || host.includes('tabdigital.cloud')) return 'tabdigital-webdav';
-    }
-    return undefined;
-}
-
-function getServerSearchText(server: ServerProfile): string {
-    const protocol = (server.protocol || 'ftp') as ProviderType;
-    // A profile that switched protocols (e.g. OpenDrive moved from WebDAV to
-    // the native API) can keep a stale `providerId` pointing at the old preset
-    // (`opendrive-webdav`). Left as-is, that slug and its display name
-    // ("OpenDrive (WebDAV)") leak "webdav" into the search blob, so searching
-    // "web" surfaces an API profile that has nothing to do with WebDAV
-    // (issue #318). When the stored providerId resolves to a provider whose
-    // protocol no longer matches the profile, treat it as stale and re-derive
-    // the identity from the current protocol instead.
-    const storedProviderId = server.providerId || deriveProviderId(server);
-    const storedProvider = storedProviderId ? getProviderById(storedProviderId) : undefined;
-    const isStaleProviderId = !!storedProvider?.protocol && storedProvider.protocol !== server.protocol;
-    const providerId = isStaleProviderId ? deriveProviderId(server) : storedProviderId;
-    const provider = isStaleProviderId
-        ? (providerId ? getProviderById(providerId) : undefined)
-        : storedProvider;
-    const protocolClass = getProtocolClass(protocol);
-    const e2eBits = protocolClass === 'E2E' ? getE2EBits(protocol) : null;
-    const protocolClassLabel = e2eBits ? `E2E ${e2eBits}-bit` : protocolClass;
-    const searchTokens = [
-        server.name,
-        server.host,
-        server.protocol,
-        server.username,
-        providerId,
-        provider?.name,
-        protocolClass,
-        protocolClassLabel,
-        protocolClass === 'OAuth' ? 'oauth2' : '',
-        protocolClass === 'S3' ? 's3-compatible' : '',
-        protocolClass === 'WebDAV' ? 'webdav' : '',
-    ];
-
-    if (e2eBits) {
-        searchTokens.push(`${e2eBits}-bit`, `${e2eBits} bit`, `e2e ${e2eBits}`, 'encryption');
-    }
-
-    if (
-        providerId === 'felicloud' || providerId === 'felicloud-webdav'
-        || providerId === 'tabdigital' || providerId === 'tabdigital-webdav'
-    ) {
-        searchTokens.push('api ocs', 'ocs');
-    }
-
-    // Crypt-overlay profiles are searchable by "crypt"/"encrypted" and by kind,
-    // while STILL matching their transport tokens above (an S3-backed crypt
-    // profile is found by both "s3" and "crypt"). The transport class is kept
-    // for search even though the display class is "Crypt".
-    const cryptKind = getServerCryptOverlay(server);
-    if (cryptKind) {
-        searchTokens.push('crypt', 'encrypted', 'overlay');
-        searchTokens.push(cryptKind === 'aerocrypt' ? 'aerocrypt' : 'rclone crypt');
-    }
-
-    return searchTokens
-        .filter((value): value is string => !!value)
-        .join(' ')
-        .toLowerCase();
-}
 
 function parseHealthEndpoint(input: string): { url: string; host: string; port?: number } | null {
     const raw = input.trim();
@@ -312,6 +209,9 @@ interface MyServersPanelProps {
     onJumpToCategory?: (categoryId: CatalogCategoryId) => void;
     lastUpdate?: number;
     onOpenExportImport?: () => void;
+    /** Open the encrypted .aeroftp export with these profiles already
+     *  selected (context menu "Export..."), skipping the landing page. */
+    onExportProfiles?: (serverIds: string[]) => void;
     onServersChange?: (count: number) => void;
     /** Open the Cross-Profile Transfer modal. Pre-fills source/destination when provided. */
     onOpenCrossProfile?: (opts?: { sourceId?: string; sourcePath?: string; destId?: string; destPath?: string }) => void;
@@ -353,6 +253,7 @@ export function MyServersPanel({
     onJumpToCategory,
     lastUpdate,
     onOpenExportImport,
+    onExportProfiles,
     onServersChange,
     onOpenCrossProfile,
     onOpenMountManager,
@@ -934,8 +835,7 @@ export function MyServersPanel({
         // partition already holds some (D-GUI-2).
         let result = aeroShareEnabled ? servers : servers.filter(s => s.protocol !== 'peer');
         if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            result = result.filter((server) => (serverSearchTexts.get(server.id) ?? '').includes(q));
+            result = filterServersByQuery(result, searchQuery, (server) => serverSearchTexts.get(server.id) ?? '');
         }
         // A group selection (#320) takes precedence over the static filter chip:
         // the two narrowings are mutually exclusive in the UI.
@@ -1566,6 +1466,9 @@ export function MyServersPanel({
             { label: t('common.copy'), icon: MENU_ICON_COPY, action: () => handleDuplicate(server) },
             { label: isFav ? t('introHub.removeFavorite') : t('introHub.addFavorite'), icon: MENU_ICON_FAVORITE, action: () => toggleFavorite(server.id) },
         );
+        if (onExportProfiles) {
+            items.push({ label: t('introHub.exportProfile'), icon: MENU_ICON_EXPORT, action: () => onExportProfiles([server.id]) });
+        }
         // "Add to group" submenu (#320): toggle membership in each existing
         // group, plus a New group… entry that seeds the group with this server.
         const groupChildren: ContextMenuItem[] = groups.map((g) => {
@@ -1630,17 +1533,28 @@ export function MyServersPanel({
             { label: t('common.delete'), icon: MENU_ICON_DELETE, action: () => handleDelete(server), danger: true },
         );
         showContextMenu(e, items);
-    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile, hasOtherUsers, groups, toggleGroupMembership]);
+    }, [t, handleConnect, onEdit, handleDuplicate, handleDelete, handleRenameStart, toggleFavorite, favorites, showContextMenu, onOpenCrossProfile, setAsCrossProfileSource, setAsCrossProfileDestination, servers.length, handleOpenMount, activeProfileIds, onDisconnectProfile, hasOtherUsers, groups, toggleGroupMembership, onExportProfiles]);
 
     // Right-click a group chip: rename / delete the group itself.
     const handleGroupContextMenu = useCallback((e: React.MouseEvent, groupId: string) => {
         const group = groups.find(g => g.id === groupId);
         if (!group) return;
+        // A group can still list ids of deleted profiles (see groupCounts):
+        // export only the members that resolve, and offer nothing to export
+        // when none do, instead of opening an export with nothing selected.
+        const present = new Set(servers.map(s => s.id));
+        const exportableMembers = group.members.filter(id => present.has(id));
         showContextMenu(e, [
             { label: t('introHub.group.rename'), icon: MENU_ICON_RENAME, action: () => setGroupDialog({ id: group.id, name: group.name }) },
+            ...(onExportProfiles ? [{
+                label: t('introHub.group.export'),
+                icon: MENU_ICON_EXPORT,
+                action: () => onExportProfiles(exportableMembers),
+                disabled: exportableMembers.length === 0,
+            }] : []),
             { label: t('introHub.group.delete'), icon: MENU_ICON_DELETE, action: () => setGroupDeleteTarget(group), danger: true },
         ]);
-    }, [t, groups, showContextMenu]);
+    }, [t, groups, servers, showContextMenu, onExportProfiles]);
 
     const handleStaticFilter = (f: MyServersFilterBy) => {
         setActiveFilter(f);

@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Anvendte tilsidesættelser: {count}",
             "uiTokensRejected": "Afviste poster: {count}",
             "keystorePreferencesFailed": "Importen er færdig, men dine appindstillinger kunne ikke gendannes: {error}",
-            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhedskopi kan ikke læses på denne enhed, så sammenligningen bruger den liste, der er gemt i sikkerhedskopiens boks. Importen erstatter stadig serverlisten på denne enhed."
+            "keystorePreviewBackupUnreadable": "Serverlisten i denne sikkerhedskopi kan ikke læses på denne enhed, så sammenligningen bruger den liste, der er gemt i sikkerhedskopiens boks. Importen erstatter stadig serverlisten på denne enhed.",
+            "filterServersPlaceholder": "Filtrer efter navn, vært, protokol eller bruger",
+            "selectShown": "Vælg de {count} viste",
+            "deselectShown": "Fravælg de {count} viste",
+            "filterShownCount": "{shown} vist",
+            "selectedHiddenByFilter": "{count} valgt, men skjult af filteret, stadig inkluderet"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4967,8 @@
                 "rename": "Omdøb gruppe",
                 "delete": "Slet gruppe",
                 "confirmDelete": "Slet gruppen \"{name}\"? Serverne i den bevares, kun gruppen fjernes.",
-                "chipHint": "Klik for at filtrere; højreklik for at omdøbe eller slette"
+                "chipHint": "Klik for at filtrere; højreklik for at omdøbe, eksportere eller slette",
+                "export": "Eksportér gruppe..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4987,7 +4993,8 @@
                 "offTitle": "Denne bucket har ingen standardkryptering. Det er ikke det samme som ukrypteret: SSE-C og kryptering på klientsiden rapporteres ikke af denne indstilling.",
                 "unknownKeyTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi applikationsnøglen ikke har rettigheden readBucketEncryption. En værdi, vi ikke har lov til at se, betyder ikke, at kryptering er slået fra.",
                 "unknownShapeTitle": "Vi kunne ikke læse krypteringsindstillingen for denne bucket, fordi svaret ikke havde en dokumenteret form. Nøglen havde lov til at læse den, så det handler om svaret og ikke om rettigheder."
-            }
+            },
+            "exportProfile": "Eksportér..."
         },
         "gitlab": {
             "projectPath": "Projektsti",
@@ -5584,7 +5591,9 @@
             "confirmDelete": "Slet kontoen \"{name}\"?\n\nKrypterede data, der skal fjernes: {profiles} profiler, {settings} indstillingsområder.",
             "passwordChoiceNote": "Det er valgfrit at angive en adgangskode til kontoen. Den forhindrer andre, der bruger denne enhed, i at åbne din konto; dine gemte data forbliver krypterede under alle omstændigheder. Spring det over, hvis du er den eneste her, eller hvis du har tillid til alle, der bruger denne enhed.",
             "copy": "Dubler bruger (kun servere, ingen adgangskoder)",
-            "copyLockedHint": "Skift til denne konto først for at dublere dens servere"
+            "copyLockedHint": "Skift til denne konto først for at dublere dens servere",
+            "crossUserDedupTitle": "Allerede gemt af en anden konto",
+            "crossUserDedupMessage": "\"{name}\" bruger en serverkonto, som også er gemt på denne enhed af: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-overlay",

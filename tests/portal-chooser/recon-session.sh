@@ -32,6 +32,8 @@ mkdir -p "$OUT"
 # at the Vite dev server and comes up as a white window saying "Could not connect
 # to 127.0.0.1". Two recon runs were burned on that before it was spotted, and
 # one of them overwrote a good release artifact. Refuse rather than repeat it.
+# The string is the dev splash fallback in the `cfg(dev)` "Splash Screen" branch
+# of src-tauri/src/lib.rs, which only a dev build compiles.
 if strings "$APP" 2>/dev/null | grep -q "127.0.0.1:5173/splash.html"; then
   echo "::error::$APP was built without the Tauri CLI and points at the dev server." >&2
   echo "  It will show a blank window and no frontend. Build it with:" >&2

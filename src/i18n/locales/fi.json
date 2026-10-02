@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Käytetyt ohitukset: {count}",
             "uiTokensRejected": "Hylätyt kohteet: {count}",
             "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}",
-            "keystorePreviewBackupUnreadable": "Tämän varmuuskopion palvelinluetteloa ei voida lukea tällä laitteella, joten vertailussa käytetään varmuuskopion holviin tallennettua luetteloa. Tuonti korvaa silti tämän laitteen palvelinluettelon."
+            "keystorePreviewBackupUnreadable": "Tämän varmuuskopion palvelinluetteloa ei voida lukea tällä laitteella, joten vertailussa käytetään varmuuskopion holviin tallennettua luetteloa. Tuonti korvaa silti tämän laitteen palvelinluettelon.",
+            "filterServersPlaceholder": "Suodata nimen, isännän, protokollan tai käyttäjän mukaan",
+            "selectShown": "Valitse näkyvät {count}",
+            "deselectShown": "Poista näkyvien {count} valinta",
+            "filterShownCount": "{shown} näkyvissä",
+            "selectedHiddenByFilter": "{count} valittu mutta suodattimen piilottama, sisältyy silti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4967,8 @@
                 "rename": "Nimeä ryhmä uudelleen",
                 "delete": "Poista ryhmä",
                 "confirmDelete": "Poistetaanko ryhmä \"{name}\"? Sen palvelimet säilytetään, vain ryhmä poistetaan.",
-                "chipHint": "Suodata napsauttamalla; nimeä uudelleen tai poista hiiren oikealla painikkeella"
+                "chipHint": "Suodata napsauttamalla; napsauta hiiren kakkospainikkeella nimetäksesi uudelleen, viedäksesi tai poistaaksesi",
+                "export": "Vie ryhmä..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4987,7 +4993,8 @@
                 "offTitle": "Tällä säilöllä ei ole oletussalausta. Se ei ole sama asia kuin salaamaton: SSE-C ja asiakaspään salaus eivät näy tässä asetuksessa.",
                 "unknownKeyTitle": "Emme voineet lukea tämän säilön salausasetusta, koska sovellusavaimella ei ole readBucketEncryption-oikeutta. Arvo, jota emme saa nähdä, ei tarkoita, että salaus olisi pois käytöstä.",
                 "unknownShapeTitle": "Emme voineet lukea tämän säilön salausasetusta, koska vastauksella ei ollut dokumentoitua muotoa. Avaimella oli oikeus lukea se, joten kyse on vastauksesta eikä käyttöoikeuksista."
-            }
+            },
+            "exportProfile": "Vie..."
         },
         "gitlab": {
             "projectPath": "Projektipolku",
@@ -5584,7 +5591,9 @@
             "confirmDelete": "Poistetaanko tili \"{name}\"?\n\nPoistettavat salatut tiedot: {profiles} profiilia, {settings} asetusaluetta.",
             "passwordChoiceNote": "Tilin salasanan asettaminen on valinnaista. Se estää muita tätä laitetta käyttäviä avaamasta tiliäsi; tallennetut tietosi pysyvät joka tapauksessa salattuina. Ohita tämä, jos olet ainoa käyttäjä tai luotat kaikkiin, jotka käyttävät tätä laitetta.",
             "copy": "Monista käyttäjä (vain palvelimet, ei salasanoja)",
-            "copyLockedHint": "Vaihda ensin tähän tiliin monistaaksesi sen palvelimet"
+            "copyLockedHint": "Vaihda ensin tähän tiliin monistaaksesi sen palvelimet",
+            "crossUserDedupTitle": "Toinen tili on jo tallentanut tämän",
+            "crossUserDedupMessage": "\"{name}\" käyttää palvelintiliä, jonka on tallentanut tälle laitteelle myös: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-peittokerros",

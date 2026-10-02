@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Použitá přepsání: {count}",
             "uiTokensRejected": "Odmítnuté položky: {count}",
             "keystorePreferencesFailed": "Import skončil, ale vaše předvolby aplikace se nepodařilo obnovit: {error}",
-            "keystorePreviewBackupUnreadable": "Seznam serverů v této záloze nelze na tomto zařízení přečíst, proto porovnání používá seznam uložený v trezoru zálohy. Import přesto nahradí seznam serverů na tomto zařízení."
+            "keystorePreviewBackupUnreadable": "Seznam serverů v této záloze nelze na tomto zařízení přečíst, proto porovnání používá seznam uložený v trezoru zálohy. Import přesto nahradí seznam serverů na tomto zařízení.",
+            "filterServersPlaceholder": "Filtrovat podle názvu, hostitele, protokolu nebo uživatele",
+            "selectShown": "Vybrat zobrazených {count}",
+            "deselectShown": "Zrušit výběr zobrazených {count}",
+            "filterShownCount": "zobrazeno: {shown}",
+            "selectedHiddenByFilter": "{count} vybráno, ale skryto filtrem, stále zahrnuto"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4967,8 @@
                 "rename": "Přejmenovat skupinu",
                 "delete": "Odstranit skupinu",
                 "confirmDelete": "Odstranit skupinu „{name}“? Servery v ní zůstanou zachovány, odstraní se pouze skupina.",
-                "chipHint": "Kliknutím filtrujte; pravým tlačítkem přejmenujete nebo odstraníte"
+                "chipHint": "Kliknutím filtrujte; pravým tlačítkem přejmenujete, exportujete nebo smažete",
+                "export": "Exportovat skupinu..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4987,7 +4993,8 @@
                 "offTitle": "Tento bucket nemá výchozí šifrování. To není totéž jako nešifrovaný: SSE-C ani šifrování na straně klienta toto nastavení nehlásí.",
                 "unknownKeyTitle": "Nepodařilo se nám přečíst nastavení šifrování tohoto bucketu, protože aplikační klíč nemá oprávnění readBucketEncryption. Hodnota, kterou nesmíme vidět, neznamená, že je šifrování vypnuté.",
                 "unknownShapeTitle": "Nepodařilo se nám přečíst nastavení šifrování tohoto bucketu, protože odpověď neměla dokumentovaný tvar. Klíč ji číst směl, takže jde o odpověď, nikoli o oprávnění."
-            }
+            },
+            "exportProfile": "Exportovat..."
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",
@@ -5584,7 +5591,9 @@
             "confirmDelete": "Odstranit účet \"{name}\"?\n\nŠifrovaná data k odstranění: {profiles} profilů, {settings} oblastí nastavení.",
             "passwordChoiceNote": "Nastavení hesla účtu je volitelné. Zabrání ostatním lidem, kteří používají toto zařízení, otevřít váš účet; vaše uložená data zůstávají tak jako tak zašifrovaná. Přeskočte to, pokud jste jediný, kdo zařízení používá, nebo pokud důvěřujete všem, kdo toto zařízení používají.",
             "copy": "Duplikovat uživatele (pouze servery, bez hesel)",
-            "copyLockedHint": "Nejprve přepněte na tento účet, abyste mohli duplikovat jeho servery"
+            "copyLockedHint": "Nejprve přepněte na tento účet, abyste mohli duplikovat jeho servery",
+            "crossUserDedupTitle": "Již uloženo jiným účtem",
+            "crossUserDedupMessage": "\"{name}\" používá serverový účet, který je v tomto zařízení uložen také u: {accounts}"
         },
         "aerocryptNative": {
             "title": "Vrstva AeroCrypt",

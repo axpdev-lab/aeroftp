@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Pritaikyti pakeitimai: {count}",
             "uiTokensRejected": "Atmesti įrašai: {count}",
             "keystorePreferencesFailed": "Importavimas baigtas, bet nepavyko atkurti jūsų programos nuostatų: {error}",
-            "keystorePreviewBackupUnreadable": "Šios atsarginės kopijos serverių sąrašo nepavyksta perskaityti šiame įrenginyje, todėl palyginimui naudojamas sąrašas, išsaugotas atsarginės kopijos saugykloje. Importavimas vis tiek pakeičia šio įrenginio serverių sąrašą."
+            "keystorePreviewBackupUnreadable": "Šios atsarginės kopijos serverių sąrašo nepavyksta perskaityti šiame įrenginyje, todėl palyginimui naudojamas sąrašas, išsaugotas atsarginės kopijos saugykloje. Importavimas vis tiek pakeičia šio įrenginio serverių sąrašą.",
+            "filterServersPlaceholder": "Filtruoti pagal pavadinimą, šeimininką, protokolą ar naudotoją",
+            "selectShown": "Pažymėti rodomus {count}",
+            "deselectShown": "Panaikinti rodomų {count} žymėjimą",
+            "filterShownCount": "rodoma: {shown}",
+            "selectedHiddenByFilter": "{count} pažymėta, bet paslėpta filtro, vis tiek įtraukta"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4967,8 @@
                 "rename": "Pervadinti grupę",
                 "delete": "Ištrinti grupę",
                 "confirmDelete": "Ištrinti grupę „{name}“? Joje esantys serveriai išsaugomi, pašalinama tik grupė.",
-                "chipHint": "Spustelėkite, kad filtruotumėte; spustelėkite dešiniuoju pelės mygtuku, kad pervadintumėte arba ištrintumėte"
+                "chipHint": "Spustelėkite norėdami filtruoti; dešiniuoju pelės klavišu pervadinkite, eksportuokite ar ištrinkite",
+                "export": "Eksportuoti grupę..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4987,7 +4993,8 @@
                 "offTitle": "Šis kibiras neturi numatytojo šifravimo. Tai nėra tas pat, kas nešifruotas: SSE-C ir šifravimo kliento pusėje šis nustatymas nerodo.",
                 "unknownKeyTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes programos raktas neturi readBucketEncryption galimybės. Reikšmė, kurios mums neleidžiama matyti, nereiškia, kad šifravimas išjungtas.",
                 "unknownShapeTitle": "Nepavyko nuskaityti šio kibiro šifravimo nustatymo, nes atsakymas neturėjo dokumentuotos formos. Raktui buvo leista jį skaityti, todėl tai susiję su atsakymu, o ne su teisėmis."
-            }
+            },
+            "exportProfile": "Eksportuoti..."
         },
         "gitlab": {
             "projectPath": "Projekto kelias",
@@ -5584,7 +5591,9 @@
             "confirmDelete": "Ištrinti paskyrą „{name}“?\n\nPašalinami užšifruoti duomenys: {profiles} profiliai, {settings} nustatymų sritys.",
             "passwordChoiceNote": "Paskyros slaptažodžio nustatymas yra neprivalomas. Jis neleidžia kitiems šį įrenginį naudojantiems žmonėms atidaryti jūsų paskyros; jūsų išsaugoti duomenys bet kuriuo atveju lieka užšifruoti. Praleiskite tai, jei esate vienintelis naudotojas arba jei pasitikite visais, kurie naudoja šį įrenginį.",
             "copy": "Dubliuoti naudotoją (tik serveriai, be slaptažodžių)",
-            "copyLockedHint": "Pirma perjunkite į šią paskyrą, kad galėtumėte dubliuoti jos serverius"
+            "copyLockedHint": "Pirma perjunkite į šią paskyrą, kad galėtumėte dubliuoti jos serverius",
+            "crossUserDedupTitle": "Jau išsaugota kitos paskyros",
+            "crossUserDedupMessage": "„{name}“ naudoja serverio paskyrą, kurią šiame įrenginyje taip pat išsaugojo: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt perdanga",

@@ -62,10 +62,8 @@ mod localhost_security;
 mod mcp_client_bridge;
 mod mcp_client_commands;
 pub mod mcp_client_config;
-#[allow(dead_code)] // Private entry point; model dispatch is gated by a later integration slice.
-#[cfg(test)] // Superseded by the schema-bound private bridge.
-mod mcp_client_dispatch;
 pub mod mcp_client_framing;
+mod mcp_client_gate;
 mod mcp_client_http_commands;
 mod mcp_client_http_config;
 mod mcp_client_http_transport;
@@ -74,10 +72,6 @@ pub mod mcp_client_protocol;
 mod mcp_client_routing;
 mod mcp_client_sandbox;
 mod mcp_client_schema;
-// GateRequest and GateError are live through mcp_client_bridge; the older
-// approval runtime in this module is superseded by the bridge and unused.
-#[allow(dead_code)]
-mod mcp_client_gate;
 mod mcp_client_transport;
 mod openai_responses;
 #[cfg(target_os = "linux")]
@@ -19576,11 +19570,27 @@ pub fn run() {
             // hidden until the frontend signals readiness via the `app_ready`
             // command.
             let splash_url = {
+                // In dev the splash follows the configured `devUrl`, joined the
+                // way Tauri resolves `WebviewUrl::App` for the main window. A dev
+                // instance started with a `--config` devUrl override on another
+                // port otherwise loaded its splash from whatever Vite answered on
+                // 5173 (another session's), or a blank page if none did. The
+                // literal is only the fallback for a config without `devUrl`;
+                // `tests/portal-chooser/recon-session.sh` greps a binary for it
+                // to recognise a dev build, so it must stay in this branch.
                 #[cfg(dev)]
                 {
-                    WebviewUrl::External(
-                        url::Url::parse("http://127.0.0.1:5173/splash.html").unwrap(),
-                    )
+                    let dev_splash = app
+                        .config()
+                        .build
+                        .dev_url
+                        .as_ref()
+                        .and_then(|base| base.join("splash.html").ok())
+                        .unwrap_or_else(|| {
+                            url::Url::parse("http://127.0.0.1:5173/splash.html")
+                                .expect("valid localhost URL")
+                        });
+                    WebviewUrl::External(dev_splash)
                 }
                 #[cfg(all(not(dev), target_os = "linux"))]
                 {
@@ -20190,7 +20200,6 @@ pub fn run() {
             user_partitions::user_partitions_repair_rebuild,
             restart_app,
             user_partitions::user_partitions_list_users,
-            user_partitions::user_partitions_get_active_user,
             user_partitions::user_partitions_load_active_server_profiles,
             user_partitions::user_partitions_save_active_server_profiles,
             user_partitions::user_partitions_relocate_server_profile,
@@ -20200,7 +20209,6 @@ pub fn run() {
             user_partitions::user_partitions_lock_session,
             user_partitions::user_partitions_unlock_status,
             user_partitions::user_partitions_change_passphrase,
-            user_partitions::user_partitions_set_active_user,
             user_partitions::user_partitions_rename_user,
             user_partitions::user_partitions_set_user_avatar,
             user_partitions::user_partitions_reorder_users,
@@ -20209,14 +20217,9 @@ pub fn run() {
             user_partitions::user_partitions_set_default_user,
             user_partitions::user_partitions_admin_reset_passphrase,
             user_partitions::user_partitions_storage_stats,
-            user_partitions::user_partitions_debug_state,
             user_partitions::user_partitions_get_active_setting,
             user_partitions::user_partitions_set_active_setting,
             user_partitions::user_partitions_delete_active_setting,
-            user_partitions::user_partitions_list_active_setting_scopes,
-            user_partitions::user_partitions_get_user_credential,
-            user_partitions::user_partitions_set_user_credential,
-            user_partitions::user_partitions_delete_user_credential,
             mcp_client_commands::mcp_client_list_servers,
             mcp_client_commands::mcp_client_upsert_server,
             mcp_client_commands::mcp_client_remove_server,

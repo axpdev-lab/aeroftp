@@ -15,6 +15,7 @@ import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
 import { bridgeProfileKey, commitImportedServers } from './bridge/bridgeImportCommit';
+import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 
 interface ImportedServer {
     id: string;
@@ -133,6 +134,19 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             setExportSelectedIds(new Set(exportable.map(s => s.id)));
         }
     }, [direction, meta, exportable]);
+
+    // Filters of the two checklists (import preview, export). "Select all"
+    // acts on the selectable rows on screen; the selection survives filtering.
+    const importRows = useMemo(() => result?.servers ?? [], [result]);
+    const importFilter = useServerChecklistFilter(importRows);
+    const importAllIds = useMemo(() => importRows.map(s => s.id), [importRows]);
+    const importShownIds = useMemo(() => importFilter.visible.map(s => s.id), [importFilter.visible]);
+    const exportFilter = useServerChecklistFilter(servers);
+    const exportableIds = useMemo(() => exportable.map(s => s.id), [exportable]);
+    const exportShownIds = useMemo(() => {
+        const ok = new Set(exportableIds);
+        return exportFilter.visible.filter(s => ok.has(s.id)).map(s => s.id);
+    }, [exportFilter.visible, exportableIds]);
 
     const secretNote = () => {
         if (!meta) return null;
@@ -354,15 +368,19 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                             <div>
                                 <div className="flex items-center justify-between mb-2">
                                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.bridgeSelectProfiles')}</span>
-                                    <button
-                                        onClick={() => setSelectedIds(selectedIds.size === result.servers.length ? new Set() : new Set(result.servers.map(s => s.id)))}
-                                        className="text-xs text-blue-500 hover:text-blue-600 font-medium"
-                                    >
-                                        {selectedIds.size === result.servers.length ? t('settings.deselectAll') : t('settings.selectAll')}
-                                    </button>
+                                    <SelectShownButton
+                                        selected={selectedIds}
+                                        shownIds={importShownIds}
+                                        filtering={importFilter.filtering}
+                                        onChange={setSelectedIds}
+                                    />
                                 </div>
+                                <ServerChecklistSearch value={importFilter.query} onChange={importFilter.setQuery} />
                                 <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
-                                    {result.servers.map(s => {
+                                    {importFilter.visible.length === 0 && importFilter.filtering && (
+                                        <ServerChecklistNoMatch query={importFilter.query} />
+                                    )}
+                                    {importFilter.visible.map(s => {
                                         const dup = existingServerKeys.has(bridgeProfileKey({ ...s, protocol: s.protocol as ServerProfile['protocol'] }));
                                         return (
                                             <div key={s.id}
@@ -387,9 +405,14 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                     })}
                                 </div>
                                 <div className="flex items-center justify-between gap-2 mt-1">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-                                        {selectedIds.size} / {result.servers.length} {t('settings.selected')}
-                                    </span>
+                                    <div className="flex-shrink-0">
+                                        <ServerChecklistSummary
+                                            selected={selectedIds}
+                                            allIds={importAllIds}
+                                            shownIds={importShownIds}
+                                            filtering={importFilter.filtering}
+                                        />
+                                    </div>
                                     {(result.sourcePath || detectedPath) && (
                                         <span
                                             className="text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate flex items-center gap-1 min-w-0"
@@ -464,17 +487,19 @@ export const BridgeSourcePanel: React.FC<Props> = ({
             <div>
                 <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('settings.selectServersToExport')}</span>
-                    {exportable.length > 0 && (
-                        <button
-                            onClick={() => setExportSelectedIds(exportSelectedIds.size === exportable.length ? new Set() : new Set(exportable.map(s => s.id)))}
-                            className="text-xs text-blue-500 hover:text-blue-600 font-medium"
-                        >
-                            {exportSelectedIds.size === exportable.length ? t('settings.deselectAll') : t('settings.selectAll')}
-                        </button>
-                    )}
+                    <SelectShownButton
+                        selected={exportSelectedIds}
+                        shownIds={exportShownIds}
+                        filtering={exportFilter.filtering}
+                        onChange={setExportSelectedIds}
+                    />
                 </div>
+                <ServerChecklistSearch value={exportFilter.query} onChange={exportFilter.setQuery} />
                 <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[220px] overflow-y-auto">
-                    {servers.map(s => {
+                    {exportFilter.visible.length === 0 && exportFilter.filtering && (
+                        <ServerChecklistNoMatch query={exportFilter.query} />
+                    )}
+                    {exportFilter.visible.map(s => {
                         const ok = supported.includes(s.protocol || 'ftp');
                         const refusal = meta?.exportRefusals?.[s.protocol || 'ftp'];
                         const unsupportedText = refusal
@@ -496,10 +521,15 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                         );
                     })}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    {exportSelectedIds.size} / {exportable.length} {t('settings.selected')}
+                <ServerChecklistSummary
+                    selected={exportSelectedIds}
+                    allIds={exportableIds}
+                    shownIds={exportShownIds}
+                    shownRows={exportFilter.visible.length}
+                    filtering={exportFilter.filtering}
+                >
                     {unsupportedCount > 0 && ` (${unsupportedCount} ${t('settings.bridgeSkipped').toLowerCase()})`}
-                </div>
+                </ServerChecklistSummary>
             </div>
             {meta?.secretPolicy !== 'metadata' && (
                 <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">

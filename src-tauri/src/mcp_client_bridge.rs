@@ -876,11 +876,12 @@ mod tests {
     }
     #[tokio::test]
     async fn stale_snapshot_and_invalid_arguments_fail_before_approval() {
-        for variant in ["schema", "arguments", "missing"] {
+        for variant in ["schema", "arguments", "missing", "tool"] {
             let mut req = request();
             match variant {
                 "schema" => req.expected_schema_revision = Some("b".repeat(64)),
                 "arguments" => req.call.arguments = json!({"text":7}),
+                "tool" => req.call.tool_name = "absent".into(),
                 _ => req.expected_schema_revision = None,
             }
             let mut peer = Fixture::new();
@@ -1105,6 +1106,67 @@ mod wire_tests {
                 "bridge wire reply"
             );
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires AEROFTP_MCP_SELF_TEST_BIN pointing to a built AeroFTP CLI"]
+    async fn self_mcp_server_round_trips_through_the_bridge() {
+        let cancel = CancellationToken::new();
+        let key = [73; 32];
+        let config = McpServerConfig {
+            id: "aeroftp-self".into(),
+            command: std::env::var("AEROFTP_MCP_SELF_TEST_BIN").expect("CLI binary path"),
+            args: vec!["agent".into(), "--mcp".into()],
+            env: BTreeMap::new(),
+            enabled: true,
+            revision: 1,
+        };
+        let env = ResolvedMcpEnvironment {
+            effective_revision: "a".repeat(64),
+            vars: BTreeMap::new(),
+        };
+        let mut request = BridgeRequest {
+            transport: Transport::Stdio,
+            expected_schema_revision: None,
+            call: GateRequest {
+                server_id: "aeroftp-self".into(),
+                tool_name: "aeroftp_mcp_info".into(),
+                arguments: json!({}),
+                expected_revision: "a".repeat(64),
+                session_id: "bridge-self".into(),
+                approval_grant_id: None,
+            },
+        };
+        let mut peer =
+            Connection::connect(Config::Stdio(config, env), 1, "self", &cancel, || Ok(()))
+                .await
+                .unwrap();
+        let (revision, _) = run(
+            &mut peer,
+            &request,
+            &key,
+            1,
+            || Ok(()),
+            |_, _| async { Ok(()) },
+            false,
+            &cancel,
+        )
+        .await
+        .unwrap();
+        request.expected_schema_revision = Some(revision);
+        let result = run(
+            &mut peer,
+            &request,
+            &key,
+            1,
+            || Ok(()),
+            |_, _| async { Ok(()) },
+            true,
+            &cancel,
+        )
+        .await;
+        peer.shutdown().await;
+        assert!(result.unwrap().1.unwrap().get("content").is_some());
     }
 }
 

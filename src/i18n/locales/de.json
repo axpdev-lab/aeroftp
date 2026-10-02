@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Angewendete Überschreibungen: {count}",
             "uiTokensRejected": "Abgelehnte Einträge: {count}",
             "keystorePreferencesFailed": "Der Import ist abgeschlossen, aber Ihre App-Einstellungen konnten nicht wiederhergestellt werden: {error}",
-            "keystorePreviewBackupUnreadable": "Die Serverliste in dieser Sicherung kann auf diesem Gerät nicht gelesen werden, daher verwendet der Vergleich die im Tresor der Sicherung gespeicherte Liste. Der Import ersetzt trotzdem die Serverliste auf diesem Gerät."
+            "keystorePreviewBackupUnreadable": "Die Serverliste in dieser Sicherung kann auf diesem Gerät nicht gelesen werden, daher verwendet der Vergleich die im Tresor der Sicherung gespeicherte Liste. Der Import ersetzt trotzdem die Serverliste auf diesem Gerät.",
+            "filterServersPlaceholder": "Nach Name, Host, Protokoll oder Benutzer filtern",
+            "selectShown": "Die {count} angezeigten auswählen",
+            "deselectShown": "Auswahl der {count} angezeigten aufheben",
+            "filterShownCount": "{shown} angezeigt",
+            "selectedHiddenByFilter": "{count} ausgewählt, aber durch den Filter ausgeblendet, weiterhin enthalten"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4967,8 @@
                 "rename": "Gruppe umbenennen",
                 "delete": "Gruppe löschen",
                 "confirmDelete": "Die Gruppe „{name}“ löschen? Die enthaltenen Server bleiben erhalten, nur die Gruppe wird entfernt.",
-                "chipHint": "Klicken zum Filtern; Rechtsklick zum Umbenennen oder Löschen"
+                "chipHint": "Klicken zum Filtern; Rechtsklick zum Umbenennen, Exportieren oder Löschen",
+                "export": "Gruppe exportieren..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4987,7 +4993,8 @@
                 "offTitle": "Dieser Bucket hat keine Standardverschlüsselung. Das ist nicht dasselbe wie unverschlüsselt: SSE-C und clientseitige Verschlüsselung werden von dieser Einstellung nicht gemeldet.",
                 "unknownKeyTitle": "Wir konnten die Verschlüsselungseinstellung dieses Buckets nicht lesen, weil der Anwendungsschlüssel nicht über die Berechtigung readBucketEncryption verfügt. Ein Wert, den wir nicht sehen dürfen, bedeutet nicht, dass die Verschlüsselung deaktiviert ist.",
                 "unknownShapeTitle": "Wir konnten die Verschlüsselungseinstellung dieses Buckets nicht lesen, weil die Antwort keine dokumentierte Form hatte. Der Schlüssel durfte sie lesen, es geht also um die Antwort und nicht um Berechtigungen."
-            }
+            },
+            "exportProfile": "Exportieren..."
         },
         "gitlab": {
             "projectPath": "Projektpfad",
@@ -5584,7 +5591,9 @@
             "confirmDelete": "Konto \"{name}\" löschen?\n\nZu entfernende verschlüsselte Daten: {profiles} Profile, {settings} Einstellungsbereiche.",
             "passwordChoiceNote": "Das Festlegen eines Kontopassworts ist optional. Es verhindert, dass andere Personen, die dieses Gerät nutzen, Ihr Konto öffnen; Ihre gespeicherten Daten bleiben in beiden Fällen verschlüsselt. Überspringen Sie es, wenn Sie der einzige Nutzer sind oder allen vertrauen, die dieses Gerät verwenden.",
             "copy": "Benutzer duplizieren (nur Server, keine Passwörter)",
-            "copyLockedHint": "Wechsle zuerst zu diesem Konto, um dessen Server zu duplizieren"
+            "copyLockedHint": "Wechsle zuerst zu diesem Konto, um dessen Server zu duplizieren",
+            "crossUserDedupTitle": "Bereits von einem anderen Konto gespeichert",
+            "crossUserDedupMessage": "\"{name}\" verwendet ein Serverkonto, das auf diesem Gerät auch gespeichert ist von: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypt-Overlay",

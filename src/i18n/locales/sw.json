@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
             "uiTokensRejected": "Maingizo yaliyokataliwa: {count}",
             "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}",
-            "keystorePreviewBackupUnreadable": "Orodha ya seva katika nakala hii haiwezi kusomwa kwenye kifaa hiki, kwa hivyo ulinganisho unatumia orodha iliyohifadhiwa kwenye hifadhi salama ya nakala hiyo. Uingizaji bado unachukua nafasi ya orodha ya seva kwenye kifaa hiki."
+            "keystorePreviewBackupUnreadable": "Orodha ya seva katika nakala hii haiwezi kusomwa kwenye kifaa hiki, kwa hivyo ulinganisho unatumia orodha iliyohifadhiwa kwenye hifadhi salama ya nakala hiyo. Uingizaji bado unachukua nafasi ya orodha ya seva kwenye kifaa hiki.",
+            "filterServersPlaceholder": "Chuja kwa jina, seva pangishi, itifaki au mtumiaji",
+            "selectShown": "Chagua {count} zinazoonyeshwa",
+            "deselectShown": "Acha kuchagua {count} zinazoonyeshwa",
+            "filterShownCount": "{shown} zinaonyeshwa",
+            "selectedHiddenByFilter": "{count} zimechaguliwa lakini zimefichwa na kichujio, bado zimejumuishwa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4967,8 @@
                 "rename": "Badilisha jina la kikundi",
                 "delete": "Futa kikundi",
                 "confirmDelete": "Futa kikundi \"{name}\"? Seva zilizomo zinahifadhiwa, kikundi pekee ndicho kinaondolewa.",
-                "chipHint": "Bofya ili kuchuja; bofya kulia ili kubadilisha jina au kufuta"
+                "chipHint": "Bofya ili kuchuja; bofya kulia ili kubadilisha jina, kuhamisha au kufuta",
+                "export": "Hamisha kikundi..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4987,7 +4993,8 @@
                 "offTitle": "Ndoo hii haina usimbaji wa chaguo-msingi. Hiyo si sawa na kutokusimbwa: SSE-C na usimbaji upande wa mteja haviripotiwi na mpangilio huu.",
                 "unknownKeyTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu ufunguo wa programu hauna uwezo wa readBucketEncryption. Thamani ambayo haturuhusiwi kuiona haimaanishi kuwa usimbaji umezimwa.",
                 "unknownShapeTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu jibu halikuwa na muundo ulioandikwa kwenye nyaraka. Ufunguo uliruhusiwa kuusoma, kwa hivyo hili linahusu jibu na si ruhusa."
-            }
+            },
+            "exportProfile": "Hamisha..."
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
@@ -5584,7 +5591,9 @@
             "confirmDelete": "Futa akaunti \"{name}\"?\n\nData zilizosimbwa za kuondoa: wasifu {profiles}, mipangilio {settings}.",
             "passwordChoiceNote": "Kuweka nenosiri la akaunti ni hiari. Linazuia watu wengine wanaotumia kifaa hiki kufungua akaunti yako; data uliyohifadhi inabaki imesimbwa kwa njia fiche vyovyote vile. Ruka hatua hii ikiwa wewe ndiye mtumiaji pekee hapa, au ikiwa unawaamini wote wanaotumia kifaa hiki.",
             "copy": "Nakili mtumiaji (seva tu, bila nywila)",
-            "copyLockedHint": "Badili kwa akaunti hii kwanza ili kunakili seva zake"
+            "copyLockedHint": "Badili kwa akaunti hii kwanza ili kunakili seva zake",
+            "crossUserDedupTitle": "Tayari imehifadhiwa na akaunti nyingine",
+            "crossUserDedupMessage": "\"{name}\" inatumia akaunti ya seva ambayo pia imehifadhiwa kwenye kifaa hiki na: {accounts}"
         },
         "aerocryptNative": {
             "title": "Tabaka la AeroCrypt",

@@ -1197,7 +1197,12 @@
             "uiTokensApplied": "Rakendatud asendused: {count}",
             "uiTokensRejected": "Tagasi lükatud kirjed: {count}",
             "keystorePreferencesFailed": "Import lõppes, kuid sinu rakenduse eelistusi ei õnnestunud taastada: {error}",
-            "keystorePreviewBackupUnreadable": "Selle varukoopia serverite loendit ei saa selles seadmes lugeda, seega kasutab võrdlus varukoopia hoidlasse salvestatud loendit. Importimine asendab siiski selle seadme serverite loendi."
+            "keystorePreviewBackupUnreadable": "Selle varukoopia serverite loendit ei saa selles seadmes lugeda, seega kasutab võrdlus varukoopia hoidlasse salvestatud loendit. Importimine asendab siiski selle seadme serverite loendi.",
+            "filterServersPlaceholder": "Filtreeri nime, hosti, protokolli või kasutaja järgi",
+            "selectShown": "Vali kuvatud {count}",
+            "deselectShown": "Tühista kuvatud {count} valik",
+            "filterShownCount": "{shown} kuvatud",
+            "selectedHiddenByFilter": "{count} valitud, kuid filtri poolt peidetud, kaasatud endiselt"
         },
         "devtools": {
             "title": "AeroTools",
@@ -4962,7 +4967,8 @@
                 "rename": "Nimeta rühm ümber",
                 "delete": "Kustuta rühm",
                 "confirmDelete": "Kustutada rühm „{name}“? Selles olevad serverid säilitatakse, eemaldatakse ainult rühm.",
-                "chipHint": "Filtreerimiseks klõpsa; ümbernimetamiseks või kustutamiseks paremklõpsa"
+                "chipHint": "Klõpsa filtreerimiseks; paremklõps ümbernimetamiseks, eksportimiseks või kustutamiseks",
+                "export": "Ekspordi grupp..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4987,7 +4993,8 @@
                 "offTitle": "Sellel kopal puudub vaikimisi krüpteering. See ei ole sama mis krüpteerimata: SSE-C ja kliendipoolset krüpteeringut see säte ei kajasta.",
                 "unknownKeyTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest rakenduse võtmel puudub õigus readBucketEncryption. Väärtus, mida meil ei ole lubatud näha, ei tähenda, et krüpteering oleks välja lülitatud.",
                 "unknownShapeTitle": "Me ei saanud selle kopa krüpteeringu sätet lugeda, sest vastusel ei olnud dokumenteeritud kuju. Võtmel oli lubatud seda lugeda, seega on asi vastuses, mitte õigustes."
-            }
+            },
+            "exportProfile": "Ekspordi..."
         },
         "gitlab": {
             "projectPath": "Projekti tee",
@@ -5584,7 +5591,9 @@
             "confirmDelete": "Kas kustutada konto \"{name}\"?\n\nEemaldatavad krüpteeritud andmed: {profiles} profiili, {settings} seadete ulatust.",
             "passwordChoiceNote": "Konto parooli määramine on valikuline. See takistab teistel seda seadet kasutavatel inimestel teie kontot avada; teie salvestatud andmed jäävad nii või teisiti krüptituks. Jätke see vahele, kui olete ainus kasutaja või kui usaldate kõiki, kes seda seadet kasutavad.",
             "copy": "Dubleeri kasutaja (ainult serverid, paroole pole)",
-            "copyLockedHint": "Lülitu esmalt sellele kontole, et dubleerida selle servereid"
+            "copyLockedHint": "Lülitu esmalt sellele kontole, et dubleerida selle servereid",
+            "crossUserDedupTitle": "Juba salvestatud teise konto poolt",
+            "crossUserDedupMessage": "\"{name}\" kasutab serverikontot, mille on sellesse seadmesse salvestanud ka: {accounts}"
         },
         "aerocryptNative": {
             "title": "AeroCrypti kattekiht",
