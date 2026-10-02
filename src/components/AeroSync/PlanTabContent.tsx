@@ -444,6 +444,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
             <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
                 <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     {t('aerosync.exclude.label') || 'Exclude patterns'}
+                    <span className="ml-1 font-mono normal-case tracking-normal">(--exclude)</span>
                 </label>
                 <textarea
                     value={excludeText}
@@ -743,6 +744,9 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                 {/* GAP-7: Canary trial — connected-remote only. */}
                 {isConnectedRemote && (
                     <div className="mt-3 rounded-md border border-gray-200 p-2.5 dark:border-gray-700">
+                        {/* (--dry-run): like the CLI flag, Canary transfers nothing.
+                            The CLI previews every file and Canary a sample, which
+                            is why the CLI line still offers no command for it. */}
                         <label className="flex cursor-pointer items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                             <input
                                 type="checkbox"
@@ -752,6 +756,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             />
                             <FlaskConical size={12} className="text-blue-500" />
                             {t('syncPanel.canaryMode') || 'Canary Mode'}
+                            <span className="font-mono normal-case tracking-normal">(--dry-run)</span>
                         </label>
                         <p className="mt-1 text-[10px] leading-snug text-gray-500 dark:text-gray-400">
                             {t('syncPanel.canaryDesc') || 'Run a trial sync on a subset of files before committing to the full operation.'}

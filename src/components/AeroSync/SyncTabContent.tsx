@@ -345,6 +345,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
             <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                     {t('aerosync.sync.excludeLabel') || 'Exclude patterns (comma or newline separated)'}
+                    <span className="ml-1 font-mono normal-case tracking-normal text-gray-500 dark:text-gray-400">(--exclude)</span>
                 </label>
                 <input
                     type="text"
@@ -425,6 +426,7 @@ export const SyncTabContent: React.FC<SyncTabContentProps> = ({
                                 className="rounded border-gray-300 dark:border-gray-600"
                             />
                             {t('aerosync.sync.dryRun') || 'Dry run (preview only)'}
+                            <span className="font-mono normal-case tracking-normal text-gray-500 dark:text-gray-400">(--dry-run)</span>
                         </label>
                         {/* CO-3: bandwidth caps. 0 = unlimited; the
                             in-process planner divides the cap evenly
