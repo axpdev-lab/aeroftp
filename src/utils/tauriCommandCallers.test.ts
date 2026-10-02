@@ -241,7 +241,6 @@ const INHERITED_UNCALLED: string[] = [
     'get_speed_limit',
     'github_batch_commit',
     'github_get_release',
-    'gitlab_get_web_url',
     'gitlab_switch_branch',
     'google_drive_delete_comment',
     'google_drive_list_comments',

@@ -199,6 +199,8 @@ import {
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
+import { openUrl } from './utils/openUrl';
+import { openOnGitLab } from './utils/gitlabWeb';
 import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
@@ -14303,7 +14305,7 @@ const App: React.FC = () => {
           action: async () => {
             const ghBranch = await getGhBranch();
             const filePath = file.path.replace(/^\//, '');
-            window.open(`https://github.com/${ghOwner}/${ghRepo}/blob/${ghBranch}/${filePath}`, '_blank');
+            void openUrl(`https://github.com/${ghOwner}/${ghRepo}/blob/${ghBranch}/${filePath}`);
           },
           divider: true,
         });
@@ -14328,10 +14330,23 @@ const App: React.FC = () => {
           action: async () => {
             const ghBranch = await getGhBranch();
             const filePath = file.path.replace(/^\//, '');
-            window.open(`https://github.com/${ghOwner}/${ghRepo}/commits/${ghBranch}/${filePath}`, '_blank');
+            void openUrl(`https://github.com/${ghOwner}/${ghRepo}/commits/${ghBranch}/${filePath}`);
           },
         });
       }
+    }
+
+    // GitLab: View on GitLab. The backend builds the URL (self-hosted base,
+    // working branch, encoded segments).
+    if (currentProtocol === 'gitlab' && filesToUse.length === 1) {
+      items.push({
+        label: t('gitlab.viewOnGitlab') || 'View on GitLab',
+        icon: <ExternalLink size={14} />,
+        action: () => {
+          void openOnGitLab(invoke, openUrl, file.path, file.is_dir).catch((err) => notify.error(String(err)));
+        },
+        divider: true,
+      });
     }
 
     if (currentProtocol === 'googledrive') {
