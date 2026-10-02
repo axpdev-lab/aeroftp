@@ -9,6 +9,7 @@ import {
     clearRestoredFlags,
     computeFooterPercentage,
     createFileBatchDispatcher,
+    rearmedOnUserAction,
     listRestoredPendingIds,
     removeItem,
     removeRestoredPending,
@@ -532,5 +533,64 @@ describe('rowForFileStart (#591)', () => {
     it('without a registration or a pending match it asks for a new row', () => {
         const items = [makeItem('x', 'pending', { filename: 'f.bin', path: '/other/f.bin' })];
         expect(rowForFileStart(undefined, items, file)).toBeNull();
+    });
+});
+
+describe('rearmedOnUserAction (#591, cancel state across Stop, Start and Retry)', () => {
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+    // A runner that honours the frontend flag the way runSingles does: a row
+    // reached while the flag is up is cancelled, never started.
+    function setup() {
+        const cancel = { batchCancelled: { current: false }, cancelLevel: { current: 0 } };
+        const started: string[] = [];
+        const cancelled: string[] = [];
+        let stopAfter: string | null = null;
+        const dispatcher = createFileBatchDispatcher({
+            ids: ['a', 'b', 'c'],
+            entries: ['A', 'B', 'C'],
+            firstStartRunsAll: true,
+            statusOf: () => 'pending',
+            run: async (_entries: string[], runIds: string[]) => {
+                const landed = new Set<string>();
+                for (const id of runIds) {
+                    await Promise.resolve();
+                    if (cancel.batchCancelled.current) { cancelled.push(id); continue; }
+                    started.push(id);
+                    landed.add(id);
+                    if (id === stopAfter) cancel.batchCancelled.current = true;
+                }
+                return landed;
+            },
+        });
+        return { cancel, started, cancelled, dispatcher, stopAt: (id: string) => { stopAfter = id; } };
+    }
+
+    it('a Start after an earlier Stop runs the staged rows', async () => {
+        const { cancel, started, cancelled, dispatcher } = setup();
+        cancel.batchCancelled.current = true; // left up by a Stop on an earlier transfer
+        cancel.cancelLevel.current = 1;
+        rearmedOnUserAction(cancel, dispatcher.callbackFor('a'))();
+        await flush();
+        expect(started).toEqual(['a', 'b', 'c']);
+        expect(cancelled).toEqual([]);
+        expect(cancel.cancelLevel.current).toBe(0);
+    });
+
+    it('the flag left up by a Stop cancels the rows when nothing re-arms it (the defect)', async () => {
+        const { cancel, started, cancelled, dispatcher } = setup();
+        cancel.batchCancelled.current = true;
+        dispatcher.callbackFor('a')();
+        await flush();
+        expect(started).toEqual([]);
+        expect(cancelled).toEqual(['a', 'b', 'c']);
+    });
+
+    it('a Stop during the run still keeps the later rows from starting', async () => {
+        const { cancel, started, cancelled, dispatcher, stopAt } = setup();
+        stopAt('a');
+        rearmedOnUserAction(cancel, dispatcher.callbackFor('a'))();
+        await flush();
+        expect(started).toEqual(['a']);
+        expect(cancelled).toEqual(['b', 'c']);
     });
 });

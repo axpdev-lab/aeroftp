@@ -224,3 +224,22 @@ describe('a cut on a legacy session keeps per-file calls', () => {
     expect(body).toMatch(/legacyCut: !!options\.cut && !usesProviderApi\(protocol\)/);
   });
 });
+
+describe('#591: Start and Retry re-arm the cancel state, the runners never do', () => {
+  const body = (name: string) => {
+    const start = APP.indexOf(`const ${name} = async`);
+    expect(start, name).toBeGreaterThan(-1);
+    return APP.slice(start, APP.indexOf('\n    };\n', start));
+  };
+
+  it('registers every file-batch row callback through rearmedOnUserAction', () => {
+    expect(APP).toMatch(/for \(const id of batchIds\) retryCallbacksRef\.current\.set\(id, rearmedOnUserAction\(\w+, batchDispatcher\.callbackFor\(id\)\)\)/);
+    expect(APP).toMatch(/for \(const id of singleIds\) retryCallbacksRef\.current\.set\(id, rearmedOnUserAction\(\w+, singleDispatcher\.callbackFor\(id\)\)\)/);
+  });
+
+  it('keeps the runners from clearing a Stop pressed during the run', () => {
+    for (const runner of ['launchBatch', 'runSingles']) {
+      expect(body(runner), runner).not.toMatch(/batchCancelledRef\.current = false|cancelLevelRef\.current = 0/);
+    }
+  });
+});

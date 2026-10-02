@@ -338,6 +338,23 @@ export interface FileBatchDispatcher {
     callbackFor(id: string): () => void;
 }
 
+/**
+ * A Start of staged rows or a Retry is a new request, as a new transfer is: a
+ * Stop pressed before it must not cancel it. The flags are re-armed when the
+ * user acts, not inside the runner, so a Stop pressed during this run still
+ * keeps the files after it from starting.
+ */
+export function rearmedOnUserAction(
+    cancel: { batchCancelled: { current: boolean }; cancelLevel: { current: number } },
+    callback: () => void,
+): () => void {
+    return () => {
+        cancel.batchCancelled.current = false;
+        cancel.cancelLevel.current = 0;
+        callback();
+    };
+}
+
 export function createFileBatchDispatcher<E>(options: {
     ids: readonly string[];
     entries: readonly E[];

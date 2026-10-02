@@ -183,7 +183,7 @@ import { MountManagerDialog } from './components/MountManagerDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
-import { createFileBatchDispatcher } from './components/transferQueueActions';
+import { createFileBatchDispatcher, rearmedOnUserAction } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import {
@@ -12302,8 +12302,11 @@ const App: React.FC = () => {
     const singleDispatcher = createFileBatchDispatcher({
       ids: singleIds, entries: singles, run: runSingles, statusOf, firstStartRunsAll: staged,
     });
-    for (const id of batchIds) retryCallbacksRef.current.set(id, batchDispatcher.callbackFor(id));
-    for (const id of singleIds) retryCallbacksRef.current.set(id, singleDispatcher.callbackFor(id));
+    // A Start of staged rows or a Retry clears a Stop left from an earlier
+    // transfer when the user acts; a Stop during this run still holds.
+    const cancelFlags = { batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef };
+    for (const id of batchIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id)));
+    for (const id of singleIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id)));
     if (staged) {
       result.staged = true;
       return result;
