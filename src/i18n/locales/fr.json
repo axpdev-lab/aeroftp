@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Écrivez votre commentaire...",
             "commentAdded": "Commentaire ajouté"
         },
-        "dropbox": {
-            "manageTags": "Gérer les tags"
-        },
         "providers": {
             "title": "Fournisseurs et intégrations",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Offre gratuite",
             "freeCardTier": "Gratuit + carte",
             "paidTier": "Payant"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Gérer les libellés",
-            "noLabels": "Aucun libellé disponible. Créez des libellés dans les paramètres de Zoho WorkDrive.",
-            "createLabel": "Créer un libellé",
-            "labelName": "Nom du libellé"
         },
         "healthCheck": {
             "title": "Vérification de l'état du serveur",

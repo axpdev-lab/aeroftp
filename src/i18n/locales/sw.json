@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Andika maoni yako...",
             "commentAdded": "Maoni yameongezwa"
         },
-        "dropbox": {
-            "manageTags": "Dhibiti lebo"
-        },
         "providers": {
             "title": "Watoa Huduma na Muunganisho",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Mpango wa bure",
             "freeCardTier": "Bure + kadi",
             "paidTier": "Ya malipo"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Dhibiti Lebo",
-            "noLabels": "Hakuna lebo inayopatikana. Unda lebo katika mipangilio ya Zoho WorkDrive.",
-            "createLabel": "Tengeneza kichwa",
-            "labelName": "Jina la kichwa"
         },
         "healthCheck": {
             "title": "Ukaguzi wa hali ya seva",

@@ -4466,9 +4466,6 @@
             "commentPlaceholder": "សរសេរមតិយោបល់របស់អ្នក...",
             "commentAdded": "មតិយោបល់ត្រូវបានបន្ថែម"
         },
-        "dropbox": {
-            "manageTags": "គ្រប់គ្រងស្លាក"
-        },
         "providers": {
             "title": "អ្នកផ្តល់សេវា និងការរួមបញ្ចូល",
             "tabOAuth": "OAuth / API",
@@ -4506,12 +4503,6 @@
             "freeTier": "គម្រោងឥតគិតថ្លៃ",
             "freeCardTier": "ឥតគិតថ្លៃ + កាត",
             "paidTier": "បង់ប្រាក់"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "គ្រាប់គ្រងស្លាក",
-            "noLabels": "មិនមានស្លាកទេ។ បង្កើតមួយខាងក្រោម។",
-            "createLabel": "បង្កើតស្លាក",
-            "labelName": "ឈ្មោះស្លាក"
         },
         "healthCheck": {
             "title": "ការពិនិត្យសុខភាពម៉ាស៊ីន​មែ",

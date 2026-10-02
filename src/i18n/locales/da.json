@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Skriv din kommentar...",
             "commentAdded": "Kommentar tilføjet"
         },
-        "dropbox": {
-            "manageTags": "Administrer tags"
-        },
         "providers": {
             "title": "Udbydere og integrationer",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Gratis plan",
             "freeCardTier": "Gratis + kort",
             "paidTier": "Betalt"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Administrer mærker",
-            "noLabels": "Ingen mærker tilgængelige. Opret mærker i Zoho WorkDrive-indstillinger.",
-            "createLabel": "Opret etiket",
-            "labelName": "Etiketnavne"
         },
         "healthCheck": {
             "title": "Serversundhedstjek",

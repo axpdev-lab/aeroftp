@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "เขียนความคิดเห็นของคุณ...",
             "commentAdded": "เพิ่มความคิดเห็นแล้ว"
         },
-        "dropbox": {
-            "manageTags": "จัดการแท็ก"
-        },
         "providers": {
             "title": "ผู้ให้บริการและการเชื่อมต่อ",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "แผนฟรี",
             "freeCardTier": "ฟรี + บัตร",
             "paidTier": "แบบชำระเงิน"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "จัดการป้ายกำกับ",
-            "noLabels": "ไม่มีป้ายกำกับที่พร้อมใช้งาน สร้างป้ายกำกับในการตั้งค่า Zoho WorkDrive",
-            "createLabel": "สร้างป้ายกำกับ",
-            "labelName": "ชื่อป้ายกำกับ"
         },
         "healthCheck": {
             "title": "ตรวจสอบสถานะเซิร์ฟเวอร์",

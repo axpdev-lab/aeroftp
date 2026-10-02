@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Skriv din kommentar...",
             "commentAdded": "Kommentar tillagd"
         },
-        "dropbox": {
-            "manageTags": "Hantera taggar"
-        },
         "providers": {
             "title": "Leverantörer och integrationer",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Gratisplan",
             "freeCardTier": "Gratis + kort",
             "paidTier": "Betald"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Hantera etiketter",
-            "noLabels": "Inga etiketter tillgängliga. Skapa etiketter i Zoho WorkDrive-inställningar.",
-            "createLabel": "Skapa etikett",
-            "labelName": "Etikett namn"
         },
         "healthCheck": {
             "title": "Serverhälsokontroll",

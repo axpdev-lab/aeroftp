@@ -4466,9 +4466,6 @@
             "commentPlaceholder": "Isulat ang iyong komento...",
             "commentAdded": "Naidagdag ang komento"
         },
-        "dropbox": {
-            "manageTags": "Pamahalaan ang mga tag"
-        },
         "providers": {
             "title": "Mga Tagapagbigay at Integrasyon",
             "tabOAuth": "OAuth / API",
@@ -4506,12 +4503,6 @@
             "freeTier": "Libreng plan",
             "freeCardTier": "Libre + card",
             "paidTier": "Bayad"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Pamahalaan ang mga Label",
-            "noLabels": "Walang available na mga label. Lumikha ng mga label sa mga setting ng Zoho WorkDrive.",
-            "createLabel": "Gumawa ng Label",
-            "labelName": "Pangalan ng label"
         },
         "healthCheck": {
             "title": "Pagsusuri ng kalagayan ng server",

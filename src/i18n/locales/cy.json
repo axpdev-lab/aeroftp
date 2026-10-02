@@ -4466,9 +4466,6 @@
             "commentPlaceholder": "Ysgrifennwch eich sylw...",
             "commentAdded": "Sylw wedi'i ychwanegu"
         },
-        "dropbox": {
-            "manageTags": "Rheoli Tagiau"
-        },
         "providers": {
             "title": "Darparwyr ac integreiddiadau",
             "tabOAuth": "OAuth / API",
@@ -4506,12 +4503,6 @@
             "freeTier": "Cynllun am ddim",
             "freeCardTier": "Am ddim + cerdyn",
             "paidTier": "Taledig"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Rheoli Labeli",
-            "noLabels": "Dim labeli ar gael. Crëwch labeli yn y gosodiadau Zoho WorkDrive.",
-            "createLabel": "Creu Label",
-            "labelName": "Enw'r label"
         },
         "healthCheck": {
             "title": "Gwiriad Iechyd y Gweinydd",

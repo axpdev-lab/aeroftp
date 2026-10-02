@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Tulis komen anda...",
             "commentAdded": "Komen ditambahkan"
         },
-        "dropbox": {
-            "manageTags": "Urus Tag"
-        },
         "providers": {
             "title": "Pembekal & Integrasi",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Pelan percuma",
             "freeCardTier": "Percuma + kad",
             "paidTier": "Berbayar"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Kelola Label",
-            "noLabels": "Tiada label tersedia. Buat label dalam tetapan Zoho WorkDrive.",
-            "createLabel": "Buat Label",
-            "labelName": "Nama label"
         },
         "healthCheck": {
             "title": "Pemeriksaan Kesihatan Pelayan",

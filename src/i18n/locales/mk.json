@@ -4466,9 +4466,6 @@
             "commentPlaceholder": "Напишете го вашиот коментар...",
             "commentAdded": "Коментарот е додаден"
         },
-        "dropbox": {
-            "manageTags": "Управувај со ознаки"
-        },
         "providers": {
             "title": "Провајдери и интеграции",
             "tabOAuth": "OAuth / API",
@@ -4506,12 +4503,6 @@
             "freeTier": "Бесплатен план",
             "freeCardTier": "Бесплатно + картичка",
             "paidTier": "Платено"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Управувај со етикети",
-            "noLabels": "Нема достапни етикети. Создајте етикети во поставките на Zoho WorkDrive.",
-            "createLabel": "Создај етикета",
-            "labelName": "Име на етикета"
         },
         "healthCheck": {
             "title": "Проверка на состојба на серверот",

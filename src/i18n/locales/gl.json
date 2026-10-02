@@ -4466,9 +4466,6 @@
             "commentPlaceholder": "Escribe o teu comentario...",
             "commentAdded": "Comentario engadido"
         },
-        "dropbox": {
-            "manageTags": "Xestionar etiquetas"
-        },
         "providers": {
             "title": "Provedores e integracións",
             "tabOAuth": "OAuth / API",
@@ -4506,12 +4503,6 @@
             "freeTier": "Plan gratuíto",
             "freeCardTier": "Gratis + tarxeta",
             "paidTier": "De pago"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Xestionar etiquetas",
-            "noLabels": "Non hai etiquetas dispoñibles. Crea unha abaixo.",
-            "createLabel": "Crear etiqueta",
-            "labelName": "Nome da etiqueta"
         },
         "healthCheck": {
             "title": "Comprobación de saúde do servidor",

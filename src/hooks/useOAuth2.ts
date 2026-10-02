@@ -34,10 +34,7 @@ interface UseOAuth2Return {
   isAuthenticating: boolean;
   error: string | null;
   startAuth: (params: OAuthConnectionParams) => Promise<OAuthFlowStarted>;
-  completeAuth: (params: OAuthConnectionParams, code: string, state: string) => Promise<void>;
   connect: (params: OAuthConnectionParams) => Promise<string>;
-  hasTokens: (provider: OAuthProvider, profileId?: string) => Promise<boolean>;
-  logout: (provider: OAuthProvider, profileId?: string) => Promise<void>;
 }
 
 /**
@@ -48,8 +45,8 @@ export function useOAuth2(): UseOAuth2Return {
   const [error, setError] = useState<string | null>(null);
 
   /**
-   * Start OAuth2 authentication flow (legacy - opens browser, needs manual callback)
-   * Opens browser with auth URL
+   * Run the whole OAuth2 flow through `oauth2_full_auth`: the backend opens the
+   * browser and waits for the loopback callback itself.
    */
   const startAuth = useCallback(async (params: OAuthConnectionParams): Promise<OAuthFlowStarted> => {
     setIsAuthenticating(true);
@@ -60,24 +57,6 @@ export function useOAuth2(): UseOAuth2Return {
       const result = await invoke<string>('oauth2_full_auth', { params });
       // Return a mock result since full_auth completes the flow
       return { auth_url: '', state: result };
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      setError(errorMsg);
-      setIsAuthenticating(false);
-      throw e;
-    }
-  }, []);
-
-  /**
-   * Complete OAuth2 flow with authorization code
-   */
-  const completeAuth = useCallback(async (
-    params: OAuthConnectionParams,
-    code: string,
-    state: string
-  ): Promise<void> => {
-    try {
-      await invoke('oauth2_complete_auth', { params, code, state });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setError(errorMsg);
@@ -102,43 +81,11 @@ export function useOAuth2(): UseOAuth2Return {
     }
   }, []);
 
-  /**
-   * Check if tokens exist for a provider. `profileId` scopes the lookup to a
-   * per-profile vault key (`oauth_<provider>_<profile_id>`); omit it for the
-   * legacy singleton key. Issue #214.
-   */
-  const hasTokens = useCallback(async (provider: OAuthProvider, profileId?: string): Promise<boolean> => {
-    try {
-      return await invoke<boolean>('oauth2_has_tokens', { provider, profileId: profileId ?? '' });
-    } catch (e) {
-      console.error('Error checking tokens:', e);
-      return false;
-    }
-  }, []);
-
-  /**
-   * Logout from a provider (clear tokens). `profileId` scopes the deletion to
-   * a per-profile vault key (`oauth_<provider>_<profile_id>`); omit it to
-   * target the legacy singleton key. Issue #214.
-   */
-  const logout = useCallback(async (provider: OAuthProvider, profileId?: string): Promise<void> => {
-    try {
-      await invoke('oauth2_logout', { provider, profileId: profileId ?? '' });
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      setError(errorMsg);
-      throw e;
-    }
-  }, []);
-
   return {
     isAuthenticating,
     error,
     startAuth,
-    completeAuth,
     connect,
-    hasTokens,
-    logout,
   };
 }
 

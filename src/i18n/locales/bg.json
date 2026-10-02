@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Напишете коментар...",
             "commentAdded": "Коментарът е добавен"
         },
-        "dropbox": {
-            "manageTags": "Управление на етикети"
-        },
         "providers": {
             "title": "Провайдъри и интеграции",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Безплатен план",
             "freeCardTier": "Безпл. + карта",
             "paidTier": "Платен"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Управление на етикетите",
-            "noLabels": "Няма налични етикети. Създайте етикети в настройките на Zoho WorkDrive.",
-            "createLabel": "Създаване на етикет",
-            "labelName": "Име на етикета"
         },
         "healthCheck": {
             "title": "Проверка на сървъра",

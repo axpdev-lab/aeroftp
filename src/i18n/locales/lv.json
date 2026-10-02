@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Rakstiet savu komentāru...",
             "commentAdded": "Komentārs pievienots"
         },
-        "dropbox": {
-            "manageTags": "Pārvaldīt birkas"
-        },
         "providers": {
             "title": "Pakalpojumu sniedzēji un integrācijas",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Bezmaksas plāns",
             "freeCardTier": "Bezmaksas + karte",
             "paidTier": "Maksas"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Pārvaldīt etiķetes",
-            "noLabels": "Nav pieejamu etiķešu. Izveidojiet etiķetes Zoho WorkDrive iestatījumos.",
-            "createLabel": "Izveidot etiķeti",
-            "labelName": "Etiķetes nosaukums"
         },
         "healthCheck": {
             "title": "Servera veselības pārbaude",

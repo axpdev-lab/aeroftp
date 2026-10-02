@@ -554,23 +554,6 @@ impl OneDriveProvider {
             .has_tokens(OAuthProvider::OneDrive, &self.profile_id)
     }
 
-    /// Start OAuth flow (called via oauth2_start_auth command)
-    #[allow(dead_code)]
-    pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
-        self.oauth_manager
-            .start_auth_flow(&self.oauth_config())
-            .await
-    }
-
-    /// Complete OAuth flow (called via oauth2_connect command)
-    #[allow(dead_code)]
-    pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
-        self.oauth_manager
-            .complete_auth_flow(&self.oauth_config(), code, state)
-            .await?;
-        Ok(())
-    }
-
     /// Build path for Graph API: encode each path segment individually
     /// (encoding the full path would corrupt '/' separators)
     fn api_path(&self, path: &str) -> String {
@@ -821,32 +804,6 @@ impl OneDriveProvider {
                 stage, path
             );
         }
-    }
-
-    /// Move file(s) to trash (soft delete)
-    pub async fn trash_file(&mut self, path: &str) -> Result<(), ProviderError> {
-        let item_id = self.resolve_path(path).await?;
-        let url = self.api_item(&item_id);
-
-        let response = self
-            .client
-            .delete(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
-            .await;
-        // Whatever the answer, the ids cached for the item and everything
-        // under it, under any capitalization (OneDrive paths ignore case),
-        // may now point into the recycle bin: a later `rm` of the same path
-        // got 404 for the trashed id and reported the live item deleted.
-        super::forget_cached_subtree_ignoring_case(&mut self.path_cache, path.trim_matches('/'));
-        let response = response.map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() && response.status().as_u16() != 204 {
-            return Err(onedrive_error_from_response(response, "Trash failed:").await);
-        }
-
-        info!("Trashed: {}", path);
-        Ok(())
     }
 
     /// Restore an item from the recycle bin
@@ -3395,34 +3352,6 @@ mod tests {
             ["Dirx", "dirx"],
             "a sibling sharing the prefix stays cached"
         );
-        server.abort();
-    }
-
-    /// `trash_file` (behind `onedrive_trash_files`) left the cache alone:
-    /// the ids of the trashed item and of everything under it stayed, and a
-    /// later `rm` of the same path got 404 for the trashed id, which delete
-    /// reads as done, while the live item stayed. They are forgotten under
-    /// every capitalization; a sibling sharing the prefix stays.
-    #[tokio::test]
-    async fn trashing_forgets_the_cached_subtree() {
-        let (mut p, requests, server) =
-            graph_fixture(|_, _| (axum::http::StatusCode::NO_CONTENT, serde_json::Value::Null))
-                .await;
-        for (path, id) in [
-            ("dir", "id-dir"),
-            ("Dir/Sub", "id-sub"),
-            ("DIR/sub/file", "id-file"),
-            ("dirx", "id-dirx"),
-        ] {
-            p.path_cache.insert(path.into(), id.into());
-        }
-        p.trash_file("/dir").await.unwrap();
-        assert_eq!(
-            *requests.lock().unwrap(),
-            ["DELETE /v1.0/me/drive/items/id-dir"]
-        );
-        let kept: Vec<_> = p.path_cache.keys().cloned().collect();
-        assert_eq!(kept, ["dirx"], "a sibling sharing the prefix stays cached");
         server.abort();
     }
 

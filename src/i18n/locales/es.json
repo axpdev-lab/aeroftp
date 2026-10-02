@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Escribe tu comentario...",
             "commentAdded": "Comentario agregado"
         },
-        "dropbox": {
-            "manageTags": "Administrar etiquetas"
-        },
         "providers": {
             "title": "Proveedores e integraciones",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Plan gratuito",
             "freeCardTier": "Gratis + tarjeta",
             "paidTier": "De pago"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Gestionar etiquetas",
-            "noLabels": "No hay etiquetas disponibles. Crea etiquetas en la configuración de Zoho WorkDrive.",
-            "createLabel": "Crear etiqueta",
-            "labelName": "Nombre de la etiqueta"
         },
         "healthCheck": {
             "title": "Comprobación de estado del servidor",

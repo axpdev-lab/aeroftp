@@ -4466,9 +4466,6 @@
             "commentPlaceholder": "Skrifaðu athugasemd...",
             "commentAdded": "Athugasemd bætt við"
         },
-        "dropbox": {
-            "manageTags": "Stjórna merkjum"
-        },
         "providers": {
             "title": "Veitendur og samþættingar",
             "tabOAuth": "OAuth / API",
@@ -4506,12 +4503,6 @@
             "freeTier": "Ókeypis áskrift",
             "freeCardTier": "Frítt + kort",
             "paidTier": "Gjaldskylt"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Stjórna merkjum",
-            "noLabels": "Engar merkjar tiltækar. Búðu til merkja í stillingum Zoho WorkDrive.",
-            "createLabel": "Búa til merki",
-            "labelName": "Nafn merkis"
         },
         "healthCheck": {
             "title": "Heilsufarsskoðun netþjóns",

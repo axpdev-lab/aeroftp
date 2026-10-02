@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Γράψτε το σχόλιό σας...",
             "commentAdded": "Το σχόλιο προστέθηκε"
         },
-        "dropbox": {
-            "manageTags": "Διαχείριση ετικετών"
-        },
         "providers": {
             "title": "Πάροχοι & Ενσωματώσεις",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Δωρεάν πλάνο",
             "freeCardTier": "Δωρεάν + κάρτα",
             "paidTier": "Επί πληρωμή"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Διαχείριση ετικετών",
-            "noLabels": "Δεν υπάρχουν διαθέσιμες ετικέτες. Δημιουργήστε ετικέτες στις ρυθμίσεις Zoho WorkDrive.",
-            "createLabel": "Δημιουργία ετικέτας",
-            "labelName": "Όνομα ετικέτας"
         },
         "healthCheck": {
             "title": "Έλεγχος υγείας διακομιστή",

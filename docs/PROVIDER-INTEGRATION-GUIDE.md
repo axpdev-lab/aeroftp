@@ -344,7 +344,7 @@ impl ProviderFactory {
             // OAuth2 providers use a separate flow:
             ProviderType::GoogleDrive | ProviderType::Dropbox | ... => {
                 Err(ProviderError::NotSupported(
-                    "Use oauth2_start_auth + oauth2_connect commands".into()
+                    "Use oauth2_full_auth + oauth2_connect commands".into()
                 ))
             }
             // ... all ProviderType variants handled

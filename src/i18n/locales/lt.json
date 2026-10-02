@@ -4447,9 +4447,6 @@
             "commentPlaceholder": "Rašykite komentarą...",
             "commentAdded": "Komentaras pridėtas"
         },
-        "dropbox": {
-            "manageTags": "Tvarkyti žymas"
-        },
         "providers": {
             "title": "Teikėjai ir integracijos",
             "tabOAuth": "OAuth / API",
@@ -4487,12 +4484,6 @@
             "freeTier": "Nemokamas planas",
             "freeCardTier": "Nemok. + kortelė",
             "paidTier": "Mokama"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Valdyti žymes",
-            "noLabels": "Nėra jokių prieinamų žymių. Kurkite žymes Zoho WorkDrive nustatymuose.",
-            "createLabel": "Sukurti žymą",
-            "labelName": "Žymos pavadinimas"
         },
         "healthCheck": {
             "title": "Serverio būklės patikra",
