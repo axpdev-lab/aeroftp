@@ -11535,13 +11535,12 @@ fn rebuild_menu_on_main(
 
 // ============ Sync Commands ============
 
-use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
+use cloud_config::{CloudConfig, CloudSyncStatus};
 use sync::{
-    classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
-    load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
-    sign_journal, verify_local_file, CanaryResult, CanarySampleResult, CanarySummary,
-    CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus, SyncErrorInfo, SyncIndex,
-    SyncJournal, VerifyPolicy, VerifyResult,
+    classify_sync_error, classify_with_summary, delete_sync_journal, load_sync_index,
+    load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample, verify_local_file,
+    CanaryResult, CanarySampleResult, CanarySummary, CompareOptions, CompareReport, FileInfo,
+    SyncEcStatus, SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -12400,194 +12399,6 @@ pub fn local_scan_progress_payload(
     })
 }
 
-/// Parallel local scan: directory traversal is sequential (fast), but SHA-256
-/// checksums are computed concurrently using a bounded JoinSet + Semaphore.
-/// Falls back to sequential scan when `compare_checksum` is false (no I/O benefit).
-///
-/// CLAUDE-AV-B3-13: this twin still swallows traversal failures (absent root,
-/// unreadable directory, mid-listing error) and answers `Ok(map)`, so a partial
-/// tree is indistinguishable from a complete one. That is not a live data-loss
-/// path today only because its single caller, the `get_parallel_scan_files`
-/// command, hands the map straight back and never deletes: no delete gate exists
-/// to attach a completeness signal to. Before wiring this into anything that
-/// propagates deletes, give it the [`get_local_files_recursive_checked`]
-/// treatment; do not assume `Ok` means the whole tree was seen.
-pub async fn get_local_files_recursive_parallel(
-    base_path: &str,
-    exclude_patterns: &[String],
-    compare_checksum: bool,
-    max_concurrent_hashes: usize,
-    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
-) -> Result<HashMap<String, FileInfo>, String> {
-    // One compile per scan; an invalid pattern is an error, never dropped.
-    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
-    let base = PathBuf::from(base_path);
-    if !base.exists() {
-        return Ok(HashMap::new());
-    }
-
-    // Phase 1: Walk the directory tree (sequential: fast, mostly metadata)
-    #[allow(clippy::type_complexity)]
-    let mut file_entries: Vec<(
-        String,
-        String,
-        u64,
-        Option<chrono::DateTime<chrono::Utc>>,
-        bool,
-    )> = Vec::new();
-    let mut dirs_to_process = vec![base.clone()];
-
-    while let Some(current_dir) = dirs_to_process.pop() {
-        if let Some(flag) = cancel_flag {
-            if flag.load(std::sync::atomic::Ordering::Relaxed) {
-                break;
-            }
-        }
-        let mut entries = match tokio::fs::read_dir(&current_dir).await {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-
-            let relative_path = path
-                .strip_prefix(&base)
-                .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
-                .unwrap_or_else(|_| name.clone());
-
-            if excludes.is_excluded(&relative_path) {
-                continue;
-            }
-
-            // H22: Use symlink_metadata to avoid following symlinks outside sync root.
-            let metadata = tokio::fs::symlink_metadata(&path).await.ok();
-
-            // Skip symlinks entirely to prevent data exfiltration via malicious symlinks
-            if metadata
-                .as_ref()
-                .map(|m| m.file_type().is_symlink())
-                .unwrap_or(false)
-            {
-                continue;
-            }
-
-            let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-            let modified = metadata.as_ref().and_then(|m| {
-                m.modified().ok().map(|t| {
-                    let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                    datetime
-                })
-            });
-            let size = if is_dir {
-                0
-            } else {
-                metadata.as_ref().map(|m| m.len()).unwrap_or(0)
-            };
-            let abs_path = path.to_string_lossy().to_string();
-
-            // P2-1: Cap file index at 1M entries to prevent unbounded memory growth
-            if file_entries.len() >= 1_000_000 {
-                return Err(
-                    "File scan exceeded 1,000,000 entries. Consider narrowing the scan scope."
-                        .to_string(),
-                );
-            }
-
-            file_entries.push((relative_path, abs_path, size, modified, is_dir));
-
-            if is_dir {
-                dirs_to_process.push(path);
-            }
-        }
-    }
-
-    // Phase 2: Compute checksums in parallel (only when requested)
-    let mut files = HashMap::with_capacity(file_entries.len());
-
-    if compare_checksum {
-        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(
-            max_concurrent_hashes.clamp(1, 16),
-        ));
-        let mut join_set = tokio::task::JoinSet::new();
-
-        for (relative_path, abs_path, size, modified, is_dir) in file_entries {
-            if is_dir {
-                files.insert(
-                    relative_path,
-                    FileInfo {
-                        name: std::path::Path::new(&abs_path)
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_default(),
-                        path: abs_path,
-                        size,
-                        modified,
-                        is_dir: true,
-                        checksum_alg: None,
-                        checksum: None,
-                    },
-                );
-                continue;
-            }
-
-            let sem = semaphore.clone();
-            let path_clone = abs_path.clone();
-            let rel_clone = relative_path.clone();
-
-            join_set.spawn(async move {
-                let _permit = sem.acquire().await;
-                let checksum = compute_sha256(std::path::Path::new(&path_clone)).await;
-                (rel_clone, path_clone, size, modified, checksum)
-            });
-        }
-
-        while let Some(result) = join_set.join_next().await {
-            if let Ok((rel_path, abs_path, size, modified, checksum)) = result {
-                let name = std::path::Path::new(&abs_path)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                files.insert(
-                    rel_path,
-                    FileInfo {
-                        name,
-                        path: abs_path,
-                        size,
-                        modified,
-                        is_dir: false,
-                        checksum_alg: checksum.as_ref().map(|_| "sha256".to_string()),
-                        checksum,
-                    },
-                );
-            }
-        }
-    } else {
-        // No checksums: just convert entries to FileInfo directly
-        for (relative_path, abs_path, size, modified, is_dir) in file_entries {
-            let name = std::path::Path::new(&abs_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            files.insert(
-                relative_path,
-                FileInfo {
-                    name,
-                    path: abs_path,
-                    size,
-                    modified,
-                    is_dir,
-                    checksum_alg: None,
-                    checksum: None,
-                },
-            );
-        }
-    }
-
-    Ok(files)
-}
-
 /// Scan remote directory with progress events.
 ///
 /// CLAUDE-AV-B3-13: also reports [`ScanCompleteness`](crate::sync_core::ScanCompleteness),
@@ -12731,11 +12542,6 @@ async fn get_remote_files_recursive_with_progress(
 
     let _ = ftp_manager.change_dir(base_path).await;
     Ok((files, completeness))
-}
-
-#[tauri::command]
-fn get_compare_options_default() -> CompareOptions {
-    CompareOptions::default()
 }
 
 #[tauri::command]
@@ -12951,25 +12757,6 @@ fn delete_sync_profile_cmd_blocking(id: String) -> Result<(), String> {
 }
 
 // ─── Phase 3A+ Commands: Parallel Scan, Scheduler, Watcher ─────────────
-
-#[tauri::command]
-async fn get_parallel_scan_files(
-    base_path: String,
-    exclude_patterns: Vec<String>,
-    compare_checksum: bool,
-    max_concurrent_hashes: Option<usize>,
-) -> Result<HashMap<String, FileInfo>, String> {
-    validate_path(&base_path)?;
-    let concurrency = max_concurrent_hashes.unwrap_or(4);
-    get_local_files_recursive_parallel(
-        &base_path,
-        &exclude_patterns,
-        compare_checksum,
-        concurrency,
-        None,
-    )
-    .await
-}
 
 #[tauri::command]
 async fn get_sync_schedule_cmd() -> Result<sync_scheduler::SyncSchedule, String> {
@@ -13799,32 +13586,6 @@ fn delete_sync_snapshot_cmd_blocking(
     sync::delete_sync_snapshot(&snapshot_id)
 }
 
-#[tauri::command]
-async fn load_sync_snapshot_cmd(
-    snapshot_id: String,
-    local_path: Option<String>,
-    remote_path: Option<String>,
-) -> Result<sync::SyncSnapshot, String> {
-    tokio::task::spawn_blocking(move || {
-        load_sync_snapshot_cmd_blocking(snapshot_id, local_path, remote_path)
-    })
-    .await
-    .unwrap_or_else(|err| Err(format!("load_sync_snapshot_cmd task failed: {err}")))
-}
-
-/// The body of `load_sync_snapshot_cmd`, kept synchronous and run on the blocking pool.
-fn load_sync_snapshot_cmd_blocking(
-    snapshot_id: String,
-    local_path: Option<String>,
-    remote_path: Option<String>,
-) -> Result<sync::SyncSnapshot, String> {
-    let snapshot = sync::load_sync_snapshot(&snapshot_id)?;
-    if !snapshot_matches_pair(&snapshot, local_path.as_deref(), remote_path.as_deref()) {
-        return Err("Snapshot does not belong to the current sync pair".to_string());
-    }
-    Ok(snapshot)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RestoreSnapshotResult {
     restored_from_remote: u32,
@@ -14031,113 +13792,9 @@ async fn restore_sync_snapshot_cmd(
 // Rename Detection
 // =============================
 
-/// Detect file renames by matching SHA-256 hashes between local_only and remote_only files.
-/// Returns pairs of (old_path, new_path, size) that are likely renames rather than delete+create.
-#[tauri::command]
-async fn detect_renames_cmd(
-    local_path: String,
-    comparisons: Vec<sync::FileComparison>,
-) -> Result<Vec<serde_json::Value>, String> {
-    use std::collections::HashMap;
-
-    // Separate candidates: local_only = potential new files, remote_only = potential deleted files
-    let local_only: Vec<&sync::FileComparison> = comparisons
-        .iter()
-        .filter(|c| c.status == sync::SyncStatus::LocalOnly && !c.is_dir)
-        .collect();
-    let remote_only: Vec<&sync::FileComparison> = comparisons
-        .iter()
-        .filter(|c| c.status == sync::SyncStatus::RemoteOnly && !c.is_dir)
-        .collect();
-
-    if local_only.is_empty() || remote_only.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Hash local_only files
-    let mut local_hashes: HashMap<String, Vec<&sync::FileComparison>> = HashMap::new();
-    for comp in &local_only {
-        let file = std::path::PathBuf::from(&local_path).join(&comp.relative_path);
-        if let Ok(hash) = sha256_file_hex(&file) {
-            local_hashes.entry(hash).or_default().push(comp);
-        }
-    }
-
-    // Match remote_only files by size against local hashes
-    // (We can't hash remote files, so we match by size first, then confirm by local hash)
-    let mut renames = Vec::new();
-    let mut used_locals: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    for remote_comp in &remote_only {
-        let remote_size = remote_comp
-            .remote_info
-            .as_ref()
-            .map(|i| i.size)
-            .unwrap_or(0);
-        // Find a local_only file with matching hash and similar size
-        for (hash, locals) in &local_hashes {
-            for local_comp in locals {
-                if used_locals.contains(&local_comp.relative_path) {
-                    continue;
-                }
-                let local_size = local_comp.local_info.as_ref().map(|i| i.size).unwrap_or(0);
-                if local_size == remote_size {
-                    renames.push(serde_json::json!({
-                        "old_path": remote_comp.relative_path,
-                        "new_path": local_comp.relative_path,
-                        "size": local_size,
-                        "hash": hash,
-                    }));
-                    used_locals.insert(local_comp.relative_path.clone());
-                    break;
-                }
-            }
-        }
-    }
-
-    Ok(renames)
-}
-
 // =============================
 // Delta Sync Commands (#155)
 // =============================
-
-/// Analyze a file pair and return delta sync stats (preview, no actual transfer)
-#[cfg(feature = "aerorsync")]
-#[tauri::command]
-async fn delta_sync_analyze(
-    local_path: String,
-    remote_path: String,
-) -> Result<aerorsync::delta_engine::DeltaResult, String> {
-    validate_path(&local_path)?;
-    validate_path(&remote_path)?;
-
-    // Read local file
-    let local_data = tokio::fs::read(&local_path)
-        .await
-        .map_err(|e| format!("Failed to read local file: {}", e))?;
-
-    if (local_data.len() as u64) < aerorsync::delta_engine::DELTA_MIN_FILE_SIZE {
-        return Err(format!(
-            "File too small for delta sync ({}B < {}B minimum)",
-            local_data.len(),
-            aerorsync::delta_engine::DELTA_MIN_FILE_SIZE
-        ));
-    }
-
-    // For analysis, we use the local file as both source and simulate
-    // In real usage, remote_data would come from provider.read_range()
-    let block_size = aerorsync::delta_engine::compute_block_size(local_data.len() as u64);
-    let sigs = aerorsync::delta_engine::compute_signatures(&local_data, block_size);
-
-    // Read remote (local copy for now: real impl would use provider)
-    let remote_data = tokio::fs::read(&remote_path)
-        .await
-        .map_err(|e| format!("Failed to read remote file: {}", e))?;
-
-    let (_, result) = aerorsync::delta_engine::compute_delta(&remote_data, &sigs);
-    Ok(result)
-}
 
 // =============================
 // Canary Sync Commands
@@ -14271,13 +13928,6 @@ async fn sync_canary_run(
     })
 }
 
-/// Approve canary results: placeholder that returns a success message.
-/// The actual full sync is triggered by the frontend calling `parallel_sync_execute`.
-#[tauri::command]
-async fn sync_canary_approve() -> Result<String, String> {
-    Ok("Canary approved: proceed with full sync".to_string())
-}
-
 // =============================
 // Signed Audit Log Commands
 // =============================
@@ -14294,95 +13944,14 @@ async fn get_journal_signing_key(
     if remote_path.contains('\0') {
         return Err("Remote path contains null bytes".to_string());
     }
-
-    let key_dir = portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
-        .join("sync-journal");
-    tokio::fs::create_dir_all(&key_dir)
+    tokio::task::spawn_blocking(move || sync::journal_signing_key(&local_path, &remote_path))
         .await
-        .map_err(|e| format!("Failed to create journal dir: {}", e))?;
-
-    let key_file = key_dir.join("signing.key");
-
-    // Load existing key or generate a new one
-    let secret = if key_file.exists() {
-        tokio::fs::read_to_string(&key_file)
-            .await
-            .map_err(|e| format!("Failed to read signing key: {}", e))?
-    } else {
-        use rand::RngCore;
-        let mut bytes = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut bytes);
-        let hex_key = hex::encode(bytes);
-        tokio::fs::write(&key_file, &hex_key)
-            .await
-            .map_err(|e| format!("Failed to write signing key: {}", e))?;
-        // Restrict permissions on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&key_file, perms).ok();
-        }
-        hex_key
-    };
-
-    // Derive per-path-pair key via HMAC-SHA256(secret, local|remote|salt)
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    let data = format!("{}|{}|aeroftp-journal-signing", local_path, remote_path);
-    let key_bytes =
-        hex::decode(secret.trim()).map_err(|e| format!("Invalid signing key: {}", e))?;
-    let mut mac =
-        Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(|e| format!("HMAC key error: {}", e))?;
-    mac.update(data.as_bytes());
-    Ok(hex::encode(mac.finalize().into_bytes()))
+        .unwrap_or_else(|err| Err(format!("get_journal_signing_key task failed: {err}")))
 }
 
-/// Sign an existing sync journal with HMAC-SHA256.
-/// Saves the hex-encoded signature as a .sig file alongside the journal.
-#[tauri::command]
-async fn sign_sync_journal(
-    local_path: String,
-    remote_path: String,
-    signing_key: String,
-) -> Result<String, String> {
-    validate_path(&local_path)?;
-    if remote_path.contains('\0') {
-        return Err("Remote path contains null bytes".to_string());
-    }
-
-    // Load the journal
-    let journal = load_sync_journal(&local_path, &remote_path)?
-        .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
-
-    // Decode hex signing key
-    let key_bytes =
-        hex::decode(&signing_key).map_err(|e| format!("Invalid hex signing key: {}", e))?;
-    if key_bytes.is_empty() {
-        return Err("Signing key cannot be empty".to_string());
-    }
-    if key_bytes.len() < 32 {
-        return Err("Signing key must be at least 32 bytes (64 hex chars)".to_string());
-    }
-
-    // Compute HMAC-SHA256 signature
-    let signature = sign_journal(&journal, &key_bytes)?;
-
-    // Save .sig file alongside the journal
-    let journal_dir = portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
-        .join("sync-journal");
-    let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
-    tokio::fs::write(&sig_path, signature.as_bytes())
-        .await
-        .map_err(|e| format!("Failed to write signature file: {}", e))?;
-
-    Ok(signature)
-}
-
-/// Verify an existing journal signature.
-/// Returns true if the stored signature matches the recomputed HMAC.
+/// Verify an existing journal signature. Journals are signed on every save
+/// (`sync::save_sync_journal`); returns true if the stored signature matches
+/// the recomputed HMAC.
 #[tauri::command]
 async fn verify_journal_signature(
     local_path: String,
@@ -14393,45 +13962,11 @@ async fn verify_journal_signature(
     if remote_path.contains('\0') {
         return Err("Remote path contains null bytes".to_string());
     }
-
-    // Load the journal
-    let journal = load_sync_journal(&local_path, &remote_path)?
-        .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
-
-    // Read the .sig file
-    let journal_dir = portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
-        .join("sync-journal");
-    let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
-    let stored_sig = tokio::fs::read_to_string(&sig_path)
-        .await
-        .map_err(|e| format!("Failed to read signature file: {}", e))?;
-
-    // Decode hex signing key
-    let key_bytes =
-        hex::decode(&signing_key).map_err(|e| format!("Invalid hex signing key: {}", e))?;
-    if key_bytes.is_empty() {
-        return Err("Signing key cannot be empty".to_string());
-    }
-    if key_bytes.len() < 32 {
-        return Err("Signing key must be at least 32 bytes (64 hex chars)".to_string());
-    }
-
-    // Recompute HMAC-SHA256
-    let computed_sig = sign_journal(&journal, &key_bytes)?;
-
-    // Constant-time comparison to prevent timing attacks
-    let a = computed_sig.as_bytes();
-    let b = stored_sig.trim().as_bytes();
-    let result = if a.len() != b.len() {
-        false
-    } else {
-        a.iter()
-            .zip(b.iter())
-            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-            == 0
-    };
-    Ok(result)
+    tokio::task::spawn_blocking(move || {
+        sync::verify_journal_signature(&local_path, &remote_path, &signing_key)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("verify_journal_signature task failed: {err}")))
 }
 
 /// Execute sync transfers in parallel using a bounded Semaphore pool.
@@ -14811,11 +14346,6 @@ async fn execute_single_transfer(
 }
 
 // ─── End Phase 3A+ Commands ────────────────────────────────────────────
-
-#[tauri::command]
-fn get_default_retry_policy() -> RetryPolicy {
-    RetryPolicy::default()
-}
 
 #[tauri::command]
 async fn verify_local_transfer(
@@ -15572,29 +15102,6 @@ fn remove_cloud_pair_blocking(pair_id: String) -> Result<cloud_pairs::CloudPairs
     })
 }
 
-#[tauri::command]
-async fn update_cloud_pair(
-    pair: cloud_pairs::CloudPathPair,
-) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    tokio::task::spawn_blocking(move || update_cloud_pair_blocking(pair))
-        .await
-        .unwrap_or_else(|err| Err(format!("update_cloud_pair task failed: {err}")))
-}
-
-/// The body of `update_cloud_pair`, kept synchronous and run on the blocking pool.
-fn update_cloud_pair_blocking(
-    pair: cloud_pairs::CloudPathPair,
-) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    cloud_pairs::with_cloud_pairs_mut(|config| {
-        if let Some(existing) = config.pairs.iter_mut().find(|p| p.id == pair.id) {
-            *existing = pair;
-        } else {
-            return Err("Pair not found".to_string());
-        }
-        Ok(config.clone())
-    })
-}
-
 /// Update excluded folders for selective sync
 #[tauri::command]
 async fn update_excluded_folders(excluded_folders: Vec<String>) -> Result<(), String> {
@@ -16033,34 +15540,6 @@ fn get_cloud_status_blocking() -> CloudSyncStatus {
     }
 }
 
-#[tauri::command]
-async fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
-    tokio::task::spawn_blocking(move || enable_aerocloud_blocking(enabled))
-        .await
-        .unwrap_or_else(|err| Err(format!("enable_aerocloud task failed: {err}")))
-}
-
-/// The body of `enable_aerocloud`, kept synchronous and run on the blocking pool.
-fn enable_aerocloud_blocking(enabled: bool) -> Result<CloudConfig, String> {
-    let config = cloud_config::with_cloud_config_mut(|config| {
-        if enabled {
-            // Validate before enabling
-            cloud_config::validate_config(config)?;
-            cloud_config::ensure_cloud_folder(config)?;
-        }
-
-        config.enabled = enabled;
-        // Always clear the paused flag on explicit enable/disable so the two
-        // state machines (enable vs pause) never conflict on re-enable.
-        config.paused = false;
-        Ok(config.clone())
-    })?;
-
-    info!("AeroCloud {}", if enabled { "enabled" } else { "disabled" });
-
-    Ok(config)
-}
-
 /// Pause AeroCloud without removing its configuration.
 /// Stops the background sync worker and persists `paused = true`.
 /// The auto-start effect in the frontend respects this flag on next launch.
@@ -16291,21 +15770,6 @@ async fn get_default_cloud_folder() -> String {
 fn get_default_cloud_folder_blocking() -> String {
     let default_config = CloudConfig::default();
     default_config.local_folder.to_string_lossy().to_string()
-}
-
-#[tauri::command]
-async fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || update_conflict_strategy_blocking(strategy))
-        .await
-        .unwrap_or_else(|err| Err(format!("update_conflict_strategy task failed: {err}")))
-}
-
-/// The body of `update_conflict_strategy`, kept synchronous and run on the blocking pool.
-fn update_conflict_strategy_blocking(strategy: ConflictStrategy) -> Result<(), String> {
-    cloud_config::with_cloud_config_mut(|config| {
-        config.conflict_strategy = strategy;
-        Ok(())
-    })
 }
 
 #[tauri::command]
@@ -18186,11 +17650,6 @@ pub async fn import_server_profiles_core_filtered(
     Ok(result)
 }
 
-#[tauri::command]
-async fn read_export_metadata(file_path: String) -> Result<profile_export::ExportMetadata, String> {
-    profile_export::read_metadata(std::path::Path::new(&file_path)).map_err(|e| e.to_string())
-}
-
 // ============ Full Keystore Export/Import ============
 
 #[tauri::command]
@@ -20044,7 +19503,6 @@ pub fn run() {
             rebuild_menu,
             compare_directories,
             compare_local_directories,
-            get_compare_options_default,
             load_sync_index_cmd,
             save_sync_index_cmd,
             load_sync_journal_cmd,
@@ -20061,7 +19519,6 @@ pub fn run() {
             delete_sync_profile_cmd,
             // Phase 3A+: Parallel sync, scan, scheduler, watcher
             parallel_sync_execute,
-            get_parallel_scan_files,
             get_sync_schedule_cmd,
             save_sync_schedule_cmd,
             get_watcher_status_cmd,
@@ -20080,18 +19537,12 @@ pub fn run() {
             flatten_local_descendants,
             create_sync_snapshot_cmd,
             list_sync_snapshots_cmd,
-            load_sync_snapshot_cmd,
             restore_sync_snapshot_cmd,
-            detect_renames_cmd,
             delete_sync_snapshot_cmd,
             #[cfg(feature = "aerorsync")]
-            delta_sync_analyze,
             sync_canary_run,
-            sync_canary_approve,
             get_journal_signing_key,
-            sign_sync_journal,
             verify_journal_signature,
-            get_default_retry_policy,
             verify_local_transfer,
             classify_transfer_error,
             sync_ec_generate,
@@ -20104,10 +19555,8 @@ pub fn run() {
             save_cloud_pairs_config_cmd,
             add_cloud_pair,
             remove_cloud_pair,
-            update_cloud_pair,
             setup_aerocloud,
             get_cloud_status,
-            enable_aerocloud,
             pause_aerocloud,
             resume_aerocloud,
             disable_aerocloud,
@@ -20128,7 +19577,6 @@ pub fn run() {
             generate_share_link_remote,
             generate_server_share_link,
             get_default_cloud_folder,
-            update_conflict_strategy,
             trigger_cloud_sync,
             // Background sync & tray commands
             start_background_sync,
@@ -20234,10 +19682,6 @@ pub fn run() {
             peer_commands::aeroshare_inbox_root,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
-            settings::native_rsync_enabled_get,
-            #[cfg(feature = "aerorsync")]
-            settings::native_rsync_enabled_set,
-            #[cfg(feature = "aerorsync")]
             settings::native_rsync_mode_get,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_mode_set,
@@ -20246,7 +19690,6 @@ pub fn run() {
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,
-            read_export_metadata,
             // Generic profile bridge (12 expansion sources)
             bridge_commands::detect_bridge_config,
             bridge_commands::bridge_source_meta,

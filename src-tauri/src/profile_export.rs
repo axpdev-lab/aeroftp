@@ -430,12 +430,6 @@ pub fn import_profiles(file_path: &Path, password: &str) -> Result<ImportedProfi
     ))
 }
 
-pub fn read_metadata(file_path: &Path) -> Result<ExportMetadata, ExportError> {
-    let file_data = std::fs::read(file_path)?;
-    let export_file: ExportFile = serde_json::from_slice(&file_data)?;
-    Ok(export_file.metadata)
-}
-
 // Crypto primitives shared via crate::crypto module
 
 #[cfg(test)]

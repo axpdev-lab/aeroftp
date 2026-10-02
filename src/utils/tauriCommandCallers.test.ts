@@ -211,12 +211,8 @@ const INHERITED_UNCALLED: string[] = [
     'clear_file_badge',
     'debug_panic_command',
     'deepseek_fim_complete',
-    'delete_sync_profile_cmd',
-    'delta_sync_analyze',
-    'detect_renames_cmd',
     'dropbox_get_tags',
     'dropbox_set_tags',
-    'enable_aerocloud',
     'extract_7z_entry',
     'extract_rar_entry',
     'extract_tar_entry',
@@ -235,9 +231,6 @@ const INHERITED_UNCALLED: string[] = [
     'fourshared_start_auth',
     'gemini_create_cache',
     'get_badge_status',
-    'get_compare_options_default',
-    'get_default_retry_policy',
-    'get_parallel_scan_files',
     'get_speed_limit',
     'github_batch_commit',
     'github_get_release',
@@ -253,14 +246,10 @@ const INHERITED_UNCALLED: string[] = [
     'jottacloud_move_to_trash',
     'kimi_create_cache',
     'kimi_upload_file',
-    'load_sync_snapshot_cmd',
     'mega_move_to_trash',
     'mtp_backend_status',
-    'native_rsync_enabled_get',
-    'native_rsync_enabled_set',
     'oauth2_start_auth',
     'onedrive_trash_files',
-    'parallel_sync_execute',
     'peer_receiver_status',
     'peer_send_action',
     'provider_check_connection',
@@ -281,7 +270,6 @@ const INHERITED_UNCALLED: string[] = [
     'rclone_crypt_encrypt_file_path',
     'rclone_crypt_encrypt_name',
     'read_agent_memory',
-    'read_export_metadata',
     'rebuild_menu',
     's3_change_storage_class',
     's3_delete_object_tags',
@@ -302,18 +290,13 @@ const INHERITED_UNCALLED: string[] = [
     'session_switch',
     'session_upload',
     'set_file_badge',
-    'sign_sync_journal',
     'speedtest_history_clear',
     'speedtest_history_list',
     'start_badge_server_cmd',
     'stop_badge_server_cmd',
-    'sync_canary_approve',
     'totp_load_secret',
     'totp_verify',
-    'transfer_queue_scan_remote_tree',
     'trigger_plugin_hooks',
-    'update_cloud_pair',
-    'update_conflict_strategy',
     'update_tray_badge_cmd',
     'vault_mount_list',
     'vault_v2_compact',
@@ -334,6 +317,22 @@ const INHERITED_UNCALLED: string[] = [
     'zoho_list_team_labels',
     'zoho_remove_file_label',
 ];
+
+/**
+ * Audited and kept without a frontend caller, each with the reason and the
+ * owner of the decision. Unlike `INHERITED_UNCALLED` this is not a backlog:
+ * every entry was looked at and stays on purpose. It is checked both ways
+ * like the inherited list: an entry that gains a caller or is unregistered
+ * fails until it is removed here.
+ */
+const AUDITED_UNCALLED: Record<string, string> = {
+    parallel_sync_execute:
+        'Parallel FTP sync over transfer_pool.rs. No sync ever called it, and fd10ff6f0 left it in tree for ' +
+        'APPENDIX-DAG-ENGINE Fase 2 to adopt or retire: that appendix decides, not this list.',
+    transfer_queue_scan_remote_tree:
+        'Lazy per-level remote scan built for the staged transfer queue (TQ-2, a0e7a9c1, 884efb56); the panel ' +
+        '(TQ-4) shipped without folder expansion. APPENDIX-TRANSFER-QUEUE decides whether it is wired or dropped.',
+};
 
 const registered = registeredCommands(libRs);
 const uncalled = registered.filter((c) => callersOf(c).length === 0);
@@ -379,8 +378,14 @@ describe('registered Tauri commands have a frontend caller', () => {
     });
 
     it('registers no new command that nothing in src/ invokes', () => {
-        const inherited = new Set(INHERITED_UNCALLED);
-        expect(uncalled.filter((c) => !inherited.has(c))).toEqual([]);
+        const known = new Set([...INHERITED_UNCALLED, ...Object.keys(AUDITED_UNCALLED)]);
+        expect(uncalled.filter((c) => !known.has(c))).toEqual([]);
+    });
+
+    it('keeps the audited list exact: every entry is registered and still uncalled', () => {
+        const stale = Object.keys(AUDITED_UNCALLED).filter((c) => !uncalled.includes(c));
+        expect(stale, 'now called or no longer registered: drop it from AUDITED_UNCALLED').toEqual([]);
+        expect(Object.keys(AUDITED_UNCALLED).filter((c) => INHERITED_UNCALLED.includes(c))).toEqual([]);
     });
 
     it('keeps the inherited list exact: it only shrinks', () => {

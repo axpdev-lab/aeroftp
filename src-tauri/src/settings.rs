@@ -131,15 +131,6 @@ fn load_native_rsync_mode_from(path: &Path) -> NativeRsyncMode {
 }
 
 #[cfg(feature = "aerorsync")]
-pub fn set_native_rsync_enabled(enabled: bool) -> Result<(), String> {
-    set_native_rsync_mode(if enabled {
-        NativeRsyncMode::Auto
-    } else {
-        NativeRsyncMode::Classic
-    })
-}
-
-#[cfg(feature = "aerorsync")]
 pub fn set_native_rsync_mode(mode: NativeRsyncMode) -> Result<(), String> {
     set_native_rsync_mode_at(&native_rsync_config_path()?, mode)
 }
@@ -179,31 +170,11 @@ pub fn native_rsync_feature_compiled() -> bool {
     cfg!(feature = "aerorsync")
 }
 
-// The four accessors below all reach `native_rsync.toml` under the AeroFTP data
-// root: the getters stat and read it, the setters take a process-wide
-// write lock and then do write + rename. That is disk I/O plus a lock on a
+// The two accessors below both reach `native_rsync.toml` under the AeroFTP data
+// root: the getter stats and reads it, the setter takes a process-wide
+// write lock and then does write + rename. That is disk I/O plus a lock on a
 // config directory that can perfectly well be on a network home, so none of
 // them belongs on the main thread, however small the value they return is.
-
-#[cfg(feature = "aerorsync")]
-#[tauri::command]
-pub async fn native_rsync_enabled_get() -> bool {
-    tokio::task::spawn_blocking(load_native_rsync_enabled)
-        .await
-        .unwrap_or_else(|err| {
-            tracing::warn!("native_rsync_enabled_get task failed: {err}");
-            // Same fallback the loader itself uses when the path is unavailable.
-            false
-        })
-}
-
-#[cfg(feature = "aerorsync")]
-#[tauri::command]
-pub async fn native_rsync_enabled_set(enabled: bool) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || set_native_rsync_enabled(enabled))
-        .await
-        .unwrap_or_else(|err| Err(format!("native rsync settings write failed: {err}")))
-}
 
 /// The persisted mode as the string the GUI and the CLI both speak.
 ///
