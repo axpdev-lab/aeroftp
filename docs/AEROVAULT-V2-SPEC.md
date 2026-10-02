@@ -632,16 +632,12 @@ AeroVault actions are available in the file manager context menu:
 | `vault_v2_add_files` | vault_path, password, file_paths | Add files to root |
 | `vault_v2_add_files_to_dir` | vault_path, password, file_paths, target_dir | Add files to directory |
 | `vault_v2_create_directory` | vault_path, password, dir_name | Create directory |
-| `vault_v2_delete_entry` | vault_path, password, entry_name | Delete single entry |
-| `vault_v2_delete_entries` | vault_path, password, entry_names, recursive | Delete multiple entries |
-| `vault_v2_move_entry` | vault_path, password, from, to | Move or rename an entry path |
-| `vault_v2_rename_entry` | vault_path, password, current_name, new_name | Rename entry inside the same parent |
-| `vault_v2_copy_entry` | vault_path, password, from, to | Copy file or directory recursively |
+| `vault_v2_delete_entry` | vault_path, password, entry_name | Delete single entry, then compact so its encrypted data leaves the file |
+| `vault_v2_delete_entries` | vault_path, password, entry_names, recursive | Delete multiple entries, then compact |
 | `vault_v2_extract_entry` | vault_path, password, entry_name, dest_path | Extract single entry |
 | `vault_v2_extract_all` | vault_path, password, dest_dir | Extract entire vault |
 | `vault_v2_change_password` | vault_path, old_password, new_password | Change vault password |
 | `vault_v2_peek` | vault_path | Read header without password |
-| `vault_v2_security_info` | vault_path, password | Detailed security information |
 | `vault_v2_is_vault_v2` | vault_path | Check if file is AeroVault v2 |
 
 ### 10.2 Directory Commands (v2.9.3)

@@ -319,21 +319,6 @@ async fn terminate(entry: &mut ActiveVaultMount) {
     }
 }
 
-/// Snapshot of all live vault mounts.
-pub async fn list() -> Vec<VaultMountInfo> {
-    let active = VAULT_MOUNTS.lock().await;
-    active
-        .iter()
-        .map(|(key, m)| VaultMountInfo {
-            key: key.clone(),
-            mountpoint: m.mountpoint.to_string_lossy().to_string(),
-            kind: m.kind.clone(),
-            display_name: m.display_name.clone(),
-            pid: m.pid,
-        })
-        .collect()
-}
-
 /// Open the mountpoint for `key` in the OS file manager.
 pub async fn open_in_file_manager(key: &str) -> Result<(), String> {
     let mp = {
