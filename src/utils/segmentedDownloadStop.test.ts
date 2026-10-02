@@ -28,3 +28,26 @@ describe('GUI segmented download cancellation wiring', () => {
     expect(cancellationBranch).toContain('return Err(');
   });
 });
+
+const executor = readFileSync('src-tauri/src/provider_transfer_executor.rs', 'utf8');
+const crossProfile = readFileSync('src-tauri/src/cross_profile_transfer.rs', 'utf8');
+
+describe('segmented publication boundaries', () => {
+  it('reports success once the final file has been atomically committed', () => {
+    const publication = executor.slice(
+      executor.indexOf('None => match tokio::fs::rename(&temp, local_path).await'),
+      executor.indexOf('Ok(ConcurrentRangeOutcome::ServerIgnoredRange) =>'),
+    );
+    expect(publication).toContain('Ok(()) => Ok(())');
+    expect(publication).not.toContain('Ok(()) if cancel_token.is_cancelled()');
+  });
+
+  it('checks cancellation after staging succeeds before permitting a cross-profile upload', () => {
+    const staging = crossProfile.slice(crossProfile.indexOf('match crate::provider_transfer_executor::run_provider_segmented_download('));
+    const successReturn = staging.indexOf('Ok(()) => return Ok(())');
+    const cancellationGuard = staging.indexOf('Ok(()) if options.cancel_token.is_cancelled()');
+    expect(cancellationGuard).toBeGreaterThanOrEqual(0);
+    expect(cancellationGuard).toBeLessThan(successReturn);
+    expect(staging.slice(cancellationGuard, successReturn)).toContain('return Err(');
+  });
+});

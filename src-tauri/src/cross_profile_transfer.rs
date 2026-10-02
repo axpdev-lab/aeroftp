@@ -223,6 +223,13 @@ async fn download_source_to_temp(
                 )
                 .await
                 {
+                    // This is a staging file, not the destination commit: Stop
+                    // must still prevent the subsequent upload.
+                    Ok(()) if options.cancel_token.is_cancelled() => {
+                        return Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        ));
+                    }
                     Ok(()) => return Ok(()),
                     Err(err) if err.is_cancelled() => {
                         return Err(ProviderError::TransferFailed(err.to_string()));

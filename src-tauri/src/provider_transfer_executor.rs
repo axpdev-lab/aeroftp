@@ -578,7 +578,6 @@ pub async fn run_provider_segmented_download(
                     )))
                 }
                 None => match tokio::fs::rename(&temp, local_path).await {
-                    Ok(()) if cancel_token.is_cancelled() => Err(SegmentedDownloadError::Cancelled),
                     Ok(()) => Ok(()),
                     Err(e) => {
                         let _ = tokio::fs::remove_file(&temp).await;
