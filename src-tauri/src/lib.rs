@@ -261,8 +261,6 @@ pub mod rclone_filter;
 pub mod rclone_import;
 pub mod restic_import;
 pub mod restricted_chars;
-mod session_commands;
-mod session_manager;
 pub mod shell_quote;
 #[cfg(all(not(target_os = "macos"), feature = "local-stt"))]
 mod speech;
@@ -3376,12 +3374,6 @@ async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn check_connection(state: State<'_, AppState>) -> Result<bool, String> {
-    let ftp_manager = state.ftp_manager.lock().await;
-    Ok(ftp_manager.is_connected())
-}
-
-#[tauri::command]
 async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
@@ -5519,22 +5511,6 @@ async fn set_speed_limit(
         download_kb, upload_kb
     );
     Ok(())
-}
-
-/// Get current global transfer speed limits (KB/s)
-#[tauri::command]
-async fn get_speed_limit(state: State<'_, AppState>) -> Result<(u64, u64), String> {
-    let dl = state
-        .speed_limits
-        .download_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    let ul = state
-        .speed_limits
-        .upload_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    Ok((dl, ul))
 }
 
 // ============ Environment Detection ============
@@ -19943,8 +19919,7 @@ pub fn run() {
         // AeroShare: registry of the background drive sync tasks consumed by
         // provider_connect for protocol="peer" (lifecycle per D-GUI-1:
         // open-or-tray = serving, Quit = stop).
-        .manage(peer::runtime::PeerRuntime::default())
-        .manage(session_manager::MultiProviderState::new());
+        .manage(peer::runtime::PeerRuntime::default());
 
     // Add PTY state for terminal support (all platforms)
     let builder = builder.manage(create_pty_state());
@@ -19980,7 +19955,6 @@ pub fn run() {
             panic_safe::debug_panic_command,
             connect_ftp,
             disconnect_ftp,
-            check_connection,
             crate::portal_chooser::chooser_unavailable,
             ftp_noop,
             reconnect_ftp,
@@ -19995,7 +19969,6 @@ pub fn run() {
             cancel_transfer,
             reset_cancel_flag,
             set_speed_limit,
-            get_speed_limit,
             is_running_as_snap,
             get_local_files,
             open_in_file_manager,
@@ -20476,12 +20449,9 @@ pub fn run() {
             provider_commands::provider_lock_crypt_overlay,
             provider_commands::provider_rearm_cached_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
-            provider_commands::provider_check_connection,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
-            provider_commands::provider_go_up,
-            provider_commands::provider_pwd,
             provider_commands::provider_download_file,
             provider_commands::provider_detect_aero_remote,
             provider_commands::provider_detect_archive_meta_remote,
@@ -20493,14 +20463,9 @@ pub fn run() {
             provider_commands::provider_delete_dir,
             provider_commands::provider_rename,
             provider_commands::provider_server_copy,
-            provider_commands::provider_supports_server_copy,
-            provider_commands::provider_stat,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
             provider_commands::provider_keep_alive,
-            provider_commands::provider_server_info,
-            provider_commands::provider_file_size,
-            provider_commands::provider_exists,
             // OAuth2 cloud provider commands
             provider_commands::oauth2_start_auth,
             provider_commands::oauth2_complete_auth,
@@ -20613,7 +20578,6 @@ pub fn run() {
             provider_commands::provider_bucket_encryption,
             provider_commands::mega_df_query,
             provider_commands::mega_webdav_url,
-            provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,
             provider_commands::provider_scan_used,
@@ -20696,10 +20660,6 @@ pub fn run() {
             provider_commands::filen_notes_untag_note,
             provider_commands::provider_find,
             provider_commands::provider_set_speed_limit,
-            provider_commands::provider_get_speed_limit,
-            provider_commands::provider_supports_resume,
-            provider_commands::provider_resume_download,
-            provider_commands::provider_resume_upload,
             // File versions
             provider_commands::provider_supports_versions,
             provider_commands::provider_list_versions,
@@ -20749,19 +20709,6 @@ pub fn run() {
             provider_commands::provider_add_permission,
             provider_commands::provider_remove_permission,
             // Multi-session provider commands
-            session_commands::session_connect,
-            session_commands::session_disconnect,
-            session_commands::session_switch,
-            session_commands::session_list,
-            session_commands::session_info,
-            session_commands::session_list_files,
-            session_commands::session_change_dir,
-            session_commands::session_mkdir,
-            session_commands::session_delete,
-            session_commands::session_rename,
-            session_commands::session_download,
-            session_commands::session_upload,
-            session_commands::session_create_share_link,
             spawn_shell,
             pty_write,
             pty_resize,
