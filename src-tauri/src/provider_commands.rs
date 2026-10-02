@@ -16030,6 +16030,16 @@ mod tests {
     struct ProbeProvider {
         probe: InFlightProbe,
         pooled: bool,
+        /// The endpoint the adaptive registry keys its learned targets by.
+        /// That registry is process-global and the tests run in parallel, so
+        /// every run gets its own name unless a test shares one on purpose.
+        endpoint: String,
+    }
+
+    /// A fresh endpoint name, so no other test's batch seeds this one.
+    fn unique_probe_endpoint() -> String {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        format!("in-flight-probe-{}", NEXT.fetch_add(1, Ordering::SeqCst))
     }
 
     #[async_trait::async_trait]
@@ -16041,7 +16051,7 @@ mod tests {
             ProviderType::WebDav
         }
         fn display_name(&self) -> String {
-            "in-flight-probe".to_string()
+            self.endpoint.clone()
         }
         fn transfer_capabilities(&self) -> crate::transfer_dag::TransferCapabilities {
             crate::transfer_dag::TransferCapabilities {
@@ -16074,6 +16084,7 @@ mod tests {
             Ok(Box::new(ProbeProvider {
                 probe: self.probe.clone(),
                 pooled: true,
+                endpoint: self.endpoint.clone(),
             }))
         }
         async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -16166,6 +16177,24 @@ mod tests {
         InFlightProbe,
         tempfile::TempDir,
     ) {
+        let endpoint = unique_probe_endpoint();
+        run_probe_batch_on(&endpoint, direction, pooled, count, max_concurrent, stop_at).await
+    }
+
+    /// `run_probe_batch` against a named endpoint, for a test that needs
+    /// several batches to share what the engine learns about one server.
+    async fn run_probe_batch_on(
+        endpoint: &str,
+        direction: TransferDirection,
+        pooled: bool,
+        count: usize,
+        max_concurrent: u32,
+        stop_at: Option<usize>,
+    ) -> (
+        super::ProviderFileBatchOutcome,
+        InFlightProbe,
+        tempfile::TempDir,
+    ) {
         let batch_stop_flag = Arc::new(AtomicBool::new(false));
         let probe = InFlightProbe {
             stop: stop_at.map(|n| (n, batch_stop_flag.clone())),
@@ -16175,6 +16204,7 @@ mod tests {
             Arc::new(Mutex::new(Some(Box::new(ProbeProvider {
                 probe: probe.clone(),
                 pooled,
+                endpoint: endpoint.to_string(),
             }))));
         let dir = tempfile::tempdir().expect("scratch dir");
         let upload = matches!(direction, TransferDirection::Upload);
@@ -16466,6 +16496,7 @@ mod tests {
             Arc::new(Mutex::new(Some(Box::new(ProbeProvider {
                 probe,
                 pooled: true,
+                endpoint: unique_probe_endpoint(),
             }))));
         let dir = tempfile::tempdir().expect("scratch dir");
         let entries = (0..3)

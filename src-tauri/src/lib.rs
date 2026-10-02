@@ -5520,9 +5520,12 @@ async fn cancel_transfer(
 /// starts each file; files already in flight run to the end. The second Stop
 /// is `cancel_transfer`, which also aborts them.
 #[tauri::command]
-fn stop_starting_transfers(provider_state: State<'_, provider_commands::ProviderState>) {
+async fn stop_starting_transfers(
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
     provider_state.request_batch_stop();
     info!("Soft stop requested: no further file will start");
+    Ok(())
 }
 
 #[tauri::command]
