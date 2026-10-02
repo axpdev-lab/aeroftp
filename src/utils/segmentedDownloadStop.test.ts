@@ -51,3 +51,18 @@ describe('segmented publication boundaries', () => {
     expect(staging.slice(cancellationGuard, successReturn)).toContain('return Err(');
   });
 });
+
+it('rechecks Stop before destination directory, delta transfer, and classic upload', () => {
+  const copy = crossProfile.slice(
+    crossProfile.indexOf('pub async fn copy_one_file_with_options('),
+    crossProfile.indexOf('async fn download_source_to_temp('),
+  );
+  let previousOperation = copy.indexOf('download_source_to_temp(');
+  for (const operation of ['ensure_parent_dir(', 'try_delta_transfer(', 'dest.upload(']) {
+    const position = copy.indexOf(operation);
+    const guard = copy.lastIndexOf('check_copy_cancel(&options.cancel_token)?;', position);
+    expect(guard).toBeGreaterThan(previousOperation);
+    expect(guard).toBeLessThan(position);
+    previousOperation = position;
+  }
+});

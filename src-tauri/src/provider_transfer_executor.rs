@@ -2895,6 +2895,8 @@ mod tests {
         cancel_on_call: Option<(usize, CancellationToken)>,
         reusable: bool,
         ranges: Option<ScriptedRanges>,
+        cancel_on_mkdir: Option<CancellationToken>,
+        upload_calls: usize,
     }
 
     impl FlakyDownloadProvider {
@@ -2905,6 +2907,8 @@ mod tests {
                 cancel_on_call: None,
                 reusable: false,
                 ranges: None,
+                cancel_on_mkdir: None,
+                upload_calls: 0,
             }
         }
 
@@ -3025,9 +3029,13 @@ mod tests {
             _remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), crate::providers::ProviderError> {
+            self.upload_calls += 1;
             Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            if let Some(cancel) = &self.cancel_on_mkdir {
+                cancel.cancel();
+            }
             Ok(())
         }
         async fn delete(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
@@ -3274,6 +3282,41 @@ mod tests {
             1
         );
         assert_eq!(std::fs::read(target).unwrap(), b"ok");
+    }
+
+    #[tokio::test]
+    async fn cross_profile_stop_during_destination_setup_prevents_upload() {
+        let session = CancellationToken::new();
+        let mut source = FlakyDownloadProvider::fail_first(0);
+        let mut dest = FlakyDownloadProvider::fail_first(0);
+        dest.cancel_on_mkdir = Some(session.clone());
+        let options = crate::cross_profile_transfer::CrossProfileCopyOptions {
+            cancel_token: session,
+            ..Default::default()
+        };
+        let error = crate::cross_profile_transfer::copy_one_file_with_options(
+            &mut source,
+            &mut dest,
+            "/source.bin",
+            "/parent/target.bin",
+            None,
+            options,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            crate::transfer_dag::error::message_names_a_cancellation(&error.to_string()),
+            "{error}"
+        );
+        assert_eq!(
+            source.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the source was already staged before Stop"
+        );
+        assert_eq!(
+            dest.upload_calls, 0,
+            "Stop during destination setup prevents the upload from starting"
+        );
     }
 
     #[tokio::test]
