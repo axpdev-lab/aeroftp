@@ -66,3 +66,13 @@ it('rechecks Stop before destination directory, delta transfer, and classic uplo
     previousOperation = position;
   }
 });
+
+it('rechecks Stop immediately before the cross-profile single-stream fallback', () => {
+  const staging = crossProfile.slice(
+    crossProfile.indexOf('async fn download_source_to_temp('),
+    crossProfile.indexOf('// ── Planning:'),
+  );
+  expect(staging).toContain(
+    'check_copy_cancel(&options.cancel_token)?;\n    source.download(source_path, tmp_path, None).await',
+  );
+});
