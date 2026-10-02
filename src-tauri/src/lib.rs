@@ -16105,6 +16105,11 @@ async fn resume_aerocloud(
         Ok(config.clone())
     })?;
 
+    // pause_aerocloud put the tray on its Paused badge. With sync_on_startup
+    // off the worker waits for a trigger before its first cycle, so nothing
+    // else would repaint it.
+    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
+
     // Best-effort start. If a worker is already running start_background_sync
     // returns Ok early. If the config is invalid we surface the error so the
     // caller can show it to the user.
