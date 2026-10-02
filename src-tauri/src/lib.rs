@@ -10267,6 +10267,26 @@ pub(crate) fn is_secondary_window_label(label: &str) -> bool {
         || label.starts_with(ai_approval_window::LABEL_PREFIX)
 }
 
+/// An empty menu for a secondary window's builder.
+///
+/// A window built without a menu of its own gets the global app menu attached
+/// while it is created, before `remove_menu` can run. With `appmenu-gtk-module`
+/// loaded (the GNOME default on Ubuntu) attaching that menu to a second live
+/// window recurses inside GTK until the main thread overflows its stack, so
+/// opening the AeroAgent approval window crashed the app. An empty menu of its
+/// own keeps the global one off the new window. Linux only: on macOS a window
+/// menu would replace the app menu, and the crash is GTK's.
+#[cfg(target_os = "linux")]
+pub(crate) fn secondary_window_menu(app: &AppHandle) -> Option<tauri::menu::Menu<tauri::Wry>> {
+    match tauri::menu::Menu::new(app) {
+        Ok(menu) => Some(menu),
+        Err(e) => {
+            log::warn!("Cannot create the empty menu of a secondary window: {e}");
+            None
+        }
+    }
+}
+
 pub(crate) fn strip_menu_from_secondary_windows(app: &AppHandle) {
     for (label, window) in app.webview_windows() {
         if is_secondary_window_label(&label) {
@@ -10314,6 +10334,11 @@ fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
         .initialization_script(&init);
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
+    #[cfg(target_os = "linux")]
+    let builder = match secondary_window_menu(app) {
+        Some(menu) => builder.menu(menu),
+        None => builder,
+    };
     let builder = match portable::webview_data_dir() {
         Some(dir) => builder.data_directory(dir),
         None => builder,

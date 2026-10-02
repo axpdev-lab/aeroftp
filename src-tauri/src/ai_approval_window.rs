@@ -152,6 +152,12 @@ fn build_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     {
         builder = builder.decorations(false);
     }
+    // Keep the global app menu off this window (GTK stack overflow with
+    // appmenu-gtk-module, see `secondary_window_menu`).
+    #[cfg(target_os = "linux")]
+    if let Some(menu) = crate::secondary_window_menu(app) {
+        builder = builder.menu(menu);
+    }
     if let Some(main) = app.get_webview_window("main") {
         builder = builder
             .parent(&main)
