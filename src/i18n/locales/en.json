@@ -3355,6 +3355,11 @@
             "selectAll": "Select All",
             "deselectAll": "Deselect All",
             "selected": "selected",
+            "filterServersPlaceholder": "Filter by name, host, protocol or user",
+            "selectShown": "Select the {count} shown",
+            "deselectShown": "Deselect the {count} shown",
+            "filterShownCount": "{shown} shown",
+            "selectedHiddenByFilter": "{count} selected but hidden by the filter, still included",
             "fileExistsAsk": "Ask each time",
             "fileExistsOverwrite": "Overwrite",
             "fileExistsRename": "Rename (add number)",
@@ -5177,6 +5182,7 @@
             "backToServers": "Back to servers",
             "addFavorite": "Add to favorites",
             "removeFavorite": "Remove from favorites",
+            "exportProfile": "Export...",
             "group": {
                 "newGroup": "New group",
                 "newGroupEllipsis": "New group...",
@@ -5186,8 +5192,9 @@
                 "namePlaceholder": "Group name",
                 "rename": "Rename group",
                 "delete": "Delete group",
+                "export": "Export group...",
                 "confirmDelete": "Delete the group \"{name}\"? The servers in it are kept, only the group is removed.",
-                "chipHint": "Click to filter; right-click to rename or delete"
+                "chipHint": "Click to filter; right-click to rename, export or delete"
             },
             "storageUsedOf": "{used} used of {total}",
             "storageVersioning": "File versions: {size}",

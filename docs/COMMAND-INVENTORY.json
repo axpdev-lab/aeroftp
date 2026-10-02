@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 880
+    "tauri_commands": 873
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 503,
+    "name_matched_count": 501,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1035,24 +1035,19 @@
       "user_partitions_health",
       "user_partitions_repair_rebuild",
       "restart_app",
-      "user_partitions_get_active_user",
       "user_partitions_relocate_server_profile",
       "user_partitions_add_user",
       "user_partitions_unlock_user",
       "user_partitions_lock_session",
       "user_partitions_unlock_status",
       "user_partitions_change_passphrase",
-      "user_partitions_set_active_user",
       "user_partitions_set_user_avatar",
       "user_partitions_set_admin",
       "user_partitions_set_default_user",
       "user_partitions_admin_reset_passphrase",
       "user_partitions_storage_stats",
-      "user_partitions_debug_state",
       "user_partitions_get_active_setting",
       "user_partitions_set_active_setting",
-      "user_partitions_get_user_credential",
-      "user_partitions_set_user_credential",
       "aeroshare_notify",
       "aeroshare_inbox_root",
       "native_rsync_feature_compiled",
@@ -1331,7 +1326,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 377,
+    "name_unmatched_count": 372,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1526,7 +1521,6 @@
       "user_partitions_repair_rebuild",
       "restart_app",
       "user_partitions_list_users",
-      "user_partitions_get_active_user",
       "user_partitions_load_active_server_profiles",
       "user_partitions_save_active_server_profiles",
       "user_partitions_relocate_server_profile",
@@ -1536,7 +1530,6 @@
       "user_partitions_lock_session",
       "user_partitions_unlock_status",
       "user_partitions_change_passphrase",
-      "user_partitions_set_active_user",
       "user_partitions_rename_user",
       "user_partitions_set_user_avatar",
       "user_partitions_reorder_users",
@@ -1545,14 +1538,9 @@
       "user_partitions_set_default_user",
       "user_partitions_admin_reset_passphrase",
       "user_partitions_storage_stats",
-      "user_partitions_debug_state",
       "user_partitions_get_active_setting",
       "user_partitions_set_active_setting",
       "user_partitions_delete_active_setting",
-      "user_partitions_list_active_setting_scopes",
-      "user_partitions_get_user_credential",
-      "user_partitions_set_user_credential",
-      "user_partitions_delete_user_credential",
       "mcp_client_list_servers",
       "mcp_client_upsert_server",
       "mcp_client_remove_server",
@@ -2218,6 +2206,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 880
+    "count": 873
   }
 }

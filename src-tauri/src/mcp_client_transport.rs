@@ -544,6 +544,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delayed_modern_probe_stays_modern_and_keeps_metadata() {
+        // The fixture answers discovery after 3.5 s. A generous budget keeps a
+        // loaded runner's slow Node start from turning this into a timeout.
+        let (config, env) = fixture("modern-slow-probe");
+        let limits = Limits {
+            request: Duration::from_secs(20),
+            shutdown: Duration::from_millis(250),
+        };
+        let mut supervisor =
+            StdioSupervisor::connect(config, env, limits, &CancellationToken::new())
+                .await
+                .unwrap();
+        assert_eq!(supervisor.era(), Era::Modern);
+        let mut params = Map::new();
+        params.insert("name".into(), Value::String("echo".into()));
+        params.insert("arguments".into(), serde_json::json!({"text":"slow reply"}));
+        let result = supervisor
+            .call("tools/call", params, &CancellationToken::new())
+            .await
+            .unwrap();
+        assert_eq!(result["content"][0]["text"], "slow reply");
+        assert!(supervisor.shutdown().await);
+    }
+
+    #[tokio::test]
     async fn legacy_exit_requires_valid_fresh_initialize() {
         let mut supervisor = connect("legacy").await.unwrap();
         assert_eq!(supervisor.era(), Era::Legacy(protocol::LEGACY_AEROFTP));
