@@ -102,14 +102,9 @@
             "connectionFailed": "Anslutning misslyckades",
             "reconnecting": "Återansluter...",
             "quickConnect": "Snabbanslut",
-            "savedServers": "Sparade servrar",
-            "noSavedServers": "Inga sparade servrar",
             "saveServer": "Spara server",
-            "deleteServer": "Radera server",
-            "editServer": "Redigera server",
             "serverName": "Servernamn",
             "initialPath": "Startsökväg",
-            "savedServersHelp": "Välj en server att ansluta till.",
             "selectSshKey": "Välj SSH privat nyckel",
             "allFiles": "Alla filer",
             "sshKeys": "SSH-nycklar",
@@ -132,7 +127,6 @@
             "emailAccount": "E-postkonto",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ditt MEGA-lösenord",
-            "dismiss": "Avvisa",
             "authenticating": "Autentiserar...",
             "oauth2Connection": "OAuth2-anslutning",
             "securityTitle": "Krypterad inloggningslagring",
@@ -170,7 +164,6 @@
             "docs": "Dokument",
             "minutes": "minuter",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Sök servrar...",
             "fourshared": {
                 "backToExistingAccount": "Tillbaka till befintligt konto",
                 "configureCredentials": "Konfigurera OAuth 1.0-uppgifter",
@@ -242,8 +235,6 @@
             "koofrAppPassword": "Applösenord",
             "koofrAppPasswordPlaceholder": "Klistra in ditt Koofr-applösenord här",
             "koofrHelp": "Generera ett applösenord på app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Duplicera server",
-            "duplicateCredentialMissing": "Autentiseringsuppgiften kopierades inte till dubbletten. Ange lösenordet igen innan du ansluter.",
             "saveAsNew": "Spara som ny",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Logga in igen",
             "twakeSignedIn": "Inloggad",
             "twakeWaitingBrowser": "Slutför inloggningen i din webbläsare...",
-            "twakeSignInHelp": "AeroFTP öppnar Twake i din webbläsare och begär endast åtkomst till dina filer. Om Twake visar ett fel första gången, logga in på Twake i webbläsaren och logga in igen. Du kan när som helst återkalla åtkomsten i Twake-inställningar, Anslutna enheter."
+            "twakeSignInHelp": "AeroFTP öppnar Twake i din webbläsare och begär endast åtkomst till dina filer. Om Twake visar ett fel första gången, logga in på Twake i webbläsaren och logga in igen. Du kan när som helst återkalla åtkomsten i Twake-inställningar, Anslutna enheter.",
+            "oauthKeysMissingTitle": "Appnycklar för {provider} saknas",
+            "oauthKeysMissing": "Inga appnycklar för {provider} finns sparade i valvet, så AeroFTP kan inte logga in. AeroFTP levereras inte med egna nycklar: ange nycklarna för din {provider}-utvecklarapp i {location} och anslut igen.",
+            "oauthKeysOpenSettings": "Öppna OAuth-inställningar",
+            "oauthKeysReadFailedTitle": "Det går inte att läsa appnycklar för {provider}",
+            "oauthKeysReadFailed": "AeroFTP kunde inte läsa appnycklarna för {provider} från valvet och kan därför inte logga in. Nycklarna ändrades inte. Fel: {error}"
         },
         "browser": {
             "remote": "Fjärr",
@@ -1720,7 +1716,8 @@
             "overlay_locked": "Krypterat överlägg låst",
             "aerocrypt_marker_migrate": "Konverterar AeroCrypt-markör till .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markör konverterad till .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Låser upp mappen {filename}..."
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -3086,7 +3083,18 @@
                     "startFailed": "Den lokala servern kunde inte startas.",
                     "serverFailed": "Servern stoppades eller skickade ett ogiltigt svar.",
                     "httpUnauthorized": "Servern avvisade de sparade inloggningsuppgifterna.",
-                    "unsupportedVersion": "Servern använder en MCP-version som AeroFTP inte stöder."
+                    "unsupportedVersion": "Servern använder en MCP-version som AeroFTP inte stöder.",
+                    "directoryInvalid": "Välj en särskild katalog utan länkar eller känsliga programfiler.",
+                    "directoryChanged": "Den godkända katalogen har ändrats eller saknas. Välj den igen för att förnya åtkomsten.",
+                    "permissionCommand": "Ändra åtkomst via inställningarna för katalog- och nätverksbehörigheter.",
+                    "installInvalid": "Den här hanterade installationen är inte tillgänglig eller dess manifest är ogiltigt.",
+                    "installIntegrity": "Paketets integritetskontroll misslyckades. Ta bort och installera om servern.",
+                    "installArchive": "Paketet innehåller osäkra sökvägar, länkar eller en ogiltig startfil.",
+                    "installRuntime": "Den nödvändiga systemkörmiljön saknas.",
+                    "installDownload": "Hämtningen av paketet misslyckades eller tog för lång tid.",
+                    "installLimit": "Paketet överskrider installationsgränserna.",
+                    "installExists": "Ta bort den befintliga installationen innan du installerar om.",
+                    "installIo": "Installationsfilerna kunde inte läsas eller skrivas."
                 },
                 "routingNotice": "Aktiverade servrar erbjuder sina verktyg till AeroAgent. Varje verktygsanrop ber först om ditt godkännande.",
                 "checkNow": "Kontrollera nu",
@@ -3095,7 +3103,19 @@
                 "healthError": "Otillgänglig: {reason}",
                 "healthReady": "Redo, verktyg tillgängliga för AeroAgent: {count}",
                 "healthUnsupported": "Verktyg med scheman som inte stöds: {count}",
-                "healthShowTools": "Visa verktyg"
+                "healthShowTools": "Visa verktyg",
+                "directoryTitle": "Skrivskyddade kataloger",
+                "grantDirectory": "Välj katalog",
+                "confirmDirectory": "Ge denna server läsbehörighet till alla filer i {path}? Ge endast åtkomst till en särskild server- eller projektkatalog.",
+                "noDirectories": "Ingen katalogåtkomst.",
+                "revokeDirectory": "Återkalla åtkomst",
+                "confirmRevokeDirectory": "Återkalla åtkomst till {path}? Tidigare verktygsgodkännanden är då inte längre giltiga.",
+                "networkAccess": "Tillåt nätverksåtkomst (alla värdar)",
+                "networkBlocked": "Nätverksåtkomst är blockerad.",
+                "confirmNetwork": "Tillåta {name} att komma åt nätverket, inklusive lokala tjänster? Tidigare verktygsgodkännanden är då inte längre giltiga.",
+                "confirmBlockNetwork": "Blockera nätverksåtkomst för {name}? Tidigare verktygsgodkännanden är då inte längre giltiga.",
+                "managedStatus": "Hanterad installation: {version}",
+                "renewDirectory": "Förnya åtkomst"
             }
         },
         "archive": {
@@ -4103,12 +4123,6 @@
             "viewSource": "Visa källa"
         },
         "savedServers": {
-            "dragToReorder": "Dra för att ordna om",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Konfigurera 4shared-uppgifter i Inställningar > Molnleverantörer.",
-            "oauthConfigError": "Konfigurera {provider}-uppgifter i Inställningar > Molnleverantörer.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4442,16 +4456,23 @@
             "tagsPlaceholder": "Lägg till en tagg...",
             "tagsUpdated": "Taggar uppdaterade",
             "addTag": "Lägg till",
-            "noTags": "Inga taggar"
+            "noTags": "Inga taggar",
+            "collaborators": "Medarbetare",
+            "noCollaborators": "Inte delad med någon än",
+            "folderNotLocked": "Den här mappen är inte låst",
+            "roleEditor": "Redigerare",
+            "roleViewer": "Visare",
+            "rolePreviewer": "Förhandsgranskare",
+            "roleUploader": "Uppladdare",
+            "rolePreviewerUploader": "Förhandsgranskare och uppladdare",
+            "roleViewerUploader": "Visare och uppladdare",
+            "roleCoOwner": "Medägare"
         },
         "googledrive": {
             "star": "Markera med stjärna",
             "unstar": "Ta bort stjärna",
             "starred": "Filen markerad med stjärna",
-            "unstarred": "Stjärnmarkering borttagen",
-            "addComment": "Lägg till kommentar",
-            "commentPlaceholder": "Skriv din kommentar...",
-            "commentAdded": "Kommentar tillagd"
+            "unstarred": "Stjärnmarkering borttagen"
         },
         "dropbox": {
             "manageTags": "Hantera taggar"
@@ -4774,7 +4795,14 @@
             "participants": "deltagare",
             "saving": "Sparar...",
             "saved": "Sparat",
-            "saveNow": "Spara nu"
+            "saveNow": "Spara nu",
+            "noteType": "Anteckningstyp",
+            "addTag": "Lägg till tagg",
+            "newTag": "Ny tagg...",
+            "tagName": "Taggnamn",
+            "removeTag": "Ta bort tagg",
+            "manageTags": "Hantera taggar",
+            "deleteTagConfirm": "Ta bort taggen ”{name}”? Anteckningarna behåller sin text."
         },
         "shareLinkModal": {
             "title": "Delningslänk",
@@ -6050,6 +6078,10 @@
             "scopeSession": "Godkänner det här verktyget under resten av chattsessionen.",
             "approve": "Godkänn",
             "rememberForChat": "Tillåt det här verktyget under resten av chatten"
+        },
+        "fileComments": {
+            "title": "Kommentarer",
+            "empty": "Inga kommentarer än"
         }
     }
 }

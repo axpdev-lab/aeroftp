@@ -102,14 +102,9 @@
             "connectionFailed": "การเชื่อมต่อล้มเหลว",
             "reconnecting": "กำลังเชื่อมต่อใหม่...",
             "quickConnect": "เชื่อมต่อด่วน",
-            "savedServers": "เซิร์ฟเวอร์ที่บันทึก",
-            "noSavedServers": "ไม่มีเซิร์ฟเวอร์ที่บันทึก",
             "saveServer": "บันทึกเซิร์ฟเวอร์",
-            "deleteServer": "ลบเซิร์ฟเวอร์",
-            "editServer": "แก้ไขเซิร์ฟเวอร์",
             "serverName": "ชื่อเซิร์ฟเวอร์",
             "initialPath": "เส้นทางเริ่มต้น",
-            "savedServersHelp": "เลือกเซิร์ฟเวอร์เพื่อเชื่อมต่อ",
             "selectSshKey": "เลือกคีย์ส่วนตัว SSH",
             "allFiles": "ไฟล์ทั้งหมด",
             "sshKeys": "คีย์ SSH",
@@ -132,7 +127,6 @@
             "emailAccount": "บัญชีอีเมล",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "รหัสผ่าน MEGA ของคุณ",
-            "dismiss": "ปิด",
             "authenticating": "กำลังตรวจสอบสิทธิ์...",
             "oauth2Connection": "การเชื่อมต่อ OAuth2",
             "securityTitle": "การจัดเก็บข้อมูลรับรองแบบเข้ารหัส",
@@ -170,7 +164,6 @@
             "docs": "เอกสาร",
             "minutes": "นาที",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "ค้นหาเซิร์ฟเวอร์...",
             "fourshared": {
                 "backToExistingAccount": "กลับไปยังบัญชีที่มีอยู่",
                 "configureCredentials": "ตั้งค่าข้อมูลรับรอง OAuth 1.0",
@@ -242,8 +235,6 @@
             "koofrAppPassword": "รหัสผ่านแอปพลิเคชัน",
             "koofrAppPasswordPlaceholder": "วางรหัสผ่านแอปพลิเคชัน Koofr ของคุณที่นี่",
             "koofrHelp": "สร้างรหัสผ่านแอปพลิเคชันที่ app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "ทำซ้ำเซิร์ฟเวอร์",
-            "duplicateCredentialMissing": "ไม่ได้คัดลอกข้อมูลรับรองไปยังรายการที่ทำซ้ำ ป้อนรหัสผ่านอีกครั้งก่อนเชื่อมต่อ",
             "saveAsNew": "บันทึกเป็นรายการใหม่",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "ลงชื่อเข้าใช้อีกครั้ง",
             "twakeSignedIn": "ลงชื่อเข้าใช้แล้ว",
             "twakeWaitingBrowser": "ดำเนินการลงชื่อเข้าใช้ในเบราว์เซอร์ของคุณให้เสร็จสิ้น...",
-            "twakeSignInHelp": "AeroFTP จะเปิด Twake ในเบราว์เซอร์ของคุณและขอสิทธิ์เข้าถึงเฉพาะไฟล์ของคุณเท่านั้น หาก Twake แสดงข้อผิดพลาดในครั้งแรก ให้เข้าสู่ระบบ Twake ในเบราว์เซอร์แล้วลงชื่อเข้าใช้อีกครั้ง คุณสามารถเพิกถอนสิทธิ์การเข้าถึงได้ทุกเมื่อในการตั้งค่า Twake หัวข้ออุปกรณ์ที่เชื่อมต่อ"
+            "twakeSignInHelp": "AeroFTP จะเปิด Twake ในเบราว์เซอร์ของคุณและขอสิทธิ์เข้าถึงเฉพาะไฟล์ของคุณเท่านั้น หาก Twake แสดงข้อผิดพลาดในครั้งแรก ให้เข้าสู่ระบบ Twake ในเบราว์เซอร์แล้วลงชื่อเข้าใช้อีกครั้ง คุณสามารถเพิกถอนสิทธิ์การเข้าถึงได้ทุกเมื่อในการตั้งค่า Twake หัวข้ออุปกรณ์ที่เชื่อมต่อ",
+            "oauthKeysMissingTitle": "ไม่พบคีย์แอปของ {provider}",
+            "oauthKeysMissing": "ไม่มีคีย์แอปของ {provider} เก็บอยู่ในห้องนิรภัย AeroFTP จึงไม่สามารถลงชื่อเข้าใช้ได้ AeroFTP ไม่มีคีย์ของตัวเองให้: โปรดป้อนคีย์ของแอปนักพัฒนา {provider} ของคุณใน {location} แล้วเชื่อมต่ออีกครั้ง",
+            "oauthKeysOpenSettings": "เปิดการตั้งค่า OAuth",
+            "oauthKeysReadFailedTitle": "ไม่สามารถอ่านคีย์แอปของ {provider}",
+            "oauthKeysReadFailed": "AeroFTP อ่านคีย์แอปของ {provider} จากห้องนิรภัยไม่ได้ จึงลงชื่อเข้าใช้ไม่ได้ คีย์ไม่ได้ถูกเปลี่ยนแปลง ข้อผิดพลาด: {error}"
         },
         "browser": {
             "remote": "ระยะไกล",
@@ -1720,7 +1716,8 @@
             "overlay_locked": "ล็อกโอเวอร์เลย์ที่เข้ารหัสแล้ว",
             "aerocrypt_marker_migrate": "กำลังแปลงเครื่องหมาย AeroCrypt เป็น .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "แปลงตัวทำเครื่องหมาย AeroCrypt เป็น .aerocrypt.tsv แล้ว",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] กำลังปลดล็อกโฟลเดอร์ {filename}..."
         },
         "protocol": {
             "selectProtocol": "เลือกโปรโตคอล...",
@@ -3086,7 +3083,18 @@
                     "startFailed": "ไม่สามารถเริ่มเซิร์ฟเวอร์ในเครื่องได้",
                     "serverFailed": "เซิร์ฟเวอร์หยุดทำงานหรือส่งการตอบกลับที่ไม่ถูกต้อง",
                     "httpUnauthorized": "เซิร์ฟเวอร์ปฏิเสธข้อมูลรับรองที่บันทึกไว้",
-                    "unsupportedVersion": "เซิร์ฟเวอร์ใช้ MCP เวอร์ชันที่ AeroFTP ไม่รองรับ"
+                    "unsupportedVersion": "เซิร์ฟเวอร์ใช้ MCP เวอร์ชันที่ AeroFTP ไม่รองรับ",
+                    "directoryInvalid": "เลือกไดเรกทอรีเฉพาะที่ไม่มีลิงก์หรือไฟล์แอปพลิเคชันที่เป็นข้อมูลอ่อนไหว",
+                    "directoryChanged": "ไดเรกทอรีที่อนุญาตเปลี่ยนไปหรือไม่พบ เลือกอีกครั้งเพื่อต่ออายุสิทธิ์การเข้าถึง",
+                    "permissionCommand": "เปลี่ยนสิทธิ์การเข้าถึงผ่านตัวควบคุมสิทธิ์ไดเรกทอรีและเครือข่าย",
+                    "installInvalid": "การติดตั้งแบบจัดการนี้ไม่พร้อมใช้งานหรือไฟล์รายการไม่ถูกต้อง",
+                    "installIntegrity": "ตรวจสอบความสมบูรณ์ของแพ็กเกจไม่สำเร็จ ลบเซิร์ฟเวอร์แล้วติดตั้งใหม่",
+                    "installArchive": "แพ็กเกจมีเส้นทางที่ไม่ปลอดภัย ลิงก์ หรือไฟล์เริ่มต้นที่ไม่ถูกต้อง",
+                    "installRuntime": "ไม่พบรันไทม์ของระบบที่จำเป็น",
+                    "installDownload": "ดาวน์โหลดแพ็กเกจไม่สำเร็จหรือหมดเวลา",
+                    "installLimit": "แพ็กเกจเกินขีดจำกัดการติดตั้ง",
+                    "installExists": "ลบการติดตั้งเดิมก่อนติดตั้งใหม่",
+                    "installIo": "ไม่สามารถอ่านหรือเขียนไฟล์การติดตั้งได้"
                 },
                 "routingNotice": "เซิร์ฟเวอร์ที่เปิดใช้งานจะมอบเครื่องมือของตนให้ AeroAgent การเรียกใช้เครื่องมือทุกครั้งจะขออนุมัติจากคุณก่อน",
                 "checkNow": "ตรวจสอบตอนนี้",
@@ -3095,7 +3103,19 @@
                 "healthError": "ใช้งานไม่ได้: {reason}",
                 "healthReady": "พร้อมแล้ว เครื่องมือที่ AeroAgent ใช้ได้: {count}",
                 "healthUnsupported": "เครื่องมือที่มีสคีมาที่ไม่รองรับ: {count}",
-                "healthShowTools": "แสดงเครื่องมือ"
+                "healthShowTools": "แสดงเครื่องมือ",
+                "directoryTitle": "ไดเรกทอรีแบบอ่านอย่างเดียว",
+                "grantDirectory": "เลือกไดเรกทอรี",
+                "confirmDirectory": "ให้เซิร์ฟเวอร์นี้อ่านทุกไฟล์ใน {path} ได้หรือไม่? ให้สิทธิ์เฉพาะไดเรกทอรีที่จัดไว้สำหรับเซิร์ฟเวอร์หรือโครงการเท่านั้น",
+                "noDirectories": "ไม่มีสิทธิ์เข้าถึงไดเรกทอรี",
+                "revokeDirectory": "เพิกถอนสิทธิ์",
+                "confirmRevokeDirectory": "เพิกถอนสิทธิ์เข้าถึง {path} หรือไม่? การอนุมัติเครื่องมือก่อนหน้านี้จะไม่มีผลอีกต่อไป",
+                "networkAccess": "อนุญาตให้เข้าถึงเครือข่าย (ทุกโฮสต์)",
+                "networkBlocked": "การเข้าถึงเครือข่ายถูกบล็อก",
+                "confirmNetwork": "อนุญาตให้ {name} เข้าถึงเครือข่ายรวมถึงบริการภายในเครื่องหรือไม่? การอนุมัติเครื่องมือก่อนหน้านี้จะไม่มีผลอีกต่อไป",
+                "confirmBlockNetwork": "บล็อกการเข้าถึงเครือข่ายของ {name} หรือไม่? การอนุมัติเครื่องมือก่อนหน้านี้จะไม่มีผลอีกต่อไป",
+                "managedStatus": "การติดตั้งที่จัดการ: {version}",
+                "renewDirectory": "ต่ออายุสิทธิ์เข้าถึง"
             }
         },
         "archive": {
@@ -4103,12 +4123,6 @@
             "viewSource": "ดูซอร์สโค้ด"
         },
         "savedServers": {
-            "dragToReorder": "ลากเพื่อจัดเรียงใหม่",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "กรุณาตั้งค่าข้อมูลรับรอง 4shared ใน การตั้งค่า > ผู้ให้บริการคลาวด์",
-            "oauthConfigError": "กรุณาตั้งค่าข้อมูลรับรอง {provider} ใน การตั้งค่า > ผู้ให้บริการคลาวด์",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4442,16 +4456,23 @@
             "tagsPlaceholder": "เพิ่มแท็ก...",
             "tagsUpdated": "อัปเดตแท็กแล้ว",
             "addTag": "เพิ่ม",
-            "noTags": "ไม่มีแท็ก"
+            "noTags": "ไม่มีแท็ก",
+            "collaborators": "ผู้ทำงานร่วมกัน",
+            "noCollaborators": "ยังไม่ได้แชร์กับใคร",
+            "folderNotLocked": "โฟลเดอร์นี้ไม่ได้ถูกล็อก",
+            "roleEditor": "ผู้แก้ไข",
+            "roleViewer": "ผู้ดู",
+            "rolePreviewer": "ผู้ดูตัวอย่าง",
+            "roleUploader": "ผู้อัปโหลด",
+            "rolePreviewerUploader": "ผู้ดูตัวอย่างและอัปโหลด",
+            "roleViewerUploader": "ผู้ดูและอัปโหลด",
+            "roleCoOwner": "เจ้าของร่วม"
         },
         "googledrive": {
             "star": "ติดดาว",
             "unstar": "เอาดาวออก",
             "starred": "ติดดาวไฟล์แล้ว",
-            "unstarred": "เอาดาวออกแล้ว",
-            "addComment": "เพิ่มความคิดเห็น",
-            "commentPlaceholder": "เขียนความคิดเห็นของคุณ...",
-            "commentAdded": "เพิ่มความคิดเห็นแล้ว"
+            "unstarred": "เอาดาวออกแล้ว"
         },
         "dropbox": {
             "manageTags": "จัดการแท็ก"
@@ -4774,7 +4795,14 @@
             "participants": "ผู้เข้าร่วม",
             "saving": "กำลังบันทึก...",
             "saved": "บันทึกแล้ว",
-            "saveNow": "บันทึกเดี๋ยวนี้"
+            "saveNow": "บันทึกเดี๋ยวนี้",
+            "noteType": "ประเภทโน้ต",
+            "addTag": "เพิ่มแท็ก",
+            "newTag": "แท็กใหม่...",
+            "tagName": "ชื่อแท็ก",
+            "removeTag": "นำแท็กออก",
+            "manageTags": "จัดการแท็ก",
+            "deleteTagConfirm": "ลบแท็ก “{name}” หรือไม่ โน้ตจะยังคงข้อความไว้"
         },
         "shareLinkModal": {
             "title": "ลิงก์แชร์",
@@ -6050,6 +6078,10 @@
             "scopeSession": "อนุมัติเครื่องมือนี้ตลอดเซสชันแชตที่เหลือ",
             "approve": "อนุมัติ",
             "rememberForChat": "อนุญาตเครื่องมือนี้ตลอดแชตนี้ที่เหลือ"
+        },
+        "fileComments": {
+            "title": "ความคิดเห็น",
+            "empty": "ยังไม่มีความคิดเห็น"
         }
     }
 }

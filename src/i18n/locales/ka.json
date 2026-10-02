@@ -102,14 +102,9 @@
             "connectionFailed": "დაკავშირება ვერ მოხერხდა",
             "reconnecting": "ხელახლა დაკავშირება...",
             "quickConnect": "სწრაფი დაკავშირება",
-            "savedServers": "შენახული სერვერები",
-            "noSavedServers": "შენახული სერვერები არ არის",
             "saveServer": "სერვერის შენახვა",
-            "deleteServer": "სერვერის წაშლა",
-            "editServer": "სერვერის რედაქტირება",
             "serverName": "სერვერის სახელი",
             "initialPath": "საწყისი გზა",
-            "savedServersHelp": "აირჩიეთ სერვერი დასაკავშირებლად.",
             "selectSshKey": "აირჩიეთ SSH პირადი გასაღები",
             "allFiles": "ყველა ფაილი",
             "sshKeys": "SSH გასაღებები",
@@ -132,7 +127,6 @@
             "emailAccount": "ელ-ფოსტის ანგარიში",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "თქვენი MEGA პაროლი",
-            "dismiss": "დახურვა",
             "authenticating": "ავთენტიფიკაცია...",
             "oauth2Connection": "OAuth2 კავშირი",
             "securityTitle": "დაშიფრული ავტორიზაციის მონაცემების საცავი",
@@ -170,7 +164,6 @@
             "docs": "დოკუმენტები",
             "minutes": "წუთი",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "სერვერების ძიება...",
             "fourshared": {
                 "backToExistingAccount": "არსებულ ანგარიშზე დაბრუნება",
                 "configureCredentials": "OAuth 1.0 სერთიფიკატების კონფიგურაცია",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "აპლიკაციის პароლი",
             "koofrAppPasswordPlaceholder": "იტოვეთ თქვენი Koofr აპლიკაციის პაროლი აქ",
             "koofrHelp": "შექმენით აპლიკაციის პაროლი app.koofr.net → პარამეტრები → პაროლი → აპლიკაციის პაროლი-ზე",
-            "duplicateServer": "სერვერის დუბლირება",
-            "duplicateCredentialMissing": "სერთიფიკატი არ დაკოპირდა დუბლიკატში. ხელახლა შეიყვანეთ პაროლი დაკავშირებამდე.",
             "saveAsNew": "ახლად შენახვა",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "ხელახლა შესვლა",
             "twakeSignedIn": "შესული ხართ",
             "twakeWaitingBrowser": "დაასრულეთ შესვლა თქვენს ბრაუზერში...",
-            "twakeSignInHelp": "AeroFTP ხსნის Twake-ს თქვენს ბრაუზერში და ითხოვს წვდომას მხოლოდ თქვენს ფაილებზე. თუ Twake პირველად შეცდომას აჩვენებს, შედით Twake-ში ბრაუზერში და კვლავ შედით სისტემაში. წვდომის გაუქმება შეგიძლიათ ნებისმიერ დროს Twake-ის პარამეტრებში, დაკავშირებული მოწყობილობები."
+            "twakeSignInHelp": "AeroFTP ხსნის Twake-ს თქვენს ბრაუზერში და ითხოვს წვდომას მხოლოდ თქვენს ფაილებზე. თუ Twake პირველად შეცდომას აჩვენებს, შედით Twake-ში ბრაუზერში და კვლავ შედით სისტემაში. წვდომის გაუქმება შეგიძლიათ ნებისმიერ დროს Twake-ის პარამეტრებში, დაკავშირებული მოწყობილობები.",
+            "oauthKeysMissingTitle": "{provider}-ის აპლიკაციის გასაღებები აკლია",
+            "oauthKeysMissing": "საცავში {provider}-ის აპლიკაციის გასაღებები შენახული არ არის, ამიტომ AeroFTP ვერ შედის სისტემაში. AeroFTP საკუთარ გასაღებებს არ აწვდის: შეიყვანეთ თქვენი {provider}-ის დეველოპერის აპლიკაციის გასაღებები აქ: {location}, შემდეგ კვლავ დაუკავშირდით.",
+            "oauthKeysOpenSettings": "OAuth-ის პარამეტრების გახსნა",
+            "oauthKeysReadFailedTitle": "{provider}-ის აპის გასაღებების წაკითხვა ვერ მოხერხდა",
+            "oauthKeysReadFailed": "AeroFTP-მა ვერ წაიკითხა {provider}-ის აპის გასაღებები საცავიდან, ამიტომ ვერ შედის სისტემაში. გასაღებები არ შეცვლილა. შეცდომა: {error}"
         },
         "browser": {
             "remote": "დისტანციური",
@@ -1720,7 +1716,8 @@
             "overlay_locked": "დაშიფრული ფენა ჩაკეტილია",
             "aerocrypt_marker_migrate": "AeroCrypt-ის მარკერი გარდაიქმნება .aerocrypt.tsv ფორმატში…",
             "aerocrypt_marker_migrated": "AeroCrypt-ის მარკერი გარდაქმნილია .aerocrypt.tsv ფორმატში",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] საქაღალდის {filename} განბლოკვა..."
         },
         "protocol": {
             "selectProtocol": "აირჩიეთ პროტოკოლი...",
@@ -3086,7 +3083,18 @@
                     "startFailed": "ლოკალური სერვერის გაშვება ვერ მოხერხდა.",
                     "serverFailed": "სერვერი გაჩერდა ან არასწორი პასუხი გამოგზავნა.",
                     "httpUnauthorized": "სერვერმა შენახული რწმუნებათა სიგელები უარყო.",
-                    "unsupportedVersion": "სერვერი იყენებს MCP-ის ვერსიას, რომელსაც AeroFTP არ უჭერს მხარს."
+                    "unsupportedVersion": "სერვერი იყენებს MCP-ის ვერსიას, რომელსაც AeroFTP არ უჭერს მხარს.",
+                    "directoryInvalid": "აირჩიეთ გამოყოფილი საქაღალდე ბმულებისა და აპლიკაციების მგრძნობიარე ფაილების გარეშე.",
+                    "directoryChanged": "ნებადართული საქაღალდე შეიცვალა ან აღარ არსებობს. წვდომის გასაახლებლად ხელახლა აირჩიეთ იგი.",
+                    "permissionCommand": "შეცვალეთ წვდომა საქაღალდისა და ქსელის ნებართვების მართვის საშუალებებით.",
+                    "installInvalid": "ეს მართული ინსტალაცია მიუწვდომელია ან მისი მანიფესტი არასწორია.",
+                    "installIntegrity": "პაკეტის მთლიანობის შემოწმება ვერ მოხერხდა. წაშალეთ სერვერი და ხელახლა დააყენეთ.",
+                    "installArchive": "პაკეტი შეიცავს სახიფათო ბილიკებს, ბმულებს ან არასწორ საწყის ფაილს.",
+                    "installRuntime": "საჭირო სისტემური გაშვების გარემო არ არის ხელმისაწვდომი.",
+                    "installDownload": "პაკეტის ჩამოტვირთვა ვერ მოხერხდა ან ლოდინის დრო ამოიწურა.",
+                    "installLimit": "პაკეტი აღემატება ინსტალაციის ლიმიტებს.",
+                    "installExists": "ხელახლა დაყენებამდე წაშალეთ არსებული ინსტალაცია.",
+                    "installIo": "ინსტალაციის ფაილების წაკითხვა ან ჩაწერა ვერ მოხერხდა."
                 },
                 "routingNotice": "ჩართული სერვერები თავიანთ ინსტრუმენტებს AeroAgent-ს სთავაზობენ. ყოველი ინსტრუმენტის გამოძახება ჯერ თქვენს დადასტურებას ითხოვს.",
                 "checkNow": "შემოწმება ახლავე",
@@ -3095,7 +3103,19 @@
                 "healthError": "მიუწვდომელია: {reason}",
                 "healthReady": "მზადაა, AeroAgent-ისთვის ხელმისაწვდომი ინსტრუმენტები: {count}",
                 "healthUnsupported": "ინსტრუმენტები მხარდაუჭერელი სქემებით: {count}",
-                "healthShowTools": "ინსტრუმენტების ჩვენება"
+                "healthShowTools": "ინსტრუმენტების ჩვენება",
+                "directoryTitle": "მხოლოდ წაკითხვის საქაღალდეები",
+                "grantDirectory": "საქაღალდის არჩევა",
+                "confirmDirectory": "მიენიჭოს ამ სერვერს {path}-ში ყველა ფაილის მხოლოდ წაკითხვის წვდომა? მიანიჭეთ წვდომა მხოლოდ სერვერის ან პროექტისთვის გამოყოფილ საქაღალდეზე.",
+                "noDirectories": "საქაღალდეებზე წვდომა არ არის.",
+                "revokeDirectory": "წვდომის გაუქმება",
+                "confirmRevokeDirectory": "გაუქმდეს წვდომა {path}-ზე? ხელსაწყოების წინა ნებართვები აღარ იქნება მოქმედი.",
+                "networkAccess": "ქსელზე წვდომის დაშვება (ყველა ჰოსტი)",
+                "networkBlocked": "ქსელზე წვდომა დაბლოკილია.",
+                "confirmNetwork": "მიეცეს {name}-ს ქსელზე წვდომა, ადგილობრივი სერვისების ჩათვლით? ხელსაწყოების წინა ნებართვები აღარ იქნება მოქმედი.",
+                "confirmBlockNetwork": "დაიბლოკოს {name}-ის ქსელზე წვდომა? ხელსაწყოების წინა ნებართვები აღარ იქნება მოქმედი.",
+                "managedStatus": "მართვადი ინსტალაცია: {version}",
+                "renewDirectory": "წვდომის განახლება"
             }
         },
         "archive": {
@@ -4103,12 +4123,6 @@
             "viewSource": "წყაროს ნახვა"
         },
         "savedServers": {
-            "dragToReorder": "გადაათრიეთ გადასალაგებლად",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "გთხოვთ დააკონფიგურიროთ 4shared სერთიფიკატები Settings > Cloud Providers-ში.",
-            "oauthConfigError": "გთხოვთ დააკონფიგურიროთ {provider} სერთიფიკატები Settings > Cloud Providers-ში.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4442,16 +4456,23 @@
             "tagsPlaceholder": "თეგის დამატება...",
             "tagsUpdated": "თეგები განახლდა",
             "addTag": "დამატება",
-            "noTags": "თეგები არ არის"
+            "noTags": "თეგები არ არის",
+            "collaborators": "თანამშრომლები",
+            "noCollaborators": "ჯერ არავისთან არ არის გაზიარებული",
+            "folderNotLocked": "ეს საქაღალდე დაბლოკილი არ არის",
+            "roleEditor": "რედაქტორი",
+            "roleViewer": "მნახველი",
+            "rolePreviewer": "წინასწარ მნახველი",
+            "roleUploader": "ამტვირთველი",
+            "rolePreviewerUploader": "წინასწარ მნახველი და ამტვირთველი",
+            "roleViewerUploader": "მნახველი და ამტვირთველი",
+            "roleCoOwner": "თანამფლობელი"
         },
         "googledrive": {
             "star": "ვარსკვლავის დამატება",
             "unstar": "ვარსკვლავის მოხსნა",
             "starred": "ფაილს ვარსკვლავი მიენიჭა",
-            "unstarred": "ფაილს ვარსკვლავი მოეხსნა",
-            "addComment": "კომენტარის დამატება",
-            "commentPlaceholder": "დაწერეთ თქვენი კომენტარი...",
-            "commentAdded": "კომენტარი დაემატა"
+            "unstarred": "ფაილს ვარსკვლავი მოეხსნა"
         },
         "dropbox": {
             "manageTags": "ტეგების მართვა"
@@ -4774,7 +4795,14 @@
             "participants": "მონაწილეები",
             "saving": "ინახება...",
             "saved": "შენახულია",
-            "saveNow": "ახლავე შენახვა"
+            "saveNow": "ახლავე შენახვა",
+            "noteType": "ჩანაწერის ტიპი",
+            "addTag": "ტეგის დამატება",
+            "newTag": "ახალი ტეგი...",
+            "tagName": "ტეგის სახელი",
+            "removeTag": "ტეგის მოშორება",
+            "manageTags": "ტეგების მართვა",
+            "deleteTagConfirm": "წაიშალოს ტეგი „{name}“? ჩანაწერები ტექსტს შეინარჩუნებენ."
         },
         "shareLinkModal": {
             "title": "გაზიარების ბმული",
@@ -6050,6 +6078,10 @@
             "scopeSession": "ადასტურებს ამ ხელსაწყოს ჩატის სესიის დასრულებამდე.",
             "approve": "დადასტურება",
             "rememberForChat": "ამ ხელსაწყოს დაშვება ამ ჩატის დასრულებამდე"
+        },
+        "fileComments": {
+            "title": "კომენტარები",
+            "empty": "კომენტარები ჯერ არ არის"
         }
     }
 }

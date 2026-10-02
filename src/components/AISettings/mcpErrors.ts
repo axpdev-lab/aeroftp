@@ -5,6 +5,21 @@ import type { TranslationFunction } from '../../i18n/types';
 
 // Backend MCP commands reject with stable codes; transport detail never reaches the UI.
 const ERROR_KEYS: Record<string, string> = {
+    MCP_DIRECTORY_INVALID: 'ai.mcpClient.errors.directoryInvalid',
+    MCP_DIRECTORY_CHANGED: 'ai.mcpClient.errors.directoryChanged',
+    MCP_PERMISSION_COMMAND_REQUIRED: 'ai.mcpClient.errors.permissionCommand',
+    MCP_NETWORK_UNDECLARED: 'ai.mcpClient.networkBlocked',
+    MCP_INSTALL_UNKNOWN: 'ai.mcpClient.errors.installInvalid',
+    MCP_INSTALL_INVALID: 'ai.mcpClient.errors.installInvalid',
+    MCP_INSTALL_INTEGRITY: 'ai.mcpClient.errors.installIntegrity',
+    MCP_INSTALL_ARCHIVE: 'ai.mcpClient.errors.installArchive',
+    MCP_INSTALL_RUNTIME: 'ai.mcpClient.errors.installRuntime',
+    MCP_INSTALL_DOWNLOAD: 'ai.mcpClient.errors.installDownload',
+    MCP_INSTALL_LIMIT: 'ai.mcpClient.errors.installLimit',
+    MCP_INSTALL_EXISTS: 'ai.mcpClient.errors.installExists',
+    MCP_INSTALL_IO: 'ai.mcpClient.errors.installIo',
+    MCP_INSTALL_BUSY: 'ai.mcpClient.errors.busy',
+    MCP_INSTALL_CANCELLED: 'ai.mcpClient.errors.cancelled',
     MCP_OAUTH_DENIED: 'ai.mcpClient.errors.denied',
     MCP_OAUTH_CANCELLED: 'ai.mcpClient.errors.cancelled',
     MCP_OAUTH_TIMEOUT: 'ai.mcpClient.errors.timeout',

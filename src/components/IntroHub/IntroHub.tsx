@@ -374,20 +374,6 @@ export function IntroHub(props: IntroHubProps) {
         // no-op: CommandPalette removed
     }, []);
 
-    // Connect from Command Palette (saved server)
-    const handlePaletteConnect = useCallback(async (server: ServerProfile) => {
-        const params: ConnectionParams = {
-            server: server.host || '',
-            port: server.port || 21,
-            username: server.username || '',
-            password: '',
-            protocol: server.protocol || 'ftp',
-            options: server.options || {},
-            providerId: server.providerId,
-        };
-        await onSavedServerConnect(params, server.initialPath, server.localInitialPath);
-    }, [onSavedServerConnect]);
-
     // Keyboard shortcuts
     useEffect(() => {
         const handler = (e: KeyboardEvent) => {
@@ -530,10 +516,6 @@ export function IntroHub(props: IntroHubProps) {
                                 onQuickConnectDirsChange(activeFormTab.quickConnectDirs);
                                 onConnect(overrideParams || activeFormTab.connectionParams);
                                 handleCloseFormTab(activeFormTab.id);
-                            }}
-                            onSavedServerConnect={async (params, initialPath, localInitialPath) => {
-                                handleCloseFormTab(activeFormTab.id);
-                                await onSavedServerConnect(params, initialPath, localInitialPath);
                             }}
                             onFormSaved={() => {
                                 handleCloseFormTab(activeFormTab.id);

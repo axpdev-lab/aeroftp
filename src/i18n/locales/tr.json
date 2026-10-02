@@ -102,14 +102,9 @@
             "connectionFailed": "Bağlantı başarısız",
             "reconnecting": "Yeniden bağlanıyor...",
             "quickConnect": "Hızlı Bağlan",
-            "savedServers": "Kayıtlı Sunucular",
-            "noSavedServers": "Kayıtlı sunucu yok",
             "saveServer": "Sunucuyu Kaydet",
-            "deleteServer": "Sunucuyu Sil",
-            "editServer": "Sunucuyu Düzenle",
             "serverName": "Sunucu Adı",
             "initialPath": "Başlangıç Yolu",
-            "savedServersHelp": "Bağlanmak için bir sunucu seçin.",
             "selectSshKey": "SSH Özel Anahtarını Seç",
             "allFiles": "Tüm Dosyalar",
             "sshKeys": "SSH Anahtarları",
@@ -132,7 +127,6 @@
             "emailAccount": "E-posta Hesabı",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "MEGA şifreniz",
-            "dismiss": "Kapat",
             "authenticating": "Kimlik doğrulanıyor...",
             "oauth2Connection": "OAuth2 Bağlantısı",
             "securityTitle": "Şifrelenmiş kimlik bilgisi depolama",
@@ -170,7 +164,6 @@
             "docs": "Belgeler",
             "minutes": "dakika",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Sunucuları ara...",
             "fourshared": {
                 "backToExistingAccount": "Mevcut hesaba dön",
                 "configureCredentials": "OAuth 1.0 kimlik bilgilerini yapılandır",
@@ -242,8 +235,6 @@
             "koofrAppPassword": "Uygulama Şifresi",
             "koofrAppPasswordPlaceholder": "Koofr uygulama şifrenizi buraya yapıştırın",
             "koofrHelp": "app.koofr.net → Preferences → Password → App Passwords adresinde uygulama şifresi oluşturun",
-            "duplicateServer": "Sunucuyu çoğalt",
-            "duplicateCredentialMissing": "Kimlik bilgisi kopyaya aktarılmadı. Bağlanmadan önce parolayı yeniden girin.",
             "saveAsNew": "Yeni olarak kaydet",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Tekrar giriş yap",
             "twakeSignedIn": "Giriş yapıldı",
             "twakeWaitingBrowser": "Tarayıcınızda girişi tamamlayın...",
-            "twakeSignInHelp": "AeroFTP, tarayıcınızda Twake'i açar ve yalnızca dosyalarınıza erişim ister. Twake ilk seferde hata gösterirse, tarayıcıda Twake'e giriş yapın ve tekrar giriş yapın. Erişimi istediğiniz zaman Twake Ayarları, Bağlı cihazlar bölümünden iptal edebilirsiniz."
+            "twakeSignInHelp": "AeroFTP, tarayıcınızda Twake'i açar ve yalnızca dosyalarınıza erişim ister. Twake ilk seferde hata gösterirse, tarayıcıda Twake'e giriş yapın ve tekrar giriş yapın. Erişimi istediğiniz zaman Twake Ayarları, Bağlı cihazlar bölümünden iptal edebilirsiniz.",
+            "oauthKeysMissingTitle": "{provider} uygulama anahtarları eksik",
+            "oauthKeysMissing": "Kasada {provider} için kayıtlı uygulama anahtarı yok, bu yüzden AeroFTP oturum açamıyor. AeroFTP kendi anahtarlarını sunmaz: {provider} geliştirici uygulamanızın anahtarlarını {location} bölümüne girin, ardından yeniden bağlanın.",
+            "oauthKeysOpenSettings": "OAuth ayarlarını aç",
+            "oauthKeysReadFailedTitle": "{provider} uygulama anahtarları okunamıyor",
+            "oauthKeysReadFailed": "AeroFTP, {provider} uygulama anahtarlarını kasadan okuyamadığı için oturum açamıyor. Anahtarlar değiştirilmedi. Hata: {error}"
         },
         "browser": {
             "remote": "Uzak",
@@ -1720,7 +1716,8 @@
             "overlay_locked": "Şifreli katman kilitlendi",
             "aerocrypt_marker_migrate": "AeroCrypt işaretçisi .aerocrypt.tsv biçimine dönüştürülüyor…",
             "aerocrypt_marker_migrated": "AeroCrypt işareti .aerocrypt.tsv biçimine dönüştürüldü",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} klasörünün kilidi açılıyor..."
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -3086,7 +3083,18 @@
                     "startFailed": "Yerel sunucu başlatılamadı.",
                     "serverFailed": "Sunucu durdu veya geçersiz bir yanıt gönderdi.",
                     "httpUnauthorized": "Sunucu kayıtlı kimlik bilgilerini reddetti.",
-                    "unsupportedVersion": "Sunucu, AeroFTP'nin desteklemediği bir MCP sürümü kullanıyor."
+                    "unsupportedVersion": "Sunucu, AeroFTP'nin desteklemediği bir MCP sürümü kullanıyor.",
+                    "directoryInvalid": "Bağlantı veya hassas uygulama dosyaları içermeyen özel bir dizin seçin.",
+                    "directoryChanged": "İzin verilen dizin değişti veya eksik. Erişimi yenilemek için yeniden seçin.",
+                    "permissionCommand": "Erişimi dizin ve ağ izni denetimleriyle değiştirin.",
+                    "installInvalid": "Bu yönetilen kurulum kullanılamıyor veya bildirim dosyası geçersiz.",
+                    "installIntegrity": "Paket bütünlüğü doğrulanamadı. Sunucuyu kaldırıp yeniden yükleyin.",
+                    "installArchive": "Paket güvensiz yollar, bağlantılar veya geçersiz bir giriş dosyası içeriyor.",
+                    "installRuntime": "Gerekli sistem çalışma zamanı eksik.",
+                    "installDownload": "Paket indirme başarısız oldu veya zaman aşımına uğradı.",
+                    "installLimit": "Paket kurulum sınırlarını aşıyor.",
+                    "installExists": "Yeniden yüklemeden önce mevcut kurulumu kaldırın.",
+                    "installIo": "Kurulum dosyaları okunamadı veya yazılamadı."
                 },
                 "routingNotice": "Etkinleştirilen sunucular araçlarını AeroAgent'a sunar. Her araç çağrısı önce onayınızı ister.",
                 "checkNow": "Şimdi kontrol et",
@@ -3095,7 +3103,19 @@
                 "healthError": "Kullanılamıyor: {reason}",
                 "healthReady": "Hazır, AeroAgent için kullanılabilir araçlar: {count}",
                 "healthUnsupported": "Desteklenmeyen şemalara sahip araçlar: {count}",
-                "healthShowTools": "Araçları göster"
+                "healthShowTools": "Araçları göster",
+                "directoryTitle": "Salt okunur dizinler",
+                "grantDirectory": "Dizin seç",
+                "confirmDirectory": "Bu sunucuya {path} içindeki her dosya için salt okunur erişim verilsin mi? Yalnızca sunucuya veya projeye ayrılmış bir dizine erişim verin.",
+                "noDirectories": "Dizin erişimi yok.",
+                "revokeDirectory": "Erişimi iptal et",
+                "confirmRevokeDirectory": "{path} erişimi iptal edilsin mi? Önceki araç onayları artık geçerli olmayacak.",
+                "networkAccess": "Ağ erişimine izin ver (tüm ana bilgisayarlar)",
+                "networkBlocked": "Ağ erişimi engelleniyor.",
+                "confirmNetwork": "{name} için yerel hizmetler dahil ağa erişim izni verilsin mi? Önceki araç onayları artık geçerli olmayacak.",
+                "confirmBlockNetwork": "{name} için ağ erişimi engellensin mi? Önceki araç onayları artık geçerli olmayacak.",
+                "managedStatus": "Yönetilen kurulum: {version}",
+                "renewDirectory": "Erişimi yenile"
             }
         },
         "archive": {
@@ -4103,12 +4123,6 @@
             "viewSource": "Kaynağı Görüntüle"
         },
         "savedServers": {
-            "dragToReorder": "Sıralamak için sürükleyin",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Lütfen 4shared kimlik bilgilerini Ayarlar > Bulut Sağlayıcıları bölümünde yapılandırın.",
-            "oauthConfigError": "Lütfen {provider} kimlik bilgilerini Ayarlar > Bulut Sağlayıcıları bölümünde yapılandırın.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4442,16 +4456,23 @@
             "tagsPlaceholder": "Etiket ekle...",
             "tagsUpdated": "Etiketler güncellendi",
             "addTag": "Ekle",
-            "noTags": "Etiket yok"
+            "noTags": "Etiket yok",
+            "collaborators": "İş birliği yapanlar",
+            "noCollaborators": "Henüz kimseyle paylaşılmadı",
+            "folderNotLocked": "Bu klasör kilitli değil",
+            "roleEditor": "Düzenleyici",
+            "roleViewer": "Görüntüleyici",
+            "rolePreviewer": "Önizleyici",
+            "roleUploader": "Yükleyici",
+            "rolePreviewerUploader": "Önizleyici ve yükleyici",
+            "roleViewerUploader": "Görüntüleyici ve yükleyici",
+            "roleCoOwner": "Ortak sahip"
         },
         "googledrive": {
             "star": "Yıldızla",
             "unstar": "Yıldızı kaldır",
             "starred": "Dosya yıldızlandı",
-            "unstarred": "Dosyanın yıldızı kaldırıldı",
-            "addComment": "Yorum ekle",
-            "commentPlaceholder": "Yorumunuzu yazın...",
-            "commentAdded": "Yorum eklendi"
+            "unstarred": "Dosyanın yıldızı kaldırıldı"
         },
         "dropbox": {
             "manageTags": "Etiketleri yönet"
@@ -4774,7 +4795,14 @@
             "participants": "katılımcılar",
             "saving": "Kaydediliyor...",
             "saved": "Kaydedildi",
-            "saveNow": "Şimdi kaydet"
+            "saveNow": "Şimdi kaydet",
+            "noteType": "Not türü",
+            "addTag": "Etiket ekle",
+            "newTag": "Yeni etiket...",
+            "tagName": "Etiket adı",
+            "removeTag": "Etiketi kaldır",
+            "manageTags": "Etiketleri yönet",
+            "deleteTagConfirm": "“{name}” etiketi silinsin mi? Notlar metinlerini korur."
         },
         "shareLinkModal": {
             "title": "Paylaşım bağlantısı",
@@ -6050,6 +6078,10 @@
             "scopeSession": "Bu aracı sohbet oturumunun geri kalanı için onaylar.",
             "approve": "Onayla",
             "rememberForChat": "Bu sohbetin geri kalanı için bu araca izin ver"
+        },
+        "fileComments": {
+            "title": "Yorumlar",
+            "empty": "Henüz yorum yok"
         }
     }
 }

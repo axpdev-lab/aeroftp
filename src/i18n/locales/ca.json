@@ -102,14 +102,9 @@
             "connectionFailed": "Connexió fallida",
             "reconnecting": "Reconnectant...",
             "quickConnect": "Connexió Ràpida",
-            "savedServers": "Servidors desats",
-            "noSavedServers": "No hi ha servidors desats",
             "saveServer": "Desar Servidor",
-            "deleteServer": "Eliminar Servidor",
-            "editServer": "Editar Servidor",
             "serverName": "Nom del Servidor",
             "initialPath": "Ruta Inicial",
-            "savedServersHelp": "Seleccioneu un servidor per connectar.",
             "selectSshKey": "Seleccionar clau privada SSH",
             "allFiles": "Tots els fitxers",
             "sshKeys": "Claus SSH",
@@ -132,7 +127,6 @@
             "emailAccount": "Compte de correu",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "La teva contrasenya MEGA",
-            "dismiss": "Descartar",
             "authenticating": "Autenticant...",
             "oauth2Connection": "Connexió OAuth2",
             "securityTitle": "Emmagatzematge xifrat de credencials",
@@ -170,7 +164,6 @@
             "docs": "Docs",
             "minutes": "minuts",
             "localPathPlaceholder": "/home/usuari/projectes",
-            "searchServers": "Cercar servidors...",
             "fourshared": {
                 "backToExistingAccount": "Tornar al compte existent",
                 "configureCredentials": "Configurar credencials OAuth 1.0",
@@ -243,8 +236,6 @@
             "koofrAppPassword": "Contrasenya d'aplicació",
             "koofrAppPasswordPlaceholder": "Enganxeu aquí la vostra contrasenya d'aplicació Koofr",
             "koofrHelp": "Genereu una contrasenya d'aplicació a app.koofr.net → Preferències → Contrasenya → Contrasenyes d'aplicació",
-            "duplicateServer": "Duplicar servidor",
-            "duplicateCredentialMissing": "Credencial no copiada al duplicat. Torna a introduir la contrasenya abans de connectar.",
             "saveAsNew": "Desar com a nou",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Torna a iniciar sessió",
             "twakeSignedIn": "Sessió iniciada",
             "twakeWaitingBrowser": "Acaba d'iniciar sessió al navegador...",
-            "twakeSignInHelp": "AeroFTP obre Twake al teu navegador i sol·licita accés només als teus fitxers. Si Twake mostra un error la primera vegada, inicia sessió a Twake al navegador i torna-ho a provar. Pots revocar l'accés en qualsevol moment a Configuració de Twake, Dispositius connectats."
+            "twakeSignInHelp": "AeroFTP obre Twake al teu navegador i sol·licita accés només als teus fitxers. Si Twake mostra un error la primera vegada, inicia sessió a Twake al navegador i torna-ho a provar. Pots revocar l'accés en qualsevol moment a Configuració de Twake, Dispositius connectats.",
+            "oauthKeysMissingTitle": "Falten les claus d'aplicació de {provider}",
+            "oauthKeysMissing": "No hi ha cap clau d'aplicació de {provider} desada a la caixa forta, de manera que AeroFTP no pot iniciar sessió. AeroFTP no inclou claus pròpies: introduïu les claus de la vostra aplicació de desenvolupador de {provider} a {location} i torneu a connectar.",
+            "oauthKeysOpenSettings": "Obre la configuració d'OAuth",
+            "oauthKeysReadFailedTitle": "No es poden llegir les claus de l'aplicació de {provider}",
+            "oauthKeysReadFailed": "AeroFTP no ha pogut llegir les claus de l'aplicació de {provider} de la caixa forta, per això no pot iniciar la sessió. Les claus no s'han modificat. Error: {error}"
         },
         "browser": {
             "remote": "Remot",
@@ -1720,7 +1716,8 @@
             "overlay_locked": "Capa xifrada bloquejada",
             "aerocrypt_marker_migrate": "S'està convertint el marcador d'AeroCrypt a .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador d'AeroCrypt convertit a .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] S'està desbloquejant la carpeta {filename}..."
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -3086,7 +3083,18 @@
                     "startFailed": "No s'ha pogut iniciar el servidor local.",
                     "serverFailed": "El servidor s'ha aturat o ha enviat una resposta no vàlida.",
                     "httpUnauthorized": "El servidor ha rebutjat les credencials desades.",
-                    "unsupportedVersion": "El servidor utilitza una versió de MCP que AeroFTP no admet."
+                    "unsupportedVersion": "El servidor utilitza una versió de MCP que AeroFTP no admet.",
+                    "directoryInvalid": "Tria un directori dedicat sense enllaços ni fitxers sensibles d’aplicacions.",
+                    "directoryChanged": "El directori autoritzat ha canviat o no existeix. Selecciona’l de nou per renovar l’accés.",
+                    "permissionCommand": "Canvia l’accés amb els controls de permisos de directoris i xarxa.",
+                    "installInvalid": "Aquesta instal·lació gestionada no està disponible o el seu manifest no és vàlid.",
+                    "installIntegrity": "Ha fallat la verificació d’integritat del paquet. Elimina el servidor i torna’l a instal·lar.",
+                    "installArchive": "El paquet conté camins insegurs, enllaços o un fitxer d’inici no vàlid.",
+                    "installRuntime": "Falta l’entorn d’execució del sistema requerit.",
+                    "installDownload": "La baixada del paquet ha fallat o ha esgotat el temps d’espera.",
+                    "installLimit": "El paquet supera els límits d’instal·lació.",
+                    "installExists": "Elimina la instal·lació existent abans de reinstal·lar.",
+                    "installIo": "No s’han pogut llegir o escriure els fitxers d’instal·lació."
                 },
                 "routingNotice": "Els servidors activats ofereixen les seves eines a AeroAgent. Cada crida a una eina demana primer la teva aprovació.",
                 "checkNow": "Comprova ara",
@@ -3095,7 +3103,19 @@
                 "healthError": "No disponible: {reason}",
                 "healthReady": "Preparat, eines disponibles per a AeroAgent: {count}",
                 "healthUnsupported": "Eines amb esquemes no compatibles: {count}",
-                "healthShowTools": "Mostra les eines"
+                "healthShowTools": "Mostra les eines",
+                "directoryTitle": "Directoris de només lectura",
+                "grantDirectory": "Tria un directori",
+                "confirmDirectory": "Vols concedir a aquest servidor accés de només lectura a tots els fitxers de {path}? Concedeix només un directori dedicat al servidor o al projecte.",
+                "noDirectories": "Sense accés a directoris.",
+                "revokeDirectory": "Revoca l’accés",
+                "confirmRevokeDirectory": "Vols revocar l’accés a {path}? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
+                "networkAccess": "Permet l’accés a la xarxa (tots els hosts)",
+                "networkBlocked": "L’accés a la xarxa està bloquejat.",
+                "confirmNetwork": "Vols permetre que {name} accedeixi a la xarxa, inclosos els serveis locals? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
+                "confirmBlockNetwork": "Vols bloquejar l’accés a la xarxa de {name}? Les aprovacions anteriors de les eines deixaran de ser vàlides.",
+                "managedStatus": "Instal·lació gestionada: {version}",
+                "renewDirectory": "Renova l’accés"
             }
         },
         "archive": {
@@ -4103,12 +4123,6 @@
             "viewSource": "Veure font"
         },
         "savedServers": {
-            "dragToReorder": "Arrossegueu per reordenar",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Si us plau, configureu les credencials de 4shared a Configuració > Proveïdors al núvol.",
-            "oauthConfigError": "Si us plau, configureu les credencials de {provider} a Configuració > Proveïdors al núvol.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4461,16 +4475,23 @@
             "tagsPlaceholder": "Afegir una etiqueta...",
             "tagsUpdated": "Etiquetes actualitzades",
             "addTag": "Afegir",
-            "noTags": "Sense etiquetes"
+            "noTags": "Sense etiquetes",
+            "collaborators": "Col·laboradors",
+            "noCollaborators": "Encara no s'ha compartit amb ningú",
+            "folderNotLocked": "Aquesta carpeta no està bloquejada",
+            "roleEditor": "Editor",
+            "roleViewer": "Lector",
+            "rolePreviewer": "Previsualitzador",
+            "roleUploader": "Carregador",
+            "rolePreviewerUploader": "Previsualitzador i carregador",
+            "roleViewerUploader": "Lector i carregador",
+            "roleCoOwner": "Copropietari"
         },
         "googledrive": {
             "star": "Destacar",
             "unstar": "Treure destacat",
             "starred": "Fitxer destacat",
-            "unstarred": "Fitxer sense destacar",
-            "addComment": "Afegir comentari",
-            "commentPlaceholder": "Escriu el teu comentari...",
-            "commentAdded": "Comentari afegit"
+            "unstarred": "Fitxer sense destacar"
         },
         "dropbox": {
             "manageTags": "Gestionar etiquetes"
@@ -4793,7 +4814,14 @@
             "participants": "participants",
             "saving": "Desant...",
             "saved": "Desat",
-            "saveNow": "Desar ara"
+            "saveNow": "Desar ara",
+            "noteType": "Tipus de nota",
+            "addTag": "Afegeix etiqueta",
+            "newTag": "Etiqueta nova...",
+            "tagName": "Nom de l'etiqueta",
+            "removeTag": "Elimina l'etiqueta",
+            "manageTags": "Gestiona les etiquetes",
+            "deleteTagConfirm": "Vols eliminar l'etiqueta «{name}»? Les notes conserven el text."
         },
         "shareLinkModal": {
             "title": "Enllaç per compartir",
@@ -6069,6 +6097,10 @@
             "scopeSession": "Aprova aquesta eina per a la resta de la sessió de xat.",
             "approve": "Aprova",
             "rememberForChat": "Permet aquesta eina durant la resta d'aquest xat"
+        },
+        "fileComments": {
+            "title": "Comentaris",
+            "empty": "Encara no hi ha comentaris"
         }
     }
 }

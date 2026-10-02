@@ -102,14 +102,9 @@
             "connectionFailed": "Falha na conexão",
             "reconnecting": "Reconectando...",
             "quickConnect": "Conexão Rápida",
-            "savedServers": "Servidores Salvos",
-            "noSavedServers": "Nenhum servidor salvo",
             "saveServer": "Salvar Servidor",
-            "deleteServer": "Excluir Servidor",
-            "editServer": "Editar Servidor",
             "serverName": "Nome do Servidor",
             "initialPath": "Caminho Inicial",
-            "savedServersHelp": "Selecione um servidor para conectar.",
             "selectSshKey": "Selecionar chave privada SSH",
             "allFiles": "Todos os ficheiros",
             "sshKeys": "Chaves SSH",
@@ -132,7 +127,6 @@
             "emailAccount": "Conta de e-mail",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Sua senha MEGA",
-            "dismiss": "Dispensar",
             "authenticating": "A autenticar...",
             "oauth2Connection": "Ligação OAuth2",
             "securityTitle": "Armazenamento criptografado de credenciais",
@@ -170,7 +164,6 @@
             "docs": "Docs",
             "minutes": "minutos",
             "localPathPlaceholder": "/home/usuário/projetos",
-            "searchServers": "Pesquisar servidores...",
             "fourshared": {
                 "backToExistingAccount": "Voltar a conta existente",
                 "configureCredentials": "Configurar credenciais OAuth 1.0",
@@ -242,8 +235,6 @@
             "koofrAppPassword": "Senha do aplicativo",
             "koofrAppPasswordPlaceholder": "Cole sua senha do aplicativo Koofr aqui",
             "koofrHelp": "Gere uma senha do aplicativo em app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Duplicar servidor",
-            "duplicateCredentialMissing": "Credencial não copiada para o duplicado. Reintroduza a palavra-passe antes de conectar.",
             "saveAsNew": "Salvar como novo",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Iniciar sessão novamente",
             "twakeSignedIn": "Sessão iniciada",
             "twakeWaitingBrowser": "Termine o início de sessão no seu navegador...",
-            "twakeSignInHelp": "O AeroFTP abre o Twake no seu navegador e pede acesso apenas aos seus ficheiros. Se o Twake mostrar um erro da primeira vez, inicie sessão no Twake no navegador e inicie sessão novamente. Pode revogar o acesso a qualquer momento nas Definições do Twake, Dispositivos ligados."
+            "twakeSignInHelp": "O AeroFTP abre o Twake no seu navegador e pede acesso apenas aos seus ficheiros. Se o Twake mostrar um erro da primeira vez, inicie sessão no Twake no navegador e inicie sessão novamente. Pode revogar o acesso a qualquer momento nas Definições do Twake, Dispositivos ligados.",
+            "oauthKeysMissingTitle": "Faltam as chaves do aplicativo de {provider}",
+            "oauthKeysMissing": "Não há chaves de aplicativo de {provider} guardadas no cofre, por isso o AeroFTP não consegue iniciar sessão. O AeroFTP não inclui chaves próprias: introduza as chaves do seu aplicativo de desenvolvedor de {provider} em {location} e volte a ligar.",
+            "oauthKeysOpenSettings": "Abrir definições do OAuth",
+            "oauthKeysReadFailedTitle": "Não é possível ler as chaves da aplicação {provider}",
+            "oauthKeysReadFailed": "O AeroFTP não conseguiu ler as chaves da aplicação {provider} do cofre, por isso não pode iniciar sessão. As chaves não foram alteradas. Erro: {error}"
         },
         "browser": {
             "remote": "Remoto",
@@ -1720,7 +1716,8 @@
             "overlay_locked": "Sobreposição cifrada bloqueada",
             "aerocrypt_marker_migrate": "Convertendo o marcador do AeroCrypt para .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador do AeroCrypt convertido para .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Desbloqueando a pasta {filename}..."
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
@@ -3086,7 +3083,18 @@
                     "startFailed": "Não foi possível iniciar o servidor local.",
                     "serverFailed": "O servidor parou ou enviou uma resposta inválida.",
                     "httpUnauthorized": "O servidor recusou as credenciais guardadas.",
-                    "unsupportedVersion": "O servidor usa uma versão do MCP que o AeroFTP não suporta."
+                    "unsupportedVersion": "O servidor usa uma versão do MCP que o AeroFTP não suporta.",
+                    "directoryInvalid": "Escolha um diretório dedicado sem links ou arquivos sensíveis de aplicativos.",
+                    "directoryChanged": "O diretório autorizado mudou ou não existe. Selecione-o novamente para renovar o acesso.",
+                    "permissionCommand": "Altere o acesso pelos controles de permissões de diretórios e rede.",
+                    "installInvalid": "Esta instalação gerenciada está indisponível ou seu manifesto é inválido.",
+                    "installIntegrity": "A verificação de integridade do pacote falhou. Remova e reinstale o servidor.",
+                    "installArchive": "O pacote contém caminhos inseguros, links ou um arquivo de entrada inválido.",
+                    "installRuntime": "O ambiente de execução do sistema necessário está ausente.",
+                    "installDownload": "O download do pacote falhou ou excedeu o tempo limite.",
+                    "installLimit": "O pacote excede os limites de instalação.",
+                    "installExists": "Remova a instalação existente antes de reinstalar.",
+                    "installIo": "Não foi possível ler ou gravar os arquivos de instalação."
                 },
                 "routingNotice": "Os servidores ativados oferecem as suas ferramentas ao AeroAgent. Cada chamada de ferramenta pede primeiro a sua aprovação.",
                 "checkNow": "Verificar agora",
@@ -3095,7 +3103,19 @@
                 "healthError": "Indisponível: {reason}",
                 "healthReady": "Pronto, ferramentas disponíveis para o AeroAgent: {count}",
                 "healthUnsupported": "Ferramentas com esquemas não suportados: {count}",
-                "healthShowTools": "Mostrar ferramentas"
+                "healthShowTools": "Mostrar ferramentas",
+                "directoryTitle": "Diretórios só de leitura",
+                "grantDirectory": "Escolher diretório",
+                "confirmDirectory": "Conceder a este servidor acesso só de leitura a todos os ficheiros em {path}? Conceda apenas um diretório dedicado ao servidor ou ao projeto.",
+                "noDirectories": "Sem acesso a diretórios.",
+                "revokeDirectory": "Revogar acesso",
+                "confirmRevokeDirectory": "Revogar o acesso a {path}? As aprovações anteriores das ferramentas deixarão de ser válidas.",
+                "networkAccess": "Permitir acesso à rede (todos os hosts)",
+                "networkBlocked": "O acesso à rede está bloqueado.",
+                "confirmNetwork": "Permitir que {name} aceda à rede, incluindo serviços locais? As aprovações anteriores das ferramentas deixarão de ser válidas.",
+                "confirmBlockNetwork": "Bloquear o acesso à rede de {name}? As aprovações anteriores das ferramentas deixarão de ser válidas.",
+                "managedStatus": "Instalação gerida: {version}",
+                "renewDirectory": "Renovar acesso"
             }
         },
         "archive": {
@@ -4103,12 +4123,6 @@
             "viewSource": "Ver origem"
         },
         "savedServers": {
-            "dragToReorder": "Arraste para reordenar",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Configure as credenciais do 4shared em Configurações > Provedores de nuvem.",
-            "oauthConfigError": "Configure as credenciais do {provider} em Configurações > Provedores de nuvem.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4442,16 +4456,23 @@
             "tagsPlaceholder": "Adicionar uma etiqueta...",
             "tagsUpdated": "Etiquetas atualizadas",
             "addTag": "Adicionar",
-            "noTags": "Sem etiquetas"
+            "noTags": "Sem etiquetas",
+            "collaborators": "Colaboradores",
+            "noCollaborators": "Ainda não compartilhado com ninguém",
+            "folderNotLocked": "Esta pasta não está bloqueada",
+            "roleEditor": "Editor",
+            "roleViewer": "Visualizador",
+            "rolePreviewer": "Pré-visualizador",
+            "roleUploader": "Uploader",
+            "rolePreviewerUploader": "Pré-visualizador e uploader",
+            "roleViewerUploader": "Visualizador e uploader",
+            "roleCoOwner": "Coproprietário"
         },
         "googledrive": {
             "star": "Marcar com estrela",
             "unstar": "Remover estrela",
             "starred": "Ficheiro marcado com estrela",
-            "unstarred": "Estrela removida do ficheiro",
-            "addComment": "Adicionar comentário",
-            "commentPlaceholder": "Escreva o seu comentário...",
-            "commentAdded": "Comentário adicionado"
+            "unstarred": "Estrela removida do ficheiro"
         },
         "dropbox": {
             "manageTags": "Gerir etiquetas"
@@ -4774,7 +4795,14 @@
             "participants": "participantes",
             "saving": "Salvando...",
             "saved": "Salvo",
-            "saveNow": "Salvar agora"
+            "saveNow": "Salvar agora",
+            "noteType": "Tipo de nota",
+            "addTag": "Adicionar etiqueta",
+            "newTag": "Nova etiqueta...",
+            "tagName": "Nome da etiqueta",
+            "removeTag": "Remover etiqueta",
+            "manageTags": "Gerenciar etiquetas",
+            "deleteTagConfirm": "Excluir a etiqueta “{name}”? As notas mantêm o texto."
         },
         "shareLinkModal": {
             "title": "Link de partilha",
@@ -6050,6 +6078,10 @@
             "scopeSession": "Aprova esta ferramenta pelo resto da sessão de chat.",
             "approve": "Aprovar",
             "rememberForChat": "Permitir esta ferramenta pelo resto deste chat"
+        },
+        "fileComments": {
+            "title": "Comentários",
+            "empty": "Ainda não há comentários"
         }
     }
 }

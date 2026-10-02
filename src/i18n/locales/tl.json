@@ -102,14 +102,9 @@
             "connectionFailed": "Nabigo ang koneksyon",
             "reconnecting": "Muling kumokonekta...",
             "quickConnect": "Mabilis na Koneksyon",
-            "savedServers": "Mga Naka-save na Server",
-            "noSavedServers": "Walang naka-save na server",
             "saveServer": "I-save ang Server",
-            "deleteServer": "Tanggalin ang Server",
-            "editServer": "I-edit ang Server",
             "serverName": "Pangalan ng Server",
             "initialPath": "Paunang Path",
-            "savedServersHelp": "Pumili ng server para kumonekta.",
             "selectSshKey": "Pumili ng SSH Private Key",
             "allFiles": "Lahat ng mga file",
             "sshKeys": "Mga SSH Key",
@@ -132,7 +127,6 @@
             "emailAccount": "Email account",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Iyong MEGA password",
-            "dismiss": "Huwag pansinin",
             "authenticating": "Nagpapatunay...",
             "oauth2Connection": "Koneksyon sa OAuth2",
             "securityTitle": "Naka-encrypt na pag-iimbak ng kredensyal",
@@ -170,7 +164,6 @@
             "docs": "Mga Dokumento",
             "minutes": "minuto",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Maghanap ng mga server...",
             "fourshared": {
                 "backToExistingAccount": "Bumalik sa umiiral na account",
                 "configureCredentials": "I-configure ang OAuth 1.0 credentials",
@@ -242,8 +235,6 @@
             "koofrAppPassword": "App Password",
             "koofrAppPasswordPlaceholder": "Idikit ang iyong Koofr app password dito",
             "koofrHelp": "Gumawa ng app password sa app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "I-duplicate ang server",
-            "duplicateCredentialMissing": "Hindi nakopya ang kredensyal sa duplicate. Muling ilagay ang password bago kumonekta.",
             "saveAsNew": "I-save bilang bago",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -334,7 +325,12 @@
             "twakeSignInAgain": "Mag-sign in ulit",
             "twakeSignedIn": "Naka-sign in",
             "twakeWaitingBrowser": "Tapusin ang pag-sign in sa iyong browser...",
-            "twakeSignInHelp": "Binubuksan ng AeroFTP ang Twake sa iyong browser at humihiling lamang ng access sa iyong mga file. Kung nagpakita ng error ang Twake sa unang pagkakataon, mag-log in sa Twake sa browser at mag-sign in ulit. Puwede mong bawiin ang access anumang oras sa Mga Setting ng Twake, Mga Nakakonektang Device."
+            "twakeSignInHelp": "Binubuksan ng AeroFTP ang Twake sa iyong browser at humihiling lamang ng access sa iyong mga file. Kung nagpakita ng error ang Twake sa unang pagkakataon, mag-log in sa Twake sa browser at mag-sign in ulit. Puwede mong bawiin ang access anumang oras sa Mga Setting ng Twake, Mga Nakakonektang Device.",
+            "oauthKeysMissingTitle": "Kulang ang mga app key ng {provider}",
+            "oauthKeysMissing": "Walang nakaimbak na app key para sa {provider} sa vault, kaya hindi makapag-sign in ang AeroFTP. Walang sariling key ang AeroFTP: ilagay ang mga key ng iyong developer app sa {provider} sa {location}, pagkatapos ay kumonekta muli.",
+            "oauthKeysOpenSettings": "Buksan ang mga setting ng OAuth",
+            "oauthKeysReadFailedTitle": "Hindi mabasa ang mga key ng app ng {provider}",
+            "oauthKeysReadFailed": "Hindi nabasa ng AeroFTP ang mga key ng app ng {provider} mula sa vault, kaya hindi ito makakapag-sign in. Walang binago sa mga key. Error: {error}"
         },
         "browser": {
             "remote": "Remote",
@@ -1720,7 +1716,8 @@
             "overlay_locked": "Naka-lock ang naka-encrypt na overlay",
             "aerocrypt_marker_migrate": "Kino-convert ang marker ng AeroCrypt sa .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Na-convert ang AeroCrypt marker sa .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Ina-unlock ang folder na {filename}..."
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -3086,7 +3083,18 @@
                     "startFailed": "Hindi masimulan ang lokal na server.",
                     "serverFailed": "Huminto ang server o nagpadala ng di-wastong sagot.",
                     "httpUnauthorized": "Tinanggihan ng server ang mga naka-save na kredensyal.",
-                    "unsupportedVersion": "Gumagamit ang server ng bersyon ng MCP na hindi sinusuportahan ng AeroFTP."
+                    "unsupportedVersion": "Gumagamit ang server ng bersyon ng MCP na hindi sinusuportahan ng AeroFTP.",
+                    "directoryInvalid": "Pumili ng nakalaang direktoryo na walang link o sensitibong file ng application.",
+                    "directoryChanged": "Nagbago o nawawala ang pinahintulutang direktoryo. Piliin ito muli upang i-renew ang access.",
+                    "permissionCommand": "Baguhin ang access gamit ang mga kontrol ng pahintulot sa direktoryo at network.",
+                    "installInvalid": "Hindi available ang pinamamahalaang pag-install na ito o hindi wasto ang manifest nito.",
+                    "installIntegrity": "Nabigo ang pag-verify ng integridad ng package. Alisin at muling i-install ang server.",
+                    "installArchive": "Naglalaman ang package ng mga hindi ligtas na path, link, o hindi wastong panimulang file.",
+                    "installRuntime": "Nawawala ang kinakailangang system runtime.",
+                    "installDownload": "Nabigo o naubusan ng oras ang pag-download ng package.",
+                    "installLimit": "Lumampas ang package sa mga limitasyon sa pag-install.",
+                    "installExists": "Alisin ang kasalukuyang pag-install bago muling mag-install.",
+                    "installIo": "Hindi mabasa o maisulat ang mga file ng pag-install."
                 },
                 "routingNotice": "Ibinibigay ng mga naka-enable na server ang kanilang mga tool sa AeroAgent. Humihingi muna ng iyong pag-apruba ang bawat tawag sa tool.",
                 "checkNow": "Suriin ngayon",
@@ -3095,7 +3103,19 @@
                 "healthError": "Hindi available: {reason}",
                 "healthReady": "Handa, mga tool na available sa AeroAgent: {count}",
                 "healthUnsupported": "Mga tool na may hindi sinusuportahang schema: {count}",
-                "healthShowTools": "Ipakita ang mga tool"
+                "healthShowTools": "Ipakita ang mga tool",
+                "directoryTitle": "Mga direktoryong para sa pagbasa lamang",
+                "grantDirectory": "Pumili ng direktoryo",
+                "confirmDirectory": "Bigyan ang server na ito ng access para sa pagbasa lamang sa lahat ng file sa {path}? Magbigay lamang ng access sa direktoryong nakalaan sa server o proyekto.",
+                "noDirectories": "Walang access sa direktoryo.",
+                "revokeDirectory": "Bawiin ang access",
+                "confirmRevokeDirectory": "Bawiin ang access sa {path}? Hindi na magiging balido ang mga nakaraang pag-apruba sa tool.",
+                "networkAccess": "Payagan ang access sa network (lahat ng host)",
+                "networkBlocked": "Naka-block ang access sa network.",
+                "confirmNetwork": "Payagan ang {name} na ma-access ang network, kabilang ang mga lokal na serbisyo? Hindi na magiging balido ang mga nakaraang pag-apruba sa tool.",
+                "confirmBlockNetwork": "I-block ang access sa network ng {name}? Hindi na magiging balido ang mga nakaraang pag-apruba sa tool.",
+                "managedStatus": "Pinamamahalaang pag-install: {version}",
+                "renewDirectory": "I-renew ang access"
             }
         },
         "archive": {
@@ -4103,12 +4123,6 @@
             "viewSource": "Tingnan ang Pinagmulan"
         },
         "savedServers": {
-            "dragToReorder": "I-drag para i-reorder",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Mangyaring i-configure ang 4shared credentials sa Settings > Cloud Providers.",
-            "oauthConfigError": "Mangyaring i-configure ang {provider} credentials sa Settings > Cloud Providers.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4461,16 +4475,23 @@
             "tagsPlaceholder": "Magdagdag ng tag...",
             "tagsUpdated": "Na-update ang mga tag",
             "addTag": "Idagdag",
-            "noTags": "Walang mga tag"
+            "noTags": "Walang mga tag",
+            "collaborators": "Mga katuwang",
+            "noCollaborators": "Hindi pa naibabahagi sa sinuman",
+            "folderNotLocked": "Hindi naka-lock ang folder na ito",
+            "roleEditor": "Editor",
+            "roleViewer": "Tagatingin",
+            "rolePreviewer": "Tagapag-preview",
+            "roleUploader": "Tagapag-upload",
+            "rolePreviewerUploader": "Tagapag-preview at tagapag-upload",
+            "roleViewerUploader": "Tagatingin at tagapag-upload",
+            "roleCoOwner": "Kasamang may-ari"
         },
         "googledrive": {
             "star": "Lagyan ng bituin",
             "unstar": "Alisin ang bituin",
             "starred": "Nilagyan ng bituin ang file",
-            "unstarred": "Inalis ang bituin sa file",
-            "addComment": "Magdagdag ng komento",
-            "commentPlaceholder": "Isulat ang iyong komento...",
-            "commentAdded": "Naidagdag ang komento"
+            "unstarred": "Inalis ang bituin sa file"
         },
         "dropbox": {
             "manageTags": "Pamahalaan ang mga tag"
@@ -4793,7 +4814,14 @@
             "participants": "kalahok",
             "saving": "Sine-save...",
             "saved": "Na-save",
-            "saveNow": "I-save ngayon"
+            "saveNow": "I-save ngayon",
+            "noteType": "Uri ng tala",
+            "addTag": "Magdagdag ng tag",
+            "newTag": "Bagong tag...",
+            "tagName": "Pangalan ng tag",
+            "removeTag": "Alisin ang tag",
+            "manageTags": "Pamahalaan ang mga tag",
+            "deleteTagConfirm": "Burahin ang tag na “{name}”? Mananatili ang teksto ng mga tala."
         },
         "shareLinkModal": {
             "title": "Link ng pagbabahagi",
@@ -6069,6 +6097,10 @@
             "scopeSession": "Inaaprubahan ang tool na ito sa natitirang bahagi ng chat session.",
             "approve": "Aprubahan",
             "rememberForChat": "Payagan ang tool na ito sa natitirang bahagi ng chat na ito"
+        },
+        "fileComments": {
+            "title": "Mga komento",
+            "empty": "Wala pang komento"
         }
     }
 }
