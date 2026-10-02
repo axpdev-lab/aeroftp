@@ -224,8 +224,11 @@ interface SyncEcCommandResult {
 }
 
 export interface RemoteSyncCallbacks {
-    /** Fired on every per-file status transition for live UI. */
-    onFileStatus?: (relativePath: string, status: SyncRunFileStatus) => void;
+    /**
+     * Fired on every per-file status transition for live UI. `message` is the
+     * recorded error for `error` / `verify_failed`, undefined otherwise.
+     */
+    onFileStatus?: (relativePath: string, status: SyncRunFileStatus, message?: string) => void;
     /** Fired after every completed entry: `(done, total)`. */
     onProgress?: (current: number, total: number) => void;
     /** Polled before every entry; return true to stop gracefully. */
@@ -398,8 +401,8 @@ export const runRemoteSync = async (
         config.errorCorrection?.enabled === true
         && config.isLocalLocal !== true;
 
-    const setStatus = (path: string, status: SyncRunFileStatus): void => {
-        callbacks.onFileStatus?.(path, status);
+    const setStatus = (path: string, status: SyncRunFileStatus, message?: string): void => {
+        callbacks.onFileStatus?.(path, status, message);
     };
     const isCancelled = (): boolean => callbacks.isCancelled?.() === true;
 
@@ -560,7 +563,7 @@ export const runRemoteSync = async (
             journalEntry.last_error = errInfo;
         }
         errors.push(errInfo);
-        setStatus(item.relativePath, 'error');
+        setStatus(item.relativePath, 'error', errInfo.message);
     };
 
     // ── Re-key delta stats captured under a basename onto the full path ────
@@ -892,7 +895,7 @@ export const runRemoteSync = async (
                     journalEntry.last_error = errInfo;
                 }
                 errors.push(errInfo);
-                setStatus(item.relativePath, 'error');
+                setStatus(item.relativePath, 'error', errInfo.message);
             }
         } else if (item.action === 'download') {
             if (config.versionedBackup && item.overwritesExisting) {
@@ -958,7 +961,7 @@ export const runRemoteSync = async (
                         journalEntry.last_error = errInfo;
                     }
                     errors.push(errInfo);
-                    setStatus(item.relativePath, 'verify_failed');
+                    setStatus(item.relativePath, 'verify_failed', errInfo.message);
                 } else {
                     // Read now, not when the index is saved after the run: a
                     // same-size edit made in between is a change the next run
@@ -989,7 +992,7 @@ export const runRemoteSync = async (
                     journalEntry.last_error = errInfo;
                 }
                 errors.push(errInfo);
-                setStatus(item.relativePath, 'error');
+                setStatus(item.relativePath, 'error', errInfo.message);
             }
         } else if ((item.action === 'delete-remote' || item.action === 'delete-local') && item.isDir) {
             // A folder is removed only when it is empty, and not even tried
@@ -1024,7 +1027,7 @@ export const runRemoteSync = async (
                         journalEntry.last_error = errInfo;
                     }
                     errors.push(errInfo);
-                    setStatus(item.relativePath, 'error');
+                    setStatus(item.relativePath, 'error', errInfo.message);
                 }
             }
             if (outcome === 'removed') {
@@ -1089,7 +1092,7 @@ export const runRemoteSync = async (
                     journalEntry.last_error = errInfo;
                 }
                 errors.push(errInfo);
-                setStatus(item.relativePath, 'error');
+                setStatus(item.relativePath, 'error', errInfo.message);
             }
         }
 

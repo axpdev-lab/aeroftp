@@ -466,6 +466,7 @@ import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/cross
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
 import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
 import { describeScanIncompleteError, isScanIncompleteError } from './utils/scanCompleteness';
@@ -1142,10 +1143,10 @@ const App: React.FC = () => {
     localLocal: boolean;
   } | null>(null);
   const remoteSyncRunningRef = useRef(false);
-  // FINDING-4: true from pressing Stop during a connected-remote AeroSync run
-  // until the run actually unwinds. Drives the Stop-button spinner (the run's
-  // files are not in transferQueue, so the batch two-level cancel can't surface
-  // "cancelling" feedback here).
+  // FINDING-4: true from pressing Stop during an AeroSync run until the run
+  // actually unwinds. Drives the Stop-button spinner: Stop on a run skips the
+  // batch two-level cancel (see cancelTransfer), so the queue's force-stop
+  // state never surfaces "cancelling" feedback for it.
   const [syncCancelling, setSyncCancelling] = useState(false);
   // GAP-7: canary trial result + the deferred full-run approval callback.
   const [canaryResult, setCanaryResult] = useState<{
@@ -10383,13 +10384,14 @@ const App: React.FC = () => {
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
     }
-    // FINDING-4: a connected-remote AeroSync run does not populate transferQueue,
-    // so the batch two-level model can never reach the hard-abort (the in-flight
-    // file always finishes first). Here Stop means "stop now": tell the runner to
-    // stop at the next file boundary AND abort the current transfer via the
-    // backend cancel flag (the Issue #332 tokio::select! race in
-    // provider_download_file / provider_upload_file drops the in-flight future).
-    // The spinner stays until the run unwinds and clears remoteSyncRunningRef.
+    // FINDING-4: an AeroSync run is driven by runRemoteSync, not by the queue's
+    // batch loop (its queue rows only mirror the runner's per-file status,
+    // #364), so the batch two-level model does not apply to it. Here Stop
+    // means "stop now": tell the runner to stop at the next file boundary AND
+    // abort the current transfer via the backend cancel flag (the Issue #332
+    // tokio::select! race in provider_download_file / provider_upload_file
+    // drops the in-flight future). The spinner stays until the run unwinds
+    // and clears remoteSyncRunningRef.
     if (remoteSyncRunningRef.current) {
       setSyncCancelling(true);
       batchCancelledRef.current = true;
@@ -11288,7 +11290,14 @@ const App: React.FC = () => {
             runFiles,
             runDirs,
             runConfig,
-            { isCancelled: () => batchCancelledRef.current },
+            {
+              isCancelled: () => batchCancelledRef.current,
+              // #364: each file shows as a Transfer Queue row while it runs.
+              // The queue's methods only queue functional state updates, so
+              // the older `transferQueue` this memoized callback may hold
+              // still drives the live list.
+              onFileStatus: syncRunQueueBridge(runFiles, transferQueue),
+            },
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true },
           );
           setRemoteSyncResult({ report, localLocal: false });
@@ -11436,7 +11445,11 @@ const App: React.FC = () => {
           runFiles,
           runDirs,
           runConfig,
-          { isCancelled: () => batchCancelledRef.current },
+          {
+            isCancelled: () => batchCancelledRef.current,
+            // #364: each copy shows as a Transfer Queue row while it runs.
+            onFileStatus: syncRunQueueBridge(runFiles, transferQueue),
+          },
           { invoke, resumeJournal: opts.resumeJournal, writeIndex: true },
         );
         setRemoteSyncResult({ report, localLocal: true });

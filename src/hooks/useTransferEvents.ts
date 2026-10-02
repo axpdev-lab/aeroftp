@@ -436,7 +436,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           i.filename === data.filename && (i.status === 'pending' || i.status === 'transferring'));
         if (queueItem) {
           transferIdToQueueId.current.set(data.transfer_id, queueItem.id);
-          transferQueue.markAsFolder(queueItem.id);
+          // A single-file start (an upload, a download, an AeroSync file)
+          // attaches to its row too: only a folder or batch start turns the
+          // row into a folder row.
+          if (isGroupedToastTransfer(data.transfer_id)) transferQueue.markAsFolder(queueItem.id);
           if (queueItem.status === 'pending') transferQueue.startTransfer(queueItem.id);
         }
       } else if (data.event_type === 'scanning') {
