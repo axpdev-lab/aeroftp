@@ -15,12 +15,15 @@ import libRs from '../../src-tauri/src/lib.rs?raw';
  * one of which handed a decrypted per-user credential to the webview as a
  * plain string; all of them were superseded by flows that never needed them.
  *
- * "Has a caller" follows one hop. A command name that appears only inside an
- * exported wrapper (`export async function getActiveUser() { invoke(...) }`)
- * is not called by being wrapped: four of the seven had a typed wrapper that
- * nothing imported. So a literal inside an exported top-level declaration
- * counts only when that declaration's name is referenced again, in another
- * file or elsewhere in its own.
+ * "Has a caller" follows one hop. A command name that appears only inside a
+ * wrapper (`export async function getActiveUser() { invoke(...) }`) is not
+ * called by being wrapped: four of the seven had a typed wrapper that nothing
+ * imported. So a literal inside a named top-level declaration counts only when
+ * that name is used again: elsewhere in its own file, or, when the file exports
+ * it (inline or through an `export { ... }` list), under its exported name in
+ * another file. The export list itself is not a use. A literal outside any
+ * named declaration (a top-level call, an anonymous default export) counts as
+ * a caller as it stands.
  *
  * `INHERITED_UNCALLED` is the set that already had no caller when this guard
  * landed and has not been audited yet. It may only shrink: an entry that gains
@@ -35,8 +38,10 @@ const sources = import.meta.glob('../**/*.{ts,tsx}', {
 
 /**
  * Command names from the `tauri::generate_handler![` block, parsed the way
- * `src-tauri/build.rs` parses it for the inventory: one path per line, last
- * segment is the name, attributes and comments skipped.
+ * `src-tauri/build.rs` parses it for the inventory: last path segment is the
+ * name, attributes and comments skipped. `cargo fmt` keeps one path per line;
+ * a line holding several is split on commas rather than read as one name, and
+ * every name is checked to be an identifier by the first test below.
  */
 function registeredCommands(lib: string): string[] {
     const lines = lib.split('\n');
@@ -47,8 +52,13 @@ function registeredCommands(lib: string): string[] {
         const line = raw.trim();
         if (line.startsWith('])')) break;
         if (line === '' || line.startsWith('#[') || line.startsWith('//')) continue;
-        const token = line.replace(/,$/, '').trim();
-        names.push(token.split('::').pop() ?? token);
+        const end = line.indexOf('])');
+        for (const part of (end >= 0 ? line.slice(0, end) : line).split(',')) {
+            const token = part.trim();
+            if (token === '' || token.startsWith('//')) continue;
+            names.push(token.split('::').pop() ?? token);
+        }
+        if (end >= 0) break;
     }
     return names;
 }
@@ -70,16 +80,35 @@ function children(node: Node): Node[] {
     return out;
 }
 
-/** The name a top-level statement exports, or null when it exports nothing nameable. */
-function exportedName(statement: Node): string | null {
-    if (statement.type !== 'ExportNamedDeclaration' && statement.type !== 'ExportDefaultDeclaration') return null;
-    const decl = statement.declaration as Node | null;
+/** The name a top-level statement declares (through an inline export too), or null. */
+function declaredName(statement: Node): string | null {
+    const isExport = statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration';
+    const decl = (isExport ? statement.declaration : statement) as Node | null;
     if (!decl) return null;
     const id = decl.id as { name?: string } | null | undefined;
     if (id?.name) return id.name;
     const declarators = decl.declarations as Array<{ id: { type: string; name?: string } }> | undefined;
     if (declarators?.length === 1 && declarators[0].id.type === 'Identifier') return declarators[0].id.name ?? null;
     return null;
+}
+
+/** Local name -> the names other files can import it by. */
+function exportedNames(program: Node): Map<string, Set<string>> {
+    const exported = new Map<string, Set<string>>();
+    const add = (local: string, name: string) => exported.set(local, (exported.get(local) ?? new Set()).add(name));
+    for (const statement of program.body as Node[]) {
+        if (statement.type === 'ExportNamedDeclaration' || statement.type === 'ExportDefaultDeclaration') {
+            const name = declaredName(statement);
+            if (name !== null) add(name, name);
+        }
+        // `export { a, b as c }` without `from`: names declared in this file.
+        if (statement.type === 'ExportNamedDeclaration' && !statement.source) {
+            for (const spec of statement.specifiers as Array<{ local: { name?: string }; exported: { name?: string } }>) {
+                if (spec.local.name && spec.exported.name) add(spec.local.name, spec.exported.name);
+            }
+        }
+    }
+    return exported;
 }
 
 /** The string a literal node spells, for plain strings and substitution-free templates. */
@@ -94,20 +123,23 @@ function stringValue(node: Node): string | null {
 
 interface ScannedFile {
     file: string;
-    /** Every string literal in the file, with the exported declaration it sits in. */
+    /** Every string literal in the file, with the named top-level declaration it sits in. */
     strings: Array<{ value: string; wrapper: string | null }>;
-    /** How many times each identifier (including JSX tag names) occurs. */
+    /** How many times each identifier (including JSX tag names) occurs, export lists excluded. */
     identifiers: Map<string, number>;
+    exported: Map<string, Set<string>>;
 }
 
 function scan(file: string, source: string): ScannedFile {
     const program = parseAst(source, { lang: file.endsWith('.tsx') ? 'tsx' : 'ts' }, file) as unknown as Node;
-    const scanned: ScannedFile = { file, strings: [], identifiers: new Map() };
+    const scanned: ScannedFile = { file, strings: [], identifiers: new Map(), exported: exportedNames(program) };
     for (const statement of program.body as Node[]) {
-        const wrapper = exportedName(statement);
+        const wrapper = declaredName(statement);
         const stack: Node[] = [statement];
         while (stack.length > 0) {
             const node = stack.pop() as Node;
+            // `export { unused }` names a binding, it does not use it.
+            if (node.type === 'ExportSpecifier') continue;
             const value = stringValue(node);
             if (value !== null) scanned.strings.push({ value, wrapper });
             if (node.type === 'Identifier' || node.type === 'JSXIdentifier') {
@@ -120,25 +152,32 @@ function scan(file: string, source: string): ScannedFile {
     return scanned;
 }
 
+/** Test and type files are not callers: only code the app ships can invoke a command. */
+function isAppSource(file: string): boolean {
+    return !/\.(?:test|spec)\.tsx?$/.test(file) && !file.includes('/__tests__/') && !file.endsWith('.d.ts');
+}
+
 const appFiles = Object.entries(sources)
-    .filter(([file]) => !/\.test\.tsx?$/.test(file) && !file.includes('/__tests__/') && !file.endsWith('.d.ts'))
+    .filter(([file]) => isAppSource(file))
     .map(([file, source]) => scan(file, source));
 
-/** Where a command is called from, following one hop through an exported wrapper. */
-function callersOf(command: string): string[] {
+/** Whether a named top-level declaration of `scanned` is used anywhere but its own declaration. */
+function isUsed(scanned: ScannedFile, wrapper: string, files: ScannedFile[]): boolean {
+    // The declaration's own name is one occurrence; any other in the file is a use.
+    if ((scanned.identifiers.get(wrapper) ?? 0) > 1) return true;
+    const names = scanned.exported.get(wrapper);
+    if (!names) return false;
+    return files.some((other) => other !== scanned && [...names].some((n) => (other.identifiers.get(n) ?? 0) > 0));
+}
+
+/** Where a command is called from, following one hop through a named wrapper. */
+function callersOf(command: string, files: ScannedFile[] = appFiles): string[] {
     const callers: string[] = [];
-    for (const scanned of appFiles) {
+    for (const scanned of files) {
         for (const { value, wrapper } of scanned.strings) {
             if (value !== command) continue;
-            if (wrapper === null) {
-                callers.push(scanned.file);
-                continue;
-            }
-            // The declaration's own name is one occurrence; any other is a use.
-            const used =
-                (scanned.identifiers.get(wrapper) ?? 0) > 1 ||
-                appFiles.some((other) => other !== scanned && (other.identifiers.get(wrapper) ?? 0) > 0);
-            if (used) callers.push(`${scanned.file} via ${wrapper}`);
+            if (wrapper === null) callers.push(scanned.file);
+            else if (isUsed(scanned, wrapper, files)) callers.push(`${scanned.file} via ${wrapper}`);
         }
     }
     return callers;
@@ -304,6 +343,34 @@ describe('registered Tauri commands have a frontend caller', () => {
         // A parser that silently matched nothing would make every assertion below pass.
         expect(registered.length).toBeGreaterThan(500);
         expect(appFiles.length).toBeGreaterThan(300);
+        // A mis-split line yields a name no command has, which would then read as "uncalled".
+        expect(registered.filter((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))).toEqual([]);
+    });
+
+    it('reads a handler line holding several paths as several commands', () => {
+        const lib = 'x.invoke_handler(tauri::generate_handler![\n    a::one, b::two,\n    three])\n';
+        expect(registeredCommands(lib)).toEqual(['one', 'two', 'three']);
+    });
+
+    it('does not count a wrapper that is only listed in an export block', () => {
+        const wrapperFile = scan(
+            'src/fake/wrappers.ts',
+            "const unused = () => invoke('fake_cmd');\nconst used = () => invoke('fake_used');\nexport { unused, used as renamed };\n",
+        );
+        const consumer = scan('src/fake/consumer.ts', "import { renamed } from './wrappers';\nrenamed();\n");
+        expect(callersOf('fake_cmd', [wrapperFile, consumer])).toEqual([]);
+        expect(callersOf('fake_used', [wrapperFile, consumer])).toEqual(['src/fake/wrappers.ts via used']);
+    });
+
+    it('does not count a literal parked in a constant nobody reads', () => {
+        const file = scan('src/fake/parked.ts', "const PARKED = 'fake_cmd';\n");
+        expect(callersOf('fake_cmd', [file])).toEqual([]);
+    });
+
+    it('excludes spec files from the callers', () => {
+        expect(isAppSource('src/utils/thing.spec.ts')).toBe(false);
+        expect(isAppSource('src/utils/thing.spec.tsx')).toBe(false);
+        expect(isAppSource('src/utils/thing.ts')).toBe(true);
     });
 
     it('follows a wrapper to its callers instead of counting the wrapper itself', () => {
