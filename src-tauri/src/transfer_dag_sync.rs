@@ -794,10 +794,43 @@ async fn perform_sync_transfer(
     }
 }
 
+/// Transfers running right now and the most that ran together. Counted around
+/// `perform_sync_transfer` itself: a finished clone task stays in the
+/// `JoinSet` until the driver joins it, so `JoinSet::len()` can count a
+/// transfer that already ended beside one that just started.
+#[derive(Default)]
+struct RunningTransfers {
+    now: std::sync::atomic::AtomicUsize,
+    peak: std::sync::atomic::AtomicUsize,
+}
+
+impl RunningTransfers {
+    fn enter(self: &Arc<Self>) -> RunningTransferGuard {
+        use std::sync::atomic::Ordering;
+        let now = self.now.fetch_add(1, Ordering::SeqCst) + 1;
+        self.peak.fetch_max(now, Ordering::SeqCst);
+        RunningTransferGuard(Arc::clone(self))
+    }
+
+    fn peak(&self) -> u32 {
+        let peak = self.peak.load(std::sync::atomic::Ordering::SeqCst);
+        u32::try_from(peak).unwrap_or(u32::MAX)
+    }
+}
+
+struct RunningTransferGuard(Arc<RunningTransfers>);
+
+impl Drop for RunningTransferGuard {
+    fn drop(&mut self) {
+        self.0.now.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn spawn_normal_worker(
     workers: &mut VecDeque<Box<dyn StorageProvider>>,
     jobs: &mut JoinSet<NormalWorkerCompletion>,
+    running: &Arc<RunningTransfers>,
     job: TransferJob,
     transfer: PlannedTransfer,
     local_root: String,
@@ -809,12 +842,14 @@ fn spawn_normal_worker(
     let mut worker = workers
         .pop_front()
         .expect("normal worker dispatch must have a clone lease");
+    let running = Arc::clone(running);
     jobs.spawn(async move {
         let mut progress = RecordingProgressSink {
             events: Vec::new(),
             last_progress: HashMap::new(),
         };
         let mut no_delta_batch = None;
+        let _running = running.enter();
         let outcome = perform_sync_transfer(
             &mut worker,
             &mut no_delta_batch,
@@ -844,10 +879,10 @@ fn spawn_normal_worker(
 /// no two delta operations can overlap. Report aggregation and calls to the
 /// caller-owned progress sink remain here, after each worker returns.
 ///
-/// Returns the most transfers that ran at once: clone workers in flight, plus
-/// one while the driver awaits a transfer on the primary session. That is the
-/// job's real file concurrency; the frontier's fold of per-file subgraphs
-/// cannot see it.
+/// Returns the most transfers that ran at once, clone workers and the primary
+/// session together, counted around each transfer (`RunningTransfers`). That
+/// is the job's real file concurrency; the frontier's fold of per-file
+/// subgraphs cannot see it.
 #[allow(clippy::too_many_arguments)]
 async fn drive_sync_transfers(
     mut job_rx: mpsc::Receiver<TransferJob>,
@@ -867,7 +902,7 @@ async fn drive_sync_transfers(
     let mut normal_jobs = JoinSet::new();
     let mut pending_normals: VecDeque<TransferJob> = VecDeque::new();
     let mut channel_closed = false;
-    let mut peak_running = 0usize;
+    let running = Arc::new(RunningTransfers::default());
 
     loop {
         while !workers.is_empty() {
@@ -878,6 +913,7 @@ async fn drive_sync_transfers(
             spawn_normal_worker(
                 &mut workers,
                 &mut normal_jobs,
+                &running,
                 job,
                 transfer,
                 local_root.to_string(),
@@ -886,7 +922,6 @@ async fn drive_sync_transfers(
                 requested_policy,
                 error_correction.clone(),
             );
-            peak_running = peak_running.max(normal_jobs.len());
         }
 
         if channel_closed && normal_jobs.is_empty() && pending_normals.is_empty() {
@@ -926,6 +961,7 @@ async fn drive_sync_transfers(
                         spawn_normal_worker(
                             &mut workers,
                             &mut normal_jobs,
+                            &running,
                             job,
                             transfer,
                             local_root.to_string(),
@@ -934,13 +970,12 @@ async fn drive_sync_transfers(
                             requested_policy,
                             error_correction.clone(),
                         );
-                        peak_running = peak_running.max(normal_jobs.len());
                     }
                     Some(job) if matches!(job.lane, SyncTransferLane::NormalPool) && normal_jobs.is_empty() => {
                         // No honest clone pool was available. Reuse the
                         // primary session exactly as the former serial driver.
                         let transfer = &transfers[job.transfer_index];
-                        peak_running = peak_running.max(normal_jobs.len() + 1);
+                        let primary_running = running.enter();
                         let outcome = perform_sync_transfer(
                             provider,
                             delta_batch,
@@ -952,6 +987,7 @@ async fn drive_sync_transfers(
                             sink,
                             error_correction,
                         ).await;
+                        drop(primary_running);
                         let attestation = sync_outcome_bytes(&outcome);
                         apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
                         let _ = job.ack.send(attestation);
@@ -965,7 +1001,7 @@ async fn drive_sync_transfers(
                         // awaited in the driver, making the lane serial even
                         // when normal clone tasks are in flight.
                         let transfer = &transfers[job.transfer_index];
-                        peak_running = peak_running.max(normal_jobs.len() + 1);
+                        let primary_running = running.enter();
                         let outcome = perform_sync_transfer(
                             provider,
                             delta_batch,
@@ -977,6 +1013,7 @@ async fn drive_sync_transfers(
                             sink,
                             error_correction,
                         ).await;
+                        drop(primary_running);
                         let attestation = sync_outcome_bytes(&outcome);
                         apply_sync_tree_outcome(report, &transfer.rel, transfer.op, outcome, transfer.decision_policy, sink);
                         let _ = job.ack.send(attestation);
@@ -986,7 +1023,7 @@ async fn drive_sync_transfers(
             }
         }
     }
-    u32::try_from(peak_running).unwrap_or(u32::MAX)
+    running.peak()
 }
 
 /// Run a full sync session through the graph engine.
@@ -1806,6 +1843,100 @@ mod tests {
         assert_eq!(sink.starts.len(), 2);
         assert_eq!(sink.done.len(), 2);
         assert!(sink.starts.iter().all(|rel| sink.done.contains(rel)));
+    }
+
+    /// A clone task that finished stays in the driver's `JoinSet` until it is
+    /// joined. If the next job arrives in that window, both `select!` arms
+    /// are ready and either may win; the two transfers ran one after the
+    /// other and must not be counted as overlapping. The driver is polled by
+    /// hand so the window is opened on purpose: an idle driver would join the
+    /// finished task as soon as it woke. Before, `JoinSet::len()` was the
+    /// measure and about half of these rounds reported 2.
+    #[tokio::test]
+    async fn a_finished_unjoined_worker_is_not_counted_as_running() {
+        use futures_util::FutureExt;
+        for round in 0..16 {
+            let (primary, state) = BarrierProvider::new(1, true);
+            let mut primary: Box<dyn StorageProvider> = Box::new(primary);
+            let (_caps, workers) =
+                prepare_normal_file_workers(&mut primary, DeltaPolicy::SizeOnly).await;
+            assert_eq!(workers.len(), 2);
+            let transfers = vec![
+                planned_upload("first.bin", DeltaPolicy::SizeOnly),
+                planned_upload("second.bin", DeltaPolicy::SizeOnly),
+            ];
+            let (tx, rx) = mpsc::channel(JOB_CHANNEL_CAPACITY);
+            let mut delta_batch = None;
+            let mut report = SyncReport::default();
+            let mut sink = TestSyncSink::default();
+            let correction = crate::sync::SyncErrorCorrectionOptions::default();
+            let peak_running = {
+                let mut driver = std::pin::pin!(drive_sync_transfers(
+                    rx,
+                    &mut primary,
+                    &mut delta_batch,
+                    &mut report,
+                    &mut sink,
+                    &transfers,
+                    "/local",
+                    "/remote",
+                    1,
+                    DeltaPolicy::SizeOnly,
+                    &correction,
+                    workers,
+                ));
+
+                let (first_ack, mut first_rx) = oneshot::channel();
+                tx.send(TransferJob {
+                    transfer_index: 0,
+                    lane: SyncTransferLane::NormalPool,
+                    ack: first_ack,
+                })
+                .await
+                .unwrap();
+                // One poll: the driver takes the job and spawns its clone task.
+                assert!((&mut driver).now_or_never().is_none());
+                // Let that task run to its end without polling the driver, so
+                // it sits finished and unjoined (no ack yet: joining sends it).
+                for _ in 0..1_000 {
+                    if state.peak.load(Ordering::SeqCst) == 1
+                        && state.active.load(Ordering::SeqCst) == 0
+                    {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+                for _ in 0..50 {
+                    tokio::task::yield_now().await;
+                }
+                assert!(
+                    first_rx.try_recv().is_err(),
+                    "round {round}: still unjoined"
+                );
+
+                let (second_ack, _second_rx) = oneshot::channel();
+                tx.send(TransferJob {
+                    transfer_index: 1,
+                    lane: SyncTransferLane::NormalPool,
+                    ack: second_ack,
+                })
+                .await
+                .unwrap();
+                drop(tx);
+                loop {
+                    if let Some(peak) = (&mut driver).now_or_never() {
+                        break peak;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            };
+            assert_eq!(report.uploaded, 2, "round {round}");
+            assert_eq!(state.peak.load(Ordering::SeqCst), 1, "round {round}");
+            assert_eq!(
+                peak_running, 1,
+                "round {round}: the uploads never overlapped"
+            );
+        }
     }
 
     #[tokio::test]
