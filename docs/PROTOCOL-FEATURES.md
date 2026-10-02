@@ -801,7 +801,7 @@ See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categ
 | Streaming | SSE | SSE | SSE | SSE | SSE | NDJSON | SSE | SSE | SSE | SSE |
 | Vision/Multimodal | Yes | Yes | Yes | Yes | Via model | Yes | Yes | Yes | N/A | Via model |
 | Structured Outputs | **strict: true** | N/A | N/A | **strict: true** | **strict: true** | N/A | N/A | N/A | N/A | N/A |
-| Prompt Caching | N/A | **Ephemeral** | **Implicit** | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
+| Prompt Caching | N/A | **Ephemeral** | **Implicit (Gemini 2.5+)** | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
 | Extended Thinking | o3/o3-mini | Claude 3.5+ | Gemini 2.0+ | N/A | Via model | deepseek-r1 | N/A | **enable_thinking** | **reasoning_content** | N/A |
 | Web Search | N/A | N/A | N/A | N/A | N/A | N/A | **$web_search** | **enable_search** | N/A | N/A |
 | Code Execution | N/A | N/A | **Python sandbox** | N/A | N/A | N/A | N/A | N/A | N/A | N/A |
