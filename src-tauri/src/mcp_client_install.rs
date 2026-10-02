@@ -406,7 +406,7 @@ fn publish(_: &Path, _: &Path) -> Result<(), &'static str> {
 }
 
 #[tauri::command]
-pub fn mcp_client_install_manifests(
+pub async fn mcp_client_install_manifests(
     webview: Webview,
 ) -> Result<Vec<ManagedManifest>, &'static str> {
     crate::only_main_window(webview.label(), "mcp_client_install_manifests")
