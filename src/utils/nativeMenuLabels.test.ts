@@ -33,8 +33,11 @@ describe('the native menu follows the language', () => {
     it('keeps a hidden native menu bar hidden after a rebuild', () => {
         // A global set_menu reaches every window on Linux; the main window's
         // visibility is the user's choice (toggle_menu_bar).
+        // Not a name match: the rebuild must read the flag and remove the menu
+        // when it is off, and the toggle must write it.
         const body = libRs.slice(libRs.indexOf('fn rebuild_menu_on_main('), libRs.indexOf('\n}\n', libRs.indexOf('fn rebuild_menu_on_main(')));
-        expect(body).toContain('MAIN_MENU_BAR_VISIBLE');
-        expect(libRs.slice(libRs.indexOf('fn toggle_menu_bar('), libRs.indexOf('fn rebuild_menu('))).toContain('MAIN_MENU_BAR_VISIBLE');
+        expect(body).toMatch(/if !MAIN_MENU_BAR_VISIBLE\.load\([^)]*\)\s*\{[^}]*get_webview_window\("main"\)[^}]*\.remove_menu\(\)/);
+        const toggle = libRs.slice(libRs.indexOf('fn toggle_menu_bar('), libRs.indexOf('fn rebuild_menu('));
+        expect(toggle).toMatch(/MAIN_MENU_BAR_VISIBLE\.store\(visible,/);
     });
 });
