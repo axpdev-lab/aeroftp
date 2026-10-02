@@ -69,23 +69,23 @@ export async function loadS3Tags(invoke: Invoke, path: string): Promise<TagRow[]
  * (`s3_delete_object_tags`) rather than writing an empty one.
  */
 export async function saveS3Tags(invoke: Invoke, path: string, rows: TagRow[]): Promise<void> {
-    const tags: Record<string, string> = {};
-    const seen = new Set<string>();
+    const entries = new Map<string, string>();
     for (const { key, value } of rows) {
         const k = key.trim();
         if (!k) continue;
-        if (seen.has(k)) {
+        if (entries.has(k)) {
             throw new Error(`Tag key "${k}" is used more than once`);
         }
-        seen.add(k);
-        tags[k] = value;
+        entries.set(k, value);
     }
-    if (Object.keys(tags).length > S3_MAX_TAGS) {
+    if (entries.size > S3_MAX_TAGS) {
         throw new Error(`S3 allows at most ${S3_MAX_TAGS} tags per object`);
     }
-    if (Object.keys(tags).length === 0) {
+    if (entries.size === 0) {
         await invoke('s3_delete_object_tags', { path });
     } else {
-        await invoke('s3_set_object_tags', { path, tags });
+        // fromEntries defines own properties, so a "__proto__" key is kept
+        // where an assignment on a plain object would set the prototype.
+        await invoke('s3_set_object_tags', { path, tags: Object.fromEntries(entries) });
     }
 }

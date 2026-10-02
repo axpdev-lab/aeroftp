@@ -56,6 +56,17 @@ describe('S3 storage class, tags and restore; Azure tier', () => {
         expect(invoke).not.toHaveBeenCalled();
     });
 
+    it('keeps a __proto__ tag key instead of deleting every tag', async () => {
+        // S3 allows the key; assigned on a plain object it vanished, the tag
+        // set looked empty and the object's tags were deleted.
+        const invoke = vi.fn();
+        await saveS3Tags(invoke as never, '/a', [{ key: '__proto__', value: 'x' }]);
+        expect(invoke).toHaveBeenCalledTimes(1);
+        const [command, args] = invoke.mock.calls[0] as [string, { tags: Record<string, string> }];
+        expect(command).toBe('s3_set_object_tags');
+        expect(JSON.stringify(args.tags)).toBe('{"__proto__":"x"}');
+    });
+
     it('offers a restore only for objects that need one', () => {
         expect(needsGlacierRestore('GLACIER')).toBe(true);
         expect(needsGlacierRestore('DEEP_ARCHIVE')).toBe(true);
