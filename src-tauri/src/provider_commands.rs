@@ -4123,8 +4123,21 @@ pub(crate) async fn run_provider_file_batch(
         resolve_provider_transfer_runtime(&provider, transfer_settings).await;
 
     let prefix = if is_download { "dl" } else { "ul" };
-    let transfer_id = accepted_file_batch_id(params.batch_id.as_deref(), is_download)
-        .unwrap_or_else(|| format!("{}-files-{}", prefix, chrono::Utc::now().timestamp_millis()));
+    let transfer_id = match accepted_file_batch_id(params.batch_id.as_deref(), is_download) {
+        Some(id) => id,
+        None => {
+            // A GUI id we refuse means the GUI's row registration no longer
+            // matches the event ids and its queue falls back to matching rows
+            // by name: say so instead of degrading silently.
+            if let Some(refused) = params.batch_id.as_deref() {
+                warn!(
+                    "Ignoring malformed file batch id {:?}: the transfer queue will match rows by name",
+                    refused
+                );
+            }
+            format!("{}-files-{}", prefix, chrono::Utc::now().timestamp_millis())
+        }
+    };
     let total = params.entries.len();
     let display_name = format!("{} file{}", total, if total == 1 { "" } else { "s" });
     let batch_path = params

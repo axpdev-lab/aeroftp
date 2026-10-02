@@ -102,7 +102,12 @@ export function applyItemProgress(
  *  duplicated or missed, whether the event arrives before the queue re-rendered
  *  the new rows or after the row settled. Without a registration (folder
  *  batches enqueue their rows lazily, on this very event) it is the pending row
- *  with the same name, path and direction, or `null` to create one. */
+ *  with the same name, path and direction, or `null` to create one.
+ *
+ *  A registered row is returned without checking it still exists: if the user
+ *  removed it between registration and this event, the queue updates are
+ *  no-ops and no row is recreated for a file the user dropped from view. That
+ *  is deliberate; the transfer itself still runs and is logged. */
 export function rowForFileStart(
     registered: string | undefined,
     items: ReadonlyArray<Pick<TransferItem, 'id' | 'filename' | 'path' | 'status' | 'type'>>,

@@ -79,6 +79,13 @@ export function fileBatchCommand(
  *   the single-file commands try an rsync delta first (the batch executor has
  *   no delta step), and an existing destination is the one case where a
  *   delta can save the transfer. A new file gains nothing from either.
+ *
+ * `destinationExists` comes from checkOverwrite, which looks at the listing
+ * of the panel on screen. For a paste or a planner run into another folder
+ * that listing is not the destination, so on SFTP a file existing only over
+ * there goes in the batch (it loses the delta, nothing else) and one existing
+ * only here goes single (it loses the parallelism, nothing else). Safe both
+ * ways; it is checkOverwrite's long-standing limit, not a new one.
  */
 export function keepsSingleFilePath(file: {
   direction: FileBatchDirection;
