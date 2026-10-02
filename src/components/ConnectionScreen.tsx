@@ -810,14 +810,19 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // The active user's saved profiles, reloaded after every save and on
     // serversRefreshKey: the suggested-name check and the OAuth edit Save
-    // compare against it.
+    // compare against it. A failed read keeps the last list it had; the OAuth
+    // edit Save does not depend on it (see oauthEditHasChanges).
     const [savedProfiles, setSavedProfiles] = useState<ServerProfile[]>([]);
 
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            const loaded = await loadSavedServerProfiles();
-            if (!cancelled) setSavedProfiles(loaded);
+            try {
+                const loaded = await loadSavedServerProfiles();
+                if (!cancelled) setSavedProfiles(loaded);
+            } catch (e) {
+                logger.warn('Saved profiles could not be loaded for the connection form', e);
+            }
         })();
         return () => { cancelled = true; };
     }, [savedServersUpdate, serversRefreshKey]);
@@ -1983,7 +1988,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // to persist it was to sign in again, which is what this Save exists to avoid.
     const oauthEditHasChanges = (): boolean => {
         if (!editingProfileId) return false;
-        const ep = savedProfiles.find((s) => s.id === editingProfileId);
+        // The stored profile, or the one this edit was opened with when the
+        // list has not loaded (a failed vault read must not lock Save).
+        const ep = savedProfiles.find((s) => s.id === editingProfileId)
+            ?? (editingProfile?.id === editingProfileId ? editingProfile : undefined);
         if (!ep) return false;
         return (
             (connectionName || ep.name) !== ep.name ||

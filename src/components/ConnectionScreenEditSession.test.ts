@@ -62,7 +62,12 @@ describe('ConnectionScreen edit sessions', () => {
         for (const loader of loaders) {
             expect(loader, 'the loader is not gated on a flag').not.toMatch(/^\s*if \(![\w.]+\) return;/m);
             expect(loader, 'the loader reruns on serversRefreshKey').toMatch(/\[[^\]]*\bserversRefreshKey\b[^\]]*\]\);$/);
+            // A rejected vault read was an unhandled rejection that left the list empty.
+            expect(loader, 'the loader catches a failed read').toMatch(/\bcatch\s*\(/);
         }
+        // And Save does not hinge on that read: without the list, the profile
+        // the edit was opened with stands in.
+        expect(bodyOf('oauthEditHasChanges')).toMatch(/\?\?\s*\(editingProfile\?\.id === editingProfileId \? editingProfile : undefined\)/);
     });
 
     it('asks before changing a recorded form on a bound profile, for both secrets', () => {
