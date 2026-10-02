@@ -19,6 +19,7 @@ import { bridgeProfileKey } from './bridge/bridgeImportCommit';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
+import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
@@ -32,7 +33,15 @@ interface ExportImportDialogProps {
     // AeroFTP"). When set, the dialog runs the same identify+route flow as a
     // drag-and-drop so it lands straight on that source's preview.
     initialBridgeFilePath?: string;
+    // Profiles to select when the export step opens (My Servers context
+    // menu "Export..."). Undefined selects every profile, as before.
+    initialSelectedServerIds?: string[];
 }
+
+// The selection the export step starts from: the profiles a caller handed
+// over, or every profile.
+const defaultExportSelection = (servers: ServerProfile[], preselected?: string[]): Set<string> =>
+    new Set(preselected ?? servers.map(s => s.id));
 
 interface ImportedServer {
     id: string;
@@ -71,7 +80,7 @@ interface ImportResult {
     };
 }
 
-export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode, initialBridgeFilePath }) => {
+export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
@@ -98,15 +107,48 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
-    const [selectedServerIds, setSelectedServerIds] = useState<Set<string>>(() => new Set(servers.map(s => s.id)));
+    const [selectedServerIds, setSelectedServerIds] = useState<Set<string>>(
+        () => defaultExportSelection(servers, initialSelectedServerIds),
+    );
+    // Callers load `servers` from the vault after mounting the dialog, so the
+    // first render can see an empty or stale list. Until the user touches the
+    // selection, follow the list as it arrives instead of keeping a
+    // selection computed from nothing.
+    const selectionTouchedRef = useRef(false);
+    useEffect(() => {
+        if (!selectionTouchedRef.current) {
+            setSelectedServerIds(defaultExportSelection(servers, initialSelectedServerIds));
+        }
+    }, [servers, initialSelectedServerIds]);
+    const updateSelection = (next: Set<string>) => {
+        selectionTouchedRef.current = true;
+        setSelectedServerIds(next);
+    };
 
-    const allSelected = selectedServerIds.size === servers.length;
-    const noneSelected = selectedServerIds.size === 0;
+    const exportFilter = useServerChecklistFilter(servers);
+    const allServerIds = useMemo(() => servers.map(s => s.id), [servers]);
+    const shownServerIds = useMemo(() => exportFilter.visible.map(s => s.id), [exportFilter.visible]);
 
+    // Selected profiles, filter or not: a row the filter hides stays in the
+    // export (the summary under the list counts it).
     const selectedServers = useMemo(
         () => servers.filter(s => selectedServerIds.has(s.id)),
         [servers, selectedServerIds]
     );
+    const noneSelected = selectedServers.length === 0;
+
+    // Opened on a preselected profile: bring its row into view, since in a
+    // long list it can sit far below the fold.
+    const exportListRef = useRef<HTMLDivElement>(null);
+    const preselectScrolledRef = useRef(false);
+    useEffect(() => {
+        if (mode !== 'export' || preselectScrolledRef.current || !initialSelectedServerIds?.length) return;
+        const first = initialSelectedServerIds.find(id => servers.some(s => s.id === id));
+        if (!first) return;
+        preselectScrolledRef.current = true;
+        const row = exportListRef.current?.querySelector<HTMLElement>(`[data-server-id="${CSS.escape(first)}"]`);
+        row?.scrollIntoView({ block: 'nearest' });
+    }, [mode, servers, initialSelectedServerIds]);
 
     // Pre-compute existing server keys for duplicate detection in import previews.
     // The parent (ConnectionScreen / SettingsPanel / IntroHub) feeds `servers`
@@ -118,20 +160,13 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     );
 
     const toggleServer = (id: string) => {
+        selectionTouchedRef.current = true;
         setSelectedServerIds(prev => {
             const next = new Set(prev);
             if (next.has(id)) next.delete(id);
             else next.add(id);
             return next;
         });
-    };
-
-    const toggleAll = () => {
-        if (allSelected) {
-            setSelectedServerIds(new Set());
-        } else {
-            setSelectedServerIds(new Set(servers.map(s => s.id)));
-        }
     };
 
     const handleExport = async () => {
@@ -290,6 +325,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setImportFilePath(null);
         setBridgeSrc(null);
         setBridgePresetPath(null);
+        exportFilter.setQuery('');
     };
 
     // Route to a bridge source's import/export surface. Shared by the
@@ -547,17 +583,27 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
                                         {t('settings.selectServersToExport')}
                                     </span>
-                                    <button
-                                        onClick={toggleAll}
-                                        className="text-xs text-blue-500 hover:text-blue-600 font-medium"
-                                    >
-                                        {allSelected ? t('settings.deselectAll') : t('settings.selectAll')}
-                                    </button>
+                                    <SelectShownButton
+                                        selected={selectedServerIds}
+                                        shownIds={shownServerIds}
+                                        filtering={exportFilter.filtering}
+                                        onChange={updateSelection}
+                                    />
                                 </div>
-                                <div className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
-                                    {servers.map((server) => (
+                                <ServerChecklistSearch
+                                    value={exportFilter.query}
+                                    onChange={exportFilter.setQuery}
+                                    autoFocus={!initialSelectedServerIds}
+                                />
+                                <div ref={exportListRef} className="border border-gray-200 dark:border-gray-600 rounded-lg max-h-[200px] overflow-y-auto">
+                                    {exportFilter.visible.length === 0 && exportFilter.filtering && (
+                                        <ServerChecklistNoMatch query={exportFilter.query} />
+                                    )}
+                                    {exportFilter.visible.map((server) => (
                                         <div
                                             key={server.id}
+                                            data-server-id={server.id}
+                                            onClick={() => toggleServer(server.id)}
                                             className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer border-b border-gray-100 dark:border-gray-700 last:border-b-0"
                                         >
                                             <Checkbox
@@ -580,9 +626,12 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         </div>
                                     ))}
                                 </div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                    {selectedServerIds.size} / {servers.length} {t('settings.selected')}
-                                </div>
+                                <ServerChecklistSummary
+                                    selected={selectedServerIds}
+                                    allIds={allServerIds}
+                                    shownIds={shownServerIds}
+                                    filtering={exportFilter.filtering}
+                                />
                             </div>
 
                             {/* Include credentials toggle */}
@@ -614,6 +663,9 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                     placeholder={t('settings.encryptionPassword')}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
+                                    // Opened from a profile's "Export...": the selection
+                                    // is already made, the password is the next step.
+                                    autoFocus={!!initialSelectedServerIds}
                                     className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                                 />
                                 <button
@@ -666,7 +718,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                     ) : (
                                         <Download size={16} />
                                     )}
-                                    {loading ? t('settings.exporting') : `${t('settings.exportServers')} (${selectedServerIds.size})`}
+                                    {loading ? t('settings.exporting') : `${t('settings.exportServers')} (${selectedServers.length})`}
                                 </button>
                             </div>
                         </div>

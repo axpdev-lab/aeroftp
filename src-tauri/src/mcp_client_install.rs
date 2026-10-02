@@ -7,6 +7,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use tauri::{AppHandle, Manager, Webview};
 use tokio_util::sync::CancellationToken;
@@ -228,11 +229,39 @@ pub(crate) fn uninstall(
 }
 
 pub(crate) fn invalidate_all() {
+    INSTALL_GENERATION.fetch_add(1, Ordering::AcqRel);
     if let Ok(operations) = OPERATIONS.lock() {
         for operation in operations.values() {
             operation.cancel.cancel();
         }
     }
+}
+
+static INSTALL_GENERATION: AtomicU64 = AtomicU64::new(0);
+// A Cancel may arrive while the install is still resolving its user context.
+// Bound and expire these pre-start cancellations rather than acknowledging a no-op.
+type PendingCancels = HashMap<(i64, String), std::time::Instant>;
+static PENDING_CANCELS: LazyLock<Mutex<PendingCancels>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+fn prune_cancels(pending: &mut PendingCancels) {
+    pending.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(120));
+}
+fn cancel_operation(user: i64, id: &str) -> Result<(), &'static str> {
+    if uuid::Uuid::parse_str(id).is_err() {
+        return Err("MCP_INSTALL_INVALID");
+    }
+    let operations = OPERATIONS.lock().map_err(|_| "MCP_INSTALL_BUSY")?;
+    if let Some(op) = operations.get(&user).filter(|op| op.id == id) {
+        op.cancel.cancel();
+        return Ok(());
+    }
+    let mut pending = PENDING_CANCELS.lock().map_err(|_| "MCP_INSTALL_BUSY")?;
+    prune_cancels(&mut pending);
+    if pending.len() >= 64 {
+        return Err("MCP_INSTALL_BUSY");
+    }
+    pending.insert((user, id.into()), std::time::Instant::now());
+    Ok(())
 }
 
 struct Operation {
@@ -258,6 +287,11 @@ fn register(user: i64, id: &str) -> Result<OperationGuard, &'static str> {
         return Err("MCP_INSTALL_INVALID");
     }
     let mut operations = OPERATIONS.lock().map_err(|_| "MCP_INSTALL_BUSY")?;
+    let mut pending = PENDING_CANCELS.lock().map_err(|_| "MCP_INSTALL_BUSY")?;
+    prune_cancels(&mut pending);
+    if pending.remove(&(user, id.into())).is_some() {
+        return Err("MCP_INSTALL_CANCELLED");
+    }
     if operations.contains_key(&user) {
         return Err("MCP_INSTALL_BUSY");
     }
@@ -401,6 +435,7 @@ pub async fn mcp_client_install_server(
     if network_consent && !m.network {
         return Err("MCP_NETWORK_UNDECLARED");
     }
+    let generation = INSTALL_GENERATION.load(Ordering::Acquire);
     let app_context = app.clone();
     let (_, initial_key, user) =
         tokio::task::spawn_blocking(move || crate::mcp_client_commands::context(&app_context))
@@ -408,6 +443,10 @@ pub async fn mcp_client_install_server(
             .map_err(|_| "MCP_STORE_UNAVAILABLE")??;
     let operation = register(user, &operation_id)?;
     let cancel = operation.cancel.clone();
+    if INSTALL_GENERATION.load(Ordering::Acquire) != generation {
+        cancel.cancel();
+    }
+    paths::check_cancel(&cancel)?;
     let bytes = tokio::time::timeout(std::time::Duration::from_secs(120), download(m, &cancel))
         .await
         .map_err(|_| "MCP_INSTALL_DOWNLOAD")??;
@@ -487,15 +526,7 @@ pub async fn mcp_client_install_cancel(
         .map_err(|_| "MCP_MAIN_WINDOW_REQUIRED")?;
     tokio::task::spawn_blocking(move || {
         let (_, _, user) = crate::mcp_client_commands::context(&app)?;
-        if let Some(op) = OPERATIONS
-            .lock()
-            .map_err(|_| "MCP_INSTALL_BUSY")?
-            .get(&user)
-            .filter(|op| op.id == operation_id)
-        {
-            op.cancel.cancel();
-        }
-        Ok(())
+        cancel_operation(user, &operation_id)
     })
     .await
     .map_err(|_| "MCP_INSTALL_IO")?
@@ -563,6 +594,23 @@ mod tests {
         drop(operation);
         assert!(register(887766, &id).is_ok());
         assert!(register(887766, "invalid-operation").is_err());
+    }
+    #[test]
+    fn cancellation_before_registration_is_scoped_and_prevents_start() {
+        let id = uuid::Uuid::new_v4().to_string();
+        cancel_operation(887767, &id).unwrap();
+        let other_user = register(887768, &id).unwrap();
+        assert!(!other_user.cancel.is_cancelled());
+        assert!(matches!(
+            register(887767, &id),
+            Err("MCP_INSTALL_CANCELLED")
+        ));
+        drop(other_user);
+        let id = uuid::Uuid::new_v4().to_string();
+        let running = register(887767, &id).unwrap();
+        cancel_operation(887767, &id).unwrap();
+        assert!(running.cancel.is_cancelled());
+        assert!(cancel_operation(887767, "invalid").is_err());
     }
     #[cfg(target_os = "linux")]
     #[test]

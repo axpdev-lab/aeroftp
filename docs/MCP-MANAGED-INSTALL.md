@@ -4,7 +4,7 @@ The STDIO settings boundary supports explicit read-only directory grants and a b
 
 ## Trust and permissions
 
-Only the main window can change permissions or install a server. Generic CLI and renderer partition-setting APIs reserve every `aeroagent_mcp_` scope, including reads, writes, deletion and enumeration, so MCP catalogs remain behind their dedicated guarded commands. Ordinary server edits preserve the sandbox descriptor; they cannot create grants, change network consent, or replace a managed command or entry point. Permission changes increment the stored revision. The effective revision includes the complete descriptor, user identity and vault-backed environment secrets, so previous snapshots and tool approvals cannot authorize the changed configuration.
+Only the main window can change permissions or install a server. Generic CLI and renderer partition-setting APIs reserve every `aeroagent_mcp_` scope, including reads, writes and deletion, so MCP catalogs remain behind their dedicated guarded commands. Ordinary server edits preserve the sandbox descriptor; they cannot create grants, change network consent, or replace a managed command or entry point. Permission changes increment the stored revision. The effective revision includes the complete descriptor, user identity and vault-backed environment secrets, so previous snapshots and tool approvals cannot authorize the changed configuration.
 
 Custom servers can request up to four canonical, non-overlapping directories. The user chooses each directory and confirms access to all its files. System roots, home roots, credential/application directories, aliases, symbolic links, hard links and special files are refused. Renew access confirms one selected path again; adding a different grant cannot silently renew another directory that was replaced. Directory identity is recorded as device/inode strings, preserving precision through the renderer. Custom servers have no network permission.
 
@@ -12,7 +12,7 @@ Managed manifests can declare network access. A separate recorded user consent e
 
 ## Reviewed manifest contract
 
-`src-tauri/src/mcp_client_install.rs` owns the manifest registry. The renderer supplies only a manifest ID/version, an operation UUID and consent, never an archive URL, hash, runtime command or manifest body. The registry is deliberately empty in this foundation; MCLIENT-07 supplies the reviewed presets and Recommended cards.
+`src-tauri/src/mcp_client_install.rs` owns the manifest registry. The renderer supplies only a manifest ID/version, an operation UUID and consent, never an archive URL, hash, runtime command or manifest body. The registry is deliberately empty in this foundation; MCLIENT-07 supplies the reviewed presets and Recommended cards. Generic installer controls load the registry, confirm declared network access, and offer scoped cancellation while an install is pending; an empty registry adds no visible cards. Closing settings cancels an unfinished install.
 
 A STDIO manifest identifies:
 
@@ -40,4 +40,4 @@ Each directory launch creates a bounded, link-free private snapshot through pinn
 
 Processes keep cleared environments, private `/tmp`, namespaces, `die-with-parent`, new sessions, cancellation and kill-on-drop. Production Windows and macOS launches and permission/install commands remain unavailable until equivalent isolation exists. Linux requires bubblewrap's `--ro-bind-fd` support for directory grants; an unsupported host fails closed.
 
-Remove moves the managed tree into a private quarantine while its catalog transaction is pending. Rollback restores it. After commit the quarantined tree and the server's vault references are removed. Custom-directory revocation never deletes the selected host directory. Installer operations are scoped to the user, exclusive per user, cancellable by operation UUID, and cancelled when the vault/session is cleared.
+Remove moves the managed tree into a private quarantine while its catalog transaction is pending. Rollback restores it. After commit the quarantined tree and the server's vault references are removed. Custom-directory revocation never deletes the selected host directory. Installer operations are scoped to the user, exclusive per user, cancellable by operation UUID, and cancelled when the vault/session is cleared. A bounded, expiring pre-start cancellation record prevents Cancel from being acknowledged before registration and then ignored. A lifecycle generation check also covers a vault/session clear during initial context resolution.
