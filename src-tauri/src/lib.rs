@@ -131,6 +131,8 @@ pub mod kopia_import;
 pub mod lftp_import;
 #[cfg(target_os = "linux")]
 pub mod linux_egl;
+#[cfg(target_os = "linux")]
+mod linux_rttime;
 pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod panic_safe;
@@ -18793,6 +18795,13 @@ pub fn run() {
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
+        // A GNOME session passes on gnome-shell's RLIMIT_RTTIME with the soft
+        // limit equal to the hard one, so WebKit's real-time threads are
+        // killed without the SIGXCPU warning WebKit relies on, taking the
+        // network process and every in-flight load with them. Must run before
+        // the first WebKit process is spawned: they inherit the limit.
+        crate::linux_rttime::configure();
+
         // Turn WebKit's accelerated compositor off only where EGL cannot feed
         // it. Without a usable EGL display the compositor produces a live,
         // "visible", permanently blank window (#462) instead of falling back,
@@ -19050,6 +19059,8 @@ pub fn run() {
             // first thing a blank-window report needs to answer.
             #[cfg(target_os = "linux")]
             crate::linux_egl::log_decision();
+            #[cfg(target_os = "linux")]
+            crate::linux_rttime::log_decision();
 
             // Register the global AppHandle so Tauri-agnostic code paths
             // (e.g. the MEGAcmd warmup notice in the provider layer) can emit
