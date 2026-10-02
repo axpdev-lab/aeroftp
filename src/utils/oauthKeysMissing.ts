@@ -26,19 +26,58 @@ export const oauthProviderDisplayName = (protocol: string): string =>
     OAUTH_PROVIDER_NAMES[protocol] || protocol;
 
 /**
- * Surface the "your app keys are missing" signal for an OAuth provider
- * (OAuth 2.0 or 4shared OAuth 1.0) whose Client ID / Client Secret are not in
- * the vault. AeroFTP never ships embedded app keys: every user registers their
- * own developer app, so a missing key is a setup step the user has to take,
- * and a connect that stops here must say so and point to where the keys go
- * instead of looking like a click that did nothing.
- *
- * Goes through the `aeroftp-toast` bus (marked `important`, so it shows even
- * with ambient notifications off: it answers a direct click) with an action
- * that opens Settings > OAuth Providers.
+ * True when a `get_credential` rejection means "this key is not in the vault".
+ * The backend renders `CredentialError::NotFound` as
+ * `Failed to get credential: Credential not found: <account>`; every other
+ * rejection (`STORE_NOT_READY`, I/O, decryption) is a vault that could not be
+ * read, where the keys may well exist.
  */
-export function notifyOAuthKeysMissing(t: TranslationFunction, protocol: string): void {
+export const isCredentialNotFound = (err: unknown): boolean =>
+    /^Failed to get credential: Credential not found: /.test(String(err));
+
+/**
+ * Keep a key-read rejection only when it is a real read failure, so the caller
+ * can tell "no keys" (`null`) from "could not read the vault" (the error).
+ */
+export const keyReadFailure = (err: unknown): unknown =>
+    (isCredentialNotFound(err) ? null : err);
+
+/**
+ * Surface why an OAuth provider (OAuth 2.0 or 4shared OAuth 1.0) cannot start
+ * a connect because its app keys (Client ID / Client Secret) are unavailable.
+ * A connect that stops here must say so instead of looking like a click that
+ * did nothing.
+ *
+ * - `readError` null: the keys are not in the vault. AeroFTP never ships
+ *   embedded app keys, every user registers their own developer app, so this
+ *   is a setup step: the toast names the provider, says where the keys go and
+ *   offers an action that opens Settings > OAuth Providers.
+ * - `readError` set: the vault could not be read. Telling the user to enter
+ *   keys they may already have would be wrong, so the toast reports the read
+ *   failure with the error instead.
+ *
+ * Goes through the `aeroftp-toast` bus, marked `important` so it shows even
+ * with ambient notifications off: it answers a direct click.
+ */
+export function notifyOAuthKeysUnavailable(
+    t: TranslationFunction,
+    protocol: string,
+    readError: unknown,
+): void {
     const provider = oauthProviderDisplayName(protocol);
+    if (readError != null) {
+        const error = readError instanceof Error ? readError.message : String(readError);
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+            detail: {
+                type: 'error',
+                title: t('connection.oauthKeysReadFailedTitle', { provider }),
+                message: t('connection.oauthKeysReadFailed', { provider, error }),
+                duration: 12000,
+                important: true,
+            },
+        }));
+        return;
+    }
     const location = `${t('settings.title')} > ${t('settings.oauthProviders')}`;
     window.dispatchEvent(new CustomEvent('aeroftp-toast', {
         detail: {

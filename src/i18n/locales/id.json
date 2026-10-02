@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP membuka Twake di browser Anda dan hanya meminta akses ke file Anda. Jika Twake menampilkan error pertama kali, masuk ke Twake di browser lalu masuk lagi. Anda dapat mencabut akses kapan saja di Pengaturan Twake, Perangkat Tersambung.",
             "oauthKeysMissingTitle": "Kunci aplikasi {provider} tidak ada",
             "oauthKeysMissing": "Tidak ada kunci aplikasi untuk {provider} yang tersimpan di brankas, sehingga AeroFTP tidak dapat masuk. AeroFTP tidak menyertakan kunci sendiri: masukkan kunci aplikasi pengembang {provider} Anda di {location}, lalu sambungkan lagi.",
-            "oauthKeysOpenSettings": "Buka pengaturan OAuth"
+            "oauthKeysOpenSettings": "Buka pengaturan OAuth",
+            "oauthKeysReadFailedTitle": "Tidak dapat membaca kunci aplikasi {provider}",
+            "oauthKeysReadFailed": "AeroFTP tidak dapat membaca kunci aplikasi {provider} dari brankas, sehingga tidak bisa masuk. Kunci tidak diubah. Kesalahan: {error}"
         },
         "browser": {
             "remote": "Jarak Jauh",

@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP відкриває Twake у вашому браузері та запитує доступ лише до ваших файлів. Якщо Twake вперше показує помилку, увійдіть у Twake в браузері та увійдіть знову. Ви можете відкликати доступ будь-коли в налаштуваннях Twake, Підключені пристрої.",
             "oauthKeysMissingTitle": "Немає ключів застосунку {provider}",
             "oauthKeysMissing": "У сховищі немає збережених ключів застосунку для {provider}, тому AeroFTP не може увійти. AeroFTP не постачається зі своїми ключами: введіть ключі вашого застосунку розробника {provider} у {location} і підключіться знову.",
-            "oauthKeysOpenSettings": "Відкрити налаштування OAuth"
+            "oauthKeysOpenSettings": "Відкрити налаштування OAuth",
+            "oauthKeysReadFailedTitle": "Не вдалося прочитати ключі застосунку {provider}",
+            "oauthKeysReadFailed": "AeroFTP не зміг прочитати ключі застосунку {provider} зі сховища, тому не може увійти. Ключі не було змінено. Помилка: {error}"
         },
         "browser": {
             "remote": "Віддалений",

@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP 会在浏览器中打开 Twake,并且只请求访问您的文件。如果 Twake 第一次显示错误,请在浏览器中登录 Twake,然后重新登录。您可以随时在 Twake 设置的“已连接设备”中撤销访问权限。",
             "oauthKeysMissingTitle": "缺少 {provider} 应用密钥",
             "oauthKeysMissing": "密码库中没有保存 {provider} 的应用密钥，因此 AeroFTP 无法登录。AeroFTP 不自带密钥：请在 {location} 中输入您的 {provider} 开发者应用的密钥，然后重新连接。",
-            "oauthKeysOpenSettings": "打开 OAuth 设置"
+            "oauthKeysOpenSettings": "打开 OAuth 设置",
+            "oauthKeysReadFailedTitle": "无法读取 {provider} 应用密钥",
+            "oauthKeysReadFailed": "AeroFTP 无法从保险库中读取 {provider} 应用密钥，因此无法登录。密钥未被更改。错误：{error}"
         },
         "browser": {
             "remote": "远程",

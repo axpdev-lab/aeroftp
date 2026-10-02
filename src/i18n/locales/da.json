@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP åbner Twake i din browser og beder kun om adgang til dine filer. Hvis Twake viser en fejl første gang, så log ind på Twake i browseren og log ind igen. Du kan til enhver tid tilbagekalde adgangen under Twake-indstillinger, Tilsluttede enheder.",
             "oauthKeysMissingTitle": "Appnøgler til {provider} mangler",
             "oauthKeysMissing": "Der er ingen appnøgler til {provider} gemt i boksen, så AeroFTP kan ikke logge ind. AeroFTP leveres ikke med egne nøgler: indtast nøglerne til din {provider}-udviklerapp i {location}, og opret forbindelse igen.",
-            "oauthKeysOpenSettings": "Åbn OAuth-indstillinger"
+            "oauthKeysOpenSettings": "Åbn OAuth-indstillinger",
+            "oauthKeysReadFailedTitle": "Kan ikke læse appnøgler til {provider}",
+            "oauthKeysReadFailed": "AeroFTP kunne ikke læse appnøglerne til {provider} fra boksen, så den kan ikke logge ind. Nøglerne er ikke ændret. Fejl: {error}"
         },
         "browser": {
             "remote": "Ekstern",

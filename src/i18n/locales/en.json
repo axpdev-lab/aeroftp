@@ -1581,6 +1581,8 @@
             "oauthKeysMissingTitle": "{provider} app keys missing",
             "oauthKeysMissing": "No app keys for {provider} are stored in the vault, so AeroFTP cannot sign in. AeroFTP does not ship its own keys: enter the keys of your {provider} developer app in {location}, then connect again.",
             "oauthKeysOpenSettings": "Open OAuth settings",
+            "oauthKeysReadFailedTitle": "Cannot read {provider} app keys",
+            "oauthKeysReadFailed": "AeroFTP could not read the {provider} app keys from the vault, so it cannot sign in. The keys were not changed. Error: {error}",
             "swiftAuthUrl": "Keystone auth URL",
             "swiftAllowCleartextStorage": "This deployment serves object storage over plain HTTP. Accept it for this profile: the access token and every file cross the network unencrypted.",
             "twakeInstance": "Twake address",

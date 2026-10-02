@@ -5,14 +5,23 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import en from '../i18n/locales/en.json';
 import appSource from '../App.tsx?raw';
 import myServersSource from '../components/IntroHub/MyServersPanel.tsx?raw';
-import { notifyOAuthKeysMissing, OPEN_OAUTH_SETTINGS_EVENT } from './oauthKeysMissing';
+import credentialStoreSource from '../../src-tauri/src/credential_store.rs?raw';
+import libSource from '../../src-tauri/src/lib.rs?raw';
+import {
+    isCredentialNotFound,
+    keyReadFailure,
+    notifyOAuthKeysUnavailable,
+    OPEN_OAUTH_SETTINGS_EVENT,
+} from './oauthKeysMissing';
 
 /**
  * Connecting a saved OAuth server (Google Drive, Dropbox, OneDrive, Box,
  * pCloud, Zoho WorkDrive, Yandex Disk, 4shared) needs the user's own app keys
  * from the vault: AeroFTP never embeds them. When they are missing the connect
  * cannot start, and that stop has to be visible: the My Servers card used to
- * clear its spinner and return, so the click did nothing at all.
+ * clear its spinner and return, so the click did nothing at all. A vault that
+ * could not be read is a different stop and must not be reported as "keys
+ * missing", which would send the user to re-enter keys they may already have.
  */
 
 // The real English strings, so a key that is missing from en.json comes back
@@ -26,7 +35,7 @@ const t = (key: string, params?: Record<string, string | number>): string => {
     return value.replace(/\{(\w+)\}/g, (m, name: string) => (params && name in params ? String(params[name]) : m));
 };
 
-describe('notifyOAuthKeysMissing', () => {
+describe('notifyOAuthKeysUnavailable', () => {
     afterEach(() => {
         vi.unstubAllGlobals();
     });
@@ -43,7 +52,7 @@ describe('notifyOAuthKeysMissing', () => {
 
     it('raises an error toast that names the provider and the place to enter the keys', () => {
         const { toasts } = capture();
-        notifyOAuthKeysMissing(t, 'dropbox');
+        notifyOAuthKeysUnavailable(t, 'dropbox', null);
 
         expect(toasts).toHaveLength(1);
         const toast = toasts[0];
@@ -59,18 +68,61 @@ describe('notifyOAuthKeysMissing', () => {
 
     it('names 4shared (OAuth 1.0) the same way', () => {
         const { toasts } = capture();
-        notifyOAuthKeysMissing(t, 'fourshared');
+        notifyOAuthKeysUnavailable(t, 'fourshared', null);
         expect(toasts[0].title).toContain('4shared');
     });
 
     it('offers an action that opens the OAuth settings', () => {
         const { toasts, settingsOpened } = capture();
-        notifyOAuthKeysMissing(t, 'googledrive');
+        notifyOAuthKeysUnavailable(t, 'googledrive', null);
 
         const action = toasts[0].action as { label: string; onClick: () => void };
         expect(action.label).toBe(en.translations.connection.oauthKeysOpenSettings);
         action.onClick();
         expect(settingsOpened()).toBe(1);
+    });
+
+    it('reports a vault read failure as such, not as missing keys', () => {
+        const { toasts } = capture();
+        notifyOAuthKeysUnavailable(t, 'onedrive', 'STORE_NOT_READY');
+
+        expect(toasts).toHaveLength(1);
+        const toast = toasts[0];
+        expect(toast.type).toBe('error');
+        expect(toast.important).toBe(true);
+        expect(toast.title).toBe(t('connection.oauthKeysReadFailedTitle', { provider: 'OneDrive' }));
+        expect(toast.message).toContain('OneDrive');
+        expect(toast.message).toContain('STORE_NOT_READY');
+        expect(String(toast.message)).not.toMatch(/\{\w+\}/);
+        expect(toast.title).not.toBe(t('connection.oauthKeysMissingTitle', { provider: 'OneDrive' }));
+        // No "enter your keys" action: the keys may be there.
+        expect(toast.action).toBeUndefined();
+    });
+});
+
+describe('telling "no keys" from "vault not readable"', () => {
+    const notFound = 'Failed to get credential: Credential not found: oauth_dropbox_client_id';
+
+    it('treats only the backend not-found rejection as missing keys', () => {
+        expect(isCredentialNotFound(notFound)).toBe(true);
+        expect(keyReadFailure(notFound)).toBeNull();
+        for (const other of [
+            'STORE_NOT_READY',
+            'Failed to get credential: Encryption error: aead::Error',
+            'Failed to get credential: IO error: permission denied',
+            'get_credential is only available to the main window',
+        ]) {
+            expect(isCredentialNotFound(other), other).toBe(false);
+            expect(keyReadFailure(other), other).toBe(other);
+        }
+    });
+
+    it('matches the strings the backend actually produces', () => {
+        // `get_credential` wraps the store error, and `CredentialError::NotFound`
+        // renders with this prefix. If either text changes, the predicate above
+        // would silently turn every missing key into a "read failed" toast.
+        expect(libSource).toContain('.map_err(|e| format!("Failed to get credential: {}", e))');
+        expect(credentialStoreSource).toContain('#[error("Credential not found: {0}")]');
     });
 });
 
@@ -97,10 +149,11 @@ describe('every saved-server connect path signals missing OAuth app keys', () =>
         throw new Error('unbalanced block');
     };
 
-    const sites = (source: string) => [...source.matchAll(KEY_READ)].map(m => ({
-        read: m[0],
-        exit: missingKeyBlock(source, m.index! + m[0].length),
-    }));
+    const sites = (source: string) => [...source.matchAll(KEY_READ)].map(m => {
+        const after = m.index! + m[0].length;
+        const exit = missingKeyBlock(source, after);
+        return { read: m[0], exit, between: source.slice(after, source.indexOf(exit, after)) };
+    });
 
     const surfaces: Array<[string, string, number]> = [
         // OAuth 2.0 card connect, 4shared card connect.
@@ -116,7 +169,10 @@ describe('every saved-server connect path signals missing OAuth app keys', () =>
             expect(found, `${name}: key read sites`).toHaveLength(expected);
             for (const site of found) {
                 expect(site.exit, `${name} after ${site.read}`).toMatch(/\b(return|throw)\b/);
-                expect(site.exit, `${name} after ${site.read}`).toContain('notifyOAuthKeysMissing(');
+                // The exit passes on what the read's catch kept, so a vault
+                // failure is not reported as missing keys.
+                expect(site.exit, `${name} after ${site.read}`).toMatch(/notifyOAuthKeysUnavailable\(t, [^,]+, keyReadError\)/);
+                expect(site.between, `${name} after ${site.read}`).toContain('keyReadError = keyReadFailure(e)');
             }
         });
     }

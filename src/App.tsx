@@ -201,7 +201,7 @@ import {
 import { copyText } from './utils/clipboard';
 import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
-import { notifyOAuthKeysMissing, OPEN_OAUTH_SETTINGS_EVENT } from './utils/oauthKeysMissing';
+import { keyReadFailure, notifyOAuthKeysUnavailable, OPEN_OAUTH_SETTINGS_EVENT } from './utils/oauthKeysMissing';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
@@ -2480,7 +2480,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('aeroftp-toast', handler as EventListener);
   }, [toast, showToastNotifications]);
 
-  // Action of the "app keys missing" toast (notifyOAuthKeysMissing): open
+  // Action of the "app keys missing" toast (notifyOAuthKeysUnavailable): open
   // Settings on the tab where the user's own OAuth app keys are entered.
   useEffect(() => {
     const openOAuthSettings = () => {
@@ -8340,6 +8340,7 @@ const App: React.FC = () => {
         }
 
         // Fall back to OS keyring (Box, pCloud, and others store credentials there)
+        let keyReadError: unknown = null;
         if (!clientId || !clientSecret) {
           try {
             const keyringProvider = protocol; // Credentials stored with protocol name as-is (e.g., 'googledrive')
@@ -8349,13 +8350,14 @@ const App: React.FC = () => {
               clientId = kid;
               clientSecret = ksecret;
             }
-          } catch {
-            // Keyring not available or credentials not stored
+          } catch (e) {
+            // Credentials not stored (null), or the vault could not be read.
+            keyReadError = keyReadFailure(e);
           }
         }
 
         if (!clientId || !clientSecret) {
-          notifyOAuthKeysMissing(t, protocol);
+          notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           throw new Error(`OAuth credentials not found for ${protocol}`);
         }
 
@@ -10152,12 +10154,13 @@ const App: React.FC = () => {
       if (isOAuthProvider(protocol)) {
         let clientId = '';
         let clientSecret = '';
+        let keyReadError: unknown = null;
         try {
           clientId = await getCredentialWithRetry(`oauth_${protocol}_client_id`);
           clientSecret = await getCredentialWithRetry(`oauth_${protocol}_client_secret`);
-        } catch { /* missing */ }
+        } catch (e) { keyReadError = keyReadFailure(e); }
         if (!clientId || !clientSecret) {
-          notifyOAuthKeysMissing(t, protocol);
+          notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           return false;
         }
         const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
@@ -10214,12 +10217,13 @@ const App: React.FC = () => {
       if (isFourSharedProvider(protocol)) {
         let consumerKey = '';
         let consumerSecret = '';
+        let keyReadError: unknown = null;
         try {
           consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
           consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
-        } catch { /* missing */ }
+        } catch (e) { keyReadError = keyReadFailure(e); }
         if (!consumerKey || !consumerSecret) {
-          notifyOAuthKeysMissing(t, protocol);
+          notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           return false;
         }
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });

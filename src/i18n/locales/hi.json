@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP आपके ब्राउज़र में Twake खोलता है और केवल आपकी फ़ाइलों तक पहुंच मांगता है। यदि Twake पहली बार त्रुटि दिखाता है, तो ब्राउज़र में Twake में लॉग इन करें और फिर से साइन इन करें। आप किसी भी समय Twake सेटिंग्स, कनेक्टेड डिवाइस में एक्सेस रद्द कर सकते हैं।",
             "oauthKeysMissingTitle": "{provider} ऐप कीज़ नहीं मिलीं",
             "oauthKeysMissing": "वॉल्ट में {provider} की कोई ऐप कीज़ सहेजी नहीं हैं, इसलिए AeroFTP साइन इन नहीं कर सकता। AeroFTP अपनी कीज़ साथ नहीं देता: {location} में अपने {provider} डेवलपर ऐप की कीज़ दर्ज करें, फिर दोबारा कनेक्ट करें।",
-            "oauthKeysOpenSettings": "OAuth सेटिंग्स खोलें"
+            "oauthKeysOpenSettings": "OAuth सेटिंग्स खोलें",
+            "oauthKeysReadFailedTitle": "{provider} ऐप कुंजियाँ पढ़ी नहीं जा सकीं",
+            "oauthKeysReadFailed": "AeroFTP वॉल्ट से {provider} ऐप कुंजियाँ नहीं पढ़ सका, इसलिए साइन इन नहीं कर सकता। कुंजियाँ बदली नहीं गई हैं। त्रुटि: {error}"
         },
         "browser": {
             "remote": "दूरस्थ",

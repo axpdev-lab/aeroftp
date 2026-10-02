@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP opnar Twake í vafranum þínum og biður aðeins um aðgang að skránum þínum. Ef Twake sýnir villu í fyrsta skipti skaltu skrá þig inn á Twake í vafranum og reyna aftur. Þú getur afturkallað aðgang hvenær sem er í Twake stillingum, Tengd tæki.",
             "oauthKeysMissingTitle": "Forritslykla vantar fyrir {provider}",
             "oauthKeysMissing": "Engir forritslyklar fyrir {provider} eru vistaðir í öryggisgeymslunni, svo AeroFTP getur ekki skráð sig inn. AeroFTP fylgir ekki með eigin lyklum: sláðu inn lykla þróunarforritsins þíns hjá {provider} í {location} og tengdu aftur.",
-            "oauthKeysOpenSettings": "Opna OAuth stillingar"
+            "oauthKeysOpenSettings": "Opna OAuth stillingar",
+            "oauthKeysReadFailedTitle": "Ekki tókst að lesa forritslykla fyrir {provider}",
+            "oauthKeysReadFailed": "AeroFTP gat ekki lesið forritslykla fyrir {provider} úr hvelfingunni og getur því ekki skráð sig inn. Lyklunum var ekki breytt. Villa: {error}"
         },
         "browser": {
             "remote": "Fjartengdur",

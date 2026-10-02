@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP avaa Twaken selaimessasi ja pyytää pääsyä vain tiedostoihisi. Jos Twake näyttää virheen ensimmäisellä kerralla, kirjaudu Twakeen selaimessa ja kirjaudu sisään uudelleen. Voit peruuttaa käyttöoikeuden milloin tahansa Twaken asetuksista, Yhdistetyt laitteet.",
             "oauthKeysMissingTitle": "{provider}-sovellusavaimet puuttuvat",
             "oauthKeysMissing": "Holvissa ei ole tallennettuna {provider}-sovellusavaimia, joten AeroFTP ei voi kirjautua sisään. AeroFTP ei sisällä omia avaimia: syötä oman {provider}-kehittäjäsovelluksesi avaimet kohtaan {location} ja yhdistä uudelleen.",
-            "oauthKeysOpenSettings": "Avaa OAuth-asetukset"
+            "oauthKeysOpenSettings": "Avaa OAuth-asetukset",
+            "oauthKeysReadFailedTitle": "Palvelun {provider} sovellusavaimia ei voi lukea",
+            "oauthKeysReadFailed": "AeroFTP ei voinut lukea palvelun {provider} sovellusavaimia holvista, joten se ei voi kirjautua sisään. Avaimia ei muutettu. Virhe: {error}"
         },
         "browser": {
             "remote": "Etä",

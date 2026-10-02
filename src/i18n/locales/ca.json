@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP obre Twake al teu navegador i sol·licita accés només als teus fitxers. Si Twake mostra un error la primera vegada, inicia sessió a Twake al navegador i torna-ho a provar. Pots revocar l'accés en qualsevol moment a Configuració de Twake, Dispositius connectats.",
             "oauthKeysMissingTitle": "Falten les claus d'aplicació de {provider}",
             "oauthKeysMissing": "No hi ha cap clau d'aplicació de {provider} desada a la caixa forta, de manera que AeroFTP no pot iniciar sessió. AeroFTP no inclou claus pròpies: introduïu les claus de la vostra aplicació de desenvolupador de {provider} a {location} i torneu a connectar.",
-            "oauthKeysOpenSettings": "Obre la configuració d'OAuth"
+            "oauthKeysOpenSettings": "Obre la configuració d'OAuth",
+            "oauthKeysReadFailedTitle": "No es poden llegir les claus de l'aplicació de {provider}",
+            "oauthKeysReadFailed": "AeroFTP no ha pogut llegir les claus de l'aplicació de {provider} de la caixa forta, per això no pot iniciar la sessió. Les claus no s'han modificat. Error: {error}"
         },
         "browser": {
             "remote": "Remot",

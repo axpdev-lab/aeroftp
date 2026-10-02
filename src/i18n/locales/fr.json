@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP ouvre Twake dans votre navigateur et ne demande l'accès qu'à vos fichiers. Si Twake affiche une erreur la première fois, connectez-vous à Twake dans le navigateur puis reconnectez-vous. Vous pouvez révoquer l'accès à tout moment dans les Paramètres Twake, Appareils connectés.",
             "oauthKeysMissingTitle": "Clés d'application {provider} manquantes",
             "oauthKeysMissing": "Aucune clé d'application pour {provider} n'est enregistrée dans le coffre-fort, donc AeroFTP ne peut pas se connecter. AeroFTP ne fournit pas ses propres clés : saisissez les clés de votre application développeur {provider} dans {location}, puis reconnectez-vous.",
-            "oauthKeysOpenSettings": "Ouvrir les paramètres OAuth"
+            "oauthKeysOpenSettings": "Ouvrir les paramètres OAuth",
+            "oauthKeysReadFailedTitle": "Impossible de lire les clés d'application {provider}",
+            "oauthKeysReadFailed": "AeroFTP n'a pas pu lire les clés d'application {provider} depuis le coffre-fort, il ne peut donc pas se connecter. Les clés n'ont pas été modifiées. Erreur : {error}"
         },
         "browser": {
             "remote": "Distant",

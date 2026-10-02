@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP otevře Twake ve vašem prohlížeči a požádá pouze o přístup k vašim souborům. Pokud Twake poprvé zobrazí chybu, přihlaste se do Twake v prohlížeči a zkuste to znovu. Přístup můžete kdykoli zrušit v nastavení Twake, Připojená zařízení.",
             "oauthKeysMissingTitle": "Chybí klíče aplikace {provider}",
             "oauthKeysMissing": "V úschovně nejsou uloženy žádné klíče aplikace pro {provider}, takže se AeroFTP nemůže přihlásit. AeroFTP nedodává vlastní klíče: zadejte klíče své vývojářské aplikace {provider} v {location} a připojte se znovu.",
-            "oauthKeysOpenSettings": "Otevřít nastavení OAuth"
+            "oauthKeysOpenSettings": "Otevřít nastavení OAuth",
+            "oauthKeysReadFailedTitle": "Nelze načíst klíče aplikace pro {provider}",
+            "oauthKeysReadFailed": "AeroFTP nemohl načíst klíče aplikace pro {provider} z trezoru, a proto se nemůže přihlásit. Klíče nebyly změněny. Chyba: {error}"
         },
         "browser": {
             "remote": "Vzdálený",

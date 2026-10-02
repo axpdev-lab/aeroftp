@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTPk Twake zure nabigatzailean irekitzen du eta zure fitxategietarako sarbidea baino ez du eskatzen. Twakek lehen aldiz errorea erakusten badu, hasi saioa Twaken nabigatzailean eta saiatu berriro. Sarbidea edonoiz ken dezakezu Twakeren ezarpenetan, Konektatutako gailuak.",
             "oauthKeysMissingTitle": "{provider} aplikazioaren gakoak falta dira",
             "oauthKeysMissing": "Ez dago {provider} zerbitzuaren aplikazio-gakorik gordeta kutxa gotorrean, beraz AeroFTP ezin da saioa hasi. AeroFTP-k ez du bere gakorik ekartzen: sartu zure {provider} garatzaile-aplikazioaren gakoak hemen: {location}, eta konektatu berriro.",
-            "oauthKeysOpenSettings": "Ireki OAuth ezarpenak"
+            "oauthKeysOpenSettings": "Ireki OAuth ezarpenak",
+            "oauthKeysReadFailedTitle": "Ezin dira {provider} zerbitzuaren aplikazio-gakoak irakurri",
+            "oauthKeysReadFailed": "AeroFTP-k ezin izan ditu {provider} zerbitzuaren aplikazio-gakoak kutxa gotorretik irakurri, beraz ezin du saioa hasi. Gakoak ez dira aldatu. Errorea: {error}"
         },
         "browser": {
             "remote": "Urrunekoa",

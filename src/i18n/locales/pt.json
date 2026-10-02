@@ -337,7 +337,9 @@
             "twakeSignInHelp": "O AeroFTP abre o Twake no seu navegador e pede acesso apenas aos seus ficheiros. Se o Twake mostrar um erro da primeira vez, inicie sessão no Twake no navegador e inicie sessão novamente. Pode revogar o acesso a qualquer momento nas Definições do Twake, Dispositivos ligados.",
             "oauthKeysMissingTitle": "Faltam as chaves do aplicativo de {provider}",
             "oauthKeysMissing": "Não há chaves de aplicativo de {provider} guardadas no cofre, por isso o AeroFTP não consegue iniciar sessão. O AeroFTP não inclui chaves próprias: introduza as chaves do seu aplicativo de desenvolvedor de {provider} em {location} e volte a ligar.",
-            "oauthKeysOpenSettings": "Abrir definições do OAuth"
+            "oauthKeysOpenSettings": "Abrir definições do OAuth",
+            "oauthKeysReadFailedTitle": "Não é possível ler as chaves da aplicação {provider}",
+            "oauthKeysReadFailed": "O AeroFTP não conseguiu ler as chaves da aplicação {provider} do cofre, por isso não pode iniciar sessão. As chaves não foram alteradas. Erro: {error}"
         },
         "browser": {
             "remote": "Remoto",

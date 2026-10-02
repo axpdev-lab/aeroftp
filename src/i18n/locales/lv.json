@@ -337,7 +337,9 @@
             "twakeSignInHelp": "AeroFTP atver Twake jūsu pārlūkprogrammā un pieprasa piekļuvi tikai jūsu failiem. Ja Twake pirmoreiz parāda kļūdu, piesakieties Twake pārlūkprogrammā un pierakstieties vēlreiz. Piekļuvi varat atsaukt jebkurā laikā Twake iestatījumos, Savienotās ierīces.",
             "oauthKeysMissingTitle": "Trūkst {provider} lietotnes atslēgu",
             "oauthKeysMissing": "Glabātuvē nav saglabātu {provider} lietotnes atslēgu, tāpēc AeroFTP nevar pieteikties. AeroFTP nepiegādā savas atslēgas: ievadiet sava {provider} izstrādātāja lietotnes atslēgas šeit: {location}, un pēc tam izveidojiet savienojumu vēlreiz.",
-            "oauthKeysOpenSettings": "Atvērt OAuth iestatījumus"
+            "oauthKeysOpenSettings": "Atvērt OAuth iestatījumus",
+            "oauthKeysReadFailedTitle": "Nevar nolasīt {provider} lietotnes atslēgas",
+            "oauthKeysReadFailed": "AeroFTP nevarēja nolasīt {provider} lietotnes atslēgas no glabātuves, tāpēc nevar pieteikties. Atslēgas netika mainītas. Kļūda: {error}"
         },
         "browser": {
             "remote": "Attālināts",
