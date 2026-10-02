@@ -7,7 +7,6 @@
 //
 // v2.0: February 2026
 
-use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::Instant;
 use tracing::{info, warn};
@@ -129,24 +128,5 @@ impl MasterPasswordState {
     /// Get current timeout setting
     pub fn get_timeout(&self) -> u64 {
         self.timeout_seconds.load(Ordering::SeqCst)
-    }
-}
-
-// ============ Status Response ============
-
-#[derive(Serialize)]
-pub struct MasterPasswordStatus {
-    pub is_set: bool,
-    pub is_locked: bool,
-    pub timeout_seconds: u64,
-}
-
-impl MasterPasswordStatus {
-    pub fn new(state: &MasterPasswordState) -> Self {
-        Self {
-            is_set: crate::credential_store::CredentialStore::is_master_mode(),
-            is_locked: state.is_locked(),
-            timeout_seconds: state.get_timeout(),
-        }
     }
 }

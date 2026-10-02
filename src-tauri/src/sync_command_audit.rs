@@ -134,11 +134,6 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
          non-blocking.",
     ),
     (
-        "is_running_as_snap",
-        "reads the SNAP environment variable of this process; no syscall, and \
-         the value cannot change while we run.",
-    ),
-    (
         "is_autostart_launch",
         "scans this process's own argv for --autostart.",
     ),

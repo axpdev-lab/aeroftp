@@ -217,10 +217,6 @@ export const peerReceiverStart = (): Promise<void> => invoke('peer_receiver_star
 /** Stop the receive loop (toggle = OFF). */
 export const peerReceiverStop = (): Promise<void> => invoke('peer_receiver_stop');
 
-/** Whether the receive loop is currently listening. */
-export const peerReceiverStatus = (): Promise<boolean> =>
-  invoke<boolean>('peer_receiver_status');
-
 export interface PeerIncomingRespondParams {
   transferId: string;
   accept: boolean;

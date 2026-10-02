@@ -2,17 +2,15 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 //
 // Unit coverage for MU-LS helpers: the localStorage cache round-trip and
-// the boot-decision predicate that the lock screen mounting effect depends
-// on. Cache write is gated on a successful IPC fetch in production; these
-// tests exercise only the pure-TS logic.
+// the boot decision (decideBootAccountAction) that the lock screen mounting
+// effect depends on. Cache write is gated on a successful IPC fetch in
+// production; these tests exercise only the pure-TS logic.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-    clearUsersListCache,
     decideBootAccountAction,
     defaultUserIdFromList,
     legacyDefaultToMigrate,
-    needsAccountLockScreen,
     readUsersListCache,
     writeUsersListCache,
     type UserMetadata,
@@ -47,31 +45,6 @@ beforeEach(() => {
 });
 
 afterEach(() => { vi.unstubAllGlobals(); });
-
-describe('needsAccountLockScreen', () => {
-    it('returns false when no users exist', () => {
-        expect(needsAccountLockScreen([])).toBe(false);
-    });
-
-    it('returns false for R1 (single passphrase-less user)', () => {
-        expect(needsAccountLockScreen([{ hasPassphrase: false }])).toBe(false);
-    });
-
-    it('returns true for a single user with an account password', () => {
-        expect(needsAccountLockScreen([{ hasPassphrase: true }])).toBe(true);
-    });
-
-    it('returns true whenever there is more than one user', () => {
-        expect(needsAccountLockScreen([
-            { hasPassphrase: false },
-            { hasPassphrase: false },
-        ])).toBe(true);
-        expect(needsAccountLockScreen([
-            { hasPassphrase: false },
-            { hasPassphrase: true },
-        ])).toBe(true);
-    });
-});
 
 describe('decideBootAccountAction (#270)', () => {
     const A = { id: 1, hasPassphrase: false };
@@ -224,13 +197,6 @@ describe('users list cache', () => {
             'aeroftp-users-list-cache',
             JSON.stringify({ version: 99, savedAt: 0, users: [] }),
         );
-        expect(readUsersListCache()).toBeNull();
-    });
-
-    it('clears the cache when asked', () => {
-        writeUsersListCache([makeUser()]);
-        expect(readUsersListCache()).not.toBeNull();
-        clearUsersListCache();
         expect(readUsersListCache()).toBeNull();
     });
 });

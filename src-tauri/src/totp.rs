@@ -402,34 +402,6 @@ fn totp_setup_verify_blocking(state: &Mutex<TotpInner>, code: String) -> Result<
     Ok(valid)
 }
 
-/// Verify a TOTP code during unlock (using the active secret).
-#[tauri::command]
-pub async fn totp_verify(state: State<'_, TotpState>, code: String) -> Result<bool, String> {
-    let inner = state.handle();
-    tokio::task::spawn_blocking(move || totp_verify_blocking(&inner, code))
-        .await
-        .unwrap_or_else(|err| Err(format!("TOTP verification task failed: {err}")))
-}
-
-fn totp_verify_blocking(state: &Mutex<TotpInner>, code: String) -> Result<bool, String> {
-    let mut inner = lock_inner(state)?;
-    check_rate_limit(&inner)?;
-
-    let secret = inner
-        .active_secret
-        .as_ref()
-        .ok_or("No active TOTP secret")?;
-    let totp = build_totp(secret.expose_secret())?;
-    let valid = verify_with_replay_guard(&mut inner, &totp, &code);
-
-    if valid {
-        reset_rate_limit(&mut inner);
-    } else {
-        record_failure(&mut inner);
-    }
-    Ok(valid)
-}
-
 /// Check if TOTP is enabled.
 #[tauri::command]
 pub async fn totp_status(state: State<'_, TotpState>) -> Result<bool, String> {
@@ -517,23 +489,8 @@ fn totp_disable_blocking(state: &Mutex<TotpInner>, code: String) -> Result<bool,
     }
 }
 
-/// Load TOTP state from a stored secret (called after vault unlock).
-#[tauri::command]
-pub async fn totp_load_secret(state: State<'_, TotpState>, secret: String) -> Result<(), String> {
-    let inner = state.handle();
-    tokio::task::spawn_blocking(move || load_secret_into(&inner, &secret, None))
-        .await
-        .unwrap_or_else(|err| Err(format!("TOTP load task failed: {err}")))
-}
-
 /// Internal: Load a TOTP secret into state without requiring Tauri State wrapper.
 /// Used by unlock_credential_store for 2FA enforcement.
-///
-/// The store-less variant used to exist next to this one for `totp_load_secret`
-/// to call. That command now goes to `load_secret_into` directly, since it has
-/// to hand `spawn_blocking` an `Arc` handle rather than the `State` wrapper,
-/// which left the store-less wrapper with no callers at all: removed rather
-/// than kept alive with an `#[allow(dead_code)]`.
 pub(crate) fn load_secret_internal_with_store(
     state: &TotpState,
     secret: &str,
@@ -543,7 +500,7 @@ pub(crate) fn load_secret_internal_with_store(
 }
 
 /// The load itself, against the inner mutex rather than the Tauri `State`
-/// wrapper, so `totp_load_secret` can run it on the blocking pool.
+/// wrapper.
 fn load_secret_into(
     state: &Mutex<TotpInner>,
     secret: &str,

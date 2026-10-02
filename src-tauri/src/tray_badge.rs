@@ -21,20 +21,13 @@ pub enum TrayBadgeState {
 }
 
 impl TrayBadgeState {
-    /// Parse state from string (for Tauri command)
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "syncing" => Self::Syncing,
-            "error" => Self::Error,
-            "paused" => Self::Paused,
-            "default" | "synced" => Self::Default, // "synced" mapped to Default (Dropbox-style)
-            other => {
-                warn!(
-                    "Unrecognized tray badge state: {:?}, defaulting to Default",
-                    other
-                );
-                Self::Default
-            }
+    /// The badge AeroCloud starts with. A configuration left paused starts
+    /// paused: no worker runs, and the tray says so instead of looking idle.
+    pub fn at_startup(cloud_enabled: bool, cloud_paused: bool) -> Self {
+        if cloud_enabled && cloud_paused {
+            Self::Paused
+        } else {
+            Self::Default
         }
     }
 
@@ -349,6 +342,31 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
         error!(
             "Failed to marshal tray badge update onto main thread: {}",
             e
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TrayBadgeState;
+
+    /// The grey Paused badge was designed with the others and never shown: the
+    /// only way to it was `update_tray_badge_cmd`, which nothing called, and
+    /// pausing AeroCloud reset the tray to the idle icon. A paused setup now
+    /// starts on the Paused badge, and `pause_aerocloud` switches to it.
+    #[test]
+    fn a_paused_aerocloud_starts_on_the_paused_badge() {
+        assert_eq!(
+            TrayBadgeState::at_startup(true, true),
+            TrayBadgeState::Paused
+        );
+        assert_eq!(
+            TrayBadgeState::at_startup(true, false),
+            TrayBadgeState::Default
+        );
+        assert_eq!(
+            TrayBadgeState::at_startup(false, true),
+            TrayBadgeState::Default
         );
     }
 }

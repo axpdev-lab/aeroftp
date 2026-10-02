@@ -5539,12 +5539,6 @@ async fn get_speed_limit(state: State<'_, AppState>) -> Result<(u64, u64), Strin
 
 // ============ Environment Detection ============
 
-/// Check if the application is running as a Snap package
-#[tauri::command]
-fn is_running_as_snap() -> bool {
-    std::env::var("SNAP").is_ok()
-}
-
 // ============ Debug & Dependencies Commands ============
 
 #[derive(Clone, serde::Serialize, Default)]
@@ -16081,6 +16075,9 @@ async fn pause_aerocloud(app: AppHandle) -> Result<CloudConfig, String> {
         Ok(config.clone())
     })?;
 
+    // stop_background_sync left the tray on its idle icon; paused has its own.
+    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Paused);
+
     let _ = app.emit(
         "cloud-sync-status",
         serde_json::json!({
@@ -17017,13 +17014,6 @@ async fn set_tray_status(
     Ok(())
 }
 
-#[tauri::command]
-async fn update_tray_badge_cmd(app: AppHandle, state: String) -> Result<(), String> {
-    let badge_state = tray_badge::TrayBadgeState::from_str(&state);
-    tray_badge::update_tray_badge(&app, badge_state);
-    Ok(())
-}
-
 /// Save server credentials for background sync use
 #[tauri::command]
 async fn save_server_credentials(
@@ -17525,13 +17515,6 @@ async fn set_auto_lock_timeout(
     state.set_timeout(secs);
     persist_auto_lock_timeout(secs)?;
     Ok(())
-}
-
-#[tauri::command]
-async fn app_master_password_status(
-    state: State<'_, master_password::MasterPasswordState>,
-) -> Result<master_password::MasterPasswordStatus, String> {
-    Ok(master_password::MasterPasswordStatus::new(&state))
 }
 
 #[tauri::command]
@@ -19782,6 +19765,11 @@ pub fn run() {
             if tray_available {
                 let _tray = tray_builder.build(app)?;
                 info!("System tray icon initialized");
+                let cloud = cloud_config::load_cloud_config();
+                let initial = tray_badge::TrayBadgeState::at_startup(cloud.enabled, cloud.paused);
+                if initial != tray_badge::TrayBadgeState::Default {
+                    tray_badge::update_tray_badge(app.handle(), initial);
+                }
             } else {
                 log::warn!(
                     "System tray unavailable: libappindicator / ayatana-appindicator3 \
@@ -19996,7 +19984,6 @@ pub fn run() {
             reset_cancel_flag,
             set_speed_limit,
             get_speed_limit,
-            is_running_as_snap,
             get_local_files,
             open_in_file_manager,
             open_local_file,
@@ -20135,7 +20122,6 @@ pub fn run() {
             stop_background_sync,
             is_background_sync_running,
             set_tray_status,
-            update_tray_badge_cmd,
             save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
@@ -20155,7 +20141,6 @@ pub fn run() {
             disable_master_password,
             change_master_password,
             set_auto_lock_timeout,
-            app_master_password_status,
             app_master_password_update_activity,
             app_master_password_check_timeout,
             // Multi-user partition metadata
@@ -20218,11 +20203,9 @@ pub fn run() {
             peer_commands::peer_send_file,
             peer_commands::peer_receiver_start,
             peer_commands::peer_receiver_stop,
-            peer_commands::peer_receiver_status,
             peer_commands::peer_incoming_respond,
             peer_commands::peer_friends_presence,
             peer_commands::peer_send_knock,
-            peer_commands::peer_send_action,
             // AeroShare v4.1.0 security follow-ups (#370): anti-flood + discovery
             peer_commands::peer_contact_mute,
             peer_commands::peer_contact_unmute,
@@ -20416,10 +20399,7 @@ pub fn run() {
             rclone_crypt::rclone_crypt_secret_for_display,
             rclone_crypt::rclone_crypt_lock,
             rclone_crypt::rclone_crypt_decrypt_name,
-            rclone_crypt::rclone_crypt_encrypt_name,
-            rclone_crypt::rclone_crypt_decrypt_file,
             rclone_crypt::rclone_crypt_decrypt_file_path,
-            rclone_crypt::rclone_crypt_encrypt_file_path,
             rclone_crypt_provider_create_remote,
             // Native AeroCrypt overlay (mirrors the rclone set on our own codec)
             aerocrypt_provider::aerocrypt_unlock,
@@ -20807,14 +20787,8 @@ pub fn run() {
             providers::mtp::commands::mtp_open_device,
             providers::mtp::commands::mtp_open_gvfs_mount,
             providers::mtp::commands::mtp_close_device,
-            providers::mtp::commands::mtp_backend_status,
             providers::mtp::commands::mtp_desktop_automounter_present,
             // Mission Green Badge - File sync status tracking
-            sync_badge::start_badge_server_cmd,
-            sync_badge::stop_badge_server_cmd,
-            sync_badge::set_file_badge,
-            sync_badge::clear_file_badge,
-            sync_badge::get_badge_status,
             sync_badge::install_shell_extension_cmd,
             sync_badge::uninstall_shell_extension_cmd,
             sync_badge::restart_file_manager_cmd,
@@ -20833,11 +20807,9 @@ pub fn run() {
             // TOTP 2FA
             totp::totp_setup_start,
             totp::totp_setup_verify,
-            totp::totp_verify,
             totp::totp_status,
             totp::totp_enable,
             totp::totp_disable,
-            totp::totp_load_secret,
             // Chat History SQLite
             chat_history::chat_history_init,
             chat_history::chat_history_list_sessions,
@@ -20865,7 +20837,6 @@ pub fn run() {
             file_tags::file_tags_set_tags,
             file_tags::file_tags_remove_tag,
             file_tags::file_tags_get_tags_for_files,
-            file_tags::file_tags_get_files_by_label,
             file_tags::file_tags_update_path,
             file_tags::file_tags_delete_all_for_file,
             file_tags::file_tags_get_label_counts,
@@ -20883,9 +20854,7 @@ pub fn run() {
             speedtest::speedtest_compare,
             speedtest::speedtest_cancel,
             speedtest::speedtest_history_record,
-            speedtest::speedtest_history_list,
             speedtest::speedtest_history_summary,
-            speedtest::speedtest_history_clear,
             // AeroImage
             image_edit::process_image,
             // InfiniCloud REST API

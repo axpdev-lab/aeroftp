@@ -376,34 +376,6 @@ pub async fn file_tags_get_tags_for_files(
         .collect())
 }
 
-/// Get all file paths that have a specific label
-#[tauri::command]
-pub async fn file_tags_get_files_by_label(
-    app: AppHandle,
-    label_id: i64,
-) -> Result<Vec<String>, String> {
-    let db = app.state::<FileTagsDb>();
-    let conn = acquire_lock(&db);
-
-    let mut stmt = conn
-        .prepare("SELECT file_path FROM file_tags WHERE label_id = ?1")
-        .map_err(|e| format!("Prepare: {e}"))?;
-
-    let rows = stmt
-        .query_map(params![label_id], |row| row.get::<_, String>(0))
-        .map_err(|e| format!("Query: {e}"))?;
-
-    Ok(rows
-        .filter_map(|r| match r {
-            Ok(v) => Some(v),
-            Err(e) => {
-                tracing::warn!("Row decode error in file_tags: {e}");
-                None
-            }
-        })
-        .collect())
-}
-
 /// Update file path in all tags when a file is renamed/moved (prevents orphan tags)
 #[tauri::command]
 pub async fn file_tags_update_path(
