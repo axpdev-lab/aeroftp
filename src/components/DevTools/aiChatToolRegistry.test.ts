@@ -140,6 +140,25 @@ describe('untrusted MCP registry snapshot', () => {
         ]) expect(schema(invalid)).toBe(false);
     });
 
+    it('refuses bounds that leave no value to send, as the backend does', () => {
+        const accepted = (property: Record<string, unknown>) => {
+            const server = mcp('bounds');
+            server.tools[0].inputSchema = { type: 'object', properties: { value: property } };
+            return buildToolRegistry([], [], [server]).some(entry => entry.source.kind === 'mcp');
+        };
+        for (const property of [
+            { type: 'number', minimum: 5, exclusiveMaximum: 5 }, { type: 'number', exclusiveMinimum: 5, maximum: 5 },
+            { type: 'number', minimum: 6, exclusiveMaximum: 5 }, { type: 'integer', minimum: 5.5, exclusiveMaximum: 6 },
+            { type: 'integer', exclusiveMinimum: 5, maximum: 5.5 }, { type: 'integer', minimum: 5.2, maximum: 5.8 },
+            { type: 'integer', exclusiveMinimum: 5, exclusiveMaximum: 6 },
+        ]) expect(accepted(property), JSON.stringify(property)).toBe(false);
+        for (const property of [
+            { type: 'number', minimum: 5, maximum: 5 }, { type: 'number', minimum: 0.5, exclusiveMaximum: 0.6 },
+            { type: 'integer', minimum: 5, exclusiveMaximum: 6 }, { type: 'integer', exclusiveMinimum: 4.5, maximum: 5 },
+            { type: 'integer', minimum: -1 },
+        ]) expect(accepted(property), JSON.stringify(property)).toBe(true);
+    });
+
     it('refuses integer values JavaScript would round, keeps fractional bounds', () => {
         const accepted = (property: Record<string, unknown>) => {
             const server = mcp('unsafe');

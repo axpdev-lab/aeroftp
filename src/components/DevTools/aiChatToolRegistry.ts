@@ -91,6 +91,23 @@ const exactNumber = (value: unknown): value is number => typeof value === 'numbe
 const prose = (value: unknown, max: number): value is string => typeof value === 'string'
     && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
 
+/** Whether the numeric bounds leave a value to send, as the backend checks:
+ *  an integer parameter needs an integer inside them. Each side has at most
+ *  one bound (an inclusive and an exclusive one together are refused first). */
+function boundsLeaveAValue(type: unknown, property: Record<string, unknown>): boolean {
+    const low = typeof property.minimum === 'number' ? { value: property.minimum, inclusive: true }
+        : typeof property.exclusiveMinimum === 'number' ? { value: property.exclusiveMinimum, inclusive: false } : undefined;
+    const high = typeof property.maximum === 'number' ? { value: property.maximum, inclusive: true }
+        : typeof property.exclusiveMaximum === 'number' ? { value: property.exclusiveMaximum, inclusive: false } : undefined;
+    if (!low || !high) return true;
+    if (type === 'integer') {
+        const first = low.inclusive ? Math.ceil(low.value) : Math.floor(low.value) + 1;
+        const last = high.inclusive ? Math.floor(high.value) : Math.ceil(high.value) - 1;
+        return first <= last;
+    }
+    return low.value < high.value || (low.value === high.value && low.inclusive && high.inclusive);
+}
+
 /** The current AITool contract supports flat primitive parameters and string arrays only.
  *  Reject other JSON Schema features instead of silently weakening validation. */
 function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalProperties'> | undefined {
@@ -151,12 +168,9 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
             if (property[bound] !== undefined && (!['number', 'integer'].includes(type as string)
                 || !exactNumber(property[bound]))) return undefined;
         }
-        if (typeof property.minimum === 'number' && typeof property.maximum === 'number'
-            && property.minimum > property.maximum) return undefined;
-        if (typeof property.exclusiveMinimum === 'number' && typeof property.exclusiveMaximum === 'number'
-            && property.exclusiveMinimum >= property.exclusiveMaximum) return undefined;
         if ((property.minimum !== undefined && property.exclusiveMinimum !== undefined)
             || (property.maximum !== undefined && property.exclusiveMaximum !== undefined)) return undefined;
+        if (!boundsLeaveAValue(type, property)) return undefined;
         for (const bound of ['minLength', 'maxLength']) {
             if (property[bound] !== undefined && (type !== 'string' || typeof property[bound] !== 'number'
                 || !Number.isInteger(property[bound]) || (property[bound] as number) < 0

@@ -155,6 +155,44 @@ fn constraints(property: &Value, value: &Value) -> bool {
         })
 }
 
+/// Whether the numeric bounds leave a value to send: an integer parameter needs
+/// an integer inside them. Each side has at most one bound, because an
+/// inclusive and an exclusive bound on the same side are refused before this.
+fn bounds_leave_a_value(kind: &str, property: &Value) -> bool {
+    let lower = property
+        .get("minimum")
+        .map(|value| (value, true))
+        .or_else(|| property.get("exclusiveMinimum").map(|value| (value, false)));
+    let upper = property
+        .get("maximum")
+        .map(|value| (value, true))
+        .or_else(|| property.get("exclusiveMaximum").map(|value| (value, false)));
+    let (Some((low, low_inclusive)), Some((high, high_inclusive))) = (lower, upper) else {
+        return true;
+    };
+    if kind == "integer" {
+        let (Some(low), Some(high)) = (low.as_f64(), high.as_f64()) else {
+            return false;
+        };
+        let first = if low_inclusive {
+            low.ceil()
+        } else {
+            low.floor() + 1.0
+        };
+        let last = if high_inclusive {
+            high.floor()
+        } else {
+            high.ceil() - 1.0
+        };
+        return first <= last;
+    }
+    match numeric_order(low, high) {
+        Some(Ordering::Less) => true,
+        Some(Ordering::Equal) => low_inclusive && high_inclusive,
+        _ => false,
+    }
+}
+
 fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
     let invalid = SchemaError::Unsupported;
     if serde_json::to_vec(schema).map_err(|_| invalid)?.len() > 8192
@@ -270,11 +308,6 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
                 }
             }
         }
-        if let (Some(min), Some(max)) = (property.get("minimum"), property.get("maximum")) {
-            if numeric_order(min, max) == Some(Ordering::Greater) {
-                return Err(invalid);
-            }
-        }
         if property.get("minimum").is_some() && property.get("exclusiveMinimum").is_some()
             || property.get("maximum").is_some() && property.get("exclusiveMaximum").is_some()
         {
@@ -287,13 +320,8 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
                 }
             }
         }
-        if let (Some(min), Some(max)) = (
-            property.get("exclusiveMinimum"),
-            property.get("exclusiveMaximum"),
-        ) {
-            if numeric_order(min, max) != Some(Ordering::Less) {
-                return Err(invalid);
-            }
+        if !bounds_leave_a_value(kind, property) {
+            return Err(invalid);
         }
         for bound in ["minLength", "maxLength"] {
             if let Some(value) = property.get(bound) {
@@ -437,6 +465,39 @@ mod tests {
             let mut changed = s.clone();
             *changed.pointer_mut(pointer).unwrap() = value;
             assert_ne!(revision(&s, &[3; 32]), revision(&changed, &[3; 32]));
+        }
+    }
+
+    #[test]
+    fn bounds_must_leave_a_value_to_send() {
+        let schema = |property: Value| json!({"type":"object","properties":{"n":property}});
+        for property in [
+            json!({"type":"number","minimum":5,"exclusiveMaximum":5}),
+            json!({"type":"number","exclusiveMinimum":5,"maximum":5}),
+            json!({"type":"number","minimum":6,"exclusiveMaximum":5}),
+            json!({"type":"integer","minimum":5.5,"exclusiveMaximum":6}),
+            json!({"type":"integer","exclusiveMinimum":5,"maximum":5.5}),
+            json!({"type":"integer","minimum":5.2,"maximum":5.8}),
+            json!({"type":"integer","exclusiveMinimum":5,"exclusiveMaximum":6}),
+        ] {
+            assert_eq!(
+                validate_schema(&schema(property.clone())),
+                Err(SchemaError::Unsupported),
+                "{property}"
+            );
+        }
+        for property in [
+            json!({"type":"number","minimum":5,"maximum":5}),
+            json!({"type":"number","minimum":0.5,"exclusiveMaximum":0.6}),
+            json!({"type":"integer","minimum":5,"exclusiveMaximum":6}),
+            json!({"type":"integer","exclusiveMinimum":4.5,"maximum":5}),
+            json!({"type":"integer","minimum":-1}),
+        ] {
+            assert_eq!(
+                validate_schema(&schema(property.clone())),
+                Ok(()),
+                "{property}"
+            );
         }
     }
 

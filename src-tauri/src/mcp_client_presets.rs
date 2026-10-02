@@ -79,7 +79,7 @@ mod tests {
 
     #[tokio::test]
     async fn deepwiki_live_accepts_two_tools_when_opted_in() {
-        if std::env::var_os("AEROFTP_MCP_PRESET_LIVE").is_none() {
+        if std::env::var("AEROFTP_MCP_PRESET_LIVE").as_deref() != Ok("1") {
             return;
         }
         use crate::mcp_client_http_config::{McpHttpAuth, McpHttpServerConfig};

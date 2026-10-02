@@ -77,6 +77,27 @@ it('brings Install back when the server is removed from the HTTP list', async ()
     expect(installButton()).toBeDefined();
 });
 
+it('keeps the newest list when an older load answers last', async () => {
+    let releaseOld!: () => void;
+    let lists = 0;
+    invoke.mockImplementation(async (command: string) => {
+        if (command === 'mcp_client_presets_list') return [DEEPWIKI];
+        if (command === 'mcp_client_http_list_servers') {
+            lists += 1;
+            // The first (older) load answers after the newer one.
+            if (lists === 1) { await new Promise<void>(resolve => { releaseOld = resolve; }); return []; }
+            return [{ id: 'deepwiki', enabled: true }];
+        }
+        return undefined;
+    });
+    await act(async () => { root.render(createElement(McpRecommendedServers)); });
+    await act(async () => { notifyMcpServersChanged(); });
+    expect(host.textContent).toContain('Ready');
+    await act(async () => { releaseOld(); });
+    expect(host.textContent).toContain('Ready');
+    expect(installButton()).toBeUndefined();
+});
+
 it('reports a refused install', async () => {
     invoke.mockImplementation(async (command: string) => {
         if (command === 'mcp_client_presets_list') return [DEEPWIKI];

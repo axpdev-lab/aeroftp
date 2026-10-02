@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
 import { describeMcpError } from './mcpErrors';
@@ -19,11 +19,15 @@ export function McpRecommendedServers() {
     const [installed, setInstalled] = useState<Listed[]>([]);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
+    // Loads overlap (mount, MCP_SERVERS_CHANGED, install): only the newest may land.
+    const loadSequence = useRef(0);
     const load = useCallback(async () => {
+        const sequence = ++loadSequence.current;
         const [listed, servers] = await Promise.all([
             invoke<HttpPreset[]>('mcp_client_presets_list'),
             invoke<Listed[]>('mcp_client_http_list_servers'),
         ]);
+        if (sequence !== loadSequence.current) return;
         setPresets((listed ?? []).filter(preset => preset.transport === 'http' && PRESET_TEXT[preset.id]));
         setInstalled(servers ?? []);
     }, []);
