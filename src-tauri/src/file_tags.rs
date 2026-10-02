@@ -525,13 +525,23 @@ pub fn forget_tags_of_missing_in_conn(
 }
 
 /// After a local delete: drop the tags of what is no longer on disk.
+/// Whether `p` is still on disk, for keeping its tags. Only a NotFound answer
+/// counts as gone: a permission or I/O error says nothing about the entry
+/// (`Path::exists` folds those into "missing"), and a dangling symlink is
+/// still an entry in its folder.
+fn still_on_disk(p: &str) -> bool {
+    match std::fs::symlink_metadata(p) {
+        Ok(_) => true,
+        Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+    }
+}
+
 pub fn follow_delete(app: &AppHandle, path: &str) {
     let Some(db) = app.try_state::<FileTagsDb>() else {
         return;
     };
     let conn = acquire_lock(&db);
-    let exists = |p: &str| std::path::Path::new(p).exists();
-    if let Err(e) = forget_tags_of_missing_in_conn(&conn, path, exists) {
+    if let Err(e) = forget_tags_of_missing_in_conn(&conn, path, still_on_disk) {
         tracing::warn!("file tags of deleted {path} were kept: {e}");
     }
 }
@@ -692,5 +702,41 @@ mod tests {
             tagged(&conn),
             [("/d/gone.txt".to_string(), 3), ("/d/kept/x".to_string(), 4)]
         );
+    }
+
+    /// Only "not found" means gone. `Path::exists` also answers false for an
+    /// entry it cannot stat (a survivor under a folder the process cannot
+    /// traverse) and for a dangling symlink, and the delete then dropped the
+    /// tags of something still on disk.
+    #[cfg(unix)]
+    #[test]
+    fn a_path_that_cannot_be_checked_still_counts_as_on_disk() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = |p: &std::path::Path| p.to_string_lossy().to_string();
+
+        let link = dir.path().join("dangling");
+        std::os::unix::fs::symlink(dir.path().join("no-target"), &link).unwrap();
+        assert!(
+            still_on_disk(&path(&link)),
+            "a dangling symlink is still an entry"
+        );
+
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(locked.join("survivor.txt"), b"x").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let blocked = std::fs::symlink_metadata(locked.join("survivor.txt")).is_err();
+        let survivor_kept = still_on_disk(&path(&locked.join("survivor.txt")));
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Running as root nothing is blocked; the check is then vacuous, not wrong.
+        if blocked {
+            assert!(
+                survivor_kept,
+                "an entry the process cannot stat is not a deleted one"
+            );
+        }
+
+        assert!(!still_on_disk(&path(&dir.path().join("missing"))));
     }
 }
