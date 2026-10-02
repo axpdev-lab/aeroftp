@@ -169,6 +169,10 @@ fn build_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     let window = builder.build().map_err(|e| e.to_string())?;
     // GTK hands every window the global app menu: not this one.
     let _ = window.remove_menu();
+    // A dead web process would leave a grey window that can only refuse; a
+    // reload shows the request again, which stays pending until answered.
+    #[cfg(target_os = "linux")]
+    crate::webview_recovery::install(&window);
 
     let label_owned = label.to_string();
     window.on_window_event(move |event| {
