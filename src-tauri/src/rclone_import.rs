@@ -4305,10 +4305,10 @@ user = t
             name: "nas".to_string(),
             host: "nas.example.test".to_string(),
             port: 2222,
-            username: "sshd".to_string(),
+            username: "nasuser".to_string(),
             protocol: Some("sftp".to_string()),
             options: Some(serde_json::json!({
-                "initial_path": "/mnt/HD/cloud/AeroSyncFolder"
+                "initial_path": "/mnt/data/sync"
             })),
             provider_id: None,
         }];
@@ -4328,7 +4328,7 @@ user = t
             "expected start-folder alias:\n{conf}"
         );
         assert!(
-            conf.contains("remote = nas:/mnt/HD/cloud/AeroSyncFolder"),
+            conf.contains("remote = nas:/mnt/data/sync"),
             "sftp alias keeps the absolute folder:\n{conf}"
         );
         // The alias is a section of its own, after the sftp section.

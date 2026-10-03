@@ -443,38 +443,38 @@ mod tests {
 
     #[test]
     fn test_parse_server_field_hostname_only() {
-        let (host, port) = parse_server_field("axpnas.ddns.net");
-        assert_eq!(host, "axpnas.ddns.net");
+        let (host, port) = parse_server_field("nas.example.net");
+        assert_eq!(host, "nas.example.net");
         assert_eq!(port, None);
     }
 
     #[test]
     fn test_parse_server_field_with_port() {
-        let (host, port) = parse_server_field("axpnas.ddns.net:22");
-        assert_eq!(host, "axpnas.ddns.net");
+        let (host, port) = parse_server_field("nas.example.net:22");
+        assert_eq!(host, "nas.example.net");
         assert_eq!(port, Some(22));
     }
 
     #[test]
     fn test_parse_server_field_webdav_path_no_port() {
-        let (host, port) = parse_server_field("axpnas.ddns.net/axpdev/dav");
-        assert_eq!(host, "axpnas.ddns.net/axpdev/dav");
+        let (host, port) = parse_server_field("nas.example.net/user/dav");
+        assert_eq!(host, "nas.example.net/user/dav");
         assert_eq!(port, None);
     }
 
     #[test]
     fn test_parse_server_field_webdav_port_after_path() {
         // CloudPanel bug: port appended after path
-        let (host, port) = parse_server_field("axpnas.ddns.net/axpdev/dav:80");
-        assert_eq!(host, "axpnas.ddns.net/axpdev/dav");
+        let (host, port) = parse_server_field("nas.example.net/user/dav:80");
+        assert_eq!(host, "nas.example.net/user/dav");
         assert_eq!(port, Some(80));
     }
 
     #[test]
     fn test_parse_server_field_webdav_port_after_host() {
         // Correct format: port after hostname before path
-        let (host, port) = parse_server_field("axpnas.ddns.net:80/axpdev/dav");
-        assert_eq!(host, "axpnas.ddns.net/axpdev/dav");
+        let (host, port) = parse_server_field("nas.example.net:80/user/dav");
+        assert_eq!(host, "nas.example.net/user/dav");
         assert_eq!(port, Some(80));
     }
 

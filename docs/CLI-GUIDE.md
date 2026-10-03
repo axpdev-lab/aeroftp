@@ -1448,7 +1448,7 @@ AEROFTP_PROBE_PW="testpass" aeroftp-cli aerorsync probe \
 # Probe a real rsync-as-a-service endpoint (FileLu, Hetzner Storage Box, etc.)
 read -s -p "Password: " FILELU_RSYNC_PW && export FILELU_RSYNC_PW
 aeroftp-cli aerorsync probe \
-    rsync.filelu.com aleimob \
+    rsync.filelu.com your-filelu-username \
     --port 2222 \
     --password-env FILELU_RSYNC_PW \
     --accept-any-host-key

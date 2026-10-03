@@ -1788,13 +1788,13 @@ const App: React.FC = () => {
     if (!isConnected || !connectionParams.server || !currentLocalPath) return true;
 
     // Extract server name without 'ftp.' prefix and port
-    // e.g., "ftp.ericsolar.it:21" -> "ericsolar"
+    // e.g., "ftp.example.com:21" -> "example"
     const serverHost = connectionParams.server.split(':')[0]; // Remove port
     const serverName = serverHost.replace(/^ftp\./, '').replace(/^www\./, ''); // Remove ftp./www.
-    const serverBase = serverName.split('.')[0]; // Get first part (e.g., "ericsolar" from "ericsolar.it")
+    const serverBase = serverName.split('.')[0]; // Get first part (e.g., "example" from "example.com")
 
     // Check if local path contains a reference to a different server
-    // Common patterns: /var/www/html/www.ericsolar.it, /home/user/ericsolar, etc.
+    // Common patterns: /var/www/html/www.example.com, /home/user/example, etc.
     const localPathLower = currentLocalPath.toLowerCase();
     const serverBaseLower = serverBase.toLowerCase();
 
@@ -7198,7 +7198,7 @@ const App: React.FC = () => {
     if (!server || CLOUD_API_PROTOCOLS.includes(protocol)) return { resolvedIp: null, connectingLogId: null };
     // Extract pure hostname for DNS resolution
     // Full URLs: "https://webdav.cloudme.com/path/" → "webdav.cloudme.com"
-    // Path-style: "axpnas.ddns.net/axpdev/dav" → "axpnas.ddns.net"
+    // Path-style: "nas.example.net/user/dav" → "nas.example.net"
     let hostname = server;
     try { hostname = new URL(server).hostname; } catch {
       // Not a full URL: strip path and port for DNS lookup

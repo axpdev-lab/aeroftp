@@ -77663,20 +77663,20 @@ mod tests {
         let config = ProviderConfig {
             name: "NAS".to_string(),
             provider_type: ProviderType::Sftp,
-            host: "axpnas.ddns.net".to_string(),
-            port: Some(2222),
-            username: Some("sshd".to_string()),
+            host: "nas.example.net".to_string(),
+            port: Some(2200),
+            username: Some("nasuser".to_string()),
             password: None,
-            initial_path: Some("/mnt/HD/HD_a2".to_string()),
+            initial_path: Some("/mnt/data".to_string()),
             extra: HashMap::new(),
         };
 
         assert_eq!(
             ConnectMetadata::from_config(&config),
             ConnectMetadata {
-                host: "axpnas.ddns.net".to_string(),
-                port: 2222,
-                username: "sshd".to_string(),
+                host: "nas.example.net".to_string(),
+                port: 2200,
+                username: "nasuser".to_string(),
             }
         );
     }
@@ -78882,20 +78882,20 @@ mod tests {
     fn test_resolve_cli_remote_path_with_base_path() {
         // Both absolute and relative user paths should resolve to the same thing
         assert_eq!(
-            resolve_cli_remote_path("/www.ericsolar.it", "/front/includes"),
-            "/www.ericsolar.it/front/includes"
+            resolve_cli_remote_path("/www.example.com", "/front/includes"),
+            "/www.example.com/front/includes"
         );
         assert_eq!(
-            resolve_cli_remote_path("/www.ericsolar.it", "front/includes"),
-            "/www.ericsolar.it/front/includes"
+            resolve_cli_remote_path("/www.example.com", "front/includes"),
+            "/www.example.com/front/includes"
         );
     }
 
     #[test]
     fn test_resolve_cli_remote_path_user_already_includes_base() {
         assert_eq!(
-            resolve_cli_remote_path("/www.ericsolar.it", "/www.ericsolar.it/app"),
-            "/www.ericsolar.it/app"
+            resolve_cli_remote_path("/www.example.com", "/www.example.com/app"),
+            "/www.example.com/app"
         );
     }
 
