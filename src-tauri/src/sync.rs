@@ -5604,6 +5604,15 @@ fn load_or_create_signing_secret(key_file: &Path) -> Result<String, String> {
                 let _ = std::fs::remove_file(key_file);
                 return Err(format!("Failed to write signing key: {e}"));
             }
+            // The file's bytes are durable, but its directory entry is not
+            // until the parent is synced: after a crash the key could vanish,
+            // a new one be created, and every saved journal fail verification.
+            #[cfg(unix)]
+            if let Some(parent) = key_file.parent() {
+                if let Ok(dir) = std::fs::File::open(parent) {
+                    let _ = dir.sync_all();
+                }
+            }
             Ok(hex_key)
         }
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
