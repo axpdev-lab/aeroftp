@@ -124,7 +124,7 @@
 | D-02 | Unbounded file scan | Recursive listing on huge directory tree | BFS caps: `MAX_SCAN_DEPTH=100`, `MAX_SCAN_ENTRIES=500_000` | 500K entries still significant memory |
 | D-03 | OOM via large file read | `cat` or `head` on multi-GB file | 256MB cap on `cat`, configurable `head -n N` | 256MB still large for memory |
 | D-04 | MCP rate flooding | Rapid MCP requests exhaust provider API limits | Token bucket rate limiter: 1200 read-only/400 mutative/100 destructive per minute | Limits are per-category, not per-provider |
-| D-05 | Fork bomb via shell_execute | AI sends `:(){ :|:& };:` | Blocked by denylist pattern. 30s default timeout on shell_execute (capped at 120s). 512KB output limit | Timeout still allows 30s of resource consumption |
+| D-05 | Fork bomb via shell_execute | AI sends `:(){ :\|:& };:` | Blocked by denylist pattern. 30s default timeout on shell_execute (capped at 120s). 512KB output limit | Timeout still allows 30s of resource consumption |
 
 ### E - Elevation of Privilege
 

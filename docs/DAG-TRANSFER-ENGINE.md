@@ -119,7 +119,7 @@ concurrent range orchestrator always consumes that shape in production.
 
 | Shape | Builder | Current production status |
 |---|---|---|
-| Single-file core | `shaped_file(Download|Upload, caps, size)` | Active in normal GUI/CLI single-file network paths, with router and provider exceptions |
+| Single-file core | `shaped_file(Download\|Upload, caps, size)` | Active in normal GUI/CLI single-file network paths, with router and provider exceptions |
 | Multipart single-file | `shaped_file(Upload, caps, size)` → `UploadPart × N` | Active when the single-file runner receives multipart capabilities; independent wire workers only for the provider set listed below |
 | Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps from `TransferExecutor::transfer_capabilities()`. Multipart files run real per-part wire I/O (DAG-P1-03); plain upload/download stay whole-file |
 | Sync | `from_sync_plan_shaped(plan, live caps)` | Active for non-dry-run sync; normal files use the clone-backed cap, while delta is an exclusive primary-session lane |
