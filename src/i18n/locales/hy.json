@@ -4477,9 +4477,6 @@
             "starred": "Ֆայլը աստղանշված է",
             "unstarred": "Աստղանշը հանվել է"
         },
-        "dropbox": {
-            "manageTags": "Կառավարել պիտակները"
-        },
         "providers": {
             "title": "Մատակարարներ և ինտեգրացիաներ",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Անվճար փաթեթ",
             "freeCardTier": "Անվճար + քարտ",
             "paidTier": "Վճարովի"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Մենաէղ Եղերը",
-            "noLabels": "Եղեր անուշնախ մար ենլ. Պահշէք Եղեր Zoho WorkDrive շլադապաօցումին աջելշվի.",
-            "createLabel": "ՎայրաօրՌ ճզազ ւշաքպեր",
-            "labelName": "ւշքպաերի անվնխ"
         },
         "healthCheck": {
             "title": "Սերվերի առողջականության ստուգում",

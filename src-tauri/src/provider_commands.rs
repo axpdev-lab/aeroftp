@@ -1565,14 +1565,6 @@ pub struct OpenDriveTrashActionItem {
     pub is_dir: bool,
 }
 
-#[derive(Serialize)]
-pub struct ProviderConnectionInfo {
-    pub connected: bool,
-    pub protocol: Option<String>,
-    pub display_name: Option<String>,
-    pub server_info: Option<String>,
-}
-
 // ============ Tauri Commands ============
 
 /// Connect to a storage provider using the specified protocol.
@@ -2289,29 +2281,6 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
     }
 }
 
-/// Check if connected to a provider
-#[tauri::command]
-pub async fn provider_check_connection(
-    state: State<'_, ProviderState>,
-) -> Result<ProviderConnectionInfo, String> {
-    let provider_lock = state.provider.lock().await;
-
-    match &*provider_lock {
-        Some(provider) => Ok(ProviderConnectionInfo {
-            connected: provider.is_connected(),
-            protocol: Some(format!("{:?}", provider.provider_type())),
-            display_name: Some(provider.display_name()),
-            server_info: None,
-        }),
-        None => Ok(ProviderConnectionInfo {
-            connected: false,
-            protocol: None,
-            display_name: None,
-            server_info: None,
-        }),
-    }
-}
-
 /// Lightweight liveness probe for the currently connected provider (#128-C).
 ///
 /// Runs a bare `list(".")` on the active session and reports whether it
@@ -2509,61 +2478,6 @@ async fn provider_change_dir_inner(
         files,
         current_path,
     })
-}
-
-/// Navigate to parent directory
-#[tauri::command]
-pub async fn provider_go_up(
-    app: AppHandle,
-    state: State<'_, ProviderState>,
-) -> Result<ProviderListResponse, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    if let Err(e) = provider.cd_up().await {
-        if !e.is_connection_lost() {
-            return Err(format!("Failed to go up: {}", e));
-        }
-        emit_session_event(&app, SessionEventKind::Lost, e.to_string());
-        try_silent_reconnect(&app, provider)
-            .await
-            .map_err(|err| format!("Failed to reconnect: {}", err))?;
-        provider
-            .cd_up()
-            .await
-            .map_err(|err| format!("Failed to go up after reconnect: {}", err))?;
-        emit_session_event(&app, SessionEventKind::Reconnected, "");
-    }
-
-    let files = provider
-        .list(".")
-        .await
-        .map_err(|e| format!("Failed to list files: {}", e))?;
-
-    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-
-    Ok(ProviderListResponse {
-        files,
-        current_path,
-    })
-}
-
-/// Get current working directory
-#[tauri::command]
-pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .pwd()
-        .await
-        .map_err(|e| format!("Failed to get working directory: {}", e))
 }
 
 /// Run a plain single-file download through the graph engine and emit the
@@ -6086,36 +6000,6 @@ pub async fn provider_server_copy(
     }
 }
 
-/// Check if provider supports server-side copy
-#[tauri::command]
-pub async fn provider_supports_server_copy(
-    state: State<'_, ProviderState>,
-) -> Result<bool, String> {
-    let provider_lock = state.provider.lock().await;
-    let provider = provider_lock
-        .as_ref()
-        .ok_or("Not connected to any provider")?;
-    Ok(provider.supports_server_copy())
-}
-
-/// Get file/directory information
-#[tauri::command]
-pub async fn provider_stat(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<RemoteEntry, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .stat(&path)
-        .await
-        .map_err(|e| format!("Failed to get file info: {}", e))
-}
-
 /// Which digests this connection can produce for `path` without downloading
 /// it, so a surface can say up front what it will and will not get.
 ///
@@ -6194,57 +6078,6 @@ pub async fn provider_keep_alive(state: State<'_, ProviderState>) -> Result<(), 
     Ok(())
 }
 
-/// Get server information
-#[tauri::command]
-pub async fn provider_server_info(state: State<'_, ProviderState>) -> Result<String, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .server_info()
-        .await
-        .map_err(|e| format!("Failed to get server info: {}", e))
-}
-
-/// Get file size
-#[tauri::command]
-pub async fn provider_file_size(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<u64, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .size(&path)
-        .await
-        .map_err(|e| format!("Failed to get file size: {}", e))
-}
-
-/// Check if a file/directory exists
-#[tauri::command]
-pub async fn provider_exists(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<bool, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .exists(&path)
-        .await
-        .map_err(|e| format!("Failed to check existence: {}", e))
-}
-
 // ============ OAuth2 Commands ============
 
 /// OAuth2 connection parameters
@@ -6298,121 +6131,6 @@ fn oauth_callback_endpoint(provider: &str) -> Result<(&'static str, u16), String
 pub async fn oauth2_redirect_uri(provider: String) -> Result<String, String> {
     let (host, port) = oauth_callback_endpoint(&provider)?;
     Ok(format!("http://{host}:{port}/callback"))
-}
-
-/// OAuth2 flow state
-#[derive(Debug, Clone, Serialize)]
-pub struct OAuthFlowStarted {
-    /// URL to open in browser
-    pub auth_url: String,
-    /// State parameter for verification
-    pub state: String,
-}
-
-/// Start OAuth2 authentication flow
-/// Returns the authorization URL to open in browser
-#[tauri::command]
-pub async fn oauth2_start_auth(params: OAuthConnectionParams) -> Result<OAuthFlowStarted, String> {
-    use crate::providers::{OAuth2Manager, OAuthConfig};
-
-    info!("Starting OAuth2 flow for {}", params.provider);
-    let (_, port) = oauth_callback_endpoint(&params.provider)?;
-
-    let config = match params.provider.to_lowercase().as_str() {
-        "google_drive" | "googledrive" | "google" => {
-            OAuthConfig::google_with_port(&params.client_id, &params.client_secret, port)
-        }
-        "googlephotos" | "google_photos" => {
-            OAuthConfig::google_photos_with_port(&params.client_id, &params.client_secret, port)
-        }
-        "dropbox" => OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port),
-        "onedrive" | "microsoft" => {
-            OAuthConfig::onedrive_with_port(&params.client_id, &params.client_secret, port)
-        }
-        "box" => OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port),
-        "pcloud" => OAuthConfig::pcloud_with_port(
-            &params.client_id,
-            &params.client_secret,
-            port,
-            &params.region,
-        ),
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthConfig::zoho_with_port(
-            &params.client_id,
-            &params.client_secret,
-            port,
-            &params.region,
-        ),
-        "yandexdisk" | "yandex_disk" | "yandex" => {
-            OAuthConfig::yandex_disk_with_port(&params.client_id, &params.client_secret, port)
-        }
-        other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    }
-    .with_profile_id(&params.profile_id);
-
-    let manager = OAuth2Manager::new();
-    let (auth_url, state) = manager
-        .start_auth_flow(&config)
-        .await
-        .map_err(|e| format!("Failed to start OAuth flow: {}", e))?;
-
-    // Open URL in default browser
-    if let Err(e) = open::that(&auth_url) {
-        info!("Could not open browser automatically: {}", e);
-    }
-
-    Ok(OAuthFlowStarted { auth_url, state })
-}
-
-/// Complete OAuth2 authentication with the authorization code
-#[tauri::command]
-pub async fn oauth2_complete_auth(
-    params: OAuthConnectionParams,
-    code: String,
-    state: String,
-) -> Result<String, String> {
-    use crate::providers::{OAuth2Manager, OAuthConfig};
-
-    info!("Completing OAuth2 flow for {}", params.provider);
-    let (_, port) = oauth_callback_endpoint(&params.provider)?;
-
-    let config = match params.provider.to_lowercase().as_str() {
-        "google_drive" | "googledrive" | "google" => {
-            OAuthConfig::google_with_port(&params.client_id, &params.client_secret, port)
-        }
-        "googlephotos" | "google_photos" => {
-            OAuthConfig::google_photos_with_port(&params.client_id, &params.client_secret, port)
-        }
-        "dropbox" => OAuthConfig::dropbox_with_port(&params.client_id, &params.client_secret, port),
-        "onedrive" | "microsoft" => {
-            OAuthConfig::onedrive_with_port(&params.client_id, &params.client_secret, port)
-        }
-        "box" => OAuthConfig::box_cloud_with_port(&params.client_id, &params.client_secret, port),
-        "pcloud" => OAuthConfig::pcloud_with_port(
-            &params.client_id,
-            &params.client_secret,
-            port,
-            &params.region,
-        ),
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthConfig::zoho_with_port(
-            &params.client_id,
-            &params.client_secret,
-            port,
-            &params.region,
-        ),
-        "yandexdisk" | "yandex_disk" | "yandex" => {
-            OAuthConfig::yandex_disk_with_port(&params.client_id, &params.client_secret, port)
-        }
-        other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    }
-    .with_profile_id(&params.profile_id);
-
-    let manager = OAuth2Manager::new();
-    manager
-        .complete_auth_flow(&config, &code, &state)
-        .await
-        .map_err(|e| format!("Failed to complete OAuth flow: {}", e))?;
-
-    Ok("Authentication successful".to_string())
 }
 
 /// OAuth2 connection result with display name and account email
@@ -6954,35 +6672,6 @@ pub async fn oauth2_has_tokens(
     Ok(manager.has_tokens(oauth_provider, &pid))
 }
 
-/// Clear OAuth2 tokens for a provider (logout). When `profile_id` is supplied
-/// only that profile's tokens are removed; otherwise the legacy singleton key
-/// is targeted. Issue #214.
-#[tauri::command]
-pub async fn oauth2_logout(provider: String, profile_id: Option<String>) -> Result<(), String> {
-    use crate::providers::{OAuth2Manager, OAuthProvider};
-
-    let oauth_provider = match provider.to_lowercase().as_str() {
-        "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
-        "googlephotos" | "google_photos" => OAuthProvider::GooglePhotos,
-        "dropbox" => OAuthProvider::Dropbox,
-        "onedrive" | "microsoft" => OAuthProvider::OneDrive,
-        "box" => OAuthProvider::Box,
-        "pcloud" => OAuthProvider::PCloud,
-        "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthProvider::ZohoWorkdrive,
-        "yandexdisk" | "yandex_disk" | "yandex" => OAuthProvider::YandexDisk,
-        other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    };
-
-    let pid = profile_id.unwrap_or_default();
-    let manager = OAuth2Manager::new();
-    manager
-        .clear_tokens(oauth_provider, &pid)
-        .map_err(|e| format!("Failed to clear tokens: {}", e))?;
-
-    info!("Logged out from {}", provider);
-    Ok(())
-}
-
 /// Create a shareable link for a file using the OAuth provider's native sharing API
 #[tauri::command]
 pub async fn provider_create_share_link(
@@ -7191,23 +6880,6 @@ pub async fn mega_webdav_url(
     .await
 }
 
-/// Get disk usage for a path in bytes
-#[tauri::command]
-pub async fn provider_disk_usage(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<u64, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    provider
-        .disk_usage(&path)
-        .await
-        .map_err(|e| format!("Failed to get disk usage: {}", e))
-}
-
 /// Search for files matching a pattern under the given path
 #[tauri::command]
 pub async fn provider_find(
@@ -7255,82 +6927,6 @@ pub async fn provider_set_speed_limit(
         Ok(()) | Err(crate::providers::ProviderError::NotSupported(_)) => Ok(()),
         Err(e) => Err(format!("Failed to set speed limit: {}", e)),
     }
-}
-
-/// Get current transfer speed limits (upload_kb, download_kb) in KB/s
-#[tauri::command]
-pub async fn provider_get_speed_limit(
-    state: State<'_, ProviderState>,
-) -> Result<(u64, u64), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    match provider.get_speed_limit().await {
-        Ok(limits) => Ok(limits),
-        Err(crate::providers::ProviderError::NotSupported(_)) => {
-            let (up, down) = crate::transfer_dag::governor::global().transfer_limits();
-            Ok((up / 1024, down / 1024))
-        }
-        Err(e) => Err(format!("Failed to get speed limit: {}", e)),
-    }
-}
-
-/// Check if the current provider supports resume transfers
-#[tauri::command]
-pub async fn provider_supports_resume(state: State<'_, ProviderState>) -> Result<bool, String> {
-    let provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_ref()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-    Ok(provider.supports_resume())
-}
-
-/// Resume a download from a given byte offset
-#[tauri::command]
-pub async fn provider_resume_download(
-    state: State<'_, ProviderState>,
-    remote_path: String,
-    local_path: String,
-    offset: u64,
-) -> Result<String, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if let Some(parent) = std::path::Path::new(&local_path).parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
-    }
-
-    provider
-        .resume_download(&remote_path, &local_path, offset, None)
-        .await
-        .map_err(|e| format!("Resume download failed: {}", e))?;
-
-    Ok(format!("Resume download completed: {}", remote_path))
-}
-
-/// Resume an upload from a given byte offset
-#[tauri::command]
-pub async fn provider_resume_upload(
-    state: State<'_, ProviderState>,
-    local_path: String,
-    remote_path: String,
-    offset: u64,
-) -> Result<String, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    provider
-        .resume_upload(&local_path, &remote_path, offset, None)
-        .await
-        .map_err(|e| format!("Resume upload failed: {}", e))?;
-
-    Ok(format!("Resume upload completed: {}", remote_path))
 }
 
 // --- File Versions ---
@@ -8181,14 +7777,6 @@ pub struct FourSharedAuthParams {
     pub connect_token: Option<String>,
 }
 
-/// Result from starting 4shared OAuth flow
-#[derive(Debug, Clone, Serialize)]
-pub struct FourSharedAuthStarted {
-    pub auth_url: String,
-    pub request_token: String,
-    pub request_token_secret: String,
-}
-
 /// Legacy app-global vault key for the 4shared OAuth1 token. Still read (and
 /// still written when no profile owns the flow) so an install authorised before
 /// the per-profile layout keeps connecting untouched.
@@ -8247,79 +7835,6 @@ fn load_fourshared_tokens(profile_id: &str) -> Result<(String, String), String> 
         }
     }
     Err("No 4shared tokens found. Please authenticate first.".to_string())
-}
-
-/// Start 4shared OAuth 1.0 flow: obtain request token, return auth URL
-#[tauri::command]
-pub async fn fourshared_start_auth(
-    params: FourSharedAuthParams,
-) -> Result<FourSharedAuthStarted, String> {
-    use crate::providers::oauth1;
-
-    info!("Starting 4shared OAuth 1.0 flow");
-
-    // Bind a local callback listener to get a port
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .map_err(|e| format!("Failed to bind callback listener: {}", e))?;
-    let port = listener
-        .local_addr()
-        .map_err(|e| format!("Failed to get listener port: {}", e))?
-        .port();
-    drop(listener);
-
-    let callback_url = format!("http://127.0.0.1:{}/callback", port);
-
-    let (request_token, request_token_secret) = oauth1::request_token(
-        &params.consumer_key,
-        &params.consumer_secret,
-        "https://api.4shared.com/v1_2/oauth/initiate",
-        &callback_url,
-    )
-    .await?;
-
-    let auth_url = oauth1::authorize_url(
-        "https://api.4shared.com/v1_2/oauth/authorize",
-        &request_token,
-    );
-
-    if let Err(e) = open::that(&auth_url) {
-        info!("Could not open browser: {}", e);
-    }
-
-    Ok(FourSharedAuthStarted {
-        auth_url,
-        request_token,
-        request_token_secret,
-    })
-}
-
-/// Complete 4shared OAuth 1.0 flow: exchange request token + verifier for access token
-#[tauri::command]
-pub async fn fourshared_complete_auth(
-    params: FourSharedAuthParams,
-    request_token: String,
-    request_token_secret: String,
-    verifier: String,
-) -> Result<String, String> {
-    use crate::providers::oauth1;
-
-    info!("Completing 4shared OAuth 1.0 flow");
-
-    let (access_token, access_token_secret) = oauth1::access_token(
-        &params.consumer_key,
-        &params.consumer_secret,
-        "https://api.4shared.com/v1_2/oauth/token",
-        &request_token,
-        &request_token_secret,
-        &verifier,
-    )
-    .await?;
-
-    store_fourshared_tokens(&params.profile_id, &access_token, &access_token_secret)?;
-
-    info!("4shared OAuth 1.0 authentication completed successfully");
-    Ok("Authentication successful".to_string())
 }
 
 /// Full 4shared OAuth 1.0 flow: start server, open browser, wait for callback, exchange tokens
@@ -8764,176 +8279,7 @@ pub async fn zoho_restore_from_trash(
 
 // ── Zoho WorkDrive Label Operations ───────────────────────────────────
 
-/// List all labels available in the Zoho WorkDrive team
-#[tauri::command]
-pub async fn zoho_list_team_labels(
-    state: State<'_, ProviderState>,
-) -> Result<Vec<serde_json::Value>, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::ZohoWorkdrive {
-        return Err("This operation is only available for Zoho WorkDrive".to_string());
-    }
-
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    let labels = zoho
-        .list_team_labels()
-        .await
-        .map_err(|e| format!("Failed to list team labels: {}", e))?;
-
-    Ok(labels
-        .into_iter()
-        .map(|l| serde_json::to_value(l).unwrap_or_default())
-        .collect())
-}
-
-/// List labels applied to a specific file in Zoho WorkDrive
-#[tauri::command]
-pub async fn zoho_get_file_labels(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<Vec<serde_json::Value>, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::ZohoWorkdrive {
-        return Err("This operation is only available for Zoho WorkDrive".to_string());
-    }
-
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    let labels = zoho
-        .get_file_labels(&path)
-        .await
-        .map_err(|e| format!("Failed to get file labels: {}", e))?;
-
-    Ok(labels
-        .into_iter()
-        .map(|l| serde_json::to_value(l).unwrap_or_default())
-        .collect())
-}
-
-/// Add a label to a file in Zoho WorkDrive
-#[tauri::command]
-pub async fn zoho_add_file_label(
-    state: State<'_, ProviderState>,
-    path: String,
-    label_id: String,
-) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::ZohoWorkdrive {
-        return Err("This operation is only available for Zoho WorkDrive".to_string());
-    }
-
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    zoho.add_file_label(&path, &label_id)
-        .await
-        .map_err(|e| format!("Failed to add label: {}", e))
-}
-
-/// Create a new label in Zoho WorkDrive
-#[tauri::command]
-pub async fn zoho_create_label(
-    state: State<'_, ProviderState>,
-    name: String,
-    color: String,
-) -> Result<serde_json::Value, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::ZohoWorkdrive {
-        return Err("This operation is only available for Zoho WorkDrive".to_string());
-    }
-
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    let label = zoho
-        .create_label(&name, &color)
-        .await
-        .map_err(|e| format!("Failed to create label: {}", e))?;
-
-    serde_json::to_value(label).map_err(|e| format!("Serialize error: {}", e))
-}
-
-/// Remove a label from a file in Zoho WorkDrive
-#[tauri::command]
-pub async fn zoho_remove_file_label(
-    state: State<'_, ProviderState>,
-    path: String,
-    label_id: String,
-) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::ZohoWorkdrive {
-        return Err("This operation is only available for Zoho WorkDrive".to_string());
-    }
-
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    zoho.remove_file_label(&path, &label_id)
-        .await
-        .map_err(|e| format!("Failed to remove label: {}", e))
-}
-
 // ── Zoho WorkDrive MCP-parity Operations ──────────────────────────────
-
-/// Get authenticated user info (MCP parity: getUserInfo)
-#[tauri::command]
-pub async fn zoho_get_user_info(
-    state: State<'_, ProviderState>,
-) -> Result<serde_json::Value, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::ZohoWorkdrive {
-        return Err("This operation is only available for Zoho WorkDrive".to_string());
-    }
-
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    let info = zoho
-        .get_user_info()
-        .await
-        .map_err(|e| format!("Failed to get user info: {}", e))?;
-
-    serde_json::to_value(info).map_err(|e| format!("Serialize error: {}", e))
-}
 
 /// List all share links for a file/folder (MCP parity: getFileShareLinks)
 #[tauri::command]
@@ -9020,35 +8366,6 @@ pub async fn zoho_create_native_document(
 }
 
 // ── Jottacloud Trash Operations ───────────────────────────────────────
-
-/// Move files to Jottacloud Trash (soft delete)
-#[tauri::command]
-pub async fn jottacloud_move_to_trash(
-    state: State<'_, ProviderState>,
-    paths: Vec<String>,
-) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::Jottacloud {
-        return Err("This operation is only available for Jottacloud".to_string());
-    }
-
-    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
-        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
-
-    for path in &paths {
-        jotta
-            .move_to_trash(path)
-            .await
-            .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
-    }
-    Ok(())
-}
 
 /// List items in Jottacloud Trash
 #[tauri::command]
@@ -9181,48 +8498,6 @@ pub async fn jottacloud_empty_trash(state: State<'_, ProviderState>) -> Result<(
 
 // ── MEGA Trash Operations ────────────────────────────────────────────
 
-/// Move files to MEGA Rubbish Bin (soft delete)
-#[tauri::command]
-pub async fn mega_move_to_trash(
-    state: State<'_, ProviderState>,
-    paths: Vec<String>,
-) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::Mega {
-        return Err("This operation is only available for MEGA".to_string());
-    }
-
-    // Try native provider first, then MEGAcmd
-    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
-    {
-        for path in &paths {
-            native
-                .move_to_trash(path)
-                .await
-                .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
-        }
-        return Ok(());
-    }
-
-    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
-        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
-
-    for path in &paths {
-        mega.move_to_trash(path)
-            .await
-            .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
-    }
-    Ok(())
-}
-
 /// List items in MEGA Rubbish Bin
 #[tauri::command]
 pub async fn mega_list_trash(state: State<'_, ProviderState>) -> Result<Vec<RemoteEntry>, String> {
@@ -9340,35 +8615,6 @@ pub async fn mega_permanent_delete(
 }
 
 // ── Google Drive Trash Operations ────────────────────────────────────
-
-/// Move files to Google Drive Trash (soft delete)
-#[tauri::command]
-pub async fn google_drive_trash_file(
-    state: State<'_, ProviderState>,
-    paths: Vec<String>,
-) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::GoogleDrive {
-        return Err("This operation is only available for Google Drive".to_string());
-    }
-
-    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
-        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
-
-    for path in &paths {
-        gdrive
-            .trash_file(path)
-            .await
-            .map_err(|e| format!("Move to trash failed for {}: {}", path, e))?;
-    }
-    Ok(())
-}
 
 /// List items in Google Drive Trash
 #[tauri::command]
@@ -9875,27 +9121,6 @@ pub async fn box_permanent_delete(
         .map_err(|e| format!("Permanent delete failed: {}", e))
 }
 
-/// Move a file or folder to a different parent folder on Box
-#[tauri::command]
-pub async fn box_move_file(
-    state: State<'_, ProviderState>,
-    from_path: String,
-    to_folder: String,
-) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
-    if provider.provider_type() != ProviderType::Box {
-        return Err("Only available for Box".to_string());
-    }
-    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
-        .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.move_item(&from_path, &to_folder)
-        .await
-        .map_err(|e| format!("Move failed: {}", e))
-}
-
 /// List comments on a Box file
 #[tauri::command]
 pub async fn box_list_comments(
@@ -10354,26 +9579,6 @@ pub async fn filelu_remote_url_upload(
         .map_err(|e| e.to_string())
 }
 
-/// Restore a deleted folder from FileLu trash by fld_id.
-#[tauri::command]
-pub async fn filelu_restore_folder(
-    state: State<'_, ProviderState>,
-    fld_id: u64,
-) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
-    if provider.provider_type() != ProviderType::FileLu {
-        return Err("Only available for FileLu".to_string());
-    }
-    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
-        .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.restore_deleted_folder(fld_id)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 // ─── Google Drive Extended Commands ───────────────────────────────────────
 
 /// Star or unstar files on Google Drive
@@ -10460,48 +9665,6 @@ pub async fn google_drive_delete_comment(
         .map_err(|e| e.to_string())
 }
 
-/// Set custom properties on a Google Drive file
-#[tauri::command]
-pub async fn google_drive_set_properties(
-    state: State<'_, ProviderState>,
-    path: String,
-    properties: std::collections::HashMap<String, String>,
-) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
-    if provider.provider_type() != ProviderType::GoogleDrive {
-        return Err("Only available for Google Drive".to_string());
-    }
-    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
-        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
-    gd.set_properties(&path, &properties)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-/// Set description on a Google Drive file
-#[tauri::command]
-pub async fn google_drive_set_description(
-    state: State<'_, ProviderState>,
-    path: String,
-    description: String,
-) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
-    if provider.provider_type() != ProviderType::GoogleDrive {
-        return Err("Only available for Google Drive".to_string());
-    }
-    let gd = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
-        .ok_or_else(|| "Google Drive downcast failed".to_string())?;
-    gd.set_description(&path, &description)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 // ─── Dropbox Extended Commands ────────────────────────────────────────────
 
 /// List items in Dropbox trash (deleted files)
@@ -10580,43 +9743,6 @@ pub async fn dropbox_account_type(state: State<'_, ProviderState>) -> Result<Str
     db.account_type().await.map_err(|e| e.to_string())
 }
 
-/// Set tags on a Dropbox file (replaces existing tags)
-#[tauri::command]
-pub async fn dropbox_set_tags(
-    state: State<'_, ProviderState>,
-    path: String,
-    tags: Vec<String>,
-) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
-    if provider.provider_type() != ProviderType::Dropbox {
-        return Err("Only available for Dropbox".to_string());
-    }
-    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
-        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    db.set_tags(&path, &tags).await.map_err(|e| e.to_string())
-}
-
-/// Get tags for Dropbox files
-#[tauri::command]
-pub async fn dropbox_get_tags(
-    state: State<'_, ProviderState>,
-    paths: Vec<String>,
-) -> Result<Vec<(String, Vec<String>)>, String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
-    if provider.provider_type() != ProviderType::Dropbox {
-        return Err("Only available for Dropbox".to_string());
-    }
-    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
-        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    db.get_tags(&paths).await.map_err(|e| e.to_string())
-}
-
 // ─── OneDrive Extended Commands ───────────────────────────────────────────
 
 /// List items in OneDrive recycle bin
@@ -10636,29 +9762,6 @@ pub async fn onedrive_list_trash(
     let mut entries = od.list_trash().await.map_err(|e| e.to_string())?;
     crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
     Ok(entries)
-}
-
-/// Move files to OneDrive recycle bin (soft delete)
-#[tauri::command]
-pub async fn onedrive_trash_files(
-    state: State<'_, ProviderState>,
-    paths: Vec<String>,
-) -> Result<(), String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
-    if provider.provider_type() != ProviderType::OneDrive {
-        return Err("Only available for OneDrive".to_string());
-    }
-    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
-        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
-    for path in &paths {
-        od.trash_file(path)
-            .await
-            .map_err(|e| format!("Trash failed for {}: {}", path, e))?;
-    }
-    Ok(())
 }
 
 /// Restore an item from OneDrive recycle bin
@@ -11255,32 +10358,6 @@ pub async fn gitlab_get_info(state: State<'_, ProviderState>) -> Result<serde_js
         "workingBranch": working_branch,
         "repoPrivate": gitlab.is_private(),
     }))
-}
-
-/// Switch branch on the connected GitLab repository
-#[tauri::command]
-pub async fn gitlab_switch_branch(
-    state: State<'_, ProviderState>,
-    branch: String,
-) -> Result<(), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if provider.provider_type() != ProviderType::GitLab {
-        return Err("This operation is only available for GitLab".to_string());
-    }
-
-    let gitlab = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::gitlab::GitLabProvider>()
-        .ok_or_else(|| "Failed to access GitLab provider".to_string())?;
-
-    gitlab
-        .switch_branch(&branch)
-        .await
-        .map_err(|e| format!("Failed to switch branch: {}", e))
 }
 
 /// Atomic batch upload of files to GitLab via REST commits API.
@@ -12401,115 +11478,8 @@ pub async fn github_download_release_asset(
     )
 }
 
-/// Get detailed release information by tag
-#[tauri::command]
-pub async fn github_get_release(
-    state: State<'_, ProviderState>,
-    tag: String,
-) -> Result<serde_json::Value, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if !is_plain_github_provider(provider.as_mut()) {
-        return Err("This operation is only available for GitHub".to_string());
-    }
-
-    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::github::GitHubProvider>()
-        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-
-    let release = github
-        .get_release(&tag)
-        .await
-        .map_err(|e| format!("Failed to get release info: {}", e))?;
-
-    let assets: Vec<serde_json::Value> = release
-        .assets
-        .iter()
-        .map(|a| {
-            serde_json::json!({
-                "name": a.name,
-                "size": a.size,
-                "download_count": a.download_count,
-                "content_type": a.content_type,
-                "browser_download_url": a.browser_download_url,
-                "created_at": a.created_at,
-                "updated_at": a.updated_at,
-            })
-        })
-        .collect();
-
-    Ok(serde_json::json!({
-        "id": release.id,
-        "tag_name": release.tag_name,
-        "name": release.name,
-        "body": release.body,
-        "draft": release.draft,
-        "prerelease": release.prerelease,
-        "created_at": release.created_at,
-        "published_at": release.published_at,
-        "assets": assets,
-        "asset_count": assets.len(),
-    }))
-}
-
-/// Atomic multi-file commit via GraphQL createCommitOnBranch
-#[tauri::command]
-pub async fn github_batch_commit(
-    state: State<'_, ProviderState>,
-    branch: String,
-    message: String,
-    additions: Vec<serde_json::Value>,
-    deletions: Vec<String>,
-) -> Result<serde_json::Value, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if !is_plain_github_provider(provider.as_mut()) {
-        return Err("This operation is only available for GitHub".to_string());
-    }
-
-    let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::github::GitHubProvider>()
-        .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-
-    // Parse additions: [{path: String, content: String}]
-    let parsed_additions: Vec<(String, String)> = additions
-        .iter()
-        .map(|v| {
-            let path = v
-                .get("path")
-                .and_then(|p| p.as_str())
-                .ok_or_else(|| "Each addition must have a 'path' string field".to_string())?;
-            let content = v
-                .get("content")
-                .and_then(|c| c.as_str())
-                .ok_or_else(|| "Each addition must have a 'content' string field".to_string())?;
-            Ok((path.to_string(), content.to_string()))
-        })
-        .collect::<Result<Vec<_>, String>>()?;
-
-    let oid = github
-        .batch_commit(&branch, &message, &parsed_additions, &deletions)
-        .await
-        .map_err(|e| format!("Batch commit failed: {}", e))?;
-
-    Ok(serde_json::json!({
-        "commit_sha": oid,
-        "branch": branch,
-        "additions_count": parsed_additions.len(),
-        "deletions_count": deletions.len(),
-    }))
-}
-
 /// Atomic batch upload of binary files to GitHub via GraphQL createCommitOnBranch.
-/// Unlike github_batch_commit (text-only), this reads files from disk as binary.
+/// Files are read from disk as bytes, so binary content commits unchanged.
 #[tauri::command]
 pub async fn github_batch_upload(
     state: State<'_, ProviderState>,

@@ -4477,9 +4477,6 @@
             "starred": "ファイルにスターを付けました",
             "unstarred": "ファイルのスターを外しました"
         },
-        "dropbox": {
-            "manageTags": "タグを管理"
-        },
         "providers": {
             "title": "プロバイダーと統合",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "無料プラン",
             "freeCardTier": "無料＋カード",
             "paidTier": "有料"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "ラベルを管理",
-            "noLabels": "利用可能なラベルはありません。Zoho WorkDriveの設定でラベルを作成します。",
-            "createLabel": "ラベルを作成",
-            "labelName": "ラベル名"
         },
         "healthCheck": {
             "title": "サーバーヘルスチェック",

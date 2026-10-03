@@ -4477,9 +4477,6 @@
             "starred": "Datei mit Stern markiert",
             "unstarred": "Stern von Datei entfernt"
         },
-        "dropbox": {
-            "manageTags": "Tags verwalten"
-        },
         "providers": {
             "title": "Anbieter & Integrationen",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Kostenloses Kontingent",
             "freeCardTier": "Gratis + Karte",
             "paidTier": "Kostenpflichtig"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Beschriftungen verwalten",
-            "noLabels": "Keine Beschriftungen verfügbar. Erstellen Sie Beschriftungen in den Einstellungen von Zoho WorkDrive.",
-            "createLabel": "Etikett erstellen",
-            "labelName": "Etikettname"
         },
         "healthCheck": {
             "title": "Server-Gesundheitsprüfung",

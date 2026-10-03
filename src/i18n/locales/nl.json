@@ -4477,9 +4477,6 @@
             "starred": "Bestand gemarkeerd met ster",
             "unstarred": "Ster verwijderd van bestand"
         },
-        "dropbox": {
-            "manageTags": "Tags beheren"
-        },
         "providers": {
             "title": "Providers en integraties",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Gratis abonnement",
             "freeCardTier": "Gratis + kaart",
             "paidTier": "Betaald"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Labels beheren",
-            "noLabels": "Geen labels beschikbaar. Maak labels aan in de instellingen van Zoho WorkDrive.",
-            "createLabel": "Label maken",
-            "labelName": "Labelnaam"
         },
         "healthCheck": {
             "title": "Serverstatus controleren",
