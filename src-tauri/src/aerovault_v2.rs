@@ -80,38 +80,6 @@ pub async fn vault_v2_peek(path: String) -> Result<serde_json::Value, String> {
     }))
 }
 
-/// Get AeroVault v2 security info for UI display
-#[tauri::command]
-pub async fn vault_v2_security_info() -> serde_json::Value {
-    serde_json::json!({
-        "version": "2.0",
-        "encryption": {
-            "content": "AES-256-GCM-SIV (RFC 8452)",
-            "filenames": "AES-256-SIV",
-            "key_wrap": "AES-256-KW (RFC 3394)",
-            "cascade": "ChaCha20-Poly1305 (optional)"
-        },
-        "kdf": {
-            "algorithm": "Argon2id",
-            "memory": "128 MiB",
-            "iterations": 4,
-            "parallelism": 4
-        },
-        "integrity": {
-            "header": "HMAC-SHA512",
-            "chunks": "GCM-SIV authentication tag"
-        },
-        "chunk_size": "64 KB",
-        "features": [
-            "Nonce misuse resistance",
-            "Memory-hard key derivation",
-            "Encrypted filenames",
-            "Header integrity verification",
-            "Optional cascade encryption"
-        ]
-    })
-}
-
 // ============================================================================
 // Tauri Commands: File Operations
 // ============================================================================
@@ -469,7 +437,22 @@ pub async fn vault_v2_create_directory(
     }))
 }
 
-/// Delete a single entry from a vault
+/// Rewrite the vault without the chunks no entry references any more.
+///
+/// A v2 delete only drops the entry from the manifest: its encrypted chunks
+/// stay in the file, readable again by anyone who holds the password and walks
+/// the data section. v3 vaults compact on every delete; v2 deletes do the same
+/// through this, so a deleted file is gone from the vault and its space comes
+/// back. A failure here is reported, not swallowed: the entry is already out
+/// of the listing, but its ciphertext is still in the file.
+fn reclaim_deleted_v2(vault: &Vault) -> Result<u64, String> {
+    vault
+        .compact()
+        .map(|r| r.saved_bytes)
+        .map_err(|e| format!("Deleted, but removing its data from the vault failed: {e}"))
+}
+
+/// Delete a single entry from a vault, and its data with it.
 #[tauri::command]
 pub async fn vault_v2_delete_entry(
     vault_path: String,
@@ -479,15 +462,17 @@ pub async fn vault_v2_delete_entry(
     validate_vault_relative_path(&entry_name)?;
     let vault = Vault::open(&vault_path, &password).map_err(|e| e.to_string())?;
     vault.delete_entry(&entry_name).map_err(|e| e.to_string())?;
+    let reclaimed = reclaim_deleted_v2(&vault)?;
     let remaining = vault.list().map_err(|e| e.to_string())?.len();
 
     Ok(serde_json::json!({
         "deleted": entry_name,
-        "remaining": remaining
+        "remaining": remaining,
+        "reclaimed_bytes": reclaimed
     }))
 }
 
-/// Delete multiple entries from a vault
+/// Delete multiple entries from a vault, and their data with them.
 #[tauri::command]
 pub async fn vault_v2_delete_entries(
     vault_path: String,
@@ -503,16 +488,23 @@ pub async fn vault_v2_delete_entries(
     let removed = vault
         .delete_entries(&names, recursive)
         .map_err(|e| e.to_string())?;
+    // Names already gone remove nothing, and compaction would re-encrypt
+    // every surviving entry for no reclaimed byte.
+    let reclaimed = if removed == 0 {
+        0
+    } else {
+        reclaim_deleted_v2(&vault)?
+    };
     let remaining = vault.list().map_err(|e| e.to_string())?.len();
 
     Ok(serde_json::json!({
         "removed": removed,
-        "remaining": remaining
+        "remaining": remaining,
+        "reclaimed_bytes": reclaimed
     }))
 }
 
 /// Move an entry (file or directory) inside a vault
-#[tauri::command]
 pub async fn vault_v2_move_entry(
     vault_path: String,
     password: String,
@@ -532,7 +524,6 @@ pub async fn vault_v2_move_entry(
 }
 
 /// Rename an entry while keeping the same parent directory
-#[tauri::command]
 pub async fn vault_v2_rename_entry(
     vault_path: String,
     password: String,
@@ -562,7 +553,6 @@ pub async fn vault_v2_rename_entry(
 }
 
 /// Copy an entry (file or directory) inside a vault
-#[tauri::command]
 pub async fn vault_v2_copy_entry(
     vault_path: String,
     password: String,
@@ -609,7 +599,6 @@ pub struct CompactResult {
 }
 
 /// Compact vault by removing orphaned data
-#[tauri::command]
 pub async fn vault_v2_compact(
     vault_path: String,
     password: String,
@@ -1674,6 +1663,116 @@ mod tests {
                 .iter()
                 .any(|e| e.is_dir && e.rel_path == "empty_dir"),
             "walk dropped an empty directory"
+        );
+    }
+
+    /// Bytes that do not compress, so the size of the file tracks the payload.
+    fn incompressible(len: usize) -> Vec<u8> {
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        (0..len)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                x as u8
+            })
+            .collect()
+    }
+
+    /// A v2 delete took the entry out of the manifest and left its encrypted
+    /// chunks in the file: the vault never shrank, and the ciphertext of a
+    /// deleted file stayed there for anyone holding the password. Nothing in
+    /// the app ever called `vault_v2_compact`. The delete commands compact now,
+    /// as v3 deletes already do, and say how much they reclaimed.
+    #[test]
+    fn deleting_from_a_v2_vault_removes_the_entry_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("del.aerovault");
+        let pw = "v2-delete-pw-123456";
+        let size = 256 * 1024;
+        build_v2_vault(
+            &vault,
+            pw,
+            false,
+            &["d"],
+            &[
+                ("one.bin", incompressible(size)),
+                ("d/two.bin", incompressible(size)),
+                ("keep.txt", b"kept".to_vec()),
+            ],
+            dir.path(),
+        );
+        let path = vault.to_string_lossy().to_string();
+        let len = || fs::metadata(&vault).unwrap().len();
+
+        let before = len();
+        let one = rt()
+            .block_on(super::vault_v2_delete_entry(
+                path.clone(),
+                pw.into(),
+                "one.bin".into(),
+            ))
+            .unwrap();
+        let after_one = len();
+        assert!(
+            before - after_one >= size as u64,
+            "single delete left the data in: {before} -> {after_one}"
+        );
+        assert!(one["reclaimed_bytes"].as_u64().unwrap() >= size as u64);
+
+        let many = rt()
+            .block_on(super::vault_v2_delete_entries(
+                path.clone(),
+                pw.into(),
+                vec!["d".into()],
+                true,
+            ))
+            .unwrap();
+        let after_many = len();
+        assert!(
+            after_one - after_many >= size as u64,
+            "recursive delete left the data in: {after_one} -> {after_many}"
+        );
+        assert!(many["reclaimed_bytes"].as_u64().unwrap() >= size as u64);
+
+        // What is left still opens and reads back.
+        let v = super::Vault::open(&vault, pw).unwrap();
+        let names: Vec<String> = v.list().unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, ["keep.txt"]);
+    }
+
+    /// A batch delete whose names are already gone removes nothing, and the
+    /// crate then leaves the file alone. Compacting after it anyway re-read
+    /// and re-encrypted every surviving entry for no reclaimed byte.
+    #[test]
+    fn a_delete_that_removes_nothing_does_not_rewrite_the_v2_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("noop.aerovault");
+        let pw = "v2-noop-delete-pw-123456";
+        build_v2_vault(
+            &vault,
+            pw,
+            false,
+            &[],
+            &[("keep.bin", incompressible(64 * 1024))],
+            dir.path(),
+        );
+        let before = fs::read(&vault).unwrap();
+
+        let out = rt()
+            .block_on(super::vault_v2_delete_entries(
+                vault.to_string_lossy().to_string(),
+                pw.into(),
+                vec!["gone.bin".into()],
+                true,
+            ))
+            .unwrap();
+
+        assert_eq!(out["removed"], 0);
+        assert_eq!(out["reclaimed_bytes"], 0);
+        assert!(
+            fs::read(&vault).unwrap() == before,
+            "a delete that removed nothing rewrote the vault"
         );
     }
 }

@@ -18616,11 +18616,6 @@ async fn vault_mount_stop(key: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn vault_mount_list() -> Result<Vec<vault_mount::VaultMountInfo>, String> {
-    Ok(vault_mount::list().await)
-}
-
-#[tauri::command]
 async fn vault_mount_open(key: String) -> Result<(), String> {
     vault_mount::open_in_file_manager(&key).await
 }
@@ -20409,7 +20404,6 @@ pub fn run() {
             aerovault_v2::vault_v2_open,
             aerovault_v2::is_vault_v2,
             aerovault_v2::vault_v2_peek,
-            aerovault_v2::vault_v2_security_info,
             aerovault_v2::vault_v2_add_files,
             aerovault_v2::vault_v2_extract_entry,
             aerovault_v2::vault_v2_extract_all,
@@ -20418,11 +20412,7 @@ pub fn run() {
             aerovault_v2::vault_v2_delete_entry,
             aerovault_v2::vault_v2_create_directory,
             aerovault_v2::vault_v2_delete_entries,
-            aerovault_v2::vault_v2_move_entry,
-            aerovault_v2::vault_v2_rename_entry,
-            aerovault_v2::vault_v2_copy_entry,
             aerovault_v2::vault_v2_add_files_to_dir,
-            aerovault_v2::vault_v2_compact,
             aerovault_v2::vault_v2_sync_compare,
             aerovault_v2::vault_v2_sync_apply,
             aerovault_v2::vault_v2_scan_directory,
@@ -20457,14 +20447,9 @@ pub fn run() {
             aerovault_v3::vault_v3_create_directory,
             aerovault_v3::vault_v3_delete_entry,
             aerovault_v3::vault_v3_delete_entries,
-            aerovault_v3::vault_v3_move_entry,
-            aerovault_v3::vault_v3_rename_entry,
-            aerovault_v3::vault_v3_copy_entry,
             aerovault_v3::vault_v3_change_password,
             aerovault_v3::vault_v3_change_mode,
             aerovault_v3::vault_v3_add_directory,
-            aerovault_v3::vault_v3_security_info,
-            aerovault_v3::vault_v3_has_error_correction,
             aerovault_v3::vault_v3_recovery_status,
             aerovault_v3::vault_v3_scrub,
             aerovault_v3::vault_v3_repair,
@@ -20948,7 +20933,6 @@ pub fn run() {
             mount_open_in_explorer,
             vault_mount_start,
             vault_mount_stop,
-            vault_mount_list,
             vault_mount_open,
             mount_suggest_path,
             mount_pick_drive_letter,
