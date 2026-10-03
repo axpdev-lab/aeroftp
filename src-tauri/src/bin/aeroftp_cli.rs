@@ -677,13 +677,13 @@ struct Cli {
     )]
     default_time: Option<String>,
 
-    /// Single-file transfer engine selection. `auto` consults the data-driven
-    /// router (default), `dag` forces every transfer through the shaped-graph
-    /// DAG engine, `legacy` forces the provider-direct path. The router is
-    /// populated from Phase A benchmark measurements (see
-    /// `docs/dev/benchmarks/2026-05-2{4,5}_phaseA-*/`) and revalidated by
-    /// T-DEBT-RTR-04. The default is DAG everywhere; `legacy` remains an
-    /// operator override. Reads default from `AEROFTP_TRANSFER_ENGINE`.
+    /// Single-file transfer engine selection. `auto` (default) follows the
+    /// per-provider routing table: the shaped-graph DAG engine for network
+    /// transfers, except plain WebDAV and Nextcloud downloads, which take the
+    /// provider-direct path. `dag` forces the DAG engine and `legacy` forces
+    /// the provider-direct path for single-file transfers; multi-file batches
+    /// and sync keep their own runners. Reads default from
+    /// `AEROFTP_TRANSFER_ENGINE`.
     #[arg(
         long,
         global = true, hide_short_help = true, help_heading = "Tuning options",

@@ -7,15 +7,21 @@
 //!
 //! Net finding: DAG wins on average and wins massively on high-latency
 //! providers (Koofr WAN upload 1G: +132.9% throughput, download 100M:
-//! +161.6%). A suspected WebDAV "vanilla" download regression was
+//! +161.6%). A suspected WebDAV "vanilla" download regression was first
 //! revalidated in T-DEBT-RTR-04 and not reproduced as an engine-level
-//! difference: forced DAG and forced Legacy had identical network syscall
-//! shape. Default routing is therefore DAG everywhere except local-to-local.
+//! difference (forced DAG and forced Legacy had identical network syscall
+//! shape). The 2026-05-29 lab re-benchmark (DAG audit patch set 2) then
+//! measured WebDAV downloads regressing under the DAG, which never fans
+//! out a download, so the table routes plain WebDAV and Nextcloud downloads
+//! to Legacy.
 //!
 //! Design decisions:
-//! - Default policy is `Engine::Dag` for every network-backed provider.
-//!   `Engine::Legacy` remains available as an explicit override and for
-//!   local-to-local transfers.
+//! - The executable policy is the [`hints`] table, not this summary.
+//!   Today it returns `Engine::Dag` for every network-backed provider and
+//!   direction except plain WebDAV and Nextcloud downloads, which return
+//!   `Engine::Legacy`. `Engine::Legacy` is also the route for
+//!   local-to-local transfers and remains available as an explicit
+//!   override.
 //! - The router is a pure function: `(provider_hint, operation, size) ->
 //!   Engine`. No I/O, no global state, trivial to test.
 //! - User overrides (`--transfer-engine dag|legacy`) short-circuit the
@@ -99,8 +105,10 @@ pub enum ProviderHint {
     Local,
 }
 
-/// Caller-provided override (typically `--force-dag` / `--force-legacy`
-/// on the CLI, or a session-level toggle in the GUI).
+/// Caller-provided override: `--transfer-engine dag|legacy` on the CLI, or
+/// the `AEROFTP_TRANSFER_ENGINE` environment variable, which is the CLI
+/// flag's default and the only channel for the GUI commands (see
+/// [`Override::from_env`]).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Override {
     /// No override, the router consults the hint table.
@@ -176,21 +184,21 @@ impl Router {
     /// Order of evaluation:
     /// 1. User override short-circuits everything.
     /// 2. Local transfers never go through DAG.
-    /// 3. Hint table lookup ([`hints::recommend`]).
-    /// 4. Default to [`Engine::Dag`] (the round 1 + overnight matrix
-    ///    showed net-positive averages everywhere DAG was measured).
+    /// 3. Hint table lookup ([`hints::recommend`]), an exhaustive match
+    ///    over provider classes: its per-class decision is the policy, with
+    ///    no separate fallback default.
     pub fn pick(&self, ctx: RouteContext) -> Decision {
         match ctx.user_override {
             Override::ForceDag => {
                 return Decision {
                     engine: Engine::Dag,
-                    reason: "user override: --force-dag",
+                    reason: "user override: --transfer-engine dag (or AEROFTP_TRANSFER_ENGINE=dag)",
                 };
             }
             Override::ForceLegacy => {
                 return Decision {
                     engine: Engine::Legacy,
-                    reason: "user override: --force-legacy",
+                    reason: "user override: --transfer-engine legacy (or AEROFTP_TRANSFER_ENGINE=legacy)",
                 };
             }
             Override::None => {}
