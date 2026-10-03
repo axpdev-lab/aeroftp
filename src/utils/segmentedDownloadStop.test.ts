@@ -15,6 +15,11 @@ describe('GUI segmented download cancellation wiring', () => {
     expect(segmented).toContain("let session_cancel = state.current_cancel_token().await;");
     expect(segmented).toContain("let cancel = session_cancel.child_token();");
     expect(segmented).not.toContain('CancellationToken::new()');
+    const callStart = segmented.indexOf('run_provider_segmented_download(');
+    expect(callStart).toBeGreaterThanOrEqual(0);
+    const call = segmented.slice(callStart, segmented.indexOf('.await', callStart));
+    expect(call).toMatch(/\bcancel,\s*\)\s*$/);
+    expect(call).not.toContain('session_cancel,');
   });
 
   it('returns a cancellation event and error before the legacy fallback', () => {

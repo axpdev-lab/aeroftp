@@ -833,6 +833,23 @@ where
     let server_ignored = Arc::new(AtomicBool::new(false));
     let first_error: Arc<Mutex<Option<ProviderError>>> = Arc::new(Mutex::new(None));
     let progress: SharedProgress = Arc::new(Mutex::new(on_progress));
+    let report_progress = {
+        let aggregate = aggregate.clone();
+        let last_reported = AtomicU64::new(0);
+        Arc::new(move || {
+            // Read the aggregate and update the watermark under the callback
+            // lock, so timer ticks and range completions cannot duplicate or
+            // regress a report. Empty/stalled ticks produce no callback.
+            let callback = progress.lock().unwrap();
+            let done = aggregate.load(Ordering::Relaxed);
+            if let Some(callback) = callback.as_ref() {
+                if done > last_reported.load(Ordering::Relaxed) {
+                    last_reported.store(done, Ordering::Relaxed);
+                    callback(done, total_size);
+                }
+            }
+        })
+    };
 
     let r_ranges = ranges.clone();
     let r_write = write_one_range.clone();
@@ -841,7 +858,7 @@ where
     let r_cancel = cancel.clone();
     let r_ignored = server_ignored.clone();
     let r_first_error = first_error.clone();
-    let r_progress = progress.clone();
+    let r_report_progress = report_progress.clone();
 
     let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
         let ranges = r_ranges.clone();
@@ -851,7 +868,7 @@ where
         let cancel = r_cancel.clone();
         let server_ignored = r_ignored.clone();
         let first_error = r_first_error.clone();
-        let progress = r_progress.clone();
+        let report_progress = r_report_progress.clone();
         Box::pin(async move {
             let (start, end) = ranges[node.id];
             // Mirror the JoinSet path's pre-write cancel check.
@@ -870,9 +887,7 @@ where
             .await
             {
                 Ok(ConcurrentRangeOutcome::Completed) => {
-                    if let Some(cb) = progress.lock().unwrap().as_ref() {
-                        cb(aggregate.load(Ordering::Relaxed), total_size);
-                    }
+                    report_progress();
                     NodeOutcome::Completed
                 }
                 Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
@@ -919,8 +934,19 @@ where
             parent_cancel: Some(cancel),
             ..DagExecuteOptions::default()
         },
-    )
-    .await;
+    );
+    tokio::pin!(exec);
+    let mut progress_tick = tokio::time::interval(std::time::Duration::from_millis(250));
+    progress_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // Drive the timer with the graph future, not a detached task: completion,
+    // errors and cancellation end periodic reporting with the same lifetime.
+    let exec = loop {
+        tokio::select! {
+            biased;
+            result = &mut exec => break result,
+            _ = progress_tick.tick() => report_progress(),
+        }
+    };
 
     // Order matters: a ServerIgnoredRange cancels the token, so sibling nodes
     // then fail with "cancelled" and execute_dag returns NodeFailed. Check the
@@ -2478,6 +2504,119 @@ mod tests {
     async fn joinset_and_graph_cancel_in_flight_siblings_with_same_typed_error() {
         assert_cancellation_parity(false, "cancel-joinset").await;
         assert_cancellation_parity(true, "cancel-graph").await;
+    }
+
+    #[tokio::test]
+    async fn segmented_progress_advances_before_any_range_completes() {
+        use std::sync::atomic::AtomicUsize;
+        use tokio::sync::{Notify, Semaphore};
+
+        let dir = tempfile::tempdir().unwrap();
+        let final_path = dir.path().join("partial.bin");
+        let total = 16;
+        let release = Arc::new(Semaphore::new(0));
+        let partial_written = Arc::new(Notify::new());
+        let completed = Arc::new(AtomicUsize::new(0));
+        let reports = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (progress_tx, mut progress_rx) = tokio::sync::mpsc::unbounded_channel();
+        let callback = {
+            let reports = reports.clone();
+            Box::new(move |done, total| {
+                reports.lock().unwrap().push((done, total));
+                progress_tx.send((done, total)).unwrap();
+            }) as Box<dyn Fn(u64, u64) + Send>
+        };
+        let writer = {
+            let release = release.clone();
+            let partial_written = partial_written.clone();
+            let completed = completed.clone();
+            move |start: u64,
+                  end: u64,
+                  temp_path: PathBuf,
+                  aggregate: Arc<AtomicU64>,
+                  _cancel: CancellationToken| {
+                let release = release.clone();
+                let partial_written = partial_written.clone();
+                let completed = completed.clone();
+                async move {
+                    let mut file = tokio::fs::OpenOptions::new()
+                        .write(true)
+                        .open(temp_path)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    file.seek(std::io::SeekFrom::Start(start))
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    let bytes: Vec<_> = (start..=end).map(|offset| offset as u8).collect();
+                    let midpoint = bytes.len() / 2;
+                    file.write_all(&bytes[..midpoint])
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    aggregate.fetch_add(midpoint as u64, Ordering::Relaxed);
+                    partial_written.notify_one();
+                    release.acquire().await.unwrap().forget();
+                    file.write_all(&bytes[midpoint..])
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    file.flush().await.map_err(ProviderError::IoError)?;
+                    aggregate.fetch_add((bytes.len() - midpoint) as u64, Ordering::Relaxed);
+                    completed.fetch_add(1, Ordering::SeqCst);
+                    Ok(ConcurrentRangeOutcome::Completed)
+                }
+            }
+        };
+        let download = run_concurrent_range_download(
+            ConcurrentRangeConfig {
+                total_size: total,
+                streams: 2,
+                max_streams: 2,
+                max_parallel: 2,
+                final_path: final_path.clone(),
+                provider_type: super::super::ProviderType::WebDav,
+                endpoint_identity: crate::transfer_dag::EndpointIdentity::new(
+                    "webdav",
+                    "partial-progress-test",
+                    "",
+                ),
+            },
+            writer,
+            CancellationToken::new(),
+            Some(callback),
+        );
+        tokio::pin!(download);
+        let before_completion = async {
+            partial_written.notified().await;
+            tokio::time::timeout(std::time::Duration::from_secs(2), progress_rx.recv())
+                .await
+                .expect("no progress before a whole range completed")
+                .expect("progress callback channel closed")
+        };
+        let (done, reported_total) = tokio::select! {
+            result = &mut download => panic!("download completed before workers were released: {result:?}"),
+            progress = before_completion => progress,
+        };
+        assert!(
+            done > 0 && done < total,
+            "expected partial progress, got {done}"
+        );
+        assert_eq!(reported_total, total);
+        assert_eq!(completed.load(Ordering::SeqCst), 0);
+        release.add_permits(2);
+        assert_eq!(download.await.unwrap(), ConcurrentRangeOutcome::Completed);
+        {
+            let reports = reports.lock().unwrap();
+            assert_eq!(reports.last(), Some(&(total, total)));
+            assert!(reports.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        }
+        assert_eq!(
+            tokio::fs::read(segmented_temp_path_for(&final_path))
+                .await
+                .unwrap(),
+            (0..16).collect::<Vec<u8>>()
+        );
+        // The caller publishes the validated temporary; the range engine
+        // leaves the destination untouched.
+        assert!(!final_path.exists());
     }
 
     #[tokio::test]
