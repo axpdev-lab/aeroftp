@@ -7,19 +7,29 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 import tempfile
 
 
-def cargo_binaries(manifest):
-    """Include explicit binaries and Cargo's implicitly discovered GUI/helpers."""
+def cargo_binaries(manifest, features=()):
+    """Include enabled explicit and implicitly discovered Cargo binaries."""
     metadata = json.loads(subprocess.check_output([
         'cargo', 'metadata', '--offline', '--no-deps', '--format-version', '1',
         '--manifest-path', str(manifest.resolve()),
     ], text=True))
     package = next(package for package in metadata['packages']
                    if Path(package['manifest_path']).resolve() == manifest.resolve())
-    return {target['name'] for target in package['targets'] if 'bin' in target['kind']}
+    enabled = set()
+    pending = ['default', *features]
+    while pending:
+        feature = pending.pop()
+        if feature in enabled or feature.startswith('dep:') or '/' in feature:
+            continue
+        enabled.add(feature)
+        pending.extend(package['features'].get(feature, []))
+    return {target['name'] for target in package['targets'] if 'bin' in target['kind']
+            and set(target.get('required-features', [])).issubset(enabled)}
 
 
 @contextlib.contextmanager
@@ -44,6 +54,35 @@ def minimum_version(app):
     return value
 
 
+def version_tuple(value):
+    if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', value):
+        raise ValueError(f'Invalid macOS version: {value}')
+    parts = tuple(int(part) for part in value.split('.'))
+    return parts + (0,) * (3 - len(parts))
+
+
+def deployment_target(binary):
+    """Read the actual Mach-O floor and SDK, including pre-LC_BUILD_VERSION Intel binaries."""
+    output = subprocess.check_output(['otool', '-l', str(binary)], text=True)
+    targets = []
+    for block in re.split(r'(?m)^Load command [0-9]+\s*$', output):
+        fields = dict(re.findall(r'^\s*(cmd|minos|version|sdk)\s+(\S+)\s*$', block, re.MULTILINE))
+        command = fields.get('cmd')
+        if command in ('LC_BUILD_VERSION', 'LC_VERSION_MIN_MACOSX'):
+            minimum = fields.get('minos' if command == 'LC_BUILD_VERSION' else 'version')
+            sdk = fields.get('sdk')
+            if minimum is None or sdk is None:
+                raise ValueError(f'{binary}: incomplete Mach-O deployment target')
+            version_tuple(minimum)
+            version_tuple(sdk)
+            targets.append((minimum, sdk))
+    if len(targets) != 1:
+        raise ValueError(f'{binary}: expected one Mach-O deployment target, found {len(targets)}')
+    minimum, sdk = targets[0]
+    print(f'{binary}: minimum macOS={minimum}, sdk={sdk}', flush=True)
+    return minimum, sdk
+
+
 def verify_payload(app, required, arch):
     directory = app / 'Contents/MacOS'
     print(f'{directory}: {sorted(path.name for path in directory.iterdir())}', flush=True)
@@ -54,20 +93,31 @@ def verify_payload(app, required, arch):
         architectures = subprocess.check_output(['lipo', '-archs', str(binary)], text=True).split()
         if architectures != [arch]:
             raise ValueError(f'{binary}: expected {arch}, found {architectures}')
-    return {path.name for path in directory.iterdir() if path.is_file()}
+    return {path.name for path in directory.iterdir() if path.is_file() and os.access(path, os.X_OK)}
 
 
-def verify(dmg, reference, manifest, arch):
-    required = cargo_binaries(manifest)
+def verify(dmg, reference, manifest, arch, features=()):
+    required = cargo_binaries(manifest, features)
     with mounted(reference) as baseline:
         baseline_minimum = minimum_version(baseline)
         baseline_bins = verify_payload(baseline, {'aeroftp', 'aeroftp-cli', 'aeroftp-dispatch'}, arch)
+        baseline_targets = {name: deployment_target(baseline / 'Contents/MacOS' / name)
+                            for name in sorted(baseline_bins)}
     with mounted(dmg) as app:
         current_minimum = minimum_version(app)
         if current_minimum != baseline_minimum:
             raise ValueError(f'Minimum macOS changed: {baseline_minimum} -> {current_minimum}')
-        verify_payload(app, required | baseline_bins, arch)
-    print(f'DMG verification passed: {dmg.name}, {arch}, minimum macOS {baseline_minimum}', flush=True)
+        current_bins = verify_payload(app, required, arch)
+        for name in sorted(baseline_bins - current_bins):
+            print(f'::warning::Baseline-only executable removed: {name}', flush=True)
+        for name in sorted(current_bins):
+            minimum, _sdk = deployment_target(app / 'Contents/MacOS' / name)
+            if name not in baseline_targets:
+                print(f'::warning::No baseline deployment target for new executable: {name}', flush=True)
+            elif version_tuple(minimum) > version_tuple(baseline_targets[name][0]):
+                raise ValueError(f'Minimum macOS increased for {name}: '
+                                 f'{baseline_targets[name][0]} -> {minimum}')
+    print(f'DMG verification passed: {dmg.name}, {arch}, verified Mach-O deployment targets, plist minimum {baseline_minimum}', flush=True)
 
 
 if __name__ == '__main__':
@@ -76,5 +126,7 @@ if __name__ == '__main__':
     parser.add_argument('--reference', type=Path, required=True)
     parser.add_argument('--manifest', type=Path, default=Path('src-tauri/Cargo.toml'))
     parser.add_argument('--arch', choices=['arm64', 'x86_64'], required=True)
+    parser.add_argument('--features', default='', help='Comma-separated release features in addition to defaults')
     args = parser.parse_args()
-    verify(args.dmg, args.reference, args.manifest, args.arch)
+    features = [feature.strip() for feature in args.features.split(',') if feature.strip()]
+    verify(args.dmg, args.reference, args.manifest, args.arch, features)

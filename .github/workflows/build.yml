@@ -360,8 +360,8 @@ jobs:
             src-tauri/target/release/bundle/dmg/
           ls -la src-tauri/target/release/bundle/dmg/
 
-      # A published macos-14 DMG is the compatibility baseline, including
-      # implicit Cargo helpers. Mount both read-only and always detach them.
+      # The latest published DMG is the compatibility baseline. Compare actual
+      # Mach-O deployment targets and enabled Cargo bins; mount read-only.
       - name: Verify macOS DMG payload and minimum system version
         if: matrix.target == 'macos'
         shell: bash
@@ -372,11 +372,18 @@ jobs:
           set -euo pipefail
           baseline_dir="${RUNNER_TEMP}/aeroftp-dmg-baseline"
           mkdir -p "$baseline_dir"
-          gh release download v4.2.1 --repo axpdev-lab/aeroftp \
-            --pattern "AeroFTP_4.2.1_${PACKAGE_ARCH}.dmg" --dir "$baseline_dir"
+          baseline_tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          echo "Comparing against latest published release: $baseline_tag"
+          gh release download "$baseline_tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern "*_${PACKAGE_ARCH}.dmg" --dir "$baseline_dir"
           expected_arch=arm64
           if [[ "$PACKAGE_ARCH" == x64 ]]; then expected_arch=x86_64; fi
           shopt -s nullglob
+          references=("$baseline_dir"/*.dmg)
+          if [[ "${#references[@]}" != 1 ]]; then
+            echo "::error::Expected exactly one baseline DMG, found ${#references[@]}"
+            exit 1
+          fi
           images=(src-tauri/target/release/bundle/dmg/*.dmg)
           if [[ "${#images[@]}" != 1 ]]; then
             echo "::error::Expected exactly one DMG, found ${#images[@]}"
@@ -384,8 +391,8 @@ jobs:
           fi
           python3 .github/scripts/verify-macos-dmg.py \
             --dmg "${images[0]}" \
-            --reference "$baseline_dir/AeroFTP_4.2.1_${PACKAGE_ARCH}.dmg" \
-            --arch "$expected_arch"
+            --reference "${references[0]}" \
+            --arch "$expected_arch" --features custom-protocol
 
       - name: Patch Debian dispatcher layout
         if: matrix.target == 'linux'
