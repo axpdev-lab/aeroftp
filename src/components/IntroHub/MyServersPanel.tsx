@@ -1453,7 +1453,7 @@ export function MyServersPanel({
                 detail: { type: 'error', title: t('toast.saveFailed'), message: String(err) },
             }));
         }
-    }, [deleteTarget, servers, onServersChange]);
+    }, [deleteTarget, servers, onServersChange, t]);
 
     const handleOpenMount = useCallback(async (server: ServerProfile) => {
         try {

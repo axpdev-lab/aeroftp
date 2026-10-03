@@ -8,6 +8,7 @@ import hub from '../components/IntroHub/MyServersPanel.tsx?raw';
 import settingsSource from '../components/SettingsPanel.tsx?raw';
 import app from '../App.tsx?raw';
 import { reorderVisibleInFull } from './reorderByIndex';
+import { createProfileCredentialJournal } from './profileCredentialJournal';
 
 // Run the production closures, with their captured IPC and React state cells
 // supplied by the fixture. No save handler implementation is duplicated here.
@@ -43,6 +44,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         aeroCryptConfirmMismatch: false, overlaysRemotePathError: false, defaultSaltEntropyMismatch: false,
         cryptFormsHalfRecorded: false, remotePathEscapesOverlay: false, aeroCryptEnabled: false,
         mtpFingerprint: undefined, persistModeCredentials: true, inModeGroup: true,
+        oauthOverlaySaveBlocked: false,
         modeChanged: true, targetModeLabel: 'Native', originalEditMode: { protocol: 'webdav' },
         customIconForSave: undefined, faviconForSave: undefined, editHydratedPasswordRef: { current: '' },
         modeCredentialSnapshotsRef: { current: { ftp: 'fixture' } }, bridgeSaveBlocked: false,
@@ -60,6 +62,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         logger: { warn: vi.fn(), error: vi.fn(), debug: vi.fn() }, t: (key: string) => key,
         window: { dispatchEvent: vi.fn((e: Event) => { events.push({ type: e.type, detail: e.detail }); }) }, CustomEvent: Event,
         invoke: vi.fn(async () => undefined), console: { error: vi.fn() },
+        createProfileCredentialJournal,
         useCallback: (fn: unknown) => fn, servers, setServers: vi.fn(), onServersChange: vi.fn(),
         setRenamingId: vi.fn(), deleteTarget: original, setDeleteTarget: vi.fn(), setGroups: vi.fn(),
         copyProfileVaultSecrets: vi.fn(async () => ({})), deleteProfileVaultSecrets: vi.fn(async () => undefined),
@@ -219,6 +222,16 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setSavedServersUpdate).not.toHaveBeenCalled();
     });
 
+    it.each(['read', 'write'] as const)('OAuth metadata %s failure keeps the editor open and reports the error', async fail => {
+        const f = fixture(fail);
+        const fn = await execute(connection, ['handleOAuthMetadataSave'], f.context);
+        await fn.handleOAuthMetadataSave();
+        expect(f.context.setGitHubAlert).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+        expect(f.context.onFormSaved).not.toHaveBeenCalled();
+        expect(f.context.setSavedServersUpdate).not.toHaveBeenCalled();
+        expect(f.context.logActivity).not.toHaveBeenCalled();
+    });
+
     it.each(['4shared', 'OAuth new', 'OAuth edit'] as const)('%s does not connect as saved after a failed write', async mode => {
         const f = fixture();
         f.context.editingProfileId = mode === 'OAuth edit' ? 'old' : null;
@@ -265,7 +278,7 @@ describe('saved profile write rejection in production handlers', () => {
         const end = settingsSource.indexOf("setKeystoreImportPassword('');", start) + "setKeystoreImportPassword('');".length;
         Object.assign(f.context, {
             result: { profilesAfterDecisions: f.servers }, setKeystoreMessage: vi.fn(), onServersChanged: vi.fn(),
-            setKeystoreMetadata: vi.fn(), setKeystoreImportFilePath: vi.fn(), setKeystoreImportPassword: vi.fn(),
+            setKeystoreMetadata: vi.fn(), setKeystoreImportFilePath: vi.fn(), setKeystoreImportPassword: vi.fn(), setKeystoreImportResult: vi.fn(),
             invoke: vi.fn(async () => JSON.stringify(f.servers)),
         });
         await snippet(settingsSource.slice(start, end), f.context);
@@ -274,6 +287,95 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.onServersChanged).not.toHaveBeenCalled();
         expect(f.context.setKeystoreImportFilePath).not.toHaveBeenCalled();
         expect(f.context.setKeystoreImportPassword).not.toHaveBeenCalled();
+        expect(f.context.setKeystoreImportResult).toHaveBeenCalledWith(null);
+    });
+
+    it.each(['replace', 'clear', 'native'] as const)('restores existing password, Filen and overlay secrets after a failed profile %s', async mode => {
+        const f = fixture();
+        const secrets = new Map([
+            ['server_old', 'old-password'], ['filen_api_key_old', 'old-filen'],
+            ['aerocrypt_overlay_pw_old', 'old-overlay'], ['aerocrypt_overlay_salt_old', 'old-salt'],
+            ['aerocrypt_overlay_keyfile_path_old', '/old/keyfile'],
+        ]);
+        const before = new Map(secrets);
+        const invoke = vi.fn(async (cmd: string, args: any) => {
+            if (cmd === 'get_credential') {
+                if (!secrets.has(args.account)) throw new Error(`Credential not found: ${args.account}`);
+                return secrets.get(args.account);
+            }
+            if (cmd === 'store_credential') secrets.set(args.account, args.password);
+            if (cmd === 'delete_credential') secrets.delete(args.account);
+        });
+        Object.assign(f.context, {
+            invoke, aeroCryptEnabled: true, overlayEligible: true, aeroCryptKind: mode === 'native' ? 'aerocrypt' : 'rclone-crypt',
+            aeroCryptPassword: 'new-overlay', aeroCryptSalt: 'new-salt', aeroCryptKeyfilePath: '/new/keyfile',
+            aeroCryptWithHeader: true, effectiveUseDefaultSalt: false, aeroCryptFilenameEnc: true, aeroCryptDirNameEnc: true,
+            aeroCryptPasswordForm: undefined, aeroCryptSaltForm: undefined, overlaysRemotePath: '/remote', normalizeRemotePath: (s: string) => s,
+            resolveOverlayScope: () => '/remote',
+        });
+        f.context.servers[0].hasStoredFilenApiKey = true;
+        f.context.connectionParams.options.filen_api_key = mode === 'clear' ? '' : 'new-filen';
+        if (mode === 'clear') {
+            f.context.connectionParams.password = '';
+            f.context.editHydratedPasswordRef.current = 'old-password';
+        }
+        const context = { ...f.context };
+        for (const name of ['tryStoreCredential', 'stashFilenApiKey', 'aeroCryptOverlayFields']) delete context[name];
+        const names = ['tryStoreCredential', 'stashFilenApiKey', 'aeroCryptOverlayFields', 'saveToServers', 'handleConnectAndSave'];
+        // Execute the real credential helpers too; only the IPC vault is fake.
+        if (connection.includes('const writeProfileCredential =')) names.unshift('writeProfileCredential');
+        const fn = await execute(connection, names, context);
+        await fn.handleConnectAndSave();
+        expect(secrets).toEqual(before);
+        expect(f.context.onFormSaved).not.toHaveBeenCalled();
+    });
+
+    it('keeps the delete callback bound to the current translator', () => {
+        const deleteCallback = declaration(hub, 'confirmDelete');
+        expect(deleteCallback).toMatch(/\}, \[[^\]]*\bt\b[^\]]*\]\);/);
+    });
+});
+
+describe('profile credential journal', () => {
+    it('removes newly minted secrets when the profile cannot be saved', async () => {
+        const invoke = vi.fn().mockRejectedValueOnce(new Error('Failed to get credential: Credential not found: server_new')).mockResolvedValue(undefined);
+        const journal = createProfileCredentialJournal(invoke);
+        await journal.write('server_new', 'fixture');
+        await journal.rollback();
+        expect(invoke).toHaveBeenLastCalledWith('delete_credential', { account: 'server_new' });
+    });
+    it('refuses to change an unreadable secret and refuses subsequent profile persistence', async () => {
+        const invoke = vi.fn().mockRejectedValue(new Error('STORE_NOT_READY'));
+        const journal = createProfileCredentialJournal(invoke);
+        await expect(journal.write('server_old', 'fixture')).rejects.toThrow('STORE_NOT_READY');
+        expect(() => journal.assertReady()).toThrow('STORE_NOT_READY');
+        expect(invoke).toHaveBeenCalledTimes(1);
+        await journal.rollback();
+        expect(invoke).toHaveBeenCalledTimes(1);
+    });
+    it('restores the original value after repeated mutations and releases it after success', async () => {
+        const invoke = vi.fn().mockResolvedValue('original');
+        const journal = createProfileCredentialJournal(invoke);
+        await journal.write('server_old', 'first');
+        await journal.write('server_old', 'second');
+        await journal.rollback();
+        expect(invoke.mock.calls.filter(([cmd]) => cmd === 'get_credential')).toHaveLength(1);
+        expect(invoke).toHaveBeenLastCalledWith('store_credential', { account: 'server_old', password: 'original' });
+        const committed = createProfileCredentialJournal(invoke);
+        await committed.write('server_old', 'saved');
+        committed.commit();
+        invoke.mockClear();
+        await committed.rollback();
+        expect(invoke).not.toHaveBeenCalled();
+    });
+    it('reports rollback failure without leaking secret values and still restores other accounts', async () => {
+        const invoke = vi.fn().mockResolvedValue('secret-fixture');
+        const journal = createProfileCredentialJournal(invoke);
+        await journal.write('server_old', 'replacement');
+        await journal.write('filen_api_key_old', 'replacement');
+        invoke.mockRejectedValueOnce(new Error('disk full'));
+        await expect(journal.rollback()).rejects.toThrow('Could not restore saved profile credentials: server_old');
+        expect(invoke).toHaveBeenLastCalledWith('store_credential', { account: 'filen_api_key_old', password: 'secret-fixture' });
     });
 });
 

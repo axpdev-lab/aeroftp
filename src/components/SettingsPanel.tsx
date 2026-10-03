@@ -3778,6 +3778,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             }
                                                                         } catch (err) {
                                                                             logger.warn('Imported server profiles could not be persisted', err);
+                                                                            setKeystoreImportResult(null);
                                                                             setKeystoreMessage({ type: 'error', text: String(err) });
                                                                             return;
                                                                         }
