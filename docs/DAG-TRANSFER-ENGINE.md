@@ -1,6 +1,6 @@
 # DAG Transfer Engine
 
-*Last updated: 2026-07-20; the provider lists were re-verified against the code on 2026-09-19. The engine is active in several production call paths, but convergence is partial; this document records the paths that are actually reachable, not every shape that the builder can represent.*
+*Last updated: 2026-07-20; the provider lists were re-verified against the code on 2026-09-19, and the single-file routing and governor defaults on 2026-10-03. The engine is active in several production call paths, but convergence is partial; this document records the paths that are actually reachable, not every shape that the builder can represent.*
 
 AeroFTP contains a shared, provider-agnostic transfer-DAG core. The core is
 real and is used by the shaped single-file runner, the batch wrapper, the
@@ -20,8 +20,8 @@ The audit rule used here is:
 
 | Operation | Active production call path | What the graph really does | Wire-level/default status |
 |---|---|---|---|
-| Single-file GUI `get` / `put` | `provider_commands::run_dag_*_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs:2289`, `:2438`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router and explicit legacy override |
-| Single-file CLI `get` / `put` | `run_single_file_transfer` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs:8748-8767`) | Same shaped-file runner and provider binding | DAG is selected by the router for normal network transfers; local-to-local or explicit legacy routes bypass it |
+| Single-file GUI `get` / `put` | `provider_commands::run_dag_download_leaf` / `run_dag_upload_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router: its table (`transfer_router/hints.rs`) sends plain WebDAV and Nextcloud downloads to the provider-direct path, and `AEROFTP_TRANSFER_ENGINE=dag\|legacy` overrides it |
+| Single-file CLI `get` / `put` | `cli_run_single_file_dag` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs`), on the plain leaf only (`--partial` takes its own resume path) | Same shaped-file runner and provider binding | DAG is selected by the router for network transfers, except plain WebDAV and Nextcloud downloads, which take the provider-direct path; local-to-local bypasses it, and `--transfer-engine dag\|legacy` overrides the table |
 | Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Streams the known entry list through a bounded backlog and a bounded active set (P2-04): each file's shaped subgraph is expanded only when admitted and dropped when done, never a full static graph. Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain); `--max-backlog` bounds the pending-work queue |
 | Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan/planning precede the graph; the precomputed transfer plan then streams per-file subgraphs through the same bounded frontier (P2-04) instead of one static plan graph; normal files use bounded independent clone workers, while delta retains the primary `DeltaBatch` lane | Clone-backed providers use their live session ceiling; locked or failed-clone providers and every delta request stay serial; dry-run stays on planning path |
 | Segmented download | Provider/CLI adapters -> `run_concurrent_range_download` (`src-tauri/src/providers/multi_thread.rs:244`) | `shaped_ranges` drives real range requests and offset writes through `execute_dag`; the old `JoinSet` runner is test-only | Graph scheduling is the only production range scheduler; GUI Auto may still select one stream |
@@ -462,8 +462,12 @@ The resource manager's slot classes (file, checker, chunk, HTTP, API,
 disk-read, disk-write, hash) are per operation. Its byte-credit pool for
 multipart buffers is no longer per operation: as of `DAG-P2-01` it is the
 process-global governor's shared pool. The endpoint level of the hierarchy
-(a concurrency sub-cap keyed by protocol + host + account) and a bandwidth
-token bucket also live in that governor. The bounded local-copy fallback and
+(a concurrency sub-cap keyed by protocol + host + account, default 256
+operation slots, `AEROFTP_ENDPOINT_MAX_SLOTS`) and a bandwidth token bucket
+also live in that governor. An endpoint slot is one transfer job, not one
+network connection: a segmented download holds a single lease while its
+ranges run on several workers, so the sub-cap only bites when many jobs pile
+onto one endpoint and is not a server-wide connection limit. The bounded local-copy fallback and
 the non-pipelined SFTP copy loops reserve bucket credits before moving each
 chunk, so concurrent jobs honour one configured cap
 (`AEROFTP_GLOBAL_BANDWIDTH_BPS`; unset = unlimited, no throttle).
@@ -477,7 +481,8 @@ FTP and SFTP; the batch executor and shared segmented-range helper carry that
 identity through to the lease. The same lease boundary resolves local physical
 devices (Unix `st_dev`, conservative nearest-existing-path fallback elsewhere)
 and reserves independent read/write slots per device
-(`AEROFTP_DISK_DEVICE_SLOTS`, default 4). Multiple local paths are sorted and
+(`AEROFTP_DISK_DEVICE_SLOTS`, default 8 per direction, aligned with the
+global transfer concurrency ceiling `transfer_settings::MAX_MAX_CONCURRENT`). Multiple local paths are sorted and
 deduplicated before acquisition, so a cross-device copy cannot invert lock
 order. Cancellation drops queued or held RAII leases without leaving a phantom
 priority turn. Upload/download resource requests still reserve only their
