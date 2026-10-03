@@ -121,8 +121,6 @@
             "aerocloudDesc": "Convertiu qualsevol servidor en el vostre núvol personal amb sincronització automàtica",
             "configureAerocloud": "Configurar AeroCloud",
             "aerocloudHelp": "També podeu configurar AeroCloud des de la barra d'estat",
-            "selectProviderPrompt": "Seleccioneu un proveïdor a dalt o trieu \"Personalitzat\" per a configuració manual",
-            "custom": "Personalitzat",
             "change": "Canviar",
             "emailAccount": "Compte de correu",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Genereu una clau API a Immich → User Settings → API Keys",
             "immichOps": "Navega, puja, baixa, elimina, àlbums, cerca, enllaços compartits. No es pot canviar el nom ni moure.",
             "generatePassword": "Generar contrasenya",
-            "saveAndConnect": "Desa i connecta",
-            "saveDisabledTotp": "Els codis TOTP són d'un sol ús. Utilitzeu Desa i connecta per aplicar aquest codi ara.",
             "generatePersonalLoginToken": "Genera un testimoni d'inici de sessió personal",
             "endpointUrl": "URL del punt de connexió",
             "b2NativeAdvantagesTitle": "API nativa de Backblaze B2: funcions addicionals respecte a la compatible amb S3",
@@ -1470,6 +1466,7 @@
             "extracted": "Extret!",
             "extractedTo": "Fitxers extrets a {dest}",
             "fileLocked": "Fitxer blocat",
+            "cutPartial": "S'han mogut {moved} de {total} elements; la resta es queda al seu lloc",
             "fileSkipped": "{count} fitxer(s) omès(os)",
             "fileUnlocked": "Fitxer desblocat",
             "loadTrashFailed": "Error en carregar la paperera",
@@ -6103,6 +6100,23 @@
             "scopeSession": "Aprova aquesta eina per a la resta de la sessió de xat.",
             "approve": "Aprova",
             "rememberForChat": "Permet aquesta eina durant la resta d'aquest xat"
+        },
+        "s3": {
+            "storageClass": "Classe d'emmagatzematge",
+            "storageClassChanged": "Classe d'emmagatzematge canviada a {storageClass}",
+            "restoreFromGlacier": "Restaura des de Glacier",
+            "restoreTier": "Nivell de recuperació",
+            "restoreDays": "Dies per conservar la còpia restaurada",
+            "restoreStarted": "Restauració sol·licitada: quan estigui llesta, la còpia es podrà llegir durant {days} dies",
+            "objectTags": "Etiquetes de l'objecte",
+            "noTags": "Cap etiqueta",
+            "tagKey": "Clau",
+            "tagValue": "Valor",
+            "tagsSaved": "Etiquetes desades"
+        },
+        "azure": {
+            "accessTier": "Nivell d'accés",
+            "accessTierChanged": "Nivell d'accés establert a {tier}"
         },
         "fileComments": {
             "title": "Comentaris",

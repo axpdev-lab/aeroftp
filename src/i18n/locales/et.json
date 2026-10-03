@@ -121,8 +121,6 @@
             "aerocloudDesc": "Muutke iga server oma isiklikuks pilveks automaatse sünkroonimisega",
             "configureAerocloud": "Seadista AeroCloud",
             "aerocloudHelp": "AeroCloud saate seadistada ka olekuribalt",
-            "selectProviderPrompt": "Valige ülalt teenusepakkuja või valige \"Kohandatud\" käsitsi seadistamiseks",
-            "custom": "Kohandatud",
             "change": "Muuda",
             "emailAccount": "E-posti konto",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Looge API võti Immich → User Settings → API Keys",
             "immichOps": "Sirvimine, üleslaadimine, allalaadimine, kustutamine, albumid, otsing, jagamislingid. Ümbernimetamine ja teisaldamine ei ole toetatud.",
             "generatePassword": "Genereeri parool",
-            "saveAndConnect": "Salvesta ja ühenda",
-            "saveDisabledTotp": "TOTP-koodid on ühekordsed. Kasuta Salvesta ja ühenda, et see kood kohe rakendada.",
             "generatePersonalLoginToken": "Genereeri isiklik sisselogimise tunnus",
             "endpointUrl": "Lõpp-punkti URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 natiivne API: lisafunktsioonid võrreldes S3-ga ühilduvaga",
@@ -1470,6 +1466,7 @@
             "extracted": "Lahtipakitud!",
             "extractedTo": "Failid lahtipakitud asukohta {dest}",
             "fileLocked": "Fail lukustatud",
+            "cutPartial": "Teisaldatud {moved}/{total} üksust; ülejäänud jäävad paigale",
             "fileSkipped": "{count} fail(i) vahele jäetud",
             "fileUnlocked": "Fail lukust avatud",
             "loadTrashFailed": "Prügikasti laadimine ebaõnnestus",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Kinnitab selle tööriista vestluse lõpuni.",
             "approve": "Kinnita",
             "rememberForChat": "Luba see tööriist selle vestluse lõpuni"
+        },
+        "s3": {
+            "storageClass": "Salvestusklass",
+            "storageClassChanged": "Salvestusklass muudetud: {storageClass}",
+            "restoreFromGlacier": "Taasta Glacierist",
+            "restoreTier": "Taastetase",
+            "restoreDays": "Taastatud koopia säilitamise päevad",
+            "restoreStarted": "Taaste taotletud: kui see on valmis, jääb koopia loetavaks {days} päeva",
+            "objectTags": "Objekti sildid",
+            "noTags": "Silte pole",
+            "tagKey": "Võti",
+            "tagValue": "Väärtus",
+            "tagsSaved": "Sildid salvestatud"
+        },
+        "azure": {
+            "accessTier": "Juurdepääsutase",
+            "accessTierChanged": "Juurdepääsutase määratud: {tier}"
         },
         "fileComments": {
             "title": "Kommentaarid",

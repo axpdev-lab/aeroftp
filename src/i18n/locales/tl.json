@@ -121,8 +121,6 @@
             "aerocloudDesc": "Gawing personal na cloud ang anumang server na may awtomatikong pag-sync",
             "configureAerocloud": "I-configure ang AeroCloud",
             "aerocloudHelp": "Maaari mo ring i-configure ang AeroCloud mula sa status bar",
-            "selectProviderPrompt": "Pumili ng provider sa itaas o piliin ang \"Pasadya\" para sa manu-manong pagsasaayos",
-            "custom": "Pasadya",
             "change": "Palitan",
             "emailAccount": "Email account",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Gumawa ng API key sa Immich → User Settings → API Keys",
             "immichOps": "Mag-browse, mag-upload, mag-download, magtanggal, album, maghanap, mga link ng pagbabahagi. Hindi sinusuportahan ang pagpapalit ng pangalan at paglipat.",
             "generatePassword": "Bumuo ng password",
-            "saveAndConnect": "I-save at Kumonekta",
-            "saveDisabledTotp": "Ang mga TOTP code ay isang beses lang magagamit. Gamitin ang I-save at Kumonekta upang ilapat ang code na ito ngayon.",
             "generatePersonalLoginToken": "Gumawa ng personal na login token",
             "endpointUrl": "Endpoint URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 native API: karagdagang feature kumpara sa S3-compatible",
@@ -1470,6 +1466,7 @@
             "extracted": "Na-extract na!",
             "extractedTo": "Na-extract ang mga file sa {dest}",
             "fileLocked": "Naka-lock ang file",
+            "cutPartial": "Nailipat ang {moved} sa {total} item; nananatili sa lugar ang iba",
             "fileSkipped": "{count} (mga) file ang nilaktawan",
             "fileUnlocked": "Na-unlock ang file",
             "loadTrashFailed": "Nabigong i-load ang basurahan",
@@ -6103,6 +6100,23 @@
             "scopeSession": "Inaaprubahan ang tool na ito sa natitirang bahagi ng chat session.",
             "approve": "Aprubahan",
             "rememberForChat": "Payagan ang tool na ito sa natitirang bahagi ng chat na ito"
+        },
+        "s3": {
+            "storageClass": "Klase ng Storage",
+            "storageClassChanged": "Napalitan ang klase ng storage sa {storageClass}",
+            "restoreFromGlacier": "I-restore mula sa Glacier",
+            "restoreTier": "Antas ng pagkuha",
+            "restoreDays": "Mga araw na itatago ang naibalik na kopya",
+            "restoreStarted": "Hiniling ang pag-restore: kapag handa na, mababasa ang kopya sa loob ng {days} araw",
+            "objectTags": "Mga Tag ng Object",
+            "noTags": "Walang tag",
+            "tagKey": "Susi",
+            "tagValue": "Halaga",
+            "tagsSaved": "Naisave ang mga tag"
+        },
+        "azure": {
+            "accessTier": "Antas ng Access",
+            "accessTierChanged": "Itinakda ang antas ng access sa {tier}"
         },
         "fileComments": {
             "title": "Mga komento",

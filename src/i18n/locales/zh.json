@@ -121,8 +121,6 @@
             "aerocloudDesc": "将任何服务器转变为带自动同步的个人云盘",
             "configureAerocloud": "配置 AeroCloud",
             "aerocloudHelp": "您也可以从状态栏配置 AeroCloud",
-            "selectProviderPrompt": "请在上方选择提供商，或选择\"自定义\"进行手动配置",
-            "custom": "自定义",
             "change": "更改",
             "emailAccount": "电子邮箱账户",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "在 Immich → User Settings → API Keys 中生成 API 密钥",
             "immichOps": "浏览、上传、下载、删除、相册、搜索、共享链接。不支持重命名和移动。",
             "generatePassword": "生成密码",
-            "saveAndConnect": "保存并连接",
-            "saveDisabledTotp": "TOTP 验证码为一次性使用。请使用“保存并连接”立即应用此验证码。",
             "generatePersonalLoginToken": "生成个人登录令牌",
             "endpointUrl": "端点 URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 原生 API：相比 S3 兼容模式的额外功能",
@@ -1470,6 +1466,7 @@
             "extracted": "已解压！",
             "extractedTo": "文件已解压到 {dest}",
             "fileLocked": "文件已锁定",
+            "cutPartial": "已移动 {moved}/{total} 项；其余项目保留在原位置",
             "fileSkipped": "已跳过 {count} 个文件",
             "fileUnlocked": "文件已解锁",
             "loadTrashFailed": "加载回收站失败",
@@ -6084,6 +6081,23 @@
             "scopeSession": "在本次聊天会话剩余时间内批准此工具。",
             "approve": "批准",
             "rememberForChat": "在本次聊天的剩余时间内允许此工具"
+        },
+        "s3": {
+            "storageClass": "存储类别",
+            "storageClassChanged": "存储类别已更改为 {storageClass}",
+            "restoreFromGlacier": "从 Glacier 恢复",
+            "restoreTier": "取回层级",
+            "restoreDays": "已恢复副本的保留天数",
+            "restoreStarted": "已请求恢复：就绪后，副本将保持可读 {days} 天",
+            "objectTags": "对象标签",
+            "noTags": "无标签",
+            "tagKey": "键",
+            "tagValue": "值",
+            "tagsSaved": "标签已保存"
+        },
+        "azure": {
+            "accessTier": "访问层",
+            "accessTierChanged": "访问层已设置为 {tier}"
         },
         "fileComments": {
             "title": "评论",

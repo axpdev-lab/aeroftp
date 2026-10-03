@@ -121,8 +121,6 @@
             "aerocloudDesc": "Претворите било који сервер у лични облак са аутоматском синхронизацијом",
             "configureAerocloud": "Конфигуриши AeroCloud",
             "aerocloudHelp": "AeroCloud можете конфигурисати и из статусне траке",
-            "selectProviderPrompt": "Изаберите провајдера изнад или изаберите \"Прилагођено\" за ручну конфигурацију",
-            "custom": "Прилагођено",
             "change": "Промени",
             "emailAccount": "Налог е-поште",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Генеришите API кључ у Immich → User Settings → API Keys",
             "immichOps": "Претраживање, отпремање, преузимање, брисање, албуми, претрага, линкови за дељење. Преименовање и премештање нису подржани.",
             "generatePassword": "Генериши лозинку",
-            "saveAndConnect": "Сачувај и повежи",
-            "saveDisabledTotp": "TOTP кодови су за једнократну употребу. Користите Сачувај и повежи да бисте применили овај код сада.",
             "generatePersonalLoginToken": "Генериши лични токен за пријаву",
             "endpointUrl": "URL крајње тачке",
             "b2NativeAdvantagesTitle": "Изворни API Backblaze B2: додатне функције у односу на S3-компатибилан",
@@ -1470,6 +1466,7 @@
             "extracted": "Извучено!",
             "extractedTo": "Датотеке извучене у {dest}",
             "fileLocked": "Датотека закључана",
+            "cutPartial": "Премештено {moved} од {total} ставки; остале остају на месту",
             "fileSkipped": "{count} датотека прескочено",
             "fileUnlocked": "Датотека откључана",
             "loadTrashFailed": "Учитавање корпе неуспешно",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Одобрава ову алатку до краја сесије ћаскања.",
             "approve": "Одобри",
             "rememberForChat": "Дозволи ову алатку до краја овог ћаскања"
+        },
+        "s3": {
+            "storageClass": "Класа складишта",
+            "storageClassChanged": "Класа складишта је промењена у {storageClass}",
+            "restoreFromGlacier": "Врати из Glacier",
+            "restoreTier": "Ниво преузимања",
+            "restoreDays": "Дани чувања враћене копије",
+            "restoreStarted": "Враћање је затражено: када буде спремна, копија остаје читљива {days} дана",
+            "objectTags": "Ознаке објекта",
+            "noTags": "Нема ознака",
+            "tagKey": "Кључ",
+            "tagValue": "Вредност",
+            "tagsSaved": "Ознаке су сачуване"
+        },
+        "azure": {
+            "accessTier": "Ниво приступа",
+            "accessTierChanged": "Ниво приступа је постављен на {tier}"
         },
         "fileComments": {
             "title": "Коментари",

@@ -121,8 +121,6 @@
             "aerocloudDesc": "Превърнете всеки сървър в личен облак с автоматична синхронизация",
             "configureAerocloud": "Конфигуриране на AeroCloud",
             "aerocloudHelp": "Можете също да конфигурирате AeroCloud от лентата на състоянието",
-            "selectProviderPrompt": "Изберете доставчик по-горе или изберете \"Custom\" за ръчна конфигурация",
-            "custom": "Персонализирано",
             "change": "Промени",
             "emailAccount": "Имейл акаунт",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Генерирайте API ключ в Immich → User Settings → API Keys",
             "immichOps": "Разглеждане, качване, изтегляне, изтриване, албуми, търсене, споделени връзки. Преименуване и преместване не се поддържат.",
             "generatePassword": "Генериране на парола",
-            "saveAndConnect": "Запази и свържи",
-            "saveDisabledTotp": "TOTP кодовете са еднократни. Използвайте „Запази и свържи“, за да приложите този код сега.",
             "generatePersonalLoginToken": "Генериране на персонален токен за вход",
             "endpointUrl": "URL на крайна точка",
             "b2NativeAdvantagesTitle": "Нативно API на Backblaze B2: допълнителни функции спрямо S3-съвместимото",
@@ -1470,6 +1466,7 @@
             "extracted": "Извлечено!",
             "extractedTo": "Файловете са извлечени в {dest}",
             "fileLocked": "Файлът е заключен",
+            "cutPartial": "Преместени {moved} от {total} елемента; останалите остават на мястото си",
             "fileSkipped": "{count} файл(а) пропуснати",
             "fileUnlocked": "Файлът е отключен",
             "loadTrashFailed": "Зареждането на кошчето е неуспешно",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Одобрява този инструмент до края на чат сесията.",
             "approve": "Одобри",
             "rememberForChat": "Разрешаване на този инструмент до края на този чат"
+        },
+        "s3": {
+            "storageClass": "Клас на съхранение",
+            "storageClassChanged": "Класът на съхранение е променен на {storageClass}",
+            "restoreFromGlacier": "Възстановяване от Glacier",
+            "restoreTier": "Ниво на извличане",
+            "restoreDays": "Дни за съхранение на възстановеното копие",
+            "restoreStarted": "Заявено възстановяване: когато е готово, копието остава достъпно за четене {days} дни",
+            "objectTags": "Тагове на обекта",
+            "noTags": "Няма тагове",
+            "tagKey": "Ключ",
+            "tagValue": "Стойност",
+            "tagsSaved": "Таговете са запазени"
+        },
+        "azure": {
+            "accessTier": "Ниво на достъп",
+            "accessTierChanged": "Нивото на достъп е зададено на {tier}"
         },
         "fileComments": {
             "title": "Коментари",

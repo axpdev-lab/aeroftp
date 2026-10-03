@@ -121,8 +121,6 @@
             "aerocloudDesc": "Bihurtu edozein zerbitzari zure hodei pertsonalean sinkronizazio automatikoarekin",
             "configureAerocloud": "AeroCloud konfiguratu",
             "aerocloudHelp": "AeroCloud egoera-barratik ere konfigura dezakezu",
-            "selectProviderPrompt": "Hautatu goiko hornitzaile bat edo aukeratu \"Pertsonalizatua\" eskuzko konfiguraziorako",
-            "custom": "Pertsonalizatua",
             "change": "Aldatu",
             "emailAccount": "Posta-kontua",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Sortu API gako bat Immich → User Settings → API Keys-en",
             "immichOps": "Arakatu, igo, deskargatu, ezabatu, albumak, bilatu, partekatzeko estekak. Berrizendatzea eta mugitzea ez dira onartzen.",
             "generatePassword": "Sortu pasahitza",
-            "saveAndConnect": "Gorde eta konektatu",
-            "saveDisabledTotp": "TOTP kodeak erabilera bakarrekoak dira. Erabili Gorde eta konektatu kode hau orain aplikatzeko.",
             "generatePersonalLoginToken": "Sortu saio-hasierako token pertsonala",
             "endpointUrl": "Amaiera-puntuaren URLa",
             "b2NativeAdvantagesTitle": "Backblaze B2 jatorrizko API: ezaugarri gehigarriak S3-rekin bateragarriaren gainetik",
@@ -1470,6 +1466,7 @@
             "extracted": "Ateratuta!",
             "extractedTo": "Fitxategiak {dest}-era aterata",
             "fileLocked": "Fitxategia blokeatuta",
+            "cutPartial": "{total} elementuetatik {moved} mugitu dira; gainerakoak bere lekuan geratzen dira",
             "fileSkipped": "{count} fitxategi saltatu d(ir)a",
             "fileUnlocked": "Fitxategia desblokeatuta",
             "loadTrashFailed": "Zakarrontzia kargatzeak huts egin du",
@@ -6103,6 +6100,23 @@
             "scopeSession": "Tresna hau txat-saioaren gainerakoan onesten du.",
             "approve": "Onetsi",
             "rememberForChat": "Baimendu tresna hau txat honen gainerakoan"
+        },
+        "s3": {
+            "storageClass": "Biltegiratze-klasea",
+            "storageClassChanged": "Biltegiratze-klasea honetara aldatu da: {storageClass}",
+            "restoreFromGlacier": "Berreskuratu Glacier-etik",
+            "restoreTier": "Berreskuratze-maila",
+            "restoreDays": "Berreskuratutako kopia gordetzeko egunak",
+            "restoreStarted": "Berreskuratzea eskatu da: prest dagoenean, kopia irakurgai egongo da {days} egunez",
+            "objectTags": "Objektuaren etiketak",
+            "noTags": "Etiketarik ez",
+            "tagKey": "Gakoa",
+            "tagValue": "Balioa",
+            "tagsSaved": "Etiketak gorde dira"
+        },
+        "azure": {
+            "accessTier": "Sarbide-maila",
+            "accessTierChanged": "Sarbide-maila honetara ezarri da: {tier}"
         },
         "fileComments": {
             "title": "Iruzkinak",

@@ -121,8 +121,6 @@
             "aerocloudDesc": "Proměňte jakýkoli server ve svůj osobní cloud s automatickou synchronizací",
             "configureAerocloud": "Konfigurovat AeroCloud",
             "aerocloudHelp": "AeroCloud můžete konfigurovat také ze stavového řádku",
-            "selectProviderPrompt": "Vyberte poskytovatele výše nebo zvolte \"Vlastní\" pro ruční konfiguraci",
-            "custom": "Vlastní",
             "change": "Změnit",
             "emailAccount": "E-mailový účet",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Vygenerujte API klíč v Immich → User Settings → API Keys",
             "immichOps": "Procházení, nahrávání, stahování, mazání, alba, vyhledávání, sdílené odkazy. Přejmenování a přesun nejsou podporovány.",
             "generatePassword": "Vygenerovat heslo",
-            "saveAndConnect": "Uložit a připojit",
-            "saveDisabledTotp": "Kódy TOTP jsou jednorázové. Použijte Uložit a připojit pro okamžité použití tohoto kódu.",
             "generatePersonalLoginToken": "Vygenerovat osobní přihlašovací token",
             "endpointUrl": "URL koncového bodu",
             "b2NativeAdvantagesTitle": "Nativní API Backblaze B2: další funkce oproti S3-kompatibilní verzi",
@@ -1470,6 +1466,7 @@
             "extracted": "Rozbaleno!",
             "extractedTo": "Soubory rozbaleny do {dest}",
             "fileLocked": "Soubor uzamčen",
+            "cutPartial": "Přesunuto {moved} z {total} položek; ostatní zůstávají na místě",
             "fileSkipped": "{count} soubor(ů) přeskočeno",
             "fileUnlocked": "Soubor odemčen",
             "loadTrashFailed": "Načtení koše selhalo",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Schválí tento nástroj po zbytek relace chatu.",
             "approve": "Schválit",
             "rememberForChat": "Povolit tento nástroj po zbytek tohoto chatu"
+        },
+        "s3": {
+            "storageClass": "Třída úložiště",
+            "storageClassChanged": "Třída úložiště změněna na {storageClass}",
+            "restoreFromGlacier": "Obnovit z Glacier",
+            "restoreTier": "Úroveň obnovení",
+            "restoreDays": "Počet dní uchování obnovené kopie",
+            "restoreStarted": "Obnovení vyžádáno: po dokončení bude kopie čitelná {days} dní",
+            "objectTags": "Značky objektu",
+            "noTags": "Žádné značky",
+            "tagKey": "Klíč",
+            "tagValue": "Hodnota",
+            "tagsSaved": "Značky uloženy"
+        },
+        "azure": {
+            "accessTier": "Přístupová úroveň",
+            "accessTierChanged": "Přístupová úroveň nastavena na {tier}"
         },
         "fileComments": {
             "title": "Komentáře",

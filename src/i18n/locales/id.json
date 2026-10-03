@@ -121,8 +121,6 @@
             "aerocloudDesc": "Ubah server mana pun menjadi cloud pribadi dengan sinkronisasi otomatis",
             "configureAerocloud": "Konfigurasi AeroCloud",
             "aerocloudHelp": "Anda juga dapat mengonfigurasi AeroCloud dari bilah status",
-            "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Kustom\" untuk konfigurasi manual",
-            "custom": "Kustom",
             "change": "Ubah",
             "emailAccount": "Akun email",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Buat kunci API di Immich → User Settings → API Keys",
             "immichOps": "Jelajah, unggah, unduh, hapus, album, cari, tautan berbagi. Ganti nama dan pindahkan tidak didukung.",
             "generatePassword": "Buat kata sandi",
-            "saveAndConnect": "Simpan & Sambungkan",
-            "saveDisabledTotp": "Kode TOTP hanya untuk sekali pakai. Gunakan Simpan & Sambungkan untuk menerapkan kode ini sekarang.",
             "generatePersonalLoginToken": "Buat token login pribadi",
             "endpointUrl": "URL endpoint",
             "b2NativeAdvantagesTitle": "API native Backblaze B2: fitur tambahan dibandingkan kompatibel S3",
@@ -1470,6 +1466,7 @@
             "extracted": "Diekstrak!",
             "extractedTo": "File diekstrak ke {dest}",
             "fileLocked": "File terkunci",
+            "cutPartial": "Memindahkan {moved} dari {total} item; sisanya tetap di tempatnya",
             "fileSkipped": "{count} file dilewati",
             "fileUnlocked": "File dibuka kuncinya",
             "loadTrashFailed": "Gagal memuat sampah",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Menyetujui alat ini selama sisa sesi obrolan.",
             "approve": "Setujui",
             "rememberForChat": "Izinkan alat ini selama sisa obrolan ini"
+        },
+        "s3": {
+            "storageClass": "Kelas Penyimpanan",
+            "storageClassChanged": "Kelas penyimpanan diubah menjadi {storageClass}",
+            "restoreFromGlacier": "Pulihkan dari Glacier",
+            "restoreTier": "Tingkat pengambilan",
+            "restoreDays": "Hari penyimpanan salinan yang dipulihkan",
+            "restoreStarted": "Pemulihan diminta: setelah siap, salinan tetap dapat dibaca selama {days} hari",
+            "objectTags": "Tag Objek",
+            "noTags": "Tidak ada tag",
+            "tagKey": "Kunci",
+            "tagValue": "Nilai",
+            "tagsSaved": "Tag disimpan"
+        },
+        "azure": {
+            "accessTier": "Tingkat Akses",
+            "accessTierChanged": "Tingkat akses diatur ke {tier}"
         },
         "fileComments": {
             "title": "Komentar",

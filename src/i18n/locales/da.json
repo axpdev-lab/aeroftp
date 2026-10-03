@@ -121,8 +121,6 @@
             "aerocloudDesc": "Forvandl enhver server til din personlige sky med automatisk synkronisering",
             "configureAerocloud": "Konfigurér AeroCloud",
             "aerocloudHelp": "Du kan også konfigurere AeroCloud fra statuslinjen",
-            "selectProviderPrompt": "Vælg en udbyder ovenfor, eller vælg \"Brugerdefineret\" for manuel konfiguration",
-            "custom": "Brugerdefineret",
             "change": "Skift",
             "emailAccount": "E-mailkonto",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Generér en API-nøgle i Immich → User Settings → API Keys",
             "immichOps": "Gennemse, upload, download, slet, album, søg, delingslinks. Omdøbning og flytning understøttes ikke.",
             "generatePassword": "Generér adgangskode",
-            "saveAndConnect": "Gem og opret forbindelse",
-            "saveDisabledTotp": "TOTP-koder er engangskoder. Brug Gem og opret forbindelse for at anvende denne kode nu.",
             "generatePersonalLoginToken": "Generér personligt login-token",
             "endpointUrl": "Endpoint-URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 native API: ekstra funktioner i forhold til S3-kompatibel",
@@ -1470,6 +1466,7 @@
             "extracted": "Udpakket!",
             "extractedTo": "Filer udpakket til {dest}",
             "fileLocked": "Fil låst",
+            "cutPartial": "Flyttede {moved} af {total} elementer; resten bliver liggende",
             "fileSkipped": "{count} fil(er) sprunget over",
             "fileUnlocked": "Fil låst op",
             "loadTrashFailed": "Kunne ikke indlæse papirkurv",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Godkender dette værktøj resten af chatsessionen.",
             "approve": "Godkend",
             "rememberForChat": "Tillad dette værktøj resten af denne chat"
+        },
+        "s3": {
+            "storageClass": "Lagerklasse",
+            "storageClassChanged": "Lagerklasse ændret til {storageClass}",
+            "restoreFromGlacier": "Gendan fra Glacier",
+            "restoreTier": "Genfindingsniveau",
+            "restoreDays": "Dage den gendannede kopi bevares",
+            "restoreStarted": "Gendannelse anmodet: når den er klar, kan kopien læses i {days} dage",
+            "objectTags": "Objekttags",
+            "noTags": "Ingen tags",
+            "tagKey": "Nøgle",
+            "tagValue": "Værdi",
+            "tagsSaved": "Tags gemt"
+        },
+        "azure": {
+            "accessTier": "Adgangsniveau",
+            "accessTierChanged": "Adgangsniveau sat til {tier}"
         },
         "fileComments": {
             "title": "Kommentarer",

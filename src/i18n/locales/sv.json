@@ -121,8 +121,6 @@
             "aerocloudDesc": "Gör vilken server som helst till ditt personliga moln med automatisk synkronisering",
             "configureAerocloud": "Konfigurera AeroCloud",
             "aerocloudHelp": "Du kan också konfigurera AeroCloud från statusfältet",
-            "selectProviderPrompt": "Välj en leverantör ovan eller välj \"Anpassad\" för manuell konfiguration",
-            "custom": "Anpassad",
             "change": "Ändra",
             "emailAccount": "E-postkonto",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Skapa en API-nyckel i Immich → User Settings → API Keys",
             "immichOps": "Bläddra, ladda upp, ladda ner, radera, album, sök, delningslänkar. Namnbyte och flytt stöds inte.",
             "generatePassword": "Generera lösenord",
-            "saveAndConnect": "Spara och anslut",
-            "saveDisabledTotp": "TOTP-koder är engångskoder. Använd Spara och anslut för att tillämpa denna kod nu.",
             "generatePersonalLoginToken": "Generera personlig inloggningstoken",
             "endpointUrl": "Endpunkt-URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 native API: extra funktioner utöver S3-kompatibel",
@@ -1470,6 +1466,7 @@
             "extracted": "Extraherat!",
             "extractedTo": "Filer extraherade till {dest}",
             "fileLocked": "Fil låst",
+            "cutPartial": "Flyttade {moved} av {total} objekt; resten ligger kvar",
             "fileSkipped": "{count} fil(er) hoppades över",
             "fileUnlocked": "Fil olåst",
             "loadTrashFailed": "Inläsning av papperskorgen misslyckades",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Godkänner det här verktyget under resten av chattsessionen.",
             "approve": "Godkänn",
             "rememberForChat": "Tillåt det här verktyget under resten av chatten"
+        },
+        "s3": {
+            "storageClass": "Lagringsklass",
+            "storageClassChanged": "Lagringsklass ändrad till {storageClass}",
+            "restoreFromGlacier": "Återställ från Glacier",
+            "restoreTier": "Hämtningsnivå",
+            "restoreDays": "Dagar att behålla den återställda kopian",
+            "restoreStarted": "Återställning begärd: när den är klar förblir kopian läsbar i {days} dagar",
+            "objectTags": "Objekttaggar",
+            "noTags": "Inga taggar",
+            "tagKey": "Nyckel",
+            "tagValue": "Värde",
+            "tagsSaved": "Taggar sparade"
+        },
+        "azure": {
+            "accessTier": "Åtkomstnivå",
+            "accessTierChanged": "Åtkomstnivå inställd på {tier}"
         },
         "fileComments": {
             "title": "Kommentarer",

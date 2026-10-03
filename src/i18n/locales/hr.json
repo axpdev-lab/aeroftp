@@ -121,8 +121,6 @@
             "aerocloudDesc": "Pretvorite bilo koji poslužitelj u svoj osobni oblak s automatskom sinkronizacijom",
             "configureAerocloud": "Konfiguriraj AeroCloud",
             "aerocloudHelp": "AeroCloud možete konfigurirati i iz trake stanja",
-            "selectProviderPrompt": "Odaberite davatelja iznad ili odaberite \"Prilagođeno\" za ručnu konfiguraciju",
-            "custom": "Prilagođeno",
             "change": "Promijeni",
             "emailAccount": "Račun e-pošte",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Generirajte API ključ u Immich → User Settings → API Keys",
             "immichOps": "Pregledavanje, prijenos, preuzimanje, brisanje, albumi, pretraživanje, dijeljeni linkovi. Preimenovanje i premještanje nisu podržani.",
             "generatePassword": "Generiraj lozinku",
-            "saveAndConnect": "Spremi i poveži",
-            "saveDisabledTotp": "TOTP kodovi su jednokratni. Koristite Spremi i poveži za primjenu ovog koda sada.",
             "generatePersonalLoginToken": "Generiraj osobni token za prijavu",
             "endpointUrl": "URL krajnje točke",
             "b2NativeAdvantagesTitle": "Backblaze B2 izvorni API: dodatne značajke u odnosu na S3-kompatibilan",
@@ -1470,6 +1466,7 @@
             "extracted": "Izdvojeno!",
             "extractedTo": "Datoteke izdvojene u {dest}",
             "fileLocked": "Datoteka zaključana",
+            "cutPartial": "Premješteno {moved} od {total} stavki; ostale ostaju na mjestu",
             "fileSkipped": "{count} datoteka preskočeno",
             "fileUnlocked": "Datoteka otključana",
             "loadTrashFailed": "Učitavanje koša nije uspjelo",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Odobrava ovaj alat do kraja sesije chata.",
             "approve": "Odobri",
             "rememberForChat": "Dopusti ovaj alat do kraja ovog chata"
+        },
+        "s3": {
+            "storageClass": "Klasa pohrane",
+            "storageClassChanged": "Klasa pohrane promijenjena u {storageClass}",
+            "restoreFromGlacier": "Vrati iz Glacier",
+            "restoreTier": "Razina dohvaćanja",
+            "restoreDays": "Dani čuvanja vraćene kopije",
+            "restoreStarted": "Zatraženo je vraćanje: kad bude spremna, kopija ostaje čitljiva {days} dana",
+            "objectTags": "Oznake objekta",
+            "noTags": "Nema oznaka",
+            "tagKey": "Ključ",
+            "tagValue": "Vrijednost",
+            "tagsSaved": "Oznake spremljene"
+        },
+        "azure": {
+            "accessTier": "Razina pristupa",
+            "accessTierChanged": "Razina pristupa postavljena na {tier}"
         },
         "fileComments": {
             "title": "Komentari",

@@ -121,8 +121,6 @@
             "aerocloudDesc": "任意のサーバーを自動同期でパーソナルクラウドに変換",
             "configureAerocloud": "Configure AeroCloud",
             "aerocloudHelp": "AeroCloud はステータスバーからも設定できます",
-            "selectProviderPrompt": "上記からプロバイダーを選択するか、手動設定のために「カスタム」を選択してください",
-            "custom": "カスタム",
             "change": "変更",
             "emailAccount": "メールアカウント",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Immich → User Settings → API Keysで APIキーを生成してください",
             "immichOps": "閲覧、アップロード、ダウンロード、削除、アルバム、検索、共有リンク。名前の変更と移動はサポートされていません。",
             "generatePassword": "パスワードを生成",
-            "saveAndConnect": "保存して接続",
-            "saveDisabledTotp": "TOTPコードは1回限り有効です。このコードを今すぐ適用するには「保存して接続」を使用してください。",
             "generatePersonalLoginToken": "パーソナルログイントークンを生成",
             "endpointUrl": "エンドポイントURL",
             "b2NativeAdvantagesTitle": "Backblaze B2 ネイティブ API: S3 互換を超える追加機能",
@@ -1470,6 +1466,7 @@
             "extracted": "展開しました！",
             "extractedTo": "{dest} にファイルを展開しました",
             "fileLocked": "ファイルがロックされています",
+            "cutPartial": "{total} 件中 {moved} 件を移動しました。残りは元の場所に残っています",
             "fileSkipped": "{count} 個のファイルをスキップしました",
             "fileUnlocked": "ファイルのロックが解除されました",
             "loadTrashFailed": "ゴミ箱の読み込みに失敗しました",
@@ -6084,6 +6081,23 @@
             "scopeSession": "このチャットセッションの残りの間、このツールを承認します。",
             "approve": "承認",
             "rememberForChat": "このチャットの残りの間、このツールを許可する"
+        },
+        "s3": {
+            "storageClass": "ストレージクラス",
+            "storageClassChanged": "ストレージクラスを {storageClass} に変更しました",
+            "restoreFromGlacier": "Glacier から復元",
+            "restoreTier": "取得階層",
+            "restoreDays": "復元したコピーを保持する日数",
+            "restoreStarted": "復元をリクエストしました: 準備が整うと、コピーは {days} 日間読み取り可能です",
+            "objectTags": "オブジェクトタグ",
+            "noTags": "タグなし",
+            "tagKey": "キー",
+            "tagValue": "値",
+            "tagsSaved": "タグを保存しました"
+        },
+        "azure": {
+            "accessTier": "アクセス階層",
+            "accessTierChanged": "アクセス階層を {tier} に設定しました"
         },
         "fileComments": {
             "title": "コメント",

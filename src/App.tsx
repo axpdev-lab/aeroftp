@@ -14,7 +14,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, isFtpProtocol, providerSupportsCryptOverlay, supportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, providerSupportsCryptOverlay, supportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -183,7 +183,7 @@ import { MountManagerDialog } from './components/MountManagerDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
-import { filterSurvivingBatchEntries } from './components/transferQueueActions';
+import { createFileBatchDispatcher, rearmedOnUserAction } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
 import {
@@ -197,6 +197,7 @@ import {
   type TransferQueueJournalDto,
 } from './utils/transferQueueJournal';
 import { copyText } from './utils/clipboard';
+import { nativeMenuLabels } from './utils/nativeMenuLabels';
 import { openUrl } from './utils/openUrl';
 import { openOnGitLab } from './utils/gitlabWeb';
 import { connectionViaLabel } from './utils/connectionViaLabel';
@@ -271,6 +272,9 @@ import { FileLuTrashManager } from './components/FileLuTrashManager';
 import { GoogleDriveTrashManager } from './components/GoogleDriveTrashManager';
 import { BoxTrashManager } from './components/BoxTrashManager';
 import { BoxTagsDialog } from './components/BoxTagsDialog';
+import { ObjectTierDialog, type ObjectTierMode } from './components/ObjectTierDialog';
+import { S3TagsDialog } from './components/S3TagsDialog';
+import { needsGlacierRestore } from './utils/cloudTiers';
 import { DropboxTrashManager } from './components/DropboxTrashManager';
 import { OneDriveTrashManager } from './components/OneDriveTrashManager';
 import { KoofrTrashManager } from './components/KoofrTrashManager';
@@ -292,6 +296,7 @@ import { OverwriteDialog } from './components/OverwriteDialog';
 import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOverwriteDialog';
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { CyberToolsModal } from './components/CyberToolsModal';
+import { nativeDropOwnerAt } from './utils/nativeDropOwner';
 import { LockScreen } from './components/LockScreen';
 import { AccountLockScreen } from './components/AccountLockScreen';
 import {
@@ -328,7 +333,7 @@ import {
   Archive, Image, Video, Music, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
   Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
+  MoreHorizontal, Tag, Layers, Snowflake, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
 } from 'lucide-react';
 
 /**
@@ -486,6 +491,8 @@ import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { signatureOf } from './utils/thumbnailCache';
+import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
+import type { FileBatchDirection, FileBatchSessionFlags, FolderTransferOutcome } from './utils/fileBatchRouting';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
 import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
@@ -732,10 +739,6 @@ const App: React.FC = () => {
       window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
     } catch { /* ignore */ }
   }, [cardLayout, setCardLayout, SETTINGS_KEY]);
-
-  const usesProviderApi = (protocol?: ProviderType) => {
-    return !!protocol && (protocol === 'ftp' || protocol === 'ftps' || isNonFtpProvider(protocol));
-  };
 
   // === Master Password / App Lock State ===
   const [isAppLocked, setIsAppLocked] = useState(false);
@@ -1335,6 +1338,8 @@ const App: React.FC = () => {
   const [showMegaTrash, setShowMegaTrash] = useState(false);
   const [showGDriveTrash, setShowGDriveTrash] = useState(false);
   const [showBoxTrash, setShowBoxTrash] = useState(false);
+  const [objectTierTarget, setObjectTierTarget] = useState<{ mode: ObjectTierMode; path: string; name: string; current?: string } | null>(null);
+  const [s3TagsTarget, setS3TagsTarget] = useState<{ path: string; name: string } | null>(null);
   const [boxTagsTarget, setBoxTagsTarget] = useState<{ path: string; tags: string[]; command?: string; providerName?: string } | null>(null);
   const [showDropboxTrash, setShowDropboxTrash] = useState(false);
   const [showOneDriveTrash, setShowOneDriveTrash] = useState(false);
@@ -1605,7 +1610,7 @@ const App: React.FC = () => {
       skipConflictCheck?: boolean,
       commitMessage?: string,
       explicitRemoteDir?: string,
-    ) => Promise<void>;
+    ) => Promise<boolean>;
     downloadFile: (
       remoteFilePath: string,
       fileName: string,
@@ -1613,7 +1618,7 @@ const App: React.FC = () => {
       isDir?: boolean,
       fileSize?: number,
       skipConflictCheck?: boolean,
-    ) => Promise<void>;
+    ) => Promise<boolean>;
   } | null>(null);
 
   const recordQueueDescriptor = React.useCallback((id: string, fields: JournalDescriptorFields) => {
@@ -1711,6 +1716,13 @@ const App: React.FC = () => {
   const insecureCertPreviouslyEnabledRef = useRef(false);
 
   const t = useTranslation();
+
+  // The native menu (always in the macOS menu bar, optional elsewhere) is built
+  // in English at startup; relabel it whenever the language changes. Before
+  // the app is ready the backend keeps the rebuilt menu for app_ready to install.
+  useEffect(() => {
+    invoke('rebuild_menu', { labels: nativeMenuLabels(t) }).catch(() => {});
+  }, [t]);
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
 
   // Sync Badge Helper - returns badge element if file is in cloud folder
@@ -5546,12 +5558,15 @@ const App: React.FC = () => {
   // Skipped while the vault panel or the Security Tools modal is open (each
   // registers its own drop listener - Hash Forge owns the drop) or the
   // connection screen is showing (no local target). The webview drop event is
-  // window-global, so this gate is what keeps it from double-firing.
+  // window-global, so this gate is what keeps it from double-firing. The
+  // Security Tools panel in AeroTools sits next to AeroFile instead of over
+  // it, so a drop that lands on it is left to Hash Forge drop by drop.
   useEffect(() => {
     if (showVaultPanel || showConnectionScreen || showCyberTools) return;
     const webview = getCurrentWebview();
     return guardedUnlisten(webview.onDragDropEvent(async (event) => {
       if (event.payload.type !== 'drop') return;
+      if (nativeDropOwnerAt(event.payload.position)) return;
       const dest = currentLocalPathRef.current;
       if (!dest || !event.payload.paths.length) return;
       let copied = 0;
@@ -6349,7 +6364,7 @@ const App: React.FC = () => {
   // Transfer Queue footer bar climbs on real bytes (folder queue items enqueue
   // lazily on file_start, so an item-count wave pegs the bar near 100%). #364.
   const [activeBatchSnapshot, setActiveBatchSnapshot] = useState<BatchProgressSnapshot | null>(null);
-  const { pendingFileLogIds, pendingDeleteLogIds } = useTransferEvents({
+  const { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
     remoteRefreshStartedAt: () => remoteRefreshStartedAtRef.current,
@@ -9681,7 +9696,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false) => {
+  const downloadFile = async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -9691,6 +9706,9 @@ const App: React.FC = () => {
     const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
     const isProvider = usesProviderApi(protocol);
     const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+    // True only when the file or folder actually landed: a "cut" paste deletes
+    // the source on this answer, so a skip, a cancel or an error must say no.
+    let completed = false;
 
     try {
       if (isDir) {
@@ -9702,9 +9720,9 @@ const App: React.FC = () => {
           const folderPath = `${downloadPath}/${fileName}`;
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
           const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
-          let folderResult: string;
+          let folderResult: FolderTransferOutcome;
           if (isProvider) {
-            folderResult = await invoke<string>('provider_download_folder', {
+            folderResult = await invoke<FolderTransferOutcome>('provider_download_folder', {
               remotePath: remoteFilePath,
               localPath: folderPath,
               fileExistsAction: folderAction || undefined,
@@ -9726,14 +9744,16 @@ const App: React.FC = () => {
               retry_count: retryCount,
               timeout_seconds: timeoutSeconds,
             };
-            folderResult = await invoke<string>('download_folder', { params });
+            folderResult = await invoke<FolderTransferOutcome>('download_folder', { params });
           }
           // Don't log success if the transfer was cancelled
-          if (!folderResult.toLowerCase().includes('cancelled')) {
+          if (!folderResult.cancelled) {
             const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
             humanLog.log('DOWNLOAD', `[Local] Downloaded folder ${folderPath} in ${elapsed}s`, 'success');
             humanLog.updateEntry(logId, { status: 'success', message: `Downloaded folder ${folderPath} in ${elapsed}s` });
           }
+          // A folder with failed files is not done: a "cut" keeps its source.
+          completed = folderTransferIsComplete(folderResult);
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
         }
@@ -9755,7 +9775,7 @@ const App: React.FC = () => {
 
             if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
               humanLog.updateEntry(logId, { status: 'success', message: `Skipped ${fileName}` });
-              return;
+              return false;
             }
 
             if (overwriteResult.newName) {
@@ -9797,6 +9817,7 @@ const App: React.FC = () => {
           const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
           const msg = t('activity.download_success', { filename: localFilePath, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
+          completed = true;
         } else {
           humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
         }
@@ -9818,6 +9839,7 @@ const App: React.FC = () => {
         notify.error(t('toast.downloadFailed'), String(error));
       }
     }
+    return completed;
   };
 
   // TQ-7b: optional explicitRemoteDir lets restore re-run an upload to the
@@ -9831,8 +9853,10 @@ const App: React.FC = () => {
     _skipConflictCheck: boolean = false,
     commitMessage?: string,
     explicitRemoteDir?: string,
-  ) => {
+  ): Promise<boolean> => {
     const startTime = Date.now();
+    // True only when the file or folder actually landed (see downloadFile).
+    let completed = false;
     try {
       // Check if we're using a Provider (get protocol from active session as fallback)
       const activeSession = sessions.find(s => s.id === activeSessionId);
@@ -9854,7 +9878,7 @@ const App: React.FC = () => {
           setScanningState({ active: true, folderName: fileName, message: t('activity.upload_start', { filename: fileName }) || `Uploading ${fileName}...`, operation: 'upload' });
           try {
             const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
-            await invoke<string>('provider_upload_folder', {
+            const providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
               localPath: localFilePath,
               remotePath: remoteRootForFolder,
               fileExistsAction: folderAction2 || null,
@@ -9863,6 +9887,7 @@ const App: React.FC = () => {
               timeoutSeconds: timeoutSeconds,
               commitMessage: commitMessage || null,
             });
+            completed = folderTransferIsComplete(providerFolderResult);
             if (protocol === 'opendrive') {
               await invoke('opendrive_set_path_privacy', {
                 path: remoteRootForFolder,
@@ -9887,7 +9912,7 @@ const App: React.FC = () => {
           humanLog.updateEntry(logId, { message: msg });
           // pwd is restored by the backend (provider_upload_folder saves/restores pwd)
           // loadRemoteFiles() is called by the transfer event handler on 'complete'
-          return;
+          return completed;
         }
         const remotePath = joinRemotePath(remoteBase, fileName);
         const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
@@ -9899,14 +9924,15 @@ const App: React.FC = () => {
           retry_count: retryCount,
           timeout_seconds: timeoutSeconds,
         };
-        const uploadResult = await invoke<string>('upload_folder', { params });
+        const uploadResult = await invoke<FolderTransferOutcome>('upload_folder', { params });
         // Don't log success if the transfer was cancelled
-        if (!uploadResult.toLowerCase().includes('cancelled')) {
+        if (!uploadResult.cancelled) {
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const details = `(${elapsed}s)`;
           const msg = t('activity.upload_success', { filename: remotePath, details });
           humanLog.updateEntry(logId, { status: 'success', message: msg });
         }
+        completed = folderTransferIsComplete(uploadResult);
       } else {
         let targetName = fileName;
         // Continue an interrupted upload from the remote partial instead of
@@ -9926,7 +9952,7 @@ const App: React.FC = () => {
 
           if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
             humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: fileName }, 'success');
-            return;
+            return false;
           }
 
           wantResume = overwriteResult.action === 'resume';
@@ -9950,7 +9976,8 @@ const App: React.FC = () => {
               void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir);
             },
           });
-          return;
+          // Deferred to the commit dialog: not uploaded yet.
+          return false;
         }
 
         const logId = humanLog.logStart('UPLOAD', { filename: fileName });
@@ -9987,6 +10014,7 @@ const App: React.FC = () => {
         const details = sizeStr ? `(${sizeStr} in ${elapsed}s)` : `(${elapsed}s)`;
         const msg = t('activity.upload_success', { filename: remotePath, details });
         humanLog.updateEntry(logId, { status: 'success', message: msg });
+        completed = true;
       }
     } catch (error) {
       if (String(error).toLowerCase().includes('overlay session')) {
@@ -10004,6 +10032,7 @@ const App: React.FC = () => {
         notify.error(t('toast.uploadFailed'), String(error));
       }
     }
+    return completed;
   };
 
   // Keep restore-retry callbacks pointing at the latest transfer fns.
@@ -10419,6 +10448,9 @@ const App: React.FC = () => {
       cancelLevelRef.current = 1;
       batchCancelledRef.current = true;
       transferQueue.stopPending(); // Only stop pending items, let current finish
+      // A backend batch (folder, or a multi-file selection since #591) keeps
+      // its pending files on the Rust side: tell it to start no further file.
+      try { await invoke('stop_starting_transfers'); } catch { }
       dispatchTransferToast(null);
     } else {
       // Level 2: Hard cancel: interrupt current transfer immediately
@@ -10837,11 +10869,25 @@ const App: React.FC = () => {
         }
         let ok = 0;
         let failed = 0;
-        for (const entry of entries) {
+        // Issue #591: plain files go out as one parallel batch; folders and a
+        // lone file keep the per-entry call. `ok` counts what landed.
+        const { batch: planBatch, sequential: planRest } = splitForFileBatch(entries, fileBatchSessionFlags('upload'));
+        let planStopped = false;
+        if (planBatch.length > 0) {
+          const outcome = await runFileBatch(
+            'upload',
+            planBatch.map(entry => ({ name: entry.name, sourcePath: entry.path, size: entry.size || 0, modified: null })),
+            currentRemotePath,
+            { allowStaging: false },
+          );
+          ok += outcome.completed;
+          failed += outcome.failed;
+          planStopped = outcome.aborted || batchCancelledRef.current;
+        }
+        for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
           if (batchCancelledRef.current) break;
           try {
-            await uploadFile(entry.path, entry.name, entry.is_dir, entry.size);
-            ok += 1;
+            if (await uploadFile(entry.path, entry.name, entry.is_dir, entry.size)) ok += 1;
           } catch (e) {
             failed += 1;
             if (!batchCancelledRef.current) {
@@ -10875,11 +10921,26 @@ const App: React.FC = () => {
         }
         let ok = 0;
         let failed = 0;
-        for (const entry of entries) {
+        // Issue #591: plain files go out as one parallel batch; folders and a
+        // lone file keep the per-entry call. `ok` counts what landed.
+        const { batch: planBatch, sequential: planRest } = splitForFileBatch(entries, fileBatchSessionFlags('download'));
+        let planStopped = false;
+        if (planBatch.length > 0) {
+          const listedModified = (path: string) => remoteFiles.find(f => f.path === path)?.modified || null;
+          const outcome = await runFileBatch(
+            'download',
+            planBatch.map(entry => ({ name: entry.name, sourcePath: entry.path, size: entry.size || 0, modified: listedModified(entry.path) })),
+            plan.destination.path,
+            { allowStaging: false },
+          );
+          ok += outcome.completed;
+          failed += outcome.failed;
+          planStopped = outcome.aborted || batchCancelledRef.current;
+        }
+        for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
           if (batchCancelledRef.current) break;
           try {
-            await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size);
-            ok += 1;
+            if (await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size)) ok += 1;
           } catch (e) {
             failed += 1;
             if (!batchCancelledRef.current) {
@@ -11745,47 +11806,80 @@ const App: React.FC = () => {
 
     // Cross-panel paste → upload or download using clipboard paths directly
     if (sourceIsRemote !== targetIsRemote) {
-      if (sourceIsRemote) {
-        // Remote → Local: download into the paste target panel path (not always panel 1)
-        for (const file of files) {
-          try {
-            if (batchCancelledRef.current) break;
-            await downloadFile(file.path, file.name, targetDir, file.is_dir);
-          } catch (e) {
-            if (!batchCancelledRef.current) {
-              notify.error(t('toast.downloadFailed'), `${file.name}: ${String(e)}`);
-            }
-          }
+      // Issue #591: pasted plain files go out as one parallel batch; folders
+      // and a lone file keep the per-item calls below. A "cut" deletes only
+      // the sources that actually landed: a skipped, failed or cancelled item
+      // stays where it was (before, every source was deleted whatever the
+      // transfer did, because downloadFile/uploadFile swallow their errors).
+      const pasteDirection = sourceIsRemote ? 'download' : 'upload';
+      const landed: typeof files = [];
+      const { batch: pasteBatch, sequential: pasteRest } = splitForFileBatch(
+        files,
+        fileBatchSessionFlags(pasteDirection, { cut: operation === 'cut' }),
+      );
+      let stopAfterBatch = false;
+      if (pasteBatch.length > 0) {
+        resetOverwriteSettings();
+        const outcome = await runFileBatch(
+          pasteDirection,
+          pasteBatch.map(file => {
+            // The clipboard keeps name and path only; size and date come from
+            // the listing, as the per-file path looks them up.
+            // By path only: a same-named file of another folder would hand
+            // checkOverwrite the wrong size and date.
+            const listed = sourceIsRemote
+              ? remoteFiles.find(f => f.path === file.path)
+              : localFiles.find(f => f.path === file.path);
+            return {
+              name: file.name,
+              sourcePath: file.path,
+              size: listed?.size || 0,
+              modified: listed?.modified || null,
+            };
+          }),
+          targetDir,
+          { allowStaging: false },
+        );
+        const landedSources = new Set(outcome.succeededSources);
+        for (const file of pasteBatch) {
+          if (landedSources.has(file.path)) landed.push(file);
         }
-        await refreshLocalPanelForPath(targetDir);
-      } else {
-        // Local → Remote: upload each file using stored path (not current listing)
-        for (const file of files) {
-          try {
-            if (batchCancelledRef.current) break;
-            await uploadFile(file.path, file.name, file.is_dir);
-          } catch (e) {
-            if (!batchCancelledRef.current) {
-              notify.error(t('toast.uploadFailed'), `${file.name}: ${String(e)}`);
-            }
-          }
-        }
-        loadRemoteFiles();
+        stopAfterBatch = outcome.aborted || batchCancelledRef.current;
       }
-      if (operation === 'cut') {
-        // Delete source after successful transfer
+      const pasteItems = stopAfterBatch ? [] : pasteBatch.length > 0 ? pasteRest : files;
+
+      for (const file of pasteItems) {
+        if (batchCancelledRef.current) break;
+        try {
+          const ok = sourceIsRemote
+            // Remote → Local: download into the paste target panel path (not always panel 1)
+            ? await downloadFile(file.path, file.name, targetDir, file.is_dir)
+            // Local → Remote: upload each file using stored path (not current listing)
+            : await uploadFile(file.path, file.name, file.is_dir);
+          if (ok) landed.push(file);
+        } catch (e) {
+          if (!batchCancelledRef.current) {
+            notify.error(t(sourceIsRemote ? 'toast.downloadFailed' : 'toast.uploadFailed'), `${file.name}: ${String(e)}`);
+          }
+        }
+      }
+      if (sourceIsRemote) await refreshLocalPanelForPath(targetDir);
+      else loadRemoteFiles();
+
+      if (operation === 'cut' && landed.length > 0) {
+        // Delete source after successful transfer, and only those sources.
         if (sourceIsRemote && aeroVaultOverlaySession?.sessionId) {
           try {
             await invoke<number>('aerovault_overlay_delete_entries', {
               sessionId: aeroVaultOverlaySession?.sessionId,
-              entryPaths: files.map((f) => f.path),
+              entryPaths: landed.map((f) => f.path),
               recursive: true,
             });
           } catch (e) {
             console.error('Failed to delete overlay source after cut', e);
           }
         } else {
-          for (const file of files) {
+          for (const file of landed) {
             try {
               if (sourceIsRemote) {
                 const activeSession = sessions.find(s => s.id === activeSessionId);
@@ -11805,6 +11899,11 @@ const App: React.FC = () => {
         }
         if (sourceIsRemote) loadRemoteFiles(undefined, true);
         else await refreshLocalPanelForPath(sourceDir);
+      }
+      if (operation === 'cut' && landed.length < files.length) {
+        notify.warning(
+          t('toast.cutPartial', { moved: landed.length, total: files.length }),
+        );
       }
     }
     // Same-panel paste
@@ -11941,6 +12040,299 @@ const App: React.FC = () => {
       }
     };
 
+  // Issue #591: every GUI entry point that moves several plain files at once
+  // sends them here, so they run as ONE backend batch at the concurrency the
+  // user set, the way a folder does. Before this, each entry point awaited one
+  // `downloadFile` / `uploadFile` per file and the setting never applied to a
+  // selection. The parallel branch that existed was gated on
+  // `!usesProviderApi(protocol)`, false for every connected protocol.
+  //
+  // Overwrite prompts stay one per file and are all answered before the batch
+  // starts. An upload the user asked to RESUME keeps the single-file command,
+  // which is the one that can continue from the remote partial.
+  type FileBatchItem = { name: string; sourcePath: string; size: number; modified: string | null };
+  type FileBatchResult = {
+    /** Files sent to the backend (0 when every file was skipped). */
+    sent: number;
+    completed: number;
+    failed: number;
+    skipped: number;
+    /** The user pressed Cancel in an overwrite prompt: nothing was sent. */
+    aborted: boolean;
+    /** Entries were staged in the queue (auto-start OFF), not run. */
+    staged: boolean;
+    /** Source paths of the files that landed (remote path for a download,
+     *  local path for an upload). A "cut" paste deletes exactly these. */
+    succeededSources: string[];
+  };
+
+  const fileBatchSessionFlags = (
+    direction: FileBatchDirection,
+    options: { cut?: boolean } = {},
+  ): FileBatchSessionFlags => {
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    return {
+      aeroVaultOverlay: !!aeroVaultOverlaySession?.sessionId,
+      gitHostUpload: direction === 'upload' && (protocol === 'github' || protocol === 'gitlab'),
+      legacyCut: !!options.cut && !usesProviderApi(protocol),
+    };
+  };
+
+  const runFileBatch = async (
+    direction: FileBatchDirection,
+    items: FileBatchItem[],
+    targetDir: string,
+    // Clipboard paste and the planner never staged (they run, then maybe
+    // delete the source); only the panel entry points honour auto-start OFF.
+    options: { allowStaging?: boolean } = {},
+  ): Promise<FileBatchResult> => {
+    const isDownload = direction === 'download';
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const isProvider = usesProviderApi(protocol);
+    const result: FileBatchResult = {
+      sent: 0, completed: 0, failed: 0, skipped: 0, aborted: false, staged: false, succeededSources: [],
+    };
+    const sourceOf = (entry: { remote_path: string; local_path: string }) =>
+      (isDownload ? entry.remote_path : entry.local_path);
+
+    batchCancelledRef.current = false;
+    cancelLevelRef.current = 0;
+    circuitBreaker.reset();
+    try { await invoke('reset_cancel_flag'); } catch { }
+
+    type Entry = {
+      id: string;
+      display_name: string;
+      remote_path: string;
+      local_path: string;
+      size: number;
+      modified: string | null;
+    };
+    const entries: Entry[] = [];
+    // Files that keep the single-file command: an upload the user asked to
+    // RESUME (only that command continues from the remote partial) and, on
+    // SFTP, a file whose destination already exists (only that command tries
+    // an rsync delta first; the batch executor has no delta step). New files
+    // gain nothing from either, so they all go in the batch.
+    const singles: Entry[] = [];
+    const resumes = new Set<Entry>();
+    // Destinations already written by an earlier file of this transfer.
+    const claimedDestinations = new Set<string>();
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const overwriteResult = await checkOverwrite(
+        item.name,
+        item.size,
+        item.modified ? new Date(item.modified) : undefined,
+        isDownload,
+        items.length - i - 1,
+      );
+      if (overwriteResult.action === 'cancel') {
+        resetOverwriteSettings();
+        result.aborted = true;
+        return result;
+      }
+      if (overwriteResult.action === 'skip') {
+        humanLog.logRaw(
+          isDownload ? 'activity.download_skipped' : 'activity.upload_skipped',
+          isDownload ? 'DOWNLOAD' : 'UPLOAD',
+          { filename: item.name },
+          'success',
+        );
+        result.skipped++;
+        continue;
+      }
+      const finalName = overwriteResult.newName || item.name;
+      const entry: Entry = {
+        id: '',
+        display_name: finalName,
+        remote_path: isDownload ? item.sourcePath : joinRemotePath(targetDir, finalName),
+        local_path: isDownload ? `${targetDir}/${finalName}` : item.sourcePath,
+        size: item.size,
+        modified: isDownload ? item.modified : null,
+      };
+      const destination = isDownload ? entry.local_path : entry.remote_path;
+      const single = keepsSingleFilePath({
+        direction,
+        isProviderSession: isProvider,
+        protocol,
+        action: overwriteResult.action,
+        destinationExists: overwriteResult.destinationExists,
+        renamed: !!overwriteResult.newName,
+        destinationClaimed: claimedDestinations.has(destination),
+      });
+      claimedDestinations.add(destination);
+      if (single) {
+        singles.push(entry);
+        if (!isDownload && overwriteResult.action === 'resume') resumes.add(entry);
+      } else {
+        entries.push(entry);
+      }
+    }
+    resetOverwriteSettings();
+    if (result.skipped > 0) notify.info(t('toast.fileSkipped', { count: result.skipped }));
+
+    const profileId = activeSession?.savedServerId ?? null;
+    const describe = (id: string, entry: Entry) => recordQueueDescriptor(id, {
+      direction,
+      local_path: entry.local_path,
+      remote_path: entry.remote_path,
+      profile_id: profileId,
+      filename: entry.display_name,
+      size: entry.size,
+      is_folder: false,
+    });
+
+    // OpenDrive and 4shared make a new upload public unless told otherwise;
+    // the single-file path sets it private, and so does the batch.
+    const setPrivate = async (landedEntries: Entry[]) => {
+      if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return;
+      const command = protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy';
+      for (const entry of landedEntries) {
+        try {
+          await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false });
+        } catch { /* already private, or removed meanwhile */ }
+      }
+    };
+
+    // Each runner resolves with the queue ids of the files that landed, so a
+    // dispatcher never sends a landed file twice.
+    const launchBatch = async (batchEntries: Entry[], queueIds: string[]): Promise<Set<string>> => {
+      const landedIds = new Set<string>();
+      if (batchEntries.length === 0) return landedIds;
+      result.sent += batchEntries.length;
+      // The batch id is ours, so each row is registered against its per-file
+      // event id (`<batchId>-<index>`) before anything starts.
+      const batchId = `${isDownload ? 'dl' : 'ul'}-files-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      if (isProvider) registerFileBatchRows(batchId, queueIds);
+      const params = {
+        entries: batchEntries,
+        batch_id: batchId,
+        max_concurrent: effectiveMaxConcurrentTransfers,
+        retry_count: retryCount,
+        timeout_seconds: timeoutSeconds,
+        ...(isProvider && isDownload ? {
+          download_segments: downloadSegments > 0 ? downloadSegments : null,
+          sftp_download_preset: buildSftpDownloadPresetPayload(protocol, sftpDownloadPreset).sftpDownloadPreset ?? null,
+        } : {}),
+      };
+      try {
+        if (isProvider) {
+          const outcome = await invoke<{
+            completed: number; failed: number; cancelled: boolean; message: string; succeeded: number[];
+          }>(fileBatchCommand(direction, true), { params });
+          result.completed += outcome.completed;
+          result.failed += outcome.failed;
+          const landedEntries: Entry[] = [];
+          for (const index of outcome.succeeded) {
+            const landed = batchEntries[index];
+            if (!landed) continue;
+            landedEntries.push(landed);
+            landedIds.add(queueIds[index]);
+            result.succeededSources.push(sourceOf(landed));
+            // The command's answer is the truth for a file that landed; the
+            // file event says the same, and a settled row ignores a repeat.
+            transferQueue.completeTransfer(queueIds[index]);
+          }
+          await setPrivate(landedEntries);
+        } else {
+          // Legacy FTP-manager batch (a session with no protocol): it reports
+          // no per-file result, so nothing counts as landed for a "cut".
+          await invoke<string>(fileBatchCommand(direction, false), { params });
+        }
+      } catch (error) {
+        // Rejected before any file started (not connected, a name the backend
+        // forbids, a locked crypt store): no file event will ever settle these
+        // queue rows, so settle them here instead of leaving them pending.
+        result.failed += batchEntries.length;
+        for (const id of queueIds) transferQueue.failTransfer(id, String(error));
+        if (!batchCancelledRef.current) {
+          notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+        }
+      }
+      return landedIds;
+    };
+
+    const runSingles = async (singleEntries: Entry[], queueIds: string[]): Promise<Set<string>> => {
+      const landedIds = new Set<string>();
+      for (let i = 0; i < singleEntries.length; i++) {
+        if (batchCancelledRef.current) {
+          transferQueue.failTransfer(queueIds[i], t('transfer.cancelledByUser'));
+          continue;
+        }
+        const entry = singleEntries[i];
+        result.sent++;
+        transferQueue.startTransfer(queueIds[i]);
+        try {
+          if (isDownload) {
+            await invoke('provider_download_file', {
+              remotePath: entry.remote_path,
+              localPath: entry.local_path,
+              modified: entry.modified || undefined,
+              downloadSegments: resolveFtpDownloadSegments(
+                downloadSegments,
+                supportsFtpTransferPresets,
+                effectiveMaxConcurrentTransfers,
+              ),
+              ...buildSftpDownloadPresetPayload(protocol, sftpDownloadPreset),
+            });
+          } else {
+            await invoke('provider_upload_file', {
+              localPath: entry.local_path,
+              remotePath: entry.remote_path,
+              commitMessage: null,
+              resume: resumes.has(entry) || null,
+            });
+            await setPrivate([entry]);
+          }
+          transferQueue.completeTransfer(queueIds[i]);
+          result.completed++;
+          result.succeededSources.push(sourceOf(entry));
+          landedIds.add(queueIds[i]);
+        } catch (error) {
+          transferQueue.failTransfer(queueIds[i], String(error));
+          result.failed++;
+        }
+      }
+      return landedIds;
+    };
+
+    const enqueue = (list: Entry[], staged: boolean) => list.map(entry => {
+      const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, direction, staged ? { staged: true } : undefined);
+      describe(id, entry);
+      return id;
+    });
+
+    // With auto-start OFF the first Start sends ONE batch over the rows the
+    // user kept (TQ-6 pruning); a row's Retry re-sends just that file. The
+    // dispatcher guarantees a landed file is never sent twice (Start flips
+    // every staged row in one update, so all their callbacks fire together).
+    const staged = options.allowStaging !== false && settings.autoStartTransfers === false;
+    const statusOf = (id: string) => queueItemsRef.current.find(q => q.id === id)?.status;
+    const batchIds = enqueue(entries, staged);
+    const singleIds = enqueue(singles, staged);
+    const batchDispatcher = createFileBatchDispatcher({
+      ids: batchIds, entries, run: launchBatch, statusOf, firstStartRunsAll: staged,
+    });
+    const singleDispatcher = createFileBatchDispatcher({
+      ids: singleIds, entries: singles, run: runSingles, statusOf, firstStartRunsAll: staged,
+    });
+    // A Start of staged rows or a Retry clears a Stop left from an earlier
+    // transfer when the user acts; a Stop during this run still holds.
+    const cancelFlags = { batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef };
+    for (const id of batchIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id)));
+    for (const id of singleIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id)));
+    if (staged) {
+      result.staged = true;
+      return result;
+    }
+    await batchDispatcher.launchAll();
+    await singleDispatcher.launchAll();
+    return result;
+  };
+
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[]) => {
     if (!isConnected) return;
@@ -11953,7 +12345,7 @@ const App: React.FC = () => {
 
     // Priority 1: Upload specific target files
     if (targetNames.length > 0) {
-      const filesToUpload = targetNames.map(name => {
+      let filesToUpload = targetNames.map(name => {
         const file = localFiles.find(f => f.name === name);
         // Use verified absolute path from backend
         return file ? { path: file.path, file } : null;
@@ -12013,143 +12405,35 @@ const App: React.FC = () => {
           batchCommitMessage = commitMessage;
         }
 
-        const canUseNativeUploadBatch = !isProvider
-          && !isGitHubRepoMode
-          && filesToUpload.length > 1
-          && filesToUpload.every(({ file }) => !file.is_dir);
-
-        if (canUseNativeUploadBatch) {
-          batchCancelledRef.current = false;
-          cancelLevelRef.current = 0;
-          circuitBreaker.reset();
-          try { await invoke('reset_cancel_flag'); } catch { }
-
-          let skippedCount = 0;
-          const entries: Array<{
-            id: string;
-            display_name: string;
-            remote_path: string;
-            local_path: string;
-            size: number;
-            modified: string | null;
-          }> = [];
-
-          for (let i = 0; i < filesToUpload.length; i++) {
-            const { path: filePath, file } = filesToUpload[i];
-            const remainingInQueue = filesToUpload.length - i - 1;
-            const overwriteResult = await checkOverwrite(
-              file.name,
-              file.size || 0,
-              file.modified ? new Date(file.modified) : undefined,
-              false,
-              remainingInQueue
-            );
-
-            if (overwriteResult.action === 'cancel') {
-              resetOverwriteSettings();
-              folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
-              return;
-            }
-
-            if (overwriteResult.action === 'skip') {
-              humanLog.logRaw('activity.upload_skipped', 'UPLOAD', { filename: file.name }, 'success');
-              skippedCount++;
-              continue;
-            }
-
-            const finalName = overwriteResult.newName || file.name;
-            entries.push({
-              id: '',
-              display_name: finalName,
-              remote_path: `${currentRemotePath}${currentRemotePath.endsWith('/') ? '' : '/'}${finalName}`,
-              local_path: filePath,
+        // Issue #591: plain files go out as one parallel batch; folders, a
+        // lone file and repository commits keep the per-item path below.
+        const { batch: batchUploads, sequential: restUploads } = splitForFileBatch(
+          filesToUpload.map(entry => ({ ...entry, is_dir: entry.file.is_dir })),
+          fileBatchSessionFlags('upload'),
+        );
+        if (batchUploads.length > 0) {
+          const outcome = await runFileBatch(
+            'upload',
+            batchUploads.map(({ path: filePath, file }) => ({
+              name: file.name,
+              sourcePath: filePath,
               size: file.size || 0,
-              modified: null,
-            });
-          }
-
-          resetOverwriteSettings();
-          folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
-
-          if (entries.length === 0) {
-            if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
-            setSelectedLocalFiles(new Set());
+              modified: file.modified || null,
+            })),
+            currentRemotePath,
+          );
+          if (outcome.aborted) {
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
             return;
           }
-
-          // TQ-4-routing: gate on autoStartTransfers. When ON (default),
-          // legacy byte-identical path: stage as 'pending', invoke batch.
-          // When OFF, stage as 'staged' with a one-shot batch executor so
-          // the panel can prune entries before the user presses Start.
-          const launchBatchUpload = async (entriesToSend: typeof entries) => {
-            if (entriesToSend.length === 0) {
-              if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
-              setSelectedLocalFiles(new Set());
-              loadRemoteFiles();
-              return;
-            }
-            try {
-              await invoke<string>('upload_files_batch', {
-                params: {
-                  entries: entriesToSend,
-                  max_concurrent: effectiveMaxConcurrentTransfers,
-                  retry_count: retryCount,
-                  timeout_seconds: timeoutSeconds,
-                }
-              });
-            } catch (error) {
-              if (!batchCancelledRef.current) {
-                notify.error(t('toast.uploadFailed'), String(error));
-              }
-            }
-            if (skippedCount > 0) {
-              notify.info(t('toast.fileSkipped', { count: skippedCount }));
-            }
+          // A Stop during the file batch also stops the folders after it.
+          if (restUploads.length === 0 || batchCancelledRef.current) {
+            folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
             setSelectedLocalFiles(new Set());
-            loadRemoteFiles();
-          };
-
-          const uploadProfileId =
-            sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
-          if (settings.autoStartTransfers !== false) {
-            for (const entry of entries) {
-              const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload');
-              recordQueueDescriptor(id, {
-                direction: 'upload',
-                local_path: entry.local_path,
-                remote_path: entry.remote_path,
-                profile_id: uploadProfileId,
-                filename: entry.display_name,
-                size: entry.size,
-                is_folder: false,
-              });
-            }
-            await launchBatchUpload(entries);
-          } else {
-            const batchState = { fired: false };
-            const idToEntry = new Map<string, typeof entries[0]>();
-            const batchExecutor = () => {
-              if (batchState.fired) return;
-              batchState.fired = true;
-              const remaining = filterSurvivingBatchEntries(idToEntry, queueItemsRef.current);
-              void launchBatchUpload(remaining);
-            };
-            for (const entry of entries) {
-              const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'upload', { staged: true });
-              idToEntry.set(id, entry);
-              retryCallbacksRef.current.set(id, batchExecutor);
-              recordQueueDescriptor(id, {
-                direction: 'upload',
-                local_path: entry.local_path,
-                remote_path: entry.remote_path,
-                profile_id: uploadProfileId,
-                filename: entry.display_name,
-                size: entry.size,
-                is_folder: false,
-              });
-            }
+            if (!outcome.staged) loadRemoteFiles();
+            return;
           }
-          return;
+          filesToUpload = restUploads;
         }
 
         // Queue shows progress - no toast needed
@@ -12396,6 +12680,22 @@ const App: React.FC = () => {
     const files = Array.isArray(selected) ? selected : [selected];
 
     if (files.length > 0) {
+      // Issue #591: several picked files go out as one parallel batch.
+      const picked = files.map(filePath => ({
+        name: filePath.replace(/^.*[\\\/]/, ''),
+        sourcePath: filePath,
+        size: 0, // unknown here; the backend reads it from the disk
+        modified: null,
+        is_dir: false,
+      }));
+      const { batch: pickedBatch } = splitForFileBatch(picked, fileBatchSessionFlags('upload'));
+      if (pickedBatch.length > 0) {
+        resetOverwriteSettings();
+        const outcome = await runFileBatch('upload', pickedBatch, currentRemotePath);
+        if (!outcome.aborted && !outcome.staged) loadRemoteFiles();
+        return;
+      }
+
       // Reset for dialog-selected files too
       resetOverwriteSettings();
       batchCancelledRef.current = false;
@@ -12556,149 +12856,25 @@ const App: React.FC = () => {
     // Reset apply-to-all for new batch
     resetOverwriteSettings();
 
-    const filesToDownload = names.map(n => remoteFiles.find(f => f.name === n)).filter(Boolean) as RemoteFile[];
+    let filesToDownload = names.map(n => remoteFiles.find(f => f.name === n)).filter(Boolean) as RemoteFile[];
     if (filesToDownload.length > 0) {
-      const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-      const isProvider = usesProviderApi(protocol);
-
-      // Native batch download uses the FTP session pool for parallel transfers.
-      // Provider-based downloads use a single connection (Mutex<Provider>) and must
-      // run sequentially until a provider connection pool is implemented.
-      const canUseNativeDownloadBatch = !isProvider
-        && filesToDownload.length > 1
-        && filesToDownload.every(file => !file.is_dir);
-
-      if (canUseNativeDownloadBatch) {
-        batchCancelledRef.current = false;
-        cancelLevelRef.current = 0;
-        circuitBreaker.reset();
-        try { await invoke('reset_cancel_flag'); } catch { }
-
-        let skippedCount = 0;
-        const entries: Array<{
-          id: string;
-          display_name: string;
-          remote_path: string;
-          local_path: string;
-          size: number;
-          modified: string | null;
-        }> = [];
-
-        for (let i = 0; i < filesToDownload.length; i++) {
-          const file = filesToDownload[i];
-          const remainingInQueue = filesToDownload.length - i - 1;
-          const overwriteResult = await checkOverwrite(
-            file.name,
-            file.size || 0,
-            file.modified ? new Date(file.modified) : undefined,
-            true,
-            remainingInQueue
-          );
-
-          if (overwriteResult.action === 'cancel') {
-            resetOverwriteSettings();
-            return;
-          }
-
-          if (overwriteResult.action === 'skip') {
-            humanLog.logRaw('activity.download_skipped', 'DOWNLOAD', { filename: file.name }, 'success');
-            skippedCount++;
-            continue;
-          }
-
-          const finalName = overwriteResult.newName || file.name;
-          entries.push({
-            id: '',
-            display_name: finalName,
-            remote_path: file.path,
-            local_path: `${currentLocalPath}/${finalName}`,
-            size: file.size || 0,
-            modified: file.modified || null,
-          });
-        }
-
-        resetOverwriteSettings();
-
-        if (entries.length === 0) {
-          if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
+      // Issue #591: plain files go out as one parallel batch; folders, and a
+      // lone file, keep the per-item loop below.
+      const { batch: batchFiles, sequential } = splitForFileBatch(filesToDownload, fileBatchSessionFlags('download'));
+      if (batchFiles.length > 0) {
+        const outcome = await runFileBatch(
+          'download',
+          batchFiles.map(f => ({ name: f.name, sourcePath: f.path, size: f.size || 0, modified: f.modified || null })),
+          currentLocalPath,
+        );
+        if (outcome.aborted) return;
+        // A Stop during the file batch also stops the folders after it.
+        if (sequential.length === 0 || batchCancelledRef.current) {
           setSelectedRemoteFiles(new Set());
+          if (!outcome.staged) await loadLocalFiles(currentLocalPath);
           return;
         }
-
-        // TQ-4-routing: gate on autoStartTransfers (download batch). Same
-        // shape as the upload batch site: one-shot batch executor filters
-        // to the entries still in the queue at fire time so user-pruned
-        // items are dropped.
-        const launchBatchDownload = async (entriesToSend: typeof entries) => {
-          if (entriesToSend.length === 0) {
-            if (skippedCount > 0) notify.info(t('toast.fileSkipped', { count: skippedCount }));
-            setSelectedRemoteFiles(new Set());
-            await loadLocalFiles(currentLocalPath);
-            return;
-          }
-          try {
-            await invoke<string>('download_files_batch', {
-              params: {
-                entries: entriesToSend,
-                max_concurrent: effectiveMaxConcurrentTransfers,
-                retry_count: retryCount,
-                timeout_seconds: timeoutSeconds,
-              }
-            });
-          } catch (error) {
-            if (!batchCancelledRef.current) {
-              notify.error(t('toast.downloadFailed'), String(error));
-            }
-          }
-          if (skippedCount > 0) {
-            notify.info(t('toast.fileSkipped', { count: skippedCount }));
-          }
-          setSelectedRemoteFiles(new Set());
-          await loadLocalFiles(currentLocalPath);
-        };
-
-        const downloadProfileId =
-          sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
-        if (settings.autoStartTransfers !== false) {
-          for (const entry of entries) {
-            const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download');
-            recordQueueDescriptor(id, {
-              direction: 'download',
-              local_path: entry.local_path,
-              remote_path: entry.remote_path,
-              profile_id: downloadProfileId,
-              filename: entry.display_name,
-              size: entry.size,
-              is_folder: false,
-            });
-          }
-          await launchBatchDownload(entries);
-        } else {
-          const batchState = { fired: false };
-          const idToEntry = new Map<string, typeof entries[0]>();
-          const batchExecutor = () => {
-            if (batchState.fired) return;
-            batchState.fired = true;
-            const remaining = filterSurvivingBatchEntries(idToEntry, queueItemsRef.current);
-            void launchBatchDownload(remaining);
-          };
-          for (const entry of entries) {
-            const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, 'download', { staged: true });
-            idToEntry.set(id, entry);
-            retryCallbacksRef.current.set(id, batchExecutor);
-            recordQueueDescriptor(id, {
-              direction: 'download',
-              local_path: entry.local_path,
-              remote_path: entry.remote_path,
-              profile_id: downloadProfileId,
-              filename: entry.display_name,
-              size: entry.size,
-              is_folder: false,
-            });
-          }
-        }
-        return;
+        filesToDownload = sequential;
       }
 
       // Queue shows progress - no toast needed
@@ -14377,6 +14553,37 @@ const App: React.FC = () => {
       }
     }
 
+    // S3: storage class, object tags, Glacier / Deep Archive restore (single object)
+    if (currentProtocol === 's3' && filesToUse.length === 1 && !file.is_dir) {
+      const storageClass = file.metadata?.storage_class;
+      items.push({
+        label: t('s3.storageClass'),
+        icon: <Layers size={14} className="text-cyan-500" />,
+        action: () => setObjectTierTarget({ mode: 's3-class', path: file.path, name: file.name, current: storageClass ?? 'STANDARD' }),
+        divider: true,
+      });
+      items.push({
+        label: t('s3.objectTags'),
+        icon: <Tag size={14} className="text-cyan-500" />,
+        action: () => setS3TagsTarget({ path: file.path, name: file.name }),
+      });
+      if (needsGlacierRestore(storageClass)) {
+        items.push({
+          label: t('s3.restoreFromGlacier'),
+          icon: <Snowflake size={14} className="text-cyan-500" />,
+          action: () => setObjectTierTarget({ mode: 's3-restore', path: file.path, name: file.name }),
+        });
+      }
+    }
+    // Azure: blob access tier (single blob)
+    if (currentProtocol === 'azure' && filesToUse.length === 1 && !file.is_dir) {
+      items.push({
+        label: t('azure.accessTier'),
+        icon: <Layers size={14} className="text-cyan-500" />,
+        action: () => setObjectTierTarget({ mode: 'azure-tier', path: file.path, name: file.name }),
+        divider: true,
+      });
+    }
     // GitLab: View on GitLab. The backend builds the URL (self-hosted base,
     // working branch, encoded segments).
     if (currentProtocol === 'gitlab' && filesToUse.length === 1) {
@@ -17008,6 +17215,27 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
+        {objectTierTarget && (
+          <ObjectTierDialog
+            mode={objectTierTarget.mode}
+            path={objectTierTarget.path}
+            name={objectTierTarget.name}
+            current={objectTierTarget.current}
+            onClose={() => setObjectTierTarget(null)}
+            onDone={(message) => {
+              notify.success(message);
+              loadRemoteFiles(undefined, true);
+            }}
+          />
+        )}
+        {s3TagsTarget && (
+          <S3TagsDialog
+            path={s3TagsTarget.path}
+            name={s3TagsTarget.name}
+            onClose={() => setS3TagsTarget(null)}
+            onSaved={() => notify.success(t('s3.tagsSaved'))}
+          />
+        )}
         {boxTagsTarget && (
           <BoxTagsDialog
             filePath={boxTagsTarget.path}
@@ -19257,7 +19485,7 @@ const App: React.FC = () => {
           theme={getLogTheme(theme, isDark)}
         />
 
-        {/* DevTools V2 - 3-Column Responsive Layout (at bottom, below ActivityLog) */}
+        {/* DevTools V2 - Responsive Column Layout (at bottom, below ActivityLog) */}
         <DevToolsV2
           isOpen={devToolsOpen}
           previewFile={devToolsPreviewFile}
@@ -19270,7 +19498,6 @@ const App: React.FC = () => {
           onMaximizeChange={setDevToolsMaximized}
           onClose={() => setDevToolsOpen(false)}
           onClearFile={() => setDevToolsPreviewFile(null)}
-          onShowCyberTools={() => setShowCyberTools(true)}
           editorTheme={getMonacoTheme(theme, isDark)}
           appTheme={getEffectiveTheme(theme, isDark)}
           providerType={connectionParams.protocol}

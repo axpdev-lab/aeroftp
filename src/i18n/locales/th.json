@@ -121,8 +121,6 @@
             "aerocloudDesc": "เปลี่ยนเซิร์ฟเวอร์ใดๆ ให้เป็นคลาวด์ส่วนตัวพร้อมการซิงค์อัตโนมัติ",
             "configureAerocloud": "ตั้งค่า AeroCloud",
             "aerocloudHelp": "คุณยังสามารถตั้งค่า AeroCloud จากแถบสถานะได้",
-            "selectProviderPrompt": "เลือกผู้ให้บริการด้านบนหรือเลือก \"กำหนดเอง\" สำหรับการตั้งค่าด้วยตนเอง",
-            "custom": "กำหนดเอง",
             "change": "เปลี่ยน",
             "emailAccount": "บัญชีอีเมล",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "สร้าง API key ใน Immich → User Settings → API Keys",
             "immichOps": "เรียกดู อัปโหลด ดาวน์โหลด ลบ อัลบั้ม ค้นหา ลิงก์แชร์ ไม่รองรับการเปลี่ยนชื่อและย้าย",
             "generatePassword": "สร้างรหัสผ่าน",
-            "saveAndConnect": "บันทึกและเชื่อมต่อ",
-            "saveDisabledTotp": "รหัส TOTP ใช้ได้ครั้งเดียว ใช้ บันทึกและเชื่อมต่อ เพื่อใช้รหัสนี้ตอนนี้",
             "generatePersonalLoginToken": "สร้างโทเค็นการเข้าสู่ระบบส่วนตัว",
             "endpointUrl": "URL ปลายทาง",
             "b2NativeAdvantagesTitle": "Backblaze B2 native API: ฟีเจอร์เพิ่มเติมเหนือกว่าโหมดที่เข้ากันได้กับ S3",
@@ -1470,6 +1466,7 @@
             "extracted": "แตกไฟล์แล้ว!",
             "extractedTo": "แตกไฟล์ไปที่ {dest}",
             "fileLocked": "ไฟล์ถูกล็อก",
+            "cutPartial": "ย้ายแล้ว {moved} จาก {total} รายการ ส่วนที่เหลืออยู่ที่เดิม",
             "fileSkipped": "ข้าม {count} ไฟล์",
             "fileUnlocked": "ปลดล็อกไฟล์แล้ว",
             "loadTrashFailed": "การโหลดถังขยะล้มเหลว",
@@ -6084,6 +6081,23 @@
             "scopeSession": "อนุมัติเครื่องมือนี้ตลอดเซสชันแชตที่เหลือ",
             "approve": "อนุมัติ",
             "rememberForChat": "อนุญาตเครื่องมือนี้ตลอดแชตนี้ที่เหลือ"
+        },
+        "s3": {
+            "storageClass": "คลาสพื้นที่จัดเก็บ",
+            "storageClassChanged": "เปลี่ยนคลาสพื้นที่จัดเก็บเป็น {storageClass} แล้ว",
+            "restoreFromGlacier": "กู้คืนจาก Glacier",
+            "restoreTier": "ระดับการเรียกคืน",
+            "restoreDays": "จำนวนวันที่เก็บสำเนาที่กู้คืน",
+            "restoreStarted": "ขอกู้คืนแล้ว: เมื่อพร้อม สำเนาจะอ่านได้นาน {days} วัน",
+            "objectTags": "แท็กออบเจ็กต์",
+            "noTags": "ไม่มีแท็ก",
+            "tagKey": "คีย์",
+            "tagValue": "ค่า",
+            "tagsSaved": "บันทึกแท็กแล้ว"
+        },
+        "azure": {
+            "accessTier": "ระดับการเข้าถึง",
+            "accessTierChanged": "ตั้งระดับการเข้าถึงเป็น {tier} แล้ว"
         },
         "fileComments": {
             "title": "ความคิดเห็น",

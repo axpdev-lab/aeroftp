@@ -121,8 +121,6 @@
             "aerocloudDesc": "Մասնավորեք ցանկացած սերվեր ձեր անձնական ամպամին։ ինքնահամաժամանակ համաժամանեքման հետ",
             "configureAerocloud": "Կարգավորել AeroCloud",
             "aerocloudHelp": "Կարող եք նաև AeroCloud-ը կարգավորել կարգավիճակի գոտիծ",
-            "selectProviderPrompt": "Ընտրեք մատակարար վերը կամ ընտրեք «Հատուկ» ձեռքով կարգավորման համար",
-            "custom": "Հատուկ",
             "change": "Փոխել",
             "emailAccount": "Էլ. փոստի հաշիվ",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Ստեղծեք API բանալի Immich → User Settings → API Keys-ում",
             "immichOps": "Դիտարկել, վերբեռնել, ներբեռնել, ջնջել, ալբոմներ, որոնել, համաօգտագործման հղմնակներ։ Վերանվանումը և տեղափոխումը չեն աջակցվում։",
             "generatePassword": "Ստեղծել գաղտնաբառ",
-            "saveAndConnect": "Պահպանել և միանալ",
-            "saveDisabledTotp": "TOTP կոդերը մեկանգամյա օգտագործման են։ Օգտագործեք «Պահպանել և միանալ»՝ այս կոդն այժմ կիրառելու համար։",
             "generatePersonalLoginToken": "Անձնական մուտքի նշանի ստեղծում",
             "endpointUrl": "Եզրակետի URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 բնիկ API՝ լրացուցիչ հնարավորություններ S3-համատեղի հետ համեմատած",
@@ -1463,6 +1459,7 @@
             "extracted": "Հանվեց!",
             "extractedTo": "Ֆայլերը հանվեցին {dest}",
             "fileLocked": "Ֆայլը կողպված է",
+            "cutPartial": "Տեղափոխվել է {moved}-ը {total}-ից. մնացածը մնում են իրենց տեղում",
             "fileSkipped": "{count} ֆայլ բաց թողվեց",
             "fileUnlocked": "Ֆայլը ապակողպված է",
             "loadTrashFailed": "Աղբամանի բեռնման ձախողում",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Հաստատում է այս գործիքը զրույցի մնացած ընթացքի համար։",
             "approve": "Հաստատել",
             "rememberForChat": "Թույլատրել այս գործիքը այս զրույցի մնացած ընթացքում"
+        },
+        "s3": {
+            "storageClass": "Պահպանման դաս",
+            "storageClassChanged": "Պահպանման դասը փոխվեց՝ {storageClass}",
+            "restoreFromGlacier": "Վերականգնել Glacier-ից",
+            "restoreTier": "Վերականգնման մակարդակ",
+            "restoreDays": "Վերականգնված պատճենի պահպանման օրեր",
+            "restoreStarted": "Վերականգնումը պահանջվել է. պատրաստ լինելուց հետո պատճենը կմնա ընթեռնելի {days} օր",
+            "objectTags": "Օբյեկտի պիտակներ",
+            "noTags": "Պիտակներ չկան",
+            "tagKey": "Բանալի",
+            "tagValue": "Արժեք",
+            "tagsSaved": "Պիտակները պահպանվեցին"
+        },
+        "azure": {
+            "accessTier": "Հասանելիության մակարդակ",
+            "accessTierChanged": "Հասանելիության մակարդակը սահմանվեց՝ {tier}"
         },
         "fileComments": {
             "title": "Մեկնաբանություններ",

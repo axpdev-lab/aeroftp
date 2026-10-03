@@ -121,8 +121,6 @@
             "aerocloudDesc": "Alakítson bármely szervert személyes felhővé automatikus szinkronizálással",
             "configureAerocloud": "AeroCloud beállítása",
             "aerocloudHelp": "Az AeroCloud-ot az állapotsorból is konfigurálhatja",
-            "selectProviderPrompt": "Válasszon szolgáltatót fentről, vagy válassza az \"Egyéni\" lehetőséget a manuális beállításhoz",
-            "custom": "Egyéni",
             "change": "Módosítás",
             "emailAccount": "E-mail fiók",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Hozzon létre egy API-kulcsot az Immich → User Settings → API Keys menüben",
             "immichOps": "Böngészés, feltöltés, letöltés, törlés, albumok, keresés, megosztási linkek. Az átnevezés és áthelyezés nem támogatott.",
             "generatePassword": "Jelszó generálása",
-            "saveAndConnect": "Mentés és csatlakozás",
-            "saveDisabledTotp": "A TOTP kódok egyszer használatosak. Használja a Mentés és csatlakozás gombot a kód azonnali alkalmazásához.",
             "generatePersonalLoginToken": "Személyes bejelentkezési token létrehozása",
             "endpointUrl": "Végpont URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 natív API: extra funkciók az S3-kompatibilis verzióhoz képest",
@@ -1470,6 +1466,7 @@
             "extracted": "Kibontva!",
             "extractedTo": "Fájlok kibontva ide: {dest}",
             "fileLocked": "Fájl zárolva",
+            "cutPartial": "{moved}/{total} elem áthelyezve; a többi a helyén marad",
             "fileSkipped": "{count} fájl kihagyva",
             "fileUnlocked": "Fájl feloldva",
             "loadTrashFailed": "Lomtár betöltése sikertelen",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Ezt az eszközt a csevegés hátralévő részére hagyja jóvá.",
             "approve": "Jóváhagyás",
             "rememberForChat": "Az eszköz engedélyezése a csevegés hátralévő részére"
+        },
+        "s3": {
+            "storageClass": "Tárolási osztály",
+            "storageClassChanged": "A tárolási osztály módosítva: {storageClass}",
+            "restoreFromGlacier": "Visszaállítás a Glacierből",
+            "restoreTier": "Lekérési szint",
+            "restoreDays": "A visszaállított másolat megőrzési napjai",
+            "restoreStarted": "Visszaállítás kérve: ha elkészült, a másolat {days} napig olvasható marad",
+            "objectTags": "Objektumcímkék",
+            "noTags": "Nincs címke",
+            "tagKey": "Kulcs",
+            "tagValue": "Érték",
+            "tagsSaved": "Címkék mentve"
+        },
+        "azure": {
+            "accessTier": "Hozzáférési szint",
+            "accessTierChanged": "Hozzáférési szint beállítva: {tier}"
         },
         "fileComments": {
             "title": "Megjegyzések",

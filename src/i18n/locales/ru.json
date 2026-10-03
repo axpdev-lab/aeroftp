@@ -121,8 +121,6 @@
             "aerocloudDesc": "Превратите любой сервер в персональное облако с автоматической синхронизацией",
             "configureAerocloud": "Настроить AeroCloud",
             "aerocloudHelp": "Вы также можете настроить AeroCloud из строки состояния",
-            "selectProviderPrompt": "Выберите провайдера выше или выберите \"Custom\" для ручной настройки",
-            "custom": "Пользовательское",
             "change": "Изменить",
             "emailAccount": "Учётная запись электронной почты",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Создайте API-ключ в Immich → User Settings → API Keys",
             "immichOps": "Обзор, загрузка, скачивание, удаление, альбомы, поиск, ссылки для обмена. Переименование и перемещение не поддерживаются.",
             "generatePassword": "Сгенерировать пароль",
-            "saveAndConnect": "Сохранить и подключиться",
-            "saveDisabledTotp": "Коды TOTP одноразовые. Используйте «Сохранить и подключиться», чтобы применить этот код сейчас.",
             "generatePersonalLoginToken": "Создать персональный токен входа",
             "endpointUrl": "URL конечной точки",
             "b2NativeAdvantagesTitle": "Нативный API Backblaze B2: дополнительные возможности по сравнению с S3-совместимым",
@@ -1470,6 +1466,7 @@
             "extracted": "Извлечено!",
             "extractedTo": "Файлы извлечены в {dest}",
             "fileLocked": "Файл заблокирован",
+            "cutPartial": "Перемещено {moved} из {total} элементов; остальные остались на месте",
             "fileSkipped": "Пропущено файлов: {count}",
             "fileUnlocked": "Файл разблокирован",
             "loadTrashFailed": "Не удалось загрузить корзину",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Разрешает этот инструмент до конца сеанса чата.",
             "approve": "Разрешить",
             "rememberForChat": "Разрешить этот инструмент до конца этого чата"
+        },
+        "s3": {
+            "storageClass": "Класс хранилища",
+            "storageClassChanged": "Класс хранилища изменён на {storageClass}",
+            "restoreFromGlacier": "Восстановить из Glacier",
+            "restoreTier": "Уровень извлечения",
+            "restoreDays": "Дней хранения восстановленной копии",
+            "restoreStarted": "Восстановление запрошено: когда копия будет готова, она останется доступной для чтения {days} дн.",
+            "objectTags": "Теги объекта",
+            "noTags": "Нет тегов",
+            "tagKey": "Ключ",
+            "tagValue": "Значение",
+            "tagsSaved": "Теги сохранены"
+        },
+        "azure": {
+            "accessTier": "Уровень доступа",
+            "accessTierChanged": "Уровень доступа установлен: {tier}"
         },
         "fileComments": {
             "title": "Комментарии",

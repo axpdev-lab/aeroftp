@@ -121,8 +121,6 @@
             "aerocloudDesc": "Breyttu hvaða þ jón sem er í persónulega skýinu þína með sjálfvirkri samstillingu",
             "configureAerocloud": "Stilla AeroCloud",
             "aerocloudHelp": "Þú getur einnig stillt AeroCloud frá stöðustikunni",
-            "selectProviderPrompt": "Veldu þjónustuveitu hér að ofan eða veldu \"Sérsniðið\" fyrir handvirka stillingu",
-            "custom": "Sérsniðið",
             "change": "Breyta",
             "emailAccount": "Tölvupóstreikningur",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Búðu til API-lykil í Immich → User Settings → API Keys",
             "immichOps": "Vafra, hlaða upp, hlaða niður, eyða, plötur, leita, deilihlekkir. Endurnefning og færsla eru ekki studd.",
             "generatePassword": "Búa til lykilorð",
-            "saveAndConnect": "Vista og tengja",
-            "saveDisabledTotp": "TOTP-kóðar eru einnota. Notaðu Vista og tengja til að beita þessum kóða núna.",
             "generatePersonalLoginToken": "Búa til persónulegt innskráningartóken",
             "endpointUrl": "Slóð endapunkts",
             "b2NativeAdvantagesTitle": "Backblaze B2 innfætt API: aukaeiginleikar umfram S3-samhæft",
@@ -1470,6 +1466,7 @@
             "extracted": "Afþjappað!",
             "extractedTo": "Skrár afþjappaðar í {dest}",
             "fileLocked": "Skrá læst",
+            "cutPartial": "Færði {moved} af {total} atriðum; hin eru áfram á sínum stað",
             "fileSkipped": "{count} skrá(r) sleppt",
             "fileUnlocked": "Skrá aflæst",
             "loadTrashFailed": "Hleðsla ruslafötu mistókst",
@@ -6103,6 +6100,23 @@
             "scopeSession": "Samþykkir þetta verkfæri það sem eftir er af spjallinu.",
             "approve": "Samþykkja",
             "rememberForChat": "Leyfa þetta verkfæri það sem eftir er af þessu spjalli"
+        },
+        "s3": {
+            "storageClass": "Geymsluflokkur",
+            "storageClassChanged": "Geymsluflokki breytt í {storageClass}",
+            "restoreFromGlacier": "Endurheimta úr Glacier",
+            "restoreTier": "Endurheimtustig",
+            "restoreDays": "Dagar sem endurheimta afritið er geymt",
+            "restoreStarted": "Endurheimt óskað: þegar afritið er tilbúið er hægt að lesa það í {days} daga",
+            "objectTags": "Merki hlutar",
+            "noTags": "Engin merki",
+            "tagKey": "Lykill",
+            "tagValue": "Gildi",
+            "tagsSaved": "Merki vistuð"
+        },
+        "azure": {
+            "accessTier": "Aðgangsstig",
+            "accessTierChanged": "Aðgangsstig stillt á {tier}"
         },
         "fileComments": {
             "title": "Athugasemdir",

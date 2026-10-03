@@ -5,13 +5,16 @@ import { describe, expect, it } from 'vitest';
 import type { TransferItem, TransferStatus, TransferType } from './TransferQueue';
 import {
     addItem,
+    applyItemProgress,
     clearRestoredFlags,
     computeFooterPercentage,
-    filterSurvivingBatchEntries,
+    createFileBatchDispatcher,
+    rearmedOnUserAction,
     listRestoredPendingIds,
     removeItem,
     removeRestoredPending,
     reorder,
+    rowForFileStart,
     stagedCount,
     startAll,
     startStaged,
@@ -197,59 +200,6 @@ describe('reorder', () => {
     });
 });
 
-describe('filterSurvivingBatchEntries (TQ-6 pruned-set)', () => {
-    type FakeEntry = { display_name: string; size: number };
-    const fakeEntries: Array<[string, FakeEntry]> = [
-        ['t1', { display_name: 'a.bin', size: 100 }],
-        ['t2', { display_name: 'b.bin', size: 200 }],
-        ['t3', { display_name: 'c.bin', size: 300 }],
-        ['t4', { display_name: 'd.bin', size: 400 }],
-        ['t5', { display_name: 'e.bin', size: 500 }],
-    ];
-
-    it('returns every entry when nothing was pruned', () => {
-        const idToEntry = new Map(fakeEntries);
-        const currentItems = fakeEntries.map(([id]) => ({ id }));
-        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
-        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'b.bin', 'c.bin', 'd.bin', 'e.bin']);
-    });
-
-    it("drops user-removed entries (ironhussar's 5-subdir example: prune 2 of 5)", () => {
-        const idToEntry = new Map(fakeEntries);
-        // Simulate the user removing t2 and t4 from the staged panel
-        const currentItems = [{ id: 't1' }, { id: 't3' }, { id: 't5' }];
-        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
-        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'c.bin', 'e.bin']);
-    });
-
-    it('returns an empty array when every entry was pruned', () => {
-        const idToEntry = new Map(fakeEntries);
-        const remaining = filterSurvivingBatchEntries(idToEntry, []);
-        expect(remaining).toEqual([]);
-    });
-
-    it('preserves the original insertion order, not the queue order', () => {
-        const idToEntry = new Map(fakeEntries);
-        // Even if the queue reports a reordered set, the entries come back in
-        // their original idToEntry insertion order (the backend expects the
-        // batch in the order the entries were enumerated, not in user-shuffled
-        // priority order).
-        const currentItems = [{ id: 't5' }, { id: 't3' }, { id: 't1' }];
-        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
-        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'c.bin', 'e.bin']);
-    });
-
-    it('ignores spurious ids in the queue that are not in the batch map', () => {
-        const idToEntry = new Map(fakeEntries);
-        // 'foreign' is a queue id that belongs to a different operation
-        // (e.g. an unrelated direct upload that races with the batch). The
-        // filter must not pick it up.
-        const currentItems = [{ id: 't1' }, { id: 'foreign' }, { id: 't2' }];
-        const remaining = filterSurvivingBatchEntries(idToEntry, currentItems);
-        expect(remaining.map(e => e.display_name)).toEqual(['a.bin', 'b.bin']);
-    });
-});
-
 describe('staged lifecycle scenario (TQ-6)', () => {
     // End-to-end check via the pure helpers: stage 5, prune 2, start all.
     // Mirrors ironhussar's reported flow on #180.
@@ -411,5 +361,236 @@ describe('TQ-7c restored resume helpers', () => {
         const { next, removedIds } = removeRestoredPending(items);
         expect(removedIds).toEqual([]);
         expect(next).toBe(items);
+    });
+});
+
+describe('createFileBatchDispatcher (#591)', () => {
+    const ids = ['q1', 'q2', 'q3', 'q4'];
+    const entries = ['e1', 'e2', 'e3', 'e4'];
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    function harness(firstStartRunsAll: boolean, landed: (ids: string[]) => string[] = ids => ids) {
+        const runs: string[][] = [];
+        // Row statuses move only when a test says so, in the order the real
+        // queue events arrive.
+        const status = new Map(ids.map(id => [id, 'pending']));
+        let release: () => void = () => {};
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const dispatcher = createFileBatchDispatcher({
+            ids,
+            entries,
+            run: async (batch: string[], runIds: string[]) => {
+                runs.push(batch);
+                await gate;
+                return new Set(landed(runIds));
+            },
+            statusOf: id => status.get(id),
+            firstStartRunsAll,
+        });
+        return { dispatcher, runs, status, release };
+    }
+
+    it('Start on staged rows: N callbacks in the same tick send ONE batch and no single file', async () => {
+        const { dispatcher, runs, release } = harness(true);
+        // The App effect calls every row's callback in the same tick.
+        for (const id of ids) dispatcher.callbackFor(id)();
+        release();
+        await flush();
+        await flush();
+        expect(runs).toEqual([entries]);
+    });
+
+    it('a second Start while the batch runs does not send its file again', async () => {
+        const { dispatcher, runs, release } = harness(true);
+        dispatcher.callbackFor('q1')();
+        dispatcher.callbackFor('q2')();
+        release();
+        await flush();
+        await flush();
+        expect(runs).toEqual([entries]);
+    });
+
+    it('rows removed from the queue before Start are left out', async () => {
+        const { dispatcher, runs, status, release } = harness(true);
+        status.delete('q3');
+        dispatcher.callbackFor('q1')();
+        release();
+        await flush();
+        expect(runs).toEqual([['e1', 'e2', 'e4']]);
+    });
+
+    it('auto-start ON sends every row even before the queue snapshot lists them', async () => {
+        const { dispatcher, runs, status, release } = harness(false);
+        status.clear(); // the rows were added in this same tick
+        const done = dispatcher.launchAll();
+        release();
+        await done;
+        expect(runs).toEqual([entries]);
+    });
+
+    it('Retry after the batch re-sends just that file', async () => {
+        const { dispatcher, runs, status, release } = harness(false, runIds => runIds.filter(id => id !== 'q2'));
+        const done = dispatcher.launchAll();
+        release();
+        await done;
+        status.set('q2', 'error'); // its file_error event
+        status.set('q2', 'pending'); // retryItem resets the row, then calls the callback
+        dispatcher.callbackFor('q2')();
+        await flush();
+        expect(runs).toEqual([entries, ['e2']]);
+    });
+
+    it('Retry pressed while the batch still runs is honoured once the batch ends', async () => {
+        const { dispatcher, runs, status, release } = harness(false, runIds =>
+            runIds.length > 1 ? runIds.filter(id => id !== 'q2') : runIds);
+        const done = dispatcher.launchAll();
+        // q2 already failed on screen; the user retries before the batch ends.
+        status.set('q2', 'error');
+        status.set('q2', 'pending');
+        dispatcher.callbackFor('q2')();
+        release();
+        await done;
+        await flush();
+        expect(runs).toEqual([entries, ['e2']]);
+    });
+
+    it('a file that landed is never sent twice, even if its row reads pending late', async () => {
+        const { dispatcher, runs, status, release } = harness(true);
+        for (const id of ids) dispatcher.callbackFor(id)();
+        release();
+        await flush();
+        // Event lag: the queue has not caught up with q4's completion yet.
+        status.set('q4', 'pending');
+        await flush();
+        expect(runs).toEqual([entries]);
+    });
+});
+
+describe('a settled row stays settled (#591)', () => {
+    // Late events used to reopen finished rows: a progress sample or a second
+    // start after the row completed left a finished batch showing as still
+    // transferring, and a late error overwrote the first, specific message.
+    it('a completed row is not reopened by a late start', () => {
+        const input = [makeItem('a', 'completed')];
+        expect(updateTransferStatus(input, 'a', 'transferring', 0)[0].status).toBe('completed');
+    });
+
+    it('a completed row does not flip to error', () => {
+        const input = [makeItem('a', 'completed')];
+        expect(updateTransferStatus(input, 'a', 'error', undefined, 'late')[0].status).toBe('completed');
+    });
+
+    it('an errored row keeps its first message', () => {
+        const input = [makeItem('a', 'error', { error: 'Permission denied' })];
+        const next = updateTransferStatus(input, 'a', 'error', undefined, 'Transfer failed');
+        expect(next[0].error).toBe('Permission denied');
+    });
+
+    it('an open row still moves to any state', () => {
+        const input = [makeItem('a', 'pending'), makeItem('b', 'transferring')];
+        expect(updateTransferStatus(input, 'a', 'transferring', 0)[0].status).toBe('transferring');
+        expect(updateTransferStatus(input, 'b', 'error', undefined, 'x')[1].status).toBe('error');
+        expect(updateTransferStatus(input, 'b', 'completed', 100)[1].status).toBe('completed');
+    });
+
+    it('a late progress sample does not reopen a finished row', () => {
+        const input = [makeItem('a', 'completed'), makeItem('b', 'error', { error: 'x' })];
+        expect(applyItemProgress(input, 'a', 40, 1000)[0].status).toBe('completed');
+        expect(applyItemProgress(input, 'b', 40, 1000)[1].status).toBe('error');
+    });
+
+    it('progress moves an open row to transferring', () => {
+        const next = applyItemProgress([makeItem('a', 'pending')], 'a', 40, 1000);
+        expect(next[0]).toMatchObject({ status: 'transferring', progress: 40, speedBps: 1000 });
+    });
+
+    it('progress leaves a staged row staged (nothing runs before Start)', () => {
+        expect(applyItemProgress([makeItem('a', 'staged')], 'a', 40)[0].status).toBe('staged');
+    });
+});
+
+describe('rowForFileStart (#591)', () => {
+    const file = { filename: 'f.bin', path: '/d/f.bin', type: 'download' as TransferType };
+
+    it('a registered row wins over a same-named pending row', () => {
+        const items = [makeItem('other', 'pending', { filename: 'f.bin', path: '/d/f.bin' })];
+        expect(rowForFileStart('mine', items, file)).toBe('mine');
+    });
+
+    it('a registered row is used even before the queue lists it', () => {
+        expect(rowForFileStart('mine', [], file)).toBe('mine');
+    });
+
+    it('without a registration it matches the pending row of the same file', () => {
+        const items = [
+            makeItem('done', 'completed', { filename: 'f.bin', path: '/d/f.bin', type: 'download' }),
+            makeItem('up', 'pending', { filename: 'f.bin', path: '/d/f.bin', type: 'upload' }),
+            makeItem('wait', 'pending', { filename: 'f.bin', path: '/d/f.bin', type: 'download' }),
+        ];
+        expect(rowForFileStart(undefined, items, file)).toBe('wait');
+    });
+
+    it('without a registration or a pending match it asks for a new row', () => {
+        const items = [makeItem('x', 'pending', { filename: 'f.bin', path: '/other/f.bin' })];
+        expect(rowForFileStart(undefined, items, file)).toBeNull();
+    });
+});
+
+describe('rearmedOnUserAction (#591, cancel state across Stop, Start and Retry)', () => {
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+    // A runner that honours the frontend flag the way runSingles does: a row
+    // reached while the flag is up is cancelled, never started.
+    function setup() {
+        const cancel = { batchCancelled: { current: false }, cancelLevel: { current: 0 } };
+        const started: string[] = [];
+        const cancelled: string[] = [];
+        let stopAfter: string | null = null;
+        const dispatcher = createFileBatchDispatcher({
+            ids: ['a', 'b', 'c'],
+            entries: ['A', 'B', 'C'],
+            firstStartRunsAll: true,
+            statusOf: () => 'pending',
+            run: async (_entries: string[], runIds: string[]) => {
+                const landed = new Set<string>();
+                for (const id of runIds) {
+                    await Promise.resolve();
+                    if (cancel.batchCancelled.current) { cancelled.push(id); continue; }
+                    started.push(id);
+                    landed.add(id);
+                    if (id === stopAfter) cancel.batchCancelled.current = true;
+                }
+                return landed;
+            },
+        });
+        return { cancel, started, cancelled, dispatcher, stopAt: (id: string) => { stopAfter = id; } };
+    }
+
+    it('a Start after an earlier Stop runs the staged rows', async () => {
+        const { cancel, started, cancelled, dispatcher } = setup();
+        cancel.batchCancelled.current = true; // left up by a Stop on an earlier transfer
+        cancel.cancelLevel.current = 1;
+        rearmedOnUserAction(cancel, dispatcher.callbackFor('a'))();
+        await flush();
+        expect(started).toEqual(['a', 'b', 'c']);
+        expect(cancelled).toEqual([]);
+        expect(cancel.cancelLevel.current).toBe(0);
+    });
+
+    it('the flag left up by a Stop cancels the rows when nothing re-arms it (the defect)', async () => {
+        const { cancel, started, cancelled, dispatcher } = setup();
+        cancel.batchCancelled.current = true;
+        dispatcher.callbackFor('a')();
+        await flush();
+        expect(started).toEqual([]);
+        expect(cancelled).toEqual(['a', 'b', 'c']);
+    });
+
+    it('a Stop during the run still keeps the later rows from starting', async () => {
+        const { cancel, started, cancelled, dispatcher, stopAt } = setup();
+        stopAt('a');
+        rearmedOnUserAction(cancel, dispatcher.callbackFor('a'))();
+        await flush();
+        expect(started).toEqual(['a']);
+        expect(cancelled).toEqual(['b', 'c']);
     });
 });

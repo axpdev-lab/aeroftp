@@ -121,8 +121,6 @@
             "aerocloudDesc": "Trowch unrhyw weinydd yn eich cwmwl personol gyda chydamseru awtomatig",
             "configureAerocloud": "Ffurfweddu AeroCloud",
             "aerocloudHelp": "Gallwch hefyd ffurfweddu AeroCloud o'r bâr statws",
-            "selectProviderPrompt": "Dewiswch ddarparwr uchod neu dewiswch \"Personol\" ar gyfer ffurfweddiad â llaw",
-            "custom": "Personol",
             "change": "Newid",
             "emailAccount": "Cyfrif e-bost",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Cynhyrchwch allwedd API yn Immich → User Settings → API Keys",
             "immichOps": "Pori, uwchlwytho, lawrlwytho, dileu, albymau, chwilio, dolenni rhannu. Ni chefnogir ailenwi na symud.",
             "generatePassword": "Cynhyrchu cyfrinair",
-            "saveAndConnect": "Cadw a Chysylltu",
-            "saveDisabledTotp": "Mae codau TOTP yn rhai un-defnydd. Defnyddiwch Cadw a Chysylltu i gymhwyso'r cod hwn nawr.",
             "generatePersonalLoginToken": "Cynhyrchu tocyn mewngofnodi personol",
             "endpointUrl": "URL pwynt terfyn",
             "b2NativeAdvantagesTitle": "API brodorol Backblaze B2: nodweddion ychwanegol dros y fersiwn cydnaws ag S3",
@@ -1470,6 +1466,7 @@
             "extracted": "Wedi echdynnu!",
             "extractedTo": "Ffeiliau wedi'u hechdynnu i {dest}",
             "fileLocked": "Ffeil wedi'i chloi",
+            "cutPartial": "Symudwyd {moved} o {total} eitem; mae'r gweddill yn aros yn eu lle",
             "fileSkipped": "{count} ffeil wedi'u hepgor",
             "fileUnlocked": "Ffeil wedi'i datgloi",
             "loadTrashFailed": "Methwyd llwytho'r sbwriel",
@@ -6103,6 +6100,23 @@
             "scopeSession": "Yn cymeradwyo'r offeryn hwn am weddill y sesiwn sgwrsio.",
             "approve": "Cymeradwyo",
             "rememberForChat": "Caniatáu'r offeryn hwn am weddill y sgwrs hon"
+        },
+        "s3": {
+            "storageClass": "Dosbarth Storio",
+            "storageClassChanged": "Newidiwyd y dosbarth storio i {storageClass}",
+            "restoreFromGlacier": "Adfer o Glacier",
+            "restoreTier": "Haen adfer",
+            "restoreDays": "Diwrnodau i gadw'r copi a adferwyd",
+            "restoreStarted": "Gofynnwyd am adfer: unwaith y bydd yn barod, bydd y copi'n ddarllenadwy am {days} diwrnod",
+            "objectTags": "Tagiau Gwrthrych",
+            "noTags": "Dim tagiau",
+            "tagKey": "Allwedd",
+            "tagValue": "Gwerth",
+            "tagsSaved": "Tagiau wedi'u cadw"
+        },
+        "azure": {
+            "accessTier": "Haen Mynediad",
+            "accessTierChanged": "Gosodwyd yr haen mynediad i {tier}"
         },
         "fileComments": {
             "title": "Sylwadau",

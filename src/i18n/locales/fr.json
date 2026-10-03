@@ -121,8 +121,6 @@
             "aerocloudDesc": "Transformez n'importe quel serveur en votre cloud personnel avec synchronisation automatique",
             "configureAerocloud": "Configurer AeroCloud",
             "aerocloudHelp": "Vous pouvez également configurer AeroCloud depuis la barre d'état",
-            "selectProviderPrompt": "Sélectionnez un fournisseur ci-dessus ou choisissez \"Personnalisé\" pour une configuration manuelle",
-            "custom": "Personnalisé",
             "change": "Modifier",
             "emailAccount": "Compte e-mail",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Générez une clé API dans Immich → User Settings → API Keys",
             "immichOps": "Parcourir, envoyer, télécharger, supprimer, albums, recherche, liens de partage. Le renommage et le déplacement ne sont pas pris en charge.",
             "generatePassword": "Générer un mot de passe",
-            "saveAndConnect": "Enregistrer et connecter",
-            "saveDisabledTotp": "Les codes TOTP sont à usage unique. Utilisez Enregistrer et connecter pour appliquer ce code maintenant.",
             "generatePersonalLoginToken": "Générer un jeton de connexion personnel",
             "endpointUrl": "URL du point de terminaison",
             "b2NativeAdvantagesTitle": "API native Backblaze B2 : fonctionnalités supplémentaires par rapport à la version compatible S3",
@@ -1470,6 +1466,7 @@
             "extracted": "Extrait !",
             "extractedTo": "Fichiers extraits dans {dest}",
             "fileLocked": "Fichier verrouillé",
+            "cutPartial": "{moved} élément(s) déplacé(s) sur {total} ; les autres restent en place",
             "fileSkipped": "{count} fichier(s) ignoré(s)",
             "fileUnlocked": "Fichier déverrouillé",
             "loadTrashFailed": "Échec du chargement de la corbeille",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Approuve cet outil pour le reste de la session de chat.",
             "approve": "Approuver",
             "rememberForChat": "Autoriser cet outil pour le reste de cette conversation"
+        },
+        "s3": {
+            "storageClass": "Classe de stockage",
+            "storageClassChanged": "Classe de stockage changée en {storageClass}",
+            "restoreFromGlacier": "Restaurer depuis Glacier",
+            "restoreTier": "Niveau de récupération",
+            "restoreDays": "Jours de conservation de la copie restaurée",
+            "restoreStarted": "Restauration demandée : une fois prête, la copie restera lisible pendant {days} jours",
+            "objectTags": "Balises de l'objet",
+            "noTags": "Aucune balise",
+            "tagKey": "Clé",
+            "tagValue": "Valeur",
+            "tagsSaved": "Balises enregistrées"
+        },
+        "azure": {
+            "accessTier": "Niveau d'accès",
+            "accessTierChanged": "Niveau d'accès défini sur {tier}"
         },
         "fileComments": {
             "title": "Commentaires",

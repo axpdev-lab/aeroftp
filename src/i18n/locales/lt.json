@@ -121,8 +121,6 @@
             "aerocloudDesc": "Paverskite bet kurį serverį savo asmeniniu debesiu su automatiniu sinchronizavimu",
             "configureAerocloud": "Konfigūruoti AeroCloud",
             "aerocloudHelp": "AeroCloud taip pat galite konfigūruoti iš būsenos juostos",
-            "selectProviderPrompt": "Pasirinkite tiekėją aukščiau arba pasirinkite \"Pasirinktinis\" rankinei konfigūracijai",
-            "custom": "Pasirinktinis",
             "change": "Keisti",
             "emailAccount": "El. pašto paskyra",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Sugeneruokite API raktą Immich → User Settings → API Keys",
             "immichOps": "Naršymas, įkėlimas, atsisiuntimas, trynimas, albumai, paieška, bendrinimo nuorodos. Pervadinimas ir perkėlimas nepalaikomi.",
             "generatePassword": "Generuoti slaptažodį",
-            "saveAndConnect": "Įrašyti ir prisijungti",
-            "saveDisabledTotp": "TOTP kodai yra vienkartiniai. Naudokite Įrašyti ir prisijungti, kad pritaikytumėte šį kodą dabar.",
             "generatePersonalLoginToken": "Generuoti asmeninį prisijungimo žetoną",
             "endpointUrl": "Galinio taško URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 vietinė API: papildomos funkcijos, palyginti su S3 suderinama",
@@ -1470,6 +1466,7 @@
             "extracted": "Išskleista!",
             "extractedTo": "Failai išskleisti į {dest}",
             "fileLocked": "Failas užrakintas",
+            "cutPartial": "Perkelta {moved} iš {total} elementų; kiti lieka savo vietoje",
             "fileSkipped": "{count} failų praleista",
             "fileUnlocked": "Failas atrakintas",
             "loadTrashFailed": "Nepavyko įkelti šiukšliadėžės",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Patvirtina šį įrankį iki pokalbio seanso pabaigos.",
             "approve": "Patvirtinti",
             "rememberForChat": "Leisti šį įrankį iki šio pokalbio pabaigos"
+        },
+        "s3": {
+            "storageClass": "Saugyklos klasė",
+            "storageClassChanged": "Saugyklos klasė pakeista į {storageClass}",
+            "restoreFromGlacier": "Atkurti iš Glacier",
+            "restoreTier": "Gavimo lygis",
+            "restoreDays": "Atkurtos kopijos laikymo dienos",
+            "restoreStarted": "Atkūrimas užklaustas: kai bus paruošta, kopiją bus galima skaityti {days} d.",
+            "objectTags": "Objekto žymos",
+            "noTags": "Žymų nėra",
+            "tagKey": "Raktas",
+            "tagValue": "Reikšmė",
+            "tagsSaved": "Žymos išsaugotos"
+        },
+        "azure": {
+            "accessTier": "Prieigos lygis",
+            "accessTierChanged": "Prieigos lygis nustatytas į {tier}"
         },
         "fileComments": {
             "title": "Komentarai",

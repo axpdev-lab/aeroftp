@@ -1388,7 +1388,6 @@
             "connectionFailed": "Connection failed",
             "connectionNameOptional": "Connection name (optional)",
             "connectionNamePlaceholder": "Connection Name (e.g. My Cloud)",
-            "custom": "Custom",
             "disconnected": "Disconnected",
             "createAccount": "Create Account",
             "generatePassword": "Generate Password",
@@ -1561,15 +1560,12 @@
             "saveToServers": "Save to Saved Servers",
             "secretAccessKey": "Secret Access Key",
             "secureLogin": "Secure Login",
-            "saveAndConnect": "Save & Connect",
-            "saveDisabledTotp": "TOTP codes are single-use. Use Save & Connect to apply this code now.",
             "securityEncryption": "Optional master password with Argon2id key derivation",
             "securityKeyring": "AES-256-GCM encrypted vault - stored locally on your device",
             "securityNoSend": "No cloud sync, no telemetry - your data stays on your machine",
             "securityTitle": "Encrypted credential storage",
             "securityTLS": "TLS 1.3 / SSH encryption for all connections",
             "selectProtocolPrompt": "Select a protocol above to configure your connection",
-            "selectProviderPrompt": "Select a provider above or choose \"Custom\"",
             "selectSshKey": "Select SSH Private Key",
             "server": "Server",
             "endpointUrl": "Endpoint URL",
@@ -4195,6 +4191,7 @@
             "fileSaved": "File Saved",
             "fileSavedLocal": "{name} saved locally",
             "fileSavedRemote": "{name} saved to server",
+            "cutPartial": "Moved {moved} of {total} items; the rest stay in place",
             "fileSkipped": "{count} file(s) skipped",
             "fileUnlocked": "File unlocked",
             "fillBucket": "Please fill in bucket name",
@@ -5376,6 +5373,23 @@
         "fileComments": {
             "title": "Comments",
             "empty": "No comments yet"
+        },
+        "s3": {
+            "storageClass": "Storage Class",
+            "storageClassChanged": "Storage class changed to {storageClass}",
+            "restoreFromGlacier": "Restore from Glacier",
+            "restoreTier": "Retrieval tier",
+            "restoreDays": "Days to keep the restored copy",
+            "restoreStarted": "Restore requested: once ready, the copy stays readable for {days} days",
+            "objectTags": "Object Tags",
+            "noTags": "No tags",
+            "tagKey": "Key",
+            "tagValue": "Value",
+            "tagsSaved": "Tags saved"
+        },
+        "azure": {
+            "accessTier": "Access Tier",
+            "accessTierChanged": "Access tier set to {tier}"
         },
         "dropbox": {
             "manageTags": "Manage Tags"

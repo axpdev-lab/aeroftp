@@ -494,11 +494,11 @@ export function IntroHub(props: IntroHubProps) {
                             form to the original profile, so the unified mode
                             tabs disappeared and the switch was lost (#215
                             follow-up). handleProtocolChange already syncs the
-                            form on protocol change, and handleProtocolSelectorOpenChange
-                            is formOnly-guarded, so no remount is needed. */}
+                            form on protocol change, and opening the protocol
+                            selector no longer clears the form, so no remount
+                            is needed. */}
                         <ConnectionScreen
                             key={activeFormTab.id}
-                            formOnly
                             connectionParams={activeFormTab.connectionParams}
                             quickConnectDirs={activeFormTab.quickConnectDirs}
                             loading={loading}
@@ -522,14 +522,7 @@ export function IntroHub(props: IntroHubProps) {
                                 setActiveTab('my-servers');
                                 onServersChanged?.();
                             }}
-                            onSkipToFileManager={() => { handleCloseFormTab(activeFormTab.id); onSkipToFileManager(); }}
-                            onAeroFile={onAeroFile}
-                            onAeroCloud={onAeroCloud}
-                            isAeroCloudConfigured={isAeroCloudConfigured}
-                            isAeroCloudConnected={isAeroCloudConnected}
                             onOpenCloudPanel={onOpenCloudPanel}
-                            hasExistingSessions={hasExistingSessions}
-                            sessionCount={sessionCount}
                             serversRefreshKey={serversRefreshKey}
                         />
                     </div>

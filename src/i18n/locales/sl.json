@@ -121,8 +121,6 @@
             "aerocloudDesc": "Spremenite kateri koli strežnik v svoj osebni oblak s samodejno sinhronizacijo",
             "configureAerocloud": "Konfiguriraj AeroCloud",
             "aerocloudHelp": "AeroCloud lahko konfigurirate tudi iz vrstice stanja",
-            "selectProviderPrompt": "Izberite ponudnika zgoraj ali izberite \"Po meri\" za ročno konfiguracijo",
-            "custom": "Po meri",
             "change": "Spremeni",
             "emailAccount": "E-poštni račun",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Ustvarite API ključ v Immich → User Settings → API Keys",
             "immichOps": "Brskanje, nalaganje, prenos, brisanje, albumi, iskanje, povezave za skupno rabo. Preimenovanje in premikanje nista podprta.",
             "generatePassword": "Ustvari geslo",
-            "saveAndConnect": "Shrani in poveži",
-            "saveDisabledTotp": "Kode TOTP so za enkratno uporabo. Uporabite Shrani in poveži, da to kodo uporabite zdaj.",
             "generatePersonalLoginToken": "Ustvari osebni žeton za prijavo",
             "endpointUrl": "URL končne točke",
             "b2NativeAdvantagesTitle": "Izvorni API Backblaze B2: dodatne funkcije v primerjavi z združljivim s S3",
@@ -1470,6 +1466,7 @@
             "extracted": "Izvlečeno!",
             "extractedTo": "Datoteke izvlečene v {dest}",
             "fileLocked": "Datoteka zaklenjena",
+            "cutPartial": "Premaknjenih {moved} od {total} elementov; ostali ostanejo na mestu",
             "fileSkipped": "{count} datotek(e) preskočenih",
             "fileUnlocked": "Datoteka odklenjena",
             "loadTrashFailed": "Nalaganje koša neuspešno",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Odobri to orodje do konca seje klepeta.",
             "approve": "Odobri",
             "rememberForChat": "Dovoli to orodje do konca tega klepeta"
+        },
+        "s3": {
+            "storageClass": "Razred shrambe",
+            "storageClassChanged": "Razred shrambe spremenjen v {storageClass}",
+            "restoreFromGlacier": "Obnovi iz Glacier",
+            "restoreTier": "Raven pridobivanja",
+            "restoreDays": "Dnevi hrambe obnovljene kopije",
+            "restoreStarted": "Obnovitev zahtevana: ko bo pripravljena, bo kopija berljiva {days} dni",
+            "objectTags": "Oznake predmeta",
+            "noTags": "Ni oznak",
+            "tagKey": "Ključ",
+            "tagValue": "Vrednost",
+            "tagsSaved": "Oznake shranjene"
+        },
+        "azure": {
+            "accessTier": "Raven dostopa",
+            "accessTierChanged": "Raven dostopa nastavljena na {tier}"
         },
         "fileComments": {
             "title": "Komentarji",

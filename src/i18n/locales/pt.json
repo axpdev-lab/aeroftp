@@ -121,8 +121,6 @@
             "aerocloudDesc": "Transforme qualquer servidor na sua nuvem pessoal com sincronização automática",
             "configureAerocloud": "Configurar AeroCloud",
             "aerocloudHelp": "Também pode configurar o AeroCloud a partir da barra de estado",
-            "selectProviderPrompt": "Selecione um fornecedor acima ou escolha \"Personalizado\" para configuração manual",
-            "custom": "Personalizado",
             "change": "Alterar",
             "emailAccount": "Conta de e-mail",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Gere uma chave API em Immich → User Settings → API Keys",
             "immichOps": "Navegar, enviar, descarregar, eliminar, álbuns, pesquisar, links de partilha. Renomear e mover não são suportados.",
             "generatePassword": "Gerar senha",
-            "saveAndConnect": "Salvar e conectar",
-            "saveDisabledTotp": "Os códigos TOTP são de uso único. Use Salvar e conectar para aplicar este código agora.",
             "generatePersonalLoginToken": "Gerar token de login pessoal",
             "endpointUrl": "URL do endpoint",
             "b2NativeAdvantagesTitle": "API nativa Backblaze B2: recursos extras em relação ao compatível com S3",
@@ -1470,6 +1466,7 @@
             "extracted": "Extraido!",
             "extractedTo": "Arquivos extraidos para {dest}",
             "fileLocked": "Arquivo bloqueado",
+            "cutPartial": "Movidos {moved} de {total} itens; os restantes ficam no lugar",
             "fileSkipped": "{count} arquivo(s) ignorado(s)",
             "fileUnlocked": "Arquivo desbloqueado",
             "loadTrashFailed": "Falha ao carregar a lixeira",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Aprova esta ferramenta pelo resto da sessão de chat.",
             "approve": "Aprovar",
             "rememberForChat": "Permitir esta ferramenta pelo resto deste chat"
+        },
+        "s3": {
+            "storageClass": "Classe de armazenamento",
+            "storageClassChanged": "Classe de armazenamento alterada para {storageClass}",
+            "restoreFromGlacier": "Restaurar do Glacier",
+            "restoreTier": "Nível de recuperação",
+            "restoreDays": "Dias para manter a cópia restaurada",
+            "restoreStarted": "Restauração solicitada: quando estiver pronta, a cópia ficará legível por {days} dias",
+            "objectTags": "Tags do objeto",
+            "noTags": "Sem tags",
+            "tagKey": "Chave",
+            "tagValue": "Valor",
+            "tagsSaved": "Tags salvas"
+        },
+        "azure": {
+            "accessTier": "Nível de acesso",
+            "accessTierChanged": "Nível de acesso definido como {tier}"
         },
         "fileComments": {
             "title": "Comentários",

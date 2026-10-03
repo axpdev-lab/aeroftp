@@ -250,8 +250,6 @@
             "aerocloudDesc": "Trasforma qualsiasi server nel tuo cloud personale con sincronizzazione automatica",
             "configureAerocloud": "Configura AeroCloud",
             "aerocloudHelp": "Puoi anche configurare AeroCloud dalla barra di stato",
-            "selectProviderPrompt": "Seleziona un provider sopra o scegli \"Personalizzato\"",
-            "custom": "Personalizzato",
             "change": "Cambia",
             "emailAccount": "Account Email",
             "megaEmailPlaceholder": "la-tua-email@mega.nz",
@@ -270,8 +268,6 @@
             "saveToServers": "Salva nei Server Salvati",
             "connectionNamePlaceholder": "Nome Connessione (es. Il Mio Filen Cloud)",
             "secureLogin": "Login Sicuro",
-            "saveAndConnect": "Salva e Connetti",
-            "saveDisabledTotp": "I codici TOTP sono monouso. Usa Salva e Connetti per applicare il codice ora.",
             "endToEndAes": "Crittografia end-to-end con AES-256-GCM",
             "megaConnectionMode": "Backend di connessione",
             "megaModeNative": "API native",
@@ -1993,6 +1989,7 @@
             "sizeFailed": "Calcolo dimensione fallito",
             "copyFailed": "Copia fallita",
             "copyNotSupported": "Copia lato server non supportata",
+            "cutPartial": "Spostati {moved} elementi su {total}; gli altri restano dove sono",
             "fileSkipped": "{count} file ignorati",
             "fileUnlocked": "File sbloccato",
             "fileLocked": "File bloccato",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Approva questo strumento per il resto della sessione di chat.",
             "approve": "Approva",
             "rememberForChat": "Consenti questo strumento per il resto di questa chat"
+        },
+        "s3": {
+            "storageClass": "Classe di archiviazione",
+            "storageClassChanged": "Classe di archiviazione modificata in {storageClass}",
+            "restoreFromGlacier": "Ripristina da Glacier",
+            "restoreTier": "Livello di recupero",
+            "restoreDays": "Giorni di conservazione della copia ripristinata",
+            "restoreStarted": "Ripristino richiesto: quando pronta, la copia resterà leggibile per {days} giorni",
+            "objectTags": "Tag dell'oggetto",
+            "noTags": "Nessun tag",
+            "tagKey": "Chiave",
+            "tagValue": "Valore",
+            "tagsSaved": "Tag salvati"
+        },
+        "azure": {
+            "accessTier": "Livello di accesso",
+            "accessTierChanged": "Livello di accesso impostato su {tier}"
         },
         "fileComments": {
             "title": "Commenti",

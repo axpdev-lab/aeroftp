@@ -121,8 +121,6 @@
             "aerocloudDesc": "যেকোনো সার্ভারকে স্বয়ংক্রিয় সিঙ্কের মাধ্যমে আপনার নিজস্ব ক্লাউডে পরিণত করুন",
             "configureAerocloud": "AeroCloud কনফিগার করুন",
             "aerocloudHelp": "আপনি স্ট্যাটাস বার থেকেও AeroCloud কনফিগার করতে পারেন",
-            "selectProviderPrompt": "উপরে একটি প্রোভাইডার নির্বাচন করুন বা ম্যানুয়াল কনফিগারেশনের জন্য \"কাস্টম\" বেছে নিন",
-            "custom": "কাস্টম",
             "change": "পরিবর্তন",
             "emailAccount": "ইমেল অ্যাকাউন্ট",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Immich → User Settings → API Keys-এ একটি API কী তৈরি করুন",
             "immichOps": "ব্রাউজ, আপলোড, ডাউনলোড, মুছুন, অ্যালবাম, অনুসন্ধান, শেয়ার লিংক। রিনেম এবং মুভ সমর্থিত নয়।",
             "generatePassword": "পাসওয়ার্ড জেনারেট করুন",
-            "saveAndConnect": "সংরক্ষণ করুন এবং সংযোগ করুন",
-            "saveDisabledTotp": "TOTP কোড একবার ব্যবহারযোগ্য। এই কোড এখন প্রয়োগ করতে „সংরক্ষণ করুন এবং সংযোগ করুন“ ব্যবহার করুন।",
             "generatePersonalLoginToken": "ব্যক্তিগত লগইন টোকেন তৈরি করুন",
             "endpointUrl": "এন্ডপয়েন্ট URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 নেটিভ API: S3-সামঞ্জস্যপূর্ণের উপর অতিরিক্ত বৈশিষ্ট্য",
@@ -1470,6 +1466,7 @@
             "extracted": "এক্সট্র্যাক্ট হয়েছে!",
             "extractedTo": "{dest}-এ ফাইল এক্সট্র্যাক্ট হয়েছে",
             "fileLocked": "ফাইল লক করা হয়েছে",
+            "cutPartial": "{total}টির মধ্যে {moved}টি আইটেম সরানো হয়েছে; বাকিগুলো নিজের জায়গায় আছে",
             "fileSkipped": "{count}টি ফাইল বাদ দেওয়া হয়েছে",
             "fileUnlocked": "ফাইল আনলক করা হয়েছে",
             "loadTrashFailed": "ট্র্যাশ লোড করা ব্যর্থ",
@@ -6084,6 +6081,23 @@
             "scopeSession": "চ্যাট সেশনের বাকি সময়ের জন্য এই টুলটি অনুমোদন করে।",
             "approve": "অনুমোদন করুন",
             "rememberForChat": "এই চ্যাটের বাকি সময়ের জন্য এই টুলটি অনুমোদন করুন"
+        },
+        "s3": {
+            "storageClass": "স্টোরেজ ক্লাস",
+            "storageClassChanged": "স্টোরেজ ক্লাস {storageClass}-এ পরিবর্তিত হয়েছে",
+            "restoreFromGlacier": "Glacier থেকে পুনরুদ্ধার",
+            "restoreTier": "পুনরুদ্ধারের স্তর",
+            "restoreDays": "পুনরুদ্ধার করা কপি রাখার দিন",
+            "restoreStarted": "পুনরুদ্ধারের অনুরোধ করা হয়েছে: প্রস্তুত হলে কপিটি {days} দিন পড়ার জন্য থাকবে",
+            "objectTags": "অবজেক্ট ট্যাগ",
+            "noTags": "কোনো ট্যাগ নেই",
+            "tagKey": "কী",
+            "tagValue": "মান",
+            "tagsSaved": "ট্যাগ সংরক্ষিত হয়েছে"
+        },
+        "azure": {
+            "accessTier": "অ্যাক্সেস টিয়ার",
+            "accessTierChanged": "অ্যাক্সেস টিয়ার {tier} সেট করা হয়েছে"
         },
         "fileComments": {
             "title": "মন্তব্য",

@@ -121,8 +121,6 @@
             "aerocloudDesc": "Biến bất kỳ máy chủ nào thành đám mây cá nhân với đồng bộ tự động",
             "configureAerocloud": "Cấu hình AeroCloud",
             "aerocloudHelp": "Bạn cũng có thể cấu hình AeroCloud từ thanh trạng thái",
-            "selectProviderPrompt": "Chọn nhà cung cấp ở trên hoặc chọn \"Custom\" để cấu hình thủ công",
-            "custom": "Tùy chỉnh",
             "change": "Thay đổi",
             "emailAccount": "Tài khoản email",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Tạo khóa API trong Immich → User Settings → API Keys",
             "immichOps": "Duyệt, tải lên, tải xuống, xóa, album, tìm kiếm, liên kết chia sẻ. Không hỗ trợ đổi tên và di chuyển.",
             "generatePassword": "Tạo mật khẩu",
-            "saveAndConnect": "Lưu và Kết nối",
-            "saveDisabledTotp": "Mã TOTP chỉ dùng được một lần. Hãy dùng Lưu và Kết nối để áp dụng mã này ngay bây giờ.",
             "generatePersonalLoginToken": "Tạo mã đăng nhập cá nhân",
             "endpointUrl": "URL điểm cuối",
             "b2NativeAdvantagesTitle": "API gốc Backblaze B2: tính năng bổ sung so với chế độ tương thích S3",
@@ -1470,6 +1466,7 @@
             "extracted": "Đã giải nén!",
             "extractedTo": "Đã giải nén tệp đến {dest}",
             "fileLocked": "Tệp đã khóa",
+            "cutPartial": "Đã di chuyển {moved}/{total} mục; các mục còn lại vẫn ở nguyên chỗ",
             "fileSkipped": "Đã bỏ qua {count} tệp",
             "fileUnlocked": "Tệp đã mở khóa",
             "loadTrashFailed": "Không thể tải thùng rác",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Phê duyệt công cụ này trong phần còn lại của phiên trò chuyện.",
             "approve": "Phê duyệt",
             "rememberForChat": "Cho phép công cụ này trong phần còn lại của cuộc trò chuyện"
+        },
+        "s3": {
+            "storageClass": "Lớp lưu trữ",
+            "storageClassChanged": "Đã đổi lớp lưu trữ thành {storageClass}",
+            "restoreFromGlacier": "Khôi phục từ Glacier",
+            "restoreTier": "Tầng truy xuất",
+            "restoreDays": "Số ngày giữ bản sao đã khôi phục",
+            "restoreStarted": "Đã yêu cầu khôi phục: khi sẵn sàng, bản sao sẽ đọc được trong {days} ngày",
+            "objectTags": "Thẻ đối tượng",
+            "noTags": "Không có thẻ",
+            "tagKey": "Khóa",
+            "tagValue": "Giá trị",
+            "tagsSaved": "Đã lưu thẻ"
+        },
+        "azure": {
+            "accessTier": "Tầng truy cập",
+            "accessTierChanged": "Đã đặt tầng truy cập thành {tier}"
         },
         "fileComments": {
             "title": "Bình luận",

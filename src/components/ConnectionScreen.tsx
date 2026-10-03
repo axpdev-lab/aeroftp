@@ -9,9 +9,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../utils/pickPath';
-import { readFile } from '@tauri-apps/plugin-fs';
-import { FolderOpen, HardDrive, ChevronRight, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, ArrowLeft, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
-import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
+import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
+import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { CryptSecretForm } from '../types';
 import { cryptSecretForms, hydratedSecretForms, secretFormsHalfRecorded } from '../utils/cryptSecretForm';
 import { CryptSecretFormChoice } from './CryptSecretFormChoice';
@@ -43,7 +42,6 @@ import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { CopySecretButton } from './common/CopySecretButton';
 import { OAuthConnect } from './OAuthConnect';
-import { ProviderSelector } from './ProviderSelector';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
 import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDefaultS3Region, parseS3EndpointParams, ProviderConfig } from '../providers';
@@ -109,16 +107,8 @@ interface ConnectionScreenProps {
     onConnectionParamsChange: (params: ConnectionParams) => void;
     onQuickConnectDirsChange: (dirs: QuickConnectDirs) => void;
     onConnect: (overrideParams?: ConnectionParams) => void;
-    onSkipToFileManager: () => void;
-    onAeroFile?: () => void;
-    onAeroCloud?: () => void;
-    isAeroCloudConfigured?: boolean;
-    isAeroCloudConnected?: boolean;
     onOpenCloudPanel?: () => void;
-    hasExistingSessions?: boolean;  // Show active sessions badge next to QuickConnect
-    sessionCount?: number;  // Number of open session tabs, shown as a count chip on the badge (#128-C)
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
-    formOnly?: boolean;  // IntroHub: center the form at max-w-640px
     editingProfile?: ServerProfile;  // IntroHub: auto-enter edit mode on mount for this profile
     onFormSaved?: () => void;  // IntroHub: callback after save/edit completes (to close form tab)
     onTabLabelChange?: (label: string) => void;  // IntroHub: update tab label when connection name changes
@@ -491,16 +481,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     onConnectionParamsChange,
     onQuickConnectDirsChange,
     onConnect,
-    onSkipToFileManager,
-    onAeroFile,
-    onAeroCloud,
-    isAeroCloudConfigured,
-    isAeroCloudConnected,
     onOpenCloudPanel,
-    hasExistingSessions = false,
-    sessionCount = 0,
     serversRefreshKey = 0,
-    formOnly = false,
     editingProfile,
     onFormSaved,
     onTabLabelChange,
@@ -575,7 +557,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [advancedUnlocked, setAdvancedUnlocked] = useState(false);
     const [showAdvancedWarning, setShowAdvancedWarning] = useState(false);
     const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
-        formOnly && connectionParams.providerId ? connectionParams.providerId : null
+        connectionParams.providerId ? connectionParams.providerId : null
     );
     const selectedProvider = selectedProviderId ? getProviderById(selectedProviderId) : null;
     // Group-wide account links: when the active config belongs to a provider
@@ -608,14 +590,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         || (activeProviderId ? getProviderById(activeProviderId) : null)
         || (protocol === 'swift' ? getProviderById('blomp') : null);
 
-    // Protocol selector open state (to hide form when selector is open)
-    const [isProtocolSelectorOpen, setIsProtocolSelectorOpen] = useState(false);
-
     // Track which preset fields have been unlocked for editing
     const [presetUnlocked, setPresetUnlocked] = useState<Record<string, boolean>>({});
 
-    // Track previous protocol for switch detection in handleProtocolChange
-    const previousProtocolRef = React.useRef<ProviderType | undefined>(undefined);
 
     // Issue #215: per-mode credential snapshots, in-memory for the lifetime
     // of one edit session. When a saved profile is switched between modes of
@@ -786,29 +763,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     })();
     const isBridgeMode = !!activeBridgeKind;
 
-    // When re-opening dropdown with a protocol already selected, clear the selection.
-    // In formOnly (IntroHub edit), keep everything: just open the dropdown overlay.
-    const handleProtocolSelectorOpenChange = (open: boolean) => {
-        setIsProtocolSelectorOpen(open);
-        if (open && protocol) {
-            previousProtocolRef.current = protocol;
-            if (!formOnly) {
-                onConnectionParamsChange({
-                    ...connectionParams,
-                    protocol: undefined,
-                });
-                setSelectedProviderId(null);
-                if (editingProfileId) {
-                    endEditSession();
-                    setConnectionName('');
-                    setCustomIconForSave(undefined);
-                    setFaviconForSave(undefined);
-                    setSaveConnection(false);
-                }
-            }
-        }
-    };
-
     // The active user's saved profiles, reloaded after every save and on
     // serversRefreshKey: the suggested-name check and the OAuth edit Save
     // compare against it. A failed read keeps the last list it had; the OAuth
@@ -912,24 +866,24 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     }, [protocol]);
 
-    // IntroHub formOnly: auto-enter edit mode when editingProfile prop is provided
+    // IntroHub: auto-enter edit mode when editingProfile prop is provided
     useEffect(() => {
-        if (formOnly && editingProfile && editingProfile.id !== editingProfileId) {
+        if (editingProfile && editingProfile.id !== editingProfileId) {
             handleEdit(editingProfile);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [formOnly, editingProfile?.id]);
+    }, [editingProfile?.id]);
 
-    // IntroHub formOnly: auto-select provider when providerId comes from Discover tab
+    // IntroHub: auto-select provider when providerId comes from Discover tab
     useEffect(() => {
-        if (formOnly && connectionParams.providerId && !editingProfile && !selectedProviderId) {
+        if (connectionParams.providerId && !editingProfile && !selectedProviderId) {
             const provider = getProviderById(connectionParams.providerId);
             if (provider) {
                 handleProviderSelect(provider);
             }
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [formOnly, connectionParams.providerId]);
+    }, [connectionParams.providerId]);
 
     // Hydrate MTP fingerprint when editing a saved device profile (or clear when leaving mtp).
     // On edit: auto-detect attached devices and preselect the fingerprint match so
@@ -1887,26 +1841,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    /**
-     * Edit mode helper for 2FA-aware providers (MEGA, Filen, Internxt).
-     * Saves the profile (TOTP stripped from the persisted options because it
-     * is single-use and rotates every 30s) and immediately triggers a connect
-     * with `connectionParams` still in memory, so the freshly-typed TOTP
-     * reaches the backend on this attempt and the server validates 2FA
-     * properly. Without this, "Save" + click on the saved card connects
-     * without the TOTP and either resumes the old session or fails with
-     * E_MFAREQUIRED. Issue #128.
-     */
-    const handleSaveAndConnect = async () => {
-        if (editingProfileId) {
-            await saveToServers();
-            // Don't reset the form: onConnect drives the route change that
-            // closes the panel; resetting here would race connectionParams
-            // away before the connect call can read the TOTP.
-        }
-        onConnect();
-    };
-
     // Persist a name / local-path (and remote path / icon) edit to an existing
     // OAuth or API profile WITHOUT re-running the OAuth sign-in. The shared footer
     // Save is hidden for OAuth providers (renderRightColumn hideSaveButton), so
@@ -2348,9 +2282,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleEdit = async (profile: ServerProfile) => {
-        // Close protocol selector dropdown so the form becomes visible
-        setIsProtocolSelectorOpen(false);
-
         // Reset form FIRST to clear previous server's data immediately
         // This prevents stale data from showing when switching between servers
         // Drop any per-mode credential snapshots from a previous edit (#215).
@@ -2637,12 +2568,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const handleProtocolChange = (newProtocol: ProviderType, providerId?: string) => {
         // When editing a saved connection and switching between compatible protocols (FTP/FTPS/SFTP),
         // keep edit mode and only update protocol + port.
-        // Use previousProtocolRef as fallback when protocol was cleared on dropdown open.
-        const effectiveOldProtocol = protocol || previousProtocolRef.current;
-        previousProtocolRef.current = undefined;
         if (editingProfileId
             && SWITCHABLE_PROTOCOLS.includes(newProtocol)
-            && SWITCHABLE_PROTOCOLS.includes(effectiveOldProtocol as ProviderType)
+            && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)
         ) {
             onConnectionParamsChange({
                 ...connectionParams,
@@ -2659,9 +2587,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // update protocol/providerId/options so the form re-renders with
         // mode-specific fields. The user then chooses Save-as-new or
         // Convert in the footer (modeChanged === true).
-        if (editingProfileId && effectiveOldProtocol) {
+        if (editingProfileId && protocol) {
             const oldProviderId = selectedProviderId || connectionParams.providerId || undefined;
-            const oldGroup = findActiveModeGroup(oldProviderId, effectiveOldProtocol);
+            const oldGroup = findActiveModeGroup(oldProviderId, protocol);
             const newGroup = findActiveModeGroup(providerId, newProtocol);
             if (oldGroup && oldGroup === newGroup) {
                 // Stash the credentials of the mode we are leaving, then look
@@ -2669,7 +2597,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // what was typed there (incl. options-level secrets), instead
                 // of wiping the API key / 2FA secret (#215). On a first visit
                 // there is no stash, so the original carry-over behaviour holds.
-                const oldKey = modeStashKey(oldProviderId, effectiveOldProtocol);
+                const oldKey = modeStashKey(oldProviderId, protocol);
                 modeCredentialSnapshotsRef.current[oldKey] = {
                     username: connectionParams.username,
                     password: connectionParams.password,
@@ -3121,7 +3049,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     );
 
     /**
-     * Renders the right column (paths + save + button) for formOnly 2-column layout.
+     * Renders the right column (paths + save + button) for the 2-column layout.
      * Also used inline for single-column providers.
      * This replaces 9+ duplicated blocks across protocol branches.
      */
@@ -3852,7 +3780,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    // In formOnly mode: wider for 2-column protocols, narrower for single-column providers
+    // Card width: wider for 2-column protocols, narrower for single-column providers
     const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'twake', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
         // #215 harmonization: OAuth clouds are now two-column too, so they get the
         // same wide card (max-w-4xl) as the rest instead of the narrow single-column one.
@@ -3863,16 +3791,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Proton Drive follows the MEGA / Filen layout: setup on the left.
         'proton'];
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
-    const formOnlyMaxW = formOnly ? (isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg') : 'max-w-5xl';
+    const cardMaxW = isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg';
 
     return (
         <>
-        <div className={`w-full mx-auto relative z-10 ${formOnlyMaxW}`}>
-            <div className={formOnly ? '' : 'grid md:grid-cols-2 gap-6'}>
+        <div className={`w-full mx-auto relative z-10 ${cardMaxW}`}>
+            <div>
                 {/* Quick Connect */}
-                <div className={`min-w-0 w-full overflow-hidden ${formOnly ? 'bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-6' : 'bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-6'}`}>
-                    {/* Header: simplified in formOnly (just title, no buttons) */}
-                    {formOnly ? (
+                <div className="min-w-0 w-full overflow-hidden bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-6">
+                    {/* Header: title and the "Connect to X" subtitle */}
                     <div className="mb-4">
                         <div className="flex items-start justify-between">
                             <div>
@@ -3982,53 +3909,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             })()}
                         </div>
                     </div>
-                    ) : (
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-xl font-semibold">{t('connection.quickConnect')}</h2>
-                            {hasExistingSessions && (
-                                <button
-                                    onClick={onSkipToFileManager}
-                                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-800/40 transition-colors"
-                                    title={t('connection.activeSessions')}
-                                >
-                                    <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                    <span className="text-xs font-medium">{t('connection.activeSessions')}</span>
-                                    {sessionCount > 0 && (
-                                        <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-green-200/70 dark:bg-green-800/50 text-green-800 dark:text-green-300">{sessionCount}</span>
-                                    )}
-                                </button>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            {onAeroCloud && (
-                                <button
-                                    onClick={onAeroCloud}
-                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
-                                        isAeroCloudConnected
-                                            ? 'bg-sky-50 dark:bg-sky-900/30 hover:bg-sky-100 dark:hover:bg-sky-800/40 text-sky-600 dark:text-sky-400'
-                                            : isAeroCloudConfigured
-                                                ? 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-500 dark:text-gray-400'
-                                                : 'bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-400 dark:text-gray-500'
-                                    }`}
-                                    title={isAeroCloudConfigured ? 'AeroCloud' : 'Configure AeroCloud'}
-                                >
-                                    <Cloud size={16} />
-                                    {isAeroCloudConnected && <span className="w-1.5 h-1.5 rounded-full bg-green-500" />}
-                                </button>
-                            )}
-                            {onAeroFile && (
-                                <button
-                                    onClick={onAeroFile}
-                                    className="flex items-center p-1.5 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-400 rounded-lg transition-colors"
-                                    title="AeroFile"
-                                >
-                                    <FolderOpen size={18} />
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    )}
                     <div className="space-y-3">
                         {/* Account-wide mode credentials affect which protocol can
                             be selected, so keep this directly above the selector;
@@ -4046,13 +3926,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 </p>
                             </div>
                         )}
-                        {/* Protocol Selector - hidden in formOnly unless editing a switchable protocol (FTP/FTPS/SFTP) */}
-                        {(!formOnly || (editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType))) && (
+                        {/* Protocol Selector: only while editing a switchable protocol (FTP/FTPS/SFTP) */}
+                        {(editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)) && (
                         <ProtocolSelector
                             value={protocol}
                             onChange={handleProtocolChange}
                             disabled={loading}
-                            onOpenChange={handleProtocolSelectorOpenChange}
                             ftpTlsMode={connectionParams.options?.tlsMode}
                             allowedProtocols={editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType) ? SWITCHABLE_PROTOCOLS : undefined}
                         />
@@ -4081,9 +3960,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             onBridgeUiStateChange={setBridgeUiState}
                         />
 
-                        {/* Show form only when protocol is selected AND selector is closed */}
-                        {!protocol || (isProtocolSelectorOpen && !formOnly) ? (
-                            /* No protocol selected or selector is open - show selection prompt + security info */
+                        {/* Show the form once a protocol is selected */}
+                        {!protocol ? (
+                            /* No protocol selected: show selection prompt + security info */
                             <div className="py-6 space-y-6">
                                 <p className="text-sm text-center text-gray-500 dark:text-gray-400">{t('connection.selectProtocolPrompt')}</p>
                                 {/* Security Info Box: collapsible */}
@@ -4321,20 +4200,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     onConnect(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
                                 }}
                             />
-                        ) : (protocol === 's3' || protocol === 'webdav') && !selectedProviderId && !editingProfileId && !formOnly ? (
-                            /* Show provider selector for S3/WebDAV (skip when editing or formOnly) */
-                            <div className="py-2">
-                                <ProviderSelector
-                                    selectedProvider={selectedProviderId || undefined}
-                                    onSelect={handleProviderSelect}
-                                    category={protocol as any}
-                                    stableOnly={false}
-                                    compact={false}
-                                />
-                                <p className="text-xs text-gray-500 text-center mt-3">
-                                    {t('connection.selectProviderPrompt')}
-                                </p>
-                            </div>
                         ) : isPeer && !editingProfileId && !editingProfile ? (
                             /* AeroShare peer-ADD (reached via the Discover tile ->
                                onSelectProvider('peer')): render the SHARED handshake body
@@ -4450,7 +4315,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     remotePathPlaceholder: t('connection.mtpRemotePathPlaceholder'),
                                     connectionNameKey: connectionParams.server || mtpFingerprint?.model || t('connection.mtpDefaultName'),
                                     saveOverride: handleConnectAndSave,
-                                    cancelOverride: formOnly ? () => { onFormSaved?.(); } : undefined,
+                                    cancelOverride: () => { onFormSaved?.(); },
                                 })}
                             </div>
                         ) : (
@@ -4459,39 +4324,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     accessible form when the target is flagged stable:false. */}
                                 <UnstableProviderNotice provider={formProvider} />
 
-                                {/* Selected Provider Header (for S3/WebDAV) */}
-                                {selectedProvider && !formOnly && (
-                                    <div className="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700/50 border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] rounded-lg mb-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 bg-gray-200 dark:bg-gray-600 rounded-lg flex items-center justify-center">
-                                                {selectedProvider.id && PROVIDER_LOGOS[selectedProvider.id]
-                                                    ? React.createElement(PROVIDER_LOGOS[selectedProvider.id], { size: 20 })
-                                                    : <Cloud size={16} style={{ color: selectedProvider.color }} />
-                                                }
-                                            </div>
-                                            <div>
-                                                <span className="font-medium text-sm">{selectedProvider.name}</span>
-                                                {selectedProvider.isGeneric && (
-                                                    <span className="text-xs text-gray-500 ml-2">({t('connection.custom')})</span>
-                                                )}
-                                                {selectedProvider.description && (
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{selectedProvider.description}</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => setSelectedProviderId(null)}
-                                            className="text-xs text-blue-500 hover:text-blue-600 hover:underline"
-                                        >
-                                            {t('connection.change')}
-                                        </button>
-                                    </div>
-                                )}
-
                                 {/* Connection Fields Area */}
                                 {protocol === 'uploadcare' ? (
                                     /* Uploadcare Specific Form: public key + secret key */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
                                                 <label className="block text-sm font-medium mb-1.5">Public API Key</label>
@@ -4553,7 +4389,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'imagekit' ? (
                                     /* ImageKit Specific Form: URL endpoint ID + private API key */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
                                                 <label className="block text-sm font-medium mb-1.5">URL Endpoint ID</label>
@@ -4609,7 +4445,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'cloudinary' ? (
                                     /* Cloudinary Specific Form: cloud_name + api_key + api_secret */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
                                                 <label className="block text-sm font-medium mb-1.5">Cloud Name</label>
@@ -4687,7 +4523,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'filelu' ? (
                                     /* FileLu Specific Form: API Key */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
                                                 <label className="block text-sm font-medium mb-1.5">{t('ai.settings.apiKey')}</label>
@@ -4727,23 +4563,15 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </p>
                                         </div>
 
-                                        {formOnly ? (
-                                            renderRightColumn({
+                                        {renderRightColumn({
                                                 disabled: !connectionParams.password,
                                                 buttonColorClass: 'bg-sky-600 hover:bg-sky-700',
                                                 connectionNameKey: getSuggestedConnectionName()
-                                            })
-                                        ) : (
-                                            renderRightColumn({
-                                                disabled: !connectionParams.password,
-                                                buttonColorClass: 'bg-sky-600 hover:bg-sky-700',
-                                                connectionNameKey: getSuggestedConnectionName()
-                                            })
-                                        )}
+                                            })}
                                     </div>
                                 ) : protocol === 'jottacloud' ? (
                                     /* Jottacloud Specific Form: Login Token only */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
                                                 <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -4793,7 +4621,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'drime' ? (
                                     /* Drime Cloud Specific Form: API Token only */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
                                                 {renderPasswordLabel(t('connection.drimeToken'))}
@@ -4829,7 +4657,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'koofr' ? (
                                     /* Koofr Specific Form: Email + App Password */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
@@ -4873,81 +4701,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </p>
                                         </div>
 
-                                        {formOnly ? (
-                                            renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-green-600 hover:bg-green-700' })
-                                        ) : (
-                                        <>
-                                        {/* Optional Remote/Local Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={getSuggestedConnectionName()}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                                                />
-                                                {renderIconPicker()}
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-3">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.connect')}</>
-                                                )}
-                                            </button>
-                                        </div>
-                                        </>
-                                        )}
+                                        {renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-green-600 hover:bg-green-700' })}
                                     </div>
                                 ) : protocol === 'opendrive' ? (
                                     /* OpenDrive Specific Form - Username + Password */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
@@ -4989,98 +4747,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         <p className="text-xs text-gray-400 mt-2">{t('protocol.opendriveAuthHelp')} (not your OpenDrive API key)</p>
                                         </div>
 
-                                        {formOnly ? (
-                                            renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-cyan-600 hover:bg-cyan-700' })
-                                        ) : (
-                                        <>
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* OpenDrive default privacy for new items (#252) */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <label className="block text-sm font-medium mb-1.5">
-                                                {t('connection.opendriveDefaultPrivacy')}
-                                            </label>
-                                            <select
-                                                value={connectionParams.options?.opendriveDefaultPrivacy || 'private'}
-                                                onChange={(e) => onConnectionParamsChange({
-                                                    ...connectionParams,
-                                                    options: {
-                                                        ...connectionParams.options,
-                                                        opendriveDefaultPrivacy: e.target.value as 'private' | 'public' | 'hidden',
-                                                    },
-                                                })}
-                                                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-                                            >
-                                                <option value="private">{t('properties.privacyPrivate')}</option>
-                                                <option value="public">{t('properties.privacyPublic')}</option>
-                                                <option value="hidden">{t('properties.privacyHidden')}</option>
-                                            </select>
-                                            <p className="text-xs text-gray-400 mt-1.5">{t('connection.opendriveDefaultPrivacyHelp')}</p>
-                                        </div>
-
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNameOptional')}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-                                                />
-                                                {renderIconPicker()}
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-3">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-cyan-600 hover:bg-cyan-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {editingProfileId || saveConnection ? t('common.save') : t('connection.connect')}</>
-                                                )}
-                                            </button>
-                                        </div>
-                                        </>
-                                        )}
+                                        {renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-cyan-600 hover:bg-cyan-700' })}
                                     </div>
                                 ) : protocol === 'github' ? (
                                     /* GitHub Specific Form: Owner/Repo + PAT */
@@ -5436,7 +5103,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'kdrive' ? (
                                     /* kDrive Specific Form: Drive ID + API Token (#369) */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: the secret comes first because drive
                                             discovery is authenticated by that token (#369). */}
                                         <div className="space-y-4">
@@ -5504,83 +5171,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         />
                                         </div>
 
-                                        {formOnly ? (
-                                            renderRightColumn({ disabled: !connectionParams.password || !connectionParams.options?.bucket, buttonColorClass: 'bg-blue-600 hover:bg-blue-700' })
-                                        ) : (
-                                        <>
-                                        {/* Optional Remote/Local Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={getSuggestedConnectionName()}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                />
-                                                {renderIconPicker()}
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-3">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || bridgeSaveBlocked || !connectionParams.password || !connectionParams.options?.bucket}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.connect')}</>
-                                                )}
-                                            </button>
-                                        </div>
-                                        </>
-                                        )}
+                                        {renderRightColumn({ disabled: !connectionParams.password || !connectionParams.options?.bucket, buttonColorClass: 'bg-blue-600 hover:bg-blue-700' })}
                                     </div>
                                 ) : protocol === 'proton' ? (
                                     /* Proton Drive: same two-column layout as MEGA / Filen.
                                        The setup box collapses once the status banner above
                                        reports the CLI installed and signed in. */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: setup */}
                                         <div className="space-y-3">
                                             <CollapsibleSetupBox
@@ -5605,7 +5202,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'internxt' ? (
                                     /* Internxt Specific Form */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
@@ -5657,122 +5254,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         </div>
 
-                                        {formOnly ? (
-                                            renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-blue-600 hover:bg-blue-700', showE2ENote: 'connection.endToEndAes' })
-                                        ) : (
-                                        <>
-                                        {/* Optional Remote Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={getSuggestedConnectionName()}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                                />
-                                                {renderIconPicker()}
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-2">
-                                            {editingProfileId ? (
-                                                (() => {
-                                                    if (modeChanged) {
-                                                        return renderModeChangedFooter();
-                                                    }
-                                                    // #369: Save stays enabled with a code typed. It used
-                                                    // to disable here, so editing any setting of a 2FA
-                                                    // profile meant clearing the code first. saveToServers
-                                                    // never persists a TOTP (#128), so Save keeps the
-                                                    // settings and drops the code; the tooltip says how to
-                                                    // use the code now.
-                                                    const hasFreshTotp = !!connectionParams.options?.two_factor_code;
-                                                    return (
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={handleConnectAndSave}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                                title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
-                                                                className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
-                                                            >
-                                                                <Save size={18} /> {t('common.save')}
-                                                            </button>
-                                                            <button
-                                                                onClick={handleSaveAndConnect}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                                className={`flex-1 py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                                            >
-                                                                {loading ? (
-                                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                                ) : (
-                                                                    <>{ConnectIcon} {t('connection.saveAndConnect')}</>
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })()
-                                            ) : (
-                                                <button
-                                                    onClick={handleConnectAndSave}
-                                                    disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                    className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                                >
-                                                    {loading ? (
-                                                        <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                    ) : (
-                                                        <>{ConnectIcon} {t('connection.secureLogin')}</>
-                                                    )}
-                                                </button>
-                                            )}
-                                            <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
-                                                <Lock size={12} /> {t('connection.endToEndAes')}
-                                            </p>
-                                        </div>
-                                        </>
-                                        )}
+                                        {renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-blue-600 hover:bg-blue-700', showE2ENote: 'connection.endToEndAes' })}
                                     </div>
                                 ) : protocol === 'filen' ? (
                                     /* Filen Specific Form */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
@@ -5855,122 +5341,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </div>
                                         </div>
 
-                                        {formOnly ? (
-                                            renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-emerald-600 hover:bg-emerald-700', showE2ENote: 'connection.endToEndAes' })
-                                        ) : (
-                                        <>
-                                        {/* Optional Remote Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={getSuggestedConnectionName()}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                                                />
-                                                {renderIconPicker()}
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-2">
-                                            {editingProfileId ? (
-                                                (() => {
-                                                    if (modeChanged) {
-                                                        return renderModeChangedFooter();
-                                                    }
-                                                    // #369: Save stays enabled with a code typed. It used
-                                                    // to disable here, so editing any setting of a 2FA
-                                                    // profile meant clearing the code first. saveToServers
-                                                    // never persists a TOTP (#128), so Save keeps the
-                                                    // settings and drops the code; the tooltip says how to
-                                                    // use the code now.
-                                                    const hasFreshTotp = !!connectionParams.options?.two_factor_code;
-                                                    return (
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={handleConnectAndSave}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                                title={hasFreshTotp ? t('connection.saveDisabledTotp') : undefined}
-                                                                className={`flex-1 py-3.5 rounded-lg font-medium cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${loading ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300 text-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200'}`}
-                                                            >
-                                                                <Save size={18} /> {t('common.save')}
-                                                            </button>
-                                                            <button
-                                                                onClick={handleSaveAndConnect}
-                                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                                className={`flex-1 py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                                                            >
-                                                                {loading ? (
-                                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                                ) : (
-                                                                    <>{ConnectIcon} {t('connection.saveAndConnect')}</>
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })()
-                                            ) : (
-                                                <button
-                                                    onClick={handleConnectAndSave}
-                                                    disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                    className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                    ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                                                >
-                                                    {loading ? (
-                                                        <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                    ) : (
-                                                        <>{ConnectIcon} {t('connection.secureLogin')}</>
-                                                    )}
-                                                </button>
-                                            )}
-                                            <p className="text-center text-xs text-gray-400 mt-3 flex items-center justify-center gap-1.5">
-                                                <Lock size={12} /> {t('connection.endToEndAes')}
-                                            </p>
-                                        </div>
-                                        </>
-                                        )}
+                                        {renderRightColumn({ disabled: !connectionParams.username || !connectionParams.password, buttonColorClass: 'bg-emerald-600 hover:bg-emerald-700', showE2ENote: 'connection.endToEndAes' })}
                                     </div>
                                 ) : protocol === 'backblaze' ? (
                                     /* Backblaze B2 native form */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <div>
                                                 {renderUsernameLabel('Application Key ID')}
@@ -6047,7 +5422,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'twake' ? (
                                     /* Twake Drive: instance address + browser sign-in (OAuth2, dynamic client registration) */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                         <div>
                                             <label className="block text-sm font-medium mb-1.5">{t('connection.twakeInstance')}</label>
@@ -6131,7 +5506,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'immich' ? (
                                     /* Immich Specific Form: Server URL + API Key */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: Credentials */}
                                         <div className="space-y-4">
                                         <div>
@@ -6179,77 +5554,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         </p>
                                         </div>
 
-                                        {formOnly ? (
-                                            renderRightColumn({ disabled: !connectionParams.server || !connectionParams.password, buttonColorClass: 'bg-indigo-600 hover:bg-indigo-700' })
-                                        ) : (
-                                        <>
-                                        {/* Optional Remote/Local Path */}
-                                        <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                                                {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Save Connection Option */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={getSuggestedConnectionName()}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                                />
-                                                {renderIconPicker()}
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-3">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || bridgeSaveBlocked || !connectionParams.server || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.connect')}</>
-                                                )}
-                                            </button>
-                                        </div>
-                                        </>
-                                        )}
+                                        {renderRightColumn({ disabled: !connectionParams.server || !connectionParams.password, buttonColorClass: 'bg-indigo-600 hover:bg-indigo-700' })}
                                     </div>
                                 ) : protocol === 'mega' ? (
                                     /* MEGA Specific Form (Beta v0.5.0). #369: two-column
@@ -6258,7 +5563,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                        and the shared right column brings Wrappers/Overlays
                                        (Crypt), Remember credentials and Save to API/CMD, which
                                        the legacy single-column form never exposed. */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         {/* LEFT COLUMN: MEGA credentials + connection-backend selector */}
                                         <div className="space-y-4">
                                         <div>
@@ -6716,7 +6021,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'webdav' && selectedProviderId === 'megacmd-webdav' ? (
                                     /* MEGAcmd local anonymous WebDAV */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : 'space-y-4 pt-2'}>
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                         <div className="space-y-4">
                                             <CollapsibleSetupBox
                                                 key="megacmd-webdav-setup"
@@ -6781,8 +6086,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         })}
                                     </div>
                                 ) : (
-                                    /* Traditional connection fields (FTP/S3/WebDAV): 2-column layout in formOnly */
-                                    <div className={formOnly ? 'grid grid-cols-2 gap-6 items-start' : ''}>
+                                    /* Traditional connection fields (FTP/S3/WebDAV): 2-column layout */
+                                    <div className="grid grid-cols-2 gap-6 items-start">
                                     {/* LEFT COLUMN: Connection fields */}
                                     <div className="space-y-3">
                                         {/* Provider-specific setup steps (S3Drive, Filen Desktop S3, etc.).
@@ -7179,7 +6484,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </div>
 
                 {/* Skip to File Manager: accessible via status bar AeroFile button */}
-            </div> {/* Close grid */}
+            </div> {/* Close form wrapper */}
 
             {gitHubAlert && (
                 <AlertDialog
@@ -7309,7 +6614,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </p>
             </div>
         )}
-        {/* Provider independence disclaimer: outside formOnlyMaxW container */}
+        {/* Provider independence disclaimer: outside the cardMaxW container */}
         {(() => {
             const disclaimerProvider = selectedProvider ?? (protocol ? getProviderById(protocol) : null);
             const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };

@@ -121,8 +121,6 @@
             "aerocloudDesc": "Muuta mikä tahansa palvelin henkilökohtaiseksi pilveksi automaattisella synkronoinnilla",
             "configureAerocloud": "Määritä AeroCloud",
             "aerocloudHelp": "Voit myös määrittää AeroCloud-asetukset tilapalkista",
-            "selectProviderPrompt": "Valitse palveluntarjoaja ylhäältä tai valitse \"Mukautettu\" manuaalista määritystä varten",
-            "custom": "Mukautettu",
             "change": "Vaihda",
             "emailAccount": "Sähköpostitili",
             "megaEmailPlaceholder": "your-email@mega.nz",
@@ -252,8 +250,6 @@
             "immichApiKeyHelp": "Luo API-avain kohdassa Immich → User Settings → API Keys",
             "immichOps": "Selaa, lataa, lataa, poista, albumit, haku, jakolinkit. Uudelleennimeämistä ja siirtämistä ei tueta.",
             "generatePassword": "Luo salasana",
-            "saveAndConnect": "Tallenna ja yhdistä",
-            "saveDisabledTotp": "TOTP-koodit ovat kertakäyttöisiä. Käytä Tallenna ja yhdistä -toimintoa ottaaksesi tämän koodin käyttöön nyt.",
             "generatePersonalLoginToken": "Luo henkilökohtainen kirjautumistunnus",
             "endpointUrl": "Päätepisteen URL",
             "b2NativeAdvantagesTitle": "Backblaze B2:n natiivi API: lisäominaisuuksia S3-yhteensopivaan verrattuna",
@@ -1470,6 +1466,7 @@
             "extracted": "Purettu!",
             "extractedTo": "Tiedostot purettu kohteeseen {dest}",
             "fileLocked": "Tiedosto lukittu",
+            "cutPartial": "Siirretty {moved}/{total} kohdetta; loput jäävät paikalleen",
             "fileSkipped": "{count} tiedosto(a) ohitettu",
             "fileUnlocked": "Tiedoston lukitus avattu",
             "loadTrashFailed": "Roskakorin lataus epäonnistui",
@@ -6084,6 +6081,23 @@
             "scopeSession": "Hyväksyy tämän työkalun keskustelun loppuajaksi.",
             "approve": "Hyväksy",
             "rememberForChat": "Salli tämä työkalu tämän keskustelun loppuun"
+        },
+        "s3": {
+            "storageClass": "Tallennusluokka",
+            "storageClassChanged": "Tallennusluokaksi vaihdettu {storageClass}",
+            "restoreFromGlacier": "Palauta Glacierista",
+            "restoreTier": "Noutotaso",
+            "restoreDays": "Palautetun kopion säilytyspäivät",
+            "restoreStarted": "Palautus pyydetty: kun kopio on valmis, se pysyy luettavissa {days} päivää",
+            "objectTags": "Objektin tunnisteet",
+            "noTags": "Ei tunnisteita",
+            "tagKey": "Avain",
+            "tagValue": "Arvo",
+            "tagsSaved": "Tunnisteet tallennettu"
+        },
+        "azure": {
+            "accessTier": "Käyttötaso",
+            "accessTierChanged": "Käyttötasoksi asetettu {tier}"
         },
         "fileComments": {
             "title": "Kommentit",
