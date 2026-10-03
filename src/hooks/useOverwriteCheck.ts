@@ -55,15 +55,13 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
     sourceSize: number,
     sourceModified: Date | undefined,
     sourceIsRemote: boolean,
-    queueCount: number = 0
+    queueCount: number = 0,
+    destinationFiles?: LocalFile[] | RemoteFile[],
   ): Promise<{ action: OverwriteAction; newName?: string; destinationExists: boolean }> => {
-    // Check if destination file exists
-    let destFile: LocalFile | RemoteFile | undefined;
-    if (sourceIsRemote) {
-      destFile = localFiles.find(f => f.name === sourceName && !f.is_dir);
-    } else {
-      destFile = remoteFiles.find(f => f.name === sourceName && !f.is_dir);
-    }
+    // An explicit empty snapshot is authoritative: the panel can show a
+    // different directory, and its contents must not create or hide a conflict.
+    const destination = destinationFiles ?? (sourceIsRemote ? localFiles : remoteFiles);
+    const destFile = destination.find(f => f.name === sourceName && !f.is_dir);
     // #591: callers that batch files keep an existing SFTP destination on the
     // single-file path, which is the one that can send an rsync delta.
     const destinationExists = !!destFile;
@@ -95,9 +93,7 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
         const baseName = ext ? sourceName.slice(0, -ext.length) : sourceName;
         let counter = 1;
         let newName = `${baseName} (${counter})${ext}`;
-        const existingNames = sourceIsRemote
-          ? localFiles.map(f => f.name)
-          : remoteFiles.map(f => f.name);
+        const existingNames = destination.map(f => f.name);
         while (existingNames.includes(newName)) {
           counter++;
           newName = `${baseName} (${counter})${ext}`;

@@ -492,6 +492,7 @@ import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { signatureOf } from './utils/thumbnailCache';
+import { loadOverwriteDestination } from './utils/overwriteDestination';
 import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
 import type { FileBatchDirection, FileBatchSessionFlags, FolderTransferOutcome } from './utils/fileBatchRouting';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
@@ -9658,6 +9659,18 @@ const App: React.FC = () => {
 
   // checkOverwrite and resetOverwriteSettings provided by useOverwriteCheck hook
 
+  const getOverwriteDestination = (direction: FileBatchDirection, path: string) => {
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    return loadOverwriteDestination({
+      direction,
+      path,
+      isProviderSession: usesProviderApi(protocol),
+      aeroVaultSessionId: aeroVaultOverlaySession?.sessionId,
+      visibleRemotePath: currentRemotePath,
+    }, invoke);
+  };
+
   // Helper: check folder overwrite in 'ask' mode: shows FolderOverwriteDialog
   const checkFolderOverwrite = useCallback(async (
     folderName: string,
@@ -9766,12 +9779,14 @@ const App: React.FC = () => {
 
           if (!_skipConflictCheck) {
             // Check file conflict before downloading (single file transfers only)
+            const destinationFiles = await getOverwriteDestination('download', downloadPath);
             const overwriteResult = await checkOverwrite(
               fileName,
               fileSize || remoteFileInfo?.size || 0,
               remoteFileInfo?.modified ? new Date(remoteFileInfo.modified) : undefined,
               true, // sourceIsRemote = true for download
-              0
+              0,
+              destinationFiles,
             );
 
             if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
@@ -9942,13 +9957,15 @@ const App: React.FC = () => {
 
         if (!_skipConflictCheck) {
           // Check file conflict before uploading (single file transfers only)
+          const destinationFiles = await getOverwriteDestination('upload', remoteBase);
           const localFileInfo = localFiles.find(f => f.name === fileName && !f.is_dir);
           const overwriteResult = await checkOverwrite(
             fileName,
             fileSize || localFileInfo?.size || 0,
             localFileInfo?.modified ? new Date(localFileInfo.modified) : undefined,
             false, // sourceIsRemote = false for upload
-            0
+            0,
+            destinationFiles,
           );
 
           if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
@@ -12133,6 +12150,18 @@ const App: React.FC = () => {
     const resumes = new Set<Entry>();
     // Destinations already written by an earlier file of this transfer.
     const claimedDestinations = new Set<string>();
+    // Resolve once per batch, before creating queue rows or invoking a writer.
+    // A failed listing is a failed preflight, never an empty destination.
+    let destinationFiles: LocalFile[] | RemoteFile[];
+    try {
+      destinationFiles = await getOverwriteDestination(direction, targetDir);
+    } catch (error) {
+      resetOverwriteSettings();
+      result.failed = items.length;
+      result.aborted = true;
+      notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+      return result;
+    }
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const overwriteResult = await checkOverwrite(
@@ -12141,6 +12170,7 @@ const App: React.FC = () => {
         item.modified ? new Date(item.modified) : undefined,
         isDownload,
         items.length - i - 1,
+        destinationFiles,
       );
       if (overwriteResult.action === 'cancel') {
         resetOverwriteSettings();
