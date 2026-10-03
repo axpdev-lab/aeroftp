@@ -49,6 +49,13 @@ typed nodes. A node runs only after its dependencies complete and its
   budget, not an AIMD congestion class);
 - `DagObserver` lifecycle hooks and the executor summary.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/b098687e-38be-467f-b71e-4364dc255611">
+  <img alt="Dispatch: a ready node passes the resource budget and the AIMD target before it reaches the fixed channels of the session pool; congestion from the endpoint halves the width, quiet windows add one back" src="https://github.com/user-attachments/assets/5311cfe9-cb5d-4d45-aff3-0d3973b2eba3" width="900">
+</picture>
+
+*Dispatch. A ready node starts only when the operation's resource budget and the AIMD target for its class both have room. The channels behind them are fixed by the provider's session ceiling. When the endpoint signals congestion the width halves; quiet stretches add one back, and nothing raises it past the ceiling.*
+
 The executor's ready frontier is not a second process-wide scheduler. It is
 dispatch-window bounded (`DEFAULT_DISPATCH_WINDOW = 256`, overridable via
 `execute_dag_with_dispatch_window`), while the separate `DAG-P2-01` governor
@@ -132,6 +139,13 @@ each node performs I/O on every path:
 `Discover` → `AcquireResource` → *transfer core* → `VerifyChecksum` →
 `PreserveMetadata` → `CommitTemp` → `EmitProgress`.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/facb3d32-2ec4-48ea-ae57-07603f39531d">
+  <img alt="Shaping: the seven-node envelope with the transfer-core slot, and the six shapes the builder can put in it" src="https://github.com/user-attachments/assets/15231d59-1f2b-4991-a4e4-6e68cd916dd9" width="900">
+</picture>
+
+*Shaping. Before the first byte moves, the builder reads the provider's capabilities and the object size and fills the transfer-core slot with one of six shapes. The envelope around it is the same for every shape, and only the blue nodes move payload. The grey dots stand for the envelope nodes on either side of the core (Acquire before it, Verify after it).*
+
 In the current single-file runner, `Discover*`, `AcquireResource`, and
 `EmitProgress` are structural no-ops. After DAG-P2-03, `VerifyChecksum` is a
 real node on the durable native-multipart path: it runs after every part
@@ -169,6 +183,13 @@ This is the most complete DAG path. `execute_single_file_dag` binds
 7. a failed or cancelled durable upload keeps its session and valid receipts for
    restart, while a conservative TTL scavenger aborts only an expired matching
    session and removes its record only after that abort succeeds.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/6102b58b-d807-44bf-bb58-2a5e2601ebca">
+  <img alt="Completion on the durable single-file multipart path: receipts reach the checkpoint, VerifyChecksum records Verified, CommitTemp completes only after it, and a failure keeps the session and receipts for a restart" src="https://github.com/user-attachments/assets/9eca9b43-3ef1-47c0-ab28-6b5311f66781" width="900">
+</picture>
+
+*Completion, durable single-file multipart. Each part's receipt reaches the checkpoint before the part completes. VerifyChecksum records Verified only when every receipt is present and the local source is unchanged, and CommitTemp completes the upload only after that fact exists. A failure keeps the session and the receipts, so a restart sends only the missing parts. Multipart inside a batch follows its own begin, complete and abort lifecycle without this checkpoint.*
 
 Part buffer sizing is shared: builder and runner use
 `multipart_part_byte_len(file_size, part_index, part_count,
@@ -364,6 +385,13 @@ job-wide resource manager, AIMD controller, and session pool, then dropped. Peak
 resident nodes are therefore `O(active_file_cap x nodes_per_file)`, not
 `O(total_files x nodes_per_file)`.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/e16f13a2-f366-45ca-bde1-b6bd751bebcb">
+  <img alt="Many files: work source, bounded backlog, bounded active set of per-file subgraphs, done; every job draws from the process-wide governor" src="https://github.com/user-attachments/assets/f38608e8-5ea2-4370-9f0b-4650291d0f53" width="900">
+</picture>
+
+*Many files. Only files admitted into the active set exist as graphs: each subgraph is built on admission and dropped when the file is done, so resident graph memory follows the active window, not the size of the job. Every job also draws from one process-wide governor, so concurrent jobs share endpoint slots, the speed limit, part memory and disk.*
+
 - **Batch** streams the known entry list (`BatchEntriesWorkSource`); every
   existing behavior is preserved because the per-file node runners
   (`run_whole_file_node`, `run_multipart_part_node`, `run_multipart_commit_node`)
@@ -444,6 +472,13 @@ token bucket), not AIMD. Batch file-level failures use the typed, non-fatal
 `FileFailedButGraphContinues` outcome: D2 congestion reduces the File-class
 target while unrelated file subgraphs continue. Sync still uses one file slot
 and does not yet expose this batch feedback contract.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/bfa9c011-2ac9-4c40-802a-9f7dc06b480c">
+  <img alt="AIMD over time, schematic: start at the ceiling, halve on congestion, add one per quiet window, a guard band one below the failed level, no regrowth during a Retry-After cooldown" src="https://github.com/user-attachments/assets/cab26e99-714e-4438-911d-d27b8a600730" width="900">
+</picture>
+
+*Adapting, schematic. The controller starts at the effective ceiling and only moves below it. A congestion signal halves the width and each quiet window adds one back. Regrowth stops one below the level that failed until the recovery window has passed, and a server's Retry-After holds regrowth for its cooldown.*
 
 `DAG-P2-06` makes the controller endpoint and workload aware across successive
 jobs in one process. A bounded, process-local `AdaptiveProfileRegistry` caches
