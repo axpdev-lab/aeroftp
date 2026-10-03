@@ -151,19 +151,13 @@ jobs:
             target: linux
           - platform: windows-latest
             target: windows
-          # Compare both supported arm64 runner images before selecting the
-          # permanent pin. Intel still cross-compiles with a real target triple,
-          # so every Cargo binary is included (no universal pseudo-target).
+          # macOS 15 packages both architectures successfully. Pin the image
+          # for reproducibility before macos-14 brownouts. Intel still uses a
+          # real target triple so the bundle contains every Cargo binary.
           - platform: macos-15
             target: macos
             arch: aarch64
           - platform: macos-15
-            target: macos
-            arch: x64
-          - platform: macos-latest
-            target: macos
-            arch: aarch64
-          - platform: macos-latest
             target: macos
             arch: x64
 
@@ -660,7 +654,7 @@ jobs:
         if: matrix.target == 'macos'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: aeroftp-macos-${{ matrix.arch }}-${{ matrix.platform }}-${{ github.sha }}
+          name: aeroftp-macos-${{ matrix.arch }}-${{ github.sha }}
           path: src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: warn
           retention-days: 1
