@@ -27,11 +27,15 @@ fn text(value: Option<&Value>, max: usize) -> bool {
     })
 }
 
-/// Tool and schema descriptions may wrap. Other control characters stay refused.
+/// Tool and schema descriptions may wrap (LF or CRLF) and hold tabs, as the tool
+/// registry accepts them. Other control characters stay refused.
 fn prose(value: Option<&Value>, max: usize) -> bool {
     value.is_none_or(|v| {
         v.as_str().is_some_and(|s| {
-            s.len() <= max && !s.chars().any(|c| c.is_control() && c != '\n' && c != '\t')
+            s.len() <= max
+                && !s
+                    .chars()
+                    .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
         })
     })
 }
@@ -466,6 +470,15 @@ mod tests {
             *changed.pointer_mut(pointer).unwrap() = value;
             assert_ne!(revision(&s, &[3; 32]), revision(&changed, &[3; 32]));
         }
+    }
+
+    #[test]
+    fn descriptions_may_use_crlf_line_breaks() {
+        let result = json!({"tools":[{"name":"t","description":"Line one.\r\nLine two.\tTabbed.",
+            "inputSchema":{"type":"object","properties":{"q":{"type":"string","description":"First.\r\nSecond."}}}}]});
+        assert!(discover(&result, "t").is_ok());
+        let bell = json!({"tools":[{"name":"t","description":"ring\u{7}","inputSchema":{"type":"object"}}]});
+        assert_eq!(discover(&bell, "t").err(), Some(SchemaError::Unsupported));
     }
 
     #[test]
