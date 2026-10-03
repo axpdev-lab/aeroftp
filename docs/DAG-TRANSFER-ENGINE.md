@@ -20,8 +20,8 @@ The audit rule used here is:
 
 | Operation | Active production call path | What the graph really does | Wire-level/default status |
 |---|---|---|---|
-| Single-file GUI `get` / `put` | `provider_commands::run_dag_download_leaf` / `run_dag_upload_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router: its table (`transfer_router/hints.rs`) sends plain WebDAV and Nextcloud downloads to the provider-direct path, and `AEROFTP_TRANSFER_ENGINE=dag\|legacy` overrides it |
-| Single-file CLI `get` / `put` | `cli_run_single_file_dag` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs`), on the plain leaf only (`--partial` takes its own resume path) | Same shaped-file runner and provider binding | DAG is selected by the router for network transfers, except plain WebDAV and Nextcloud downloads, which take the provider-direct path; local-to-local bypasses it, and `--transfer-engine dag\|legacy` overrides the table |
+| Single-file GUI `get` / `put` | `provider_commands::run_dag_download_leaf` / `run_dag_upload_leaf` → `execute_single_file_dag` (`src-tauri/src/provider_commands.rs`) | `UploadFile`/`DownloadFile` bind to provider I/O; multipart binds begin/part/complete/abort; several structural nodes are no-ops | Shaped DAG is the normal network path, subject to the transfer router: its table (`transfer_router/hints.rs`) sends plain WebDAV and Nextcloud downloads to the provider-direct path, and `AEROFTP_TRANSFER_ENGINE=dag\|legacy` overrides it. Delta transfers, resumed downloads (a partial `.aerotmp`) and segmented downloads are tried before the router, so the override does not reach them |
+| Single-file CLI `get` / `put` | `cli_run_single_file_dag` → `execute_single_file_dag` (`src-tauri/src/bin/aeroftp_cli.rs`), on the plain leaf only (`--partial` takes its own resume path, and a transfer the SFTP delta path completes returns before it) | Same shaped-file runner and provider binding | DAG is selected by the router for network transfers, except plain WebDAV and Nextcloud downloads, which take the provider-direct path; local-to-local bypasses it, and `--transfer-engine dag\|legacy` overrides the table |
 | Multi-file batch | `transfer_orchestrator::execute_batch` → `execute_batch_dag` (`src-tauri/src/transfer_orchestrator.rs:66-70`) | Streams the known entry list through a bounded backlog and a bounded active set (P2-04): each file's shaped subgraph is expanded only when admitted and dropped when done, never a full static graph. Graph from executor runtime capabilities (P1-01); capability-aware settings (P1-02); real per-part multipart wire I/O (P1-03) via shared `transfer_multipart` lifecycle | File-level parallelism for clone/session-pool providers; multipart batch files issue N wire `upload_part` calls with one begin/complete (or abort once after drain); `--max-backlog` bounds the pending-work queue |
 | Non-dry-run sync | `sync_tree_core` → `execute_sync_dag` (`src-tauri/src/sync.rs:1223-1238`) | Scan/planning precede the graph; the precomputed transfer plan then streams per-file subgraphs through the same bounded frontier (P2-04) instead of one static plan graph; normal files use bounded independent clone workers, while delta retains the primary `DeltaBatch` lane | Clone-backed providers use their live session ceiling; locked or failed-clone providers and every delta request stay serial; dry-run stays on planning path |
 | Segmented download | Provider/CLI adapters -> `run_concurrent_range_download` (`src-tauri/src/providers/multi_thread.rs:244`) | `shaped_ranges` drives real range requests and offset writes through `execute_dag`; the old `JoinSet` runner is test-only | Graph scheduling is the only production range scheduler; GUI Auto may still select one stream |
@@ -51,10 +51,10 @@ typed nodes. A node runs only after its dependencies complete and its
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/dag-engine-2-dispatch-dark.png">
-  <img alt="Dispatch: a ready node passes the resource budget and the AIMD target before it reaches the fixed channels of the session pool; congestion from the endpoint halves the width, quiet windows add one back" src="images/dag-engine-2-dispatch-light.png" width="900">
+  <img alt="Dispatch: a ready node passes the resource budget and the AIMD target before it reaches the fixed channels of the session pool; with AIMD enabled (the default), congestion from the endpoint halves the width and each quiet window adds the regrowth step back (one by default)" src="images/dag-engine-2-dispatch-light.png" width="900">
 </picture>
 
-*Dispatch. A ready node starts only when the operation's resource budget and the AIMD target for its class both have room. The channels behind them are fixed by the provider's session ceiling. When the endpoint signals congestion the width halves; quiet stretches add one back, and nothing raises it past the ceiling.*
+*Dispatch. A ready node starts only when the operation's resource budget and the AIMD target for its class both have room. The channels behind them are fixed by the provider's session ceiling. With AIMD enabled (the default), a congestion signal halves the width and each quiet stretch adds the regrowth step back (one by default); nothing raises it past the ceiling.*
 
 The executor's ready frontier is not a second process-wide scheduler. It is
 dispatch-window bounded (`DEFAULT_DISPATCH_WINDOW = 256`, overridable via
@@ -477,10 +477,10 @@ and does not yet expose this batch feedback contract.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/dag-engine-3-aimd-dark.png">
-  <img alt="AIMD over time, schematic: start at the ceiling, halve on congestion, add one per quiet window, a guard band one below the failed level, no regrowth during a Retry-After cooldown" src="images/dag-engine-3-aimd-light.png" width="900">
+  <img alt="AIMD over time, schematic, with AIMD enabled: start at the ceiling (or lower with a cached profile), halve on congestion, add the regrowth step (one by default) per quiet window, a guard band one below the failed level, no regrowth during a Retry-After cooldown" src="images/dag-engine-3-aimd-light.png" width="900">
 </picture>
 
-*Adapting, schematic. The controller starts at the effective ceiling and only moves below it. A congestion signal halves the width and each quiet window adds one back. Regrowth stops one below the level that failed until the recovery window has passed, and a server's Retry-After holds regrowth for its cooldown.*
+*Adapting, schematic. With AIMD enabled (the default), the controller starts at the effective ceiling, or below it when a recent profile for the endpoint is cached, and never moves above it. A congestion signal halves the width and each quiet window adds the regrowth step back, one by default. Regrowth stops one below the level that failed until the recovery window has passed, and a server's Retry-After holds regrowth for its cooldown.*
 
 `DAG-P2-06` makes the controller endpoint and workload aware across successive
 jobs in one process. A bounded, process-local `AdaptiveProfileRegistry` caches
