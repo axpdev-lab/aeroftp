@@ -371,7 +371,7 @@ AeroAgent supports runtime plugins for custom tool extensions:
 - **Plugin manifest**: JSON file defining name, version, tools, hooks
 - **Plugin scripts**: Shell scripts executed by the tool engine
 - **Plugin registry**: GitHub-based discovery and installation (remote registry browse/install is temporarily disabled pending a signed, client-side-verified registry; locally installed plugins continue to work)
-- **Plugin hooks**: Event-driven execution (file:created, transfer:complete, sync:complete)
+- **Plugin hooks**: a manifest may declare hooks (file:created, transfer:complete, sync:complete), but nothing runs them: no event source emits these events, so declared hooks are inert
 - **SHA-256 integrity**: Verified at install and before each execution
 
 ### Plugin Management

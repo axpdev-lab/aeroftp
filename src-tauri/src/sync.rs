@@ -4270,7 +4270,14 @@ pub fn load_sync_journal(
     local_path: &str,
     remote_path: &str,
 ) -> Result<Option<SyncJournal>, String> {
-    let dir = sync_journal_dir()?;
+    load_sync_journal_in(&sync_journal_dir()?, local_path, remote_path)
+}
+
+fn load_sync_journal_in(
+    dir: &Path,
+    local_path: &str,
+    remote_path: &str,
+) -> Result<Option<SyncJournal>, String> {
     let path = dir.join(journal_filename(local_path, remote_path));
     if !path.exists() {
         return Ok(None);
@@ -4282,28 +4289,53 @@ pub fn load_sync_journal(
     Ok(Some(journal))
 }
 
-/// Save a journal (creates or overwrites). Uses a mutex to prevent concurrent write corruption (M38).
+/// Save a journal (creates or overwrites), then sign it. Uses a mutex to
+/// prevent concurrent write corruption (M38).
 pub fn save_sync_journal(journal: &SyncJournal) -> Result<(), String> {
+    save_sync_journal_in(&sync_journal_dir()?, journal)
+}
+
+fn save_sync_journal_in(dir: &Path, journal: &SyncJournal) -> Result<(), String> {
     let _lock = JOURNAL_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let dir = sync_journal_dir()?;
     let path = dir.join(journal_filename(&journal.local_path, &journal.remote_path));
     let mut journal_to_save = journal.clone();
     journal_to_save.updated_at = Utc::now();
     let data = serde_json::to_string(&journal_to_save)
         .map_err(|e| format!("Failed to serialize sync journal: {}", e))?;
     atomic_write(&path, data.as_bytes())?;
+    // Signed on every write, so the signature always covers what is on disk:
+    // signing once after the fact (the retired SyncPanel had a button for it)
+    // went stale at the next save and read as tampering. A journal that could
+    // not be signed keeps no old signature, so Verify says "no signature"
+    // instead of "failed".
+    let sig_path = dir.join(journal_sig_filename(
+        &journal.local_path,
+        &journal.remote_path,
+    ));
+    if let Err(e) = sign_journal_file(dir, &journal_to_save, &sig_path) {
+        tracing::warn!("sync journal saved unsigned: {e}");
+        let _ = std::fs::remove_file(&sig_path);
+    }
     Ok(())
 }
 
-/// Delete a journal for a path pair
+fn sign_journal_file(dir: &Path, journal: &SyncJournal, sig_path: &Path) -> Result<(), String> {
+    let key = journal_signing_key_in(dir, &journal.local_path, &journal.remote_path)?;
+    let key = hex::decode(key).map_err(|e| format!("Invalid signing key: {e}"))?;
+    let signature = sign_journal(journal, &key)?;
+    atomic_write(sig_path, signature.as_bytes())
+}
+
+/// Delete a journal for a path pair, with its signature.
 pub fn delete_sync_journal(local_path: &str, remote_path: &str) -> Result<(), String> {
     let dir = sync_journal_dir()?;
     let path = dir.join(journal_filename(local_path, remote_path));
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| format!("Failed to delete sync journal: {}", e))?;
     }
+    let _ = std::fs::remove_file(dir.join(journal_sig_filename(local_path, remote_path)));
     Ok(())
 }
 
@@ -4388,6 +4420,8 @@ pub fn clear_all_journals() -> Result<u32, String> {
         if path.extension().map(|e| e == "json").unwrap_or(false) {
             let _ = std::fs::remove_file(&path);
             deleted += 1;
+        } else if path.extension().map(|e| e == "sig").unwrap_or(false) {
+            let _ = std::fs::remove_file(&path);
         }
     }
     Ok(deleted)
@@ -5521,9 +5555,224 @@ pub fn journal_sig_filename(local_path: &str, remote_path: &str) -> String {
     format!("journal_{}.sig", stable_path_hash(&combined))
 }
 
+static SIGNING_KEY_LOCK: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
+
+/// Hex length of the 32-byte journal signing secret.
+const SIGNING_SECRET_HEX_LEN: usize = 64;
+
+/// The journal signing secret in `key_file`, created on first use.
+///
+/// First-use callers can race: two sync jobs, or a job and the transfer-DAG
+/// observer, each finding no file and signing with a secret of their own, so
+/// one journal later verifies as tampered. In this process the lock makes one
+/// of them create the file; across processes `create_new` does, and a caller
+/// that lost reads the winner's secret only once it is complete. The file is
+/// owner-only from the moment it exists (mode at open, not set afterwards).
+fn load_or_create_signing_secret(key_file: &Path) -> Result<String, String> {
+    let _guard = SIGNING_KEY_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    match std::fs::metadata(key_file) {
+        Ok(_) => return read_complete_signing_secret(key_file),
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(format!("Failed to read signing key: {e}"));
+        }
+        Err(_) => {}
+    }
+
+    use rand::RngCore;
+    let mut bytes = [0u8; 32];
+    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    let hex_key = hex::encode(bytes);
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    match options.open(key_file) {
+        Ok(mut file) => {
+            let written = file
+                .write_all(hex_key.as_bytes())
+                .and_then(|()| file.sync_all());
+            if let Err(e) = written {
+                // A partial secret would make every later signature invalid.
+                drop(file);
+                let _ = std::fs::remove_file(key_file);
+                return Err(format!("Failed to write signing key: {e}"));
+            }
+            // The file's bytes are durable, but its directory entry is not
+            // until the parent is synced: after a crash the key could vanish,
+            // a new one be created, and every saved journal fail verification.
+            #[cfg(unix)]
+            if let Some(parent) = key_file.parent() {
+                if let Ok(dir) = std::fs::File::open(parent) {
+                    let _ = dir.sync_all();
+                }
+            }
+            Ok(hex_key)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            read_complete_signing_secret(key_file)
+        }
+        Err(e) => Err(format!("Failed to write signing key: {e}")),
+    }
+}
+
+/// Read a signing secret another process may still be writing: wait (at most
+/// about a second) until it holds the whole hex secret.
+fn read_complete_signing_secret(key_file: &Path) -> Result<String, String> {
+    for _ in 0..100 {
+        let secret = std::fs::read_to_string(key_file)
+            .map_err(|e| format!("Failed to read signing key: {e}"))?;
+        if secret.trim().len() >= SIGNING_SECRET_HEX_LEN {
+            return Ok(secret);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    Err("Invalid signing key: the file is incomplete".to_string())
+}
+
+/// The per-pair journal signing key, hex-encoded: HMAC-SHA256 of the pair
+/// under a random secret kept in the journal directory (created on first use,
+/// owner-only on Unix). The secret never leaves the process (A5-06).
+pub fn journal_signing_key(local_path: &str, remote_path: &str) -> Result<String, String> {
+    journal_signing_key_in(&sync_journal_dir()?, local_path, remote_path)
+}
+
+fn journal_signing_key_in(
+    dir: &Path,
+    local_path: &str,
+    remote_path: &str,
+) -> Result<String, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    let secret = load_or_create_signing_secret(&dir.join("signing.key"))?;
+
+    let data = format!("{}|{}|aeroftp-journal-signing", local_path, remote_path);
+    let key_bytes =
+        hex::decode(secret.trim()).map_err(|e| format!("Invalid signing key: {}", e))?;
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(|e| format!("HMAC key error: {}", e))?;
+    mac.update(data.as_bytes());
+    Ok(hex::encode(mac.finalize().into_bytes()))
+}
+
+/// Whether the stored signature of a path pair's journal matches the journal
+/// on disk under `signing_key` (hex). Missing signature file is an error, so
+/// callers can tell "never signed" from "does not match".
+pub fn verify_journal_signature(
+    local_path: &str,
+    remote_path: &str,
+    signing_key: &str,
+) -> Result<bool, String> {
+    verify_journal_signature_in(&sync_journal_dir()?, local_path, remote_path, signing_key)
+}
+
+fn verify_journal_signature_in(
+    dir: &Path,
+    local_path: &str,
+    remote_path: &str,
+    signing_key: &str,
+) -> Result<bool, String> {
+    let journal = load_sync_journal_in(dir, local_path, remote_path)?
+        .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
+    let stored_sig =
+        std::fs::read_to_string(dir.join(journal_sig_filename(local_path, remote_path)))
+            .map_err(|e| format!("Failed to read signature file: {}", e))?;
+    let key_bytes =
+        hex::decode(signing_key).map_err(|e| format!("Invalid hex signing key: {}", e))?;
+    if key_bytes.len() < 32 {
+        return Err("Signing key must be at least 32 bytes (64 hex chars)".to_string());
+    }
+    let computed = sign_journal(&journal, &key_bytes)?;
+    // Constant-time comparison to prevent timing attacks
+    let (a, b) = (computed.as_bytes(), stored_sig.trim().as_bytes());
+    Ok(a.len() == b.len()
+        && a.iter()
+            .zip(b.iter())
+            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+            == 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Nothing signed a sync journal after the legacy SyncPanel went (its
+    /// Sign button called `sign_sync_journal`), so the History dialog's
+    /// Verify could only say "no signature". A save signs now; Verify agrees
+    /// with what was saved, an edit to the journal on disk is a mismatch, and
+    /// the next save signs the new content rather than leaving a stale
+    /// signature that reads as tampering.
+    #[test]
+    fn a_saved_journal_is_signed_and_an_edit_breaks_the_signature() {
+        let dir = tempfile::tempdir().unwrap();
+        let (local, remote) = ("/home/u/docs", "/backup/docs");
+        let mut journal = SyncJournal::new(
+            local.to_string(),
+            remote.to_string(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        save_sync_journal_in(dir.path(), &journal).unwrap();
+        let key = journal_signing_key_in(dir.path(), local, remote).unwrap();
+        assert!(verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
+
+        let path = dir.path().join(journal_filename(local, remote));
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert!(saved.contains("\"completed\":false"), "{saved}");
+        let tampered = saved.replace("\"completed\":false", "\"completed\":true");
+        std::fs::write(&path, tampered).unwrap();
+        assert!(!verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
+
+        journal.completed = true;
+        save_sync_journal_in(dir.path(), &journal).unwrap();
+        assert!(verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
+    }
+
+    /// Two first-use callers (two sync jobs, or a job and the transfer-DAG
+    /// observer) used to each find no signing.key, write their own secret and
+    /// sign with it, so one of them later verified as tampered. Every caller
+    /// now gets the one secret that landed, and the file is owner-only.
+    #[test]
+    fn concurrent_first_use_agrees_on_one_signing_key() {
+        for _ in 0..20 {
+            let dir = tempfile::tempdir().unwrap();
+            let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+            let keys: Vec<String> = (0..8)
+                .map(|_| {
+                    let start = start.clone();
+                    let dir = dir.path().to_path_buf();
+                    std::thread::spawn(move || {
+                        start.wait();
+                        journal_signing_key_in(&dir, "/l", "/r").unwrap()
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|t| t.join().unwrap())
+                .collect();
+            assert!(
+                keys.iter().all(|k| k == &keys[0]),
+                "first-use callers signed with different secrets"
+            );
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = std::fs::metadata(dir.path().join("signing.key"))
+                    .unwrap()
+                    .permissions()
+                    .mode();
+                assert_eq!(mode & 0o777, 0o600);
+            }
+        }
+    }
 
     #[test]
     fn atomic_write_uses_private_staging_files_for_concurrent_writers() {

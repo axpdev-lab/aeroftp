@@ -873,47 +873,6 @@ impl PeerRuntime {
         result.map_err(|e| format!("knock failed: {e}"))
     }
 
-    /// Send a one-shot action (structured agent-to-agent message, no file) to a
-    /// recipient. REUSES the standing receiver's identity endpoint when one is up
-    /// (Finding 6b), otherwise binds a clean transient endpoint - exactly like
-    /// [`Self::send_knock`]. `payload` carries optional structured args;
-    /// `correlation_id` ties a reply back to a request.
-    pub async fn send_action(
-        &self,
-        recipient_afid: &str,
-        my_secret: &[u8],
-        verb: &str,
-        payload: Option<serde_json::Value>,
-        correlation_id: Option<String>,
-    ) -> Result<(), String> {
-        let shared = self.identity_endpoint.lock().await.clone();
-        let result = match shared {
-            Some(ep) => {
-                crate::peer::send_action_on_endpoint(
-                    &ep,
-                    recipient_afid,
-                    my_secret,
-                    verb,
-                    payload,
-                    correlation_id,
-                )
-                .await
-            }
-            None => {
-                crate::peer::send_action_oneshot(
-                    recipient_afid,
-                    my_secret,
-                    verb,
-                    payload,
-                    correlation_id,
-                    relay_urls_from_env(),
-                )
-                .await
-            }
-        };
-        result.map_err(|e| format!("action failed: {e}"))
-    }
-
     /// Resolve a pending incoming offer. `accept = true` writes the file into
     /// `inbox_root/<label or short-AFID>/`; `accept = false` declines. `label`
     /// is the FE's friendly per-sender folder name (the friend alias). Errors if

@@ -498,6 +498,21 @@ pub async fn local_mkdir(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
     }))
 }
 
+/// File tags are keyed by path: carry them with a rename or move the agent
+/// made. Only the GUI has the tag database; elsewhere this does nothing.
+fn tags_follow_move(ctx: &dyn ToolCtx, from: &str, to: &str) {
+    if let Some(app) = ctx.tauri_app_handle() {
+        crate::file_tags::follow_move(&app, from, to);
+    }
+}
+
+/// Drop the file tags of what a delete removed (GUI only, as above).
+fn tags_follow_delete(ctx: &dyn ToolCtx, path: &str) {
+    if let Some(app) = ctx.tauri_app_handle() {
+        crate::file_tags::follow_delete(&app, path);
+    }
+}
+
 pub async fn local_delete(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let path = resolve_local_path(&get_str(args, "path")?, ctx.context_local_path());
     validate_path(&path, "path").map_err(map_str_err)?;
@@ -521,13 +536,16 @@ pub async fn local_delete(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
 
     let meta =
         std::fs::metadata(&path).map_err(|e| ToolError::Exec(format!("Path not found: {}", e)))?;
-    if meta.is_dir() {
+    let removed = if meta.is_dir() {
         std::fs::remove_dir_all(&path)
-            .map_err(|e| ToolError::Exec(format!("Failed to delete directory: {}", e)))?;
+            .map_err(|e| ToolError::Exec(format!("Failed to delete directory: {}", e)))
     } else {
         std::fs::remove_file(&path)
-            .map_err(|e| ToolError::Exec(format!("Failed to delete file: {}", e)))?;
-    }
+            .map_err(|e| ToolError::Exec(format!("Failed to delete file: {}", e)))
+    };
+    // remove_dir_all can fail half way: forget the tags of whatever is gone.
+    tags_follow_delete(ctx, &path);
+    removed?;
 
     Ok(json!({
         "success": true,
@@ -543,6 +561,7 @@ pub async fn local_rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
     validate_path(&to, "to").map_err(map_str_err)?;
 
     std::fs::rename(&from, &to).map_err(|e| ToolError::Exec(format!("Failed to rename: {}", e)))?;
+    tags_follow_move(ctx, &from, &to);
 
     Ok(json!({
         "success": true,
@@ -589,14 +608,15 @@ pub async fn local_move_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             &filename,
         );
 
-        match std::fs::rename(source, &dest_path) {
-            Ok(_) => moved.push(filename),
-            Err(_) => {
-                match std::fs::copy(source, &dest_path).and_then(|_| std::fs::remove_file(source)) {
-                    Ok(_) => moved.push(filename),
-                    Err(e) => errors.push(json!({ "file": filename, "error": e.to_string() })),
-                }
+        let outcome = std::fs::rename(source, &dest_path).or_else(|_| {
+            std::fs::copy(source, &dest_path).and_then(|_| std::fs::remove_file(source))
+        });
+        match outcome {
+            Ok(_) => {
+                tags_follow_move(ctx, source, &dest_path);
+                moved.push(filename);
             }
+            Err(e) => errors.push(json!({ "file": filename, "error": e.to_string() })),
         }
     }
 
@@ -733,7 +753,10 @@ pub async fn local_batch_rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
             &filename,
         );
         match std::fs::rename(from, to) {
-            Ok(_) => renamed.push(json!({ "from": from, "to": to })),
+            Ok(_) => {
+                tags_follow_move(ctx, from, to);
+                renamed.push(json!({ "from": from, "to": to }));
+            }
             Err(e) => errors.push(json!({ "file": from, "error": e.to_string() })),
         }
     }

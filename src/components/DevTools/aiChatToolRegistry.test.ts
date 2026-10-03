@@ -135,8 +135,62 @@ describe('untrusted MCP registry snapshot', () => {
             { ...base, properties: { path: { type: 'string', description: 'x'.repeat(8192) } } },
             { ...base, properties: { path: { type: 'array', items: { type: 'string', extra: true } } } },
             { ...base, description: 'x'.repeat(8192) },
+            { ...base, properties: { path: { type: 'integer', minimum: 0, exclusiveMinimum: 1 } } },
             { ...base, properties: { path: { type: 'array', items: { type: 'array', items: { type: 'string' } } } } },
         ]) expect(schema(invalid)).toBe(false);
+    });
+
+    it('refuses bounds that leave no value to send, as the backend does', () => {
+        const accepted = (property: Record<string, unknown>) => {
+            const server = mcp('bounds');
+            server.tools[0].inputSchema = { type: 'object', properties: { value: property } };
+            return buildToolRegistry([], [], [server]).some(entry => entry.source.kind === 'mcp');
+        };
+        for (const property of [
+            { type: 'number', minimum: 5, exclusiveMaximum: 5 }, { type: 'number', exclusiveMinimum: 5, maximum: 5 },
+            { type: 'number', minimum: 6, exclusiveMaximum: 5 }, { type: 'integer', minimum: 5.5, exclusiveMaximum: 6 },
+            { type: 'integer', exclusiveMinimum: 5, maximum: 5.5 }, { type: 'integer', minimum: 5.2, maximum: 5.8 },
+            { type: 'integer', exclusiveMinimum: 5, exclusiveMaximum: 6 },
+        ]) expect(accepted(property), JSON.stringify(property)).toBe(false);
+        for (const property of [
+            { type: 'number', minimum: 5, maximum: 5 }, { type: 'number', minimum: 0.5, exclusiveMaximum: 0.6 },
+            { type: 'integer', minimum: 5, exclusiveMaximum: 6 }, { type: 'integer', exclusiveMinimum: 4.5, maximum: 5 },
+            { type: 'integer', minimum: -1 },
+        ]) expect(accepted(property), JSON.stringify(property)).toBe(true);
+    });
+
+    it('refuses integer values JavaScript would round, keeps fractional bounds', () => {
+        const accepted = (property: Record<string, unknown>) => {
+            const server = mcp('unsafe');
+            server.tools[0].inputSchema = { type: 'object', properties: { value: property } };
+            return buildToolRegistry([], [], [server]).some(entry => entry.source.kind === 'mcp');
+        };
+        const unsafe = 2 ** 53;
+        for (const property of [
+            { type: 'integer', enum: [1, unsafe] }, { type: 'number', enum: [unsafe] },
+            { type: 'integer', default: unsafe },
+            { type: 'integer', minimum: -unsafe }, { type: 'number', maximum: unsafe },
+            { type: 'integer', exclusiveMinimum: -unsafe }, { type: 'number', exclusiveMaximum: unsafe },
+        ]) expect(accepted(property)).toBe(false);
+        for (const property of [
+            { type: 'integer', enum: [1, 2 ** 53 - 1] }, { type: 'number', minimum: 0.5, maximum: 2 ** 53 - 1 },
+            { type: 'number', exclusiveMinimum: -0.25 },
+        ]) expect(accepted(property)).toBe(true);
+    });
+
+    it('keeps string lengths, exclusive bounds and wrapped descriptions', () => {
+        const server = mcp('fetch', 'fetch');
+        server.tools[0].description = 'Fetches a URL.\nThe page is read only.';
+        server.tools[0].inputSchema = { type: 'object', properties: {
+            url: { type: 'string', minLength: 1, maxLength: 8, description: 'URL to fetch' },
+            max_length: { type: 'integer', exclusiveMinimum: 0, exclusiveMaximum: 10, default: 5 },
+        }, required: ['url'], additionalProperties: false };
+        const entry = buildToolRegistry([], [], [server]).find(tool => tool.source.kind === 'mcp');
+        expect(entry?.tool.description).toContain('\n');
+        expect(toJSONSchema(entry!.tool).properties).toMatchObject({
+            url: { minLength: 1, maxLength: 8 },
+            max_length: { exclusiveMinimum: 0, exclusiveMaximum: 10 },
+        });
     });
 
     it('exposes supported string arrays without admitting nested arrays', () => {

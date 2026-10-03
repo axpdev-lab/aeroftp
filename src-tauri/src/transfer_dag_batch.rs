@@ -703,6 +703,18 @@ where
     node_outcome
 }
 
+/// Whether a multipart node must stop (#591).
+///
+/// `cancel` is the batch flag: "start no further file". It stops a file whose
+/// multipart session has not begun yet. A begun file is in flight, and like a
+/// single-shot file in flight it only stops on a hard cancel, which reaches
+/// the executor (`is_transfer_cancelled`: the token every caller cancels on a
+/// hard stop). Without this split the GUI's first Stop, which promises the
+/// files in flight finish, aborted a large S3/B2/Azure upload part-way.
+fn multipart_should_stop(cancel: &AtomicBool, hard_cancelled: bool, begun: bool) -> bool {
+    hard_cancelled || (!begun && cancel.load(Ordering::Relaxed))
+}
+
 /// A file now holds a transfer session: count it and keep the high-water.
 ///
 /// `peak_active` is the job's real file concurrency. The streaming frontier
@@ -757,7 +769,8 @@ where
 
     // Pre-cancel before begin/lease: leave the file unaccounted (legacy contract).
     // After begin, record cancellation so CommitTemp aborts once.
-    let cancelled_now = cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled();
+    let cancelled_now =
+        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
     if cancelled_now {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
@@ -807,7 +820,8 @@ where
             }
             SessionLeaseSlot::Vacant => {
                 // Re-check cancel before acquiring a lease for an unstarted file.
-                if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+                if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun())
+                {
                     return NodeOutcome::Completed;
                 }
                 match session_pool.acquire().await {
@@ -834,7 +848,7 @@ where
         }
     }
 
-    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+    if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
         }
@@ -850,7 +864,7 @@ where
     if state.has_failure().await {
         return NodeOutcome::Completed;
     }
-    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+    if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
         }
@@ -886,7 +900,7 @@ where
     // providers read a bounded window; owning providers materialize it inside
     // `multipart_upload_part_body`. Both stay inside the held `buffer_bytes`
     // lease, and a read error surfaces as a typed part failure from the call.
-    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+    if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         // Session already begun: cancel is a terminal file failure.
         state.record_failure(cancelled_failure()).await;
         return NodeOutcome::Completed;
@@ -986,7 +1000,8 @@ where
     let state = Arc::clone(&runtime.state);
 
     // All part nodes have drained (DAG dependency). Decide complete vs abort.
-    let cancel_flag = cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled();
+    let cancel_flag =
+        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
     let lease_was_held = {
         let slot = runtime.session_lease.lock().await;
         matches!(*slot, SessionLeaseSlot::Held(_))
@@ -2431,6 +2446,91 @@ mod tests {
         assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    /// #591: the batch flag means "start no further file". The GUI's first
+    /// Stop raises only that flag and promises the files in flight finish; a
+    /// multipart file whose session has begun is in flight, so it must not be
+    /// aborted part-way by it. Before the fix every part node re-read the flag
+    /// and the file was aborted after its first part.
+    async fn run_multipart_with_stop_on_first_part(
+        files: usize,
+        max_concurrent: u32,
+        hard: bool,
+    ) -> (TransferBatchResult, Arc<MockExecutor>) {
+        let chunk = 8u64;
+        let file_size = 24u64; // 3 parts each
+        let dir = tempfile::tempdir().expect("tempdir");
+        let entries = (0..files)
+            .map(|i| {
+                let path = dir.path().join(format!("source{i}.bin"));
+                std::fs::write(&path, vec![7u8; file_size as usize]).expect("write");
+                entry_with_local(&format!("m{i}"), file_size, path.to_str().unwrap())
+            })
+            .collect();
+        let mut mock = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(1, chunk))
+            .with_multipart_wire();
+        mock.part_delay = Duration::from_millis(40);
+        let executor = Arc::new(mock);
+        let stop = Arc::new(AtomicBool::new(false));
+        let watcher = {
+            let executor = Arc::clone(&executor);
+            let stop = Arc::clone(&stop);
+            tokio::spawn(async move {
+                while executor.part_calls.load(AtomicOrdering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                if hard {
+                    // A hard cancel reaches the executor's token as well.
+                    executor.cancelled.store(true, Ordering::Relaxed);
+                }
+                stop.store(true, Ordering::Relaxed);
+            })
+        };
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(entries, max_concurrent),
+            Arc::clone(&executor),
+            Arc::clone(&stop),
+            None,
+        )
+        .await;
+        watcher.await.expect("watcher");
+        (result, executor)
+    }
+
+    #[tokio::test]
+    async fn multipart_soft_stop_after_begin_lets_the_file_finish() {
+        let (result, executor) = run_multipart_with_stop_on_first_part(1, 4, false).await;
+        assert_eq!(result.completed, 1, "{result:?}");
+        assert_eq!(result.failed, 0);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 3);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_soft_stop_starts_no_further_file() {
+        let (result, executor) = run_multipart_with_stop_on_first_part(2, 1, false).await;
+        assert_eq!(
+            result.completed, 1,
+            "the file in flight finishes: {result:?}"
+        );
+        assert_eq!(
+            executor.begin_calls.load(AtomicOrdering::SeqCst),
+            1,
+            "the second file never begins"
+        );
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_hard_cancel_after_begin_still_aborts_the_file() {
+        let (result, executor) = run_multipart_with_stop_on_first_part(1, 4, true).await;
+        assert_eq!(result.completed, 0, "{result:?}");
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
     }
 
     #[tokio::test]

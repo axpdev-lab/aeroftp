@@ -102,14 +102,9 @@
             "connectionFailed": "Povezivanje nije uspjelo",
             "reconnecting": "Ponovno povezivanje...",
             "quickConnect": "Brzo povezivanje",
-            "savedServers": "Spremljeni poslužitelji",
-            "noSavedServers": "Nema spremljenih poslužitelja",
             "saveServer": "Spremi poslužitelj",
-            "deleteServer": "Obriši poslužitelj",
-            "editServer": "Uredi poslužitelj",
             "serverName": "Naziv poslužitelja",
             "initialPath": "Početna putanja",
-            "savedServersHelp": "Odaberite poslužitelj za povezivanje.",
             "selectSshKey": "Odaberite SSH privatni ključ",
             "allFiles": "Sve datoteke",
             "sshKeys": "SSH ključevi",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Pretvorite bilo koji poslužitelj u svoj osobni oblak s automatskom sinkronizacijom",
             "configureAerocloud": "Konfiguriraj AeroCloud",
             "aerocloudHelp": "AeroCloud možete konfigurirati i iz trake stanja",
-            "selectProviderPrompt": "Odaberite davatelja iznad ili odaberite \"Prilagođeno\" za ručnu konfiguraciju",
-            "custom": "Prilagođeno",
             "change": "Promijeni",
             "emailAccount": "Račun e-pošte",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Vaša MEGA lozinka",
-            "dismiss": "Odbaci",
             "authenticating": "Autentifikacija...",
             "oauth2Connection": "OAuth2 veza",
             "securityTitle": "Šifrirana pohrana vjerodajnica",
@@ -170,7 +162,6 @@
             "docs": "Dokumentacija",
             "minutes": "minuta",
             "localPathPlaceholder": "/home/korisnik/projekti",
-            "searchServers": "Pretraži poslužitelje...",
             "fourshared": {
                 "backToExistingAccount": "Natrag na postojeći račun",
                 "configureCredentials": "Konfiguriraj OAuth 1.0 vjerodajnice",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "Lozinka aplikacije",
             "koofrAppPasswordPlaceholder": "Zalijepite vašu Koofr lozinku aplikacije ovdje",
             "koofrHelp": "Generirajte lozinku aplikacije na app.koofr.net → Postavke → Lozinka → Lozinke aplikacija",
-            "duplicateServer": "Dupliciraj poslužitelj",
-            "duplicateCredentialMissing": "Vjerodajnica nije kopirana u duplikat. Ponovno unesite lozinku prije povezivanja.",
             "saveAsNew": "Spremi kao novi",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Generirajte API ključ u Immich → User Settings → API Keys",
             "immichOps": "Pregledavanje, prijenos, preuzimanje, brisanje, albumi, pretraživanje, dijeljeni linkovi. Preimenovanje i premještanje nisu podržani.",
             "generatePassword": "Generiraj lozinku",
-            "saveAndConnect": "Spremi i poveži",
-            "saveDisabledTotp": "TOTP kodovi su jednokratni. Koristite Spremi i poveži za primjenu ovog koda sada.",
             "generatePersonalLoginToken": "Generiraj osobni token za prijavu",
             "endpointUrl": "URL krajnje točke",
             "b2NativeAdvantagesTitle": "Backblaze B2 izvorni API: dodatne značajke u odnosu na S3-kompatibilan",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Prijavite se ponovno",
             "twakeSignedIn": "Prijavljeni ste",
             "twakeWaitingBrowser": "Dovršite prijavu u pregledniku...",
-            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledniku i traži pristup samo vašim datotekama. Ako Twake prvi put prikaže pogrešku, prijavite se u Twake u pregledniku i prijavite se ponovno. Pristup možete opozvati bilo kada u Twake postavkama, Povezani uređaji."
+            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledniku i traži pristup samo vašim datotekama. Ako Twake prvi put prikaže pogrešku, prijavite se u Twake u pregledniku i prijavite se ponovno. Pristup možete opozvati bilo kada u Twake postavkama, Povezani uređaji.",
+            "oauthKeysMissingTitle": "Nedostaju ključevi aplikacije za {provider}",
+            "oauthKeysMissing": "U trezoru nisu pohranjeni ključevi aplikacije za {provider}, pa se AeroFTP ne može prijaviti. AeroFTP ne isporučuje vlastite ključeve: unesite ključeve svoje razvojne aplikacije za {provider} u {location}, a zatim se ponovno povežite.",
+            "oauthKeysOpenSettings": "Otvori postavke OAutha",
+            "oauthKeysReadFailedTitle": "Nije moguće pročitati ključeve aplikacije za {provider}",
+            "oauthKeysReadFailed": "AeroFTP nije mogao pročitati ključeve aplikacije za {provider} iz trezora pa se ne može prijaviti. Ključevi nisu promijenjeni. Pogreška: {error}"
         },
         "browser": {
             "remote": "Udaljeno",
@@ -1474,6 +1466,7 @@
             "extracted": "Izdvojeno!",
             "extractedTo": "Datoteke izdvojene u {dest}",
             "fileLocked": "Datoteka zaključana",
+            "cutPartial": "Premješteno {moved} od {total} stavki; ostale ostaju na mjestu",
             "fileSkipped": "{count} datoteka preskočeno",
             "fileUnlocked": "Datoteka otključana",
             "loadTrashFailed": "Učitavanje koša nije uspjelo",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Šifrirani sloj zaključan",
             "aerocrypt_marker_migrate": "Pretvaranje AeroCrypt oznake u .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt oznaka pretvorena u .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Otključavanje mape {filename}..."
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "Lokalni poslužitelj nije se mogao pokrenuti.",
                     "serverFailed": "Poslužitelj se zaustavio ili je poslao neispravan odgovor.",
                     "httpUnauthorized": "Poslužitelj je odbio spremljene vjerodajnice.",
-                    "unsupportedVersion": "Poslužitelj koristi MCP verziju koju AeroFTP ne podržava."
+                    "unsupportedVersion": "Poslužitelj koristi MCP verziju koju AeroFTP ne podržava.",
+                    "directoryInvalid": "Odaberite namjenski direktorij bez poveznica ili osjetljivih datoteka aplikacija.",
+                    "directoryChanged": "Odobreni direktorij promijenjen je ili nedostaje. Ponovno ga odaberite za obnovu pristupa.",
+                    "permissionCommand": "Promijenite pristup pomoću postavki dopuštenja za direktorije i mrežu.",
+                    "installInvalid": "Ova upravljana instalacija nije dostupna ili njezin manifest nije valjan.",
+                    "installIntegrity": "Provjera integriteta paketa nije uspjela. Uklonite i ponovno instalirajte poslužitelj.",
+                    "installArchive": "Paket sadrži nesigurne putanje, poveznice ili nevaljanu početnu datoteku.",
+                    "installRuntime": "Nedostaje potrebno sistemsko okruženje za izvršavanje.",
+                    "installDownload": "Preuzimanje paketa nije uspjelo ili je isteklo vrijeme čekanja.",
+                    "installLimit": "Paket premašuje ograničenja instalacije.",
+                    "installExists": "Uklonite postojeću instalaciju prije ponovne instalacije.",
+                    "installIo": "Instalacijske datoteke nije bilo moguće pročitati ili zapisati."
                 },
                 "routingNotice": "Omogućeni poslužitelji nude svoje alate AeroAgentu. Svaki poziv alata prvo traži vaše odobrenje.",
                 "checkNow": "Provjeri sada",
@@ -3094,7 +3099,26 @@
                 "healthError": "Nedostupno: {reason}",
                 "healthReady": "Spremno, alati dostupni AeroAgentu: {count}",
                 "healthUnsupported": "Alati s nepodržanim shemama: {count}",
-                "healthShowTools": "Prikaži alate"
+                "healthShowTools": "Prikaži alate",
+                "directoryTitle": "Mape samo za čitanje",
+                "grantDirectory": "Odaberi mapu",
+                "confirmDirectory": "Dopustiti ovom poslužitelju pristup samo za čitanje svim datotekama u {path}? Dopustite samo pristup namjenskoj mapi poslužitelja ili projekta.",
+                "noDirectories": "Nema pristupa mapama.",
+                "revokeDirectory": "Opozovi pristup",
+                "confirmRevokeDirectory": "Opozvati pristup mapi {path}? Prethodna odobrenja alata više neće biti valjana.",
+                "networkAccess": "Dopusti pristup mreži (svi hostovi i lokalne usluge)",
+                "networkBlocked": "Mrežni pristup je blokiran.",
+                "confirmNetwork": "Dopustiti poslužitelju {name} pristup mreži, uključujući lokalne usluge? Prethodna odobrenja alata više neće biti valjana.",
+                "confirmBlockNetwork": "Blokirati mrežni pristup poslužitelju {name}? Prethodna odobrenja alata više neće biti valjana.",
+                "managedStatus": "Upravljana instalacija: {version}",
+                "renewDirectory": "Obnovi pristup",
+                "presetsTitle": "Preporučeni poslužitelji",
+                "presetsSubtitle": "Pregledani predlošci instaliraju se tek nakon potvrde. Ostaju isključeni dok ih ne uključite.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Traži dokumentaciju javnog repozitorija.",
+                "presetInstall": "Instaliraj",
+                "presetInstalledDisabled": "Instalirano i isključeno",
+                "presetReady": "Spremno"
             }
         },
         "archive": {
@@ -4102,12 +4126,6 @@
             "viewSource": "Prikaži izvorni kôd"
         },
         "savedServers": {
-            "dragToReorder": "Povucite za promjenu redoslijeda",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Konfigurirajte 4shared vjerodajnice u Postavke > Oblačni pružatelji.",
-            "oauthConfigError": "Konfigurirajte {provider} vjerodajnice u Postavke > Oblačni pružatelji.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,19 +4459,23 @@
             "tagsPlaceholder": "Dodaj oznaku...",
             "tagsUpdated": "Oznake ažurirane",
             "addTag": "Dodaj",
-            "noTags": "Nema oznaka"
+            "noTags": "Nema oznaka",
+            "collaborators": "Suradnici",
+            "noCollaborators": "Još nije ni s kim podijeljeno",
+            "folderNotLocked": "Ova mapa nije zaključana",
+            "roleEditor": "Urednik",
+            "roleViewer": "Gledatelj",
+            "rolePreviewer": "Pretpregledatelj",
+            "roleUploader": "Učitavatelj",
+            "rolePreviewerUploader": "Pretpregledatelj i učitavatelj",
+            "roleViewerUploader": "Gledatelj i učitavatelj",
+            "roleCoOwner": "Suvlasnik"
         },
         "googledrive": {
             "star": "Označi zvjezdicom",
             "unstar": "Ukloni zvjezdicu",
             "starred": "Datoteka označena zvjezdicom",
-            "unstarred": "Zvjezdica uklonjena",
-            "addComment": "Dodaj komentar",
-            "commentPlaceholder": "Napišite svoj komentar...",
-            "commentAdded": "Komentar dodan"
-        },
-        "dropbox": {
-            "manageTags": "Upravljanje oznakama"
+            "unstarred": "Zvjezdica uklonjena"
         },
         "providers": {
             "title": "Pružatelji i integracije",
@@ -4492,12 +4514,6 @@
             "freeTier": "Besplatni plan",
             "freeCardTier": "Besplatno + kartica",
             "paidTier": "Plaćeno"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Upravljanje oznakama",
-            "noLabels": "Nema dostupnih oznaka. Kreirajte oznake u postavkama Zoho WorkDrive.",
-            "createLabel": "Kreiraj oznaku",
-            "labelName": "Naziv oznake"
         },
         "healthCheck": {
             "title": "Provjera stanja poslužitelja",
@@ -4773,7 +4789,14 @@
             "participants": "sudionici",
             "saving": "Spremanje...",
             "saved": "Spremljeno",
-            "saveNow": "Spremi sada"
+            "saveNow": "Spremi sada",
+            "noteType": "Vrsta bilješke",
+            "addTag": "Dodaj oznaku",
+            "newTag": "Nova oznaka...",
+            "tagName": "Naziv oznake",
+            "removeTag": "Ukloni oznaku",
+            "manageTags": "Upravljaj oznakama",
+            "deleteTagConfirm": "Izbrisati oznaku „{name}“? Bilješke zadržavaju svoj tekst."
         },
         "shareLinkModal": {
             "title": "Veza za dijeljenje",
@@ -6049,6 +6072,27 @@
             "scopeSession": "Odobrava ovaj alat do kraja sesije chata.",
             "approve": "Odobri",
             "rememberForChat": "Dopusti ovaj alat do kraja ovog chata"
+        },
+        "s3": {
+            "storageClass": "Klasa pohrane",
+            "storageClassChanged": "Klasa pohrane promijenjena u {storageClass}",
+            "restoreFromGlacier": "Vrati iz Glacier",
+            "restoreTier": "Razina dohvaćanja",
+            "restoreDays": "Dani čuvanja vraćene kopije",
+            "restoreStarted": "Zatraženo je vraćanje: kad bude spremna, kopija ostaje čitljiva {days} dana",
+            "objectTags": "Oznake objekta",
+            "noTags": "Nema oznaka",
+            "tagKey": "Ključ",
+            "tagValue": "Vrijednost",
+            "tagsSaved": "Oznake spremljene"
+        },
+        "azure": {
+            "accessTier": "Razina pristupa",
+            "accessTierChanged": "Razina pristupa postavljena na {tier}"
+        },
+        "fileComments": {
+            "title": "Komentari",
+            "empty": "Još nema komentara"
         }
     }
 }

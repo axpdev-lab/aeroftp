@@ -102,14 +102,9 @@
             "connectionFailed": "সংযোগ ব্যর্থ হয়েছে",
             "reconnecting": "পুনরায় সংযোগ করা হচ্ছে...",
             "quickConnect": "দ্রুত সংযোগ",
-            "savedServers": "সংরক্ষিত সার্ভার",
-            "noSavedServers": "কোনো সংরক্ষিত সার্ভার নেই",
             "saveServer": "সার্ভার সংরক্ষণ করুন",
-            "deleteServer": "সার্ভার মুছুন",
-            "editServer": "সার্ভার সম্পাদনা করুন",
             "serverName": "সার্ভারের নাম",
             "initialPath": "প্রাথমিক পাথ",
-            "savedServersHelp": "সংযোগ করতে একটি সার্ভার নির্বাচন করুন।",
             "selectSshKey": "SSH প্রাইভেট কি নির্বাচন করুন",
             "allFiles": "সব ফাইল",
             "sshKeys": "SSH কি",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "যেকোনো সার্ভারকে স্বয়ংক্রিয় সিঙ্কের মাধ্যমে আপনার নিজস্ব ক্লাউডে পরিণত করুন",
             "configureAerocloud": "AeroCloud কনফিগার করুন",
             "aerocloudHelp": "আপনি স্ট্যাটাস বার থেকেও AeroCloud কনফিগার করতে পারেন",
-            "selectProviderPrompt": "উপরে একটি প্রোভাইডার নির্বাচন করুন বা ম্যানুয়াল কনফিগারেশনের জন্য \"কাস্টম\" বেছে নিন",
-            "custom": "কাস্টম",
             "change": "পরিবর্তন",
             "emailAccount": "ইমেল অ্যাকাউন্ট",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "আপনার MEGA পাসওয়ার্ড",
-            "dismiss": "খারিজ করুন",
             "authenticating": "যাচাই করা হচ্ছে...",
             "oauth2Connection": "OAuth2 সংযোগ",
             "securityTitle": "এনক্রিপ্ট করা ক্রেডেনশিয়াল স্টোরেজ",
@@ -170,7 +162,6 @@
             "docs": "ডকুমেন্টস",
             "minutes": "মিনিট",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "সার্ভার অনুসন্ধান করুন...",
             "fourshared": {
                 "backToExistingAccount": "বিদ্যমান অ্যাকাউন্টে ফিরে যান",
                 "configureCredentials": "OAuth 1.0 শংসাপত্র কনফিগার করুন",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "অ্যাপ পাসওয়ার্ড",
             "koofrAppPasswordPlaceholder": "আপনার Koofr অ্যাপ পাসওয়ার্ড এখানে পেস্ট করুন",
             "koofrHelp": "app.koofr.net → পছন্দসমূহ → পাসওয়ার্ড → অ্যাপ পাসওয়ার্ড-এ একটি অ্যাপ পাসওয়ার্ড তৈরি করুন",
-            "duplicateServer": "সার্ভার ডুপ্লিকেট করুন",
-            "duplicateCredentialMissing": "শংসাপত্রটি অনুলিপিতে কপি করা হয়নি। সংযোগ করার আগে পাসওয়ার্ডটি আবার লিখুন।",
             "saveAsNew": "নতুন হিসেবে সংরক্ষণ করুন",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Immich → User Settings → API Keys-এ একটি API কী তৈরি করুন",
             "immichOps": "ব্রাউজ, আপলোড, ডাউনলোড, মুছুন, অ্যালবাম, অনুসন্ধান, শেয়ার লিংক। রিনেম এবং মুভ সমর্থিত নয়।",
             "generatePassword": "পাসওয়ার্ড জেনারেট করুন",
-            "saveAndConnect": "সংরক্ষণ করুন এবং সংযোগ করুন",
-            "saveDisabledTotp": "TOTP কোড একবার ব্যবহারযোগ্য। এই কোড এখন প্রয়োগ করতে „সংরক্ষণ করুন এবং সংযোগ করুন“ ব্যবহার করুন।",
             "generatePersonalLoginToken": "ব্যক্তিগত লগইন টোকেন তৈরি করুন",
             "endpointUrl": "এন্ডপয়েন্ট URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 নেটিভ API: S3-সামঞ্জস্যপূর্ণের উপর অতিরিক্ত বৈশিষ্ট্য",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "আবার সাইন ইন করুন",
             "twakeSignedIn": "সাইন ইন করা হয়েছে",
             "twakeWaitingBrowser": "আপনার ব্রাউজারে সাইন ইন শেষ করুন...",
-            "twakeSignInHelp": "AeroFTP আপনার ব্রাউজারে Twake খোলে এবং শুধুমাত্র আপনার ফাইলের অ্যাক্সেস চায়। প্রথমবার Twake ত্রুটি দেখালে, ব্রাউজারে Twake-এ লগ ইন করুন এবং আবার সাইন ইন করুন। আপনি যেকোনো সময় Twake সেটিংসে, সংযুক্ত ডিভাইসে অ্যাক্সেস প্রত্যাহার করতে পারেন।"
+            "twakeSignInHelp": "AeroFTP আপনার ব্রাউজারে Twake খোলে এবং শুধুমাত্র আপনার ফাইলের অ্যাক্সেস চায়। প্রথমবার Twake ত্রুটি দেখালে, ব্রাউজারে Twake-এ লগ ইন করুন এবং আবার সাইন ইন করুন। আপনি যেকোনো সময় Twake সেটিংসে, সংযুক্ত ডিভাইসে অ্যাক্সেস প্রত্যাহার করতে পারেন।",
+            "oauthKeysMissingTitle": "{provider} অ্যাপ কী পাওয়া যাচ্ছে না",
+            "oauthKeysMissing": "ভল্টে {provider}-এর কোনো অ্যাপ কী সংরক্ষিত নেই, তাই AeroFTP সাইন ইন করতে পারছে না। AeroFTP নিজস্ব কী দেয় না: {location}-এ আপনার {provider} ডেভেলপার অ্যাপের কী দিন, তারপর আবার সংযোগ করুন।",
+            "oauthKeysOpenSettings": "OAuth সেটিংস খুলুন",
+            "oauthKeysReadFailedTitle": "{provider} অ্যাপের কী পড়া যাচ্ছে না",
+            "oauthKeysReadFailed": "AeroFTP ভল্ট থেকে {provider} অ্যাপের কী পড়তে পারেনি, তাই সাইন ইন করতে পারছে না। কী পরিবর্তন করা হয়নি। ত্রুটি: {error}"
         },
         "browser": {
             "remote": "রিমোট",
@@ -1474,6 +1466,7 @@
             "extracted": "এক্সট্র্যাক্ট হয়েছে!",
             "extractedTo": "{dest}-এ ফাইল এক্সট্র্যাক্ট হয়েছে",
             "fileLocked": "ফাইল লক করা হয়েছে",
+            "cutPartial": "{total}টির মধ্যে {moved}টি আইটেম সরানো হয়েছে; বাকিগুলো নিজের জায়গায় আছে",
             "fileSkipped": "{count}টি ফাইল বাদ দেওয়া হয়েছে",
             "fileUnlocked": "ফাইল আনলক করা হয়েছে",
             "loadTrashFailed": "ট্র্যাশ লোড করা ব্যর্থ",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "এনক্রিপ্টেড ওভারলে লক করা হয়েছে",
             "aerocrypt_marker_migrate": "AeroCrypt মার্কার .aerocrypt.tsv-এ রূপান্তর করা হচ্ছে…",
             "aerocrypt_marker_migrated": "AeroCrypt মার্কার .aerocrypt.tsv-এ রূপান্তরিত হয়েছে",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] ফোল্ডার {filename} আনলক করা হচ্ছে..."
         },
         "protocol": {
             "selectProtocol": "প্রোটোকল নির্বাচন করুন...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "লোকাল সার্ভারটি চালু করা যায়নি।",
                     "serverFailed": "সার্ভার বন্ধ হয়ে গেছে বা একটি অবৈধ উত্তর পাঠিয়েছে।",
                     "httpUnauthorized": "সার্ভার সংরক্ষিত শংসাপত্র প্রত্যাখ্যান করেছে।",
-                    "unsupportedVersion": "সার্ভার এমন একটি MCP সংস্করণ ব্যবহার করছে যা AeroFTP সমর্থন করে না।"
+                    "unsupportedVersion": "সার্ভার এমন একটি MCP সংস্করণ ব্যবহার করছে যা AeroFTP সমর্থন করে না।",
+                    "directoryInvalid": "লিংক বা সংবেদনশীল অ্যাপ্লিকেশন ফাইল নেই এমন একটি নির্দিষ্ট ডিরেক্টরি বেছে নিন।",
+                    "directoryChanged": "অনুমতি দেওয়া ডিরেক্টরি বদলে গেছে বা নেই। প্রবেশাধিকার নবায়ন করতে আবার এটি নির্বাচন করুন।",
+                    "permissionCommand": "ডিরেক্টরি ও নেটওয়ার্কের অনুমতি নিয়ন্ত্রণ ব্যবহার করে প্রবেশাধিকার বদলান।",
+                    "installInvalid": "এই পরিচালিত ইনস্টলেশন উপলব্ধ নয় অথবা এর ম্যানিফেস্ট অবৈধ।",
+                    "installIntegrity": "প্যাকেজের অখণ্ডতা যাচাই ব্যর্থ হয়েছে। সার্ভার সরিয়ে আবার ইনস্টল করুন।",
+                    "installArchive": "প্যাকেজে অনিরাপদ পাথ, লিংক বা অবৈধ প্রারম্ভিক ফাইল রয়েছে।",
+                    "installRuntime": "প্রয়োজনীয় সিস্টেম রানটাইম নেই।",
+                    "installDownload": "প্যাকেজ ডাউনলোড ব্যর্থ হয়েছে অথবা সময়সীমা শেষ হয়েছে।",
+                    "installLimit": "প্যাকেজ ইনস্টলেশনের সীমা ছাড়িয়ে গেছে।",
+                    "installExists": "আবার ইনস্টল করার আগে বিদ্যমান ইনস্টলেশন সরান।",
+                    "installIo": "ইনস্টলেশনের ফাইল পড়া বা লেখা যায়নি।"
                 },
                 "routingNotice": "সক্রিয় সার্ভারগুলো তাদের টুল AeroAgent-কে দেয়। প্রতিটি টুল কলের আগে আপনার অনুমোদন চাওয়া হয়।",
                 "checkNow": "এখনই পরীক্ষা করুন",
@@ -3094,7 +3099,26 @@
                 "healthError": "অনুপলব্ধ: {reason}",
                 "healthReady": "প্রস্তুত, AeroAgent-এর জন্য উপলব্ধ টুল: {count}",
                 "healthUnsupported": "অসমর্থিত স্কিমাযুক্ত টুল: {count}",
-                "healthShowTools": "টুল দেখান"
+                "healthShowTools": "টুল দেখান",
+                "directoryTitle": "শুধু পড়ার ডিরেক্টরি",
+                "grantDirectory": "ডিরেক্টরি বেছে নিন",
+                "confirmDirectory": "এই সার্ভারকে {path}-এর সব ফাইল শুধু পড়ার অনুমতি দেবেন? শুধু সার্ভার বা প্রকল্পের জন্য নির্দিষ্ট ডিরেক্টরির অনুমতি দিন।",
+                "noDirectories": "ডিরেক্টরিতে প্রবেশাধিকার নেই।",
+                "revokeDirectory": "প্রবেশাধিকার প্রত্যাহার করুন",
+                "confirmRevokeDirectory": "{path}-এর প্রবেশাধিকার প্রত্যাহার করবেন? টুলের আগের অনুমোদনগুলো আর বৈধ থাকবে না।",
+                "networkAccess": "নেটওয়ার্ক অ্যাক্সেস দিন (সব হোস্ট ও স্থানীয় পরিষেবা)",
+                "networkBlocked": "নেটওয়ার্কে প্রবেশাধিকার অবরুদ্ধ।",
+                "confirmNetwork": "{name}-কে স্থানীয় পরিষেবাসহ নেটওয়ার্কে প্রবেশাধিকার দেবেন? টুলের আগের অনুমোদনগুলো আর বৈধ থাকবে না।",
+                "confirmBlockNetwork": "{name}-এর নেটওয়ার্কে প্রবেশাধিকার বন্ধ করবেন? টুলের আগের অনুমোদনগুলো আর বৈধ থাকবে না।",
+                "managedStatus": "পরিচালিত ইনস্টলেশন: {version}",
+                "renewDirectory": "প্রবেশাধিকার নবায়ন করুন",
+                "presetsTitle": "সুপারিশকৃত সার্ভার",
+                "presetsSubtitle": "পর্যালোচিত প্রিসেট কেবল নিশ্চিত করার পর ইনস্টল হয়। আপনি চালু না করা পর্যন্ত সেগুলি বন্ধ থাকে।",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "সর্বজনীন রিপোজিটরির ডকুমেন্টেশন খোঁজে।",
+                "presetInstall": "ইনস্টল",
+                "presetInstalledDisabled": "ইনস্টল করা এবং বন্ধ",
+                "presetReady": "প্রস্তুত"
             }
         },
         "archive": {
@@ -4102,12 +4126,6 @@
             "viewSource": "উৎস দেখুন"
         },
         "savedServers": {
-            "dragToReorder": "পুনরায় সাজাতে টানুন",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "অনুগ্রহ করে সেটিংস > ক্লাউড প্রদানকারীতে 4shared শংসাপত্র কনফিগার করুন।",
-            "oauthConfigError": "অনুগ্রহ করে সেটিংস > ক্লাউড প্রদানকারীতে {provider} শংসাপত্র কনফিগার করুন।",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,19 +4459,23 @@
             "tagsPlaceholder": "একটি ট্যাগ যোগ করুন...",
             "tagsUpdated": "ট্যাগ আপডেট হয়েছে",
             "addTag": "যোগ করুন",
-            "noTags": "কোনো ট্যাগ নেই"
+            "noTags": "কোনো ট্যাগ নেই",
+            "collaborators": "সহযোগীরা",
+            "noCollaborators": "এখনও কারও সাথে শেয়ার করা হয়নি",
+            "folderNotLocked": "এই ফোল্ডারটি লক করা নেই",
+            "roleEditor": "সম্পাদক",
+            "roleViewer": "দর্শক",
+            "rolePreviewer": "প্রিভিউয়ার",
+            "roleUploader": "আপলোডার",
+            "rolePreviewerUploader": "প্রিভিউয়ার আপলোডার",
+            "roleViewerUploader": "দর্শক আপলোডার",
+            "roleCoOwner": "সহ-মালিক"
         },
         "googledrive": {
             "star": "তারকাচিহ্নিত করুন",
             "unstar": "তারকাচিহ্ন সরান",
             "starred": "ফাইল তারকাচিহ্নিত হয়েছে",
-            "unstarred": "ফাইলের তারকাচিহ্ন সরানো হয়েছে",
-            "addComment": "মন্তব্য যোগ করুন",
-            "commentPlaceholder": "আপনার মন্তব্য লিখুন...",
-            "commentAdded": "মন্তব্য যোগ হয়েছে"
-        },
-        "dropbox": {
-            "manageTags": "ট্যাগ পরিচালনা"
+            "unstarred": "ফাইলের তারকাচিহ্ন সরানো হয়েছে"
         },
         "providers": {
             "title": "প্রদানকারী ও ইন্টিগ্রেশন",
@@ -4492,12 +4514,6 @@
             "freeTier": "ফ্রি প্ল্যান",
             "freeCardTier": "ফ্রি + কার্ড",
             "paidTier": "পেইড"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "লেবেল পরিচালনা করুন",
-            "noLabels": "কোনো লেবেল উপলব্ধ নেই। Zoho WorkDrive সেটিংসে লেবেল তৈরি করুন।",
-            "createLabel": "লেবেল তৈরি করুন",
-            "labelName": "লেবেল নাম"
         },
         "healthCheck": {
             "title": "সার্ভার স্বাস্থ্য পরীক্ষা",
@@ -4773,7 +4789,14 @@
             "participants": "অংশগ্রহণকারী",
             "saving": "সংরক্ষণ হচ্ছে...",
             "saved": "সংরক্ষিত",
-            "saveNow": "এখনই সংরক্ষণ করুন"
+            "saveNow": "এখনই সংরক্ষণ করুন",
+            "noteType": "নোটের ধরন",
+            "addTag": "ট্যাগ যোগ করুন",
+            "newTag": "নতুন ট্যাগ...",
+            "tagName": "ট্যাগের নাম",
+            "removeTag": "ট্যাগ সরান",
+            "manageTags": "ট্যাগ পরিচালনা",
+            "deleteTagConfirm": "ট্যাগ “{name}” মুছবেন? নোটগুলোর লেখা থেকে যাবে।"
         },
         "shareLinkModal": {
             "title": "শেয়ার লিঙ্ক",
@@ -6049,6 +6072,27 @@
             "scopeSession": "চ্যাট সেশনের বাকি সময়ের জন্য এই টুলটি অনুমোদন করে।",
             "approve": "অনুমোদন করুন",
             "rememberForChat": "এই চ্যাটের বাকি সময়ের জন্য এই টুলটি অনুমোদন করুন"
+        },
+        "s3": {
+            "storageClass": "স্টোরেজ ক্লাস",
+            "storageClassChanged": "স্টোরেজ ক্লাস {storageClass}-এ পরিবর্তিত হয়েছে",
+            "restoreFromGlacier": "Glacier থেকে পুনরুদ্ধার",
+            "restoreTier": "পুনরুদ্ধারের স্তর",
+            "restoreDays": "পুনরুদ্ধার করা কপি রাখার দিন",
+            "restoreStarted": "পুনরুদ্ধারের অনুরোধ করা হয়েছে: প্রস্তুত হলে কপিটি {days} দিন পড়ার জন্য থাকবে",
+            "objectTags": "অবজেক্ট ট্যাগ",
+            "noTags": "কোনো ট্যাগ নেই",
+            "tagKey": "কী",
+            "tagValue": "মান",
+            "tagsSaved": "ট্যাগ সংরক্ষিত হয়েছে"
+        },
+        "azure": {
+            "accessTier": "অ্যাক্সেস টিয়ার",
+            "accessTierChanged": "অ্যাক্সেস টিয়ার {tier} সেট করা হয়েছে"
+        },
+        "fileComments": {
+            "title": "মন্তব্য",
+            "empty": "এখনও কোনো মন্তব্য নেই"
         }
     }
 }

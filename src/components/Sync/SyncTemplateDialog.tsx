@@ -11,7 +11,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../../utils/pickPath';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import {
-    X, FileDown, FileUp, Download, Upload, Check, AlertTriangle, Terminal
+    X, FileDown, FileUp, Download, Upload, Check, AlertTriangle, Terminal, Trash2
 } from 'lucide-react';
 import {
     SyncTemplate,
@@ -23,6 +23,9 @@ import {
     SyncProfile,
 } from '../../types';
 import { useTranslation } from '../../i18n';
+import { ConfirmOverlay } from '../common/ConfirmOverlay';
+import { MODAL_Z } from '../../utils/modalLayers';
+import { deleteSavedSyncProfile, isDeletableSyncProfile } from '../../utils/syncProfiles';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import {
     overlayLivePlanOnTemplate,
@@ -119,6 +122,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
     // sync-preset store, which is why it must not be a saved-server id.
     const [syncProfiles, setSyncProfiles] = useState<SyncProfile[]>([]);
     const [presetId, setPresetId] = useState('');
+    const [pendingDelete, setPendingDelete] = useState<SyncProfile | null>(null);
 
     const defaultScriptFormat = useMemo(detectDefaultScriptFormat, []);
 
@@ -592,16 +596,34 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                 >
                                     {t('syncPresets.title')}
                                 </label>
-                                <select
-                                    id="sync-template-preset"
-                                    className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 dark:bg-gray-800"
-                                    value={presetId}
-                                    onChange={e => setPresetId(e.target.value)}
-                                >
-                                    {syncProfiles.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                    ))}
-                                </select>
+                                <div className="flex items-center gap-1">
+                                    <select
+                                        id="sync-template-preset"
+                                        className="w-full text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1.5 dark:bg-gray-800"
+                                        value={presetId}
+                                        onChange={e => setPresetId(e.target.value)}
+                                    >
+                                        {syncProfiles.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                    {(() => {
+                                        // Saved presets only: the built-in ones are not files to delete.
+                                        const selected = syncProfiles.find(p => p.id === presetId);
+                                        if (!selected || !isDeletableSyncProfile(selected)) return null;
+                                        return (
+                                            <button
+                                                type="button"
+                                                className="p-1.5 rounded text-red-500 hover:bg-red-500/10"
+                                                title={t('common.delete')}
+                                                aria-label={t('common.delete')}
+                                                onClick={() => setPendingDelete(selected)}
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        );
+                                    })()}
+                                </div>
                             </div>
                             <div className="space-y-1">
                                 <div className="text-[11px] uppercase tracking-wide text-gray-500">
@@ -815,6 +837,31 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                         </div>
                     )}
                 </div>
+
+                {pendingDelete && (
+                    <ConfirmOverlay
+                        message={t('browser.deleteConfirm', { name: pendingDelete.name })}
+                        zClass={MODAL_Z.elevatedConfirm}
+                        onCancel={() => setPendingDelete(null)}
+                        onConfirm={() => {
+                            const target = pendingDelete;
+                            setPendingDelete(null);
+                            void (async () => {
+                                try {
+                                    const { left, reloadError } = await deleteSavedSyncProfile(invoke, target, syncProfiles);
+                                    setSyncProfiles(left);
+                                    // A preset picked while the delete ran stays picked.
+                                    setPresetId(current =>
+                                        left.some(p => p.id === current) ? current : left[0]?.id || '',
+                                    );
+                                    if (reloadError) setResult({ success: false, message: reloadError });
+                                } catch (err) {
+                                    setResult({ success: false, message: String(err) });
+                                }
+                            })();
+                        }}
+                    />
+                )}
 
                 {/* Footer */}
                 <div className="flex justify-end px-5 py-3 border-t border-gray-200 dark:border-gray-700">

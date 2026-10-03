@@ -144,11 +144,13 @@ pub async fn copy_one_file_with_options(
     preserve_temp_mtime(&tmp, source_modified);
 
     // Ensure parent directory exists on destination
+    check_copy_cancel(&options.cancel_token)?;
     ensure_parent_dir(dest, dest_path).await;
 
     // Try delta transfer first (SFTP-only today). Returns None for non-SFTP
     // destinations or when downcast/probe declines: in both cases we proceed
     // to the classic upload below.
+    check_copy_cancel(&options.cancel_token)?;
     if let Some(result) =
         try_delta_transfer(dest, SyncDirection::Upload, tmp.as_ref(), dest_path).await
     {
@@ -167,10 +169,22 @@ pub async fn copy_one_file_with_options(
     }
 
     // Classic upload: from temp file to destination
+    check_copy_cancel(&options.cancel_token)?;
     dest.upload(&tmp_path, dest_path, None).await?;
 
     // tmp is dropped here, removing the temp file
     Ok(())
+}
+
+/// Refuse to start a new destination operation after Stop.
+fn check_copy_cancel(cancel: &CancellationToken) -> Result<(), ProviderError> {
+    if cancel.is_cancelled() {
+        Err(ProviderError::TransferFailed(
+            "Transfer cancelled by user".to_string(),
+        ))
+    } else {
+        Ok(())
+    }
 }
 
 async fn download_source_to_temp(
@@ -223,7 +237,17 @@ async fn download_source_to_temp(
                 )
                 .await
                 {
+                    // This is a staging file, not the destination commit: Stop
+                    // must still prevent the subsequent upload.
+                    Ok(()) if options.cancel_token.is_cancelled() => {
+                        return Err(ProviderError::TransferFailed(
+                            "Transfer cancelled by user".to_string(),
+                        ));
+                    }
                     Ok(()) => return Ok(()),
+                    Err(err) if err.is_cancelled() => {
+                        return Err(ProviderError::TransferFailed(err.to_string()));
+                    }
                     Err(err) => {
                         tracing::warn!(
                             "cross-profile: segmented source download failed, falling back to single-stream (remote={}, error={})",
@@ -236,6 +260,7 @@ async fn download_source_to_temp(
         }
     }
 
+    check_copy_cancel(&options.cancel_token)?;
     source.download(source_path, tmp_path, None).await
 }
 

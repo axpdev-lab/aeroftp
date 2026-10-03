@@ -102,14 +102,9 @@
             "connectionFailed": "연결 실패",
             "reconnecting": "재연결 중...",
             "quickConnect": "빠른 연결",
-            "savedServers": "저장된 서버",
-            "noSavedServers": "저장된 서버 없음",
             "saveServer": "서버 저장",
-            "deleteServer": "서버 삭제",
-            "editServer": "서버 편집",
             "serverName": "서버 이름",
             "initialPath": "초기 경로",
-            "savedServersHelp": "연결할 서버를 선택하세요.",
             "selectSshKey": "SSH 개인 키 선택",
             "allFiles": "전체 파일",
             "sshKeys": "SSH 키",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "모든 서버를 자동 동기화로 개인 클라우드로 전환",
             "configureAerocloud": "Configure AeroCloud",
             "aerocloudHelp": "상태 표시줄에서도 AeroCloud를 설정할 수 있습니다",
-            "selectProviderPrompt": "위에서 제공업체를 선택하거나 수동 구성을 위해 \"사용자 지정\"을 선택하세요",
-            "custom": "사용자 지정",
             "change": "변경",
             "emailAccount": "이메일 계정",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "MEGA 비밀번호",
-            "dismiss": "닫기",
             "authenticating": "인증 중...",
             "oauth2Connection": "OAuth2 Connection",
             "securityTitle": "암호화된 자격 증명 저장소",
@@ -170,7 +162,6 @@
             "docs": "문서",
             "minutes": "분",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "서버 검색...",
             "fourshared": {
                 "backToExistingAccount": "기존 계정으로 돌아가기",
                 "configureCredentials": "OAuth 1.0 자격 증명 구성",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "앱 비밀번호",
             "koofrAppPasswordPlaceholder": "Koofr 앱 비밀번호를 여기에 붙여넣으세요",
             "koofrHelp": "app.koofr.net → 설정 → 비밀번호 → 앱 비밀번호에서 앱 비밀번호를 생성하세요",
-            "duplicateServer": "서버 복제",
-            "duplicateCredentialMissing": "자격 증명이 복제본에 복사되지 않았습니다. 연결하기 전에 비밀번호를 다시 입력하세요.",
             "saveAsNew": "새로 저장",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Immich → User Settings → API Keys에서 API 키를 생성하세요",
             "immichOps": "탐색, 업로드, 다운로드, 삭제, 앨범, 검색, 공유 링크. 이름 바꾸기와 이동은 지원되지 않습니다.",
             "generatePassword": "비밀번호 생성",
-            "saveAndConnect": "저장 및 연결",
-            "saveDisabledTotp": "TOTP 코드는 일회용입니다. 이 코드를 지금 적용하려면 저장 및 연결을 사용하세요.",
             "generatePersonalLoginToken": "개인 로그인 토큰 생성",
             "endpointUrl": "엔드포인트 URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 네이티브 API: S3 호환을 넘어선 추가 기능",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "다시 로그인",
             "twakeSignedIn": "로그인됨",
             "twakeWaitingBrowser": "브라우저에서 로그인을 완료하세요...",
-            "twakeSignInHelp": "AeroFTP는 브라우저에서 Twake를 열고 파일에 대한 액세스만 요청합니다. Twake가 처음에 오류를 표시하면 브라우저에서 Twake에 로그인한 후 다시 로그인하세요. Twake 설정의 연결된 기기에서 언제든지 액세스를 취소할 수 있습니다."
+            "twakeSignInHelp": "AeroFTP는 브라우저에서 Twake를 열고 파일에 대한 액세스만 요청합니다. Twake가 처음에 오류를 표시하면 브라우저에서 Twake에 로그인한 후 다시 로그인하세요. Twake 설정의 연결된 기기에서 언제든지 액세스를 취소할 수 있습니다.",
+            "oauthKeysMissingTitle": "{provider} 앱 키가 없습니다",
+            "oauthKeysMissing": "보관함에 {provider} 앱 키가 저장되어 있지 않아 AeroFTP가 로그인할 수 없습니다. AeroFTP는 자체 키를 제공하지 않습니다. {location}에서 {provider} 개발자 앱의 키를 입력한 후 다시 연결하세요.",
+            "oauthKeysOpenSettings": "OAuth 설정 열기",
+            "oauthKeysReadFailedTitle": "{provider} 앱 키를 읽을 수 없습니다",
+            "oauthKeysReadFailed": "AeroFTP가 보관함에서 {provider} 앱 키를 읽지 못해 로그인할 수 없습니다. 키는 변경되지 않았습니다. 오류: {error}"
         },
         "browser": {
             "remote": "원격",
@@ -1474,6 +1466,7 @@
             "extracted": "추출 완료!",
             "extractedTo": "{dest}에 파일 추출됨",
             "fileLocked": "파일 잠김",
+            "cutPartial": "{total}개 중 {moved}개를 이동했습니다. 나머지는 원래 위치에 남아 있습니다",
             "fileSkipped": "{count}개 파일 건너뜀",
             "fileUnlocked": "파일 잠금 해제됨",
             "loadTrashFailed": "휴지통 로드 실패",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "암호화 오버레이 잠김",
             "aerocrypt_marker_migrate": "AeroCrypt 마커를 .aerocrypt.tsv로 변환하는 중…",
             "aerocrypt_marker_migrated": "AeroCrypt 마커가 .aerocrypt.tsv로 변환되었습니다",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} 폴더 잠금 해제 중..."
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "로컬 서버를 시작할 수 없습니다.",
                     "serverFailed": "서버가 중지되었거나 잘못된 응답을 보냈습니다.",
                     "httpUnauthorized": "서버가 저장된 자격 증명을 거부했습니다.",
-                    "unsupportedVersion": "서버가 AeroFTP에서 지원하지 않는 MCP 버전을 사용합니다."
+                    "unsupportedVersion": "서버가 AeroFTP에서 지원하지 않는 MCP 버전을 사용합니다.",
+                    "directoryInvalid": "링크나 민감한 애플리케이션 파일이 없는 전용 디렉터리를 선택하세요.",
+                    "directoryChanged": "허용한 디렉터리가 변경되었거나 없습니다. 다시 선택하여 접근 권한을 갱신하세요.",
+                    "permissionCommand": "디렉터리 및 네트워크 권한 설정으로 접근 권한을 변경하세요.",
+                    "installInvalid": "이 관리형 설치를 사용할 수 없거나 매니페스트가 유효하지 않습니다.",
+                    "installIntegrity": "패키지 무결성 검증에 실패했습니다. 서버를 제거하고 다시 설치하세요.",
+                    "installArchive": "패키지에 안전하지 않은 경로, 링크 또는 유효하지 않은 시작 파일이 있습니다.",
+                    "installRuntime": "필요한 시스템 런타임이 없습니다.",
+                    "installDownload": "패키지 다운로드에 실패했거나 시간이 초과되었습니다.",
+                    "installLimit": "패키지가 설치 제한을 초과합니다.",
+                    "installExists": "다시 설치하기 전에 기존 설치를 제거하세요.",
+                    "installIo": "설치 파일을 읽거나 쓸 수 없습니다."
                 },
                 "routingNotice": "활성화된 서버는 자신의 도구를 AeroAgent에 제공합니다. 도구를 호출할 때마다 먼저 사용자의 승인을 요청합니다.",
                 "checkNow": "지금 확인",
@@ -3094,7 +3099,26 @@
                 "healthError": "사용할 수 없음: {reason}",
                 "healthReady": "준비됨, AeroAgent가 사용할 수 있는 도구: {count}",
                 "healthUnsupported": "지원되지 않는 스키마의 도구: {count}",
-                "healthShowTools": "도구 표시"
+                "healthShowTools": "도구 표시",
+                "directoryTitle": "읽기 전용 디렉터리",
+                "grantDirectory": "디렉터리 선택",
+                "confirmDirectory": "이 서버에 {path}의 모든 파일에 대한 읽기 전용 접근을 허용할까요? 서버나 프로젝트 전용 디렉터리만 허용하세요.",
+                "noDirectories": "디렉터리 접근 권한이 없습니다.",
+                "revokeDirectory": "접근 권한 취소",
+                "confirmRevokeDirectory": "{path}에 대한 접근 권한을 취소할까요? 이전 도구 승인은 더 이상 유효하지 않습니다.",
+                "networkAccess": "네트워크 액세스 허용 (모든 호스트와 로컬 서비스)",
+                "networkBlocked": "네트워크 접근이 차단되었습니다.",
+                "confirmNetwork": "{name}에 로컬 서비스를 포함한 네트워크 접근을 허용할까요? 이전 도구 승인은 더 이상 유효하지 않습니다.",
+                "confirmBlockNetwork": "{name}의 네트워크 접근을 차단할까요? 이전 도구 승인은 더 이상 유효하지 않습니다.",
+                "managedStatus": "관리형 설치: {version}",
+                "renewDirectory": "접근 권한 갱신",
+                "presetsTitle": "권장 서버",
+                "presetsSubtitle": "검토된 프리셋은 확인한 뒤에만 설치됩니다. 직접 켤 때까지 꺼져 있습니다.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "공개 저장소의 문서를 찾습니다.",
+                "presetInstall": "설치",
+                "presetInstalledDisabled": "설치됨, 꺼짐",
+                "presetReady": "준비됨"
             }
         },
         "archive": {
@@ -4102,12 +4126,6 @@
             "viewSource": "소스 보기"
         },
         "savedServers": {
-            "dragToReorder": "드래그하여 순서 변경",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Settings > Cloud Providers에서 4shared 자격 증명을 구성하세요.",
-            "oauthConfigError": "Settings > Cloud Providers에서 {provider} 자격 증명을 구성하세요.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,19 +4459,23 @@
             "tagsPlaceholder": "태그 추가...",
             "tagsUpdated": "태그가 업데이트되었습니다",
             "addTag": "추가",
-            "noTags": "태그 없음"
+            "noTags": "태그 없음",
+            "collaborators": "공동 작업자",
+            "noCollaborators": "아직 아무와도 공유되지 않았습니다",
+            "folderNotLocked": "이 폴더는 잠겨 있지 않습니다",
+            "roleEditor": "편집자",
+            "roleViewer": "뷰어",
+            "rolePreviewer": "미리보기 사용자",
+            "roleUploader": "업로더",
+            "rolePreviewerUploader": "미리보기 사용자 및 업로더",
+            "roleViewerUploader": "뷰어 및 업로더",
+            "roleCoOwner": "공동 소유자"
         },
         "googledrive": {
             "star": "별표 추가",
             "unstar": "별표 제거",
             "starred": "파일에 별표가 추가되었습니다",
-            "unstarred": "파일에서 별표가 제거되었습니다",
-            "addComment": "댓글 추가",
-            "commentPlaceholder": "댓글을 작성하세요...",
-            "commentAdded": "댓글이 추가되었습니다"
-        },
-        "dropbox": {
-            "manageTags": "태그 관리"
+            "unstarred": "파일에서 별표가 제거되었습니다"
         },
         "providers": {
             "title": "공급자 및 통합",
@@ -4492,12 +4514,6 @@
             "freeTier": "무료 플랜",
             "freeCardTier": "무료 + 카드",
             "paidTier": "유료"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "라벨 관리",
-            "noLabels": "사용 가능한 라벨이 없습니다. Zoho WorkDrive 설정에서 라벨을 만듭니다.",
-            "createLabel": "레이블 생성",
-            "labelName": "레이블 이름"
         },
         "healthCheck": {
             "title": "서버 상태 점검",
@@ -4773,7 +4789,14 @@
             "participants": "참여자",
             "saving": "저장 중...",
             "saved": "저장됨",
-            "saveNow": "지금 저장"
+            "saveNow": "지금 저장",
+            "noteType": "노트 유형",
+            "addTag": "태그 추가",
+            "newTag": "새 태그...",
+            "tagName": "태그 이름",
+            "removeTag": "태그 제거",
+            "manageTags": "태그 관리",
+            "deleteTagConfirm": "태그 “{name}”을(를) 삭제할까요? 노트의 텍스트는 유지됩니다."
         },
         "shareLinkModal": {
             "title": "공유 링크",
@@ -6049,6 +6072,27 @@
             "scopeSession": "이 채팅 세션이 끝날 때까지 이 도구를 승인합니다.",
             "approve": "승인",
             "rememberForChat": "이 채팅이 끝날 때까지 이 도구 허용"
+        },
+        "s3": {
+            "storageClass": "스토리지 클래스",
+            "storageClassChanged": "스토리지 클래스가 {storageClass}(으)로 변경되었습니다",
+            "restoreFromGlacier": "Glacier에서 복원",
+            "restoreTier": "검색 계층",
+            "restoreDays": "복원된 사본 보관 일수",
+            "restoreStarted": "복원이 요청되었습니다: 준비되면 사본을 {days}일 동안 읽을 수 있습니다",
+            "objectTags": "객체 태그",
+            "noTags": "태그 없음",
+            "tagKey": "키",
+            "tagValue": "값",
+            "tagsSaved": "태그가 저장되었습니다"
+        },
+        "azure": {
+            "accessTier": "액세스 계층",
+            "accessTierChanged": "액세스 계층이 {tier}(으)로 설정되었습니다"
+        },
+        "fileComments": {
+            "title": "댓글",
+            "empty": "아직 댓글이 없습니다"
         }
     }
 }

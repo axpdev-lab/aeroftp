@@ -315,20 +315,6 @@ export const readUsersListCache = (): CachedUserListEntry[] | null => {
     }
 };
 
-export const clearUsersListCache = (): void => {
-    try { localStorage.removeItem(USERS_LIST_CACHE_KEY); } catch { /* best effort */ }
-};
-
-// True when the boot flow should display the AccountLockScreen.
-// Skip rule (R1): single user without passphrase = silent boot.
-export const needsAccountLockScreen = (
-    users: { hasPassphrase: boolean }[],
-): boolean => {
-    if (users.length === 0) return false;
-    if (users.length === 1 && !users[0].hasPassphrase) return false;
-    return true;
-};
-
 // Boot-time decision for the multi-user lock screen, extracted from App.tsx so
 // it can be unit-tested in isolation (discussion #270). Given the user list,
 // the backend unlock status, and the saved default account, it returns what the

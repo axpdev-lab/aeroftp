@@ -102,14 +102,9 @@
             "connectionFailed": "Կապնվելյ ձախոգվեծ",
             "reconnecting": "Վերակապվում...",
             "quickConnect": "Արագ կապնվեր",
-            "savedServers": "Պահպանված սերվեռեր",
-            "noSavedServers": "Պահպանված սերվեռեր չկան",
             "saveServer": "Պահպանել սերվեր",
-            "deleteServer": "Ջնջել սերվեր",
-            "editServer": "Խմբագրել սերվեր",
             "serverName": "Սերվերի անուն",
             "initialPath": "Սկզբնական ուղի",
-            "savedServersHelp": "Ընտրեք սերվերը՝ միանալու համար։",
             "selectSshKey": "Ընտրել SSH մասնավոր բանալին",
             "allFiles": "Բոլոր ֆայլերը",
             "sshKeys": "SSH բանալիներ",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Մասնավորեք ցանկացած սերվեր ձեր անձնական ամպամին։ ինքնահամաժամանակ համաժամանեքման հետ",
             "configureAerocloud": "Կարգավորել AeroCloud",
             "aerocloudHelp": "Կարող եք նաև AeroCloud-ը կարգավորել կարգավիճակի գոտիծ",
-            "selectProviderPrompt": "Ընտրեք մատակարար վերը կամ ընտրեք «Հատուկ» ձեռքով կարգավորման համար",
-            "custom": "Հատուկ",
             "change": "Փոխել",
             "emailAccount": "Էլ. փոստի հաշիվ",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ձեր MEGA գաղտնաբառը",
-            "dismiss": "Փակել",
             "authenticating": "Նույնականացում...",
             "oauth2Connection": "OAuth2 կապակցում",
             "securityTitle": "Գաղտնագրված հավատարմագրերի պահեստ",
@@ -170,7 +162,6 @@
             "docs": "Փաստաթղթեր",
             "minutes": "րոպե",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Որոնել սերվերներ...",
             "fourshared": {
                 "backToExistingAccount": "Վերադառնալ գոյություն ունեցող հաշիվ",
                 "configureCredentials": "Կարգավորել OAuth 1.0 հավատարագրերը",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "Զծոճրուհ թարի",
             "koofrAppPasswordPlaceholder": "Ւե֔ կափեք ո՚կազ Koofr թարի դո ուպյի սեթ",
             "koofrHelp": "Մոաբ թար շրդում app.koofr.net → Կշմենուցներ → Զծոճր → թարի թարի սոզպաղիս",
-            "duplicateServer": "Սերվերի կրկնօրինակ",
-            "duplicateCredentialMissing": "Հավատարմագիրը չի պատճենվել կրկնօրինակում։ Կրկին մուտքագրեք գաղտնաբառը մինչ միանալը։",
             "saveAsNew": "Պահել որպես նոր",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Ստեղծեք API բանալի Immich → User Settings → API Keys-ում",
             "immichOps": "Դիտարկել, վերբեռնել, ներբեռնել, ջնջել, ալբոմներ, որոնել, համաօգտագործման հղմնակներ։ Վերանվանումը և տեղափոխումը չեն աջակցվում։",
             "generatePassword": "Ստեղծել գաղտնաբառ",
-            "saveAndConnect": "Պահպանել և միանալ",
-            "saveDisabledTotp": "TOTP կոդերը մեկանգամյա օգտագործման են։ Օգտագործեք «Պահպանել և միանալ»՝ այս կոդն այժմ կիրառելու համար։",
             "generatePersonalLoginToken": "Անձնական մուտքի նշանի ստեղծում",
             "endpointUrl": "Եզրակետի URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 բնիկ API՝ լրացուցիչ հնարավորություններ S3-համատեղի հետ համեմատած",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Կրկին մուտք գործեք",
             "twakeSignedIn": "Մուտք գործած է",
             "twakeWaitingBrowser": "Ավարտեք մուտքը ձեր դիտարկիչում...",
-            "twakeSignInHelp": "AeroFTP-ը բացում է Twake-ը ձեր դիտարկիչում և հասանելիություն է խնդրում միայն ձեր ֆայլերին: Եթե Twake-ն առաջին անգամ սխալ ցույց տա, մուտք գործեք Twake դիտարկիչում և կրկին մուտք գործեք: Դուք կարող եք հասանելիությունը հետ կանչել ցանկացած պահի Twake-ի կարգավորումներում, Միացված սարքեր բաժնում:"
+            "twakeSignInHelp": "AeroFTP-ը բացում է Twake-ը ձեր դիտարկիչում և հասանելիություն է խնդրում միայն ձեր ֆայլերին: Եթե Twake-ն առաջին անգամ սխալ ցույց տա, մուտք գործեք Twake դիտարկիչում և կրկին մուտք գործեք: Դուք կարող եք հասանելիությունը հետ կանչել ցանկացած պահի Twake-ի կարգավորումներում, Միացված սարքեր բաժնում:",
+            "oauthKeysMissingTitle": "{provider}-ի հավելվածի բանալիները բացակայում են",
+            "oauthKeysMissing": "Պահոցում {provider}-ի հավելվածի բանալիներ պահված չեն, ուստի AeroFTP-ը չի կարող մուտք գործել։ AeroFTP-ը իր սեփական բանալիները չի տրամադրում․ մուտքագրեք ձեր {provider} մշակողի հավելվածի բանալիները՝ {location}, ապա նորից միացեք։",
+            "oauthKeysOpenSettings": "Բացել OAuth կարգավորումները",
+            "oauthKeysReadFailedTitle": "Հնարավոր չէ կարդալ {provider}-ի հավելվածի բանալիները",
+            "oauthKeysReadFailed": "AeroFTP-ը չկարողացավ կարդալ {provider}-ի հավելվածի բանալիները պահոցից, ուստի չի կարող մուտք գործել։ Բանալիները չեն փոփոխվել։ Սխալ՝ {error}"
         },
         "browser": {
             "remote": "Հեռավոր",
@@ -1467,6 +1459,7 @@
             "extracted": "Հանվեց!",
             "extractedTo": "Ֆայլերը հանվեցին {dest}",
             "fileLocked": "Ֆայլը կողպված է",
+            "cutPartial": "Տեղափոխվել է {moved}-ը {total}-ից. մնացածը մնում են իրենց տեղում",
             "fileSkipped": "{count} ֆայլ բաց թողվեց",
             "fileUnlocked": "Ֆայլը ապակողպված է",
             "loadTrashFailed": "Աղբամանի բեռնման ձախողում",
@@ -1712,7 +1705,8 @@
             "overlay_locked": "Գաղտնագրված շերտը կողպված է",
             "aerocrypt_marker_migrate": "AeroCrypt նշիչը փոխարկվում է .aerocrypt.tsv ձևաչափի…",
             "aerocrypt_marker_migrated": "AeroCrypt նշիչը փոխարկվեց .aerocrypt.tsv ձևաչափի",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] {filename} թղթապանակի արգելափակումը հանվում է..."
         },
         "protocol": {
             "selectProtocol": "Ընտրեք արձանագրություն...",
@@ -3078,7 +3072,18 @@
                     "startFailed": "Լոկալ սերվերը չհաջողվեց գործարկել։",
                     "serverFailed": "Սերվերը կանգ առավ կամ անվավեր պատասխան ուղարկեց։",
                     "httpUnauthorized": "Սերվերը մերժեց պահված հավատարմագրերը։",
-                    "unsupportedVersion": "Սերվերը օգտագործում է MCP-ի տարբերակ, որն AeroFTP-ը չի աջակցում։"
+                    "unsupportedVersion": "Սերվերը օգտագործում է MCP-ի տարբերակ, որն AeroFTP-ը չի աջակցում։",
+                    "directoryInvalid": "Ընտրեք առանձնացված պանակ՝ առանց հղումների կամ հավելվածների զգայուն ֆայլերի։",
+                    "directoryChanged": "Թույլատրված պանակը փոխվել է կամ բացակայում է։ Մուտքը թարմացնելու համար կրկին ընտրեք այն։",
+                    "permissionCommand": "Փոխեք մուտքը պանակների և ցանցի թույլտվությունների կառավարման միջոցով։",
+                    "installInvalid": "Այս կառավարվող տեղադրումը հասանելի չէ կամ դրա մանիֆեստը անվավեր է։",
+                    "installIntegrity": "Փաթեթի ամբողջականության ստուգումը ձախողվեց։ Հեռացրեք և կրկին տեղադրեք սերվերը։",
+                    "installArchive": "Փաթեթը պարունակում է անապահով ուղիներ, հղումներ կամ անվավեր մեկնարկային ֆայլ։",
+                    "installRuntime": "Պահանջվող համակարգային գործարկման միջավայրը բացակայում է։",
+                    "installDownload": "Փաթեթի ներբեռնումը ձախողվեց կամ ժամանակը սպառվեց։",
+                    "installLimit": "Փաթեթը գերազանցում է տեղադրման սահմանափակումները։",
+                    "installExists": "Կրկին տեղադրելուց առաջ հեռացրեք առկա տեղադրումը։",
+                    "installIo": "Չհաջողվեց կարդալ կամ գրել տեղադրման ֆայլերը։"
                 },
                 "routingNotice": "Միացված սերվերները իրենց գործիքները տրամադրում են AeroAgent-ին։ Յուրաքանչյուր գործիքի կանչ նախ խնդրում է ձեր հաստատումը։",
                 "checkNow": "Ստուգել հիմա",
@@ -3087,7 +3092,26 @@
                 "healthError": "Անհասանելի է՝ {reason}",
                 "healthReady": "Պատրաստ է, AeroAgent-ի համար հասանելի գործիքներ՝ {count}",
                 "healthUnsupported": "Չաջակցվող սխեմաներով գործիքներ՝ {count}",
-                "healthShowTools": "Ցուցադրել գործիքները"
+                "healthShowTools": "Ցուցադրել գործիքները",
+                "directoryTitle": "Միայն ընթերցման պանակներ",
+                "grantDirectory": "Ընտրել պանակ",
+                "confirmDirectory": "Այս սերվերին տրամադրե՞լ {path} պանակի բոլոր ֆայլերը միայն կարդալու հասանելիություն։ Տրամադրեք միայն սերվերի կամ նախագծի համար առանձնացված պանակ։",
+                "noDirectories": "Պանակների հասանելիություն չկա։",
+                "revokeDirectory": "Չեղարկել հասանելիությունը",
+                "confirmRevokeDirectory": "Չեղարկե՞լ {path} պանակի հասանելիությունը։ Գործիքների նախորդ հաստատումներն այլևս վավեր չեն լինի։",
+                "networkAccess": "Թույլատրել ցանցային մուտքը (բոլոր հոսթերը և տեղական ծառայությունները)",
+                "networkBlocked": "Ցանցային հասանելիությունն արգելափակված է։",
+                "confirmNetwork": "{name}-ին թույլատրե՞լ ցանցի, ներառյալ տեղային ծառայությունների հասանելիությունը։ Գործիքների նախորդ հաստատումներն այլևս վավեր չեն լինի։",
+                "confirmBlockNetwork": "Արգելափակե՞լ {name}-ի ցանցային հասանելիությունը։ Գործիքների նախորդ հաստատումներն այլևս վավեր չեն լինի։",
+                "managedStatus": "Կառավարվող տեղադրում՝ {version}",
+                "renewDirectory": "Թարմացնել հասանելիությունը",
+                "presetsTitle": "Առաջարկվող սերվերներ",
+                "presetsSubtitle": "Ստուգված նախակարգավորումները տեղադրվում են միայն հաստատումից հետո: Դրանք անջատված են մնում, մինչև դրանք միացնեք:",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Փնտրում է հանրային պահոցի փաստաթղթերը:",
+                "presetInstall": "Տեղադրել",
+                "presetInstalledDisabled": "Տեղադրված է և անջատված",
+                "presetReady": "Պատրաստ է"
             }
         },
         "archive": {
@@ -4095,12 +4119,6 @@
             "viewSource": "Դիտել աղբյուրը"
         },
         "savedServers": {
-            "dragToReorder": "Քաշեք վերադասավորելու համար",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Խնդրում ենք կարգավորել 4shared հավատարագրերը՝ Կարգավորումներ > Ամպային մատակարարներ:",
-            "oauthConfigError": "Խնդրում ենք կարգավորել {provider} հավատարագրերը՝ Կարգավորումներ > Ամպային մատակարարներ:",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,19 +4459,23 @@
             "tagsPlaceholder": "Ավելացնել պիտակ...",
             "tagsUpdated": "Պիտակները թարմացվել են",
             "addTag": "Ավելացնել",
-            "noTags": "Պիտակներ չկան"
+            "noTags": "Պիտակներ չկան",
+            "collaborators": "Համագործակիցներ",
+            "noCollaborators": "Դեռ ոչ ոքի հետ չի կիսվել",
+            "folderNotLocked": "Այս թղթապանակը կողպված չէ",
+            "roleEditor": "Խմբագիր",
+            "roleViewer": "Դիտող",
+            "rolePreviewer": "Նախադիտող",
+            "roleUploader": "Վերբեռնող",
+            "rolePreviewerUploader": "Նախադիտող և վերբեռնող",
+            "roleViewerUploader": "Դիտող և վերբեռնող",
+            "roleCoOwner": "Համասեփականատեր"
         },
         "googledrive": {
             "star": "Աստղանշանել",
             "unstar": "Հանել աստղանշը",
             "starred": "Ֆայլը աստղանշված է",
-            "unstarred": "Աստղանշը հանվել է",
-            "addComment": "Ավելացնել մեկնաբանություն",
-            "commentPlaceholder": "Գրեք ձեր մեկնաբանությունը...",
-            "commentAdded": "Մեկնաբանությունը ավելացվել է"
-        },
-        "dropbox": {
-            "manageTags": "Կառավարել պիտակները"
+            "unstarred": "Աստղանշը հանվել է"
         },
         "providers": {
             "title": "Մատակարարներ և ինտեգրացիաներ",
@@ -4492,12 +4514,6 @@
             "freeTier": "Անվճար փաթեթ",
             "freeCardTier": "Անվճար + քարտ",
             "paidTier": "Վճարովի"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Մենաէղ Եղերը",
-            "noLabels": "Եղեր անուշնախ մար ենլ. Պահշէք Եղեր Zoho WorkDrive շլադապաօցումին աջելշվի.",
-            "createLabel": "ՎայրաօրՌ ճզազ ւշաքպեր",
-            "labelName": "ւշքպաերի անվնխ"
         },
         "healthCheck": {
             "title": "Սերվերի առողջականության ստուգում",
@@ -4773,7 +4789,14 @@
             "participants": "մասնակիցներ",
             "saving": "Պահպանվում է...",
             "saved": "Պահպանված է",
-            "saveNow": "Պահպանել հիմա"
+            "saveNow": "Պահպանել հիմա",
+            "noteType": "Գրառման տեսակ",
+            "addTag": "Ավելացնել պիտակ",
+            "newTag": "Նոր պիտակ...",
+            "tagName": "Պիտակի անունը",
+            "removeTag": "Հեռացնել պիտակը",
+            "manageTags": "Կառավարել պիտակները",
+            "deleteTagConfirm": "Ջնջե՞լ «{name}» պիտակը։ Գրառումները կպահպանեն իրենց տեքստը։"
         },
         "shareLinkModal": {
             "title": "Տարածման հղում",
@@ -6049,6 +6072,27 @@
             "scopeSession": "Հաստատում է այս գործիքը զրույցի մնացած ընթացքի համար։",
             "approve": "Հաստատել",
             "rememberForChat": "Թույլատրել այս գործիքը այս զրույցի մնացած ընթացքում"
+        },
+        "s3": {
+            "storageClass": "Պահպանման դաս",
+            "storageClassChanged": "Պահպանման դասը փոխվեց՝ {storageClass}",
+            "restoreFromGlacier": "Վերականգնել Glacier-ից",
+            "restoreTier": "Վերականգնման մակարդակ",
+            "restoreDays": "Վերականգնված պատճենի պահպանման օրեր",
+            "restoreStarted": "Վերականգնումը պահանջվել է. պատրաստ լինելուց հետո պատճենը կմնա ընթեռնելի {days} օր",
+            "objectTags": "Օբյեկտի պիտակներ",
+            "noTags": "Պիտակներ չկան",
+            "tagKey": "Բանալի",
+            "tagValue": "Արժեք",
+            "tagsSaved": "Պիտակները պահպանվեցին"
+        },
+        "azure": {
+            "accessTier": "Հասանելիության մակարդակ",
+            "accessTierChanged": "Հասանելիության մակարդակը սահմանվեց՝ {tier}"
+        },
+        "fileComments": {
+            "title": "Մեկնաբանություններ",
+            "empty": "Դեռ մեկնաբանություններ չկան"
         }
     }
 }

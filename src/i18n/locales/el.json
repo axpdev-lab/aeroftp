@@ -102,14 +102,9 @@
             "connectionFailed": "Η σύνδεση απέτυχε",
             "reconnecting": "Επανασύνδεση...",
             "quickConnect": "Γρήγορη σύνδεση",
-            "savedServers": "Αποθηκευμένοι διακομιστές",
-            "noSavedServers": "Δεν υπάρχουν αποθηκευμένοι διακομιστές",
             "saveServer": "Αποθήκευση διακομιστή",
-            "deleteServer": "Διαγραφή διακομιστή",
-            "editServer": "Επεξεργασία διακομιστή",
             "serverName": "Όνομα διακομιστή",
             "initialPath": "Αρχική διαδρομή",
-            "savedServersHelp": "Επιλέξτε έναν διακομιστή για σύνδεση.",
             "selectSshKey": "Επιλέξτε ιδιωτικό κλειδί SSH",
             "allFiles": "Όλα τα αρχεία",
             "sshKeys": "Κλειδιά SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Μετατρέψτε οποιονδήποτε διακομιστή σε προσωπικό cloud με αυτόματο συγχρονισμό",
             "configureAerocloud": "Ρύθμιση AeroCloud",
             "aerocloudHelp": "Μπορείτε επίσης να ρυθμίσετε το AeroCloud από τη γραμμή κατάστασης",
-            "selectProviderPrompt": "Επιλέξτε έναν πάροχο παραπάνω ή επιλέξτε \"Custom\" για χειροκίνητη ρύθμιση",
-            "custom": "Προσαρμοσμένο",
             "change": "Αλλαγή",
             "emailAccount": "Λογαριασμός email",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ο κωδικός MEGA σας",
-            "dismiss": "Απόρριψη",
             "authenticating": "Πιστοποίηση...",
             "oauth2Connection": "Σύνδεση OAuth2",
             "securityTitle": "Κρυπτογραφημένη αποθήκευση διαπιστευτηρίων",
@@ -170,7 +162,6 @@
             "docs": "Τεκμηρίωση",
             "minutes": "λεπτά",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Αναζήτηση διακομιστών...",
             "fourshared": {
                 "backToExistingAccount": "Επιστροφή στον υπάρχοντα λογαριασμό",
                 "configureCredentials": "Ρύθμιση διαπιστευτηρίων OAuth 1.0",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "Κωδικός εφαρμογής",
             "koofrAppPasswordPlaceholder": "Επικολλήστε τον κωδικό εφαρμογής Koofr εδώ",
             "koofrHelp": "Δημιουργήστε έναν κωδικό εφαρμογής στο app.koofr.net → Προτιμήσεις → Κωδικός → Κωδικοί εφαρμογών",
-            "duplicateServer": "Αντιγραφή διακομιστή",
-            "duplicateCredentialMissing": "Το διαπιστευτήριο δεν αντιγράφηκε στο αντίγραφο. Εισαγάγετε ξανά τον κωδικό πρόσβασης πριν τη σύνδεση.",
             "saveAsNew": "Αποθήκευση ως νέο",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Δημιουργήστε ένα κλειδί API στο Immich → User Settings → API Keys",
             "immichOps": "Περιήγηση, μεταφόρτωση, λήψη, διαγραφή, άλμπουμ, αναζήτηση, σύνδεσμοι κοινής χρήσης. Η μετονομασία και η μετακίνηση δεν υποστηρίζονται.",
             "generatePassword": "Δημιουργία κωδικού",
-            "saveAndConnect": "Αποθήκευση και σύνδεση",
-            "saveDisabledTotp": "Οι κωδικοί TOTP είναι μίας χρήσης. Χρησιμοποιήστε «Αποθήκευση και σύνδεση» για να εφαρμόσετε αυτόν τον κωδικό τώρα.",
             "generatePersonalLoginToken": "Δημιουργία προσωπικού διακριτικού σύνδεσης",
             "endpointUrl": "URL τελικού σημείου",
             "b2NativeAdvantagesTitle": "Εγγενές API του Backblaze B2: επιπλέον λειτουργίες έναντι του συμβατού με S3",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Συνδεθείτε ξανά",
             "twakeSignedIn": "Συνδεδεμένος",
             "twakeWaitingBrowser": "Ολοκληρώστε τη σύνδεση στο πρόγραμμα περιήγησής σας...",
-            "twakeSignInHelp": "Το AeroFTP ανοίγει το Twake στο πρόγραμμα περιήγησής σας και ζητά πρόσβαση μόνο στα αρχεία σας. Αν το Twake εμφανίσει σφάλμα την πρώτη φορά, συνδεθείτε στο Twake στο πρόγραμμα περιήγησης και συνδεθείτε ξανά. Μπορείτε να ανακαλέσετε την πρόσβαση οποιαδήποτε στιγμή στις Ρυθμίσεις Twake, Συνδεδεμένες συσκευές."
+            "twakeSignInHelp": "Το AeroFTP ανοίγει το Twake στο πρόγραμμα περιήγησής σας και ζητά πρόσβαση μόνο στα αρχεία σας. Αν το Twake εμφανίσει σφάλμα την πρώτη φορά, συνδεθείτε στο Twake στο πρόγραμμα περιήγησης και συνδεθείτε ξανά. Μπορείτε να ανακαλέσετε την πρόσβαση οποιαδήποτε στιγμή στις Ρυθμίσεις Twake, Συνδεδεμένες συσκευές.",
+            "oauthKeysMissingTitle": "Λείπουν τα κλειδιά εφαρμογής για το {provider}",
+            "oauthKeysMissing": "Δεν υπάρχουν αποθηκευμένα κλειδιά εφαρμογής για το {provider} στο θησαυροφυλάκιο, επομένως το AeroFTP δεν μπορεί να συνδεθεί. Το AeroFTP δεν περιλαμβάνει δικά του κλειδιά: εισαγάγετε τα κλειδιά της εφαρμογής προγραμματιστή σας για το {provider} στο {location} και συνδεθείτε ξανά.",
+            "oauthKeysOpenSettings": "Άνοιγμα ρυθμίσεων OAuth",
+            "oauthKeysReadFailedTitle": "Αδυναμία ανάγνωσης των κλειδιών εφαρμογής του {provider}",
+            "oauthKeysReadFailed": "Το AeroFTP δεν μπόρεσε να διαβάσει τα κλειδιά εφαρμογής του {provider} από το χρηματοκιβώτιο, επομένως δεν μπορεί να συνδεθεί. Τα κλειδιά δεν τροποποιήθηκαν. Σφάλμα: {error}"
         },
         "browser": {
             "remote": "Απομακρυσμένο",
@@ -1474,6 +1466,7 @@
             "extracted": "Εξήχθη!",
             "extractedTo": "Τα αρχεία εξήχθησαν στο {dest}",
             "fileLocked": "Αρχείο κλειδωμένο",
+            "cutPartial": "Μετακινήθηκαν {moved} από {total} στοιχεία· τα υπόλοιπα μένουν στη θέση τους",
             "fileSkipped": "{count} αρχείο(α) παραλείφθηκαν",
             "fileUnlocked": "Αρχείο ξεκλείδωτο",
             "loadTrashFailed": "Αποτυχία φόρτωσης κάδου",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Το κρυπτογραφημένο επίστρωμα κλειδώθηκε",
             "aerocrypt_marker_migrate": "Μετατροπή του δείκτη AeroCrypt σε .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Ο δείκτης AeroCrypt μετατράπηκε σε .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Ξεκλείδωμα φακέλου {filename}..."
         },
         "protocol": {
             "selectProtocol": "Επιλογή πρωτοκόλλου...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "Ο τοπικός διακομιστής δεν μπόρεσε να ξεκινήσει.",
                     "serverFailed": "Ο διακομιστής σταμάτησε ή έστειλε μη έγκυρη απάντηση.",
                     "httpUnauthorized": "Ο διακομιστής απέρριψε τα αποθηκευμένα διαπιστευτήρια.",
-                    "unsupportedVersion": "Ο διακομιστής χρησιμοποιεί έκδοση MCP που το AeroFTP δεν υποστηρίζει."
+                    "unsupportedVersion": "Ο διακομιστής χρησιμοποιεί έκδοση MCP που το AeroFTP δεν υποστηρίζει.",
+                    "directoryInvalid": "Επιλέξτε έναν αποκλειστικό κατάλογο χωρίς συνδέσμους ή ευαίσθητα αρχεία εφαρμογών.",
+                    "directoryChanged": "Ο εγκεκριμένος κατάλογος έχει αλλάξει ή λείπει. Επιλέξτε τον ξανά για ανανέωση της πρόσβασης.",
+                    "permissionCommand": "Αλλάξτε την πρόσβαση μέσω των ρυθμίσεων δικαιωμάτων καταλόγων και δικτύου.",
+                    "installInvalid": "Αυτή η διαχειριζόμενη εγκατάσταση δεν είναι διαθέσιμη ή το αρχείο δήλωσής της είναι μη έγκυρο.",
+                    "installIntegrity": "Η επαλήθευση ακεραιότητας του πακέτου απέτυχε. Καταργήστε και επανεγκαταστήστε τον διακομιστή.",
+                    "installArchive": "Το πακέτο περιέχει μη ασφαλείς διαδρομές, συνδέσμους ή μη έγκυρο αρχείο εκκίνησης.",
+                    "installRuntime": "Λείπει το απαιτούμενο περιβάλλον εκτέλεσης του συστήματος.",
+                    "installDownload": "Η λήψη του πακέτου απέτυχε ή έληξε το χρονικό όριο.",
+                    "installLimit": "Το πακέτο υπερβαίνει τα όρια εγκατάστασης.",
+                    "installExists": "Καταργήστε την υπάρχουσα εγκατάσταση πριν από την επανεγκατάσταση.",
+                    "installIo": "Δεν ήταν δυνατή η ανάγνωση ή η εγγραφή των αρχείων εγκατάστασης."
                 },
                 "routingNotice": "Οι ενεργοποιημένοι διακομιστές παρέχουν τα εργαλεία τους στο AeroAgent. Κάθε κλήση εργαλείου ζητά πρώτα την έγκρισή σας.",
                 "checkNow": "Έλεγχος τώρα",
@@ -3094,7 +3099,26 @@
                 "healthError": "Μη διαθέσιμος: {reason}",
                 "healthReady": "Έτοιμος, εργαλεία διαθέσιμα στο AeroAgent: {count}",
                 "healthUnsupported": "Εργαλεία με μη υποστηριζόμενα σχήματα: {count}",
-                "healthShowTools": "Εμφάνιση εργαλείων"
+                "healthShowTools": "Εμφάνιση εργαλείων",
+                "directoryTitle": "Κατάλογοι μόνο για ανάγνωση",
+                "grantDirectory": "Επιλογή καταλόγου",
+                "confirmDirectory": "Να παραχωρηθεί σε αυτόν τον διακομιστή πρόσβαση μόνο για ανάγνωση σε όλα τα αρχεία του {path}; Παραχωρήστε μόνο έναν αποκλειστικό κατάλογο διακομιστή ή έργου.",
+                "noDirectories": "Δεν υπάρχει πρόσβαση σε καταλόγους.",
+                "revokeDirectory": "Ανάκληση πρόσβασης",
+                "confirmRevokeDirectory": "Να ανακληθεί η πρόσβαση στο {path}; Οι προηγούμενες εγκρίσεις εργαλείων δεν θα ισχύουν πλέον.",
+                "networkAccess": "Επιτρέψτε πρόσβαση δικτύου (όλοι οι κεντρικοί υπολογιστές και οι τοπικές υπηρεσίες)",
+                "networkBlocked": "Η πρόσβαση στο δίκτυο είναι αποκλεισμένη.",
+                "confirmNetwork": "Να επιτραπεί στο {name} η πρόσβαση στο δίκτυο, συμπεριλαμβανομένων των τοπικών υπηρεσιών; Οι προηγούμενες εγκρίσεις εργαλείων δεν θα ισχύουν πλέον.",
+                "confirmBlockNetwork": "Να αποκλειστεί η πρόσβαση στο δίκτυο για το {name}; Οι προηγούμενες εγκρίσεις εργαλείων δεν θα ισχύουν πλέον.",
+                "managedStatus": "Διαχειριζόμενη εγκατάσταση: {version}",
+                "renewDirectory": "Ανανέωση πρόσβασης",
+                "presetsTitle": "Προτεινόμενοι διακομιστές",
+                "presetsSubtitle": "Οι ελεγμένες προεπιλογές εγκαθίστανται μόνο μετά την επιβεβαίωση. Μένουν ανενεργές μέχρι να τις ενεργοποιήσετε.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Αναζητά τεκμηρίωση για ένα δημόσιο αποθετήριο.",
+                "presetInstall": "Εγκατάσταση",
+                "presetInstalledDisabled": "Εγκατεστημένο και ανενεργό",
+                "presetReady": "Έτοιμο"
             }
         },
         "archive": {
@@ -4102,12 +4126,6 @@
             "viewSource": "Προβολή Πηγής"
         },
         "savedServers": {
-            "dragToReorder": "Σύρετε για αναδιάταξη",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Ρυθμίστε τα διαπιστευτήρια 4shared στις Ρυθμίσεις > Πάροχοι Cloud.",
-            "oauthConfigError": "Ρυθμίστε τα διαπιστευτήρια {provider} στις Ρυθμίσεις > Πάροχοι Cloud.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,19 +4459,23 @@
             "tagsPlaceholder": "Προσθήκη ετικέτας...",
             "tagsUpdated": "Οι ετικέτες ενημερώθηκαν",
             "addTag": "Προσθήκη",
-            "noTags": "Χωρίς ετικέτες"
+            "noTags": "Χωρίς ετικέτες",
+            "collaborators": "Συνεργάτες",
+            "noCollaborators": "Δεν έχει κοινοποιηθεί σε κανέναν ακόμη",
+            "folderNotLocked": "Αυτός ο φάκελος δεν είναι κλειδωμένος",
+            "roleEditor": "Επεξεργαστής",
+            "roleViewer": "Θεατής",
+            "rolePreviewer": "Προεπισκόπηση",
+            "roleUploader": "Μεταφορτωτής",
+            "rolePreviewerUploader": "Προεπισκόπηση και μεταφόρτωση",
+            "roleViewerUploader": "Θεατής και μεταφόρτωση",
+            "roleCoOwner": "Συνιδιοκτήτης"
         },
         "googledrive": {
             "star": "Προσθήκη αστεριού",
             "unstar": "Αφαίρεση αστεριού",
             "starred": "Το αρχείο σημειώθηκε με αστέρι",
-            "unstarred": "Το αστέρι αφαιρέθηκε",
-            "addComment": "Προσθήκη σχολίου",
-            "commentPlaceholder": "Γράψτε το σχόλιό σας...",
-            "commentAdded": "Το σχόλιο προστέθηκε"
-        },
-        "dropbox": {
-            "manageTags": "Διαχείριση ετικετών"
+            "unstarred": "Το αστέρι αφαιρέθηκε"
         },
         "providers": {
             "title": "Πάροχοι & Ενσωματώσεις",
@@ -4492,12 +4514,6 @@
             "freeTier": "Δωρεάν πλάνο",
             "freeCardTier": "Δωρεάν + κάρτα",
             "paidTier": "Επί πληρωμή"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Διαχείριση ετικετών",
-            "noLabels": "Δεν υπάρχουν διαθέσιμες ετικέτες. Δημιουργήστε ετικέτες στις ρυθμίσεις Zoho WorkDrive.",
-            "createLabel": "Δημιουργία ετικέτας",
-            "labelName": "Όνομα ετικέτας"
         },
         "healthCheck": {
             "title": "Έλεγχος υγείας διακομιστή",
@@ -4773,7 +4789,14 @@
             "participants": "συμμετέχοντες",
             "saving": "Αποθήκευση...",
             "saved": "Αποθηκεύτηκε",
-            "saveNow": "Αποθήκευση τώρα"
+            "saveNow": "Αποθήκευση τώρα",
+            "noteType": "Τύπος σημείωσης",
+            "addTag": "Προσθήκη ετικέτας",
+            "newTag": "Νέα ετικέτα...",
+            "tagName": "Όνομα ετικέτας",
+            "removeTag": "Κατάργηση ετικέτας",
+            "manageTags": "Διαχείριση ετικετών",
+            "deleteTagConfirm": "Διαγραφή της ετικέτας «{name}»; Οι σημειώσεις διατηρούν το κείμενό τους."
         },
         "shareLinkModal": {
             "title": "Σύνδεσμος Κοινοποίησης",
@@ -6049,6 +6072,27 @@
             "scopeSession": "Εγκρίνει αυτό το εργαλείο για το υπόλοιπο της συνεδρίας.",
             "approve": "Έγκριση",
             "rememberForChat": "Να επιτρέπεται αυτό το εργαλείο για το υπόλοιπο αυτής της συνομιλίας"
+        },
+        "s3": {
+            "storageClass": "Κλάση αποθήκευσης",
+            "storageClassChanged": "Η κλάση αποθήκευσης άλλαξε σε {storageClass}",
+            "restoreFromGlacier": "Επαναφορά από το Glacier",
+            "restoreTier": "Επίπεδο ανάκτησης",
+            "restoreDays": "Ημέρες διατήρησης του επαναφερόμενου αντιγράφου",
+            "restoreStarted": "Ζητήθηκε επαναφορά: όταν είναι έτοιμο, το αντίγραφο παραμένει αναγνώσιμο για {days} ημέρες",
+            "objectTags": "Ετικέτες αντικειμένου",
+            "noTags": "Χωρίς ετικέτες",
+            "tagKey": "Κλειδί",
+            "tagValue": "Τιμή",
+            "tagsSaved": "Οι ετικέτες αποθηκεύτηκαν"
+        },
+        "azure": {
+            "accessTier": "Επίπεδο πρόσβασης",
+            "accessTierChanged": "Το επίπεδο πρόσβασης ορίστηκε σε {tier}"
+        },
+        "fileComments": {
+            "title": "Σχόλια",
+            "empty": "Δεν υπάρχουν σχόλια ακόμη"
         }
     }
 }

@@ -102,14 +102,9 @@
             "connectionFailed": "Koneksi gagal",
             "reconnecting": "Menghubungkan ulang...",
             "quickConnect": "Hubungan Cepat",
-            "savedServers": "Server Tersimpan",
-            "noSavedServers": "Tidak ada server tersimpan",
             "saveServer": "Simpan Server",
-            "deleteServer": "Hapus Server",
-            "editServer": "Edit Server",
             "serverName": "Nama Server",
             "initialPath": "Jalur Awal",
-            "savedServersHelp": "Pilih server untuk terhubung.",
             "selectSshKey": "Pilih Kunci Pribadi SSH",
             "allFiles": "Semua berkas",
             "sshKeys": "Kunci SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Ubah server mana pun menjadi cloud pribadi dengan sinkronisasi otomatis",
             "configureAerocloud": "Konfigurasi AeroCloud",
             "aerocloudHelp": "Anda juga dapat mengonfigurasi AeroCloud dari bilah status",
-            "selectProviderPrompt": "Pilih penyedia di atas atau pilih \"Kustom\" untuk konfigurasi manual",
-            "custom": "Kustom",
             "change": "Ubah",
             "emailAccount": "Akun email",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Kata sandi MEGA Anda",
-            "dismiss": "Tutup",
             "authenticating": "Mengautentikasi...",
             "oauth2Connection": "Koneksi OAuth2",
             "securityTitle": "Penyimpanan Kredensial Terenkripsi",
@@ -170,7 +162,6 @@
             "docs": "Dokumentasi",
             "minutes": "menit",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Cari server...",
             "fourshared": {
                 "backToExistingAccount": "Kembali ke akun yang ada",
                 "configureCredentials": "Konfigurasi kredensial OAuth 1.0",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "Sandi Aplikasi",
             "koofrAppPasswordPlaceholder": "Tempel sandi aplikasi Koofr Anda di sini",
             "koofrHelp": "Buat sandi aplikasi di app.koofr.net → Preferensi → Sandi → Sandi Aplikasi",
-            "duplicateServer": "Duplikat server",
-            "duplicateCredentialMissing": "Kredensial tidak disalin ke duplikat. Masukkan kembali kata sandi sebelum menghubungkan.",
             "saveAsNew": "Simpan sebagai baru",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Buat kunci API di Immich → User Settings → API Keys",
             "immichOps": "Jelajah, unggah, unduh, hapus, album, cari, tautan berbagi. Ganti nama dan pindahkan tidak didukung.",
             "generatePassword": "Buat kata sandi",
-            "saveAndConnect": "Simpan & Sambungkan",
-            "saveDisabledTotp": "Kode TOTP hanya untuk sekali pakai. Gunakan Simpan & Sambungkan untuk menerapkan kode ini sekarang.",
             "generatePersonalLoginToken": "Buat token login pribadi",
             "endpointUrl": "URL endpoint",
             "b2NativeAdvantagesTitle": "API native Backblaze B2: fitur tambahan dibandingkan kompatibel S3",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Masuk lagi",
             "twakeSignedIn": "Sudah masuk",
             "twakeWaitingBrowser": "Selesaikan proses masuk di browser Anda...",
-            "twakeSignInHelp": "AeroFTP membuka Twake di browser Anda dan hanya meminta akses ke file Anda. Jika Twake menampilkan error pertama kali, masuk ke Twake di browser lalu masuk lagi. Anda dapat mencabut akses kapan saja di Pengaturan Twake, Perangkat Tersambung."
+            "twakeSignInHelp": "AeroFTP membuka Twake di browser Anda dan hanya meminta akses ke file Anda. Jika Twake menampilkan error pertama kali, masuk ke Twake di browser lalu masuk lagi. Anda dapat mencabut akses kapan saja di Pengaturan Twake, Perangkat Tersambung.",
+            "oauthKeysMissingTitle": "Kunci aplikasi {provider} tidak ada",
+            "oauthKeysMissing": "Tidak ada kunci aplikasi untuk {provider} yang tersimpan di brankas, sehingga AeroFTP tidak dapat masuk. AeroFTP tidak menyertakan kunci sendiri: masukkan kunci aplikasi pengembang {provider} Anda di {location}, lalu sambungkan lagi.",
+            "oauthKeysOpenSettings": "Buka pengaturan OAuth",
+            "oauthKeysReadFailedTitle": "Tidak dapat membaca kunci aplikasi {provider}",
+            "oauthKeysReadFailed": "AeroFTP tidak dapat membaca kunci aplikasi {provider} dari brankas, sehingga tidak bisa masuk. Kunci tidak diubah. Kesalahan: {error}"
         },
         "browser": {
             "remote": "Jarak Jauh",
@@ -1474,6 +1466,7 @@
             "extracted": "Diekstrak!",
             "extractedTo": "File diekstrak ke {dest}",
             "fileLocked": "File terkunci",
+            "cutPartial": "Memindahkan {moved} dari {total} item; sisanya tetap di tempatnya",
             "fileSkipped": "{count} file dilewati",
             "fileUnlocked": "File dibuka kuncinya",
             "loadTrashFailed": "Gagal memuat sampah",
@@ -1719,7 +1712,8 @@
             "overlay_locked": "Lapisan terenkripsi terkunci",
             "aerocrypt_marker_migrate": "Mengonversi penanda AeroCrypt ke .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Penanda AeroCrypt dikonversi ke .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Membuka kunci folder {filename}..."
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -3085,7 +3079,18 @@
                     "startFailed": "Server lokal tidak dapat dimulai.",
                     "serverFailed": "Server berhenti atau mengirim balasan yang tidak valid.",
                     "httpUnauthorized": "Server menolak kredensial yang tersimpan.",
-                    "unsupportedVersion": "Server menggunakan versi MCP yang tidak didukung AeroFTP."
+                    "unsupportedVersion": "Server menggunakan versi MCP yang tidak didukung AeroFTP.",
+                    "directoryInvalid": "Pilih direktori khusus tanpa tautan atau berkas aplikasi sensitif.",
+                    "directoryChanged": "Direktori yang diizinkan berubah atau tidak ditemukan. Pilih lagi untuk memperbarui akses.",
+                    "permissionCommand": "Ubah akses menggunakan kontrol izin direktori dan jaringan.",
+                    "installInvalid": "Instalasi terkelola ini tidak tersedia atau manifesnya tidak valid.",
+                    "installIntegrity": "Verifikasi integritas paket gagal. Hapus dan instal ulang server.",
+                    "installArchive": "Paket berisi jalur tidak aman, tautan, atau berkas awal yang tidak valid.",
+                    "installRuntime": "Lingkungan eksekusi sistem yang diperlukan tidak tersedia.",
+                    "installDownload": "Pengunduhan paket gagal atau kehabisan waktu.",
+                    "installLimit": "Paket melebihi batas instalasi.",
+                    "installExists": "Hapus instalasi yang ada sebelum menginstal ulang.",
+                    "installIo": "Berkas instalasi tidak dapat dibaca atau ditulis."
                 },
                 "routingNotice": "Server yang diaktifkan menyediakan alatnya untuk AeroAgent. Setiap panggilan alat meminta persetujuan Anda terlebih dahulu.",
                 "checkNow": "Periksa sekarang",
@@ -3094,7 +3099,26 @@
                 "healthError": "Tidak tersedia: {reason}",
                 "healthReady": "Siap, alat tersedia untuk AeroAgent: {count}",
                 "healthUnsupported": "Alat dengan skema yang tidak didukung: {count}",
-                "healthShowTools": "Tampilkan alat"
+                "healthShowTools": "Tampilkan alat",
+                "directoryTitle": "Direktori hanya baca",
+                "grantDirectory": "Pilih direktori",
+                "confirmDirectory": "Beri server ini akses hanya baca ke semua berkas di {path}? Beri akses hanya ke direktori khusus server atau proyek.",
+                "noDirectories": "Tidak ada akses direktori.",
+                "revokeDirectory": "Cabut akses",
+                "confirmRevokeDirectory": "Cabut akses ke {path}? Persetujuan alat sebelumnya tidak akan berlaku lagi.",
+                "networkAccess": "Izinkan akses jaringan (semua host dan layanan lokal)",
+                "networkBlocked": "Akses jaringan diblokir.",
+                "confirmNetwork": "Izinkan {name} mengakses jaringan, termasuk layanan lokal? Persetujuan alat sebelumnya tidak akan berlaku lagi.",
+                "confirmBlockNetwork": "Blokir akses jaringan untuk {name}? Persetujuan alat sebelumnya tidak akan berlaku lagi.",
+                "managedStatus": "Instalasi terkelola: {version}",
+                "renewDirectory": "Perbarui akses",
+                "presetsTitle": "Server yang disarankan",
+                "presetsSubtitle": "Preset yang ditinjau hanya dipasang setelah Anda mengonfirmasi. Tetap nonaktif sampai Anda mengaktifkannya.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Mencari dokumentasi repositori publik.",
+                "presetInstall": "Pasang",
+                "presetInstalledDisabled": "Terpasang dan nonaktif",
+                "presetReady": "Siap"
             }
         },
         "archive": {
@@ -4102,12 +4126,6 @@
             "viewSource": "Lihat Sumber"
         },
         "savedServers": {
-            "dragToReorder": "Seret untuk mengurutkan ulang",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Silakan konfigurasi kredensial 4shared di Pengaturan > Penyedia Cloud.",
-            "oauthConfigError": "Silakan konfigurasi kredensial {provider} di Pengaturan > Penyedia Cloud.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4441,19 +4459,23 @@
             "tagsPlaceholder": "Tambahkan tag...",
             "tagsUpdated": "Tag diperbarui",
             "addTag": "Tambah",
-            "noTags": "Tidak ada tag"
+            "noTags": "Tidak ada tag",
+            "collaborators": "Kolaborator",
+            "noCollaborators": "Belum dibagikan kepada siapa pun",
+            "folderNotLocked": "Folder ini tidak terkunci",
+            "roleEditor": "Editor",
+            "roleViewer": "Penampil",
+            "rolePreviewer": "Pemratinjau",
+            "roleUploader": "Pengunggah",
+            "rolePreviewerUploader": "Pemratinjau Pengunggah",
+            "roleViewerUploader": "Penampil Pengunggah",
+            "roleCoOwner": "Pemilik bersama"
         },
         "googledrive": {
             "star": "Beri Bintang",
             "unstar": "Hapus Bintang",
             "starred": "File diberi bintang",
-            "unstarred": "Bintang file dihapus",
-            "addComment": "Tambah Komentar",
-            "commentPlaceholder": "Tulis komentar Anda...",
-            "commentAdded": "Komentar ditambahkan"
-        },
-        "dropbox": {
-            "manageTags": "Kelola Tag"
+            "unstarred": "Bintang file dihapus"
         },
         "providers": {
             "title": "Penyedia & Integrasi",
@@ -4492,12 +4514,6 @@
             "freeTier": "Paket gratis",
             "freeCardTier": "Gratis + kartu",
             "paidTier": "Berbayar"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Kelola Label",
-            "noLabels": "Tidak ada label yang tersedia. Buat label di pengaturan Zoho WorkDrive.",
-            "createLabel": "Buat Label",
-            "labelName": "Nama label"
         },
         "healthCheck": {
             "title": "Pemeriksaan Kesehatan Server",
@@ -4773,7 +4789,14 @@
             "participants": "peserta",
             "saving": "Menyimpan...",
             "saved": "Tersimpan",
-            "saveNow": "Simpan sekarang"
+            "saveNow": "Simpan sekarang",
+            "noteType": "Jenis catatan",
+            "addTag": "Tambah tag",
+            "newTag": "Tag baru...",
+            "tagName": "Nama tag",
+            "removeTag": "Hapus tag",
+            "manageTags": "Kelola tag",
+            "deleteTagConfirm": "Hapus tag “{name}”? Catatan tetap menyimpan teksnya."
         },
         "shareLinkModal": {
             "title": "Tautan Berbagi",
@@ -6049,6 +6072,27 @@
             "scopeSession": "Menyetujui alat ini selama sisa sesi obrolan.",
             "approve": "Setujui",
             "rememberForChat": "Izinkan alat ini selama sisa obrolan ini"
+        },
+        "s3": {
+            "storageClass": "Kelas Penyimpanan",
+            "storageClassChanged": "Kelas penyimpanan diubah menjadi {storageClass}",
+            "restoreFromGlacier": "Pulihkan dari Glacier",
+            "restoreTier": "Tingkat pengambilan",
+            "restoreDays": "Hari penyimpanan salinan yang dipulihkan",
+            "restoreStarted": "Pemulihan diminta: setelah siap, salinan tetap dapat dibaca selama {days} hari",
+            "objectTags": "Tag Objek",
+            "noTags": "Tidak ada tag",
+            "tagKey": "Kunci",
+            "tagValue": "Nilai",
+            "tagsSaved": "Tag disimpan"
+        },
+        "azure": {
+            "accessTier": "Tingkat Akses",
+            "accessTierChanged": "Tingkat akses diatur ke {tier}"
+        },
+        "fileComments": {
+            "title": "Komentar",
+            "empty": "Belum ada komentar"
         }
     }
 }

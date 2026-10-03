@@ -26,6 +26,19 @@ fn text(value: Option<&Value>, max: usize) -> bool {
             .is_some_and(|s| s.len() <= max && !s.chars().any(char::is_control))
     })
 }
+
+/// Tool and schema descriptions may wrap (LF or CRLF) and hold tabs, as the tool
+/// registry accepts them. Other control characters stay refused.
+fn prose(value: Option<&Value>, max: usize) -> bool {
+    value.is_none_or(|v| {
+        v.as_str().is_some_and(|s| {
+            s.len() <= max
+                && !s
+                    .chars()
+                    .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+        })
+    })
+}
 fn parameter(name: &str) -> bool {
     !name.is_empty()
         && name.len() <= 64
@@ -59,7 +72,7 @@ pub(crate) fn discover(result: &Value, name: &str) -> Result<Value, SchemaError>
         return Err(SchemaError::Unavailable);
     }
     let tool = matching[0];
-    if !text(tool.get("description"), 512) {
+    if !prose(tool.get("description"), 512) {
         return Err(SchemaError::Unsupported);
     }
     let schema = tool.get("inputSchema").ok_or(SchemaError::Unsupported)?;
@@ -121,6 +134,7 @@ fn equal_scalar(left: &Value, right: &Value) -> bool {
 }
 
 fn constraints(property: &Value, value: &Value) -> bool {
+    let length = value.as_str().map(|text| text.chars().count());
     property.get("enum").is_none_or(|values| {
         values
             .as_array()
@@ -131,6 +145,58 @@ fn constraints(property: &Value, value: &Value) -> bool {
         && property
             .get("maximum")
             .is_none_or(|max| numeric_order(value, max).is_some_and(|o| o != Ordering::Greater))
+        && property.get("exclusiveMinimum").is_none_or(|min| {
+            numeric_order(value, min).is_some_and(|order| order == Ordering::Greater)
+        })
+        && property.get("exclusiveMaximum").is_none_or(|max| {
+            numeric_order(value, max).is_some_and(|order| order == Ordering::Less)
+        })
+        && property.get("minLength").is_none_or(|min| {
+            length.is_some_and(|count| count >= min.as_u64().unwrap_or(u64::MAX) as usize)
+        })
+        && property.get("maxLength").is_none_or(|max| {
+            length.is_some_and(|count| count <= max.as_u64().unwrap_or(0) as usize)
+        })
+}
+
+/// Whether the numeric bounds leave a value to send: an integer parameter needs
+/// an integer inside them. Each side has at most one bound, because an
+/// inclusive and an exclusive bound on the same side are refused before this.
+fn bounds_leave_a_value(kind: &str, property: &Value) -> bool {
+    let lower = property
+        .get("minimum")
+        .map(|value| (value, true))
+        .or_else(|| property.get("exclusiveMinimum").map(|value| (value, false)));
+    let upper = property
+        .get("maximum")
+        .map(|value| (value, true))
+        .or_else(|| property.get("exclusiveMaximum").map(|value| (value, false)));
+    let (Some((low, low_inclusive)), Some((high, high_inclusive))) = (lower, upper) else {
+        return true;
+    };
+    // The exact order first: beyond 2^53 two different bounds share one f64.
+    match numeric_order(low, high) {
+        Some(Ordering::Less) => {}
+        Some(Ordering::Equal) if low_inclusive && high_inclusive => {}
+        _ => return false,
+    }
+    if kind == "integer" {
+        let (Some(low), Some(high)) = (low.as_f64(), high.as_f64()) else {
+            return false;
+        };
+        let first = if low_inclusive {
+            low.ceil()
+        } else {
+            low.floor() + 1.0
+        };
+        let last = if high_inclusive {
+            high.floor()
+        } else {
+            high.ceil() - 1.0
+        };
+        return first <= last;
+    }
+    true
 }
 
 fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
@@ -149,7 +215,7 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
             ],
         )
         || schema.get("type").and_then(Value::as_str) != Some("object")
-        || !text(schema.get("description"), 512)
+        || !prose(schema.get("description"), 512)
         || !text(schema.get("$schema"), 512)
         || !text(schema.get("title"), 512)
         || schema
@@ -190,8 +256,12 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
                 "enum",
                 "minimum",
                 "maximum",
+                "exclusiveMinimum",
+                "exclusiveMaximum",
+                "minLength",
+                "maxLength",
             ],
-        ) || !text(property.get("description"), 512)
+        ) || !prose(property.get("description"), 512)
             || !text(property.get("title"), 512)
             || !text(property.get("format"), 512)
         {
@@ -244,8 +314,30 @@ fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
                 }
             }
         }
-        if let (Some(min), Some(max)) = (property.get("minimum"), property.get("maximum")) {
-            if numeric_order(min, max) == Some(Ordering::Greater) {
+        if property.get("minimum").is_some() && property.get("exclusiveMinimum").is_some()
+            || property.get("maximum").is_some() && property.get("exclusiveMaximum").is_some()
+        {
+            return Err(invalid);
+        }
+        for bound in ["exclusiveMinimum", "exclusiveMaximum"] {
+            if let Some(value) = property.get(bound) {
+                if !matches!(kind, "number" | "integer") || !typed_value("number", value) {
+                    return Err(invalid);
+                }
+            }
+        }
+        if !bounds_leave_a_value(kind, property) {
+            return Err(invalid);
+        }
+        for bound in ["minLength", "maxLength"] {
+            if let Some(value) = property.get(bound) {
+                if kind != "string" || value.as_u64().is_none_or(|n| n > 65_536) {
+                    return Err(invalid);
+                }
+            }
+        }
+        if let (Some(min), Some(max)) = (property.get("minLength"), property.get("maxLength")) {
+            if min.as_u64() > max.as_u64() {
                 return Err(invalid);
             }
         }
@@ -383,6 +475,68 @@ mod tests {
     }
 
     #[test]
+    fn descriptions_may_use_crlf_line_breaks() {
+        let result = json!({"tools":[{"name":"t","description":"Line one.\r\nLine two.\tTabbed.",
+            "inputSchema":{"type":"object","properties":{"q":{"type":"string","description":"First.\r\nSecond."}}}}]});
+        assert!(discover(&result, "t").is_ok());
+        let bell = json!({"tools":[{"name":"t","description":"ring\u{7}","inputSchema":{"type":"object"}}]});
+        assert_eq!(discover(&bell, "t").err(), Some(SchemaError::Unsupported));
+    }
+
+    #[test]
+    fn bounds_must_leave_a_value_to_send() {
+        let schema = |property: Value| json!({"type":"object","properties":{"n":property}});
+        for property in [
+            json!({"type":"number","minimum":5,"exclusiveMaximum":5}),
+            json!({"type":"number","exclusiveMinimum":5,"maximum":5}),
+            json!({"type":"number","minimum":6,"exclusiveMaximum":5}),
+            json!({"type":"integer","minimum":5.5,"exclusiveMaximum":6}),
+            json!({"type":"integer","exclusiveMinimum":5,"maximum":5.5}),
+            json!({"type":"integer","minimum":5.2,"maximum":5.8}),
+            json!({"type":"integer","exclusiveMinimum":5,"exclusiveMaximum":6}),
+            // Beyond 2^53 both bounds round to the same f64: the exact order decides.
+            json!({"type":"integer","minimum":9007199254740993u64,"maximum":9007199254740992u64}),
+            json!({"type":"integer","minimum":9007199254740993u64,"exclusiveMaximum":9007199254740993u64}),
+        ] {
+            assert_eq!(
+                validate_schema(&schema(property.clone())),
+                Err(SchemaError::Unsupported),
+                "{property}"
+            );
+        }
+        for property in [
+            json!({"type":"number","minimum":5,"maximum":5}),
+            json!({"type":"number","minimum":0.5,"exclusiveMaximum":0.6}),
+            json!({"type":"integer","minimum":5,"exclusiveMaximum":6}),
+            json!({"type":"integer","exclusiveMinimum":4.5,"maximum":5}),
+            json!({"type":"integer","minimum":-1}),
+        ] {
+            assert_eq!(
+                validate_schema(&schema(property.clone())),
+                Ok(()),
+                "{property}"
+            );
+        }
+    }
+
+    #[test]
+    fn exclusive_bounds_and_string_lengths_are_enforced() {
+        let s = json!({"type":"object","properties":{
+            "url":{"type":"string","minLength":1,"maxLength":8,"format":"uri"},
+            "max_length":{"type":"integer","exclusiveMinimum":0,"exclusiveMaximum":10,"default":5}
+        },"required":["url"]});
+        validate_arguments(&s, &json!({"url":"http://a","max_length":5})).unwrap();
+        for args in [
+            json!({"url":""}),
+            json!({"url":"123456789"}),
+            json!({"url":"a","max_length":0}),
+            json!({"url":"a","max_length":10}),
+        ] {
+            assert_eq!(validate_arguments(&s, &args), Err(SchemaError::Arguments));
+        }
+    }
+
+    #[test]
     fn malformed_metadata_defaults_enums_and_ranges_fail_closed() {
         for property in [
             json!({"type":"string","default":2}),
@@ -396,6 +550,11 @@ mod tests {
             json!({"type":"string","minimum":0}),
             json!({"type":"number","minimum":"0"}),
             json!({"type":"number","minimum":5,"maximum":4}),
+            json!({"type":"number","minimum":1,"exclusiveMinimum":0}),
+            json!({"type":"integer","exclusiveMinimum":1,"exclusiveMaximum":1}),
+            json!({"type":"string","minLength":2,"maxLength":1}),
+            json!({"type":"number","minLength":1}),
+            json!({"type":"string","exclusiveMinimum":1}),
             json!({"type":"boolean","maximum":1}),
             json!({"type":"string","title":false}),
             json!({"type":"string","format":"bad\n"}),
@@ -468,7 +627,7 @@ mod tests {
 
     #[test]
     fn unsupported_constraints_and_header_collisions_fail_closed() {
-        for key in ["$ref", "oneOf", "exclusiveMinimum", "pattern"] {
+        for key in ["$ref", "oneOf", "pattern", "minLength"] {
             let mut s = schema();
             s["properties"]["count"][key] = json!(1);
             assert_eq!(validate_schema(&s), Err(SchemaError::Unsupported));

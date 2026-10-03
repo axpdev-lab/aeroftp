@@ -221,27 +221,6 @@ impl GitLabProvider {
         self.client.get_paginated(&path, 100).await
     }
 
-    /// Switch to a different branch.
-    pub async fn switch_branch(&mut self, branch: &str) -> Result<(), ProviderError> {
-        log::info!("GitLab: switching branch to '{}'", branch);
-        // Verify the branch exists
-        let branch_url = format!(
-            "{}/repository/branches/{}",
-            self.project_api(),
-            urlencoding::encode(branch),
-        );
-        let branch_info: model::GitLabBranch = self.client.get_json(&branch_url).await?;
-        self.branch = branch_info.name;
-        self.can_push = branch_info.can_push;
-        self.current_path = String::new();
-        log::info!(
-            "GitLab: switched to branch '{}' (can_push: {})",
-            self.branch,
-            self.can_push
-        );
-        Ok(())
-    }
-
     /// Project API base path: `/projects/{encoded_id}`
     fn project_api(&self) -> String {
         if let Some(id) = self.project_id {
