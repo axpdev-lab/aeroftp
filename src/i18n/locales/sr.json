@@ -102,14 +102,9 @@
             "connectionFailed": "Повезивање није успело",
             "reconnecting": "Поновно повезивање...",
             "quickConnect": "Брзо повезивање",
-            "savedServers": "Сачувани сервери",
-            "noSavedServers": "Нема сачуваних сервера",
             "saveServer": "Сачувај сервер",
-            "deleteServer": "Обриши сервер",
-            "editServer": "Измени сервер",
             "serverName": "Назив сервера",
             "initialPath": "Почетна путања",
-            "savedServersHelp": "Изаберите сервер за повезивање.",
             "selectSshKey": "Изаберите SSH приватни кључ",
             "allFiles": "Све датотеке",
             "sshKeys": "SSH кључеви",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Претворите било који сервер у лични облак са аутоматском синхронизацијом",
             "configureAerocloud": "Конфигуриши AeroCloud",
             "aerocloudHelp": "AeroCloud можете конфигурисати и из статусне траке",
-            "selectProviderPrompt": "Изаберите провајдера изнад или изаберите \"Прилагођено\" за ручну конфигурацију",
-            "custom": "Прилагођено",
             "change": "Промени",
             "emailAccount": "Налог е-поште",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Ваша MEGA лозинка",
-            "dismiss": "Одбаци",
             "authenticating": "Аутентификација...",
             "oauth2Connection": "OAuth2 веза",
             "securityTitle": "Шифровано чување акредитива",
@@ -170,7 +162,6 @@
             "docs": "Документација",
             "minutes": "минута",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Претражи сервере...",
             "fourshared": {
                 "backToExistingAccount": "Назад на постојећи налог",
                 "configureCredentials": "Подеси OAuth 1.0 акредитиве",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "Лозинка апликације",
             "koofrAppPasswordPlaceholder": "Залепите вашу лозинку апликације Koofr овде",
             "koofrHelp": "Генеришите лозинку апликације на app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Дуплирај сервер",
-            "duplicateCredentialMissing": "Акредитив није копиран у дупликат. Поново унесите лозинку пре повезивања.",
             "saveAsNew": "Сачувај као нови",
             "yandexdiskToken": "OAuth токен",
             "yandexdiskTokenPlaceholder": "Налепите свој Yandex OAuth токен овде",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Генеришите API кључ у Immich → User Settings → API Keys",
             "immichOps": "Претраживање, отпремање, преузимање, брисање, албуми, претрага, линкови за дељење. Преименовање и премештање нису подржани.",
             "generatePassword": "Генериши лозинку",
-            "saveAndConnect": "Сачувај и повежи",
-            "saveDisabledTotp": "TOTP кодови су за једнократну употребу. Користите Сачувај и повежи да бисте применили овај код сада.",
             "generatePersonalLoginToken": "Генериши лични токен за пријаву",
             "endpointUrl": "URL крајње тачке",
             "b2NativeAdvantagesTitle": "Изворни API Backblaze B2: додатне функције у односу на S3-компатибилан",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Prijavite se ponovo",
             "twakeSignedIn": "Prijavljeni ste",
             "twakeWaitingBrowser": "Završite prijavu u pregledaču...",
-            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledaču i traži pristup samo vašim fajlovima. Ako Twake prvi put prikaže grešku, prijavite se na Twake u pregledaču i prijavite se ponovo. Pristup možete opozvati u bilo kom trenutku u Twake podešavanjima, Povezani uređaji."
+            "twakeSignInHelp": "AeroFTP otvara Twake u vašem pregledaču i traži pristup samo vašim fajlovima. Ako Twake prvi put prikaže grešku, prijavite se na Twake u pregledaču i prijavite se ponovo. Pristup možete opozvati u bilo kom trenutku u Twake podešavanjima, Povezani uređaji.",
+            "oauthKeysMissingTitle": "Недостају кључеви апликације за {provider}",
+            "oauthKeysMissing": "У сефу нису сачувани кључеви апликације за {provider}, па се AeroFTP не може пријавити. AeroFTP не долази са својим кључевима: унесите кључеве своје развојне апликације за {provider} у {location}, а затим се поново повежите.",
+            "oauthKeysOpenSettings": "Отвори OAuth подешавања",
+            "oauthKeysReadFailedTitle": "Није могуће прочитати кључеве апликације за {provider}",
+            "oauthKeysReadFailed": "AeroFTP није успео да прочита кључеве апликације за {provider} из сефа, па не може да се пријави. Кључеви нису промењени. Грешка: {error}"
         },
         "browser": {
             "remote": "Удаљено",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "Примењене замене: {count}",
             "uiTokensRejected": "Одбијени уноси: {count}",
             "keystorePreferencesFailed": "Увоз је завршен, али ваша подешавања апликације нису враћена: {error}",
-            "keystorePreviewBackupUnreadable": "Листа сервера у овој копији не може да се прочита на овом уређају, па поређење користи листу сачувану у трезору копије. Увоз ипак замењује листу сервера на овом уређају."
+            "keystorePreviewBackupUnreadable": "Листа сервера у овој копији не може да се прочита на овом уређају, па поређење користи листу сачувану у трезору копије. Увоз ипак замењује листу сервера на овом уређају.",
+            "filterServersPlaceholder": "Филтрирај по имену, хосту, протоколу или кориснику",
+            "selectShown": "Изабери приказаних {count}",
+            "deselectShown": "Поништи избор приказаних {count}",
+            "filterShownCount": "приказано: {shown}",
+            "selectedHiddenByFilter": "{count} изабрано, али скривено филтером, и даље укључено"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "Извучено!",
             "extractedTo": "Датотеке извучене у {dest}",
             "fileLocked": "Датотека закључана",
+            "cutPartial": "Премештено {moved} од {total} ставки; остале остају на месту",
             "fileSkipped": "{count} датотека прескочено",
             "fileUnlocked": "Датотека откључана",
             "loadTrashFailed": "Учитавање корпе неуспешно",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "Шифровани слој закључан",
             "aerocrypt_marker_migrate": "Конвертовање AeroCrypt маркера у .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt маркер је конвертован у .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "Конверзија AeroCrypt маркера није успела"
+            "aerocrypt_marker_migrate_failed": "Конверзија AeroCrypt маркера није успела",
+            "box_unlock_folder": "[Box] Откључавање фасцикле {filename}..."
         },
         "protocol": {
             "selectProtocol": "Изабери протокол...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "Локални сервер није могао да се покрене.",
                     "serverFailed": "Сервер је стао или је послао неважећи одговор.",
                     "httpUnauthorized": "Сервер је одбио сачуване акредитиве.",
-                    "unsupportedVersion": "Сервер користи верзију MCP коју AeroFTP не подржава."
+                    "unsupportedVersion": "Сервер користи верзију MCP коју AeroFTP не подржава.",
+                    "directoryInvalid": "Изаберите наменски директоријум без веза или осетљивих датотека апликација.",
+                    "directoryChanged": "Одобрени директоријум је промењен или недостаје. Изаберите га поново да обновите приступ.",
+                    "permissionCommand": "Промените приступ помоћу подешавања дозвола за директоријуме и мрежу.",
+                    "installInvalid": "Ова управљана инсталација није доступна или њен манифест није важећи.",
+                    "installIntegrity": "Провера интегритета пакета није успела. Уклоните и поново инсталирајте сервер.",
+                    "installArchive": "Пакет садржи небезбедне путање, везе или неважећу почетну датотеку.",
+                    "installRuntime": "Недостаје потребно системско окружење за извршавање.",
+                    "installDownload": "Преузимање пакета није успело или је истекло време чекања.",
+                    "installLimit": "Пакет премашује ограничења инсталације.",
+                    "installExists": "Уклоните постојећу инсталацију пре поновне инсталације.",
+                    "installIo": "Инсталационе датотеке није могуће читати или писати."
                 },
                 "routingNotice": "Омогућени сервери нуде своје алате AeroAgent-у. Сваки позив алата прво тражи ваше одобрење.",
                 "checkNow": "Провери сада",
@@ -3089,7 +3099,26 @@
                 "healthError": "Недоступно: {reason}",
                 "healthReady": "Спреман, алати доступни AeroAgent-у: {count}",
                 "healthUnsupported": "Алати са неподржаним шемама: {count}",
-                "healthShowTools": "Прикажи алате"
+                "healthShowTools": "Прикажи алате",
+                "directoryTitle": "Директоријуми само за читање",
+                "grantDirectory": "Изабери директоријум",
+                "confirmDirectory": "Дозволити овом серверу приступ само за читање свим датотекама у {path}? Дозволите само приступ наменском директоријуму сервера или пројекта.",
+                "noDirectories": "Нема приступа директоријумима.",
+                "revokeDirectory": "Опозови приступ",
+                "confirmRevokeDirectory": "Опозвати приступ директоријуму {path}? Претходна одобрења алата више неће важити.",
+                "networkAccess": "Дозволи приступ мрежи (сви домаћини и локалне услуге)",
+                "networkBlocked": "Мрежни приступ је блокиран.",
+                "confirmNetwork": "Дозволити серверу {name} приступ мрежи, укључујући локалне услуге? Претходна одобрења алата више неће важити.",
+                "confirmBlockNetwork": "Блокирати мрежни приступ серверу {name}? Претходна одобрења алата више неће важити.",
+                "managedStatus": "Управљана инсталација: {version}",
+                "renewDirectory": "Обнови приступ",
+                "presetsTitle": "Препоручени сервери",
+                "presetsSubtitle": "Прегледане поставке се инсталирају тек након потврде. Остају искључене док их не укључите.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Потражи документацију јавног спремишта.",
+                "presetInstall": "Инсталирај",
+                "presetInstalledDisabled": "Инсталирано и искључено",
+                "presetReady": "Спремно"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "Прикажи изворни код"
         },
         "savedServers": {
-            "dragToReorder": "Превуците за преуређење",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Молимо подесите 4shared акредитиве у Подешавања > Провајдери облака.",
-            "oauthConfigError": "Молимо подесите {provider} акредитиве у Подешавања > Провајдери облака.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "Додај ознаку...",
             "tagsUpdated": "Ознаке ажуриране",
             "addTag": "Додај",
-            "noTags": "Нема ознака"
+            "noTags": "Нема ознака",
+            "collaborators": "Сарадници",
+            "noCollaborators": "Још није подељено ни са ким",
+            "folderNotLocked": "Ова фасцикла није закључана",
+            "roleEditor": "Уредник",
+            "roleViewer": "Гледалац",
+            "rolePreviewer": "Прегледалац",
+            "roleUploader": "Отпремалац",
+            "rolePreviewerUploader": "Прегледалац и отпремалац",
+            "roleViewerUploader": "Гледалац и отпремалац",
+            "roleCoOwner": "Сувласник"
         },
         "googledrive": {
             "star": "Означи звездицом",
             "unstar": "Уклони звездицу",
             "starred": "Датотека означена звездицом",
-            "unstarred": "Звездица уклоњена",
-            "addComment": "Додај коментар",
-            "commentPlaceholder": "Напишите свој коментар...",
-            "commentAdded": "Коментар додат"
+            "unstarred": "Звездица уклоњена"
         },
         "dropbox": {
             "manageTags": "Управљање ознакама"
@@ -4768,7 +4798,14 @@
             "participants": "учесници",
             "saving": "Чување...",
             "saved": "Сачувано",
-            "saveNow": "Сачувај сада"
+            "saveNow": "Сачувај сада",
+            "noteType": "Тип белешке",
+            "addTag": "Додај ознаку",
+            "newTag": "Нова ознака...",
+            "tagName": "Назив ознаке",
+            "removeTag": "Уклони ознаку",
+            "manageTags": "Управљај ознакама",
+            "deleteTagConfirm": "Обрисати ознаку „{name}“? Белешке задржавају свој текст."
         },
         "shareLinkModal": {
             "title": "Линк за дељење",
@@ -4961,7 +4998,8 @@
                 "rename": "Преименуј групу",
                 "delete": "Обриши групу",
                 "confirmDelete": "Обрисати групу „{name}“? Сервери у њој се задржавају, уклања се само група.",
-                "chipHint": "Кликните за филтрирање; десни клик за преименовање или брисање"
+                "chipHint": "Кликните за филтрирање; десни клик за преименовање, извоз или брисање",
+                "export": "Извези групу..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5024,8 @@
                 "offTitle": "Овај бакет нема подразумевано шифровање. То није исто што и нешифрован: SSE-C и шифровање на страни клијента ова поставка не приказује.",
                 "unknownKeyTitle": "Нисмо могли да прочитамо поставку шифровања овог бакета, јер кључ апликације нема могућност readBucketEncryption. Вредност коју нам није дозвољено да видимо не значи да је шифровање искључено.",
                 "unknownShapeTitle": "Нисмо могли да прочитамо поставку шифровања овог бакета, јер одговор није имао документован облик. Кључ је смео да је прочита, па је реч о одговору, а не о дозволама."
-            }
+            },
+            "exportProfile": "Извези..."
         },
         "gitlab": {
             "projectPath": "Путања пројекта",
@@ -6042,6 +6081,27 @@
             "scopeSession": "Одобрава ову алатку до краја сесије ћаскања.",
             "approve": "Одобри",
             "rememberForChat": "Дозволи ову алатку до краја овог ћаскања"
+        },
+        "s3": {
+            "storageClass": "Класа складишта",
+            "storageClassChanged": "Класа складишта је промењена у {storageClass}",
+            "restoreFromGlacier": "Врати из Glacier",
+            "restoreTier": "Ниво преузимања",
+            "restoreDays": "Дани чувања враћене копије",
+            "restoreStarted": "Враћање је затражено: када буде спремна, копија остаје читљива {days} дана",
+            "objectTags": "Ознаке објекта",
+            "noTags": "Нема ознака",
+            "tagKey": "Кључ",
+            "tagValue": "Вредност",
+            "tagsSaved": "Ознаке су сачуване"
+        },
+        "azure": {
+            "accessTier": "Ниво приступа",
+            "accessTierChanged": "Ниво приступа је постављен на {tier}"
+        },
+        "fileComments": {
+            "title": "Коментари",
+            "empty": "Још нема коментара"
         }
     }
 }

@@ -529,6 +529,7 @@ async fn exchange(
     era: Era,
     session: Option<&HeaderValue>,
     notification: bool,
+    discovery_probe: bool,
     client: &Client,
     url: Url,
     mut headers: HeaderMap,
@@ -568,7 +569,10 @@ async fn exchange(
         }
         let body = bounded_body(response, cancel).await?;
         let error: Value = serde_json::from_slice(&body).map_err(|_| HttpError::InvalidResponse)?;
-        if era == Era::Modern && authoritative_legacy(&error, id)? {
+        if era == Era::Modern
+            && (discovery_probe && sdk_legacy_probe(&error, id)
+                || authoritative_legacy(&error, id)?)
+        {
             return Err(HttpError::UnsupportedVersion);
         }
         return Err(HttpError::InvalidResponse);
@@ -639,6 +643,7 @@ async fn send_prepared(
         Era::Modern,
         None,
         false,
+        false,
         client,
         url,
         headers,
@@ -648,6 +653,37 @@ async fn send_prepared(
     )
     .await?
     .0)
+}
+
+/// SDK pre-handshake errors may have no correlated numeric ID. This narrow
+/// exception is called only for HTTP 400 JSON on the first server/discover,
+/// never for an established session or an approved operation. No message text
+/// is interpreted as a version; a fresh initialize must validate the revision.
+fn sdk_legacy_probe(message: &Value, id: u64) -> bool {
+    let Some(reply_id) = message.get("id") else {
+        return false;
+    };
+    let accepted_id = reply_id == &serde_json::json!(id)
+        || reply_id.is_null()
+        || reply_id.as_str().is_some_and(|s| {
+            !s.is_empty()
+                && s.len() <= 128
+                && !s.chars().any(char::is_control)
+                && s.parse::<f64>().is_err()
+        });
+    if !accepted_id {
+        return false;
+    }
+    // Normalize only this disposable probe ID and reuse strict envelope checks.
+    let mut correlated = message.clone();
+    correlated["id"] = serde_json::json!(id);
+    matches!(
+        protocol::reply(&correlated, id),
+        Ok(protocol::Reply::Error {
+            code: -32600 | -32601,
+            ..
+        })
+    )
 }
 
 /// A downgrade needs a correlated, well-formed error explicitly excluding the
@@ -773,6 +809,7 @@ impl HttpSession {
             self.era,
             self.session.as_ref(),
             notification,
+            false,
             client,
             url.clone(),
             headers,
@@ -834,19 +871,12 @@ impl HttpSession {
                 let mut wire_fresh = || fresh();
                 let id = self.next_id()?;
                 wire_fresh()?;
-                let mut headers = era_headers(Era::Modern, method, &params, schema)?;
+                let mut headers = era_headers(Era::Modern, "server/discover", &Map::new(), None)?;
                 if let Some(token) = token {
                     headers.insert(AUTHORIZATION, authorization_header(token)?);
                 }
-                let body = protocol::request(
-                    Era::Modern,
-                    id,
-                    method,
-                    params.clone(),
-                    "AeroFTP",
-                    env!("CARGO_PKG_VERSION"),
-                )
-                .map_err(|_| HttpError::InvalidRequest)?;
+                let body = protocol::discover_request(id, "AeroFTP", env!("CARGO_PKG_VERSION"))
+                    .map_err(|_| HttpError::InvalidRequest)?;
                 let bytes = serde_json::to_vec(&body).map_err(|_| HttpError::InvalidRequest)?;
                 if bytes.len() > MAX_REPLY_BYTES {
                     return Err(HttpError::InvalidRequest.into());
@@ -855,6 +885,7 @@ impl HttpSession {
                     Era::Modern,
                     None,
                     false,
+                    true,
                     client,
                     url.clone(),
                     headers,
@@ -869,8 +900,14 @@ impl HttpSession {
                 }
                 match outcome {
                     Ok((value, _)) => {
+                        protocol::classify_probe(
+                            protocol::ProbeReply::Message(
+                                &serde_json::json!({"jsonrpc":"2.0","id":id,"result":value}),
+                            ),
+                            id,
+                        )
+                        .map_err(|_| HttpError::InvalidResponse)?;
                         self.negotiated = true;
-                        return Ok(value);
                     }
                     Err(HttpError::UnsupportedVersion) => {
                         self.era = Era::Legacy(protocol::LEGACY_PREFERRED);
@@ -1115,6 +1152,148 @@ mod tests {
             }
         }
     }
+    #[tokio::test]
+    async fn deepwiki_sdk_probe_error_initializes_fresh_legacy_sse_session() {
+        let captured = include_str!("../tests/fixtures/mcp-client/deepwiki-modern-probe.body.json");
+        for id in [json!("server-error"), Value::Null, json!(1)] {
+            let mut error: Value = serde_json::from_str(captured).unwrap();
+            error["id"] = id;
+            for code in [-32600, -32601] {
+                error["error"]["code"] = json!(code);
+                let mut responses = legacy_responses(protocol::LEGACY_PREFERRED, true);
+                responses[0] = wire_reply(
+                    "400 Bad Request",
+                    "application/json",
+                    "Mcp-Session-Id: failed-probe-session\r\n",
+                    &error.to_string(),
+                );
+                let (url, peer) = sequence_fixture(responses).await;
+                let binding = binding(&url);
+                let mut state = HttpSession::new(binding.clone());
+                let result: Result<Value, HttpError> = state
+                    .call_wire(
+                        &binding,
+                        &test_client(),
+                        &url,
+                        "tools/list",
+                        Map::new(),
+                        None,
+                        None,
+                        &CancellationToken::new(),
+                        &mut || Ok(()),
+                    )
+                    .await;
+                assert_eq!(result.unwrap()["tools"], json!([]));
+                assert_eq!(state.era, Era::Legacy(protocol::LEGACY_PREFERRED));
+                let requests = peer.await.unwrap();
+                let probe: Value =
+                    serde_json::from_str(requests[0].split_once("\r\n\r\n").unwrap().1).unwrap();
+                assert_eq!(probe["method"], "server/discover");
+                assert!(requests.iter().all(|r| !r.contains("failed-probe-session")));
+                assert!(!requests[1].contains("mcp-session-id:"));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn sdk_probe_errors_never_downgrade_a_negotiated_session() {
+        for era in [Era::Modern, Era::Legacy(protocol::LEGACY_PREFERRED)] {
+            let captured =
+                include_str!("../tests/fixtures/mcp-client/deepwiki-modern-probe.body.json");
+            let (url, peer) = sequence_fixture(vec![wire_reply(
+                "400 Bad Request",
+                "application/json",
+                "",
+                captured,
+            )])
+            .await;
+            let binding = binding(&url);
+            let mut state = HttpSession::new(binding.clone());
+            state.negotiated = true;
+            state.era = era;
+            let result: Result<Value, HttpError> = state
+                .call_wire(
+                    &binding,
+                    &test_client(),
+                    &url,
+                    "tools/list",
+                    Map::new(),
+                    None,
+                    None,
+                    &CancellationToken::new(),
+                    &mut || Ok(()),
+                )
+                .await;
+            assert_eq!(result, Err(HttpError::InvalidResponse));
+            assert!(state.failed);
+            assert_eq!(peer.await.unwrap().len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn sdk_fallback_rejects_unrelated_ids_envelopes_statuses_and_media_types() {
+        let captured: Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/mcp-client/deepwiki-modern-probe.body.json"
+        ))
+        .unwrap();
+        let mut cases = Vec::new();
+        for (pointer, value) in [
+            ("/id", json!(2)),
+            ("/id", json!("2")),
+            ("/id", json!(true)),
+            ("/error/code", json!(-32700)),
+            ("/jsonrpc", json!("1.0")),
+            ("/error/message", json!("")),
+        ] {
+            let mut error = captured.clone();
+            *error.pointer_mut(pointer).unwrap() = value;
+            cases.push(wire_reply(
+                "400 Bad Request",
+                "application/json",
+                "",
+                &error.to_string(),
+            ));
+        }
+        for extra in ["method", "result"] {
+            let mut error = captured.clone();
+            error[extra] = json!({});
+            cases.push(wire_reply(
+                "400 Bad Request",
+                "application/json",
+                "",
+                &error.to_string(),
+            ));
+        }
+        for (status, media) in [
+            ("400 Bad Request", "text/html"),
+            ("500 Internal Server Error", "application/json"),
+            ("200 OK", "application/json"),
+        ] {
+            cases.push(wire_reply(status, media, "", &captured.to_string()));
+        }
+        for response in cases {
+            let (url, peer) = sequence_fixture(vec![response]).await;
+            let binding = binding(&url);
+            let mut state = HttpSession::new(binding.clone());
+            let result: Result<Value, HttpError> = state
+                .call_wire(
+                    &binding,
+                    &test_client(),
+                    &url,
+                    "tools/list",
+                    Map::new(),
+                    None,
+                    None,
+                    &CancellationToken::new(),
+                    &mut || Ok(()),
+                )
+                .await;
+            assert_eq!(result, Err(HttpError::InvalidResponse));
+            assert!(state.failed);
+            assert_eq!(peer.await.unwrap().len(), 1);
+        }
+    }
+
     #[test]
     fn downgrade_requires_authoritative_version_and_correlated_envelope() {
         assert_eq!(authoritative_legacy(&downgrade(7), 7), Ok(true));
@@ -1197,14 +1376,21 @@ mod tests {
     }
     #[tokio::test]
     async fn modern_success_stays_stateless_and_later_version_error_never_replays_call() {
-        let first = json!({"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":[]}});
+        let first = json!({"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","supportedVersions":[protocol::MODERN_VERSION],"capabilities":{},"ttlMs":0,"cacheScope":"private"}});
         let (url, peer) = sequence_fixture(vec![
             wire_reply("200 OK", "application/json", "", &first.to_string()),
+            wire_reply(
+                "200 OK",
+                "application/json",
+                "",
+                &json!({"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","tools":[]}})
+                    .to_string(),
+            ),
             wire_reply(
                 "400 Bad Request",
                 "application/json",
                 "",
-                &downgrade(2).to_string(),
+                &downgrade(3).to_string(),
             ),
         ])
         .await;
@@ -1248,7 +1434,7 @@ mod tests {
             .await;
         assert_eq!(result, Err(HttpError::UnsupportedVersion));
         let requests = peer.await.unwrap();
-        assert_eq!(requests.len(), 2);
+        assert_eq!(requests.len(), 3);
         assert!(!requests.iter().any(|r| r.contains("mcp-session-id:")));
     }
     #[tokio::test]

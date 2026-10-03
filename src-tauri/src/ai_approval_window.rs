@@ -152,6 +152,12 @@ fn build_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     {
         builder = builder.decorations(false);
     }
+    // Keep the global app menu off this window (GTK stack overflow with
+    // appmenu-gtk-module, see `secondary_window_menu`).
+    #[cfg(target_os = "linux")]
+    if let Some(menu) = crate::secondary_window_menu(app) {
+        builder = builder.menu(menu);
+    }
     if let Some(main) = app.get_webview_window("main") {
         builder = builder
             .parent(&main)
@@ -163,6 +169,10 @@ fn build_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     let window = builder.build().map_err(|e| e.to_string())?;
     // GTK hands every window the global app menu: not this one.
     let _ = window.remove_menu();
+    // A dead web process would leave a grey window that can only refuse; a
+    // reload shows the request again, which stays pending until answered.
+    #[cfg(target_os = "linux")]
+    crate::webview_recovery::install(&window);
 
     let label_owned = label.to_string();
     window.on_window_event(move |event| {

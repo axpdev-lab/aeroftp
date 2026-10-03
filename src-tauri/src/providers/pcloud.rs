@@ -569,6 +569,19 @@ impl PCloudProvider {
         }
     }
 
+    /// `deletepublink` for one link, by the `linkid` pCloud assigned it.
+    async fn delete_publink(&mut self, link_id: u64) -> Result<(), ProviderError> {
+        let auth = self.auth_header().await?;
+        let delete_url = format!("{}/deletepublink?linkid={}", self.api_base(), link_id);
+        let resp: PCloudResponse = self
+            .get_with_retry(&delete_url, &auth)
+            .await?
+            .json()
+            .await
+            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+        Self::check_response(&resp)
+    }
+
     /// Check pCloud API response for errors (PA-014: sanitized messages)
     fn check_response(resp: &PCloudResponse) -> Result<(), ProviderError> {
         match classify_pcloud_result(resp.result, resp.error.as_deref()) {
@@ -1591,17 +1604,19 @@ impl StorageProvider for PCloudProvider {
             })?;
 
         // Now delete using the correct linkid parameter
-        let delete_url = format!("{}/deletepublink?linkid={}", self.api_base(), link_id);
+        self.delete_publink(link_id).await
+    }
 
-        let resp: PCloudResponse = self
-            .get_with_retry(&delete_url, &auth)
-            .await?
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
-
-        Self::check_response(&resp)?;
-        Ok(())
+    async fn remove_share_link_by_id(
+        &mut self,
+        _path: &str,
+        link_id: &str,
+    ) -> Result<(), ProviderError> {
+        // `list_share_links` hands out the numeric `linkid` as the id.
+        let link_id: u64 = link_id
+            .parse()
+            .map_err(|_| ProviderError::InvalidPath(format!("Not a pCloud link id: {link_id}")))?;
+        self.delete_publink(link_id).await
     }
 
     fn supports_server_copy(&self) -> bool {
@@ -3095,5 +3110,41 @@ mod tests {
         let connected = fixture_connected();
         // LockedSingle: no clone_for_transfer override → helper stays None.
         assert!(clone_multipart_worker(&connected).is_none());
+    }
+
+    /// Revoking one link out of the Manage list deletes that link, by the
+    /// `linkid` the list gave it. Through the path alone the backend took
+    /// the first public link on the item, a different one when it has two.
+    #[tokio::test]
+    async fn revoking_a_listed_link_deletes_that_linkid() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock().unwrap().push(format!(
+                    "{method} {}{}",
+                    uri.path(),
+                    uri.query().map(|q| format!("?{q}")).unwrap_or_default()
+                ));
+                async { (axum::http::StatusCode::OK, r#"{"result":0}"#) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        provider
+            .remove_share_link_by_id("/a.txt", "42")
+            .await
+            .expect("deleted");
+        let refused = provider.remove_share_link_by_id("/a.txt", "42&x=1").await;
+        assert!(
+            matches!(refused, Err(ProviderError::InvalidPath(_))),
+            "{refused:?}"
+        );
+        assert_eq!(*calls.lock().unwrap(), ["GET /deletepublink?linkid=42"]);
     }
 }

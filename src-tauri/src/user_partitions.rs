@@ -392,6 +392,7 @@ fn clear_user_session() {
     // Partition lock and user switch keep the vault cache, so MCP OAuth freshness
     // checks alone would not see them: cancel every pending and in-flight attempt.
     crate::mcp_client_oauth::lifecycle::shared().invalidate_all();
+    crate::mcp_client_install::invalidate_all();
 }
 
 fn set_user_session(user_id: i64, dek: SecretKey) -> Result<(), String> {
@@ -3972,12 +3973,12 @@ pub fn cli_update_server_profiles_for_user(
 /// `user_settings` scope for the active user, decrypted as JSON. Returns
 /// `Ok(None)` when no row exists. Used by the CLI to keep low-stakes per-user
 /// state (server groups, favourites) in the active user's partition instead of
-/// the single global vault blob. `__`-reserved scopes are rejected.
+/// the single global vault blob. Internal and MCP scopes are rejected.
 pub fn cli_get_active_setting(
     store: &CredentialStore,
     scope: &str,
 ) -> Result<Option<Value>, String> {
-    if scope.starts_with("__") {
+    if is_reserved_public_setting_scope(scope) {
         return Err("USER_SETTING_RESERVED_SCOPE".to_string());
     }
     init_or_migrate_cli(store)?;
@@ -3995,7 +3996,7 @@ pub fn cli_set_active_setting(
     scope: &str,
     value: &Value,
 ) -> Result<(), String> {
-    if scope.starts_with("__") {
+    if is_reserved_public_setting_scope(scope) {
         return Err("USER_SETTING_RESERVED_SCOPE".to_string());
     }
     init_or_migrate_cli(store)?;
@@ -4008,7 +4009,7 @@ pub fn cli_set_active_setting(
 
 /// CLI counterpart of [`get_user_setting_for`]: read a per-user `user_settings`
 /// scope for the given `user_id` without changing `active_user_id`. Rejects
-/// `__`-reserved scopes (same rule as the active wrappers). Returns `Ok(None)`
+/// internal and MCP scopes (same rule as the active wrappers). Returns `Ok(None)`
 /// when no row exists for that (user, scope). A passphrase-protected user that
 /// is not the active session yields `Err("USER_LOCKED")`; the caller decides
 /// how to surface it.
@@ -4017,7 +4018,7 @@ pub fn cli_get_user_setting(
     user_id: i64,
     scope: &str,
 ) -> Result<Option<Value>, String> {
-    if scope.starts_with("__") {
+    if is_reserved_public_setting_scope(scope) {
         return Err("USER_SETTING_RESERVED_SCOPE".to_string());
     }
     init_or_migrate_cli(store)?;
@@ -4037,7 +4038,7 @@ pub fn cli_set_user_setting(
     scope: &str,
     value: &Value,
 ) -> Result<(), String> {
-    if scope.starts_with("__") {
+    if is_reserved_public_setting_scope(scope) {
         return Err("USER_SETTING_RESERVED_SCOPE".to_string());
     }
     init_or_migrate_cli(store)?;
@@ -4911,15 +4912,15 @@ pub async fn user_partitions_relocate_server_profile(
 
 /// Generic per-user setting access (MU-4 foundation). Settings are keyed by
 /// scope (e.g. `aerosync_schedule`, `aerosync_profiles`) and encrypted with
-/// the active user's DEK. Reserved scopes starting with `__` are blocked at
-/// this boundary so the legacy backup payload cannot be overwritten through
-/// the public API. Returns JSON null when no setting exists for that scope.
+/// the active user's DEK. Internal and MCP scopes are blocked at this boundary
+/// so generic settings cannot overwrite backups or bypass MCP authorization.
+/// Returns JSON null when no setting exists for that scope.
 #[tauri::command]
 pub async fn user_partitions_get_active_setting(
     app: AppHandle,
     scope: String,
 ) -> Result<Option<Value>, String> {
-    if scope.starts_with("__") {
+    if is_reserved_public_setting_scope(&scope) {
         return Err("USER_SETTING_RESERVED_SCOPE".to_string());
     }
     init_or_migrate(&app)?;
@@ -4937,7 +4938,7 @@ pub async fn user_partitions_set_active_setting(
     scope: String,
     value: Value,
 ) -> Result<(), String> {
-    if scope.starts_with("__") {
+    if is_reserved_public_setting_scope(&scope) {
         return Err("USER_SETTING_RESERVED_SCOPE".to_string());
     }
     init_or_migrate(&app)?;
@@ -4954,12 +4955,40 @@ pub async fn user_partitions_delete_active_setting(
     app: AppHandle,
     scope: String,
 ) -> Result<(), String> {
-    if scope.starts_with("__") {
+    if is_reserved_public_setting_scope(&scope) {
         return Err("USER_SETTING_RESERVED_SCOPE".to_string());
     }
     init_or_migrate(&app)?;
     let conn = open_or_init(&app)?;
     delete_active_user_setting(&conn, &scope)
+}
+
+// MCP catalogs carry backend-issued permissions and must only use their guarded API.
+fn is_reserved_public_setting_scope(scope: &str) -> bool {
+    scope.starts_with("__") || scope.starts_with("aeroagent_mcp_")
+}
+
+#[cfg(test)]
+mod private_mcp_setting_tests {
+    #[test]
+    fn reserves_catalogs_and_future_mcp_scopes_without_blocking_ui_settings() {
+        for scope in [
+            "__backup",
+            "aeroagent_mcp_servers",
+            "aeroagent_mcp_http_servers",
+            "aeroagent_mcp_future",
+        ] {
+            assert!(super::is_reserved_public_setting_scope(scope));
+        }
+        for scope in [
+            "aerosync_schedule",
+            "aeroagent_preferences",
+            "aeroagent_mcp",
+            "",
+        ] {
+            assert!(!super::is_reserved_public_setting_scope(scope));
+        }
+    }
 }
 
 /// MU-7: ask "is this profile already saved by another user account?". Called

@@ -321,6 +321,125 @@ fn describe_reqwest_error(e: &reqwest::Error) -> String {
     msg
 }
 
+/// A redirect the WebDAV client refused because it leaves TLS: the request
+/// went to an `https://` URL and the server pointed it at `http://`.
+///
+/// reqwest would follow it, but it treats the scheme change as a new origin
+/// and drops `Authorization`, so the hop arrives anonymous and the server
+/// answers `401`: a healthy session that reads as rejected credentials.
+/// Following it WITH the credentials would be worse, since they would travel
+/// in cleartext. The usual cause is a server behind a TLS-terminating reverse
+/// proxy that builds absolute redirects from the scheme it sees itself (nginx
+/// without `absolute_redirect off`, Apache without an `https://` `ServerName`),
+/// and the usual redirect is the `301` that appends the trailing slash to a
+/// collection. Measured on 2026-10-02: every verb sent to a slash-less
+/// collection on such a server (PROPFIND, MKCOL, MOVE, COPY, DELETE, LOCK,
+/// PROPPATCH, GET, HEAD, OPTIONS) answered that `301`.
+#[derive(Debug)]
+struct InsecureRedirect {
+    from: reqwest::Url,
+    to: reqwest::Url,
+}
+
+impl InsecureRedirect {
+    /// True when the redirect only appends the trailing slash, that is the
+    /// server named the request target a collection and asked for its
+    /// collection form. A caller that did not know the target's type can
+    /// resend there over HTTPS: the server refused the first request without
+    /// acting on it.
+    fn is_to_collection_form(&self) -> bool {
+        self.from.host_str() == self.to.host_str()
+            && self.from.query() == self.to.query()
+            && self.to.path() == format!("{}/", self.from.path())
+    }
+}
+
+impl std::fmt::Display for InsecureRedirect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the server redirected {} to {}, which leaves HTTPS, and AeroFTP does not follow a redirect from HTTPS to HTTP. \
+             This is a server misconfiguration, typically a TLS-terminating reverse proxy whose backend builds http:// redirects",
+            self.from, self.to
+        )
+    }
+}
+
+impl std::error::Error for InsecureRedirect {}
+
+/// The WebDAV client's redirect policy: reqwest's default (follow at most ten
+/// hops), except that a hop from `https` to `http` is refused with
+/// [`InsecureRedirect`] instead of being followed without credentials.
+fn webdav_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let downgrade_from = attempt
+            .previous()
+            .last()
+            .filter(|from| from.scheme() == "https" && attempt.url().scheme() == "http")
+            .cloned();
+        match downgrade_from {
+            Some(from) => {
+                let to = attempt.url().clone();
+                attempt.error(InsecureRedirect { from, to })
+            }
+            None => reqwest::redirect::Policy::default().redirect(attempt),
+        }
+    })
+}
+
+/// The refused redirect inside a failed send, if that is what failed.
+fn insecure_redirect(e: &reqwest::Error) -> Option<&InsecureRedirect> {
+    let mut source = std::error::Error::source(e);
+    while let Some(s) = source {
+        if let Some(refused) = s.downcast_ref::<InsecureRedirect>() {
+            return Some(refused);
+        }
+        source = s.source();
+    }
+    None
+}
+
+/// Whether a failed send is a refused redirect to the collection form of
+/// its own target, the one failure a path-type-ambiguous caller repairs by
+/// resending in the trailing-slash form.
+fn refused_collection_redirect(e: &reqwest::Error) -> bool {
+    insecure_redirect(e).is_some_and(InsecureRedirect::is_to_collection_form)
+}
+
+/// Map a failed send to a `ProviderError`. A refused HTTPS-to-HTTP redirect
+/// is a deterministic server misconfiguration, so it becomes a `ServerError`
+/// that names it, never the retryable `NetworkError` of a reset connection;
+/// everything else keeps the full source chain (see `describe_reqwest_error`).
+fn send_error(e: reqwest::Error) -> ProviderError {
+    match insecure_redirect(&e) {
+        Some(refused) => ProviderError::ServerError(refused.to_string()),
+        None => ProviderError::NetworkError(describe_reqwest_error(&e)),
+    }
+}
+
+/// [`send_error`] for the connect-time probes, which report through
+/// `ConnectionFailed`.
+fn connect_send_error(e: reqwest::Error) -> ProviderError {
+    match insecure_redirect(&e) {
+        Some(refused) => ProviderError::ConnectionFailed(refused.to_string()),
+        None => ProviderError::ConnectionFailed(e.to_string()),
+    }
+}
+
+/// The error for a `MOVE` or `COPY` answered `502 Bad Gateway`. RFC 4918
+/// (9.8.5, 9.9.4) gives 502 a WebDAV meaning there: the server refused the
+/// `Destination`. Apache mod_dav answers it when the Destination's scheme or
+/// port differs from the one it believes it serves, which is what a backend
+/// behind a TLS-terminating proxy believes of every `https://` Destination
+/// (measured on 2026-10-02: each rename on such a server failed this way).
+fn destination_refused_error(method: &str) -> ProviderError {
+    ProviderError::ServerError(format!(
+        "{method} failed with status 502 Bad Gateway: the server refused the Destination URL. \
+         Behind a TLS-terminating reverse proxy this usually means the backend serves plain HTTP and rejects an https:// Destination; \
+         the proxy has to rewrite the Destination header"
+    ))
+}
+
 /// Extract the path component from a full URL, preserving trailing slash
 fn extract_uri_path(url: &str) -> String {
     if let Some(idx) = url.find("://") {
@@ -469,6 +588,9 @@ impl WebDavProvider {
             .user_agent(crate::providers::AEROFTP_WEBDAV_USER_AGENT)
             .danger_accept_invalid_certs(!config.verify_cert)
             .connect_timeout(std::time::Duration::from_secs(30))
+            // A redirect from https to http is refused, never followed
+            // anonymously: see `InsecureRedirect`.
+            .redirect(webdav_redirect_policy())
             // 1800s (30 min) accommodates large body uploads on slow links and
             // server-side post-processing (md5, replication). 300s previously
             // killed 1 GiB uploads on jianguoyun, InfiniCloud, DriveHQ, and
@@ -976,10 +1098,7 @@ impl WebDavProvider {
             if let Some(ua) = user_agent_override {
                 req = req.header("User-Agent", ua);
             }
-            let response = req
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(describe_reqwest_error(&e)))?;
+            let response = req.send().await.map_err(send_error)?;
 
             if response.status() == StatusCode::UNAUTHORIZED
                 && !digest_replayed
@@ -1033,22 +1152,56 @@ impl WebDavProvider {
         &self,
         build: impl Fn() -> reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, ProviderError> {
-        let nonce_used = self.digest_nonce_snapshot();
-        let response = build()
-            .send()
+        self.send_replaying_digest_raw(build)
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)
+    }
+
+    /// [`Self::send_replaying_digest`] before the error is mapped, for the
+    /// caller that has to tell a refused collection redirect apart.
+    async fn send_replaying_digest_raw(
+        &self,
+        build: impl Fn() -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, reqwest::Error> {
+        let nonce_used = self.digest_nonce_snapshot();
+        let response = build().send().await?;
 
         if response.status() == StatusCode::UNAUTHORIZED
             && self.should_replay_after_401(&response, &nonce_used)
         {
-            return build()
-                .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()));
+            return build().send().await;
         }
 
         Ok(response)
+    }
+
+    /// Send a request whose target may be a file or a collection, through
+    /// [`Self::send_replaying_digest`].
+    ///
+    /// The verbs that cannot know the type (`MOVE`, `COPY`, `DELETE`) send
+    /// `path` as given, which is right for a file. When the server redirects
+    /// that request to the collection form of the same URL across a scheme
+    /// downgrade (see [`InsecureRedirect`]), it has said the target is a
+    /// collection and refused the request without acting on it, so `build`
+    /// runs once more with the trailing-slash form, over HTTPS. Any other
+    /// failure, and any refused redirect elsewhere, is returned as is.
+    async fn send_on_resource(
+        &self,
+        path: &str,
+        build: impl Fn(&str) -> reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, ProviderError> {
+        match self.send_replaying_digest_raw(|| build(path)).await {
+            Err(e) if refused_collection_redirect(&e) && !path.ends_with('/') => {
+                let collection = Self::collection_path(path);
+                tracing::debug!(
+                    "[WebDAV] {} is a collection (refused redirect to its slash form), resending as {}",
+                    path,
+                    collection
+                );
+                self.send_replaying_digest(|| build(&collection)).await
+            }
+            other => other.map_err(send_error),
+        }
     }
 
     /// Send a PROPFIND and, on a `401` that carries a fresh
@@ -1084,7 +1237,7 @@ impl WebDavProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         if response.status() != StatusCode::UNAUTHORIZED {
             return Ok(response);
@@ -1134,7 +1287,7 @@ impl WebDavProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_err(send_error)
     }
 
     /// One-shot Digest re-negotiation for a `401` on a data path.
@@ -1471,7 +1624,7 @@ impl WebDavProvider {
             .header("Accept", "application/json")
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
         if !resp.status().is_success() {
             return Err(ProviderError::NotSupported(format!(
                 "koofr quota api returned {}",
@@ -1544,7 +1697,7 @@ impl WebDavProvider {
             .body(login_body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_err(send_error)?
             .json()
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()))?;
@@ -1562,7 +1715,7 @@ impl WebDavProvider {
             .send()
             .await
             .and_then(|r| r.error_for_status())
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_err(send_error)?
             .json::<serde_json::Value>()
             .await
             .map_err(|e| ProviderError::ParseError(e.to_string()));
@@ -1641,7 +1794,7 @@ impl WebDavProvider {
             .body(form_body.clone())
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         let status = resp.status();
         let text = resp
@@ -1662,7 +1815,7 @@ impl WebDavProvider {
                 .body(form_with_pw)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_err(send_error)?;
 
             let status2 = resp2.status();
             let text2 = resp2
@@ -1778,7 +1931,7 @@ impl WebDavProvider {
             .body(propfind_body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         if !resp.status().is_success() && resp.status() != StatusCode::MULTI_STATUS {
             return Err(ProviderError::ServerError(format!(
@@ -1953,7 +2106,7 @@ impl WebDavProvider {
             .header("Overwrite", "T")
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         let status = resp.status();
         if !status.is_success() && status != StatusCode::CREATED && status != StatusCode::NO_CONTENT
@@ -1984,7 +2137,7 @@ impl WebDavProvider {
             .request_url(Method::DELETE, &url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         let status = resp.status();
         if !status.is_success() && status != StatusCode::NO_CONTENT {
@@ -2011,7 +2164,7 @@ impl WebDavProvider {
             .request_url(Method::DELETE, &url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         let status = resp.status();
         if !status.is_success() && status != StatusCode::NO_CONTENT {
@@ -2820,7 +2973,7 @@ impl StorageProvider for WebDavProvider {
             .body(propfind_body)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_err(connect_send_error)?;
 
         match response.status() {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
@@ -2864,7 +3017,7 @@ impl StorageProvider for WebDavProvider {
                         .body(propfind_body)
                         .send()
                         .await
-                        .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                        .map_err(connect_send_error)?;
 
                     let retry_status = response2.status();
                     tracing::debug!("[WebDAV] Digest auth retry status: {}", retry_status);
@@ -2977,7 +3130,7 @@ impl StorageProvider for WebDavProvider {
                     .request(Method::OPTIONS, "/")
                     .send()
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_err(connect_send_error)?;
 
                 let options_status = options_response.status();
                 if options_status.is_success() {
@@ -3129,22 +3282,27 @@ impl StorageProvider for WebDavProvider {
             )));
         }
 
-        // Verify the path exists and is a directory
-        let response = self
-            .request(webdav_methods::propfind(), path)
-            .header("Depth", "0")
-            .header("Content-Type", "application/xml")
-            .body(
-                r#"<?xml version="1.0" encoding="utf-8"?>
+        // Verify the path exists and is a directory. `cd` only ever targets a
+        // collection, so ask in the collection (trailing-slash) form: a
+        // slash-less PROPFIND is what a server behind a TLS proxy `301`s to
+        // an `http://` URL, which surfaced in the GUI as "Failed to change
+        // directory: ... 401 Unauthorized" while listing the same folder
+        // worked (see `collection_path`, `InsecureRedirect`).
+        const PROPFIND_BODY: &str = r#"<?xml version="1.0" encoding="utf-8"?>
                 <d:propfind xmlns:d="DAV:">
                     <d:prop>
                         <d:resourcetype/>
                     </d:prop>
-                </d:propfind>"#,
-            )
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                </d:propfind>"#;
+        let collection = Self::collection_path(path);
+        let response = self
+            .send_replaying_digest(|| {
+                self.request(webdav_methods::propfind(), &collection)
+                    .header("Depth", "0")
+                    .header("Content-Type", "application/xml")
+                    .body(PROPFIND_BODY)
+            })
+            .await?;
 
         match response.status() {
             StatusCode::OK | StatusCode::MULTI_STATUS => {
@@ -3166,7 +3324,27 @@ impl StorageProvider for WebDavProvider {
                     )))
                 }
             }
-            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(path.to_string())),
+            // A file asked for in the collection form answers 404 on most
+            // servers. `stat` asks in the file form first, so it tells the
+            // file that cannot be entered from the path that does not exist.
+            // Any other `stat` failure is returned as it is: a network error
+            // or a refused redirect must not read as "path not found".
+            StatusCode::NOT_FOUND => match self.stat(path).await {
+                Ok(entry) if !entry.is_dir => Err(ProviderError::InvalidPath(format!(
+                    "{} is not a directory",
+                    path
+                ))),
+                Ok(_) | Err(ProviderError::NotFound(_)) => {
+                    Err(ProviderError::NotFound(path.to_string()))
+                }
+                Err(e) => Err(e),
+            },
+            StatusCode::UNAUTHORIZED => {
+                self.connected = false;
+                Err(ProviderError::AuthenticationFailed(
+                    "Session expired".to_string(),
+                ))
+            }
             status => Err(ProviderError::ServerError(format!(
                 "Server returned status: {}",
                 status
@@ -3479,7 +3657,7 @@ impl StorageProvider for WebDavProvider {
             .body(put_body().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         // The single-PUT path used to map a 401 straight into
         // `upload_failure_error`'s catch-all, so a rotated nonce failed the
@@ -3494,7 +3672,7 @@ impl StorageProvider for WebDavProvider {
                 .body(put_body().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_err(send_error)?;
         }
 
         match response.status() {
@@ -3548,8 +3726,10 @@ impl StorageProvider for WebDavProvider {
         // `rmdir` and `rmdir_recursive` come through here too.
         self.refuse_another_path_in_single_file_mode(path)?;
 
+        // A caller may name a directory without its trailing slash; see
+        // `send_on_resource`.
         let response = self
-            .send_replaying_digest(|| self.request(Method::DELETE, path))
+            .send_on_resource(path, |target| self.request(Method::DELETE, target))
             .await?;
 
         match response.status() {
@@ -3605,11 +3785,19 @@ impl StorageProvider for WebDavProvider {
         if self.names_the_same_resource(from, &destination) {
             return Ok(());
         }
+        // When `from` turns out to be a collection named without its slash,
+        // the resent MOVE names the destination as a collection too.
+        let collection_destination = self.build_url(&Self::collection_path(to));
 
         let response = self
-            .send_replaying_digest(|| {
-                self.request(webdav_methods::move_method(), from)
-                    .header("Destination", &destination)
+            .send_on_resource(from, |source| {
+                let destination = if source == from {
+                    &destination
+                } else {
+                    &collection_destination
+                };
+                self.request(webdav_methods::move_method(), source)
+                    .header("Destination", destination)
                     .header("Overwrite", "F") // Don't overwrite existing
                     .header("Depth", MOVE_DEPTH)
             })
@@ -3622,6 +3810,7 @@ impl StorageProvider for WebDavProvider {
             StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
                 "Destination parent does not exist".to_string(),
             )),
+            StatusCode::BAD_GATEWAY => Err(destination_refused_error("MOVE")),
             status => Err(ProviderError::ServerError(format!(
                 "MOVE failed with status: {}",
                 status
@@ -3663,11 +3852,19 @@ impl StorageProvider for WebDavProvider {
         if self.names_the_same_resource(from, &destination) {
             return Ok(());
         }
+        // When `from` turns out to be a collection named without its slash,
+        // the resent MOVE names the destination as a collection too.
+        let collection_destination = self.build_url(&Self::collection_path(to));
 
         let response = self
-            .send_replaying_digest(|| {
-                self.request(webdav_methods::move_method(), from)
-                    .header("Destination", &destination)
+            .send_on_resource(from, |source| {
+                let destination = if source == from {
+                    &destination
+                } else {
+                    &collection_destination
+                };
+                self.request(webdav_methods::move_method(), source)
+                    .header("Destination", destination)
                     .header("Overwrite", "T")
                     .header("Depth", MOVE_DEPTH)
             })
@@ -3679,6 +3876,7 @@ impl StorageProvider for WebDavProvider {
             StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
                 "Destination parent does not exist".to_string(),
             )),
+            StatusCode::BAD_GATEWAY => Err(destination_refused_error("MOVE")),
             status => Err(ProviderError::ServerError(format!(
                 "MOVE failed with status: {}",
                 status
@@ -3732,15 +3930,22 @@ impl StorageProvider for WebDavProvider {
         }
 
         let mut last_status = StatusCode::NOT_FOUND;
-        for attempt in attempts {
-            let mut response = self
+        let attempt_count = attempts.len();
+        for (index, attempt) in attempts.into_iter().enumerate() {
+            let sent = self
                 .request(webdav_methods::propfind(), attempt)
                 .header("Depth", "0")
                 .header("Content-Type", "application/xml")
                 .body(PROPFIND_BODY)
                 .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .await;
+            // The same collection signal arrives as a refused redirect when
+            // the server's `301` leaves HTTPS (see `InsecureRedirect`): the
+            // slash form is the next attempt.
+            let mut response = match sent {
+                Err(e) if refused_collection_redirect(&e) && index + 1 < attempt_count => continue,
+                other => other.map_err(send_error)?,
+            };
 
             // A 401 is ambiguous twice over here: a rotated nonce, or the
             // slash-stripped redirect the second attempt form exists for.
@@ -3756,7 +3961,7 @@ impl StorageProvider for WebDavProvider {
                     .body(PROPFIND_BODY)
                     .send()
                     .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                    .map_err(send_error)?;
             }
 
             match response.status() {
@@ -3851,15 +4056,20 @@ impl StorageProvider for WebDavProvider {
             attempts.push(collection_form.as_str());
         }
 
-        for attempt in attempts {
-            let mut response = self
+        let attempt_count = attempts.len();
+        for (index, attempt) in attempts.into_iter().enumerate() {
+            let sent = self
                 .request(webdav_methods::propfind(), attempt)
                 .header("Depth", "0")
                 .header("Content-Type", "application/xml")
                 .body(PROPFIND_BODY)
                 .send()
-                .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .await;
+            // Same refused-redirect signal as `stat`.
+            let mut response = match sent {
+                Err(e) if refused_collection_redirect(&e) && index + 1 < attempt_count => continue,
+                other => other.map_err(send_error)?,
+            };
 
             // Same one-shot rotation repair as `stat`. Without it a nonce that
             // rotates mid-listing silently degrades every server-side hash to
@@ -3874,7 +4084,7 @@ impl StorageProvider for WebDavProvider {
                     .body(PROPFIND_BODY)
                     .send()
                     .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                    .map_err(send_error)?;
             }
 
             match response.status() {
@@ -3925,7 +4135,7 @@ impl StorageProvider for WebDavProvider {
             .request(Method::OPTIONS, "/")
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         // A probe is the cheapest possible place to discover a rotation, and
         // the repair reaches every worker through the shared challenge. Left
@@ -3937,7 +4147,7 @@ impl StorageProvider for WebDavProvider {
                 .request(Method::OPTIONS, "/")
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_err(send_error)?;
         }
 
         if response.status() == StatusCode::UNAUTHORIZED {
@@ -3959,7 +4169,7 @@ impl StorageProvider for WebDavProvider {
             .request(Method::OPTIONS, "/")
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         let server = response
             .headers()
@@ -4049,9 +4259,11 @@ impl StorageProvider for WebDavProvider {
             // Fall through to PROPFIND on failure (best-effort).
         }
 
-        // RFC 4331: WebDAV quota properties
+        // RFC 4331: WebDAV quota properties, asked of the current directory
+        // in its collection form (see `collection_path`).
+        let quota_path = Self::collection_path(&self.current_path);
         let response = self
-            .request(webdav_methods::propfind(), &self.current_path.clone())
+            .request(webdav_methods::propfind(), &quota_path)
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
             .body(
@@ -4065,7 +4277,7 @@ impl StorageProvider for WebDavProvider {
             )
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         if !response.status().is_success() && response.status() != StatusCode::MULTI_STATUS {
             return Err(ProviderError::NotSupported("storage_info".to_string()));
@@ -4176,7 +4388,7 @@ impl StorageProvider for WebDavProvider {
             .body(lock_body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         let status = response.status();
         if !status.is_success() {
@@ -4273,11 +4485,18 @@ impl StorageProvider for WebDavProvider {
         }
 
         let destination = self.build_url(to);
+        // Same collection resend as `rename`.
+        let collection_destination = self.build_url(&Self::collection_path(to));
 
         let response = self
-            .send_replaying_digest(|| {
-                self.request(webdav_methods::copy(), from)
-                    .header("Destination", &destination)
+            .send_on_resource(from, |source| {
+                let destination = if source == from {
+                    &destination
+                } else {
+                    &collection_destination
+                };
+                self.request(webdav_methods::copy(), source)
+                    .header("Destination", destination)
                     .header("Overwrite", "F")
             })
             .await?;
@@ -4286,6 +4505,7 @@ impl StorageProvider for WebDavProvider {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(from.to_string())),
             StatusCode::PRECONDITION_FAILED => Err(ProviderError::AlreadyExists(to.to_string())),
+            StatusCode::BAD_GATEWAY => Err(destination_refused_error("COPY")),
             status => Err(ProviderError::ServerError(format!(
                 "COPY failed with status: {}",
                 status
@@ -4342,7 +4562,7 @@ impl StorageProvider for WebDavProvider {
             .request_url(webdav_methods::mkcol(), &folder_url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         // MKCOL carries no body and is already treated as idempotent below
         // (405 means a previous attempt created it), so replaying it once
@@ -4354,7 +4574,7 @@ impl StorageProvider for WebDavProvider {
                 .request_url(webdav_methods::mkcol(), &folder_url)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_err(send_error)?;
         }
 
         match response.status() {
@@ -4483,7 +4703,7 @@ impl StorageProvider for WebDavProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         // The batch case that motivated the whole deferral: eight clone workers
         // share one challenge, the server rotates the nonce mid-upload, and
@@ -4498,7 +4718,7 @@ impl StorageProvider for WebDavProvider {
                     .body(crate::transfer_multipart::PartBody::DiskSlice(slice).into_reqwest_body())
                     .send()
                     .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                    .map_err(send_error)?;
             }
         }
 
@@ -4574,7 +4794,7 @@ impl StorageProvider for WebDavProvider {
             .header("Overwrite", "T")
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(send_error)?;
 
         match response.status() {
             StatusCode::CREATED | StatusCode::OK | StatusCode::NO_CONTENT => Ok(()),
@@ -6885,5 +7105,347 @@ mod recorded_propfind_fixture {
         assert_eq!(escaped.size, 7);
         let dir = entries.iter().find(|e| e.name == "subdir").expect("dir");
         assert!(dir.is_dir);
+    }
+}
+
+/// A server behind a TLS-terminating proxy that `301`s every slash-less
+/// collection to an `http://` URL, reproduced on loopback: an HTTPS stub that
+/// serves the collection only in its trailing-slash form, and a plain-HTTP
+/// listener standing for the downgraded target that must never be reached.
+/// Shape measured on the lab server on 2026-10-02, where `cd` into a folder
+/// failed with a bare 401 while listing the same folder worked.
+#[cfg(test)]
+mod collection_redirect_tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::Mutex;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const COLLECTION_207: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:"><D:response><D:href>/dir/</D:href><D:propstat><D:prop><D:resourcetype><D:collection/></D:resourcetype></D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>"#;
+
+    /// One request seen by the HTTPS stub: `METHOD /path`, plus the
+    /// `Destination` header when there is one.
+    type Seen = Arc<Mutex<Vec<String>>>;
+
+    struct Stub {
+        base: String,
+        seen: Seen,
+        downgraded_hits: Arc<AtomicUsize>,
+    }
+
+    fn tls_acceptor() -> tokio_rustls::TlsAcceptor {
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
+            rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),
+        );
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![certified.cert.der().clone()], key)
+        .unwrap();
+        tokio_rustls::TlsAcceptor::from(Arc::new(config))
+    }
+
+    /// Read one request head and its `Content-Length` body.
+    async fn read_request<S: tokio::io::AsyncRead + Unpin>(
+        stream: &mut S,
+    ) -> Option<(String, String, Option<String>)> {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        let head_end = loop {
+            let n = stream.read(&mut chunk).await.ok()?;
+            if n == 0 {
+                return None;
+            }
+            buf.extend_from_slice(&chunk[..n]);
+            if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                break i + 4;
+            }
+        };
+        let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
+        let mut lines = head.lines();
+        let mut first = lines.next()?.split_whitespace();
+        let method = first.next()?.to_string();
+        let path = first.next()?.to_string();
+        let mut length = 0usize;
+        let mut destination = None;
+        for line in lines {
+            if let Some((name, value)) = line.split_once(':') {
+                match name.trim().to_ascii_lowercase().as_str() {
+                    "content-length" => length = value.trim().parse().unwrap_or(0),
+                    "destination" => destination = Some(value.trim().to_string()),
+                    _ => {}
+                }
+            }
+        }
+        let mut have = buf.len() - head_end;
+        while have < length {
+            let n = stream.read(&mut chunk).await.ok()?;
+            if n == 0 {
+                break;
+            }
+            have += n;
+        }
+        Some((method, path, destination))
+    }
+
+    /// Start the pair. Every slash-less path except `/file.txt` is a
+    /// collection the stub only serves in the slash form: the slash-less
+    /// request gets `301` to the downgraded listener, the slash form gets the
+    /// reply `answer` picks for its method. `/file.txt` is a plain file, and
+    /// `/moved` answers `302` to an unrelated `http://` URL.
+    async fn spawn_downgrading_server(answer: fn(&str) -> &'static str) -> Stub {
+        let plain = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let plain_port = plain.local_addr().unwrap().port();
+        let downgraded_hits = Arc::new(AtomicUsize::new(0));
+        let hits = Arc::clone(&downgraded_hits);
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = plain.accept().await {
+                hits.fetch_add(1, Ordering::SeqCst);
+                let _ = read_request(&mut socket).await;
+                let _ = socket
+                    .write_all(b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    .await;
+            }
+        });
+
+        let tls = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tls_port = tls.local_addr().unwrap().port();
+        let acceptor = tls_acceptor();
+        let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+        let seen_task = Arc::clone(&seen);
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = tls.accept().await {
+                let Ok(mut stream) = acceptor.accept(socket).await else {
+                    continue;
+                };
+                let Some((method, path, destination)) = read_request(&mut stream).await else {
+                    continue;
+                };
+                seen_task.lock().unwrap().push(match destination {
+                    Some(d) => format!("{method} {path} -> {d}"),
+                    None => format!("{method} {path}"),
+                });
+                let reply = if path == "/moved" {
+                    "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/elsewhere\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                } else if path != "/file.txt" && !path.ends_with('/') {
+                    format!(
+                        "HTTP/1.1 301 Moved Permanently\r\nLocation: http://127.0.0.1:{plain_port}{path}/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                } else {
+                    answer(&method).to_string()
+                };
+                let _ = stream.write_all(reply.as_bytes()).await;
+                let _ = stream.shutdown().await;
+            }
+        });
+
+        Stub {
+            base: format!("https://127.0.0.1:{tls_port}"),
+            seen,
+            downgraded_hits,
+        }
+    }
+
+    fn collection_answer(method: &str) -> &'static str {
+        match method {
+            "PROPFIND" => {
+                // Leaked once per test run: the stub needs a `'static` reply.
+                Box::leak(
+                    format!(
+                        "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        COLLECTION_207.len(),
+                        COLLECTION_207
+                    )
+                    .into_boxed_str(),
+                )
+            }
+            "MOVE" | "COPY" => {
+                "HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            }
+            _ => "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        }
+    }
+
+    fn provider(base: &str) -> WebDavProvider {
+        let config = WebDavConfig {
+            url: format!("{base}/"),
+            username: "user".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+            provider_id: None,
+            // The stub's certificate is self-signed.
+            verify_cert: false,
+            anonymous: false,
+        };
+        let mut provider = WebDavProvider::new(config).expect("provider");
+        provider.connected = true;
+        provider
+    }
+
+    fn seen(stub: &Stub) -> Vec<String> {
+        stub.seen.lock().unwrap().clone()
+    }
+
+    /// The GUI defect: `cd` into a folder must ask in the collection form,
+    /// so the downgrading `301` never happens and nothing reaches `http://`.
+    #[tokio::test]
+    async fn cd_asks_in_the_collection_form_and_never_reaches_the_downgraded_url() {
+        let stub = spawn_downgrading_server(collection_answer).await;
+        let mut provider = provider(&stub.base);
+
+        provider
+            .cd("/dir")
+            .await
+            .expect("cd into a collection must succeed");
+
+        assert_eq!(provider.current_path, "/dir");
+        assert_eq!(seen(&stub), vec!["PROPFIND /dir/"]);
+        assert_eq!(stub.downgraded_hits.load(Ordering::SeqCst), 0);
+    }
+
+    /// The quota PROPFIND asks about the current directory, a collection.
+    #[tokio::test]
+    async fn storage_info_asks_in_the_collection_form() {
+        let stub = spawn_downgrading_server(collection_answer).await;
+        let mut provider = provider(&stub.base);
+        provider.current_path = "/dir".to_string();
+
+        let _ = provider.storage_info().await;
+
+        assert_eq!(seen(&stub), vec!["PROPFIND /dir/"]);
+        assert_eq!(stub.downgraded_hits.load(Ordering::SeqCst), 0);
+    }
+
+    /// The verbs that cannot know the target's type send it as given, and
+    /// resend in the collection form when the refused redirect says it is
+    /// one. The resent MOVE and COPY name the destination as a collection.
+    #[tokio::test]
+    async fn type_ambiguous_verbs_resend_a_refused_collection_in_its_slash_form() {
+        let stub = spawn_downgrading_server(collection_answer).await;
+        let mut provider = provider(&stub.base);
+        let base = &stub.base;
+
+        provider.delete("/dir").await.expect("delete");
+        provider.rename("/dir", "/renamed").await.expect("rename");
+        StorageProvider::server_side_copy(&mut provider, "/dir", "/copied")
+            .await
+            .expect("copy");
+        let entry = provider.stat("/dir").await.expect("stat");
+        assert!(entry.is_dir, "{entry:?}");
+        assert_eq!(entry.path, "/dir");
+
+        assert_eq!(
+            seen(&stub),
+            vec![
+                "DELETE /dir".to_string(),
+                "DELETE /dir/".to_string(),
+                format!("MOVE /dir -> {base}/renamed"),
+                format!("MOVE /dir/ -> {base}/renamed/"),
+                format!("COPY /dir -> {base}/copied"),
+                format!("COPY /dir/ -> {base}/copied/"),
+                "PROPFIND /dir".to_string(),
+                "PROPFIND /dir/".to_string(),
+            ]
+        );
+        assert_eq!(stub.downgraded_hits.load(Ordering::SeqCst), 0);
+    }
+
+    /// A downgrade that is not the collection redirect is refused, never
+    /// followed, and reported as the server misconfiguration it is rather
+    /// than as the `401` the anonymous hop would have answered.
+    #[tokio::test]
+    async fn any_other_https_to_http_redirect_is_refused_with_a_named_cause() {
+        let stub = spawn_downgrading_server(collection_answer).await;
+        let mut provider = provider(&stub.base);
+
+        let err = provider.stat("/moved").await.expect_err("must be refused");
+
+        match &err {
+            ProviderError::ServerError(msg) => {
+                assert!(msg.contains("leaves HTTPS"), "{msg}");
+                assert!(msg.contains("http://127.0.0.1:1/elsewhere"), "{msg}");
+            }
+            other => panic!("expected ServerError, got {other:?}"),
+        }
+        assert!(!err.is_recoverable(), "a misconfiguration is not retried");
+        assert_eq!(seen(&stub), vec!["PROPFIND /moved"]);
+    }
+
+    /// `cd`'s 404 fallback asks `stat` only to tell a file from a missing
+    /// path. When `stat` itself fails for another reason (here a refused
+    /// downgrade on the file-form PROPFIND), that failure is the answer, not
+    /// a "path not found" that would hide it.
+    #[tokio::test]
+    async fn cd_keeps_a_failure_of_its_404_fallback_instead_of_reporting_not_found() {
+        let stub = spawn_downgrading_server(|_| {
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        })
+        .await;
+        let mut provider = provider(&stub.base);
+
+        let err = provider.cd("/moved").await.expect_err("must fail");
+        match &err {
+            ProviderError::ServerError(msg) => assert!(msg.contains("leaves HTTPS"), "{msg}"),
+            other => panic!("expected the stat failure, got {other:?}"),
+        }
+
+        // The ordinary cases keep their meaning.
+        assert!(matches!(
+            provider.cd("/file.txt").await,
+            Err(ProviderError::NotFound(_))
+        ));
+        assert_eq!(
+            seen(&stub),
+            vec![
+                "PROPFIND /moved/",
+                "PROPFIND /moved",
+                "PROPFIND /file.txt/",
+                // `stat` retries a 404 in the collection form.
+                "PROPFIND /file.txt",
+                "PROPFIND /file.txt/",
+            ]
+        );
+    }
+
+    /// RFC 4918 gives a MOVE's 502 a WebDAV meaning: the Destination was
+    /// refused. It is reported as that, not as a bare gateway status.
+    #[tokio::test]
+    async fn a_move_answered_502_names_the_refused_destination() {
+        let stub = spawn_downgrading_server(|_| {
+            "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        })
+        .await;
+        let mut provider = provider(&stub.base);
+
+        let err = provider
+            .rename("/file.txt", "/other.txt")
+            .await
+            .expect_err("502");
+
+        match err {
+            ProviderError::ServerError(msg) => {
+                assert!(msg.contains("refused the Destination"), "{msg}")
+            }
+            other => panic!("expected ServerError, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn only_the_trailing_slash_redirect_is_the_collection_form() {
+        let refused = |from: &str, to: &str| InsecureRedirect {
+            from: reqwest::Url::parse(from).unwrap(),
+            to: reqwest::Url::parse(to).unwrap(),
+        };
+        assert!(refused("https://h/a/b", "http://h/a/b/").is_to_collection_form());
+        assert!(refused("https://h/a%20b", "http://h:8080/a%20b/").is_to_collection_form());
+        assert!(!refused("https://h/a", "http://other/a/").is_to_collection_form());
+        assert!(!refused("https://h/a", "http://h/b/").is_to_collection_form());
+        assert!(!refused("https://h/a", "http://h/a").is_to_collection_form());
+        assert!(!refused("https://h/a?x=1", "http://h/a/").is_to_collection_form());
     }
 }

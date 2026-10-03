@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { panelsWithIncomingFile, type PanelVisibility } from './DevTools/types';
 
-const closed: PanelVisibility = { editor: false, terminal: true, chat: false };
+const closed: PanelVisibility = { editor: false, terminal: true, chat: false, security: true };
 
 describe('panelsWithIncomingFile', () => {
     it('opens the editor column when a file arrives while it is hidden', () => {
@@ -21,6 +21,7 @@ describe('panelsWithIncomingFile', () => {
         const next = panelsWithIncomingFile(closed, true);
         expect(next.terminal).toBe(true);
         expect(next.chat).toBe(false);
+        expect(next.security).toBe(true);
     });
 
     it('does not reopen the editor when no file arrived', () => {
@@ -32,7 +33,7 @@ describe('panelsWithIncomingFile', () => {
     it('returns the same object when the editor is already open', () => {
         // Identity, not just equality: the caller passes this straight to
         // setState, and a fresh object there would re-render on every render.
-        const open: PanelVisibility = { editor: true, terminal: false, chat: false };
+        const open: PanelVisibility = { editor: true, terminal: false, chat: false, security: false };
         expect(panelsWithIncomingFile(open, true)).toBe(open);
     });
 });
