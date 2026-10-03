@@ -154,7 +154,7 @@ interface PresetRuleSet {
     leftToRight: Record<CompareBucket, BucketAction>;
     /**
      * Optional explicit right-to-left mapping. When omitted, the helper
-     * mirrors the left-to-right rules by swapping the per-side actions
+     * mirrors the left-to-right rules by swapping both bucket roles and per-side actions
      * (copy-to-right ↔ copy-to-left, delete-right ↔ delete-left, etc.).
      */
     rightToLeft?: Record<CompareBucket, BucketAction>;
@@ -288,17 +288,17 @@ const resolveMapping = (
     if (preset === 'bisync') return rules.bisync ?? rules.leftToRight;
     if (direction === 'right-to-left') {
         if (rules.rightToLeft) return rules.rightToLeft;
-        // Mirror the left-to-right map by flipping the side-bound actions.
-        const flipped: Record<CompareBucket, BucketAction> = { ...rules.leftToRight };
+        // Bucket names are fixed at compare time. The right side becomes
+        // the source, so flip both bucket roles and the action's target.
+        const opposite: Record<CompareBucket, CompareBucket> = {
+            'only-left': 'only-right', 'only-right': 'only-left',
+            'newer-left': 'newer-right', 'newer-right': 'newer-left',
+            same: 'same', conflict: 'conflict',
+        };
+        const flipped = { ...rules.leftToRight };
         for (const bucket of BUCKETS) {
-            const action = rules.leftToRight[bucket];
-            flipped[bucket] = PER_SIDE_FLIPS[action];
+            flipped[bucket] = PER_SIDE_FLIPS[rules.leftToRight[opposite[bucket]]];
         }
-        // The "only-left" bucket label is fixed at compare-time, so
-        // when we run right-to-left we are really treating the right
-        // side as the source. Swap the bucket roles too: "only-right"
-        // becomes the source-side ("only-source"). The action map already
-        // covers both bucket names because we flipped per-action.
         return flipped;
     }
     return rules.leftToRight;

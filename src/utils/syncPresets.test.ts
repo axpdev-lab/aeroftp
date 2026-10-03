@@ -103,37 +103,30 @@ describe('derivePresetPlan — bucket mappings', () => {
     });
 });
 
-describe('derivePresetPlan — right-to-left swap', () => {
-    it('flips per-side actions when direction is right-to-left for mirror', () => {
-        const plan = derivePresetPlan(buildFixture(), {
-            preset: 'mirror',
-            direction: 'right-to-left',
-        });
-        const byBucket = Object.fromEntries(plan.bucketPlans.map((bp) => [bp.bucket, bp.action]));
+describe('derivePresetPlan right-to-left source semantics', () => {
+    it('mirror pulls right-only files and deletes left-only extras', () => {
+        const plan = derivePresetPlan(buildFixture(), { preset: 'mirror', direction: 'right-to-left' });
+        const byBucket = Object.fromEntries(plan.bucketPlans.map(bp => [bp.bucket, bp.action]));
         expect(byBucket).toMatchObject({
-            'only-left': 'copy-to-left',           // source = right, so we copy right→left? No: only-left means "missing on right". Under R→L mirror, source=right doesn't have it → delete on left.
+            'only-left': 'delete-left', 'only-right': 'copy-to-left',
+            'newer-left': 'overwrite-left', 'newer-right': 'overwrite-left',
+            conflict: 'overwrite-left', same: 'skip',
         });
-        // Re-check by mirroring the semantics: under R→L mirror, the
-        // destination is the LEFT side. "only-left" (present on left, not
-        // right) means the destination has an extra → must DELETE-on-left.
-        // The flip table converts only-left=copy-to-right→copy-to-left,
-        // which is wrong for mirror semantics. We accept the flip as a
-        // mechanical default; the UI is expected to surface direction
-        // = right-to-left explicitly so the user sees the inversion.
+        expect(plan.bucketPlans.find(bp => bp.bucket === 'newer-left')?.destructive).toBe(true);
+        expect(plan.bucketPlans.find(bp => bp.bucket === 'newer-right')?.destructive).toBe(false);
+        expect(plan.totals.transferBytes).toBe(10 + 60 + 20 + 30 + 999);
     });
 
-    it('backup right-to-left flips copy targets only', () => {
-        const plan = derivePresetPlan(buildFixture(), {
-            preset: 'backup',
-            direction: 'right-to-left',
+    it.each(['backup', 'update'] as const)('%s pulls right-only and newer-right files, preserving left extras and newer copies', preset => {
+        const plan = derivePresetPlan(buildFixture(), { preset, direction: 'right-to-left' });
+        const byBucket = Object.fromEntries(plan.bucketPlans.map(bp => [bp.bucket, bp.action]));
+        expect(byBucket).toMatchObject({
+            'only-left': 'skip', 'only-right': 'copy-to-left',
+            'newer-left': 'skip', 'newer-right': 'overwrite-left',
+            conflict: 'conflict-skip', same: 'skip',
         });
-        const byBucket = Object.fromEntries(plan.bucketPlans.map((bp) => [bp.bucket, bp.action]));
-        // Per the mechanical flip: only-left=copy-to-right becomes
-        // copy-to-left, newer-left=overwrite-right becomes overwrite-left.
-        expect(byBucket['only-left']).toBe('copy-to-left');
-        expect(byBucket['newer-left']).toBe('overwrite-left');
-        expect(byBucket['only-right']).toBe('skip');
-        expect(byBucket.same).toBe('skip');
+        expect(plan.hasDestructive).toBe(false);
+        expect(plan.totals.transferBytes).toBe(60 + 30);
     });
 });
 
