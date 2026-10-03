@@ -126,15 +126,11 @@ jobs:
       - name: i18n validation
         run: npm run i18n:validate
 
+      # Lint the opt-in test helper in the existing library/target pass.
+      # Packaging keeps default features; the helper is never executed here.
       - name: Rust linting (clippy)
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
-
-      # The opt-in vault seeder is not part of release/default targets.
-      # Type-check it explicitly, without executing it or touching a vault.
-      - name: Test-only profile seeder still compiles
-        working-directory: src-tauri
-        run: cargo check --locked --bin seed_test_profiles --features test-seed
+        run: cargo clippy --all-targets --features test-seed -- -D warnings
 
       - name: Rust tests
         working-directory: src-tauri
