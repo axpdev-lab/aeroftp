@@ -1232,6 +1232,17 @@ impl S3Provider {
             .unwrap_or(false)
     }
 
+    /// The `connect()` bucket probe: ListObjects v1 on the bucket root with an
+    /// explicit empty `prefix=`, asking for a single key when `one_key`.
+    async fn connect_probe(&self, one_key: bool) -> Result<reqwest::Response, ProviderError> {
+        let params: &[(&str, &str)] = if one_key {
+            &[("prefix", ""), ("max-keys", "1")]
+        } else {
+            &[("prefix", "")]
+        };
+        self.s3_request(Method::GET, "", Some(params), None).await
+    }
+
     fn is_filen_s3_endpoint(&self) -> bool {
         self.config
             .endpoint
@@ -4319,12 +4330,38 @@ impl StorageProvider for S3Provider {
         // bucket-only requests with "BadRequest: Invalid prefix specified".
         // Sending `?prefix=` explicitly is universally accepted by AWS, MinIO,
         // Wasabi, B2, R2, and Filen, and is the most compatible probe.
-        let response = self
-            .s3_request(Method::GET, "", Some(&[("prefix", "")]), None)
-            .await?;
+        //
+        // Everywhere but Filen the probe first asks for one key. Without
+        // `max-keys` the server lists up to 1000 keys of the whole bucket
+        // (there is no delimiter), and the probe used to drop that body
+        // unread, so the connection was closed instead of pooled and the
+        // first real request paid a second TCP and TLS handshake. On the lab
+        // MinIO at 48 ms every command opened its second connection 0.20 to
+        // 0.26 s after the first, before any of its own work. A one-key
+        // listing is read through and its connection reused. A gateway that
+        // refuses `max-keys` gets the plain probe, whose answer decides as it
+        // always has.
+        let one_key = !self.is_filen_s3_endpoint();
+        let mut response = self.connect_probe(one_key).await?;
+        if one_key
+            && matches!(
+                response.status(),
+                StatusCode::BAD_REQUEST | StatusCode::NOT_IMPLEMENTED
+            )
+        {
+            debug!(
+                "[S3] one-key probe answered {}, probing with the plain listing",
+                response.status()
+            );
+            response = self.connect_probe(false).await?;
+        }
 
         match response.status() {
             StatusCode::OK => {
+                // Read through, so the connection goes back to the pool. The
+                // plain probe can be a full page: past the bound the rest is
+                // left unread and the connection closes, as before.
+                drain_bounded(&mut response, CONNECT_PROBE_DRAIN_BYTES).await;
                 self.connected = true;
                 if let Some(ref prefix) = self.config.prefix {
                     self.current_prefix = prefix.trim_matches('/').to_string();
@@ -7354,6 +7391,26 @@ impl S3Provider {
 /// Download a single byte range and write it at the matching offset of an
 /// already-pre-allocated temp file. Used as the per-task body of
 /// `S3Provider::download_multi_thread`.
+/// Bytes of a successful `connect()` probe read through so its connection can
+/// be pooled: a one-key listing is well under 1 KiB. A full 1000-key page from
+/// the plain probe is larger, and on a fresh connection in slow start reading
+/// it costs more round trips than the handshake it would save, so past this
+/// bound the body is left unread and the connection closes.
+const CONNECT_PROBE_DRAIN_BYTES: usize = 64 * 1024;
+
+/// Read a response body to its end unless it exceeds `limit` bytes. hyper
+/// returns a connection to the pool only once its body has been read through;
+/// a response dropped with bytes still unread closes the connection instead.
+async fn drain_bounded(response: &mut reqwest::Response, limit: usize) {
+    let mut read = 0usize;
+    while let Ok(Some(chunk)) = response.chunk().await {
+        read += chunk.len();
+        if read > limit {
+            return;
+        }
+    }
+}
+
 async fn download_range_to_offset(
     provider: S3Provider,
     key: String,
@@ -12328,6 +12385,143 @@ mod tests {
         let res = provider.connect().await;
         assert!(res.is_ok(), "expected Ok(()), got {res:?}");
         assert!(provider.connected);
+    }
+
+    /// A loopback S3 stand-in for the connect probe: records the query of every
+    /// request with the client port it came from, answers a `max-keys` probe
+    /// with `one_key_status`, everything else with an empty listing.
+    async fn spawn_probe_server(
+        one_key_status: u16,
+    ) -> (
+        std::net::SocketAddr,
+        std::sync::Arc<std::sync::Mutex<Vec<(String, u16)>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let seen: Arc<Mutex<Vec<(String, u16)>>> = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let log = Arc::clone(&log);
+                async move {
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let port = req
+                        .extensions()
+                        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                        .map(|info| info.0.port())
+                        .unwrap_or(0);
+                    log.lock().unwrap().push((query.clone(), port));
+                    let head = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult>\
+                                <Name>test-bucket</Name><Prefix></Prefix><MaxKeys>1000</MaxKeys>";
+                    let key = "<Contents><Key>dir/object-0000.bin</Key>\
+                               <LastModified>2026-10-03T00:00:00.000Z</LastModified>\
+                               <ETag>&#34;d41d8cd98f00b204e9800998ecf8427e&#34;</ETag><Size>1</Size>\
+                               <StorageClass>STANDARD</StorageClass></Contents>";
+                    let tail = "<IsTruncated>false</IsTruncated></ListBucketResult>";
+                    // A connect probe (ListObjects v1, `prefix=` and no list-type).
+                    // One key: the body follows the headers after a pause, as a
+                    // body on a WAN does, so it is not already buffered with them.
+                    // Plain: a full 1000-key page of the whole bucket, sent the
+                    // same way.
+                    let probe = !query.contains("list-type");
+                    let one_key = query.contains("max-keys=1");
+                    if probe && one_key && one_key_status != 200 {
+                        return axum::response::Response::builder()
+                            .status(one_key_status)
+                            .body(axum::body::Body::from(
+                                "<Error><Code>BadRequest</Code></Error>",
+                            ))
+                            .unwrap();
+                    }
+                    let parts: Vec<String> = if probe {
+                        let keys = if one_key { 1 } else { 1000 };
+                        let mut parts = vec![head.to_string()];
+                        parts.extend((0..keys).map(|_| key.to_string()));
+                        parts.push(tail.to_string());
+                        parts
+                    } else {
+                        vec![format!("{head}{tail}")]
+                    };
+                    let body = futures_util::stream::unfold(
+                        (parts.into_iter(), 0usize),
+                        |(mut rest, sent)| async move {
+                            let part = rest.next()?;
+                            // One pause, after the first part: the rest is sent
+                            // at once, so the full page costs no extra time.
+                            if sent == 1 {
+                                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                            }
+                            Some((
+                                Ok::<_, std::io::Error>(bytes::Bytes::from(part)),
+                                (rest, sent + 1),
+                            ))
+                        },
+                    );
+                    axum::response::Response::builder()
+                        .status(200)
+                        .body(axum::body::Body::from_stream(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+            )
+            .await
+            .ok();
+        });
+        (addr, seen)
+    }
+
+    /// The defect: the probe listed up to 1000 keys of the whole bucket and
+    /// dropped the answer unread, so its connection was closed and the first
+    /// real request opened a second one (a second TCP and TLS handshake on
+    /// every command). The probe asks for one key, reads it through, and the
+    /// next request goes out on the same connection.
+    #[tokio::test]
+    async fn the_connect_probe_asks_for_one_key_and_leaves_its_connection_to_the_next_request() {
+        let (addr, seen) = spawn_probe_server(200).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connect().await.expect("connect");
+        // hyper parks a finished connection in its pool from its own task; on
+        // loopback a new connection can win that race, so give the park a
+        // moment. A probe dropped unread closes its connection whatever the
+        // timing, which is what this test tells apart.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        provider.list("/").await.expect("list");
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "one probe, one listing: {seen:?}");
+        assert!(
+            seen[0].0.contains("max-keys=1") && seen[0].0.contains("prefix="),
+            "the probe asks for one key: {:?}",
+            seen[0].0
+        );
+        assert_eq!(
+            seen[0].1, seen[1].1,
+            "the listing must reuse the probe's connection, not open a second one"
+        );
+    }
+
+    /// A gateway that refuses `max-keys` (Filen's bridge does, by name; others
+    /// may) still connects: it gets the plain `?prefix=` probe it always got.
+    #[tokio::test]
+    async fn a_gateway_that_refuses_max_keys_gets_the_plain_probe() {
+        let (addr, seen) = spawn_probe_server(400).await;
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connect().await.expect("the plain probe connects");
+        assert!(provider.connected);
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(seen.len(), 2, "{seen:?}");
+        assert!(seen[0].0.contains("max-keys=1"));
+        assert!(
+            !seen[1].0.contains("max-keys") && seen[1].0.contains("prefix="),
+            "the fallback is the plain probe: {:?}",
+            seen[1].0
+        );
     }
 
     /// `no_check_bucket` skips the bucket probe, not the confidentiality check.
