@@ -1565,14 +1565,6 @@ pub struct OpenDriveTrashActionItem {
     pub is_dir: bool,
 }
 
-#[derive(Serialize)]
-pub struct ProviderConnectionInfo {
-    pub connected: bool,
-    pub protocol: Option<String>,
-    pub display_name: Option<String>,
-    pub server_info: Option<String>,
-}
-
 // ============ Tauri Commands ============
 
 /// Connect to a storage provider using the specified protocol.
@@ -2289,29 +2281,6 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
     }
 }
 
-/// Check if connected to a provider
-#[tauri::command]
-pub async fn provider_check_connection(
-    state: State<'_, ProviderState>,
-) -> Result<ProviderConnectionInfo, String> {
-    let provider_lock = state.provider.lock().await;
-
-    match &*provider_lock {
-        Some(provider) => Ok(ProviderConnectionInfo {
-            connected: provider.is_connected(),
-            protocol: Some(format!("{:?}", provider.provider_type())),
-            display_name: Some(provider.display_name()),
-            server_info: None,
-        }),
-        None => Ok(ProviderConnectionInfo {
-            connected: false,
-            protocol: None,
-            display_name: None,
-            server_info: None,
-        }),
-    }
-}
-
 /// Lightweight liveness probe for the currently connected provider (#128-C).
 ///
 /// Runs a bare `list(".")` on the active session and reports whether it
@@ -2509,61 +2478,6 @@ async fn provider_change_dir_inner(
         files,
         current_path,
     })
-}
-
-/// Navigate to parent directory
-#[tauri::command]
-pub async fn provider_go_up(
-    app: AppHandle,
-    state: State<'_, ProviderState>,
-) -> Result<ProviderListResponse, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    if let Err(e) = provider.cd_up().await {
-        if !e.is_connection_lost() {
-            return Err(format!("Failed to go up: {}", e));
-        }
-        emit_session_event(&app, SessionEventKind::Lost, e.to_string());
-        try_silent_reconnect(&app, provider)
-            .await
-            .map_err(|err| format!("Failed to reconnect: {}", err))?;
-        provider
-            .cd_up()
-            .await
-            .map_err(|err| format!("Failed to go up after reconnect: {}", err))?;
-        emit_session_event(&app, SessionEventKind::Reconnected, "");
-    }
-
-    let files = provider
-        .list(".")
-        .await
-        .map_err(|e| format!("Failed to list files: {}", e))?;
-
-    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-
-    Ok(ProviderListResponse {
-        files,
-        current_path,
-    })
-}
-
-/// Get current working directory
-#[tauri::command]
-pub async fn provider_pwd(state: State<'_, ProviderState>) -> Result<String, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .pwd()
-        .await
-        .map_err(|e| format!("Failed to get working directory: {}", e))
 }
 
 /// Run a plain single-file download through the graph engine and emit the
@@ -6086,36 +6000,6 @@ pub async fn provider_server_copy(
     }
 }
 
-/// Check if provider supports server-side copy
-#[tauri::command]
-pub async fn provider_supports_server_copy(
-    state: State<'_, ProviderState>,
-) -> Result<bool, String> {
-    let provider_lock = state.provider.lock().await;
-    let provider = provider_lock
-        .as_ref()
-        .ok_or("Not connected to any provider")?;
-    Ok(provider.supports_server_copy())
-}
-
-/// Get file/directory information
-#[tauri::command]
-pub async fn provider_stat(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<RemoteEntry, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .stat(&path)
-        .await
-        .map_err(|e| format!("Failed to get file info: {}", e))
-}
-
 /// Which digests this connection can produce for `path` without downloading
 /// it, so a surface can say up front what it will and will not get.
 ///
@@ -6192,57 +6076,6 @@ pub async fn provider_keep_alive(state: State<'_, ProviderState>) -> Result<(), 
     }
 
     Ok(())
-}
-
-/// Get server information
-#[tauri::command]
-pub async fn provider_server_info(state: State<'_, ProviderState>) -> Result<String, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .server_info()
-        .await
-        .map_err(|e| format!("Failed to get server info: {}", e))
-}
-
-/// Get file size
-#[tauri::command]
-pub async fn provider_file_size(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<u64, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .size(&path)
-        .await
-        .map_err(|e| format!("Failed to get file size: {}", e))
-}
-
-/// Check if a file/directory exists
-#[tauri::command]
-pub async fn provider_exists(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<bool, String> {
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    provider
-        .exists(&path)
-        .await
-        .map_err(|e| format!("Failed to check existence: {}", e))
 }
 
 // ============ OAuth2 Commands ============
@@ -7047,23 +6880,6 @@ pub async fn mega_webdav_url(
     .await
 }
 
-/// Get disk usage for a path in bytes
-#[tauri::command]
-pub async fn provider_disk_usage(
-    state: State<'_, ProviderState>,
-    path: String,
-) -> Result<u64, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    provider
-        .disk_usage(&path)
-        .await
-        .map_err(|e| format!("Failed to get disk usage: {}", e))
-}
-
 /// Search for files matching a pattern under the given path
 #[tauri::command]
 pub async fn provider_find(
@@ -7111,82 +6927,6 @@ pub async fn provider_set_speed_limit(
         Ok(()) | Err(crate::providers::ProviderError::NotSupported(_)) => Ok(()),
         Err(e) => Err(format!("Failed to set speed limit: {}", e)),
     }
-}
-
-/// Get current transfer speed limits (upload_kb, download_kb) in KB/s
-#[tauri::command]
-pub async fn provider_get_speed_limit(
-    state: State<'_, ProviderState>,
-) -> Result<(u64, u64), String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    match provider.get_speed_limit().await {
-        Ok(limits) => Ok(limits),
-        Err(crate::providers::ProviderError::NotSupported(_)) => {
-            let (up, down) = crate::transfer_dag::governor::global().transfer_limits();
-            Ok((up / 1024, down / 1024))
-        }
-        Err(e) => Err(format!("Failed to get speed limit: {}", e)),
-    }
-}
-
-/// Check if the current provider supports resume transfers
-#[tauri::command]
-pub async fn provider_supports_resume(state: State<'_, ProviderState>) -> Result<bool, String> {
-    let provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_ref()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-    Ok(provider.supports_resume())
-}
-
-/// Resume a download from a given byte offset
-#[tauri::command]
-pub async fn provider_resume_download(
-    state: State<'_, ProviderState>,
-    remote_path: String,
-    local_path: String,
-    offset: u64,
-) -> Result<String, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    if let Some(parent) = std::path::Path::new(&local_path).parent() {
-        let _ = tokio::fs::create_dir_all(parent).await;
-    }
-
-    provider
-        .resume_download(&remote_path, &local_path, offset, None)
-        .await
-        .map_err(|e| format!("Resume download failed: {}", e))?;
-
-    Ok(format!("Resume download completed: {}", remote_path))
-}
-
-/// Resume an upload from a given byte offset
-#[tauri::command]
-pub async fn provider_resume_upload(
-    state: State<'_, ProviderState>,
-    local_path: String,
-    remote_path: String,
-    offset: u64,
-) -> Result<String, String> {
-    let mut provider_guard = state.provider.lock().await;
-    let provider = provider_guard
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-
-    provider
-        .resume_upload(&local_path, &remote_path, offset, None)
-        .await
-        .map_err(|e| format!("Resume upload failed: {}", e))?;
-
-    Ok(format!("Resume upload completed: {}", remote_path))
 }
 
 // --- File Versions ---

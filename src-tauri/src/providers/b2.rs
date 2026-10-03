@@ -3481,7 +3481,7 @@ impl StorageProvider for B2Provider {
 
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         // Legacy alias kept so the rest of the codebase
-        // (provider_commands::provider_supports_server_copy, CLI, MCP)
+        // (copy_fallback::server_side_copy_with_fallback, CLI, MCP)
         // keeps working unchanged. New DAG runner code reaches for
         // `server_side_copy` directly, which owns the real
         // `b2_copy_file` implementation.
