@@ -84,6 +84,29 @@ const object = (value: unknown): value is Record<string, unknown> =>
 const keysOnly = (value: Record<string, unknown>, allowed: string[]) => Object.keys(value).every(key => allowed.includes(key));
 const shortText = (value: unknown, max: number): value is string => typeof value === 'string'
     && value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+// The backend compares schema numbers exactly. An integral value beyond 2^53 is
+// already rounded here, so the model would be offered a value the backend refuses.
+const exactNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)
+    && (!Number.isInteger(value) || Number.isSafeInteger(value));
+const prose = (value: unknown, max: number): value is string => typeof value === 'string'
+    && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value);
+
+/** Whether the numeric bounds leave a value to send, as the backend checks:
+ *  an integer parameter needs an integer inside them. Each side has at most
+ *  one bound (an inclusive and an exclusive one together are refused first). */
+function boundsLeaveAValue(type: unknown, property: Record<string, unknown>): boolean {
+    const low = typeof property.minimum === 'number' ? { value: property.minimum, inclusive: true }
+        : typeof property.exclusiveMinimum === 'number' ? { value: property.exclusiveMinimum, inclusive: false } : undefined;
+    const high = typeof property.maximum === 'number' ? { value: property.maximum, inclusive: true }
+        : typeof property.exclusiveMaximum === 'number' ? { value: property.exclusiveMaximum, inclusive: false } : undefined;
+    if (!low || !high) return true;
+    if (type === 'integer') {
+        const first = low.inclusive ? Math.ceil(low.value) : Math.floor(low.value) + 1;
+        const last = high.inclusive ? Math.floor(high.value) : Math.ceil(high.value) - 1;
+        return first <= last;
+    }
+    return low.value < high.value || (low.value === high.value && low.inclusive && high.inclusive);
+}
 
 /** The current AITool contract supports flat primitive parameters and string arrays only.
  *  Reject other JSON Schema features instead of silently weakening validation. */
@@ -101,10 +124,12 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
     let json: string;
     try { json = JSON.stringify(input); } catch { return undefined; }
     if (!json || new TextEncoder().encode(json).length > MCP_MAX_SCHEMA_BYTES
-        || !keysOnly(input, ['type', 'properties', 'required', 'additionalProperties', 'description'])
+        || !keysOnly(input, ['type', 'properties', 'required', 'additionalProperties', 'description', '$schema', 'title'])
         || input.type !== 'object' || !object(input.properties)
         || input.additionalProperties !== false && input.additionalProperties !== undefined
-        || input.description !== undefined && !shortText(input.description, 512)) return undefined;
+        || input.description !== undefined && !prose(input.description, 512)
+        || input.$schema !== undefined && !shortText(input.$schema, 512)
+        || input.title !== undefined && !shortText(input.title, 512)) return undefined;
     const names = Object.keys(input.properties);
     if (names.length > MCP_MAX_PARAMETERS || !names.every(name => PARAM_NAME.test(name))) return undefined;
     if (!Array.isArray(input.required) && input.required !== undefined) return undefined;
@@ -114,8 +139,10 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
     const headerNames = new Set<string>();
     for (const name of names) {
         const property = input.properties[name];
-        if (!object(property) || !keysOnly(property, ['type', 'description', 'items', 'x-mcp-header'])
-            || property.description !== undefined && !shortText(property.description, 512)) return undefined;
+        if (!object(property) || !keysOnly(property, ['type', 'description', 'items', 'x-mcp-header', 'title', 'format', 'default', 'enum', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'minLength', 'maxLength'])
+            || property.description !== undefined && !prose(property.description, 512)
+            || property.title !== undefined && !shortText(property.title, 512)
+            || property.format !== undefined && !shortText(property.format, 512)) return undefined;
         const type = property.type;
         if (!['string', 'number', 'integer', 'boolean', 'array'].includes(type as string)) return undefined;
         if (Object.prototype.hasOwnProperty.call(property, 'x-mcp-header')) {
@@ -128,8 +155,40 @@ function mcpParameters(input: unknown): Pick<AITool, 'parameters' | 'additionalP
         if (type === 'array') {
             if (!object(property.items) || !keysOnly(property.items, ['type']) || property.items.type !== 'string') return undefined;
         } else if (property.items !== undefined) return undefined;
+        const typed = (value: unknown) => type === 'string' ? typeof value === 'string'
+            : type === 'boolean' ? typeof value === 'boolean'
+            : type === 'number' ? exactNumber(value)
+            : type === 'integer' ? typeof value === 'number' && Number.isSafeInteger(value)
+            : Array.isArray(value) && value.every(item => typeof item === 'string');
+        if (Object.prototype.hasOwnProperty.call(property, 'default') && !typed(property.default)) return undefined;
+        if (property.enum !== undefined && (type === 'array' || !Array.isArray(property.enum)
+            || !property.enum.length || property.enum.length > 64
+            || !property.enum.every(value => typed(value) && (typeof value !== 'string' || shortText(value, 512))))) return undefined;
+        for (const bound of ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum']) {
+            if (property[bound] !== undefined && (!['number', 'integer'].includes(type as string)
+                || !exactNumber(property[bound]))) return undefined;
+        }
+        if ((property.minimum !== undefined && property.exclusiveMinimum !== undefined)
+            || (property.maximum !== undefined && property.exclusiveMaximum !== undefined)) return undefined;
+        if (!boundsLeaveAValue(type, property)) return undefined;
+        for (const bound of ['minLength', 'maxLength']) {
+            if (property[bound] !== undefined && (type !== 'string' || typeof property[bound] !== 'number'
+                || !Number.isInteger(property[bound]) || (property[bound] as number) < 0
+                || (property[bound] as number) > 65536)) return undefined;
+        }
+        if (typeof property.minLength === 'number' && typeof property.maxLength === 'number'
+            && property.minLength > property.maxLength) return undefined;
+        // Annotation-only metadata and defaults never become model instructions or argument values.
         parameters.push({ name, type: type as AITool['parameters'][number]['type'],
-            description: (property.description as string | undefined) ?? '', required: required.includes(name) });
+            description: (property.description as string | undefined) ?? '', required: required.includes(name),
+            ...(property.enum !== undefined ? { enum: property.enum as (string | number | boolean)[] } : {}),
+            ...(property.minimum !== undefined ? { minimum: property.minimum as number } : {}),
+            ...(property.maximum !== undefined ? { maximum: property.maximum as number } : {}),
+            ...(property.exclusiveMinimum !== undefined ? { exclusiveMinimum: property.exclusiveMinimum as number } : {}),
+            ...(property.exclusiveMaximum !== undefined ? { exclusiveMaximum: property.exclusiveMaximum as number } : {}),
+            ...(property.minLength !== undefined ? { minLength: property.minLength as number } : {}),
+            ...(property.maxLength !== undefined ? { maxLength: property.maxLength as number } : {}),
+        });
     }
     return { parameters, ...(input.additionalProperties === false ? { additionalProperties: false as const } : {}) };
 }
@@ -173,7 +232,7 @@ export function buildToolRegistry(plugins: PluginManifest[], macros: ToolMacro[]
             if (!object(tool) || tool.enabled !== true || typeof tool.name !== 'string' || !MCP_NAME.test(tool.name)
                 || names.filter(name => name === tool.name).length !== 1
                 || typeof tool.schemaRevision !== 'string' || !SCHEMA_REVISION.test(tool.schemaRevision)
-                || !shortText(tool.description ?? '', 512)) continue;
+                || !prose(tool.description ?? '', 512)) continue;
             const schema = mcpParameters(tool.inputSchema);
             if (!schema) continue;
             // Server-declared read-only/safe annotations are untrusted. Backend approval is still required.

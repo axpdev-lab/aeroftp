@@ -67,7 +67,10 @@ mod mcp_client_gate;
 mod mcp_client_http_commands;
 mod mcp_client_http_config;
 mod mcp_client_http_transport;
+mod mcp_client_install;
+mod mcp_client_install_paths;
 mod mcp_client_oauth;
+mod mcp_client_presets;
 pub mod mcp_client_protocol;
 mod mcp_client_routing;
 mod mcp_client_sandbox;
@@ -125,6 +128,8 @@ pub mod kopia_import;
 pub mod lftp_import;
 #[cfg(target_os = "linux")]
 pub mod linux_egl;
+#[cfg(target_os = "linux")]
+mod linux_rttime;
 pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod panic_safe;
@@ -4693,7 +4698,7 @@ async fn download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: DownloadFolderParams,
-) -> Result<String, String> {
+) -> Result<transfer_domain::FolderTransferOutcome, String> {
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -4796,7 +4801,12 @@ async fn download_folder(
     };
 
     if scan_result.cancelled {
-        return Ok("Download cancelled after 0 files".to_string());
+        return Ok(transfer_domain::FolderTransferOutcome::cancelled(
+            0,
+            0,
+            0,
+            "Download cancelled after 0 files".to_string(),
+        ));
     }
 
     let batch = transfer_orchestrator::TransferBatch {
@@ -4927,7 +4937,13 @@ async fn download_folder(
         },
     );
 
-    Ok(result_message)
+    Ok(transfer_domain::FolderTransferOutcome {
+        completed: files_downloaded,
+        skipped: scan_result.files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 /// Upload an entire folder to the FTP server with full recursive support.
@@ -5235,7 +5251,7 @@ async fn upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     params: UploadFolderParams,
-) -> Result<String, String> {
+) -> Result<transfer_domain::FolderTransferOutcome, String> {
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -5338,7 +5354,12 @@ async fn upload_folder(
     };
 
     if prep_result.cancelled {
-        return Ok("Upload cancelled after 0 files".to_string());
+        return Ok(transfer_domain::FolderTransferOutcome::cancelled(
+            0,
+            0,
+            0,
+            "Upload cancelled after 0 files".to_string(),
+        ));
     }
 
     let batch = transfer_orchestrator::TransferBatch {
@@ -5472,7 +5493,13 @@ async fn upload_folder(
         },
     );
 
-    Ok(result_message)
+    Ok(transfer_domain::FolderTransferOutcome {
+        completed: files_uploaded,
+        skipped: prep_result.files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 #[tauri::command]
@@ -5484,6 +5511,19 @@ async fn cancel_transfer(
     state.request_cancel().await;
     provider_state.request_cancel().await;
     info!("Transfer cancellation requested");
+    Ok(())
+}
+
+/// First Stop of the two-level cancel ("finish the current file, start no
+/// other"). A backend batch, folder or file list, checks this flag before it
+/// starts each file; files already in flight run to the end. The second Stop
+/// is `cancel_transfer`, which also aborts them.
+#[tauri::command]
+async fn stop_starting_transfers(
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    provider_state.request_batch_stop();
+    info!("Soft stop requested: no further file will start");
     Ok(())
 }
 
@@ -10253,6 +10293,26 @@ pub(crate) fn is_secondary_window_label(label: &str) -> bool {
         || label.starts_with(ai_approval_window::LABEL_PREFIX)
 }
 
+/// An empty menu for a secondary window's builder.
+///
+/// A window built without a menu of its own gets the global app menu attached
+/// while it is created, before `remove_menu` can run. With `appmenu-gtk-module`
+/// loaded (the GNOME default on Ubuntu) attaching that menu to a second live
+/// window recurses inside GTK until the main thread overflows its stack, so
+/// opening the AeroAgent approval window crashed the app. An empty menu of its
+/// own keeps the global one off the new window. Linux only: on macOS a window
+/// menu would replace the app menu, and the crash is GTK's.
+#[cfg(target_os = "linux")]
+pub(crate) fn secondary_window_menu(app: &AppHandle) -> Option<tauri::menu::Menu<tauri::Wry>> {
+    match tauri::menu::Menu::new(app) {
+        Ok(menu) => Some(menu),
+        Err(e) => {
+            log::warn!("Cannot create the empty menu of a secondary window: {e}");
+            None
+        }
+    }
+}
+
 pub(crate) fn strip_menu_from_secondary_windows(app: &AppHandle) {
     for (label, window) in app.webview_windows() {
         if is_secondary_window_label(&label) {
@@ -10300,6 +10360,11 @@ fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
         .initialization_script(&init);
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
+    #[cfg(target_os = "linux")]
+    let builder = match secondary_window_menu(app) {
+        Some(menu) => builder.menu(menu),
+        None => builder,
+    };
     let builder = match portable::webview_data_dir() {
         Some(dir) => builder.data_directory(dir),
         None => builder,
@@ -11245,8 +11310,18 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
     }
 }
 
+/// Whether the user turned the native menu bar on for the main window
+/// (Settings, through `toggle_menu_bar`). Off by default: the titlebar menus
+/// replace it. `rebuild_menu` reads it, because a global `set_menu` reaches
+/// every window on Linux and would otherwise show the bar the user hid.
+static MAIN_MENU_BAR_VISIBLE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 #[tauri::command]
 fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
+    if window.label() == "main" {
+        MAIN_MENU_BAR_VISIBLE.store(visible, Ordering::SeqCst);
+    }
     if visible {
         if let Some(menu) = app.menu() {
             let _ = window.set_menu(menu);
@@ -11519,6 +11594,14 @@ fn rebuild_menu_on_main(
         }
     } else {
         app.set_menu(menu).map_err(|e| e.to_string())?;
+        // GTK just gave the main window the menu too; keep the bar hidden
+        // unless the user turned it on. (macOS has one app-wide menu bar and
+        // ignores per-window menus.)
+        if !MAIN_MENU_BAR_VISIBLE.load(Ordering::SeqCst) {
+            if let Some(main) = app.get_webview_window("main") {
+                let _ = main.remove_menu();
+            }
+        }
     }
 
     // Splash, extract and approval windows: GTK just gave them the menu too.
@@ -18775,6 +18858,13 @@ pub fn run() {
     {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
+        // A GNOME session passes on gnome-shell's RLIMIT_RTTIME with the soft
+        // limit equal to the hard one, so WebKit's real-time threads are
+        // killed without the SIGXCPU warning WebKit relies on, taking the
+        // network process and every in-flight load with them. Must run before
+        // the first WebKit process is spawned: they inherit the limit.
+        crate::linux_rttime::configure();
+
         // Turn WebKit's accelerated compositor off only where EGL cannot feed
         // it. Without a usable EGL display the compositor produces a live,
         // "visible", permanently blank window (#462) instead of falling back,
@@ -19032,6 +19122,8 @@ pub fn run() {
             // first thing a blank-window report needs to answer.
             #[cfg(target_os = "linux")]
             crate::linux_egl::log_decision();
+            #[cfg(target_os = "linux")]
+            crate::linux_rttime::log_decision();
 
             // Register the global AppHandle so Tauri-agnostic code paths
             // (e.g. the MEGAcmd warmup notice in the provider layer) can emit
@@ -19986,6 +20078,7 @@ pub fn run() {
             download_folder,
             upload_folder,
             cancel_transfer,
+            stop_starting_transfers,
             reset_cancel_flag,
             set_speed_limit,
             get_speed_limit,
@@ -20178,6 +20271,12 @@ pub fn run() {
             mcp_client_commands::mcp_client_upsert_server,
             mcp_client_commands::mcp_client_remove_server,
             mcp_client_commands::mcp_client_set_secret,
+            mcp_client_commands::mcp_client_set_permissions,
+            mcp_client_install::mcp_client_install_manifests,
+            mcp_client_install::mcp_client_install_server,
+            mcp_client_install::mcp_client_install_cancel,
+            mcp_client_presets::mcp_client_presets_list,
+            mcp_client_presets::mcp_client_preset_install_http,
             mcp_client_http_commands::mcp_client_http_list_servers,
             mcp_client_http_commands::mcp_client_http_upsert_server,
             mcp_client_http_commands::mcp_client_http_remove_server,
@@ -20472,6 +20571,8 @@ pub fn run() {
             provider_commands::provider_detect_archive_meta_remote,
             provider_commands::provider_download_folder,
             provider_commands::provider_upload_folder,
+            provider_commands::provider_download_files_batch,
+            provider_commands::provider_upload_files_batch,
             provider_commands::provider_upload_file,
             provider_commands::provider_mkdir,
             provider_commands::provider_delete_file,

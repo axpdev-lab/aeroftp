@@ -171,6 +171,14 @@ export const isNonFtpProvider = (type: ProviderType): boolean => {
   ].includes(type);
 };
 
+// True for every protocol the GUI drives through the `provider_*` command
+// surface. FTP and FTPS are included: since v3.1.5 they connect as
+// providers too, so a check like `!usesProviderApi(protocol)` is false for
+// every connected session (issue #591 found a parallel batch branch that had
+// been unreachable behind exactly that check).
+export const usesProviderApi = (protocol?: ProviderType): boolean =>
+  !!protocol && (protocol === 'ftp' || protocol === 'ftps' || isNonFtpProvider(protocol));
+
 // Check if a provider is a traditional FTP/FTPS connection (uses ftp_* Tauri commands)
 export const isFtpProtocol = (type: ProviderType): boolean => {
   return type === "ftp" || type === "ftps";

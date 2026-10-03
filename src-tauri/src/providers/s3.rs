@@ -122,6 +122,25 @@ fn repair_double_utf8_key(key: String, repair: bool) -> String {
 /// real zero-byte object on gateways that alias "key/" to "key" (S3Drive).
 const S3_DIRECTORY_CONTENT_TYPE: &str = "application/x-directory";
 
+/// Storage classes an object can be moved to in place (a copy onto itself).
+/// REDUCED_REDUNDANCY is deprecated and EXPRESS_ONEZONE lives in directory
+/// buckets only, so neither is a target.
+pub const S3_TARGET_STORAGE_CLASSES: &[&str] = &[
+    "STANDARD",
+    "INTELLIGENT_TIERING",
+    "STANDARD_IA",
+    "ONEZONE_IA",
+    "GLACIER_IR",
+    "GLACIER",
+    "DEEP_ARCHIVE",
+];
+
+/// Retrieval tiers of a Glacier / Deep Archive restore.
+pub const S3_RESTORE_TIERS: &[&str] = &["Expedited", "Standard", "Bulk"];
+
+/// Upper bound on how long a restored copy stays readable.
+pub const S3_RESTORE_MAX_DAYS: u32 = 30_000;
+
 /// True when a content-type marks an object as a directory placeholder. Accepts
 /// the two common conventions: `application/x-directory` (written here, also
 /// s3fs / AWS console) and `httpd/unix-directory` (davfs / some gateways).
@@ -6847,6 +6866,11 @@ impl S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        if !S3_TARGET_STORAGE_CLASSES.contains(&storage_class) {
+            return Err(ProviderError::InvalidConfig(format!(
+                "Not a storage class an object can be moved to: {storage_class}"
+            )));
+        }
         self.ensure_fresh_credentials().await?;
         let key = path.trim_start_matches('/');
         // Slashes preserved via encode_s3_key_path; see server_copy /
@@ -6906,6 +6930,17 @@ impl S3Provider {
     ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
+        }
+        // The tier goes into the XML body as is: only the three AWS names pass.
+        if !S3_RESTORE_TIERS.contains(&tier) {
+            return Err(ProviderError::InvalidConfig(format!(
+                "Not a restore tier: {tier}"
+            )));
+        }
+        if !(1..=S3_RESTORE_MAX_DAYS).contains(&days) {
+            return Err(ProviderError::InvalidConfig(format!(
+                "Restore days must be 1 to {S3_RESTORE_MAX_DAYS}, not {days}"
+            )));
         }
         self.ensure_fresh_credentials().await?;
         let key = path.trim_start_matches('/');
@@ -10718,7 +10753,8 @@ mod tests {
         .await
         .expect_err("an object that changed under the reader must not be published");
         assert!(
-            err.contains("changed while it was being downloaded"),
+            err.to_string()
+                .contains("changed while it was being downloaded"),
             "{err}"
         );
         assert!(!out.exists(), "no file may be committed");
@@ -10840,7 +10876,7 @@ mod tests {
             "a server that ignores the range must not have its answer written at an offset",
         );
         assert!(
-            err.contains("ignored the range"),
+            err.to_string().contains("ignored the range"),
             "the refusal must name what happened: {err}"
         );
         assert!(!out.exists(), "no file may be committed");
@@ -10871,7 +10907,8 @@ mod tests {
         .await
         .expect_err("a plan built for another size must not run");
         assert!(
-            err.contains("planned for 8388608 bytes and the object now has 6291456"),
+            err.to_string()
+                .contains("planned for 8388608 bytes and the object now has 6291456"),
             "{err}"
         );
         assert!(!out.exists(), "no file may be committed");
@@ -12792,6 +12829,34 @@ mod tests {
                 "and by less than one cell: {mib} MiB gave {raw} -> {hint}"
             );
         }
+    }
+
+    /// The storage class goes into a header and the restore tier into an XML
+    /// body as they arrive over IPC: only the names AWS defines pass, checked
+    /// before anything is sent.
+    #[tokio::test]
+    async fn storage_class_and_restore_tier_are_allow_listed() {
+        let mut p = make_provider(None);
+        p.connected = true;
+        let class = p
+            .change_storage_class("/k", "GLACIER\r\nx-amz-acl: public-read")
+            .await;
+        assert!(
+            matches!(class, Err(ProviderError::InvalidConfig(_))),
+            "{class:?}"
+        );
+        let tier = p.glacier_restore("/k", 7, "Bulk</Tier><Days>9").await;
+        assert!(
+            matches!(tier, Err(ProviderError::InvalidConfig(_))),
+            "{tier:?}"
+        );
+        let days = p.glacier_restore("/k", 0, "Bulk").await;
+        assert!(
+            matches!(days, Err(ProviderError::InvalidConfig(_))),
+            "{days:?}"
+        );
+        assert!(S3_TARGET_STORAGE_CLASSES.contains(&"DEEP_ARCHIVE"));
+        assert!(!S3_TARGET_STORAGE_CLASSES.contains(&"REDUCED_REDUNDANCY"));
     }
 }
 

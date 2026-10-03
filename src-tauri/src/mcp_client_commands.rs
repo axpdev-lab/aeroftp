@@ -57,7 +57,7 @@ pub(crate) fn load(
     Ok(configs)
 }
 
-fn save(
+pub(crate) fn save(
     conn: &Connection,
     root_key: &[u8; 32],
     user_id: i64,
@@ -69,7 +69,7 @@ fn save(
         .map_err(|_| "MCP_STORE_UNAVAILABLE")
 }
 
-fn upsert_catalog(
+pub(crate) fn upsert_catalog(
     configs: &mut Vec<McpServerConfig>,
     config: McpServerConfig,
 ) -> Result<Vec<String>, &'static str> {
@@ -104,7 +104,7 @@ fn upsert_catalog(
     Ok(stale_accounts)
 }
 
-fn begin_catalog_write<'a>(
+pub(crate) fn begin_catalog_write<'a>(
     conn: &'a mut Connection,
     root_key: &[u8; 32],
     user_id: i64,
@@ -114,6 +114,111 @@ fn begin_catalog_write<'a>(
         .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
     let configs = load(&transaction, root_key, user_id)?;
     Ok((transaction, configs))
+}
+
+fn validate_edit(
+    configs: &[McpServerConfig],
+    config: &McpServerConfig,
+) -> Result<(), &'static str> {
+    let old = configs.iter().find(|c| c.id == config.id);
+    if old.map(|c| &c.sandbox).unwrap_or(&Default::default()) != &config.sandbox
+        || old.is_some_and(|c| {
+            c.sandbox.managed.is_some() && (c.command != config.command || c.args != config.args)
+        })
+    {
+        return Err("MCP_PERMISSION_COMMAND_REQUIRED");
+    }
+    Ok(())
+}
+
+fn collect_grants(
+    previous: &[crate::mcp_client_config::McpDirectoryGrant],
+    directory_paths: &[String],
+    grant_path: Option<&str>,
+) -> Result<Vec<crate::mcp_client_config::McpDirectoryGrant>, &'static str> {
+    let mut grants = Vec::new();
+    for path in directory_paths {
+        let canonical = crate::mcp_client_install_paths::custom_path(std::path::Path::new(path))?;
+        let existing = previous.iter().find(|g| &g.path == path);
+        let grant = if grant_path == Some(path.as_str()) {
+            crate::mcp_client_install_paths::directory_grant(&canonical)?
+        } else {
+            existing.cloned().ok_or("MCP_DIRECTORY_INVALID")?
+        };
+        if crate::mcp_client_install_paths::directory_grant(&canonical)? != grant {
+            return Err("MCP_DIRECTORY_CHANGED");
+        }
+        crate::mcp_client_install_paths::snapshot(
+            &grant,
+            &tokio_util::sync::CancellationToken::new(),
+        )?;
+        grants.push(grant);
+    }
+    Ok(grants)
+}
+
+/// User-confirmed read-only directories. No directory is inferred from an argument.
+#[tauri::command]
+pub async fn mcp_client_set_permissions(
+    webview: Webview,
+    app: AppHandle,
+    server_id: String,
+    expected_revision: u64,
+    directory_paths: Vec<String>,
+    network_consent: bool,
+    grant_path: Option<String>,
+) -> Result<(), &'static str> {
+    crate::only_main_window(webview.label(), "mcp_client_set_permissions")
+        .map_err(|_| "MCP_MAIN_WINDOW_REQUIRED")?;
+    if !cfg!(target_os = "linux") {
+        return Err("MCP_STDIO_SANDBOX_UNAVAILABLE");
+    }
+    if directory_paths.len() > 4 {
+        return Err("MCP_DIRECTORY_INVALID");
+    }
+    tokio::task::spawn_blocking(move || {
+        let (mut conn, root_key, user_id) = context(&app)?;
+        let (transaction, mut configs) = begin_catalog_write(&mut conn, &root_key, user_id)?;
+        let config = configs
+            .iter_mut()
+            .find(|c| c.id == server_id)
+            .ok_or("MCP_CONFIG_NOT_FOUND")?;
+        if config.revision != expected_revision {
+            return Err("MCP_CONFIG_STALE_REVISION");
+        }
+        if config.sandbox.managed.is_some() {
+            if grant_path.is_some() {
+                return Err("MCP_INSTALL_INVALID");
+            }
+            if directory_paths
+                != config
+                    .sandbox
+                    .directories
+                    .iter()
+                    .map(|g| g.path.clone())
+                    .collect::<Vec<_>>()
+            {
+                return Err("MCP_INSTALL_INVALID");
+            }
+        } else {
+            config.sandbox.directories = collect_grants(
+                &config.sandbox.directories,
+                &directory_paths,
+                grant_path.as_deref(),
+            )?;
+        }
+        config.sandbox.network_consent = network_consent;
+        config.revision = config
+            .revision
+            .checked_add(1)
+            .ok_or("MCP_CONFIG_REVISION_OVERFLOW")?;
+        config.validate()?;
+        crate::mcp_client_install::validate_binding(&app, user_id, config)?;
+        save(&transaction, &root_key, user_id, &configs)?;
+        transaction.commit().map_err(|_| "MCP_STORE_UNAVAILABLE")
+    })
+    .await
+    .map_err(|_| "MCP_STORE_UNAVAILABLE")?
 }
 
 #[tauri::command]
@@ -150,6 +255,8 @@ pub async fn mcp_client_upsert_server(
         {
             return Err("MCP_CONFIG_DUPLICATE_ID");
         }
+        // Ordinary edits may preserve, never manufacture, sandbox/install authority.
+        validate_edit(&configs, &config)?;
         let stale_accounts = upsert_catalog(&mut configs, config)?;
         for account in stale_accounts {
             user_partitions::delete_user_credential_for(&transaction, user_id, &account)
@@ -178,6 +285,7 @@ pub async fn mcp_client_remove_server(
             .position(|item| item.id == server_id)
             .ok_or("MCP_CONFIG_NOT_FOUND")?;
         let removed = configs.remove(index);
+        let removal = crate::mcp_client_install::uninstall(&app, user_id, &removed)?;
         for secret_ref in removed.env.values() {
             user_partitions::delete_user_credential_for(
                 &transaction,
@@ -187,7 +295,8 @@ pub async fn mcp_client_remove_server(
             .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
         }
         save(&transaction, &root_key, user_id, &configs)?;
-        transaction.commit().map_err(|_| "MCP_STORE_UNAVAILABLE")
+        transaction.commit().map_err(|_| "MCP_STORE_UNAVAILABLE")?;
+        removal.commit()
     })
     .await
     .map_err(|_| "MCP_STORE_UNAVAILABLE")?
@@ -252,7 +361,74 @@ mod tests {
             env: BTreeMap::new(),
             enabled: false,
             revision: 1,
+            sandbox: Default::default(),
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn confirming_one_directory_never_renews_another_replaced_grant() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        std::fs::create_dir(&first).unwrap();
+        std::fs::create_dir(&second).unwrap();
+        let original = crate::mcp_client_install_paths::directory_grant(&first).unwrap();
+        std::fs::rename(&first, dir.path().join("old")).unwrap();
+        std::fs::create_dir(&first).unwrap();
+        let first_path = first.to_string_lossy().into_owned();
+        let second_path = second.to_string_lossy().into_owned();
+        assert_eq!(
+            collect_grants(
+                std::slice::from_ref(&original),
+                &[first_path.clone(), second_path.clone()],
+                Some(&second_path)
+            ),
+            Err("MCP_DIRECTORY_CHANGED")
+        );
+        let renewed = collect_grants(
+            std::slice::from_ref(&original),
+            std::slice::from_ref(&first_path),
+            Some(&first_path),
+        )
+        .unwrap();
+        assert_ne!(renewed[0].inode, original.inode);
+        assert_eq!(
+            collect_grants(&[], std::slice::from_ref(&second_path), None),
+            Err("MCP_DIRECTORY_INVALID")
+        );
+    }
+
+    #[test]
+    fn ordinary_edits_cannot_create_or_change_directory_network_or_install_authority() {
+        let original = fixture("one");
+        let mut changed = original.clone();
+        changed
+            .sandbox
+            .directories
+            .push(crate::mcp_client_config::McpDirectoryGrant {
+                path: "/tmp/project".into(),
+                device: 1,
+                inode: 2,
+            });
+        assert_eq!(
+            validate_edit(&[], &changed),
+            Err("MCP_PERMISSION_COMMAND_REQUIRED")
+        );
+        assert_eq!(
+            validate_edit(std::slice::from_ref(&original), &changed),
+            Err("MCP_PERMISSION_COMMAND_REQUIRED")
+        );
+        changed.revision = 2;
+        assert!(validate_edit(std::slice::from_ref(&changed), &changed).is_ok());
+        assert!(validate_edit(
+            std::slice::from_ref(&original),
+            &McpServerConfig {
+                revision: 2,
+                ..original.clone()
+            }
+        )
+        .is_ok());
     }
 
     #[test]

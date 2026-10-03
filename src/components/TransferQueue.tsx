@@ -10,6 +10,7 @@ import { TransferProgressBar } from './TransferProgressBar';
 import type { BatchProgressSnapshot } from '../hooks/useTransferEvents';
 import {
     addItem as addItemHelper,
+    applyItemProgress,
     clearRestoredFlags as clearRestoredFlagsHelper,
     listRestoredPendingIds,
     removeItem as removeItemHelper,
@@ -903,11 +904,7 @@ export const useTransferQueue = () => {
     // Per-item live progress: carries the real per-file byte speed alongside the
     // percentage so the Transfer Queue panel can show speed, not just a bar.
     const setProgress = (id: string, progress: number, speedBps?: number) =>
-        setItems(prev => prev.map(item =>
-            item.id === id
-                ? { ...item, status: 'transferring' as TransferStatus, progress, speedBps, error: undefined }
-                : item
-        ));
+        setItems(prev => applyItemProgress(prev, id, progress, speedBps));
     const completeTransfer = (id: string) => updateStatus(id, 'completed', 100);
     const failTransfer = (id: string, error: string) => updateStatus(id, 'error', undefined, error);
 
