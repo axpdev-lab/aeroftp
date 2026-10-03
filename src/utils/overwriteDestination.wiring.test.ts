@@ -3,8 +3,9 @@
 
 import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
+import overwriteHook from '../hooks/useOverwriteCheck.ts?raw';
 import { describe, expect, it, vi } from 'vitest';
-import { usesProviderApi, type LocalFile, type RemoteFile } from '../types';
+import { usesProviderApi, type RemoteFile } from '../types';
 import { loadOverwriteDestination } from './overwriteDestination';
 import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath } from './fileBatchRouting';
 import { createFileBatchDispatcher, rearmedOnUserAction } from '../components/transferQueueActions';
@@ -24,6 +25,10 @@ const { code } = await transformWithOxc(
   + closure('uploadFile', '\n  // Keep restore-retry')
   + closure('runFileBatch', '\n  const uploadMultipleFiles ='),
   'overwrite-wiring.ts',
+);
+const { code: overwriteCode } = await transformWithOxc(
+  overwriteHook.slice(overwriteHook.indexOf('  const checkOverwrite ='), overwriteHook.indexOf('  const resetOverwriteSettings =')),
+  'overwrite-check.ts',
 );
 
 type Direction = 'upload' | 'download';
@@ -46,15 +51,11 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     if (['reset_cancel_flag', 'provider_download_file', 'provider_upload_file'].includes(command)) return undefined;
     throw new Error(`Unexpected IPC: ${command}`);
   });
-  const checkOverwrite = vi.fn(async (name: string, size: number, _modified: unknown, sourceIsRemote: boolean, _remaining: number, snapshot?: LocalFile[] | RemoteFile[]) => {
-    const exists = (snapshot ?? panel).find(f => f.name === name && !f.is_dir);
-    const policy = options.policy || 'skip';
-    return {
-      action: !exists ? 'overwrite' : policy === 'resume' ? size > (exists.size || 0) ? 'resume' : 'overwrite' : policy,
-      ...(exists && policy === 'rename' ? { newName: 'a (1).bin' } : {}),
-      destinationExists: !!exists,
-    };
-  });
+  // Execute the real hook policy as well as the real App batch planner. This
+  // makes duplicate-name regressions exercise suffix selection, not a stub.
+  const checkOverwrite = vi.fn(new Function('useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
+    `${overwriteCode}; return checkOverwrite;`)((fn: unknown) => fn, panel, panel, options.policy || 'skip',
+      { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
   const resolveDestination = vi.fn(loadOverwriteDestination);
   const queueItemsRef = { current: [] as { id: string; status: string }[] };
   const transferQueue = {
@@ -153,4 +154,23 @@ it('keeps duplicate destinations out of simultaneous batch writes', async () => 
   const f = fixture({ direction: 'upload', destination: [], policy: 'overwrite' });
   await f.runtime.runFileBatch('upload', [items[0], { ...items[0], sourcePath: '/another/a.bin' }], '/actual');
   expect(f.writers().map(([name]) => name)).toEqual(['provider_upload_files_batch', 'provider_upload_file']);
+});
+
+it.each(['upload', 'download'] as const)('reserves rename targets for duplicate %s source names', async direction => {
+  const f = fixture({ direction, destination: [file('a.bin'), file('a (1).bin')], policy: 'rename' });
+  const result = await f.runtime.runFileBatch(direction, [items[0], { ...items[0], sourcePath: '/another/a.bin' }], '/actual');
+  expect(result).toMatchObject({ completed: 2, failed: 0 });
+  const paths = f.writers().flatMap(([command, args]) => command.endsWith('_files_batch')
+    ? args!.params.entries.map((entry: any) => entry[direction === 'upload' ? 'remote_path' : 'local_path'])
+    : [args![direction === 'upload' ? 'remotePath' : 'localPath']]);
+  expect(paths).toEqual(['/actual/a (2).bin', '/actual/a (3).bin']);
+});
+
+it.each(['upload', 'download'] as const)('preserves both same-name %s sources in an initially empty destination', async direction => {
+  const f = fixture({ direction, destination: [], policy: 'rename' });
+  await f.runtime.runFileBatch(direction, [items[0], { ...items[0], sourcePath: '/another/a.bin' }], '/actual');
+  const paths = f.writers().flatMap(([command, args]) => command.endsWith('_files_batch')
+    ? args!.params.entries.map((entry: any) => entry[direction === 'upload' ? 'remote_path' : 'local_path'])
+    : [args![direction === 'upload' ? 'remotePath' : 'localPath']]);
+  expect(paths).toEqual(['/actual/a.bin', '/actual/a (1).bin']);
 });

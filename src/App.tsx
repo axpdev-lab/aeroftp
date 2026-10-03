@@ -12154,7 +12154,7 @@ const App: React.FC = () => {
     // A failed listing is a failed preflight, never an empty destination.
     let destinationFiles: LocalFile[] | RemoteFile[];
     try {
-      destinationFiles = await getOverwriteDestination(direction, targetDir);
+      destinationFiles = [...await getOverwriteDestination(direction, targetDir)];
     } catch (error) {
       resetOverwriteSettings();
       result.failed = items.length;
@@ -12207,6 +12207,15 @@ const App: React.FC = () => {
         destinationClaimed: claimedDestinations.has(destination),
       });
       claimedDestinations.add(destination);
+      // Rename must preserve every source, including a name that was free
+      // before this batch. Let the next check see the targets already chosen.
+      if (fileExistsAction === 'rename' || overwriteResult.action === 'rename') {
+        const reserved: RemoteFile = {
+          name: finalName, path: destination, size: item.size,
+          modified: item.modified, is_dir: false, permissions: null,
+        };
+        destinationFiles.push(reserved);
+      }
       if (single) {
         singles.push(entry);
         if (!isDownload && overwriteResult.action === 'resume') resumes.add(entry);
