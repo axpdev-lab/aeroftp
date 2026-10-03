@@ -370,21 +370,40 @@ mod tests {
         );
     }
 
+    /// The text of the top-level function starting at `signature`, up to its
+    /// closing brace at column 0. Line endings are normalised first: with no
+    /// `.gitattributes` in this repository a Windows checkout stores CRLF, and
+    /// the first run of this test there (main d5f694ae2, Delta Sync MSVC unit
+    /// tests) failed to find the closing brace.
+    fn function_text(src: &str, signature: &str) -> Option<String> {
+        let src = src.replace("\r\n", "\n");
+        let start = src.find(signature)?;
+        let end = start + src[start..].find("\n}\n")?;
+        Some(src[start..end].to_string())
+    }
+
     /// Resuming has to take the Paused badge down itself: with
     /// `sync_on_startup` off the restarted worker waits for a trigger before
     /// its first cycle, so nothing else repaints the tray and it stayed grey.
     #[test]
     fn resuming_aerocloud_clears_the_paused_badge() {
         let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
-        let start = src
-            .find("async fn resume_aerocloud(")
-            .expect("resume_aerocloud is defined");
-        let end = start + src[start..].find("\n}\n").expect("end of resume_aerocloud");
+        let body = function_text(src, "async fn resume_aerocloud(")
+            .expect("resume_aerocloud is defined and ends with a closing brace at column 0");
         assert!(
-            src[start..end].contains(
+            body.contains(
                 "tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);"
             ),
             "resume_aerocloud leaves the tray on the Paused badge"
         );
+    }
+
+    #[test]
+    fn a_crlf_checkout_still_yields_the_function_text() {
+        let src = "fn before() {}\r\n\r\nasync fn resume_aerocloud() {\r\n    repaint();\r\n}\r\nfn after() {}\r\n";
+        let body = function_text(src, "async fn resume_aerocloud(")
+            .expect("the function end is found in a CRLF checkout");
+        assert!(body.contains("repaint();"));
+        assert!(!body.contains("after"));
     }
 }
