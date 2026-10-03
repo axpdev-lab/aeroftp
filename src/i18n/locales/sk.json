@@ -4477,9 +4477,6 @@
             "starred": "Súbor označený hviezdičkou",
             "unstarred": "Hviezdička odstránená"
         },
-        "dropbox": {
-            "manageTags": "Spravovať štítky"
-        },
         "providers": {
             "title": "Poskytovatelia a integrácie",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Bezplatný plán",
             "freeCardTier": "Zadarmo + karta",
             "paidTier": "Platené"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Spravovať štítky",
-            "noLabels": "Nie sú dostupné žiadne štítky. Vytvorte štítky v nastaveniach Zoho WorkDrive.",
-            "createLabel": "Vytvoriť značku",
-            "labelName": "Názov značky"
         },
         "healthCheck": {
             "title": "Kontrola stavu servera",

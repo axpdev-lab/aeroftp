@@ -121,6 +121,19 @@ const TreeRow: React.FC<{
     );
 };
 
+/**
+ * The extract command per archive type, spelled out rather than built as
+ * `extract_${archiveType}_entry`: a computed name hides the four commands from
+ * the IPC caller guard (tauriCommandCallers.test.ts), and a new ArchiveType
+ * without a command here fails to compile instead of failing at runtime.
+ */
+const EXTRACT_ENTRY_COMMAND: Record<ArchiveType, string> = {
+    zip: 'extract_zip_entry',
+    '7z': 'extract_7z_entry',
+    tar: 'extract_tar_entry',
+    rar: 'extract_rar_entry',
+};
+
 export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, archiveType, isEncrypted, onClose }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -224,7 +237,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
 
         setExtracting(entryName);
         try {
-            const cmd = `extract_${archiveType}_entry`;
+            const cmd = EXTRACT_ENTRY_COMMAND[archiveType];
             const args: Record<string, unknown> = {
                 archivePath,
                 entryName,
@@ -246,7 +259,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             const tempDirPath = await tempDir();
             const fileName = entryName.split(/[\\/]/).pop() || 'preview';
             const tempPath = `${tempDirPath}aeroftp_preview_${Date.now()}_${fileName}`;
-            const cmd = `extract_${archiveType}_entry`;
+            const cmd = EXTRACT_ENTRY_COMMAND[archiveType];
             const args: Record<string, unknown> = {
                 archivePath,
                 entryName,

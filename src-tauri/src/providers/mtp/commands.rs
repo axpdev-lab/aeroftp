@@ -377,43 +377,6 @@ pub async fn mtp_close_device(
     mtp_close_device_inner(&state, device_id).await
 }
 
-/// Diagnostic: backend linkage and open session (no USB side effects beyond status).
-#[tauri::command]
-pub async fn mtp_backend_status(
-    state: State<'_, ProviderState>,
-) -> Result<MtpBackendStatusDto, String> {
-    let open_device_id = {
-        let config_lock = state.config.lock().await;
-        config_lock
-            .as_ref()
-            .filter(|c| c.provider_type == ProviderType::Mtp)
-            .map(|c| c.host.clone())
-    };
-    // Prefer config; fall back to live provider type if config was cleared mid-flight.
-    let open_device_id = if open_device_id.is_some() {
-        open_device_id
-    } else {
-        let prov = state.provider.lock().await;
-        if prov
-            .as_ref()
-            .map(|p| p.provider_type() == ProviderType::Mtp)
-            .unwrap_or(false)
-        {
-            Some("(open)".to_string())
-        } else {
-            None
-        }
-    };
-    Ok(MtpBackendStatusDto {
-        linked: mtp_backend_linked(),
-        platform: std::env::consts::OS.to_string(),
-        open_device_id,
-        build_backend: option_env!("AEROFTP_MTP_BACKEND")
-            .unwrap_or("unknown")
-            .to_string(),
-    })
-}
-
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MtpBackendStatusDto {

@@ -1469,7 +1469,6 @@ pub async fn speedtest_history_record(
     Ok(id)
 }
 
-#[tauri::command]
 pub async fn speedtest_history_list(
     db: State<'_, SpeedTestHistoryDb>,
     server_id: Option<String>,
@@ -1600,25 +1599,6 @@ pub async fn speedtest_history_summary(
         median_upload_bps: median_ul,
         regression_warning,
     })
-}
-
-#[tauri::command]
-pub async fn speedtest_history_clear(
-    db: State<'_, SpeedTestHistoryDb>,
-    server_id: Option<String>,
-) -> Result<u32, String> {
-    let conn = history_acquire(&db);
-    let deleted = if let Some(sid) = server_id {
-        conn.execute(
-            "DELETE FROM speedtest_results WHERE server_id = ?1",
-            params![sid],
-        )
-        .map_err(|e| format!("Delete: {e}"))?
-    } else {
-        conn.execute("DELETE FROM speedtest_results", [])
-            .map_err(|e| format!("Delete: {e}"))?
-    };
-    Ok(deleted as u32)
 }
 
 fn median_f64(mut values: Vec<f64>) -> Option<f64> {

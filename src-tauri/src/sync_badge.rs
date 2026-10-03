@@ -56,19 +56,6 @@ impl SyncBadgeState {
             SyncBadgeState::New => "NEW",
         }
     }
-
-    /// Convert to GIO emblem name
-    #[cfg(target_os = "linux")]
-    pub fn to_emblem_name(self) -> &'static str {
-        match self {
-            SyncBadgeState::Synced => "emblem-aerocloud-synced",
-            SyncBadgeState::Syncing => "emblem-aerocloud-syncing",
-            SyncBadgeState::Error => "emblem-aerocloud-error",
-            SyncBadgeState::Ignored => "emblem-aerocloud-ignored",
-            SyncBadgeState::Conflict => "emblem-aerocloud-conflict",
-            SyncBadgeState::New => "emblem-aerocloud-new",
-        }
-    }
 }
 
 /// File sync state tracker with LRU eviction
@@ -117,12 +104,6 @@ impl SyncStateTracker {
         } else {
             None
         }
-    }
-
-    /// Remove state for a file
-    fn remove_state(&mut self, path: &Path) {
-        self.states.remove(path);
-        self.access_order.retain(|p| p != path);
     }
 
     /// Check if path is inside a sync root
@@ -652,18 +633,6 @@ pub async fn stop_badge_server() {
     // No-op on unsupported platforms
 }
 
-/// Update state for a single file
-pub async fn update_file_state(path: &Path, state: SyncBadgeState) {
-    let path_buf = path.to_path_buf();
-
-    {
-        let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
-        tracker.set_state(path_buf.clone(), state);
-    }
-
-    notify_update(path).await;
-}
-
 /// Update state for all files in a directory (recursive)
 pub async fn update_directory_state(dir: &Path, state: SyncBadgeState) {
     let dir_buf = dir.to_path_buf();
@@ -684,12 +653,6 @@ pub async fn update_directory_state(dir: &Path, state: SyncBadgeState) {
     }
 
     notify_update(dir).await;
-}
-
-/// Get state for a specific file
-pub async fn get_file_state(path: &Path) -> Option<SyncBadgeState> {
-    let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
-    tracker.get_state(path)
 }
 
 /// Register a sync root directory
@@ -772,58 +735,6 @@ async fn notify_update(_path: &Path) {
 // ============================================================================
 // GIO Emblem Support
 // ============================================================================
-
-/// Set GIO emblem for a file (pub(crate): callers must pre-validate path)
-#[cfg(target_os = "linux")]
-pub(crate) fn set_gio_emblem(path: &Path, state: SyncBadgeState) -> Result<(), String> {
-    let emblem_name = state.to_emblem_name();
-    let path_str = path
-        .to_str()
-        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?;
-
-    let output = std::process::Command::new("gio")
-        .args([
-            "set",
-            path_str,
-            "-t",
-            "stringv",
-            "metadata::emblems",
-            emblem_name,
-        ])
-        .output()
-        .map_err(|e| format!("Failed to execute gio: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "gio set failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    Ok(())
-}
-
-/// Clear GIO emblem for a file
-#[cfg(target_os = "linux")]
-pub(crate) fn clear_gio_emblem(path: &Path) -> Result<(), String> {
-    let path_str = path
-        .to_str()
-        .ok_or_else(|| "Invalid UTF-8 in path".to_string())?;
-
-    let output = std::process::Command::new("gio")
-        .args(["set", path_str, "-t", "unset", "metadata::emblems"])
-        .output()
-        .map_err(|e| format!("Failed to execute gio: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "gio set failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    Ok(())
-}
 
 // ============================================================================
 // Shell Extension Installation
@@ -1039,72 +950,6 @@ const EMBLEM_NEW_SVG: &str = r##"<?xml version="1.0" encoding="UTF-8"?>
 // ============================================================================
 // Tauri Commands
 // ============================================================================
-
-#[tauri::command]
-pub async fn start_badge_server_cmd(app: tauri::AppHandle) -> Result<String, String> {
-    start_badge_server(app).await?;
-    Ok("Badge server started".to_string())
-}
-
-#[tauri::command]
-pub async fn stop_badge_server_cmd() -> Result<String, String> {
-    stop_badge_server().await;
-    Ok("Badge server stopped".to_string())
-}
-
-#[tauri::command]
-pub async fn set_file_badge(path: String, state: String) -> Result<(), String> {
-    let path_buf = validate_path(&path)?;
-
-    let badge_state = match state.as_str() {
-        "synced" => SyncBadgeState::Synced,
-        "syncing" => SyncBadgeState::Syncing,
-        "error" => SyncBadgeState::Error,
-        "ignored" => SyncBadgeState::Ignored,
-        "conflict" => SyncBadgeState::Conflict,
-        "new" => SyncBadgeState::New,
-        _ => return Err(format!("Invalid state: {}", state)),
-    };
-
-    update_file_state(&path_buf, badge_state).await;
-
-    // Also set GIO emblem as fallback (Linux only: gio command doesn't exist on macOS/Windows)
-    #[cfg(target_os = "linux")]
-    {
-        let _ = set_gio_emblem(&path_buf, badge_state);
-    }
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn clear_file_badge(path: String) -> Result<(), String> {
-    let path_buf = validate_path(&path)?;
-
-    {
-        let mut tracker = BADGE_TRACKER.write().unwrap_or_else(|p| p.into_inner());
-        tracker.remove_state(&path_buf);
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let _ = clear_gio_emblem(&path_buf);
-    }
-
-    notify_update(&path_buf).await;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn get_badge_status(path: String) -> Result<String, String> {
-    let path_buf = validate_path(&path)?;
-
-    if let Some(state) = get_file_state(&path_buf).await {
-        Ok(state.to_status_str().to_string())
-    } else {
-        Ok("NOP".to_string())
-    }
-}
 
 #[tauri::command]
 pub async fn install_shell_extension_cmd() -> Result<String, String> {

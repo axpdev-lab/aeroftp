@@ -4477,9 +4477,6 @@
             "starred": "Datoteka označena zvjezdicom",
             "unstarred": "Zvjezdica uklonjena"
         },
-        "dropbox": {
-            "manageTags": "Upravljanje oznakama"
-        },
         "providers": {
             "title": "Pružatelji i integracije",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Besplatni plan",
             "freeCardTier": "Besplatno + kartica",
             "paidTier": "Plaćeno"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Upravljanje oznakama",
-            "noLabels": "Nema dostupnih oznaka. Kreirajte oznake u postavkama Zoho WorkDrive.",
-            "createLabel": "Kreiraj oznaku",
-            "labelName": "Naziv oznake"
         },
         "healthCheck": {
             "title": "Provjera stanja poslužitelja",

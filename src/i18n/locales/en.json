@@ -5391,15 +5391,6 @@
             "accessTier": "Access Tier",
             "accessTierChanged": "Access tier set to {tier}"
         },
-        "dropbox": {
-            "manageTags": "Manage Tags"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Manage Labels",
-            "noLabels": "No labels available. Create one below.",
-            "createLabel": "Create Label",
-            "labelName": "Label name"
-        },
         "providers": {
             "title": "Providers & Integrations",
             "tabOAuth": "OAuth / API",

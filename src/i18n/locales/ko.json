@@ -4477,9 +4477,6 @@
             "starred": "파일에 별표가 추가되었습니다",
             "unstarred": "파일에서 별표가 제거되었습니다"
         },
-        "dropbox": {
-            "manageTags": "태그 관리"
-        },
         "providers": {
             "title": "공급자 및 통합",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "무료 플랜",
             "freeCardTier": "무료 + 카드",
             "paidTier": "유료"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "라벨 관리",
-            "noLabels": "사용 가능한 라벨이 없습니다. Zoho WorkDrive 설정에서 라벨을 만듭니다.",
-            "createLabel": "레이블 생성",
-            "labelName": "레이블 이름"
         },
         "healthCheck": {
             "title": "서버 상태 점검",

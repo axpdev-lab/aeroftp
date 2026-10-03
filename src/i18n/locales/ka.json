@@ -4477,9 +4477,6 @@
             "starred": "ფაილს ვარსკვლავი მიენიჭა",
             "unstarred": "ფაილს ვარსკვლავი მოეხსნა"
         },
-        "dropbox": {
-            "manageTags": "ტეგების მართვა"
-        },
         "providers": {
             "title": "პროვაიდერები და ინტეგრაციები",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "უფასო გეგმა",
             "freeCardTier": "უფასო + ბარათი",
             "paidTier": "ფასიანი"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "ლეიბლების მართვა",
-            "noLabels": "ლეიბლები არ არის ხელმისაწვდომი. შექმენით ლეიბლები Zoho WorkDrive პარამეტრებში.",
-            "createLabel": "მარკა ააღი",
-            "labelName": "მარკის სახელი"
         },
         "healthCheck": {
             "title": "სერვერის ჯანმრთელობის შემოწმება",

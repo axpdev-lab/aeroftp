@@ -2646,13 +2646,13 @@ impl ProviderFactory {
                 // OAuth2 providers require a different initialization flow
                 // Use oauth2_connect command instead
                 Err(ProviderError::NotSupported(
-                    "OAuth2 providers must be connected using oauth2_start_auth and oauth2_connect commands".to_string()
+                    "OAuth2 providers must be connected using oauth2_full_auth and oauth2_connect commands".to_string()
                 ))
             }
             ProviderType::FourShared => {
                 // OAuth1 provider: use fourshared_connect command
                 Err(ProviderError::NotSupported(
-                    "4shared must be connected using fourshared_start_auth and fourshared_connect commands".to_string()
+                    "4shared must be connected using fourshared_full_auth and fourshared_connect commands".to_string()
                 ))
             }
             ProviderType::Mega => {

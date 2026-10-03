@@ -4477,9 +4477,6 @@
             "starred": "फ़ाइल तारांकित की गई",
             "unstarred": "फ़ाइल का तारांकन हटाया गया"
         },
-        "dropbox": {
-            "manageTags": "टैग प्रबंधित करें"
-        },
         "providers": {
             "title": "प्रदाता और एकीकरण",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "मुफ़्त योजना",
             "freeCardTier": "मुफ्त + कार्ड",
             "paidTier": "सशुल्क"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "लेबल प्रबंधित करें",
-            "noLabels": "कोई लेबल उपलब्ध नहीं। नीचे एक बनाएं।",
-            "createLabel": "लेबल बनाएं",
-            "labelName": "लेबल का नाम"
         },
         "healthCheck": {
             "title": "सर्वर स्वास्थ्य जाँच",

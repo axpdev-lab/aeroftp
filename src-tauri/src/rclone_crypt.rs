@@ -1159,53 +1159,6 @@ pub async fn rclone_crypt_decrypt_name(
     decrypt_name(&keys.name_key, &keys.name_tweak, &encrypted_name)
 }
 
-/// Encrypt a single filename using the unlocked keys and a directory IV.
-#[tauri::command]
-pub async fn rclone_crypt_encrypt_name(
-    state: tauri::State<'_, RcloneCryptState>,
-    vault_id: String,
-    _dir_iv_base64: String,
-    plain_name: String,
-) -> Result<String, String> {
-    let vaults = state.vaults.lock().await;
-    let keys = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
-
-    if keys.filename_encryption == FilenameEncryption::Off {
-        if keys.off_suffix.is_empty() {
-            return Ok(plain_name);
-        }
-        return Ok(format!("{}{}", plain_name, keys.off_suffix));
-    }
-
-    if keys.filename_encryption == FilenameEncryption::Obfuscate {
-        return obfuscate_name(&keys.name_tweak, &plain_name);
-    }
-    encrypt_name(&keys.name_key, &keys.name_tweak, &plain_name)
-}
-
-/// Decrypt file content. Takes raw encrypted bytes (base64-encoded from frontend),
-/// returns decrypted bytes as base64.
-#[tauri::command]
-pub async fn rclone_crypt_decrypt_file(
-    state: tauri::State<'_, RcloneCryptState>,
-    vault_id: String,
-    encrypted_data_base64: String,
-    output_path: String,
-) -> Result<String, String> {
-    use base64::Engine;
-
-    let vaults = state.vaults.lock().await;
-    let keys = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
-
-    let encrypted_data = base64::engine::general_purpose::STANDARD
-        .decode(&encrypted_data_base64)
-        .map_err(|e| format!("base64 decode failed: {}", e))?;
-
-    let plaintext = decrypt_file_content(&encrypted_data, &keys.data_key)?;
-    let guard = OutputPathGuard::new(&output_path)?;
-    guard.write_all(&plaintext)
-}
-
 /// Decrypt file from a local encrypted file path to a local decrypted output path.
 #[tauri::command]
 pub async fn rclone_crypt_decrypt_file_path(
@@ -1241,46 +1194,6 @@ pub async fn rclone_crypt_decrypt_file_path(
     let plaintext = decrypt_file_content(&encrypted_data, &keys.data_key)?;
     let guard = OutputPathGuard::new(&output_path)?;
     guard.write_all(&plaintext)
-}
-
-/// Encrypt a local plaintext file to a local rclone-crypt formatted file.
-#[tauri::command]
-pub async fn rclone_crypt_encrypt_file_path(
-    state: tauri::State<'_, RcloneCryptState>,
-    vault_id: String,
-    plaintext_file_path: String,
-    encrypted_output_path: String,
-) -> Result<String, String> {
-    crate::filesystem::validate_path(&plaintext_file_path)?;
-
-    let plaintext_meta = std::fs::symlink_metadata(Path::new(&plaintext_file_path))
-        .map_err(|e| format!("failed to inspect plaintext input file: {}", e))?;
-    if plaintext_meta.file_type().is_symlink() {
-        return Err("Plaintext input path cannot be a symlink".to_string());
-    }
-    if !plaintext_meta.is_file() {
-        return Err("Plaintext input path must be a regular file".to_string());
-    }
-    if plaintext_meta.len() > MAX_DECRYPT_INPUT_BYTES as u64 {
-        return Err(format!(
-            "plaintext input too large for MVP encrypt path ({} bytes > {} bytes)",
-            plaintext_meta.len(),
-            MAX_DECRYPT_INPUT_BYTES
-        ));
-    }
-
-    let data_key = {
-        let vaults = state.vaults.lock().await;
-        let keys = vaults.get(&vault_id).ok_or("Vault not unlocked")?;
-        keys.data_key
-    };
-
-    let plaintext =
-        std::fs::read(&plaintext_file_path).map_err(|e| format!("failed to read file: {}", e))?;
-
-    let encrypted = encrypt_file_content(&plaintext, &data_key)?;
-    let guard = OutputPathGuard::new(&encrypted_output_path)?;
-    guard.write_all(&encrypted)
 }
 
 /// Helper for cryptcheck: stream-decrypts a remote file and computes its hash (e.g. MD5 or SHA-256).

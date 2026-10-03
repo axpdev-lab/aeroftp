@@ -4477,9 +4477,6 @@
             "starred": "Đã gắn dấu sao cho tệp",
             "unstarred": "Đã bỏ dấu sao khỏi tệp"
         },
-        "dropbox": {
-            "manageTags": "Quản lý thẻ"
-        },
         "providers": {
             "title": "Nhà cung cấp và Tích hợp",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Gói miễn phí",
             "freeCardTier": "Miễn phí + thẻ",
             "paidTier": "Trả phí"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Quản lý nhãn",
-            "noLabels": "Không có nhãn nào có sẵn. Tạo nhãn trong cài đặt Zoho WorkDrive.",
-            "createLabel": "Tạo nhãn",
-            "labelName": "Tên nhãn"
         },
         "healthCheck": {
             "title": "Kiểm tra tình trạng máy chủ",

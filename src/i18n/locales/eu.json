@@ -4496,9 +4496,6 @@
             "starred": "Fitxategia izarrez markatua",
             "unstarred": "Izarra kendua"
         },
-        "dropbox": {
-            "manageTags": "Etiketak kudeatu"
-        },
         "providers": {
             "title": "Hornitzaileak eta integrazioak",
             "tabOAuth": "OAuth / API",
@@ -4536,12 +4533,6 @@
             "freeTier": "Doako plana",
             "freeCardTier": "Doan + txartela",
             "paidTier": "Ordainpekoa"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Etiketak kudeatu",
-            "noLabels": "Ez dago etiketarik erabilgarri. Sortu bat behean.",
-            "createLabel": "Etiketa sortu",
-            "labelName": "Etiketaren izena"
         },
         "healthCheck": {
             "title": "Zerbitzariaren osasun-egiaztapena",

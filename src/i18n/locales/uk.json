@@ -4477,9 +4477,6 @@
             "starred": "Файл позначено зіркою",
             "unstarred": "Зірку знято"
         },
-        "dropbox": {
-            "manageTags": "Керування тегами"
-        },
         "providers": {
             "title": "Постачальники та інтеграції",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Безкоштовний тариф",
             "freeCardTier": "Безкошт. + картка",
             "paidTier": "Платно"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Керування мітками",
-            "noLabels": "Немає доступних міток. Створіть мітки в налаштуваннях Zoho WorkDrive.",
-            "createLabel": "Створити мітку",
-            "labelName": "Назва мітки"
         },
         "healthCheck": {
             "title": "Перевірка стану сервера",

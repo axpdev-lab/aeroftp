@@ -478,12 +478,6 @@ fn insert_entry(
     })
 }
 
-fn delete_entry_in_conn(conn: &Connection, id: i64) -> Result<(), String> {
-    conn.execute("DELETE FROM agent_memories WHERE id = ?1", params![id])
-        .map_err(|e| format!("Delete memory failed: {e}"))?;
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn agent_memory_store(
     app: AppHandle,
@@ -522,13 +516,6 @@ pub async fn agent_memory_search(
             .unwrap_or(MEMORY_DEFAULT_LIMIT)
             .clamp(1, MEMORY_MAX_LIMIT),
     )
-}
-
-#[tauri::command]
-pub async fn agent_memory_delete(app: AppHandle, id: i64) -> Result<(), String> {
-    let db = app.state::<AgentMemoryDb>();
-    let conn = acquire_lock(&db);
-    delete_entry_in_conn(&conn, id)
 }
 
 pub fn search_memory_cli(

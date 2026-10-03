@@ -637,12 +637,6 @@ fn row_to_session(row: &rusqlite::Row) -> rusqlite::Result<ChatSession> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub async fn chat_history_init(_app: AppHandle) -> Result<String, String> {
-    // BUG-015: Migration handled in lib.rs setup, not here
-    Ok("Chat history initialized.".to_string())
-}
-
-#[tauri::command]
 pub async fn chat_history_list_sessions(
     app: AppHandle,
     limit: Option<i64>,
@@ -816,50 +810,6 @@ pub async fn chat_history_delete_session(app: AppHandle, session_id: String) -> 
 }
 
 #[tauri::command]
-pub async fn chat_history_delete_sessions_bulk(
-    app: AppHandle,
-    session_ids: Option<Vec<String>>,
-    older_than_days: Option<i64>,
-) -> Result<i64, String> {
-    let db = app.state::<ChatHistoryDb>();
-    let conn = acquire_lock(&db);
-
-    let deleted = if let Some(ids) = session_ids {
-        // Batch delete in chunks of 500 to respect SQLITE_LIMIT_VARIABLE_NUMBER (SEC-002)
-        let mut total_deleted: i64 = 0;
-        for chunk in ids.chunks(500) {
-            let placeholders: String = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let sql = format!("DELETE FROM sessions WHERE id IN ({placeholders})");
-            let params: Vec<&dyn rusqlite::types::ToSql> = chunk
-                .iter()
-                .map(|s| s as &dyn rusqlite::types::ToSql)
-                .collect();
-            total_deleted += conn
-                .execute(&sql, params.as_slice())
-                .map_err(|e| format!("Bulk delete: {e}"))? as i64;
-        }
-        total_deleted
-    } else if let Some(days) = older_than_days {
-        let cutoff = chrono::Utc::now()
-            .timestamp_millis()
-            .checked_sub(
-                days.checked_mul(86_400_000)
-                    .ok_or("Overflow in days calculation")?,
-            )
-            .ok_or("Overflow in cutoff calculation")?;
-        conn.execute(
-            "DELETE FROM sessions WHERE updated_at < ?1",
-            params![cutoff],
-        )
-        .map_err(|e| format!("Delete old sessions: {e}"))? as i64
-    } else {
-        return Err("Provide session_ids or older_than_days".into());
-    };
-
-    Ok(deleted)
-}
-
-#[tauri::command]
 pub async fn chat_history_search(
     app: AppHandle,
     query: String,
@@ -981,123 +931,6 @@ pub async fn chat_history_stats(app: AppHandle) -> Result<ChatStats, String> {
         total_cost,
         db_size_bytes,
     })
-}
-
-#[tauri::command]
-pub async fn chat_history_export_session(
-    app: AppHandle,
-    session_id: String,
-    format: String,
-) -> Result<String, String> {
-    // BUG-003: Use inner helper to avoid double-lock
-    let db = app.state::<ChatHistoryDb>();
-    let conn = acquire_lock(&db);
-    let session_data = get_session_inner(&conn, &session_id)?;
-
-    match format.as_str() {
-        "json" => {
-            serde_json::to_string_pretty(&session_data).map_err(|e| format!("JSON serialize: {e}"))
-        }
-        "markdown" => {
-            let mut md = format!(
-                "# {}\n*Exported on {}*\n\n",
-                session_data.session.title,
-                chrono::Utc::now().format("%Y-%m-%d %H:%M UTC")
-            );
-            for msg in &session_data.messages {
-                let role = if msg.role == "user" {
-                    "User"
-                } else {
-                    "AeroAgent"
-                };
-                let model_tag = msg
-                    .model
-                    .as_ref()
-                    .map(|m| format!(" *({m})*"))
-                    .unwrap_or_default();
-                md.push_str(&format!("### {role}{model_tag}\n{}\n", msg.content));
-                let total = msg.tokens_in + msg.tokens_out;
-                if total > 0 {
-                    md.push_str(&format!(
-                        "> {total} tokens{}\n",
-                        if msg.cost > 0.0 {
-                            format!(" · ${:.4}", msg.cost)
-                        } else {
-                            String::new()
-                        }
-                    ));
-                }
-                md.push('\n');
-            }
-            md.push_str("---\n*Exported from AeroFTP AeroAgent*\n");
-            Ok(md)
-        }
-        _ => Err("Invalid format. Use 'json' or 'markdown'.".into()),
-    }
-}
-
-#[tauri::command]
-pub async fn chat_history_import(app: AppHandle, json_data: String) -> Result<String, String> {
-    let db = app.state::<ChatHistoryDb>();
-    let conn = acquire_lock(&db);
-
-    let data: SessionWithMessages =
-        serde_json::from_str(&json_data).map_err(|e| format!("Invalid JSON: {e}"))?;
-
-    // Wrap import in transaction (SEC-005)
-    conn.execute_batch("BEGIN TRANSACTION")
-        .map_err(|e| format!("Begin import tx: {e}"))?;
-
-    let result = (|| -> Result<(), String> {
-        conn.execute(
-            "INSERT INTO sessions (id, title, provider, model, message_count, total_tokens, total_cost, active_branch_id, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT(id) DO UPDATE SET
-               title = excluded.title, provider = excluded.provider, model = excluded.model,
-               message_count = excluded.message_count, total_tokens = excluded.total_tokens,
-               total_cost = excluded.total_cost, updated_at = excluded.updated_at",
-            params![
-                data.session.id, data.session.title, data.session.provider, data.session.model,
-                data.session.message_count, data.session.total_tokens, data.session.total_cost,
-                data.active_branch_id, data.session.created_at, data.session.updated_at,
-            ],
-        )
-        .map_err(|e| format!("Import session: {e}"))?;
-
-        for msg in &data.messages {
-            conn.execute(
-                "INSERT INTO messages (id, session_id, role, content, tool_calls, thinking, tokens_in, tokens_out, cost, model, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-                 ON CONFLICT(id) DO UPDATE SET
-                   content = excluded.content, tool_calls = excluded.tool_calls,
-                   thinking = excluded.thinking, tokens_in = excluded.tokens_in,
-                   tokens_out = excluded.tokens_out, cost = excluded.cost, model = excluded.model",
-                params![
-                    msg.id, msg.session_id, msg.role, msg.content, msg.tool_calls,
-                    msg.thinking, msg.tokens_in, msg.tokens_out, msg.cost, msg.model, msg.created_at,
-                ],
-            )
-            .map_err(|e| format!("Import message: {e}"))?;
-        }
-        Ok(())
-    })();
-
-    match result {
-        Ok(()) => {
-            conn.execute_batch("COMMIT")
-                .map_err(|e| format!("Commit import: {e}"))?;
-        }
-        Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
-            return Err(e);
-        }
-    }
-
-    Ok(format!(
-        "Imported session '{}' with {} messages",
-        data.session.title,
-        data.messages.len()
-    ))
 }
 
 // F4: Dedicated clear-all command: avoids semantic overload of `older_than_days = 0`

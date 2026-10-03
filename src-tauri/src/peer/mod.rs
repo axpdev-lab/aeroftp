@@ -485,27 +485,6 @@ pub async fn send_knock_oneshot(
         .await
 }
 
-/// Send an action (structured agent-to-agent message) over the shared identity
-/// endpoint. Companion to [`send_knock_on_endpoint`].
-pub async fn send_action_on_endpoint(
-    ep: &aeroftp_peer_l0::PeerEndpoint,
-    recipient_afid: &str,
-    my_secret: &[u8],
-    verb: &str,
-    payload: Option<serde_json::Value>,
-    correlation_id: Option<String>,
-) -> anyhow::Result<()> {
-    aeroftp_peer_l0::send::send_action_on_endpoint(
-        ep,
-        recipient_afid,
-        my_secret,
-        verb,
-        payload,
-        correlation_id,
-    )
-    .await
-}
-
 /// Send an action over a FRESH identity endpoint (no standing receiver to share
 /// with). Companion to [`send_knock_oneshot`].
 pub async fn send_action_oneshot(

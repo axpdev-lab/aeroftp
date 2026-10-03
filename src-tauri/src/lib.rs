@@ -266,8 +266,6 @@ pub mod rclone_filter;
 pub mod rclone_import;
 pub mod restic_import;
 pub mod restricted_chars;
-mod session_commands;
-mod session_manager;
 pub mod shell_quote;
 #[cfg(all(not(target_os = "macos"), feature = "local-stt"))]
 mod speech;
@@ -3381,12 +3379,6 @@ async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn check_connection(state: State<'_, AppState>) -> Result<bool, String> {
-    let ftp_manager = state.ftp_manager.lock().await;
-    Ok(ftp_manager.is_connected())
-}
-
-#[tauri::command]
 async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
@@ -5561,29 +5553,7 @@ async fn set_speed_limit(
     Ok(())
 }
 
-/// Get current global transfer speed limits (KB/s)
-#[tauri::command]
-async fn get_speed_limit(state: State<'_, AppState>) -> Result<(u64, u64), String> {
-    let dl = state
-        .speed_limits
-        .download_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    let ul = state
-        .speed_limits
-        .upload_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    Ok((dl, ul))
-}
-
 // ============ Environment Detection ============
-
-/// Check if the application is running as a Snap package
-#[tauri::command]
-fn is_running_as_snap() -> bool {
-    std::env::var("SNAP").is_ok()
-}
 
 // ============ Debug & Dependencies Commands ============
 
@@ -14763,326 +14733,6 @@ async fn ai_list_models(
     }
 }
 
-// Tool execution request
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ToolRequest {
-    tool_name: String,
-    args: serde_json::Value,
-}
-
-// Allowed AI tool names (whitelist)
-const ALLOWED_AI_TOOLS: &[&str] = &[
-    "list_files",
-    "read_file",
-    "create_folder",
-    "delete_file",
-    "rename_file",
-    "download_file",
-    "upload_file",
-    "chmod",
-];
-
-/// Validate and sanitize a path argument from AI tool calls.
-/// Rejects null bytes, path traversal sequences, and excessively long paths.
-fn validate_tool_path(path: &str, param_name: &str) -> Result<(), String> {
-    if path.len() > 4096 {
-        return Err(format!("{}: path exceeds 4096 characters", param_name));
-    }
-    if path.contains('\0') {
-        return Err(format!("{}: path contains null bytes", param_name));
-    }
-    // Reject path traversal: literal ".." components
-    for component in path.split('/') {
-        if component == ".." {
-            return Err(format!(
-                "{}: path traversal ('..') is not allowed",
-                param_name
-            ));
-        }
-    }
-    // Also check backslash-separated (Windows paths)
-    for component in path.split('\\') {
-        if component == ".." {
-            return Err(format!(
-                "{}: path traversal ('..') is not allowed",
-                param_name
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// Validate a chmod mode string (must be octal digits, 3-4 chars).
-fn validate_chmod_mode(mode: &str) -> Result<(), String> {
-    if mode.len() < 3 || mode.len() > 4 {
-        return Err("mode must be 3-4 octal digits (e.g. '755')".to_string());
-    }
-    if !mode.chars().all(|c| c.is_ascii_digit() && c <= '7') {
-        return Err("mode must contain only octal digits (0-7)".to_string());
-    }
-    Ok(())
-}
-
-// Execute AI tool - routes to existing FTP commands
-#[tauri::command]
-async fn ai_execute_tool(
-    state: State<'_, AppState>,
-    app: AppHandle,
-    request: ToolRequest,
-) -> Result<serde_json::Value, String> {
-    // Validate tool name against whitelist
-    if !ALLOWED_AI_TOOLS.contains(&request.tool_name.as_str()) {
-        return Err(format!("Unknown or disallowed tool: {}", request.tool_name));
-    }
-
-    let args = request.args;
-
-    match request.tool_name.as_str() {
-        "list_files" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("/");
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                let files = get_local_files(path.to_string(), Some(true))
-                    .await
-                    .map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({
-                    "success": true,
-                    "count": files.len(),
-                    "files": files.iter().take(20).map(|f| {
-                        serde_json::json!({
-                            "name": f.name,
-                            "is_dir": f.is_dir,
-                            "size": f.size
-                        })
-                    }).collect::<Vec<_>>()
-                }))
-            } else {
-                let mut manager = state.ftp_manager.lock().await;
-                let files = manager.list_files().await.map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({
-                    "success": true,
-                    "count": files.len(),
-                    "files": files.iter().take(20).map(|f| {
-                        serde_json::json!({
-                            "name": f.name,
-                            "is_dir": f.is_dir,
-                            "size": f.size
-                        })
-                    }).collect::<Vec<_>>()
-                }))
-            }
-        }
-
-        "read_file" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                let content = read_local_file(path.to_string(), Some(5))
-                    .await
-                    .map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({
-                    "success": true,
-                    "content": content.chars().take(5000).collect::<String>(),
-                    "truncated": content.len() > 5000
-                }))
-            } else {
-                // AI tool preview: use FTP manager directly (provider path handled by Tauri command)
-                let content = {
-                    let mut ftp = state.ftp_manager.lock().await;
-                    let temp = std::env::temp_dir().join(format!(
-                        "aeroftp_ai_preview_{}",
-                        chrono::Utc::now().timestamp_millis()
-                    ));
-                    let temp_str = temp.to_string_lossy().to_string();
-                    ftp.download_file_with_progress(path, &temp_str, |_| true)
-                        .await
-                        .map_err(|e| format!("Failed to download: {}", e))?;
-                    let c = tokio::fs::read_to_string(&temp)
-                        .await
-                        .map_err(|e| format!("Failed to read: {}", e))?;
-                    let _ = tokio::fs::remove_file(&temp).await;
-                    c
-                };
-                Ok(serde_json::json!({
-                    "success": true,
-                    "content": content.chars().take(5000).collect::<String>(),
-                    "truncated": content.len() > 5000
-                }))
-            }
-        }
-
-        "create_folder" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                create_local_folder(path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            } else {
-                create_remote_folder(state.clone(), path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Created folder: {}", path) }),
-            )
-        }
-
-        "delete_file" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                delete_local_file(app.clone(), state.clone(), path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            } else {
-                // Assume file, not directory for simple delete
-                delete_remote_file(app.clone(), state.clone(), path.to_string(), false)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-            Ok(serde_json::json!({ "success": true, "message": format!("Deleted: {}", path) }))
-        }
-
-        "rename_file" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let old_path = args
-                .get("old_path")
-                .and_then(|v| v.as_str())
-                .ok_or("old_path required")?;
-            let new_path = args
-                .get("new_path")
-                .and_then(|v| v.as_str())
-                .ok_or("new_path required")?;
-            validate_tool_path(old_path, "old_path")?;
-            validate_tool_path(new_path, "new_path")?;
-
-            if location == "local" {
-                rename_local_file(old_path.to_string(), new_path.to_string(), None)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            } else {
-                rename_remote_file(state.clone(), old_path.to_string(), new_path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Renamed {} to {}", old_path, new_path) }),
-            )
-        }
-
-        "download_file" => {
-            let remote_path = args
-                .get("remote_path")
-                .and_then(|v| v.as_str())
-                .ok_or("remote_path required")?;
-            let local_path = args
-                .get("local_path")
-                .and_then(|v| v.as_str())
-                .ok_or("local_path required")?;
-            validate_tool_path(remote_path, "remote_path")?;
-            validate_tool_path(local_path, "local_path")?;
-
-            download_file(
-                app,
-                state.clone(),
-                DownloadParams {
-                    remote_path: remote_path.to_string(),
-                    local_path: local_path.to_string(),
-                    modified: None,
-                    use_delta: true,
-                },
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Downloaded {} to {}", remote_path, local_path) }),
-            )
-        }
-
-        "upload_file" => {
-            let local_path = args
-                .get("local_path")
-                .and_then(|v| v.as_str())
-                .ok_or("local_path required")?;
-            let remote_path = args
-                .get("remote_path")
-                .and_then(|v| v.as_str())
-                .ok_or("remote_path required")?;
-            validate_tool_path(local_path, "local_path")?;
-            validate_tool_path(remote_path, "remote_path")?;
-
-            // AI tool upload: use FTP manager directly
-            {
-                let mut ftp = state.ftp_manager.lock().await;
-                ftp.upload_file_with_progress(local_path, remote_path, 0, |_| true)
-                    .await
-                    .map_err(|e| format!("Upload failed: {}", e))?;
-            }
-
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Uploaded {} to {}", local_path, remote_path) }),
-            )
-        }
-
-        "chmod" => {
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            let mode = args
-                .get("mode")
-                .and_then(|v| v.as_str())
-                .ok_or("mode required")?;
-            validate_tool_path(path, "path")?;
-            validate_chmod_mode(mode)?;
-
-            chmod_remote_file(state.clone(), path.to_string(), mode.to_string())
-                .await
-                .map_err(|e| e.to_string())?;
-
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Changed permissions of {} to {}", path, mode) }),
-            )
-        }
-
-        _ => unreachable!(), // tool_name already validated against ALLOWED_AI_TOOLS
-    }
-}
-
 // ============ AeroCloud Commands ============
 
 #[tauri::command]
@@ -15643,6 +15293,9 @@ async fn pause_aerocloud(app: AppHandle) -> Result<CloudConfig, String> {
         Ok(config.clone())
     })?;
 
+    // stop_background_sync left the tray on its idle icon; paused has its own.
+    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Paused);
+
     let _ = app.emit(
         "cloud-sync-status",
         serde_json::json!({
@@ -15669,6 +15322,11 @@ async fn resume_aerocloud(
         config.paused = false;
         Ok(config.clone())
     })?;
+
+    // pause_aerocloud put the tray on its Paused badge. With sync_on_startup
+    // off the worker waits for a trigger before its first cycle, so nothing
+    // else would repaint it.
+    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
 
     // Best-effort start. If a worker is already running start_background_sync
     // returns Ok early. If the config is invalid we surface the error so the
@@ -16564,13 +16222,6 @@ async fn set_tray_status(
     Ok(())
 }
 
-#[tauri::command]
-async fn update_tray_badge_cmd(app: AppHandle, state: String) -> Result<(), String> {
-    let badge_state = tray_badge::TrayBadgeState::from_str(&state);
-    tray_badge::update_tray_badge(&app, badge_state);
-    Ok(())
-}
-
 /// Save server credentials for background sync use
 #[tauri::command]
 async fn save_server_credentials(
@@ -17072,13 +16723,6 @@ async fn set_auto_lock_timeout(
     state.set_timeout(secs);
     persist_auto_lock_timeout(secs)?;
     Ok(())
-}
-
-#[tauri::command]
-async fn app_master_password_status(
-    state: State<'_, master_password::MasterPasswordState>,
-) -> Result<master_password::MasterPasswordStatus, String> {
-    Ok(master_password::MasterPasswordStatus::new(&state))
 }
 
 #[tauri::command]
@@ -18096,11 +17740,6 @@ async fn vault_mount_start(
 #[tauri::command]
 async fn vault_mount_stop(key: String) -> Result<(), String> {
     vault_mount::stop(&key).await
-}
-
-#[tauri::command]
-async fn vault_mount_list() -> Result<Vec<vault_mount::VaultMountInfo>, String> {
-    Ok(vault_mount::list().await)
 }
 
 #[tauri::command]
@@ -19333,6 +18972,11 @@ pub fn run() {
             if tray_available {
                 let _tray = tray_builder.build(app)?;
                 info!("System tray icon initialized");
+                let cloud = cloud_config::load_cloud_config();
+                let initial = tray_badge::TrayBadgeState::at_startup(cloud.enabled, cloud.paused);
+                if initial != tray_badge::TrayBadgeState::Default {
+                    tray_badge::update_tray_badge(app.handle(), initial);
+                }
             } else {
                 log::warn!(
                     "System tray unavailable: libappindicator / ayatana-appindicator3 \
@@ -19494,8 +19138,7 @@ pub fn run() {
         // AeroShare: registry of the background drive sync tasks consumed by
         // provider_connect for protocol="peer" (lifecycle per D-GUI-1:
         // open-or-tray = serving, Quit = stop).
-        .manage(peer::runtime::PeerRuntime::default())
-        .manage(session_manager::MultiProviderState::new());
+        .manage(peer::runtime::PeerRuntime::default());
 
     // Add PTY state for terminal support (all platforms)
     let builder = builder.manage(create_pty_state());
@@ -19531,7 +19174,6 @@ pub fn run() {
             panic_safe::debug_panic_command,
             connect_ftp,
             disconnect_ftp,
-            check_connection,
             crate::portal_chooser::chooser_unavailable,
             ftp_noop,
             reconnect_ftp,
@@ -19547,8 +19189,6 @@ pub fn run() {
             stop_starting_transfers,
             reset_cancel_flag,
             set_speed_limit,
-            get_speed_limit,
-            is_running_as_snap,
             get_local_files,
             open_in_file_manager,
             open_local_file,
@@ -19676,7 +19316,6 @@ pub fn run() {
             stop_background_sync,
             is_background_sync_running,
             set_tray_status,
-            update_tray_badge_cmd,
             save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
@@ -19696,7 +19335,6 @@ pub fn run() {
             disable_master_password,
             change_master_password,
             set_auto_lock_timeout,
-            app_master_password_status,
             app_master_password_update_activity,
             app_master_password_check_timeout,
             // Multi-user partition metadata
@@ -19765,11 +19403,9 @@ pub fn run() {
             peer_commands::peer_send_file,
             peer_commands::peer_receiver_start,
             peer_commands::peer_receiver_stop,
-            peer_commands::peer_receiver_status,
             peer_commands::peer_incoming_respond,
             peer_commands::peer_friends_presence,
             peer_commands::peer_send_knock,
-            peer_commands::peer_send_action,
             // AeroShare v4.1.0 security follow-ups (#370): anti-flood + discovery
             peer_commands::peer_contact_mute,
             peer_commands::peer_contact_unmute,
@@ -19831,7 +19467,6 @@ pub fn run() {
             ai_cancel_delegation,
             ai_test_provider,
             ai_list_models,
-            ai_execute_tool,
             ai_tools::validate_tool_args,
             ai_tools::prepare_ai_tool_approval,
             ai_tools::grant_ai_tool_approval,
@@ -19847,11 +19482,8 @@ pub fn run() {
             context_intelligence::detect_project_context,
             context_intelligence::scan_file_imports,
             context_intelligence::get_git_context,
-            context_intelligence::read_agent_memory,
-            context_intelligence::write_agent_memory,
             agent_memory_db::agent_memory_store,
             agent_memory_db::agent_memory_search,
-            agent_memory_db::agent_memory_delete,
             // Provider health check
             health_check::start_health_scan,
             speech::speech_model_status,
@@ -19879,7 +19511,6 @@ pub fn run() {
             aerovault_v2::vault_v2_open,
             aerovault_v2::is_vault_v2,
             aerovault_v2::vault_v2_peek,
-            aerovault_v2::vault_v2_security_info,
             aerovault_v2::vault_v2_add_files,
             aerovault_v2::vault_v2_extract_entry,
             aerovault_v2::vault_v2_extract_all,
@@ -19888,11 +19519,7 @@ pub fn run() {
             aerovault_v2::vault_v2_delete_entry,
             aerovault_v2::vault_v2_create_directory,
             aerovault_v2::vault_v2_delete_entries,
-            aerovault_v2::vault_v2_move_entry,
-            aerovault_v2::vault_v2_rename_entry,
-            aerovault_v2::vault_v2_copy_entry,
             aerovault_v2::vault_v2_add_files_to_dir,
-            aerovault_v2::vault_v2_compact,
             aerovault_v2::vault_v2_sync_compare,
             aerovault_v2::vault_v2_sync_apply,
             aerovault_v2::vault_v2_scan_directory,
@@ -19927,14 +19554,9 @@ pub fn run() {
             aerovault_v3::vault_v3_create_directory,
             aerovault_v3::vault_v3_delete_entry,
             aerovault_v3::vault_v3_delete_entries,
-            aerovault_v3::vault_v3_move_entry,
-            aerovault_v3::vault_v3_rename_entry,
-            aerovault_v3::vault_v3_copy_entry,
             aerovault_v3::vault_v3_change_password,
             aerovault_v3::vault_v3_change_mode,
             aerovault_v3::vault_v3_add_directory,
-            aerovault_v3::vault_v3_security_info,
-            aerovault_v3::vault_v3_has_error_correction,
             aerovault_v3::vault_v3_recovery_status,
             aerovault_v3::vault_v3_scrub,
             aerovault_v3::vault_v3_repair,
@@ -19958,10 +19580,7 @@ pub fn run() {
             rclone_crypt::rclone_crypt_secret_for_display,
             rclone_crypt::rclone_crypt_lock,
             rclone_crypt::rclone_crypt_decrypt_name,
-            rclone_crypt::rclone_crypt_encrypt_name,
-            rclone_crypt::rclone_crypt_decrypt_file,
             rclone_crypt::rclone_crypt_decrypt_file_path,
-            rclone_crypt::rclone_crypt_encrypt_file_path,
             rclone_crypt_provider_create_remote,
             // Native AeroCrypt overlay (mirrors the rclone set on our own codec)
             aerocrypt_provider::aerocrypt_unlock,
@@ -19998,11 +19617,7 @@ pub fn run() {
             ai_stream::ai_chat_stream,
             ai_stream::ai_cancel_stream,
             ai::ollama_pull_model,
-            ai::gemini_create_cache,
             ai::ollama_list_running,
-            ai::kimi_create_cache,
-            ai::kimi_upload_file,
-            ai::deepseek_fim_complete,
             // Multi-protocol provider commands
             provider_commands::provider_connect,
             provider_commands::provider_discover_targets,
@@ -20018,12 +19633,9 @@ pub fn run() {
             provider_commands::provider_lock_crypt_overlay,
             provider_commands::provider_rearm_cached_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
-            provider_commands::provider_check_connection,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
-            provider_commands::provider_go_up,
-            provider_commands::provider_pwd,
             provider_commands::provider_download_file,
             provider_commands::provider_detect_aero_remote,
             provider_commands::provider_detect_archive_meta_remote,
@@ -20037,26 +19649,16 @@ pub fn run() {
             provider_commands::provider_delete_dir,
             provider_commands::provider_rename,
             provider_commands::provider_server_copy,
-            provider_commands::provider_supports_server_copy,
-            provider_commands::provider_stat,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
             provider_commands::provider_keep_alive,
-            provider_commands::provider_server_info,
-            provider_commands::provider_file_size,
-            provider_commands::provider_exists,
             // OAuth2 cloud provider commands
-            provider_commands::oauth2_start_auth,
-            provider_commands::oauth2_complete_auth,
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
             provider_commands::twake_sign_in,
             provider_commands::oauth2_redirect_uri,
             provider_commands::oauth2_has_tokens,
-            provider_commands::oauth2_logout,
             // 4shared OAuth 1.0 commands
-            provider_commands::fourshared_start_auth,
-            provider_commands::fourshared_complete_auth,
             provider_commands::fourshared_full_auth,
             provider_commands::fourshared_connect,
             provider_commands::fourshared_has_tokens,
@@ -20064,21 +19666,13 @@ pub fn run() {
             provider_commands::zoho_list_trash,
             provider_commands::zoho_permanent_delete,
             provider_commands::zoho_restore_from_trash,
-            provider_commands::zoho_list_team_labels,
-            provider_commands::zoho_get_file_labels,
-            provider_commands::zoho_add_file_label,
-            provider_commands::zoho_remove_file_label,
-            provider_commands::zoho_create_label,
-            provider_commands::zoho_get_user_info,
             provider_commands::zoho_get_file_share_links,
             provider_commands::zoho_delete_share_link,
             provider_commands::zoho_create_native_document,
-            provider_commands::jottacloud_move_to_trash,
             provider_commands::jottacloud_list_trash,
             provider_commands::jottacloud_restore_from_trash,
             provider_commands::jottacloud_permanent_delete,
             provider_commands::jottacloud_empty_trash,
-            provider_commands::mega_move_to_trash,
             provider_commands::mega_list_trash,
             provider_commands::mega_restore_from_trash,
             provider_commands::mega_permanent_delete,
@@ -20089,7 +19683,6 @@ pub fn run() {
             provider_commands::filelu_set_folder_settings,
             provider_commands::filelu_list_deleted,
             provider_commands::filelu_restore_file,
-            provider_commands::filelu_restore_folder,
             provider_commands::filelu_permanent_delete,
             provider_commands::filelu_remote_url_upload,
             providers::koofr::koofr_list_trash,
@@ -20099,7 +19692,6 @@ pub fn run() {
             providers::webdav::webdav_restore_trash,
             providers::webdav::webdav_delete_trash,
             providers::webdav::webdav_empty_trash,
-            provider_commands::google_drive_trash_file,
             provider_commands::google_drive_list_trash,
             provider_commands::google_drive_restore_from_trash,
             provider_commands::google_drive_permanent_delete,
@@ -20118,23 +19710,17 @@ pub fn run() {
             provider_commands::google_drive_list_comments,
             provider_commands::google_drive_add_comment,
             provider_commands::google_drive_delete_comment,
-            provider_commands::google_drive_set_properties,
-            provider_commands::google_drive_set_description,
             provider_commands::dropbox_list_trash,
             provider_commands::dropbox_restore_from_trash,
             provider_commands::dropbox_permanent_delete,
             provider_commands::dropbox_account_type,
-            provider_commands::dropbox_set_tags,
-            provider_commands::dropbox_get_tags,
             provider_commands::onedrive_list_trash,
-            provider_commands::onedrive_trash_files,
             provider_commands::onedrive_restore_from_trash,
             provider_commands::onedrive_permanent_delete,
             provider_commands::box_list_trash,
             provider_commands::box_trash_files,
             provider_commands::box_restore_from_trash,
             provider_commands::box_permanent_delete,
-            provider_commands::box_move_file,
             provider_commands::box_list_comments,
             provider_commands::box_add_comment,
             provider_commands::box_delete_comment,
@@ -20157,7 +19743,6 @@ pub fn run() {
             provider_commands::provider_bucket_encryption,
             provider_commands::mega_df_query,
             provider_commands::mega_webdav_url,
-            provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,
             provider_commands::provider_scan_used,
@@ -20194,8 +19779,6 @@ pub fn run() {
             provider_commands::github_delete_release,
             provider_commands::github_delete_release_asset,
             provider_commands::github_download_release_asset,
-            provider_commands::github_get_release,
-            provider_commands::github_batch_commit,
             provider_commands::github_batch_upload,
             provider_commands::github_batch_delete,
             provider_commands::github_check_local_sync,
@@ -20203,7 +19786,6 @@ pub fn run() {
             // GitLab-specific commands
             provider_commands::gitlab_list_branches,
             provider_commands::gitlab_get_info,
-            provider_commands::gitlab_switch_branch,
             provider_commands::gitlab_batch_upload,
             provider_commands::gitlab_batch_delete,
             provider_commands::gitlab_list_releases,
@@ -20240,10 +19822,6 @@ pub fn run() {
             provider_commands::filen_notes_untag_note,
             provider_commands::provider_find,
             provider_commands::provider_set_speed_limit,
-            provider_commands::provider_get_speed_limit,
-            provider_commands::provider_supports_resume,
-            provider_commands::provider_resume_download,
-            provider_commands::provider_resume_upload,
             // File versions
             provider_commands::provider_supports_versions,
             provider_commands::provider_list_versions,
@@ -20293,19 +19871,6 @@ pub fn run() {
             provider_commands::provider_add_permission,
             provider_commands::provider_remove_permission,
             // Multi-session provider commands
-            session_commands::session_connect,
-            session_commands::session_disconnect,
-            session_commands::session_switch,
-            session_commands::session_list,
-            session_commands::session_info,
-            session_commands::session_list_files,
-            session_commands::session_change_dir,
-            session_commands::session_mkdir,
-            session_commands::session_delete,
-            session_commands::session_rename,
-            session_commands::session_download,
-            session_commands::session_upload,
-            session_commands::session_create_share_link,
             spawn_shell,
             pty_write,
             pty_resize,
@@ -20321,9 +19886,7 @@ pub fn run() {
             // Plugin system
             plugins::list_plugins,
             plugins::execute_plugin_tool,
-            plugins::install_plugin,
             plugins::remove_plugin,
-            plugins::trigger_plugin_hooks,
             // Plugin registry
             plugin_registry::fetch_plugin_registry,
             plugin_registry::install_plugin_from_registry,
@@ -20351,14 +19914,8 @@ pub fn run() {
             providers::mtp::commands::mtp_open_device,
             providers::mtp::commands::mtp_open_gvfs_mount,
             providers::mtp::commands::mtp_close_device,
-            providers::mtp::commands::mtp_backend_status,
             providers::mtp::commands::mtp_desktop_automounter_present,
             // Mission Green Badge - File sync status tracking
-            sync_badge::start_badge_server_cmd,
-            sync_badge::stop_badge_server_cmd,
-            sync_badge::set_file_badge,
-            sync_badge::clear_file_badge,
-            sync_badge::get_badge_status,
             sync_badge::install_shell_extension_cmd,
             sync_badge::uninstall_shell_extension_cmd,
             sync_badge::restart_file_manager_cmd,
@@ -20377,26 +19934,20 @@ pub fn run() {
             // TOTP 2FA
             totp::totp_setup_start,
             totp::totp_setup_verify,
-            totp::totp_verify,
             totp::totp_status,
             totp::totp_enable,
             totp::totp_disable,
-            totp::totp_load_secret,
             // Chat History SQLite
-            chat_history::chat_history_init,
             chat_history::chat_history_list_sessions,
             chat_history::chat_history_get_session,
             chat_history::chat_history_create_session,
             chat_history::chat_history_save_message,
             chat_history::chat_history_update_session_title,
             chat_history::chat_history_delete_session,
-            chat_history::chat_history_delete_sessions_bulk,
             chat_history::chat_history_clear_all,
             chat_history::chat_history_search,
             chat_history::chat_history_cleanup,
             chat_history::chat_history_stats,
-            chat_history::chat_history_export_session,
-            chat_history::chat_history_import,
             chat_history::chat_history_create_branch,
             chat_history::chat_history_switch_branch,
             chat_history::chat_history_delete_branch,
@@ -20409,7 +19960,6 @@ pub fn run() {
             file_tags::file_tags_set_tags,
             file_tags::file_tags_remove_tag,
             file_tags::file_tags_get_tags_for_files,
-            file_tags::file_tags_get_files_by_label,
             file_tags::file_tags_update_path,
             file_tags::file_tags_delete_all_for_file,
             file_tags::file_tags_get_label_counts,
@@ -20427,9 +19977,7 @@ pub fn run() {
             speedtest::speedtest_compare,
             speedtest::speedtest_cancel,
             speedtest::speedtest_history_record,
-            speedtest::speedtest_history_list,
             speedtest::speedtest_history_summary,
-            speedtest::speedtest_history_clear,
             // AeroImage
             image_edit::process_image,
             // InfiniCloud REST API
@@ -20444,7 +19992,6 @@ pub fn run() {
             mount_open_in_explorer,
             vault_mount_start,
             vault_mount_stop,
-            vault_mount_list,
             vault_mount_open,
             mount_suggest_path,
             mount_pick_drive_letter,
