@@ -111,10 +111,12 @@ Four production wrappers call the core:
 
 - `transfer_dag_single_file` builds `shaped_file` and binds real single-file
   provider operations;
-- `transfer_dag_batch` builds `from_batch_shaped` and adapts each file to the
-  existing `TransferExecutor` session contract;
+- `transfer_dag_batch` builds one `shaped_file` subgraph per admitted file
+  (streaming frontier, DAG-P2-04) and adapts each file to the existing
+  `TransferExecutor` session contract;
 - `transfer_dag_sync` snapshots live capabilities after scan/planning, builds
-  `from_sync_plan_shaped`, and owns clone workers, primary delta session,
+  one `shaped_file` subgraph per admitted planned transfer through the same
+  frontier, and owns clone workers, primary delta session,
   report aggregation, and progress replay explicitly.
 - `transfer_dag_single_file::execute_copy_dag` builds `shaped_copy` for GUI,
   CLI `cp`, and the CLI WebDAV bridge.
@@ -128,8 +130,8 @@ concurrent range orchestrator always consumes that shape in production.
 |---|---|---|
 | Single-file core | `shaped_file(Download|Upload, caps, size)` | Active in normal GUI/CLI single-file network paths, with router and provider exceptions |
 | Multipart single-file | `shaped_file(Upload, caps, size)` → `UploadPart × N` | Active when the single-file runner receives multipart capabilities; independent wire workers only for the provider set listed below |
-| Batch | `from_batch_shaped(items, caps)` | Active graph wrapper; caps from `TransferExecutor::transfer_capabilities()`. Multipart files run real per-part wire I/O (DAG-P1-03); plain upload/download stay whole-file |
-| Sync | `from_sync_plan_shaped(plan, live caps)` | Active for non-dry-run sync; normal files use the clone-backed cap, while delta is an exclusive primary-session lane |
+| Batch | `shaped_file` per admitted file (streaming frontier, DAG-P2-04) | Active; caps from `TransferExecutor::transfer_capabilities()`. Multipart files run real per-part wire I/O (DAG-P1-03); plain upload/download stay whole-file. The whole-job `from_batch_shaped` has no production caller |
+| Sync | `shaped_file` per admitted planned transfer (streaming frontier) | Active for non-dry-run sync; normal files use the clone-backed cap, while delta is an exclusive primary-session lane. The whole-job `from_sync_plan_shaped` has no production caller |
 | Copy | `shaped_copy(caps)` | Active for GUI copy, CLI `cp`, and CLI WebDAV `COPY`; native rejection fallback is observed and then runs an explicit two-node payload core |
 | Segmented download | `shaped_ranges(N)` | Active for every shared concurrent range download; legacy `JoinSet` retained only in the equivalence test harness |
 
@@ -289,11 +291,11 @@ When `max_chunk_slots > 1`, parts fan out from acquire:
 AcquireResource -> {part 1, part 2, ... part N}
 ```
 
-Single-file (`shaped_file`), batch (`from_batch_shaped`), and sync
-(`from_sync_plan_shaped`) share one internal transfer-core helper
-(`append_transfer_core`) so the topology cannot drift (DAG-P0-07). Different
-files in a batch/sync graph stay independent: cap=1 serialises parts within
-each file, not the whole job across files. This is protocol correctness for
+Every shaped builder goes through one internal transfer-core helper
+(`append_transfer_core`), so the topology cannot drift (DAG-P0-07). In
+production, batch and sync build one `shaped_file` subgraph per admitted file
+(see the streaming frontier below), so different files stay independent:
+cap=1 serialises parts within each file, not the whole job across files. This is protocol correctness for
 ordering-sensitive upload sessions.
 
 After `DAG-P1-03`, the batch runner executes real per-part wire I/O for shaped
