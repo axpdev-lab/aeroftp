@@ -1437,6 +1437,31 @@ impl StorageProvider for KoofrProvider {
         Ok(())
     }
 
+    async fn remove_share_link_by_id(
+        &mut self,
+        _path: &str,
+        link_id: &str,
+    ) -> Result<(), ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        // The id becomes a URL path segment.
+        if !super::is_link_id(link_id) {
+            return Err(ProviderError::InvalidPath(format!(
+                "Not a Koofr link id: {link_id}"
+            )));
+        }
+        let delete_url = format!(
+            "{}/mounts/{}/links/{}",
+            self.api_base(),
+            self.mount_id,
+            link_id
+        );
+        let resp = self.delete_req(&delete_url).await?;
+        Self::check_response(resp).await?;
+        Ok(())
+    }
+
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2424,5 +2449,47 @@ mod tests {
             ..config.clone()
         };
         assert!(KoofrConfig::from_provider_config(&config_no_pass).is_err());
+    }
+
+    /// Revoking one link out of the Manage list deletes that link by its
+    /// id. Through the path alone the backend looked for the path inside the
+    /// link URL, which a short link does not contain.
+    #[tokio::test]
+    async fn revoking_a_listed_link_deletes_that_link_id() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock().unwrap().push(format!(
+                    "{method} {}{}",
+                    uri.path(),
+                    uri.query().map(|q| format!("?{q}")).unwrap_or_default()
+                ));
+                async { (axum::http::StatusCode::OK, r#"{}"#) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        provider
+            .remove_share_link_by_id("/a.txt", "L-1_a")
+            .await
+            .expect("deleted");
+        let refused = provider.remove_share_link_by_id("/a.txt", "../files").await;
+        assert!(
+            matches!(refused, Err(ProviderError::InvalidPath(_))),
+            "{refused:?}"
+        );
+        assert_eq!(*calls.lock().unwrap(), ["DELETE /mounts/M/links/L-1_a"]);
     }
 }

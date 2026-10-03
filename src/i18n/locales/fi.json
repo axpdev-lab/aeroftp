@@ -102,14 +102,9 @@
             "connectionFailed": "Yhteys epäonnistui",
             "reconnecting": "Yhdistetään uudelleen...",
             "quickConnect": "Pikayhteys",
-            "savedServers": "Tallennetut palvelimet",
-            "noSavedServers": "Ei tallennettuja palvelimia",
             "saveServer": "Tallenna palvelin",
-            "deleteServer": "Poista palvelin",
-            "editServer": "Muokkaa palvelinta",
             "serverName": "Palvelimen nimi",
             "initialPath": "Aloituspolku",
-            "savedServersHelp": "Valitse palvelin yhdistääksesi.",
             "selectSshKey": "Valitse yksityinen SSH-avain",
             "allFiles": "Kaikki tiedostot",
             "sshKeys": "SSH-avaimet",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Muuta mikä tahansa palvelin henkilökohtaiseksi pilveksi automaattisella synkronoinnilla",
             "configureAerocloud": "Määritä AeroCloud",
             "aerocloudHelp": "Voit myös määrittää AeroCloud-asetukset tilapalkista",
-            "selectProviderPrompt": "Valitse palveluntarjoaja ylhäältä tai valitse \"Mukautettu\" manuaalista määritystä varten",
-            "custom": "Mukautettu",
             "change": "Vaihda",
             "emailAccount": "Sähköpostitili",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "MEGA-salasanasi",
-            "dismiss": "Hylkää",
             "authenticating": "Todennetaan...",
             "oauth2Connection": "OAuth2-yhteys",
             "securityTitle": "Salattu tunnistetietojen tallennus",
@@ -170,7 +162,6 @@
             "docs": "Dokumentaatio",
             "minutes": "minuuttia",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Hae palvelimia...",
             "fourshared": {
                 "backToExistingAccount": "Takaisin olemassa olevaan tiliin",
                 "configureCredentials": "Määritä OAuth 1.0 -tunnistetiedot",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "Sovelluksen salasana",
             "koofrAppPasswordPlaceholder": "Liitä Koofr-sovelluksesi salasana tähän",
             "koofrHelp": "Luo sovelluksen salasana osoitteessa app.koofr.net → Asetukset → Salasana → Sovelluksen salasanat",
-            "duplicateServer": "Kopioi palvelin",
-            "duplicateCredentialMissing": "Tunnistetietoa ei kopioitu kopioon. Anna salasana uudelleen ennen yhdistämistä.",
             "saveAsNew": "Tallenna uutena",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Luo API-avain kohdassa Immich → User Settings → API Keys",
             "immichOps": "Selaa, lataa, lataa, poista, albumit, haku, jakolinkit. Uudelleennimeämistä ja siirtämistä ei tueta.",
             "generatePassword": "Luo salasana",
-            "saveAndConnect": "Tallenna ja yhdistä",
-            "saveDisabledTotp": "TOTP-koodit ovat kertakäyttöisiä. Käytä Tallenna ja yhdistä -toimintoa ottaaksesi tämän koodin käyttöön nyt.",
             "generatePersonalLoginToken": "Luo henkilökohtainen kirjautumistunnus",
             "endpointUrl": "Päätepisteen URL",
             "b2NativeAdvantagesTitle": "Backblaze B2:n natiivi API: lisäominaisuuksia S3-yhteensopivaan verrattuna",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Kirjaudu sisään uudelleen",
             "twakeSignedIn": "Kirjauduttu sisään",
             "twakeWaitingBrowser": "Viimeistele kirjautuminen selaimessasi...",
-            "twakeSignInHelp": "AeroFTP avaa Twaken selaimessasi ja pyytää pääsyä vain tiedostoihisi. Jos Twake näyttää virheen ensimmäisellä kerralla, kirjaudu Twakeen selaimessa ja kirjaudu sisään uudelleen. Voit peruuttaa käyttöoikeuden milloin tahansa Twaken asetuksista, Yhdistetyt laitteet."
+            "twakeSignInHelp": "AeroFTP avaa Twaken selaimessasi ja pyytää pääsyä vain tiedostoihisi. Jos Twake näyttää virheen ensimmäisellä kerralla, kirjaudu Twakeen selaimessa ja kirjaudu sisään uudelleen. Voit peruuttaa käyttöoikeuden milloin tahansa Twaken asetuksista, Yhdistetyt laitteet.",
+            "oauthKeysMissingTitle": "{provider}-sovellusavaimet puuttuvat",
+            "oauthKeysMissing": "Holvissa ei ole tallennettuna {provider}-sovellusavaimia, joten AeroFTP ei voi kirjautua sisään. AeroFTP ei sisällä omia avaimia: syötä oman {provider}-kehittäjäsovelluksesi avaimet kohtaan {location} ja yhdistä uudelleen.",
+            "oauthKeysOpenSettings": "Avaa OAuth-asetukset",
+            "oauthKeysReadFailedTitle": "Palvelun {provider} sovellusavaimia ei voi lukea",
+            "oauthKeysReadFailed": "AeroFTP ei voinut lukea palvelun {provider} sovellusavaimia holvista, joten se ei voi kirjautua sisään. Avaimia ei muutettu. Virhe: {error}"
         },
         "browser": {
             "remote": "Etä",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "Käytetyt ohitukset: {count}",
             "uiTokensRejected": "Hylätyt kohteet: {count}",
             "keystorePreferencesFailed": "Tuonti valmistui, mutta sovelluksen asetuksiasi ei voitu palauttaa: {error}",
-            "keystorePreviewBackupUnreadable": "Tämän varmuuskopion palvelinluetteloa ei voida lukea tällä laitteella, joten vertailussa käytetään varmuuskopion holviin tallennettua luetteloa. Tuonti korvaa silti tämän laitteen palvelinluettelon."
+            "keystorePreviewBackupUnreadable": "Tämän varmuuskopion palvelinluetteloa ei voida lukea tällä laitteella, joten vertailussa käytetään varmuuskopion holviin tallennettua luetteloa. Tuonti korvaa silti tämän laitteen palvelinluettelon.",
+            "filterServersPlaceholder": "Suodata nimen, isännän, protokollan tai käyttäjän mukaan",
+            "selectShown": "Valitse näkyvät {count}",
+            "deselectShown": "Poista näkyvien {count} valinta",
+            "filterShownCount": "{shown} näkyvissä",
+            "selectedHiddenByFilter": "{count} valittu mutta suodattimen piilottama, sisältyy silti"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "Purettu!",
             "extractedTo": "Tiedostot purettu kohteeseen {dest}",
             "fileLocked": "Tiedosto lukittu",
+            "cutPartial": "Siirretty {moved}/{total} kohdetta; loput jäävät paikalleen",
             "fileSkipped": "{count} tiedosto(a) ohitettu",
             "fileUnlocked": "Tiedoston lukitus avattu",
             "loadTrashFailed": "Roskakorin lataus epäonnistui",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "Salattu peittokerros lukittu",
             "aerocrypt_marker_migrate": "Muunnetaan AeroCrypt-merkintää muotoon .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-merkintä muunnettu muotoon .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Avataan kansion {filename} lukitusta..."
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "Paikallista palvelinta ei voitu käynnistää.",
                     "serverFailed": "Palvelin pysähtyi tai lähetti virheellisen vastauksen.",
                     "httpUnauthorized": "Palvelin hylkäsi tallennetut tunnistetiedot.",
-                    "unsupportedVersion": "Palvelin käyttää MCP-versiota, jota AeroFTP ei tue."
+                    "unsupportedVersion": "Palvelin käyttää MCP-versiota, jota AeroFTP ei tue.",
+                    "directoryInvalid": "Valitse erillinen hakemisto, jossa ei ole linkkejä tai arkaluonteisia sovellustiedostoja.",
+                    "directoryChanged": "Sallittu hakemisto on muuttunut tai puuttuu. Valitse se uudelleen käyttöoikeuden uusimiseksi.",
+                    "permissionCommand": "Muuta käyttöoikeutta hakemisto- ja verkkolupien asetuksista.",
+                    "installInvalid": "Tämä hallittu asennus ei ole käytettävissä tai sen manifesti on virheellinen.",
+                    "installIntegrity": "Paketin eheystarkistus epäonnistui. Poista palvelin ja asenna se uudelleen.",
+                    "installArchive": "Paketti sisältää turvattomia polkuja, linkkejä tai virheellisen käynnistystiedoston.",
+                    "installRuntime": "Tarvittava järjestelmän suoritusympäristö puuttuu.",
+                    "installDownload": "Paketin lataus epäonnistui tai aikakatkaistiin.",
+                    "installLimit": "Paketti ylittää asennusrajoitukset.",
+                    "installExists": "Poista nykyinen asennus ennen uudelleenasennusta.",
+                    "installIo": "Asennustiedostoja ei voitu lukea tai kirjoittaa."
                 },
                 "routingNotice": "Käytössä olevat palvelimet tarjoavat työkalunsa AeroAgentille. Jokainen työkalukutsu pyytää ensin hyväksyntäsi.",
                 "checkNow": "Tarkista nyt",
@@ -3089,7 +3099,26 @@
                 "healthError": "Ei käytettävissä: {reason}",
                 "healthReady": "Valmis, AeroAgentin käytettävissä olevat työkalut: {count}",
                 "healthUnsupported": "Työkalut, joiden skeemoja ei tueta: {count}",
-                "healthShowTools": "Näytä työkalut"
+                "healthShowTools": "Näytä työkalut",
+                "directoryTitle": "Vain luettavat hakemistot",
+                "grantDirectory": "Valitse hakemisto",
+                "confirmDirectory": "Annetaanko tälle palvelimelle lukuoikeus kaikkiin tiedostoihin hakemistossa {path}? Anna pääsy vain erilliseen palvelin- tai projektihakemistoon.",
+                "noDirectories": "Ei hakemistojen käyttöoikeutta.",
+                "revokeDirectory": "Peru käyttöoikeus",
+                "confirmRevokeDirectory": "Perutaanko hakemiston {path} käyttöoikeus? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
+                "networkAccess": "Salli verkkoyhteys (kaikki isännät ja paikalliset palvelut)",
+                "networkBlocked": "Verkkoyhteydet on estetty.",
+                "confirmNetwork": "Sallitaanko palvelimelle {name} verkkoyhteydet, myös paikallisiin palveluihin? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
+                "confirmBlockNetwork": "Estetäänkö palvelimen {name} verkkoyhteydet? Aiemmat työkalujen hyväksynnät eivät enää ole voimassa.",
+                "managedStatus": "Hallittu asennus: {version}",
+                "renewDirectory": "Uusi käyttöoikeus",
+                "presetsTitle": "Suositellut palvelimet",
+                "presetsSubtitle": "Tarkistetut esiasetukset asennetaan vasta vahvistuksen jälkeen. Ne pysyvät pois päältä, kunnes otat ne käyttöön.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Hakee julkisen tietovaraston dokumentaation.",
+                "presetInstall": "Asenna",
+                "presetInstalledDisabled": "Asennettu ja pois päältä",
+                "presetReady": "Valmis"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "Näytä lähde"
         },
         "savedServers": {
-            "dragToReorder": "Vedä järjestääksesi uudelleen",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Määritä 4shared-tunnistetiedot kohdassa Asetukset > Pilvipalveluntarjoajat.",
-            "oauthConfigError": "Määritä {provider}-tunnistetiedot kohdassa Asetukset > Pilvipalveluntarjoajat.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "Lisää tunniste...",
             "tagsUpdated": "Tunnisteet päivitetty",
             "addTag": "Lisää",
-            "noTags": "Ei tunnisteita"
+            "noTags": "Ei tunnisteita",
+            "collaborators": "Yhteistyökumppanit",
+            "noCollaborators": "Ei vielä jaettu kenellekään",
+            "folderNotLocked": "Tätä kansiota ei ole lukittu",
+            "roleEditor": "Muokkaaja",
+            "roleViewer": "Katselija",
+            "rolePreviewer": "Esikatselija",
+            "roleUploader": "Lataaja",
+            "rolePreviewerUploader": "Esikatselija ja lataaja",
+            "roleViewerUploader": "Katselija ja lataaja",
+            "roleCoOwner": "Yhteisomistaja"
         },
         "googledrive": {
             "star": "Lisää tähti",
             "unstar": "Poista tähti",
             "starred": "Tiedosto merkitty tähdellä",
-            "unstarred": "Tähti poistettu tiedostosta",
-            "addComment": "Lisää kommentti",
-            "commentPlaceholder": "Kirjoita kommenttisi...",
-            "commentAdded": "Kommentti lisätty"
+            "unstarred": "Tähti poistettu tiedostosta"
         },
         "providers": {
             "title": "Palveluntarjoajat ja integraatiot",
@@ -4759,7 +4789,14 @@
             "participants": "osallistujaa",
             "saving": "Tallennetaan...",
             "saved": "Tallennettu",
-            "saveNow": "Tallenna nyt"
+            "saveNow": "Tallenna nyt",
+            "noteType": "Muistiinpanon tyyppi",
+            "addTag": "Lisää tunniste",
+            "newTag": "Uusi tunniste...",
+            "tagName": "Tunnisteen nimi",
+            "removeTag": "Poista tunniste",
+            "manageTags": "Hallitse tunnisteita",
+            "deleteTagConfirm": "Poistetaanko tunniste ”{name}”? Muistiinpanot säilyttävät tekstinsä."
         },
         "shareLinkModal": {
             "title": "Jakolinkki",
@@ -4952,7 +4989,8 @@
                 "rename": "Nimeä ryhmä uudelleen",
                 "delete": "Poista ryhmä",
                 "confirmDelete": "Poistetaanko ryhmä \"{name}\"? Sen palvelimet säilytetään, vain ryhmä poistetaan.",
-                "chipHint": "Suodata napsauttamalla; nimeä uudelleen tai poista hiiren oikealla painikkeella"
+                "chipHint": "Suodata napsauttamalla; napsauta hiiren kakkospainikkeella nimetäksesi uudelleen, viedäksesi tai poistaaksesi",
+                "export": "Vie ryhmä..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4977,7 +5015,8 @@
                 "offTitle": "Tällä säilöllä ei ole oletussalausta. Se ei ole sama asia kuin salaamaton: SSE-C ja asiakaspään salaus eivät näy tässä asetuksessa.",
                 "unknownKeyTitle": "Emme voineet lukea tämän säilön salausasetusta, koska sovellusavaimella ei ole readBucketEncryption-oikeutta. Arvo, jota emme saa nähdä, ei tarkoita, että salaus olisi pois käytöstä.",
                 "unknownShapeTitle": "Emme voineet lukea tämän säilön salausasetusta, koska vastauksella ei ollut dokumentoitua muotoa. Avaimella oli oikeus lukea se, joten kyse on vastauksesta eikä käyttöoikeuksista."
-            }
+            },
+            "exportProfile": "Vie..."
         },
         "gitlab": {
             "projectPath": "Projektipolku",
@@ -6033,6 +6072,27 @@
             "scopeSession": "Hyväksyy tämän työkalun keskustelun loppuajaksi.",
             "approve": "Hyväksy",
             "rememberForChat": "Salli tämä työkalu tämän keskustelun loppuun"
+        },
+        "s3": {
+            "storageClass": "Tallennusluokka",
+            "storageClassChanged": "Tallennusluokaksi vaihdettu {storageClass}",
+            "restoreFromGlacier": "Palauta Glacierista",
+            "restoreTier": "Noutotaso",
+            "restoreDays": "Palautetun kopion säilytyspäivät",
+            "restoreStarted": "Palautus pyydetty: kun kopio on valmis, se pysyy luettavissa {days} päivää",
+            "objectTags": "Objektin tunnisteet",
+            "noTags": "Ei tunnisteita",
+            "tagKey": "Avain",
+            "tagValue": "Arvo",
+            "tagsSaved": "Tunnisteet tallennettu"
+        },
+        "azure": {
+            "accessTier": "Käyttötaso",
+            "accessTierChanged": "Käyttötasoksi asetettu {tier}"
+        },
+        "fileComments": {
+            "title": "Kommentit",
+            "empty": "Ei vielä kommentteja"
         }
     }
 }

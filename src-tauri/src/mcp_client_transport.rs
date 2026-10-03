@@ -28,6 +28,8 @@ pub(crate) enum TransportError {
     InvalidConfig,
     Spawn,
     SandboxUnavailable,
+    DirectoryChanged,
+    InstallIntegrity,
     Io,
     Frame(FrameError),
     Protocol(ProtocolError),
@@ -68,6 +70,8 @@ impl Default for Limits {
 
 struct Peer {
     child: Child,
+    // Retain verified directory snapshots until the child exits, including bwrap setup.
+    _launch: tokio::process::Command,
     stdin: Option<ChildStdin>,
     stdout: ChildStdout,
     stderr_drain: Option<JoinHandle<usize>>,
@@ -79,6 +83,7 @@ impl Peer {
     fn spawn(
         config: &McpServerConfig,
         env: &ResolvedMcpEnvironment,
+        mut command: tokio::process::Command,
     ) -> Result<Self, TransportError> {
         config
             .validate()
@@ -89,11 +94,6 @@ impl Peer {
         if !config.env.keys().eq(env.vars.keys()) {
             return Err(TransportError::InvalidConfig);
         }
-        let mut command =
-            mcp_client_sandbox::peer_command(config).map_err(|error| match error {
-                SandboxError::Unavailable => TransportError::SandboxUnavailable,
-                SandboxError::InvalidPath => TransportError::InvalidConfig,
-            })?;
         mcp_client_sandbox::clear_peer_environment(&mut command);
         #[cfg(target_os = "linux")]
         command
@@ -128,6 +128,7 @@ impl Peer {
         });
         Ok(Self {
             child,
+            _launch: command,
             stdin: Some(stdin),
             stdout,
             stderr_drain: Some(stderr_drain),
@@ -206,14 +207,45 @@ async fn bounded<T>(
     }
 }
 
+/// Directory copying/hashing is bounded blocking IO. Cancellation (including
+/// a dropped discovery future) cancels its child token and discards the snapshot.
+async fn prepare_command(
+    config: &McpServerConfig,
+    cancel: &CancellationToken,
+) -> Result<tokio::process::Command, TransportError> {
+    struct Guard(CancellationToken);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            self.0.cancel();
+        }
+    }
+    let guard = Guard(cancel.child_token());
+    let local = guard.0.clone();
+    let config = config.clone();
+    let prepared = tokio::task::spawn_blocking(move || {
+        mcp_client_sandbox::peer_command_with_cancel(&config, &local)
+    });
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err(TransportError::Cancelled),
+        result = prepared => result.map_err(|_| TransportError::Spawn)?.map_err(|error| match error {
+            SandboxError::Unavailable => TransportError::SandboxUnavailable,
+            SandboxError::InvalidPath => TransportError::InvalidConfig,
+            SandboxError::DirectoryChanged => TransportError::DirectoryChanged,
+            SandboxError::IntegrityFailure => TransportError::InstallIntegrity,
+        }),
+    }
+}
+
 async fn start_session(
     config: &McpServerConfig,
     env: &ResolvedMcpEnvironment,
     era: Era,
     limits: Limits,
     cancel: &CancellationToken,
+    command: tokio::process::Command,
 ) -> Result<(Peer, Era), TransportError> {
-    let mut peer = Peer::spawn(config, env)?;
+    let mut peer = Peer::spawn(config, env, command)?;
     let result = async {
         let mut negotiated = era;
         if matches!(era, Era::Legacy(_)) {
@@ -283,7 +315,14 @@ impl StdioSupervisor {
         if cancel.is_cancelled() {
             return Err(TransportError::Cancelled.into());
         }
-        let mut probe = Peer::spawn(&config, &env)?;
+        let command = prepare_command(&config, cancel).await?;
+        if !config.sandbox.directories.is_empty() {
+            fresh()?;
+        }
+        if cancel.is_cancelled() {
+            return Err(TransportError::Cancelled.into());
+        }
+        let mut probe = Peer::spawn(&config, &env, command)?;
         let verdict = async {
             let request = protocol::discover_request(1, CLIENT_NAME, CLIENT_VERSION)?;
             bounded(limits.request, cancel, probe.send(&request)).await?;
@@ -318,7 +357,14 @@ impl StdioSupervisor {
         if cancel.is_cancelled() {
             return Err(TransportError::Cancelled.into());
         }
-        let (peer, era) = start_session(&config, &env, era, limits, cancel).await?;
+        let command = prepare_command(&config, cancel).await?;
+        if !config.sandbox.directories.is_empty() {
+            fresh()?;
+        }
+        if cancel.is_cancelled() {
+            return Err(TransportError::Cancelled.into());
+        }
+        let (peer, era) = start_session(&config, &env, era, limits, cancel, command).await?;
         Ok(Self {
             config,
             env,
@@ -401,8 +447,15 @@ impl StdioSupervisor {
                     return Err(TransportError::RestartExhausted);
                 }
                 self.restarts = 1;
-                let (peer, era) =
-                    start_session(&self.config, &self.env, self.era, self.limits, cancel).await?;
+                let (peer, era) = start_session(
+                    &self.config,
+                    &self.env,
+                    self.era,
+                    self.limits,
+                    cancel,
+                    prepare_command(&self.config, cancel).await?,
+                )
+                .await?;
                 if era != self.era {
                     let mut peer = peer;
                     peer.shutdown(self.limits.shutdown).await;
@@ -446,6 +499,7 @@ mod tests {
                 env: BTreeMap::new(),
                 enabled: true,
                 revision: 1,
+                sandbox: Default::default(),
             },
             ResolvedMcpEnvironment {
                 effective_revision: "test-only".into(),
@@ -729,7 +783,14 @@ mod tests {
         );
         assert!(supervisor.shutdown().await);
         let (config, env) = fixture("stubborn");
-        let mut peer = Peer::spawn(&config, &env).unwrap();
+        let mut peer = Peer::spawn(
+            &config,
+            &env,
+            prepare_command(&config, &CancellationToken::new())
+                .await
+                .unwrap(),
+        )
+        .unwrap();
         assert!(!peer.shutdown(limits().shutdown).await);
     }
 }

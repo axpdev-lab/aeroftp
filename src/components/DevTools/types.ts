@@ -171,6 +171,7 @@ export interface PanelVisibility {
     editor: boolean;
     terminal: boolean;
     chat: boolean;
+    security: boolean;
 }
 
 /**

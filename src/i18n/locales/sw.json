@@ -102,14 +102,9 @@
             "connectionFailed": "Muunganisho umeshindwa",
             "reconnecting": "Inaunganisha tena...",
             "quickConnect": "Unganisho wa Haraka",
-            "savedServers": "Seva zilizohifadhiwa",
-            "noSavedServers": "Hakuna seva zilizohifadhiwa",
             "saveServer": "Hifadhi Seva",
-            "deleteServer": "Futa Seva",
-            "editServer": "Hariri Seva",
             "serverName": "Jina la Seva",
             "initialPath": "Njia ya Awali",
-            "savedServersHelp": "Chagua seva kuunganisha.",
             "selectSshKey": "Chagua Ufunguo Binafsi wa SSH",
             "allFiles": "Faili zote",
             "sshKeys": "Funguo za SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Geuza seva yoyote kuwa wingu lako binafsi na usawazishaji wa kiotomatiki",
             "configureAerocloud": "Sanidi AeroCloud",
             "aerocloudHelp": "Unaweza pia kusanidi AeroCloud kutoka kwenye upau wa hali",
-            "selectProviderPrompt": "Chagua mtoa huduma hapo juu au chagua \"Maalum\" kwa usanidi wa mikono",
-            "custom": "Maalum",
             "change": "Badilisha",
             "emailAccount": "Akaunti ya barua pepe",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Nenosiri lako la MEGA",
-            "dismiss": "Ondoa",
             "authenticating": "Inathibitisha...",
             "oauth2Connection": "Muunganisho wa OAuth2",
             "securityTitle": "Hifadhi ya kitambulisho iliyosimbwa kwa njia fiche",
@@ -170,7 +162,6 @@
             "docs": "Nyaraka",
             "minutes": "dakika",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Tafuta seva...",
             "fourshared": {
                 "backToExistingAccount": "Rudi kwenye akaunti iliyopo",
                 "configureCredentials": "Sanidi vitambulisho vya OAuth 1.0",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "Nenosiri la Programu",
             "koofrAppPasswordPlaceholder": "Tandika nenosiri lako la programu ya Koofr hapa",
             "koofrHelp": "Tengeneza nenosiri la programu katika app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Nakili seva",
-            "duplicateCredentialMissing": "Kitambulisho hakikunakiliwa kwenye nakala. Weka nenosiri tena kabla ya kuunganisha.",
             "saveAsNew": "Hifadhi kama mpya",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Tengeneza ufunguo wa API katika Immich → User Settings → API Keys",
             "immichOps": "Vinjari, pakia, pakua, futa, albamu, tafuta, viungo vya kushiriki. Kubadilisha jina na kuhamisha havitumiki.",
             "generatePassword": "Tengeneza nenosiri",
-            "saveAndConnect": "Hifadhi na Unganisha",
-            "saveDisabledTotp": "Misimbo ya TOTP ni ya matumizi ya mara moja. Tumia Hifadhi na Unganisha kutumia msimbo huu sasa.",
             "generatePersonalLoginToken": "Tengeneza tokeni ya kuingia ya kibinafsi",
             "endpointUrl": "URL ya mwisho",
             "b2NativeAdvantagesTitle": "API asili ya Backblaze B2: vipengele vya ziada zaidi ya inayolingana na S3",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Ingia tena",
             "twakeSignedIn": "Umeingia",
             "twakeWaitingBrowser": "Kamilisha kuingia kwenye kivinjari chako...",
-            "twakeSignInHelp": "AeroFTP hufungua Twake kwenye kivinjari chako na kuomba ufikiaji wa faili zako pekee. Ikiwa Twake itaonyesha hitilafu mara ya kwanza, ingia kwenye Twake kwenye kivinjari kisha ingia tena. Unaweza kubatilisha ufikiaji wakati wowote kwenye Mipangilio ya Twake, Vifaa Vilivyounganishwa."
+            "twakeSignInHelp": "AeroFTP hufungua Twake kwenye kivinjari chako na kuomba ufikiaji wa faili zako pekee. Ikiwa Twake itaonyesha hitilafu mara ya kwanza, ingia kwenye Twake kwenye kivinjari kisha ingia tena. Unaweza kubatilisha ufikiaji wakati wowote kwenye Mipangilio ya Twake, Vifaa Vilivyounganishwa.",
+            "oauthKeysMissingTitle": "Funguo za programu ya {provider} hazipo",
+            "oauthKeysMissing": "Hakuna funguo za programu za {provider} zilizohifadhiwa kwenye hifadhi salama, kwa hivyo AeroFTP haiwezi kuingia. AeroFTP haina funguo zake yenyewe: weka funguo za programu yako ya msanidi ya {provider} katika {location}, kisha unganisha tena.",
+            "oauthKeysOpenSettings": "Fungua mipangilio ya OAuth",
+            "oauthKeysReadFailedTitle": "Imeshindwa kusoma funguo za programu ya {provider}",
+            "oauthKeysReadFailed": "AeroFTP imeshindwa kusoma funguo za programu ya {provider} kutoka kwenye hifadhi salama, kwa hiyo haiwezi kuingia. Funguo hazikubadilishwa. Hitilafu: {error}"
         },
         "browser": {
             "remote": "Mbali",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "Mabadiliko yaliyotumika: {count}",
             "uiTokensRejected": "Maingizo yaliyokataliwa: {count}",
             "keystorePreferencesFailed": "Uingizaji umekamilika, lakini mapendeleo yako ya programu hayakuweza kurejeshwa: {error}",
-            "keystorePreviewBackupUnreadable": "Orodha ya seva katika nakala hii haiwezi kusomwa kwenye kifaa hiki, kwa hivyo ulinganisho unatumia orodha iliyohifadhiwa kwenye hifadhi salama ya nakala hiyo. Uingizaji bado unachukua nafasi ya orodha ya seva kwenye kifaa hiki."
+            "keystorePreviewBackupUnreadable": "Orodha ya seva katika nakala hii haiwezi kusomwa kwenye kifaa hiki, kwa hivyo ulinganisho unatumia orodha iliyohifadhiwa kwenye hifadhi salama ya nakala hiyo. Uingizaji bado unachukua nafasi ya orodha ya seva kwenye kifaa hiki.",
+            "filterServersPlaceholder": "Chuja kwa jina, seva pangishi, itifaki au mtumiaji",
+            "selectShown": "Chagua {count} zinazoonyeshwa",
+            "deselectShown": "Acha kuchagua {count} zinazoonyeshwa",
+            "filterShownCount": "{shown} zinaonyeshwa",
+            "selectedHiddenByFilter": "{count} zimechaguliwa lakini zimefichwa na kichujio, bado zimejumuishwa"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "Imetolewa!",
             "extractedTo": "Faili zimetolewa kwenye {dest}",
             "fileLocked": "Faili imefungwa",
+            "cutPartial": "Vipengee {moved} kati ya {total} vimehamishwa; vilivyobaki vinabaki mahali pake",
             "fileSkipped": "Faili {count} zimerukwa",
             "fileUnlocked": "Faili imefunguliwa",
             "loadTrashFailed": "Kupakia takataka kumeshindikana",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "Safu iliyosimbwa imefungwa",
             "aerocrypt_marker_migrate": "Inabadilisha alama ya AeroCrypt kuwa .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Alama ya AeroCrypt imebadilishwa kuwa .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Inafungua kufuli ya folda {filename}..."
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "Seva ya ndani haikuweza kuanzishwa.",
                     "serverFailed": "Seva ilisimama au ilituma jibu lisilo sahihi.",
                     "httpUnauthorized": "Seva ilikataa vitambulisho vilivyohifadhiwa.",
-                    "unsupportedVersion": "Seva inatumia toleo la MCP ambalo AeroFTP haiungi mkono."
+                    "unsupportedVersion": "Seva inatumia toleo la MCP ambalo AeroFTP haiungi mkono.",
+                    "directoryInvalid": "Chagua saraka maalumu isiyo na viungo au faili nyeti za programu.",
+                    "directoryChanged": "Saraka iliyoruhusiwa imebadilika au haipo. Ichague tena ili kufanya upya ufikiaji.",
+                    "permissionCommand": "Badilisha ufikiaji kwa kutumia vidhibiti vya ruhusa za saraka na mtandao.",
+                    "installInvalid": "Usakinishaji huu unaodhibitiwa haupatikani au faili yake ya maelezo si halali.",
+                    "installIntegrity": "Uthibitishaji wa uadilifu wa kifurushi umeshindwa. Ondoa na usakinishe seva tena.",
+                    "installArchive": "Kifurushi kina njia zisizo salama, viungo au faili ya kuanzisha isiyo halali.",
+                    "installRuntime": "Mazingira ya utekelezaji ya mfumo yanayohitajika hayapo.",
+                    "installDownload": "Upakuaji wa kifurushi umeshindwa au muda umeisha.",
+                    "installLimit": "Kifurushi kinazidi mipaka ya usakinishaji.",
+                    "installExists": "Ondoa usakinishaji uliopo kabla ya kusakinisha tena.",
+                    "installIo": "Faili za usakinishaji hazikuweza kusomwa au kuandikwa."
                 },
                 "routingNotice": "Seva zilizowezeshwa hutoa zana zake kwa AeroAgent. Kila ombi la zana huomba idhini yako kwanza.",
                 "checkNow": "Kagua sasa",
@@ -3089,7 +3099,26 @@
                 "healthError": "Haipatikani: {reason}",
                 "healthReady": "Tayari, zana zinazopatikana kwa AeroAgent: {count}",
                 "healthUnsupported": "Zana zenye skima zisizotumika: {count}",
-                "healthShowTools": "Onyesha zana"
+                "healthShowTools": "Onyesha zana",
+                "directoryTitle": "Saraka za kusoma tu",
+                "grantDirectory": "Chagua saraka",
+                "confirmDirectory": "Ipe seva hii ruhusa ya kusoma tu kila faili katika {path}? Ruhusu saraka maalumu ya seva au mradi pekee.",
+                "noDirectories": "Hakuna ufikiaji wa saraka.",
+                "revokeDirectory": "Ondoa ruhusa",
+                "confirmRevokeDirectory": "Ondoa ruhusa ya kufikia {path}? Idhini za awali za zana hazitakuwa halali tena.",
+                "networkAccess": "Ruhusu ufikiaji wa mtandao (seva zote na huduma za ndani)",
+                "networkBlocked": "Ufikiaji wa mtandao umezuiwa.",
+                "confirmNetwork": "Ruhusu {name} kufikia mtandao, pamoja na huduma za ndani? Idhini za awali za zana hazitakuwa halali tena.",
+                "confirmBlockNetwork": "Zuia ufikiaji wa mtandao wa {name}? Idhini za awali za zana hazitakuwa halali tena.",
+                "managedStatus": "Usakinishaji unaosimamiwa: {version}",
+                "renewDirectory": "Sasisha ruhusa",
+                "presetsTitle": "Seva zinazopendekezwa",
+                "presetsSubtitle": "Mipangilio iliyokaguliwa husakinishwa tu baada ya kuthibitisha. Hubaki imezimwa hadi uwashe.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Tafuta nyaraka za hazina ya umma.",
+                "presetInstall": "Sakinisha",
+                "presetInstalledDisabled": "Imesakinishwa na imezimwa",
+                "presetReady": "Tayari"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "Tazama Chanzo"
         },
         "savedServers": {
-            "dragToReorder": "Buruta kupanga upya",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Tafadhali sanidi vitambulisho vya 4shared katika Mipangilio > Watoa Huduma za Wingu.",
-            "oauthConfigError": "Tafadhali sanidi vitambulisho vya {provider} katika Mipangilio > Watoa Huduma za Wingu.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "Ongeza lebo...",
             "tagsUpdated": "Lebo zimesasishwa",
             "addTag": "Ongeza",
-            "noTags": "Hakuna lebo"
+            "noTags": "Hakuna lebo",
+            "collaborators": "Washirika",
+            "noCollaborators": "Bado haijashirikiwa na mtu yeyote",
+            "folderNotLocked": "Folda hii haijafungwa kufuli",
+            "roleEditor": "Mhariri",
+            "roleViewer": "Mtazamaji",
+            "rolePreviewer": "Mtazamaji wa awali",
+            "roleUploader": "Mpakiaji",
+            "rolePreviewerUploader": "Mtazamaji wa awali na mpakiaji",
+            "roleViewerUploader": "Mtazamaji na mpakiaji",
+            "roleCoOwner": "Mmiliki mwenza"
         },
         "googledrive": {
             "star": "Weka nyota",
             "unstar": "Ondoa nyota",
             "starred": "Faili imewekwa nyota",
-            "unstarred": "Nyota imeondolewa",
-            "addComment": "Ongeza maoni",
-            "commentPlaceholder": "Andika maoni yako...",
-            "commentAdded": "Maoni yameongezwa"
+            "unstarred": "Nyota imeondolewa"
         },
         "providers": {
             "title": "Watoa Huduma na Muunganisho",
@@ -4759,7 +4789,14 @@
             "participants": "washiriki",
             "saving": "Inahifadhi...",
             "saved": "Imehifadhiwa",
-            "saveNow": "Hifadhi sasa"
+            "saveNow": "Hifadhi sasa",
+            "noteType": "Aina ya noti",
+            "addTag": "Ongeza lebo",
+            "newTag": "Lebo mpya...",
+            "tagName": "Jina la lebo",
+            "removeTag": "Ondoa lebo",
+            "manageTags": "Dhibiti lebo",
+            "deleteTagConfirm": "Futa lebo “{name}”? Noti zinabaki na maandishi yake."
         },
         "shareLinkModal": {
             "title": "Kiungo cha kushiriki",
@@ -4952,7 +4989,8 @@
                 "rename": "Badilisha jina la kikundi",
                 "delete": "Futa kikundi",
                 "confirmDelete": "Futa kikundi \"{name}\"? Seva zilizomo zinahifadhiwa, kikundi pekee ndicho kinaondolewa.",
-                "chipHint": "Bofya ili kuchuja; bofya kulia ili kubadilisha jina au kufuta"
+                "chipHint": "Bofya ili kuchuja; bofya kulia ili kubadilisha jina, kuhamisha au kufuta",
+                "export": "Hamisha kikundi..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4977,7 +5015,8 @@
                 "offTitle": "Ndoo hii haina usimbaji wa chaguo-msingi. Hiyo si sawa na kutokusimbwa: SSE-C na usimbaji upande wa mteja haviripotiwi na mpangilio huu.",
                 "unknownKeyTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu ufunguo wa programu hauna uwezo wa readBucketEncryption. Thamani ambayo haturuhusiwi kuiona haimaanishi kuwa usimbaji umezimwa.",
                 "unknownShapeTitle": "Hatukuweza kusoma mpangilio wa usimbaji wa ndoo hii, kwa sababu jibu halikuwa na muundo ulioandikwa kwenye nyaraka. Ufunguo uliruhusiwa kuusoma, kwa hivyo hili linahusu jibu na si ruhusa."
-            }
+            },
+            "exportProfile": "Hamisha..."
         },
         "gitlab": {
             "projectPath": "Njia ya mradi",
@@ -6033,6 +6072,27 @@
             "scopeSession": "Inaidhinisha zana hii kwa muda uliobaki wa kikao cha mazungumzo.",
             "approve": "Idhinisha",
             "rememberForChat": "Ruhusu zana hii kwa muda uliobaki wa mazungumzo haya"
+        },
+        "s3": {
+            "storageClass": "Daraja la Hifadhi",
+            "storageClassChanged": "Daraja la hifadhi limebadilishwa kuwa {storageClass}",
+            "restoreFromGlacier": "Rejesha kutoka Glacier",
+            "restoreTier": "Kiwango cha urejeshaji",
+            "restoreDays": "Siku za kuhifadhi nakala iliyorejeshwa",
+            "restoreStarted": "Urejeshaji umeombwa: ikiwa tayari, nakala itabaki kusomeka kwa siku {days}",
+            "objectTags": "Lebo za Kipengee",
+            "noTags": "Hakuna lebo",
+            "tagKey": "Ufunguo",
+            "tagValue": "Thamani",
+            "tagsSaved": "Lebo zimehifadhiwa"
+        },
+        "azure": {
+            "accessTier": "Kiwango cha Ufikiaji",
+            "accessTierChanged": "Kiwango cha ufikiaji kimewekwa kuwa {tier}"
+        },
+        "fileComments": {
+            "title": "Maoni",
+            "empty": "Bado hakuna maoni"
         }
     }
 }

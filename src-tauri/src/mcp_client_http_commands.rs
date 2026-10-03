@@ -279,6 +279,65 @@ fn apply_bearer(
     save(conn, root_key, user_id, &configs)
 }
 
+/// Install one reviewed HTTPS preset, disabled, with no caller-supplied endpoint.
+pub(crate) fn install_disabled_endpoint(
+    app: &AppHandle,
+    id: &str,
+    endpoint: &str,
+) -> Result<(), &'static str> {
+    let (mut conn, root_key, user_id) = mcp_client_commands::context(app)?;
+    install_disabled_endpoint_in(
+        &mut conn,
+        &root_key,
+        user_id,
+        lifecycle::shared(),
+        id,
+        endpoint,
+    )
+}
+
+fn install_disabled_endpoint_in(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    manager: &lifecycle::PendingAuthorizationManager,
+    id: &str,
+    endpoint: &str,
+) -> Result<(), &'static str> {
+    let server_id = id.to_string();
+    let id = id.to_string();
+    let endpoint = endpoint.to_string();
+    write_catalog_in(
+        conn,
+        root_key,
+        user_id,
+        manager,
+        &server_id,
+        false,
+        move |conn, root_key, user_id, stdio_ids| {
+            if load(conn, root_key, user_id)?
+                .iter()
+                .any(|config| config.id == id)
+            {
+                return Err("MCP_INSTALL_EXISTS");
+            }
+            apply_upsert(
+                conn,
+                root_key,
+                user_id,
+                stdio_ids,
+                McpHttpServerInput {
+                    id,
+                    endpoint,
+                    auth: McpHttpAuthInput::None {},
+                    enabled: false,
+                    expected_revision: 0,
+                },
+            )
+        },
+    )
+}
+
 /// Runs one catalog write: Immediate transaction before the read, pending and
 /// in-flight attempts for the binding cancelled before and after the commit.
 fn write_catalog(
@@ -287,16 +346,41 @@ fn write_catalog(
     apply: impl FnOnce(&Connection, &[u8; 32], i64, &[String]) -> Result<(), &'static str>,
 ) -> Result<(), &'static str> {
     let (mut conn, root_key, user_id) = mcp_client_commands::context(app)?;
-    let manager = lifecycle::shared();
-    manager.invalidate(user_id, Some(server_id));
+    write_catalog_in(
+        &mut conn,
+        &root_key,
+        user_id,
+        lifecycle::shared(),
+        server_id,
+        true,
+        apply,
+    )
+}
+
+/// `invalidate_first` is false only where the id must not exist yet (a preset
+/// install): nothing can be pending for a new id, and invalidating first would
+/// cancel an existing server's OAuth attempts before the transaction refuses
+/// the duplicate.
+fn write_catalog_in(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    manager: &lifecycle::PendingAuthorizationManager,
+    server_id: &str,
+    invalidate_first: bool,
+    apply: impl FnOnce(&Connection, &[u8; 32], i64, &[String]) -> Result<(), &'static str>,
+) -> Result<(), &'static str> {
+    if invalidate_first {
+        manager.invalidate(user_id, Some(server_id));
+    }
     let transaction = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|_| "MCP_STORE_UNAVAILABLE")?;
-    let stdio_ids = mcp_client_commands::load(&transaction, &root_key, user_id)?
+    let stdio_ids = mcp_client_commands::load(&transaction, root_key, user_id)?
         .into_iter()
         .map(|config| config.id)
         .collect::<Vec<_>>();
-    apply(&transaction, &root_key, user_id, &stdio_ids)?;
+    apply(&transaction, root_key, user_id, &stdio_ids)?;
     transaction.commit().map_err(|_| "MCP_STORE_UNAVAILABLE")?;
     manager.invalidate(user_id, Some(server_id));
     Ok(())
@@ -664,6 +748,40 @@ mod tests {
         kept.sort();
         // A finished attempt whose wait has not run yet must survive another begin.
         assert_eq!(kept, ["finished-now", "running-old"]);
+    }
+
+    #[test]
+    fn installing_an_existing_id_leaves_its_oauth_attempts_alone() {
+        let (_dir, mut conn, user) = database();
+        let manager = lifecycle::PendingAuthorizationManager::default();
+        install_disabled_endpoint_in(
+            &mut conn,
+            &ROOT,
+            user,
+            &manager,
+            "deepwiki",
+            "https://mcp.example.com/mcp",
+        )
+        .unwrap();
+        let attempt = CancellationToken::new();
+        let _lease = manager
+            .register_operation(user, "deepwiki", attempt.clone(), true)
+            .unwrap();
+        assert_eq!(
+            install_disabled_endpoint_in(
+                &mut conn,
+                &ROOT,
+                user,
+                &manager,
+                "deepwiki",
+                "https://mcp.example.com/mcp"
+            ),
+            Err("MCP_INSTALL_EXISTS")
+        );
+        assert!(
+            !attempt.is_cancelled(),
+            "a refused duplicate must not cancel the existing server's authorization"
+        );
     }
 
     fn database() -> (tempfile::TempDir, Connection, i64) {

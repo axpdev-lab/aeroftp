@@ -98,6 +98,13 @@ pub struct ProviderState {
     pub config: Arc<Mutex<Option<ProviderConfig>>>,
     /// Cancel flag for aborting folder transfers
     pub cancel_flag: Arc<AtomicBool>,
+    /// "Start no further file": the flag a backend batch (folder or file list)
+    /// checks before it starts each file. The GUI's first Stop raises only
+    /// this one, so files already in flight finish (the "finish the current
+    /// file" contract); a hard cancel raises it together with `cancel_flag`
+    /// and the token. Kept apart from `cancel_flag` because the single-file
+    /// commands read that one as "abort the file in flight now" (issue #332).
+    pub batch_stop_flag: Arc<AtomicBool>,
     /// Cancellation token cloned into async retry waits so user cancel wakes them immediately.
     cancel_token: Mutex<CancellationToken>,
     /// Held GitHub App installation token: never crosses IPC.
@@ -140,6 +147,7 @@ impl ProviderState {
             connection_generation: Arc::new(AtomicU64::new(0)),
             config: Arc::new(Mutex::new(None)),
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            batch_stop_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
             held_github_app_token: Mutex::new(None),
             in_flight_transfers: Arc::new(AtomicUsize::new(0)),
@@ -151,6 +159,7 @@ impl ProviderState {
 
     pub async fn reset_cancel_state(&self) -> CancellationToken {
         self.cancel_flag.store(false, Ordering::Relaxed);
+        self.batch_stop_flag.store(false, Ordering::Relaxed);
         let token = CancellationToken::new();
         *self.cancel_token.lock().await = token.clone();
         token
@@ -162,7 +171,14 @@ impl ProviderState {
 
     pub async fn request_cancel(&self) {
         self.cancel_flag.store(true, Ordering::Relaxed);
+        self.batch_stop_flag.store(true, Ordering::Relaxed);
         self.cancel_token.lock().await.cancel();
+    }
+
+    /// Soft stop: running batches start no further file, files in flight
+    /// finish. See [`Self::batch_stop_flag`].
+    pub fn request_batch_stop(&self) {
+        self.batch_stop_flag.store(true, Ordering::Relaxed);
     }
 
     /// Fail-closed guard against a raw write into a crypt-bound session.
@@ -3513,7 +3529,11 @@ pub async fn provider_download_file(
                 "Segmented download: {} segments on {} ({} bytes)",
                 segments, filename, file_size
             );
-            let cancel = tokio_util::sync::CancellationToken::new();
+            // Stop reaches this run through the live session token. The range
+            // engine cancels its own token on failure to drain sibling workers,
+            // so keep that fail-fast cancellation off the session itself.
+            let session_cancel = state.current_cancel_token().await;
+            let cancel = session_cancel.child_token();
             let outcome = crate::provider_transfer_executor::run_provider_segmented_download(
                 provider.as_mut(),
                 &remote_path,
@@ -3525,12 +3545,30 @@ pub async fn provider_download_file(
             )
             .await;
             if let Err(ref e) = outcome {
+                if session_cancel.is_cancelled() || e.is_cancelled() {
+                    let message = format!("Download cancelled by user: {}", filename);
+                    crate::transfer_event_sink::emit_gui_transfer_event(
+                        &app,
+                        crate::TransferEvent {
+                            event_type: "error".to_string(),
+                            transfer_id: transfer_id.clone(),
+                            filename: filename.clone(),
+                            direction: "download".to_string(),
+                            message: Some(message.clone()),
+                            progress: None,
+                            path: None,
+                            delta_stats: None,
+                            fallback_reason: None,
+                        },
+                    );
+                    return Err(message);
+                }
                 warn!(
                     "Segmented download failed, falling back to provider download: {}",
                     e
                 );
             }
-            segmented_result = Some(outcome);
+            segmented_result = Some(outcome.map_err(|e| e.to_string()));
         }
     }
 
@@ -3756,7 +3794,7 @@ pub async fn provider_download_folder(
     timeout_seconds: Option<u64>,
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
-) -> Result<String, String> {
+) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let transfer_settings = TransferSettingsInput {
         max_concurrent,
         retry_count,
@@ -3810,7 +3848,7 @@ pub async fn provider_upload_folder(
     retry_count: Option<u32>,
     timeout_seconds: Option<u64>,
     commit_message: Option<String>,
-) -> Result<String, String> {
+) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     // Fail-closed: never write plaintext into a crypt store whose overlay is
     // currently unwrapped (badge locked / outside the encrypted scope). A remote
     // target provably outside the overlay anchor is plain territory (#390).
@@ -3860,6 +3898,502 @@ pub async fn provider_upload_folder(
     }
 
     result
+}
+
+/// Parameters for [`provider_download_files_batch`] and
+/// [`provider_upload_files_batch`]: an explicit list of files (a GUI
+/// multi-selection, a cross-panel paste, a planner run) rather than one
+/// folder to walk.
+#[derive(Debug, Deserialize)]
+pub struct ProviderFileBatchParams {
+    entries: Vec<TransferEntry>,
+    #[serde(default)]
+    max_concurrent: Option<u32>,
+    #[serde(default)]
+    retry_count: Option<u32>,
+    #[serde(default)]
+    timeout_seconds: Option<u64>,
+    #[serde(default)]
+    download_segments: Option<u32>,
+    #[serde(default)]
+    sftp_download_preset: Option<SftpDownloadPreset>,
+    #[serde(default)]
+    commit_message: Option<String>,
+    /// Batch id chosen by the GUI (`dl-files-...` / `ul-files-...`). The GUI
+    /// registers `<batch_id>-<index>` against each queue row BEFORE the batch
+    /// starts, so every file event settles exactly its own row whatever the
+    /// timing of the events against the queue's re-render. Optional: an
+    /// absent or malformed id gets a generated one.
+    #[serde(default)]
+    batch_id: Option<String>,
+}
+
+/// The GUI-supplied batch id when it is well formed for this direction:
+/// `dl-files-` / `ul-files-` plus up to 64 ASCII letters, digits and dashes.
+/// Anything else is ignored and the command generates its own id.
+fn accepted_file_batch_id(requested: Option<&str>, is_download: bool) -> Option<String> {
+    let id = requested?;
+    let prefix = if is_download {
+        "dl-files-"
+    } else {
+        "ul-files-"
+    };
+    let rest = id.strip_prefix(prefix)?;
+    let ok = !rest.is_empty()
+        && rest.len() <= 64
+        && rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    ok.then(|| id.to_string())
+}
+
+/// Outcome of a file-list batch, so callers that report counts (the transfer
+/// planner) do not have to parse the human message.
+#[derive(Debug, Serialize)]
+pub struct ProviderFileBatchOutcome {
+    pub completed: u32,
+    pub failed: u32,
+    pub cancelled: bool,
+    pub message: String,
+    /// Indexes, into the submitted `entries`, of the files that completed.
+    /// A "cut" paste deletes exactly these sources and keeps every other one.
+    pub succeeded: Vec<u32>,
+}
+
+/// Forwards every event to the wrapped sink unchanged and remembers the ids
+/// of the files that completed, so the batch can report which ones landed.
+struct CompletionRecorder {
+    inner: Arc<dyn TransferEventSink>,
+    completed: std::sync::Mutex<std::collections::HashSet<String>>,
+}
+
+impl CompletionRecorder {
+    fn new(inner: Arc<dyn TransferEventSink>) -> Self {
+        Self {
+            inner,
+            completed: std::sync::Mutex::new(std::collections::HashSet::new()),
+        }
+    }
+
+    /// Entry indexes of the completed files, from ids `<batch_id>-<index>`.
+    fn succeeded_indexes(&self, batch_id: &str) -> Vec<u32> {
+        let prefix = format!("{}-", batch_id);
+        let completed = self
+            .completed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut out: Vec<u32> = completed
+            .iter()
+            .filter_map(|id| id.strip_prefix(&prefix)?.parse().ok())
+            .collect();
+        out.sort_unstable();
+        out
+    }
+}
+
+impl TransferEventSink for CompletionRecorder {
+    fn emit_transfer_event(&self, event: crate::TransferEvent) {
+        if event.event_type == "file_complete" {
+            self.completed
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .insert(event.transfer_id.clone());
+        }
+        self.inner.emit_transfer_event(event);
+    }
+    fn emit_batch_started(&self, payload: serde_json::Value) {
+        self.inner.emit_batch_started(payload);
+    }
+    fn emit_batch_progress(&self, snapshot: &crate::transfer_domain::BatchProgressSnapshot) {
+        self.inner.emit_batch_progress(snapshot);
+    }
+    fn emit_batch_completed(&self, result: &crate::transfer_domain::TransferBatchResult) {
+        self.inner.emit_batch_completed(result);
+    }
+    fn emit_engine_stats(&self, stats: &crate::transfer_dag::EngineTransferStats) {
+        self.inner.emit_engine_stats(stats);
+    }
+}
+
+/// Download an explicit list of files through the same executor and
+/// concurrency budget as [`provider_download_folder`].
+///
+/// Issue #591: before this command the GUI downloaded a multi-selection by
+/// awaiting `provider_download_file` once per file, so the "concurrent
+/// transfers" setting only ever applied to folders, on every protocol.
+#[tauri::command]
+pub async fn provider_download_files_batch(
+    app: AppHandle,
+    state: State<'_, ProviderState>,
+    params: ProviderFileBatchParams,
+) -> Result<ProviderFileBatchOutcome, String> {
+    let _transfer_guard = TransferInProgressGuard::acquire();
+    let cancel_token = state.reset_cancel_state().await;
+    run_provider_file_batch(
+        state.provider.clone(),
+        Arc::new(AppHandleSink::new(app.clone())),
+        gui_lifecycle_emitter(&app),
+        state.batch_stop_flag.clone(),
+        cancel_token,
+        TransferDirection::Download,
+        params,
+    )
+    .await
+}
+
+/// Upload an explicit list of local files; see [`provider_download_files_batch`].
+#[tauri::command]
+pub async fn provider_upload_files_batch(
+    app: AppHandle,
+    state: State<'_, ProviderState>,
+    params: ProviderFileBatchParams,
+) -> Result<ProviderFileBatchOutcome, String> {
+    // Same fail-closed guard as `provider_upload_file`, over every target.
+    let targets: Vec<&str> = params
+        .entries
+        .iter()
+        .map(|e| e.remote_path.as_str())
+        .collect();
+    state.guard_no_raw_crypt_write_outside("Upload", &targets)?;
+
+    let _transfer_guard = TransferInProgressGuard::acquire();
+    let cancel_token = state.reset_cancel_state().await;
+    run_provider_file_batch(
+        state.provider.clone(),
+        Arc::new(AppHandleSink::new(app.clone())),
+        gui_lifecycle_emitter(&app),
+        state.batch_stop_flag.clone(),
+        cancel_token,
+        TransferDirection::Upload,
+        params,
+    )
+    .await
+}
+
+/// Batch-level `start` / `progress` / `complete` events go out the way the
+/// folder commands send theirs, one `emit_gui_transfer_event` per event.
+type LifecycleEmitter = Arc<dyn Fn(crate::TransferEvent) + Send + Sync>;
+
+fn gui_lifecycle_emitter(app: &AppHandle) -> LifecycleEmitter {
+    let app = app.clone();
+    Arc::new(move |event| crate::transfer_event_sink::emit_gui_transfer_event(&app, event))
+}
+
+/// Tauri-free core of the two file-list commands, so a test can run it
+/// against a scripted provider and observe how many files are in flight.
+pub(crate) async fn run_provider_file_batch(
+    provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
+    sink: Arc<dyn TransferEventSink>,
+    lifecycle: LifecycleEmitter,
+    batch_stop_flag: Arc<AtomicBool>,
+    cancel_token: CancellationToken,
+    direction: TransferDirection,
+    params: ProviderFileBatchParams,
+) -> Result<ProviderFileBatchOutcome, String> {
+    let is_download = matches!(direction, TransferDirection::Download);
+    let dir_label = if is_download { "download" } else { "upload" };
+
+    if params.entries.is_empty() {
+        return Ok(ProviderFileBatchOutcome {
+            completed: 0,
+            failed: 0,
+            cancelled: false,
+            message: format!("{} 0 files, 0 errors", file_batch_verb(is_download)),
+            succeeded: Vec::new(),
+        });
+    }
+
+    let transfer_settings = TransferSettingsInput {
+        max_concurrent: params.max_concurrent,
+        retry_count: params.retry_count,
+        timeout_seconds: params.timeout_seconds,
+        download_segments: if is_download {
+            params.download_segments.into()
+        } else {
+            DownloadSegmentsRequest::Single {
+                reason: "upload path has no download leg".to_string(),
+            }
+        },
+        sftp_download_preset: if is_download {
+            params.sftp_download_preset
+        } else {
+            None
+        },
+    };
+
+    {
+        let mut provider_lock = provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
+        if is_download {
+            arm_download_streams(
+                provider.as_mut(),
+                &transfer_settings.download_segments,
+                transfer_settings.sftp_download_preset,
+            );
+        } else {
+            // Reject the whole batch up front when a target name is one the
+            // backend forbids, as `provider_upload_file` does for one file.
+            let provider_type = provider.provider_type();
+            for entry in &params.entries {
+                crate::restricted_chars::validate_path(provider_type, &entry.remote_path)
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    let (runtime_settings, session_model, capabilities) =
+        resolve_provider_transfer_runtime(&provider, transfer_settings).await;
+
+    let prefix = if is_download { "dl" } else { "ul" };
+    let transfer_id = match accepted_file_batch_id(params.batch_id.as_deref(), is_download) {
+        Some(id) => id,
+        None => {
+            // A GUI id we refuse means the GUI's row registration no longer
+            // matches the event ids and its queue falls back to matching rows
+            // by name: say so instead of degrading silently.
+            if let Some(refused) = params.batch_id.as_deref() {
+                warn!(
+                    "Ignoring malformed file batch id {:?}: the transfer queue will match rows by name",
+                    refused
+                );
+            }
+            format!("{}-files-{}", prefix, chrono::Utc::now().timestamp_millis())
+        }
+    };
+    let total = params.entries.len();
+    let display_name = format!("{} file{}", total, if total == 1 { "" } else { "s" });
+    let batch_path = params
+        .entries
+        .first()
+        .map(|entry| {
+            let anchor = if is_download {
+                &entry.remote_path
+            } else {
+                &entry.local_path
+            };
+            std::path::Path::new(anchor)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+
+    info!(
+        "Provider file batch {}: {} files (requested_concurrency={}, effective_concurrency={}, retries={}, timeout={}s)",
+        dir_label,
+        total,
+        runtime_settings.requested_max_concurrent,
+        runtime_settings.max_concurrent,
+        runtime_settings.retry_count,
+        runtime_settings.timeout_seconds
+    );
+
+    if is_download {
+        for entry in &params.entries {
+            if let Some(parent) = std::path::Path::new(&entry.local_path).parent() {
+                tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                    format!(
+                        "Failed to create local directory {}: {}",
+                        parent.display(),
+                        e
+                    )
+                })?;
+            }
+        }
+    }
+
+    lifecycle(crate::TransferEvent {
+        event_type: "start".to_string(),
+        transfer_id: transfer_id.clone(),
+        filename: display_name.clone(),
+        direction: dir_label.to_string(),
+        message: Some(format!("Starting batch {}: {}", dir_label, display_name)),
+        progress: Some(crate::TransferProgress {
+            transfer_id: transfer_id.clone(),
+            filename: display_name.clone(),
+            transferred: 0,
+            total: total as u64,
+            percentage: 0,
+            speed_bps: 0,
+            eta_seconds: 0,
+            direction: dir_label.to_string(),
+            total_files: Some(total as u64),
+            path: Some(batch_path.clone()),
+        }),
+        path: Some(batch_path.clone()),
+        delta_stats: None,
+        fallback_reason: None,
+    });
+
+    // Per-file ids are `<batch>-<index>`: the GUI groups toast lanes by that
+    // prefix, exactly as for folder batches. An upload's size is read from
+    // the disk rather than taken from the caller: the DAG shapes multipart
+    // (S3, B2, Azure) by it, and the upload dialog cannot know it.
+    let mut entries = Vec::with_capacity(params.entries.len());
+    for (index, entry) in params.entries.into_iter().enumerate() {
+        let size = if is_download {
+            entry.size
+        } else {
+            upload_entry_size(&entry.local_path, entry.size).await
+        };
+        entries.push(TransferEntry {
+            id: format!("{}-{}", transfer_id, index),
+            size,
+            ..entry
+        });
+    }
+
+    let batch = TransferBatch {
+        id: transfer_id.clone(),
+        display_name: display_name.clone(),
+        direction,
+        config: TransferBatchConfig {
+            max_concurrent: runtime_settings.max_concurrent,
+            max_retries: runtime_settings.retry_count,
+            timeout_ms: runtime_settings.timeout_seconds * 1000,
+            max_backlog: crate::transfer_domain::default_transfer_max_backlog(),
+            schedule: Default::default(),
+        },
+        entries,
+    };
+
+    let total_files_for_progress = total as u32;
+    let progress_lifecycle = lifecycle.clone();
+    let progress_transfer_id = transfer_id.clone();
+    let progress_display_name = display_name.clone();
+    let progress_batch_path = batch_path.clone();
+    let progress_dir_label = dir_label.to_string();
+    let progress_verb = file_batch_verb(is_download);
+    let progress_observer: ProgressObserver = Arc::new(move |snapshot| {
+        let processed = snapshot.completed + snapshot.failed + snapshot.skipped;
+        let percentage = if total_files_for_progress > 0 {
+            ((processed as f64 / total_files_for_progress as f64) * 100.0) as u8
+        } else {
+            100
+        };
+        progress_lifecycle(crate::TransferEvent {
+            event_type: "progress".to_string(),
+            transfer_id: progress_transfer_id.clone(),
+            filename: progress_display_name.clone(),
+            direction: progress_dir_label.clone(),
+            message: Some(format!(
+                "{} {} / {} files ({} errors)",
+                progress_verb, snapshot.completed, total_files_for_progress, snapshot.failed
+            )),
+            progress: Some(crate::TransferProgress {
+                transfer_id: progress_transfer_id.clone(),
+                filename: progress_display_name.clone(),
+                transferred: processed as u64,
+                total: total_files_for_progress as u64,
+                percentage,
+                speed_bps: 0,
+                eta_seconds: 0,
+                direction: progress_dir_label.clone(),
+                total_files: Some(total_files_for_progress as u64),
+                path: Some(progress_batch_path.clone()),
+            }),
+            path: Some(progress_batch_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        });
+    });
+
+    let recorder = Arc::new(CompletionRecorder::new(sink));
+    let sink: Arc<dyn TransferEventSink> = recorder.clone();
+    let batch_result = if is_download {
+        let executor = Arc::new(ProviderDownloadExecutor::new(
+            sink.clone(),
+            provider.clone(),
+            runtime_settings,
+            cancel_token,
+            session_model,
+            capabilities,
+        ));
+        execute_batch(
+            sink,
+            batch,
+            executor,
+            batch_stop_flag,
+            Some(progress_observer),
+        )
+        .await
+    } else {
+        let executor = Arc::new(ProviderUploadExecutor::new(
+            sink.clone(),
+            provider.clone(),
+            runtime_settings,
+            params.commit_message,
+            cancel_token,
+            session_model,
+            capabilities,
+        ));
+        execute_batch(
+            sink,
+            batch,
+            executor,
+            batch_stop_flag,
+            Some(progress_observer),
+        )
+        .await
+    };
+
+    let message = if batch_result.cancelled {
+        format!(
+            "{} cancelled after {} files",
+            if is_download { "Download" } else { "Upload" },
+            batch_result.completed + batch_result.failed
+        )
+    } else {
+        format!(
+            "{} {} files, {} errors",
+            file_batch_verb(is_download),
+            batch_result.completed,
+            batch_result.failed
+        )
+    };
+    info!("Provider file batch {} finished: {}", dir_label, message);
+    let succeeded = recorder.succeeded_indexes(&transfer_id);
+
+    lifecycle(crate::TransferEvent {
+        event_type: if batch_result.cancelled {
+            "cancelled".to_string()
+        } else {
+            "complete".to_string()
+        },
+        transfer_id,
+        filename: display_name,
+        direction: dir_label.to_string(),
+        message: Some(message.clone()),
+        progress: None,
+        path: Some(batch_path),
+        delta_stats: None,
+        fallback_reason: None,
+    });
+
+    Ok(ProviderFileBatchOutcome {
+        completed: batch_result.completed,
+        failed: batch_result.failed,
+        cancelled: batch_result.cancelled,
+        message,
+        succeeded,
+    })
+}
+
+/// Size of a file about to be uploaded, from the disk; `fallback` only when
+/// the file cannot be read (the executor then reports the real error).
+async fn upload_entry_size(local_path: &str, fallback: u64) -> u64 {
+    tokio::fs::metadata(local_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(fallback)
+}
+
+fn file_batch_verb(is_download: bool) -> &'static str {
+    if is_download {
+        "Downloaded"
+    } else {
+        "Uploaded"
+    }
 }
 
 /// Collected file entry for 2-phase download
@@ -3960,7 +4494,7 @@ async fn provider_download_folder_inner(
     local_path: &str,
     file_exists_action: Option<String>,
     transfer_settings: TransferSettingsInput,
-) -> Result<String, String> {
+) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let file_exists_action = file_exists_action.unwrap_or_default();
     {
         let mut provider_lock = state.provider.lock().await;
@@ -4063,9 +4597,11 @@ async fn provider_download_folder_inner(
                     fallback_reason: None,
                 },
             );
-            return Ok(format!(
-                "Download cancelled after {} files",
-                files_downloaded
+            return Ok(crate::transfer_domain::FolderTransferOutcome::cancelled(
+                files_downloaded,
+                files_skipped,
+                0,
+                format!("Download cancelled after {} files", files_downloaded),
             ));
         }
 
@@ -4181,9 +4717,11 @@ async fn provider_download_folder_inner(
                         fallback_reason: None,
                     },
                 );
-                return Ok(format!(
-                    "Download cancelled after {} files",
-                    files_downloaded
+                return Ok(crate::transfer_domain::FolderTransferOutcome::cancelled(
+                    files_downloaded,
+                    files_skipped,
+                    0,
+                    format!("Download cancelled after {} files", files_downloaded),
                 ));
             }
 
@@ -4310,7 +4848,8 @@ async fn provider_download_folder_inner(
         sink,
         batch,
         executor,
-        state.cancel_flag.clone(),
+        // The first Stop starts no further file and lets in-flight ones end.
+        state.batch_stop_flag.clone(),
         Some(progress_observer),
     )
     .await;
@@ -4355,7 +4894,13 @@ async fn provider_download_folder_inner(
         },
     );
 
-    Ok(result_message)
+    Ok(crate::transfer_domain::FolderTransferOutcome {
+        completed: files_downloaded,
+        skipped: files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 async fn provider_upload_folder_inner(
@@ -4366,7 +4911,7 @@ async fn provider_upload_folder_inner(
     file_exists_action: Option<String>,
     transfer_settings: TransferSettingsInput,
     commit_message: Option<String>,
-) -> Result<String, String> {
+) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let file_exists_action = file_exists_action.unwrap_or_default();
     let (runtime_settings, session_model, capabilities) =
         resolve_provider_transfer_runtime(&state.provider, transfer_settings).await;
@@ -4469,9 +5014,11 @@ async fn provider_upload_folder_inner(
                     fallback_reason: None,
                 },
             );
-            return Ok(format!(
-                "Upload cancelled after {} files",
-                transfer_entries.len()
+            return Ok(crate::transfer_domain::FolderTransferOutcome::cancelled(
+                0,
+                0,
+                0,
+                format!("Upload cancelled after {} files", transfer_entries.len()),
             ));
         }
 
@@ -4622,7 +5169,12 @@ async fn provider_upload_folder_inner(
                             fallback_reason: None,
                         },
                     );
-                    return Ok("Upload cancelled before remote conflict scan".to_string());
+                    return Ok(crate::transfer_domain::FolderTransferOutcome::cancelled(
+                        0,
+                        0,
+                        0,
+                        "Upload cancelled before remote conflict scan".to_string(),
+                    ));
                 }
 
                 match provider.list(remote_dir).await {
@@ -4756,7 +5308,8 @@ async fn provider_upload_folder_inner(
         sink,
         batch,
         executor,
-        state.cancel_flag.clone(),
+        // The first Stop starts no further file and lets in-flight ones end.
+        state.batch_stop_flag.clone(),
         Some(progress_observer),
     )
     .await;
@@ -4795,7 +5348,13 @@ async fn provider_upload_folder_inner(
         },
     );
 
-    Ok(result_message)
+    Ok(crate::transfer_domain::FolderTransferOutcome {
+        completed: files_uploaded,
+        skipped: files_skipped,
+        failed: files_errored,
+        cancelled: batch_result.cancelled,
+        message: result_message,
+    })
 }
 
 /// Upload a file to the remote server
@@ -6334,16 +6893,20 @@ pub async fn provider_share_link_capabilities(
 pub async fn provider_remove_share_link(
     state: State<'_, ProviderState>,
     path: String,
+    link_id: Option<String>,
 ) -> Result<(), String> {
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
 
-    provider
-        .remove_share_link(&path)
-        .await
-        .map_err(|e| format!("Failed to remove share link: {}", e))?;
+    // `path` is always the shared item; `link_id`, when the caller picked one
+    // link out of `provider_list_share_links`, says which of its links to drop.
+    match link_id.as_deref() {
+        Some(id) => provider.remove_share_link_by_id(&path, id).await,
+        None => provider.remove_share_link(&path).await,
+    }
+    .map_err(|e| format!("Failed to remove share link: {}", e))?;
 
     info!("Removed share link for {}", path);
     Ok(())
@@ -14685,6 +15248,561 @@ mod tests {
             .unwrap();
         assert!(result.cancelled);
         assert!(!state.used_scan_cancel.is_armed());
+    }
+
+    /// Issue #591 probe: counts transfers in flight across every clone and
+    /// records the peak. `pooled` advertises an HTTP clone pool of eight, the
+    /// shape WebDAV, S3, Azure and the OAuth clouds declare; otherwise it is
+    /// a single locked session, the shape GitHub declares.
+    #[derive(Clone, Default)]
+    struct InFlightProbe {
+        in_flight: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+        started: Arc<AtomicUsize>,
+        done: Arc<AtomicUsize>,
+        /// Raise this flag when the `stop_at`-th file starts (a user Stop).
+        stop: Option<(usize, Arc<AtomicBool>)>,
+    }
+
+    impl InFlightProbe {
+        async fn hold(&self) {
+            let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(now, Ordering::SeqCst);
+            let started = self.started.fetch_add(1, Ordering::SeqCst) + 1;
+            if let Some((stop_at, flag)) = &self.stop {
+                if started == *stop_at {
+                    flag.store(true, Ordering::SeqCst);
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            self.done.fetch_add(1, Ordering::SeqCst);
+        }
+        fn peak(&self) -> usize {
+            self.peak.load(Ordering::SeqCst)
+        }
+    }
+
+    struct ProbeProvider {
+        probe: InFlightProbe,
+        pooled: bool,
+        /// The endpoint the adaptive registry keys its learned targets by.
+        /// That registry is process-global and the tests run in parallel, so
+        /// every run gets its own name unless a test shares one on purpose.
+        endpoint: String,
+    }
+
+    /// A fresh endpoint name, so no other test's batch seeds this one.
+    fn unique_probe_endpoint() -> String {
+        static NEXT: AtomicUsize = AtomicUsize::new(0);
+        format!("in-flight-probe-{}", NEXT.fetch_add(1, Ordering::SeqCst))
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for ProbeProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            self.endpoint.clone()
+        }
+        fn transfer_capabilities(&self) -> crate::transfer_dag::TransferCapabilities {
+            crate::transfer_dag::TransferCapabilities {
+                file_parallel: crate::transfer_dag::Capability::Supported,
+                session_pool: crate::transfer_dag::Capability::Supported,
+                max_file_slots: Some(8),
+                ..Default::default()
+            }
+        }
+        fn transfer_executor_kind(&self) -> crate::providers::ProviderTransferExecutorKind {
+            if self.pooled {
+                crate::providers::ProviderTransferExecutorKind::HttpClonePool
+            } else {
+                crate::providers::ProviderTransferExecutorKind::LockedSingle
+            }
+        }
+        fn transfer_executor_max_sessions(&self) -> u16 {
+            if self.pooled {
+                8
+            } else {
+                1
+            }
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            if !self.pooled {
+                return Err(ProviderError::NotSupported(
+                    "clone_for_transfer".to_string(),
+                ));
+            }
+            Ok(Box::new(ProbeProvider {
+                probe: self.probe.clone(),
+                pooled: true,
+                endpoint: self.endpoint.clone(),
+            }))
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.probe.hold().await;
+            std::fs::write(local_path, b"ok").map_err(ProviderError::IoError)
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Ok(b"ok".to_vec())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.probe.hold().await;
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotSupported("stat".to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(2)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("in-flight-probe".to_string())
+        }
+    }
+
+    /// Runs `run_provider_file_batch` over `count` files and returns the
+    /// outcome, the probe and the scratch dir (kept alive for the caller).
+    async fn run_probe_batch(
+        direction: TransferDirection,
+        pooled: bool,
+        count: usize,
+        max_concurrent: u32,
+        stop_at: Option<usize>,
+    ) -> (
+        super::ProviderFileBatchOutcome,
+        InFlightProbe,
+        tempfile::TempDir,
+    ) {
+        let endpoint = unique_probe_endpoint();
+        run_probe_batch_on(&endpoint, direction, pooled, count, max_concurrent, stop_at).await
+    }
+
+    /// `run_probe_batch` against a named endpoint, for a test that needs
+    /// several batches to share what the engine learns about one server.
+    async fn run_probe_batch_on(
+        endpoint: &str,
+        direction: TransferDirection,
+        pooled: bool,
+        count: usize,
+        max_concurrent: u32,
+        stop_at: Option<usize>,
+    ) -> (
+        super::ProviderFileBatchOutcome,
+        InFlightProbe,
+        tempfile::TempDir,
+    ) {
+        let batch_stop_flag = Arc::new(AtomicBool::new(false));
+        let probe = InFlightProbe {
+            stop: stop_at.map(|n| (n, batch_stop_flag.clone())),
+            ..InFlightProbe::default()
+        };
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(ProbeProvider {
+                probe: probe.clone(),
+                pooled,
+                endpoint: endpoint.to_string(),
+            }))));
+        let dir = tempfile::tempdir().expect("scratch dir");
+        let upload = matches!(direction, TransferDirection::Upload);
+        let entries = (0..count)
+            .map(|i| {
+                let local = dir.path().join(format!("f{i}.bin"));
+                if upload {
+                    std::fs::write(&local, b"ok").expect("seed local file");
+                }
+                TransferEntry {
+                    id: String::new(),
+                    display_name: format!("f{i}.bin"),
+                    remote_path: format!("/dav/f{i}.bin"),
+                    local_path: local.to_string_lossy().to_string(),
+                    size: 2,
+                    modified: None,
+                }
+            })
+            .collect();
+        let started = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let started_sink = started.clone();
+        let outcome = super::run_provider_file_batch(
+            provider,
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(move |event: crate::TransferEvent| {
+                started_sink.lock().unwrap().push(event.event_type);
+            }),
+            batch_stop_flag,
+            CancellationToken::new(),
+            direction,
+            super::ProviderFileBatchParams {
+                entries,
+                max_concurrent: Some(max_concurrent),
+                retry_count: Some(0),
+                timeout_seconds: Some(30),
+                download_segments: None,
+                sftp_download_preset: None,
+                commit_message: None,
+                batch_id: None,
+            },
+        )
+        .await
+        .expect("batch runs");
+        let lifecycle = started.lock().unwrap().clone();
+        assert_eq!(
+            lifecycle.first().map(String::as_str),
+            Some("start"),
+            "the batch announces itself before any file: {lifecycle:?}"
+        );
+        let terminal = if outcome.cancelled {
+            "cancelled"
+        } else {
+            "complete"
+        };
+        assert_eq!(
+            lifecycle.last().map(String::as_str),
+            Some(terminal),
+            "the batch closes with one terminal event: {lifecycle:?}"
+        );
+        (outcome, probe, dir)
+    }
+
+    /// Issue #591: a multi-file selection must run as many files at once as
+    /// the setting asks for, the way a folder does. Before the file-list
+    /// batch the GUI awaited one `provider_download_file` per file, so the
+    /// peak was 1 on every protocol whatever the setting said.
+    #[tokio::test]
+    async fn file_list_download_runs_files_concurrently_on_a_pool_provider() {
+        let (outcome, probe, dir) =
+            run_probe_batch(TransferDirection::Download, true, 8, 8, None).await;
+        assert_eq!((outcome.completed, outcome.failed), (8, 0), "{outcome:?}");
+        assert!(!outcome.cancelled);
+        assert_eq!(outcome.succeeded, (0..8).collect::<Vec<u32>>());
+        assert_eq!(
+            probe.peak(),
+            8,
+            "eight files with eight slots must all be in flight together"
+        );
+        for i in 0..8 {
+            let landed = std::fs::read(dir.path().join(format!("f{i}.bin"))).expect("file landed");
+            assert_eq!(landed, b"ok");
+        }
+    }
+
+    #[tokio::test]
+    async fn file_list_upload_runs_files_concurrently_on_a_pool_provider() {
+        let (outcome, probe, _dir) =
+            run_probe_batch(TransferDirection::Upload, true, 8, 8, None).await;
+        assert_eq!((outcome.completed, outcome.failed), (8, 0), "{outcome:?}");
+        assert_eq!(probe.peak(), 8);
+    }
+
+    /// The setting is a ceiling, not a target: three slots means three.
+    #[tokio::test]
+    async fn file_list_batch_honours_a_lower_concurrency_setting() {
+        let (outcome, probe, _dir) =
+            run_probe_batch(TransferDirection::Download, true, 8, 3, None).await;
+        assert_eq!(outcome.completed, 8);
+        assert_eq!(probe.peak(), 3);
+    }
+
+    /// A single-session provider (GitHub's shape) stays at one file at a
+    /// time even when the setting asks for eight: the batch must not open
+    /// concurrency the backend cannot carry.
+    #[tokio::test]
+    async fn file_list_batch_stays_serial_on_a_locked_provider() {
+        let (outcome, probe, _dir) =
+            run_probe_batch(TransferDirection::Download, false, 4, 8, None).await;
+        assert_eq!((outcome.completed, outcome.failed), (4, 0), "{outcome:?}");
+        assert_eq!(probe.peak(), 1);
+    }
+
+    /// First Stop of the two-level cancel: files in flight finish, no other
+    /// file starts. Before #591 a selection ran file by file in the GUI loop,
+    /// which honoured this; a backend batch must honour it too, through
+    /// `batch_stop_flag` (the folder batches share the same flag).
+    #[tokio::test]
+    async fn soft_stop_lets_in_flight_files_finish_and_starts_no_other() {
+        let (outcome, probe, dir) =
+            run_probe_batch(TransferDirection::Download, true, 8, 2, Some(2)).await;
+        assert!(outcome.cancelled, "{outcome:?}");
+        assert_eq!(
+            outcome.completed, 2,
+            "the two files in flight finish: {outcome:?}"
+        );
+        assert_eq!(
+            probe.started.load(Ordering::SeqCst),
+            2,
+            "no third file starts"
+        );
+        assert_eq!(probe.done.load(Ordering::SeqCst), 2);
+        let landed = (0..8)
+            .filter(|i| dir.path().join(format!("f{i}.bin")).exists())
+            .count();
+        assert_eq!(landed, 2);
+        // Exactly the two landed files are reported, and they are the files
+        // on disk: a "cut" paste deletes these sources and no other.
+        assert_eq!(outcome.succeeded.len(), 2, "{outcome:?}");
+        for index in &outcome.succeeded {
+            assert!(dir.path().join(format!("f{index}.bin")).exists());
+        }
+    }
+
+    /// The two Stop levels reach different flags. The soft one must leave
+    /// `cancel_flag` and the token alone: the single-file commands read those
+    /// as "abort the file in flight now" (issue #332), and the first Stop
+    /// promises to let the current file finish.
+    #[tokio::test]
+    async fn soft_stop_raises_only_the_batch_flag_and_hard_cancel_raises_all() {
+        let state = ProviderState::new();
+        let token = state.reset_cancel_state().await;
+
+        state.request_batch_stop();
+        assert!(state.batch_stop_flag.load(Ordering::SeqCst));
+        assert!(
+            !state.cancel_flag.load(Ordering::SeqCst),
+            "soft stop must not abort a single-file transfer"
+        );
+        assert!(
+            !token.is_cancelled(),
+            "soft stop must not cancel in-flight work"
+        );
+
+        let token = state.reset_cancel_state().await;
+        assert!(
+            !state.batch_stop_flag.load(Ordering::SeqCst),
+            "a new transfer starts clean"
+        );
+
+        state.request_cancel().await;
+        assert!(state.batch_stop_flag.load(Ordering::SeqCst));
+        assert!(state.cancel_flag.load(Ordering::SeqCst));
+        assert!(token.is_cancelled());
+    }
+
+    /// The upload dialog sends `size: 0` (it cannot know the size) and the
+    /// DAG shapes multipart by size: the batch must read it from the disk.
+    #[tokio::test]
+    async fn upload_entry_size_comes_from_the_disk_not_the_caller() {
+        let dir = tempfile::tempdir().expect("scratch dir");
+        let path = dir.path().join("big.bin");
+        std::fs::write(&path, vec![0u8; 4096]).expect("seed");
+        assert_eq!(
+            super::upload_entry_size(path.to_str().unwrap(), 0).await,
+            4096
+        );
+        let missing = dir.path().join("missing.bin");
+        assert_eq!(
+            super::upload_entry_size(missing.to_str().unwrap(), 7).await,
+            7
+        );
+    }
+
+    /// The GUI reads these exact keys (`FolderTransferOutcome` in
+    /// src/utils/fileBatchRouting.ts) to decide whether a "cut" may delete
+    /// the source folder.
+    #[test]
+    fn folder_outcome_serializes_the_fields_the_gui_reads() {
+        let outcome = crate::transfer_domain::FolderTransferOutcome {
+            completed: 4,
+            skipped: 1,
+            failed: 2,
+            cancelled: false,
+            message: "m".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(&outcome).unwrap(),
+            serde_json::json!({
+                "completed": 4, "skipped": 1, "failed": 2, "cancelled": false, "message": "m"
+            })
+        );
+        let stopped = crate::transfer_domain::FolderTransferOutcome::cancelled(3, 1, 0, "c".into());
+        assert!(stopped.cancelled);
+        assert_eq!(
+            (stopped.completed, stopped.skipped, stopped.failed),
+            (3, 1, 0)
+        );
+    }
+
+    /// The GUI sends the batch as `params` with snake_case keys; this is the
+    /// exact object `runFileBatch` in App.tsx builds.
+    #[test]
+    fn file_batch_params_accept_the_gui_payload() {
+        let params: super::ProviderFileBatchParams = serde_json::from_value(serde_json::json!({
+            "entries": [{
+                "id": "",
+                "display_name": "a.txt",
+                "remote_path": "/dav/a.txt",
+                "local_path": "/tmp/a.txt",
+                "size": 3,
+                "modified": null
+            }],
+            "max_concurrent": 8,
+            "retry_count": 3,
+            "timeout_seconds": 30,
+            "download_segments": null,
+            "sftp_download_preset": "fast",
+            "commit_message": null,
+            "batch_id": "dl-files-1790925637713-k3x"
+        }))
+        .expect("GUI payload deserializes");
+        assert_eq!(params.entries.len(), 1);
+        assert_eq!(params.max_concurrent, Some(8));
+        assert_eq!(params.sftp_download_preset, Some(SftpDownloadPreset::Fast));
+        assert_eq!(
+            params.batch_id.as_deref(),
+            Some("dl-files-1790925637713-k3x")
+        );
+    }
+
+    /// The GUI's batch id becomes the prefix of every per-file event id, so
+    /// only a well-formed id for the right direction is taken as is.
+    #[test]
+    fn file_batch_id_is_taken_only_when_well_formed() {
+        use super::accepted_file_batch_id as ok;
+        assert_eq!(
+            ok(Some("dl-files-123-abc"), true).as_deref(),
+            Some("dl-files-123-abc")
+        );
+        assert_eq!(
+            ok(Some("ul-files-123"), false).as_deref(),
+            Some("ul-files-123")
+        );
+        assert_eq!(ok(Some("ul-files-123"), true), None, "wrong direction");
+        assert_eq!(ok(Some("dl-files-"), true), None, "empty tail");
+        assert_eq!(ok(Some("dl-files-a b"), true), None, "space");
+        assert_eq!(ok(Some("dl-folder-1"), true), None, "a folder id");
+        assert_eq!(
+            ok(Some(&format!("dl-files-{}", "x".repeat(65))), true),
+            None,
+            "too long"
+        );
+        assert_eq!(ok(None, true), None);
+    }
+
+    /// Every per-file event of a batch carries `<batch_id>-<index>`, the key
+    /// the GUI registered for the row of that index.
+    #[tokio::test]
+    async fn file_events_carry_the_gui_batch_id_and_entry_index() {
+        let ids = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+        struct Rec(Arc<std::sync::Mutex<Vec<(String, String)>>>);
+        impl TransferEventSink for Rec {
+            fn emit_transfer_event(&self, e: crate::TransferEvent) {
+                self.0.lock().unwrap().push((e.event_type, e.transfer_id));
+            }
+        }
+        let probe = InFlightProbe::default();
+        let provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(ProbeProvider {
+                probe,
+                pooled: true,
+                endpoint: unique_probe_endpoint(),
+            }))));
+        let dir = tempfile::tempdir().expect("scratch dir");
+        let entries = (0..3)
+            .map(|i| TransferEntry {
+                id: String::new(),
+                display_name: format!("f{i}.bin"),
+                remote_path: format!("/dav/f{i}.bin"),
+                local_path: dir
+                    .path()
+                    .join(format!("f{i}.bin"))
+                    .to_string_lossy()
+                    .to_string(),
+                size: 2,
+                modified: None,
+            })
+            .collect();
+        let outcome = super::run_provider_file_batch(
+            provider,
+            Arc::new(Rec(ids.clone())),
+            Arc::new(|_e: crate::TransferEvent| {}),
+            Arc::new(AtomicBool::new(false)),
+            CancellationToken::new(),
+            TransferDirection::Download,
+            super::ProviderFileBatchParams {
+                entries,
+                max_concurrent: Some(3),
+                retry_count: Some(0),
+                timeout_seconds: Some(30),
+                download_segments: None,
+                sftp_download_preset: None,
+                commit_message: None,
+                batch_id: Some("dl-files-gui-7".to_string()),
+            },
+        )
+        .await
+        .expect("batch runs");
+        assert_eq!(outcome.succeeded, vec![0, 1, 2]);
+        let ids = ids.lock().unwrap().clone();
+        for i in 0..3 {
+            let want = format!("dl-files-gui-7-{i}");
+            assert!(
+                ids.iter().any(|(t, id)| t == "file_start" && *id == want),
+                "{want}: {ids:?}"
+            );
+            assert!(
+                ids.iter()
+                    .any(|(t, id)| t == "file_complete" && *id == want),
+                "{want}: {ids:?}"
+            );
+        }
     }
 
     /// Provider for the storage-read tests. `list` answers from `dirs` after

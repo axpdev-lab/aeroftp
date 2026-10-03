@@ -68,6 +68,8 @@ pub(crate) mod s3_delta;
 pub mod s3_delta_baseline;
 pub mod s3_delta_plan;
 pub mod sftp;
+#[cfg(test)]
+mod share_link_capability_guard;
 pub mod sts;
 pub mod swift;
 pub mod totp_helper;
@@ -612,6 +614,17 @@ pub struct ShareLinkResult {
     pub password: Option<String>,
     /// When the link expires (ISO 8601), if applicable
     pub expires_at: Option<String>,
+}
+
+/// Whether `id` can be placed in a URL path as a share-link id: the ids the
+/// providers hand out are alphanumeric with `-` and `_`, so anything else is
+/// refused rather than encoded.
+pub(crate) fn is_link_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Advertised capabilities for share link advanced options
@@ -1302,6 +1315,19 @@ pub trait StorageProvider: Send + Sync {
     /// Remove a previously created share/export link
     async fn remove_share_link(&mut self, _path: &str) -> Result<(), ProviderError> {
         Err(ProviderError::NotSupported("remove_share_link".to_string()))
+    }
+
+    /// Remove one of the links `list_share_links` returned for `path`, by the
+    /// `id` it carried. A provider that keeps a single link per item has
+    /// nothing to choose between and removes that one, which is the default;
+    /// a provider that can hold several links on one item overrides this so
+    /// that revoking one link does not remove another.
+    async fn remove_share_link_by_id(
+        &mut self,
+        path: &str,
+        _link_id: &str,
+    ) -> Result<(), ProviderError> {
+        self.remove_share_link(path).await
     }
 
     /// List existing share links for a file or folder.

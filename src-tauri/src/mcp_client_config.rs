@@ -22,6 +22,38 @@ pub struct McpSecretRef {
     pub vault_account: String,
 }
 
+/// Settings are written only by the permission/install commands. Empty on upgrade.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpSandboxConfig {
+    #[serde(default)]
+    pub directories: Vec<McpDirectoryGrant>,
+    #[serde(default)]
+    pub network_consent: bool,
+    #[serde(default)]
+    pub managed: Option<McpManagedInstall>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpDirectoryGrant {
+    pub path: String,
+    #[serde(with = "u64_text")]
+    pub device: u64,
+    #[serde(with = "u64_text")]
+    pub inode: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpManagedInstall {
+    pub manifest_id: String,
+    pub version: String,
+    pub archive_sha256: String,
+    pub tree_sha256: String,
+    pub network_declared: bool,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct McpServerConfig {
@@ -31,6 +63,20 @@ pub struct McpServerConfig {
     pub env: BTreeMap<String, McpSecretRef>,
     pub enabled: bool,
     pub revision: u64,
+    #[serde(default)]
+    pub sandbox: McpSandboxConfig,
+}
+
+// Inodes may exceed JavaScript's integer precision. Renderer round trips must
+// preserve the exact identity used to reject a substituted directory.
+mod u64_text {
+    pub fn serialize<S: serde::Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+        let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+        value.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 impl fmt::Debug for McpServerConfig {
@@ -59,7 +105,7 @@ impl fmt::Debug for ResolvedMcpEnvironment {
     }
 }
 
-fn identifier(value: &str, max: usize) -> bool {
+pub(crate) fn identifier(value: &str, max: usize) -> bool {
     !value.is_empty()
         && value.len() <= max
         && value
@@ -101,7 +147,7 @@ fn environment_override(name: &str) -> bool {
         || name.starts_with("PYTHON")
 }
 
-fn literal(value: &str) -> bool {
+pub(crate) fn literal(value: &str) -> bool {
     value.len() <= MAX_VALUE_LEN
         && !value.chars().any(char::is_control)
         && !value.contains('$')
@@ -128,6 +174,12 @@ impl McpServerConfig {
             .unwrap_or("")
             .to_ascii_lowercase();
         if [
+            "npx",
+            "npx.cmd",
+            "npm",
+            "pnpm",
+            "yarn",
+            "uvx",
             "sh",
             "bash",
             "zsh",
@@ -156,6 +208,44 @@ impl McpServerConfig {
             {
                 return Err("MCP_CONFIG_INVALID_SECRET_REF");
             }
+        }
+        if self.sandbox.directories.len() > 4
+            || self.sandbox.directories.iter().any(|grant| {
+                !Path::new(&grant.path).is_absolute() || !literal(&grant.path) || grant.inode == 0
+            })
+            || self.sandbox.directories.iter().enumerate().any(|(i, a)| {
+                self.sandbox.directories[..i].iter().any(|b| {
+                    Path::new(&a.path).starts_with(&b.path)
+                        || Path::new(&b.path).starts_with(&a.path)
+                })
+            })
+        {
+            return Err("MCP_DIRECTORY_INVALID");
+        }
+        if let Some(install) = &self.sandbox.managed {
+            if !identifier(&install.manifest_id, 64)
+                || !identifier(&install.version.replace('.', "-"), 64)
+                || [&install.archive_sha256, &install.tree_sha256]
+                    .iter()
+                    .any(|hash| {
+                        hash.len() != 64
+                            || !hash
+                                .bytes()
+                                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                    })
+                || self.sandbox.directories.len() != 1
+            {
+                return Err("MCP_INSTALL_INVALID");
+            }
+        }
+        if self.sandbox.network_consent
+            && !self
+                .sandbox
+                .managed
+                .as_ref()
+                .is_some_and(|install| install.network_declared)
+        {
+            return Err("MCP_NETWORK_UNDECLARED");
         }
         Ok(())
     }
@@ -235,6 +325,63 @@ mod tests {
             )]),
             enabled: true,
             revision: 1,
+            sandbox: Default::default(),
+        }
+    }
+
+    #[test]
+    fn old_configs_default_to_file_only_and_permissions_revoke_revisions() {
+        let mut value = serde_json::to_value(fixture()).unwrap();
+        value.as_object_mut().unwrap().remove("sandbox");
+        let old: McpServerConfig = serde_json::from_value(value).unwrap();
+        assert_eq!(old.sandbox, McpSandboxConfig::default());
+        let identity = McpDirectoryGrant {
+            path: "/project".into(),
+            device: u64::MAX,
+            inode: u64::MAX,
+        };
+        let encoded = serde_json::to_value(&identity).unwrap();
+        assert_eq!(encoded["inode"], u64::MAX.to_string());
+        assert_eq!(
+            serde_json::from_value::<McpDirectoryGrant>(encoded).unwrap(),
+            identity
+        );
+        let resolve = |config: &McpServerConfig| {
+            config
+                .resolve_with(&[3; 32], 1, |_| Ok(Zeroizing::new("secret".into())))
+                .unwrap()
+                .effective_revision
+        };
+        let initial = resolve(&old);
+        let mut changed = old.clone();
+        changed.sandbox.directories.push(McpDirectoryGrant {
+            path: std::env::temp_dir().to_string_lossy().into(),
+            device: 1,
+            inode: 2,
+        });
+        assert_ne!(resolve(&changed), initial);
+        let read_only = resolve(&changed);
+        changed.sandbox.managed = Some(McpManagedInstall {
+            manifest_id: "fixture".into(),
+            version: "1.0.0".into(),
+            archive_sha256: "a".repeat(64),
+            tree_sha256: "b".repeat(64),
+            network_declared: true,
+        });
+        changed.sandbox.network_consent = true;
+        assert_ne!(resolve(&changed), read_only);
+        let network = resolve(&changed);
+        changed.sandbox.managed.as_mut().unwrap().version = "1.0.1".into();
+        assert_ne!(resolve(&changed), network);
+        changed.sandbox.managed = None;
+        assert_eq!(changed.validate(), Err("MCP_NETWORK_UNDECLARED"));
+        for command in ["/usr/bin/npx", "/usr/bin/uvx"] {
+            assert!(McpServerConfig {
+                command: command.into(),
+                ..fixture()
+            }
+            .validate()
+            .is_err());
         }
     }
 

@@ -18,6 +18,13 @@ export interface AIToolParameter {
     type: 'string' | 'number' | 'integer' | 'boolean' | 'array';
     description: string;
     required: boolean;
+    enum?: (string | number | boolean)[];
+    minimum?: number;
+    maximum?: number;
+    exclusiveMinimum?: number;
+    exclusiveMaximum?: number;
+    minLength?: number;
+    maxLength?: number;
 }
 
 export interface AgentToolCall {
@@ -756,6 +763,13 @@ export const toJSONSchema = (tool: AITool): Record<string, unknown> => ({
         tool.parameters.map(p => [p.name, {
             type: p.type === 'array' ? 'array' : p.type,
             description: p.description,
+            ...(p.enum !== undefined ? { enum: p.enum } : {}),
+            ...(p.minimum !== undefined ? { minimum: p.minimum } : {}),
+            ...(p.maximum !== undefined ? { maximum: p.maximum } : {}),
+            ...(p.exclusiveMinimum !== undefined ? { exclusiveMinimum: p.exclusiveMinimum } : {}),
+            ...(p.exclusiveMaximum !== undefined ? { exclusiveMaximum: p.exclusiveMaximum } : {}),
+            ...(p.minLength !== undefined ? { minLength: p.minLength } : {}),
+            ...(p.maxLength !== undefined ? { maxLength: p.maxLength } : {}),
             ...(p.type === 'array' ? { items: { type: 'string' } } : {}),
         }])
     ),

@@ -41,6 +41,7 @@ pub(crate) enum BridgeError {
     Http(HttpError),
     SchemaChanged,
     OAuthPending,
+    Installation(&'static str),
 }
 impl From<GateError> for BridgeError {
     fn from(e: GateError) -> Self {
@@ -66,6 +67,9 @@ impl BridgeError {
     /// Stable code for the frontend. Transport detail never leaves the backend.
     pub(crate) const fn code(&self) -> &'static str {
         match self {
+            Self::Installation(code) => code,
+            Self::Stdio(TransportError::DirectoryChanged) => "MCP_DIRECTORY_CHANGED",
+            Self::Stdio(TransportError::InstallIntegrity) => "MCP_INSTALL_INTEGRITY",
             Self::Gate(error) => error.code(),
             Self::Schema(SchemaError::Arguments) => "MCP_TOOL_ARGUMENTS",
             Self::Schema(_) => "MCP_TOOLS_UNSUPPORTED",
@@ -137,6 +141,8 @@ fn resolve_server(
             if !config.enabled {
                 return Err(GateError::ConfigDisabled.into());
             }
+            crate::mcp_client_install::validate_binding(app, user_id, &config)
+                .map_err(BridgeError::Installation)?;
             let environment = config
                 .resolve_with(key, user_id, |account| {
                     crate::user_partitions::get_user_credential_for(
@@ -1068,6 +1074,7 @@ mod wire_tests {
                 env: BTreeMap::new(),
                 enabled: true,
                 revision: 1,
+                sandbox: Default::default(),
             };
             let env = ResolvedMcpEnvironment {
                 effective_revision: "a".repeat(64),
@@ -1120,6 +1127,7 @@ mod wire_tests {
             env: BTreeMap::new(),
             enabled: true,
             revision: 1,
+            sandbox: Default::default(),
         };
         let env = ResolvedMcpEnvironment {
             effective_revision: "a".repeat(64),
@@ -1224,7 +1232,7 @@ mod http_wire_tests {
         let addr = listener.local_addr().unwrap();
         let response_schema = input.clone();
         let server = tokio::spawn(async move {
-            for id in 1..=if legacy { 6 } else { 3 } {
+            for id in 1..=if legacy { 6 } else { 4 } {
                 let (mut stream, _) = listener.accept().await.unwrap();
                 let mut bytes = vec![];
                 let mut buf = [0; 4096];
@@ -1277,7 +1285,10 @@ mod http_wire_tests {
                         .to_ascii_lowercase()
                         .contains("mcp-session-id: bridge-session"));
                 }
-                let result = if id < if legacy { 6 } else { 3 } {
+                let result = if !legacy && id == 1 {
+                    assert_eq!(body["method"], "server/discover");
+                    json!({"resultType":"complete","supportedVersions":[crate::mcp_client_protocol::MODERN_VERSION],"capabilities":{},"ttlMs":0,"cacheScope":"private"})
+                } else if id < if legacy { 6 } else { 4 } {
                     assert_eq!(body["method"], "tools/list");
                     assert!(!headers.to_ascii_lowercase().contains("mcp-param-fresh"));
                     json!({"resultType":"complete","tools":[{"name":"echo","inputSchema":response_schema}]})

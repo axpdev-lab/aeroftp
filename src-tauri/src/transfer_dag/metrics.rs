@@ -37,7 +37,10 @@ pub struct TransferDagMetrics {
     #[serde(default)]
     pub run_nanos_total: u64,
     /// High-water mark of concurrently dispatched node tasks observed by the
-    /// executor scheduling loop for this run.
+    /// executor scheduling loop for this run. For a streamed multi-file job
+    /// (batch, sync) the owner overwrites the fold with the most files that
+    /// transferred at once: each per-file subgraph reports 1 for a whole
+    /// file, so the max of the fold is not the job's concurrency.
     #[serde(default)]
     pub slot_peak: u32,
     /// Sum of time-to-first-byte samples measured at provider call

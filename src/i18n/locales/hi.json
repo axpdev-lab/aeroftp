@@ -102,14 +102,9 @@
             "connectionFailed": "कनेक्शन विफल",
             "reconnecting": "पुनः कनेक्ट हो रहा है...",
             "quickConnect": "त्वरित कनेक्ट",
-            "savedServers": "सहेजे गए सर्वर",
-            "noSavedServers": "कोई सहेजा गया सर्वर नहीं",
             "saveServer": "सर्वर सहेजें",
-            "deleteServer": "सर्वर हटाएं",
-            "editServer": "सर्वर संपादित करें",
             "serverName": "सर्वर का नाम",
             "initialPath": "प्रारंभिक पथ",
-            "savedServersHelp": "कनेक्ट करने के लिए एक सर्वर चुनें।",
             "selectSshKey": "SSH निजी कुंजी चुनें",
             "allFiles": "सभी फ़ाइलें",
             "sshKeys": "SSH कुंजियाँ",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "किसी भी सर्वर को स्वचालित सिंक के साथ अपने निजी क्लाउड में बदलें",
             "configureAerocloud": "AeroCloud कॉन्फ़िगर करें",
             "aerocloudHelp": "आप स्टेटस बार से भी AeroCloud कॉन्फ़िगर कर सकते हैं",
-            "selectProviderPrompt": "ऊपर एक प्रदाता चुनें या मैन्युअल कॉन्फ़िगरेशन के लिए \"कस्टम\" चुनें",
-            "custom": "कस्टम",
             "change": "बदलें",
             "emailAccount": "ईमेल खाता",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "आपका MEGA पासवर्ड",
-            "dismiss": "खारिज करें",
             "authenticating": "प्रमाणित हो रहा है...",
             "oauth2Connection": "OAuth2 कनेक्शन",
             "securityTitle": "एन्क्रिप्टेड क्रेडेंशियल स्टोरेज",
@@ -170,7 +162,6 @@
             "docs": "दस्तावेज़",
             "minutes": "मिनट",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "सर्वर खोजें...",
             "fourshared": {
                 "backToExistingAccount": "मौजूदा खाते पर वापस जाएँ",
                 "configureCredentials": "OAuth 1.0 क्रेडेंशियल कॉन्फ़िगर करें",
@@ -243,8 +234,6 @@
             "koofrAppPassword": "ऐप पासवर्ड",
             "koofrAppPasswordPlaceholder": "अपना Koofr ऐप पासवर्ड यहां पेस्ट करें",
             "koofrHelp": "app.koofr.net → प्राथमिकताएं → पासवर्ड → ऐप पासवर्ड पर एक ऐप पासवर्ड बनाएं",
-            "duplicateServer": "सर्वर डुप्लिकेट करें",
-            "duplicateCredentialMissing": "क्रेडेंशियल डुप्लिकेट में कॉपी नहीं हुआ। कनेक्ट करने से पहले पासवर्ड फिर से दर्ज करें।",
             "saveAsNew": "नए के रूप में सहेजें",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Immich → User Settings → API Keys में एक API कुंजी बनाएं",
             "immichOps": "ब्राउज़, अपलोड, डाउनलोड, हटाएं, एल्बम, खोज, शेयर लिंक। नाम बदलना और स्थानांतरित करना समर्थित नहीं है।",
             "generatePassword": "पासवर्ड जेनरेट करें",
-            "saveAndConnect": "सहेजें और कनेक्ट करें",
-            "saveDisabledTotp": "TOTP कोड एकल-उपयोग के लिए हैं। इस कोड को अभी लागू करने के लिए सहेजें और कनेक्ट करें का उपयोग करें।",
             "generatePersonalLoginToken": "व्यक्तिगत लॉगिन टोकन जनरेट करें",
             "endpointUrl": "एंडपॉइंट URL",
             "b2NativeAdvantagesTitle": "Backblaze B2 नेटिव API: S3-संगत की तुलना में अतिरिक्त सुविधाएँ",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "फिर से साइन इन करें",
             "twakeSignedIn": "साइन इन हो गया",
             "twakeWaitingBrowser": "अपने ब्राउज़र में साइन इन पूरा करें...",
-            "twakeSignInHelp": "AeroFTP आपके ब्राउज़र में Twake खोलता है और केवल आपकी फ़ाइलों तक पहुंच मांगता है। यदि Twake पहली बार त्रुटि दिखाता है, तो ब्राउज़र में Twake में लॉग इन करें और फिर से साइन इन करें। आप किसी भी समय Twake सेटिंग्स, कनेक्टेड डिवाइस में एक्सेस रद्द कर सकते हैं।"
+            "twakeSignInHelp": "AeroFTP आपके ब्राउज़र में Twake खोलता है और केवल आपकी फ़ाइलों तक पहुंच मांगता है। यदि Twake पहली बार त्रुटि दिखाता है, तो ब्राउज़र में Twake में लॉग इन करें और फिर से साइन इन करें। आप किसी भी समय Twake सेटिंग्स, कनेक्टेड डिवाइस में एक्सेस रद्द कर सकते हैं।",
+            "oauthKeysMissingTitle": "{provider} ऐप कीज़ नहीं मिलीं",
+            "oauthKeysMissing": "वॉल्ट में {provider} की कोई ऐप कीज़ सहेजी नहीं हैं, इसलिए AeroFTP साइन इन नहीं कर सकता। AeroFTP अपनी कीज़ साथ नहीं देता: {location} में अपने {provider} डेवलपर ऐप की कीज़ दर्ज करें, फिर दोबारा कनेक्ट करें।",
+            "oauthKeysOpenSettings": "OAuth सेटिंग्स खोलें",
+            "oauthKeysReadFailedTitle": "{provider} ऐप कुंजियाँ पढ़ी नहीं जा सकीं",
+            "oauthKeysReadFailed": "AeroFTP वॉल्ट से {provider} ऐप कुंजियाँ नहीं पढ़ सका, इसलिए साइन इन नहीं कर सकता। कुंजियाँ बदली नहीं गई हैं। त्रुटि: {error}"
         },
         "browser": {
             "remote": "दूरस्थ",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "लागू किए गए ओवरराइड: {count}",
             "uiTokensRejected": "अस्वीकृत प्रविष्टियाँ: {count}",
             "keystorePreferencesFailed": "आयात पूरा हुआ, लेकिन आपकी ऐप प्राथमिकताएँ पुनर्स्थापित नहीं हो सकीं: {error}",
-            "keystorePreviewBackupUnreadable": "इस बैकअप की सर्वर सूची इस डिवाइस पर पढ़ी नहीं जा सकती, इसलिए तुलना बैकअप के वॉल्ट में सहेजी गई सूची से की जाती है। आयात फिर भी इस डिवाइस की सर्वर सूची बदल देता है।"
+            "keystorePreviewBackupUnreadable": "इस बैकअप की सर्वर सूची इस डिवाइस पर पढ़ी नहीं जा सकती, इसलिए तुलना बैकअप के वॉल्ट में सहेजी गई सूची से की जाती है। आयात फिर भी इस डिवाइस की सर्वर सूची बदल देता है।",
+            "filterServersPlaceholder": "नाम, होस्ट, प्रोटोकॉल या उपयोगकर्ता से फ़िल्टर करें",
+            "selectShown": "दिखाए गए {count} चुनें",
+            "deselectShown": "दिखाए गए {count} का चयन हटाएँ",
+            "filterShownCount": "{shown} दिखाए गए",
+            "selectedHiddenByFilter": "{count} चयनित लेकिन फ़िल्टर द्वारा छिपे हैं, फिर भी शामिल हैं"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "निकाला गया!",
             "extractedTo": "फ़ाइलें {dest} में निकाली गईं",
             "fileLocked": "फ़ाइल लॉक है",
+            "cutPartial": "{total} में से {moved} आइटम स्थानांतरित किए गए; बाकी अपनी जगह पर हैं",
             "fileSkipped": "{count} फ़ाइल(लें) छोड़ी गईं",
             "fileUnlocked": "फ़ाइल अनलॉक हुई",
             "loadTrashFailed": "ट्रैश लोड करना विफल",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "एन्क्रिप्टेड ओवरले लॉक किया गया",
             "aerocrypt_marker_migrate": "AeroCrypt मार्कर को .aerocrypt.tsv में बदला जा रहा है…",
             "aerocrypt_marker_migrated": "AeroCrypt मार्कर .aerocrypt.tsv में परिवर्तित किया गया",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] फ़ोल्डर {filename} अनलॉक किया जा रहा है..."
         },
         "protocol": {
             "selectProtocol": "प्रोटोकॉल चुनें...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "लोकल सर्वर शुरू नहीं हो सका।",
                     "serverFailed": "सर्वर रुक गया या उसने अमान्य उत्तर भेजा।",
                     "httpUnauthorized": "सर्वर ने सहेजे गए क्रेडेंशियल अस्वीकार कर दिए।",
-                    "unsupportedVersion": "सर्वर ऐसे MCP संस्करण का उपयोग करता है जिसे AeroFTP समर्थित नहीं करता।"
+                    "unsupportedVersion": "सर्वर ऐसे MCP संस्करण का उपयोग करता है जिसे AeroFTP समर्थित नहीं करता।",
+                    "directoryInvalid": "लिंक या संवेदनशील एप्लिकेशन फ़ाइलों के बिना एक समर्पित डायरेक्टरी चुनें।",
+                    "directoryChanged": "अनुमति दी गई डायरेक्टरी बदल गई है या मौजूद नहीं है। पहुँच नवीनीकृत करने के लिए इसे फिर चुनें।",
+                    "permissionCommand": "डायरेक्टरी और नेटवर्क अनुमति नियंत्रणों से पहुँच बदलें।",
+                    "installInvalid": "यह प्रबंधित इंस्टॉलेशन उपलब्ध नहीं है या इसका मैनिफ़ेस्ट अमान्य है।",
+                    "installIntegrity": "पैकेज की अखंडता का सत्यापन विफल रहा। सर्वर हटाएँ और फिर से इंस्टॉल करें।",
+                    "installArchive": "पैकेज में असुरक्षित पथ, लिंक या अमान्य प्रारंभिक फ़ाइल है।",
+                    "installRuntime": "आवश्यक सिस्टम रनटाइम मौजूद नहीं है।",
+                    "installDownload": "पैकेज डाउनलोड विफल रहा या समय सीमा समाप्त हो गई।",
+                    "installLimit": "पैकेज इंस्टॉलेशन की सीमाओं से अधिक है।",
+                    "installExists": "फिर से इंस्टॉल करने से पहले मौजूदा इंस्टॉलेशन हटाएँ।",
+                    "installIo": "इंस्टॉलेशन फ़ाइलें पढ़ी या लिखी नहीं जा सकीं।"
                 },
                 "routingNotice": "सक्षम सर्वर अपने टूल AeroAgent को उपलब्ध कराते हैं। हर टूल कॉल पहले आपकी स्वीकृति माँगती है।",
                 "checkNow": "अभी जाँचें",
@@ -3089,7 +3099,26 @@
                 "healthError": "अनुपलब्ध: {reason}",
                 "healthReady": "तैयार, AeroAgent के लिए उपलब्ध टूल: {count}",
                 "healthUnsupported": "असमर्थित स्कीमा वाले टूल: {count}",
-                "healthShowTools": "टूल दिखाएँ"
+                "healthShowTools": "टूल दिखाएँ",
+                "directoryTitle": "केवल पढ़ने योग्य निर्देशिकाएँ",
+                "grantDirectory": "निर्देशिका चुनें",
+                "confirmDirectory": "इस सर्वर को {path} की सभी फ़ाइलों को केवल पढ़ने की पहुँच दें? केवल सर्वर या प्रोजेक्ट के लिए समर्पित निर्देशिका की पहुँच दें।",
+                "noDirectories": "निर्देशिकाओं की पहुँच नहीं है।",
+                "revokeDirectory": "पहुँच वापस लें",
+                "confirmRevokeDirectory": "{path} की पहुँच वापस लें? पिछले टूल अनुमोदन अब मान्य नहीं रहेंगे।",
+                "networkAccess": "नेटवर्क पहुँच दें (सभी होस्ट और स्थानीय सेवाएँ)",
+                "networkBlocked": "नेटवर्क पहुँच अवरुद्ध है।",
+                "confirmNetwork": "{name} को स्थानीय सेवाओं सहित नेटवर्क की पहुँच दें? पिछले टूल अनुमोदन अब मान्य नहीं रहेंगे।",
+                "confirmBlockNetwork": "{name} के लिए नेटवर्क पहुँच अवरुद्ध करें? पिछले टूल अनुमोदन अब मान्य नहीं रहेंगे।",
+                "managedStatus": "प्रबंधित स्थापना: {version}",
+                "renewDirectory": "पहुँच नवीनीकृत करें",
+                "presetsTitle": "अनुशंसित सर्वर",
+                "presetsSubtitle": "समीक्षित प्रीसेट केवल पुष्टि के बाद इंस्टॉल होते हैं। चालू करने तक वे बंद रहते हैं।",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "सार्वजनिक रिपॉज़िटरी का दस्तावेज़ देखता है।",
+                "presetInstall": "इंस्टॉल करें",
+                "presetInstalledDisabled": "इंस्टॉल है और बंद है",
+                "presetReady": "तैयार"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "स्रोत देखें"
         },
         "savedServers": {
-            "dragToReorder": "पुनर्क्रम के लिए खींचें",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "कृपया सेटिंग्स > क्लाउड प्रदाता में 4shared क्रेडेंशियल कॉन्फ़िगर करें।",
-            "oauthConfigError": "कृपया सेटिंग्स > क्लाउड प्रदाता में {provider} क्रेडेंशियल कॉन्फ़िगर करें।",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "एक टैग जोड़ें...",
             "tagsUpdated": "टैग अपडेट हो गए",
             "addTag": "जोड़ें",
-            "noTags": "कोई टैग नहीं"
+            "noTags": "कोई टैग नहीं",
+            "collaborators": "सहयोगी",
+            "noCollaborators": "अभी तक किसी के साथ साझा नहीं किया गया",
+            "folderNotLocked": "यह फ़ोल्डर लॉक नहीं है",
+            "roleEditor": "संपादक",
+            "roleViewer": "दर्शक",
+            "rolePreviewer": "प्रीव्यूअर",
+            "roleUploader": "अपलोडर",
+            "rolePreviewerUploader": "प्रीव्यूअर अपलोडर",
+            "roleViewerUploader": "दर्शक अपलोडर",
+            "roleCoOwner": "सह-स्वामी"
         },
         "googledrive": {
             "star": "तारांकित करें",
             "unstar": "तारांकन हटाएं",
             "starred": "फ़ाइल तारांकित की गई",
-            "unstarred": "फ़ाइल का तारांकन हटाया गया",
-            "addComment": "टिप्पणी जोड़ें",
-            "commentPlaceholder": "अपनी टिप्पणी लिखें...",
-            "commentAdded": "टिप्पणी जोड़ी गई"
+            "unstarred": "फ़ाइल का तारांकन हटाया गया"
         },
         "providers": {
             "title": "प्रदाता और एकीकरण",
@@ -4759,7 +4789,14 @@
             "participants": "प्रतिभागी",
             "saving": "सहेजा जा रहा है...",
             "saved": "सहेजा गया",
-            "saveNow": "अभी सहेजें"
+            "saveNow": "अभी सहेजें",
+            "noteType": "नोट का प्रकार",
+            "addTag": "टैग जोड़ें",
+            "newTag": "नया टैग...",
+            "tagName": "टैग का नाम",
+            "removeTag": "टैग हटाएँ",
+            "manageTags": "टैग प्रबंधित करें",
+            "deleteTagConfirm": "टैग “{name}” हटाएँ? नोट्स का टेक्स्ट बना रहेगा।"
         },
         "shareLinkModal": {
             "title": "शेयर लिंक",
@@ -4952,7 +4989,8 @@
                 "rename": "समूह का नाम बदलें",
                 "delete": "समूह हटाएँ",
                 "confirmDelete": "\"{name}\" समूह हटाएँ? इसके सर्वर रखे जाते हैं, केवल समूह हटाया जाता है।",
-                "chipHint": "फ़िल्टर करने के लिए क्लिक करें; नाम बदलने या हटाने के लिए राइट-क्लिक करें"
+                "chipHint": "फ़िल्टर करने के लिए क्लिक करें; नाम बदलने, निर्यात करने या हटाने के लिए राइट-क्लिक करें",
+                "export": "समूह निर्यात करें..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4977,7 +5015,8 @@
                 "offTitle": "इस बकेट में कोई डिफ़ॉल्ट एन्क्रिप्शन नहीं है। इसका मतलब यह नहीं है कि यह एन्क्रिप्ट नहीं है: SSE-C और क्लाइंट-साइड एन्क्रिप्शन इस सेटिंग में नहीं दिखाए जाते।",
                 "unknownKeyTitle": "हम इस बकेट की एन्क्रिप्शन सेटिंग नहीं पढ़ सके, क्योंकि एप्लिकेशन कुंजी में readBucketEncryption क्षमता नहीं है। जिस मान को देखने की अनुमति हमें नहीं है, उसका अर्थ यह नहीं कि एन्क्रिप्शन बंद है।",
                 "unknownShapeTitle": "हम इस बकेट की एन्क्रिप्शन सेटिंग नहीं पढ़ सके, क्योंकि उत्तर का कोई प्रलेखित स्वरूप नहीं था। कुंजी को इसे पढ़ने की अनुमति थी, इसलिए यह उत्तर से संबंधित है, अनुमतियों से नहीं।"
-            }
+            },
+            "exportProfile": "निर्यात करें..."
         },
         "gitlab": {
             "projectPath": "प्रोजेक्ट पथ",
@@ -6033,6 +6072,27 @@
             "scopeSession": "इस टूल को चैट सत्र के शेष समय के लिए अनुमोदित करता है।",
             "approve": "अनुमोदित करें",
             "rememberForChat": "इस चैट के शेष समय के लिए इस टूल की अनुमति दें"
+        },
+        "s3": {
+            "storageClass": "स्टोरेज क्लास",
+            "storageClassChanged": "स्टोरेज क्लास {storageClass} में बदल दी गई",
+            "restoreFromGlacier": "Glacier से पुनर्स्थापित करें",
+            "restoreTier": "पुनर्प्राप्ति टियर",
+            "restoreDays": "पुनर्स्थापित प्रति रखने के दिन",
+            "restoreStarted": "पुनर्स्थापना का अनुरोध किया गया: तैयार होने पर प्रति {days} दिन तक पढ़ने योग्य रहेगी",
+            "objectTags": "ऑब्जेक्ट टैग",
+            "noTags": "कोई टैग नहीं",
+            "tagKey": "कुंजी",
+            "tagValue": "मान",
+            "tagsSaved": "टैग सहेजे गए"
+        },
+        "azure": {
+            "accessTier": "एक्सेस टियर",
+            "accessTierChanged": "एक्सेस टियर {tier} पर सेट किया गया"
+        },
+        "fileComments": {
+            "title": "टिप्पणियाँ",
+            "empty": "अभी तक कोई टिप्पणी नहीं"
         }
     }
 }

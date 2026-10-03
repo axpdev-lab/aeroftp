@@ -102,14 +102,9 @@
             "connectionFailed": "Kết nối thất bại",
             "reconnecting": "Đang kết nối lại...",
             "quickConnect": "Kết nối nhanh",
-            "savedServers": "Máy chủ đã lưu",
-            "noSavedServers": "Không có máy chủ đã lưu",
             "saveServer": "Lưu máy chủ",
-            "deleteServer": "Xóa máy chủ",
-            "editServer": "Sửa máy chủ",
             "serverName": "Tên máy chủ",
             "initialPath": "Đường dẫn ban đầu",
-            "savedServersHelp": "Chọn máy chủ để kết nối.",
             "selectSshKey": "Chọn khóa riêng SSH",
             "allFiles": "Tất cả tệp",
             "sshKeys": "Khóa SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Biến bất kỳ máy chủ nào thành đám mây cá nhân với đồng bộ tự động",
             "configureAerocloud": "Cấu hình AeroCloud",
             "aerocloudHelp": "Bạn cũng có thể cấu hình AeroCloud từ thanh trạng thái",
-            "selectProviderPrompt": "Chọn nhà cung cấp ở trên hoặc chọn \"Custom\" để cấu hình thủ công",
-            "custom": "Tùy chỉnh",
             "change": "Thay đổi",
             "emailAccount": "Tài khoản email",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Mật khẩu MEGA của bạn",
-            "dismiss": "Bỏ qua",
             "authenticating": "Đang xác thực...",
             "oauth2Connection": "Kết nối OAuth2",
             "securityTitle": "Lưu trữ thông tin xác thực được mã hóa",
@@ -170,7 +162,6 @@
             "docs": "Tài liệu",
             "minutes": "phút",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Tìm kiếm máy chủ...",
             "fourshared": {
                 "backToExistingAccount": "Quay lại tài khoản hiện có",
                 "configureCredentials": "Cấu hình thông tin xác thực OAuth 1.0",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "Mật khẩu ứng dụng",
             "koofrAppPasswordPlaceholder": "Dán mật khẩu ứng dụng Koofr của bạn tại đây",
             "koofrHelp": "Tạo mật khẩu ứng dụng tại app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Nhân bản máy chủ",
-            "duplicateCredentialMissing": "Thông tin xác thực chưa được sao chép sang bản sao. Nhập lại mật khẩu trước khi kết nối.",
             "saveAsNew": "Lưu như mới",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Tạo khóa API trong Immich → User Settings → API Keys",
             "immichOps": "Duyệt, tải lên, tải xuống, xóa, album, tìm kiếm, liên kết chia sẻ. Không hỗ trợ đổi tên và di chuyển.",
             "generatePassword": "Tạo mật khẩu",
-            "saveAndConnect": "Lưu và Kết nối",
-            "saveDisabledTotp": "Mã TOTP chỉ dùng được một lần. Hãy dùng Lưu và Kết nối để áp dụng mã này ngay bây giờ.",
             "generatePersonalLoginToken": "Tạo mã đăng nhập cá nhân",
             "endpointUrl": "URL điểm cuối",
             "b2NativeAdvantagesTitle": "API gốc Backblaze B2: tính năng bổ sung so với chế độ tương thích S3",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Đăng nhập lại",
             "twakeSignedIn": "Đã đăng nhập",
             "twakeWaitingBrowser": "Hoàn tất đăng nhập trong trình duyệt của bạn...",
-            "twakeSignInHelp": "AeroFTP mở Twake trong trình duyệt của bạn và chỉ yêu cầu quyền truy cập vào tệp của bạn. Nếu Twake hiển thị lỗi lần đầu tiên, hãy đăng nhập vào Twake trong trình duyệt rồi đăng nhập lại. Bạn có thể thu hồi quyền truy cập bất kỳ lúc nào trong Cài đặt Twake, Thiết bị đã kết nối."
+            "twakeSignInHelp": "AeroFTP mở Twake trong trình duyệt của bạn và chỉ yêu cầu quyền truy cập vào tệp của bạn. Nếu Twake hiển thị lỗi lần đầu tiên, hãy đăng nhập vào Twake trong trình duyệt rồi đăng nhập lại. Bạn có thể thu hồi quyền truy cập bất kỳ lúc nào trong Cài đặt Twake, Thiết bị đã kết nối.",
+            "oauthKeysMissingTitle": "Thiếu khóa ứng dụng {provider}",
+            "oauthKeysMissing": "Không có khóa ứng dụng nào của {provider} được lưu trong kho bảo mật, nên AeroFTP không thể đăng nhập. AeroFTP không kèm khóa riêng: hãy nhập khóa của ứng dụng nhà phát triển {provider} của bạn tại {location}, rồi kết nối lại.",
+            "oauthKeysOpenSettings": "Mở cài đặt OAuth",
+            "oauthKeysReadFailedTitle": "Không đọc được khóa ứng dụng của {provider}",
+            "oauthKeysReadFailed": "AeroFTP không đọc được khóa ứng dụng của {provider} từ kho bảo mật nên không thể đăng nhập. Các khóa không bị thay đổi. Lỗi: {error}"
         },
         "browser": {
             "remote": "Từ xa",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "Các ghi đè đã áp dụng: {count}",
             "uiTokensRejected": "Các mục bị từ chối: {count}",
             "keystorePreferencesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được tùy chọn ứng dụng của bạn: {error}",
-            "keystorePreviewBackupUnreadable": "Không thể đọc danh sách máy chủ trong bản sao lưu này trên thiết bị này, nên việc so sánh dùng danh sách được lưu trong kho của bản sao lưu. Việc nhập vẫn thay thế danh sách máy chủ trên thiết bị này."
+            "keystorePreviewBackupUnreadable": "Không thể đọc danh sách máy chủ trong bản sao lưu này trên thiết bị này, nên việc so sánh dùng danh sách được lưu trong kho của bản sao lưu. Việc nhập vẫn thay thế danh sách máy chủ trên thiết bị này.",
+            "filterServersPlaceholder": "Lọc theo tên, máy chủ, giao thức hoặc người dùng",
+            "selectShown": "Chọn {count} mục đang hiển thị",
+            "deselectShown": "Bỏ chọn {count} mục đang hiển thị",
+            "filterShownCount": "{shown} đang hiển thị",
+            "selectedHiddenByFilter": "{count} đã chọn nhưng bị bộ lọc ẩn, vẫn được bao gồm"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "Đã giải nén!",
             "extractedTo": "Đã giải nén tệp đến {dest}",
             "fileLocked": "Tệp đã khóa",
+            "cutPartial": "Đã di chuyển {moved}/{total} mục; các mục còn lại vẫn ở nguyên chỗ",
             "fileSkipped": "Đã bỏ qua {count} tệp",
             "fileUnlocked": "Tệp đã mở khóa",
             "loadTrashFailed": "Không thể tải thùng rác",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "Đã khóa lớp phủ mã hóa",
             "aerocrypt_marker_migrate": "Đang chuyển đổi dấu AeroCrypt sang .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Đã chuyển đổi điểm đánh dấu AeroCrypt sang .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Đang mở khóa thư mục {filename}..."
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "Không thể khởi động máy chủ cục bộ.",
                     "serverFailed": "Máy chủ đã dừng hoặc gửi phản hồi không hợp lệ.",
                     "httpUnauthorized": "Máy chủ đã từ chối thông tin xác thực đã lưu.",
-                    "unsupportedVersion": "Máy chủ dùng phiên bản MCP mà AeroFTP không hỗ trợ."
+                    "unsupportedVersion": "Máy chủ dùng phiên bản MCP mà AeroFTP không hỗ trợ.",
+                    "directoryInvalid": "Chọn thư mục riêng không có liên kết hoặc tệp ứng dụng nhạy cảm.",
+                    "directoryChanged": "Thư mục được cấp quyền đã thay đổi hoặc không còn. Chọn lại để gia hạn quyền truy cập.",
+                    "permissionCommand": "Thay đổi quyền truy cập bằng các điều khiển quyền thư mục và mạng.",
+                    "installInvalid": "Bản cài đặt được quản lý này không khả dụng hoặc tệp kê khai không hợp lệ.",
+                    "installIntegrity": "Xác minh tính toàn vẹn của gói thất bại. Gỡ bỏ và cài đặt lại máy chủ.",
+                    "installArchive": "Gói chứa đường dẫn không an toàn, liên kết hoặc tệp khởi chạy không hợp lệ.",
+                    "installRuntime": "Thiếu môi trường thực thi hệ thống cần thiết.",
+                    "installDownload": "Tải gói thất bại hoặc hết thời gian chờ.",
+                    "installLimit": "Gói vượt quá giới hạn cài đặt.",
+                    "installExists": "Gỡ bỏ bản cài đặt hiện có trước khi cài đặt lại.",
+                    "installIo": "Không thể đọc hoặc ghi các tệp cài đặt."
                 },
                 "routingNotice": "Các máy chủ được bật cung cấp công cụ của mình cho AeroAgent. Mỗi lệnh gọi công cụ đều hỏi sự chấp thuận của bạn trước.",
                 "checkNow": "Kiểm tra ngay",
@@ -3089,7 +3099,26 @@
                 "healthError": "Không khả dụng: {reason}",
                 "healthReady": "Sẵn sàng, công cụ khả dụng cho AeroAgent: {count}",
                 "healthUnsupported": "Công cụ có lược đồ không được hỗ trợ: {count}",
-                "healthShowTools": "Hiện công cụ"
+                "healthShowTools": "Hiện công cụ",
+                "directoryTitle": "Thư mục chỉ đọc",
+                "grantDirectory": "Chọn thư mục",
+                "confirmDirectory": "Cấp cho máy chủ này quyền chỉ đọc mọi tệp trong {path}? Chỉ cấp quyền cho thư mục dành riêng cho máy chủ hoặc dự án.",
+                "noDirectories": "Không có quyền truy cập thư mục.",
+                "revokeDirectory": "Thu hồi quyền truy cập",
+                "confirmRevokeDirectory": "Thu hồi quyền truy cập {path}? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
+                "networkAccess": "Cho phép truy cập mạng (mọi máy chủ và dịch vụ cục bộ)",
+                "networkBlocked": "Truy cập mạng bị chặn.",
+                "confirmNetwork": "Cho phép {name} truy cập mạng, bao gồm dịch vụ cục bộ? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
+                "confirmBlockNetwork": "Chặn truy cập mạng cho {name}? Các phê duyệt công cụ trước đó sẽ không còn hiệu lực.",
+                "managedStatus": "Bản cài đặt được quản lý: {version}",
+                "renewDirectory": "Gia hạn quyền truy cập",
+                "presetsTitle": "Máy chủ được đề xuất",
+                "presetsSubtitle": "Gói đã xem xét chỉ được cài sau khi bạn xác nhận. Chúng tắt cho đến khi bạn bật.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Tra cứu tài liệu của kho công khai.",
+                "presetInstall": "Cài đặt",
+                "presetInstalledDisabled": "Đã cài và đang tắt",
+                "presetReady": "Sẵn sàng"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "Xem mã nguồn"
         },
         "savedServers": {
-            "dragToReorder": "Kéo để sắp xếp lại",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Vui lòng cấu hình thông tin xác thực 4shared trong Cài đặt > Nhà cung cấp đám mây.",
-            "oauthConfigError": "Vui lòng cấu hình thông tin xác thực {provider} trong Cài đặt > Nhà cung cấp đám mây.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "Thêm thẻ...",
             "tagsUpdated": "Đã cập nhật thẻ",
             "addTag": "Thêm",
-            "noTags": "Không có thẻ"
+            "noTags": "Không có thẻ",
+            "collaborators": "Cộng tác viên",
+            "noCollaborators": "Chưa chia sẻ với ai",
+            "folderNotLocked": "Thư mục này không bị khóa",
+            "roleEditor": "Người chỉnh sửa",
+            "roleViewer": "Người xem",
+            "rolePreviewer": "Người xem trước",
+            "roleUploader": "Người tải lên",
+            "rolePreviewerUploader": "Người xem trước và tải lên",
+            "roleViewerUploader": "Người xem và tải lên",
+            "roleCoOwner": "Đồng sở hữu"
         },
         "googledrive": {
             "star": "Gắn dấu sao",
             "unstar": "Bỏ dấu sao",
             "starred": "Đã gắn dấu sao cho tệp",
-            "unstarred": "Đã bỏ dấu sao khỏi tệp",
-            "addComment": "Thêm bình luận",
-            "commentPlaceholder": "Viết bình luận của bạn...",
-            "commentAdded": "Đã thêm bình luận"
+            "unstarred": "Đã bỏ dấu sao khỏi tệp"
         },
         "providers": {
             "title": "Nhà cung cấp và Tích hợp",
@@ -4759,7 +4789,14 @@
             "participants": "người tham gia",
             "saving": "Đang lưu...",
             "saved": "Đã lưu",
-            "saveNow": "Lưu ngay"
+            "saveNow": "Lưu ngay",
+            "noteType": "Loại ghi chú",
+            "addTag": "Thêm thẻ",
+            "newTag": "Thẻ mới...",
+            "tagName": "Tên thẻ",
+            "removeTag": "Gỡ thẻ",
+            "manageTags": "Quản lý thẻ",
+            "deleteTagConfirm": "Xóa thẻ “{name}”? Ghi chú vẫn giữ nội dung."
         },
         "shareLinkModal": {
             "title": "Liên kết chia sẻ",
@@ -4952,7 +4989,8 @@
                 "rename": "Đổi tên nhóm",
                 "delete": "Xóa nhóm",
                 "confirmDelete": "Xóa nhóm \"{name}\"? Các máy chủ trong đó được giữ lại, chỉ nhóm bị xóa.",
-                "chipHint": "Nhấp để lọc; nhấp chuột phải để đổi tên hoặc xóa"
+                "chipHint": "Nhấp để lọc; nhấp chuột phải để đổi tên, xuất hoặc xóa",
+                "export": "Xuất nhóm..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4977,7 +5015,8 @@
                 "offTitle": "Bucket này không có mã hóa mặc định. Điều đó không giống với việc không được mã hóa: SSE-C và mã hóa phía máy khách không được báo cáo bởi thiết lập này.",
                 "unknownKeyTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì khóa ứng dụng không có khả năng readBucketEncryption. Một giá trị mà chúng tôi không được phép xem không có nghĩa là mã hóa đã bị tắt.",
                 "unknownShapeTitle": "Chúng tôi không thể đọc thiết lập mã hóa của bucket này, vì câu trả lời không có cấu trúc được ghi trong tài liệu. Khóa được phép đọc nó, nên đây là vấn đề của câu trả lời chứ không phải của quyền hạn."
-            }
+            },
+            "exportProfile": "Xuất..."
         },
         "gitlab": {
             "projectPath": "Đường dẫn dự án",
@@ -6033,6 +6072,27 @@
             "scopeSession": "Phê duyệt công cụ này trong phần còn lại của phiên trò chuyện.",
             "approve": "Phê duyệt",
             "rememberForChat": "Cho phép công cụ này trong phần còn lại của cuộc trò chuyện"
+        },
+        "s3": {
+            "storageClass": "Lớp lưu trữ",
+            "storageClassChanged": "Đã đổi lớp lưu trữ thành {storageClass}",
+            "restoreFromGlacier": "Khôi phục từ Glacier",
+            "restoreTier": "Tầng truy xuất",
+            "restoreDays": "Số ngày giữ bản sao đã khôi phục",
+            "restoreStarted": "Đã yêu cầu khôi phục: khi sẵn sàng, bản sao sẽ đọc được trong {days} ngày",
+            "objectTags": "Thẻ đối tượng",
+            "noTags": "Không có thẻ",
+            "tagKey": "Khóa",
+            "tagValue": "Giá trị",
+            "tagsSaved": "Đã lưu thẻ"
+        },
+        "azure": {
+            "accessTier": "Tầng truy cập",
+            "accessTierChanged": "Đã đặt tầng truy cập thành {tier}"
+        },
+        "fileComments": {
+            "title": "Bình luận",
+            "empty": "Chưa có bình luận nào"
         }
     }
 }

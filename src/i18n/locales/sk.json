@@ -102,14 +102,9 @@
             "connectionFailed": "Pripojenie zlyhalo",
             "reconnecting": "Opätovné pripájanie...",
             "quickConnect": "Rýchle pripojenie",
-            "savedServers": "Uložené servery",
-            "noSavedServers": "Žiadne uložené servery",
             "saveServer": "Uložiť server",
-            "deleteServer": "Odstrániť server",
-            "editServer": "Upraviť server",
             "serverName": "Názov servera",
             "initialPath": "Počiatočná cesta",
-            "savedServersHelp": "Vyberte server na pripojenie.",
             "selectSshKey": "Vybrať súkromný kľúč SSH",
             "allFiles": "Všetky súbory",
             "sshKeys": "Kľúče SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Premeňte akýkoľvek server na svoj osobný cloud s automatickou synchronizáciou",
             "configureAerocloud": "Konfigurovať AeroCloud",
             "aerocloudHelp": "AeroCloud môžete konfigurovať aj zo stavového riadku",
-            "selectProviderPrompt": "Vyberte poskytovateľa vyššie alebo zvoľte \"Vlastné\" pre manuálnu konfiguráciu",
-            "custom": "Vlastné",
             "change": "Zmeniť",
             "emailAccount": "E-mailový účet",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Vaše heslo MEGA",
-            "dismiss": "Zavrieť",
             "authenticating": "Overovanie...",
             "oauth2Connection": "Pripojenie OAuth2",
             "securityTitle": "Šifrované ukladanie prihlasovacích údajov",
@@ -170,7 +162,6 @@
             "docs": "Dokumentácia",
             "minutes": "minút",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Hľadať servery...",
             "fourshared": {
                 "backToExistingAccount": "Späť k existujúcemu účtu",
                 "configureCredentials": "Nastaviť prihlasovacie údaje OAuth 1.0",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "Heslo aplikácie",
             "koofrAppPasswordPlaceholder": "Vložte vaše heslo aplikácie Koofr tu",
             "koofrHelp": "Vytvorte heslo aplikácie na app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Duplikovať server",
-            "duplicateCredentialMissing": "Prihlasovacie údaje neboli skopírované do kópie. Pred pripojením znova zadajte heslo.",
             "saveAsNew": "Uložiť ako nový",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Vygenerujte API kľúč v Immich → User Settings → API Keys",
             "immichOps": "Prehľadávanie, nahrávanie, sťahovanie, mazanie, albumy, vyhľadávanie, zdieľacie odkazy. Premenovanie a presun nie sú podporované.",
             "generatePassword": "Vygenerovať heslo",
-            "saveAndConnect": "Uložiť a pripojiť",
-            "saveDisabledTotp": "Kódy TOTP sú jednorazové. Použite Uložiť a pripojiť na okamžité použitie tohto kódu.",
             "generatePersonalLoginToken": "Vygenerovať osobný prihlasovací token",
             "endpointUrl": "URL koncového bodu",
             "b2NativeAdvantagesTitle": "Natívne API Backblaze B2: ďalšie funkcie oproti režimu kompatibilnému s S3",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Prihláste sa znova",
             "twakeSignedIn": "Prihlásené",
             "twakeWaitingBrowser": "Dokončite prihlásenie vo svojom prehliadači...",
-            "twakeSignInHelp": "AeroFTP otvorí Twake vo vašom prehliadači a žiada prístup iba k vašim súborom. Ak Twake prvýkrát zobrazí chybu, prihláste sa do Twake v prehliadači a prihláste sa znova. Prístup môžete kedykoľvek zrušiť v nastaveniach Twake, Pripojené zariadenia."
+            "twakeSignInHelp": "AeroFTP otvorí Twake vo vašom prehliadači a žiada prístup iba k vašim súborom. Ak Twake prvýkrát zobrazí chybu, prihláste sa do Twake v prehliadači a prihláste sa znova. Prístup môžete kedykoľvek zrušiť v nastaveniach Twake, Pripojené zariadenia.",
+            "oauthKeysMissingTitle": "Chýbajú kľúče aplikácie {provider}",
+            "oauthKeysMissing": "V úschovni nie sú uložené žiadne kľúče aplikácie pre {provider}, takže sa AeroFTP nemôže prihlásiť. AeroFTP nedodáva vlastné kľúče: zadajte kľúče svojej vývojárskej aplikácie {provider} v {location} a pripojte sa znova.",
+            "oauthKeysOpenSettings": "Otvoriť nastavenia OAuth",
+            "oauthKeysReadFailedTitle": "Nemožno načítať kľúče aplikácie pre {provider}",
+            "oauthKeysReadFailed": "AeroFTP nemohol načítať kľúče aplikácie pre {provider} z trezoru, a preto sa nemôže prihlásiť. Kľúče sa nezmenili. Chyba: {error}"
         },
         "browser": {
             "remote": "Vzdialený",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "Použité prepísania: {count}",
             "uiTokensRejected": "Odmietnuté položky: {count}",
             "keystorePreferencesFailed": "Import sa skončil, ale vaše predvoľby aplikácie sa nepodarilo obnoviť: {error}",
-            "keystorePreviewBackupUnreadable": "Zoznam serverov v tejto zálohe sa na tomto zariadení nedá prečítať, preto porovnanie používa zoznam uložený v trezore zálohy. Import napriek tomu nahradí zoznam serverov na tomto zariadení."
+            "keystorePreviewBackupUnreadable": "Zoznam serverov v tejto zálohe sa na tomto zariadení nedá prečítať, preto porovnanie používa zoznam uložený v trezore zálohy. Import napriek tomu nahradí zoznam serverov na tomto zariadení.",
+            "filterServersPlaceholder": "Filtrovať podľa názvu, hostiteľa, protokolu alebo používateľa",
+            "selectShown": "Vybrať zobrazených {count}",
+            "deselectShown": "Zrušiť výber zobrazených {count}",
+            "filterShownCount": "zobrazených: {shown}",
+            "selectedHiddenByFilter": "{count} vybraných, ale skrytých filtrom, stále zahrnutých"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "Extrahované!",
             "extractedTo": "Súbory extrahované do {dest}",
             "fileLocked": "Súbor zamknutý",
+            "cutPartial": "Presunutých {moved} z {total} položiek; ostatné zostávajú na mieste",
             "fileSkipped": "Preskočených súborov: {count}",
             "fileUnlocked": "Súbor odomknutý",
             "loadTrashFailed": "Načítanie koša zlyhalo",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "Šifrovaná vrstva uzamknutá",
             "aerocrypt_marker_migrate": "Prevádza sa značka AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Značka AeroCrypt bola prevedená na .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Odomyká sa priečinok {filename}..."
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "Lokálny server sa nepodarilo spustiť.",
                     "serverFailed": "Server sa zastavil alebo poslal neplatnú odpoveď.",
                     "httpUnauthorized": "Server odmietol uložené prihlasovacie údaje.",
-                    "unsupportedVersion": "Server používa verziu MCP, ktorú AeroFTP nepodporuje."
+                    "unsupportedVersion": "Server používa verziu MCP, ktorú AeroFTP nepodporuje.",
+                    "directoryInvalid": "Vyberte vyhradený adresár bez odkazov alebo citlivých súborov aplikácií.",
+                    "directoryChanged": "Povolený adresár sa zmenil alebo chýba. Vyberte ho znova na obnovenie prístupu.",
+                    "permissionCommand": "Zmeňte prístup pomocou nastavení oprávnení pre adresáre a sieť.",
+                    "installInvalid": "Táto spravovaná inštalácia nie je dostupná alebo má neplatný manifest.",
+                    "installIntegrity": "Overenie integrity balíka zlyhalo. Odstráňte server a znova ho nainštalujte.",
+                    "installArchive": "Balík obsahuje nebezpečné cesty, odkazy alebo neplatný spúšťací súbor.",
+                    "installRuntime": "Chýba požadované systémové prostredie na spúšťanie.",
+                    "installDownload": "Stiahnutie balíka zlyhalo alebo vypršal časový limit.",
+                    "installLimit": "Balík prekračuje limity inštalácie.",
+                    "installExists": "Pred opätovnou inštaláciou odstráňte existujúcu inštaláciu.",
+                    "installIo": "Inštalačné súbory sa nepodarilo prečítať alebo zapísať."
                 },
                 "routingNotice": "Povolené servery ponúkajú svoje nástroje AeroAgentovi. Každé volanie nástroja najprv vyžaduje vaše schválenie.",
                 "checkNow": "Skontrolovať teraz",
@@ -3089,7 +3099,26 @@
                 "healthError": "Nedostupný: {reason}",
                 "healthReady": "Pripravený, nástroje dostupné pre AeroAgent: {count}",
                 "healthUnsupported": "Nástroje s nepodporovanými schémami: {count}",
-                "healthShowTools": "Zobraziť nástroje"
+                "healthShowTools": "Zobraziť nástroje",
+                "directoryTitle": "Adresáre iba na čítanie",
+                "grantDirectory": "Vybrať adresár",
+                "confirmDirectory": "Udeliť tomuto serveru prístup iba na čítanie ku všetkým súborom v {path}? Udeľte prístup iba k vyhradenému adresáru servera alebo projektu.",
+                "noDirectories": "Žiadny prístup k adresárom.",
+                "revokeDirectory": "Odobrať prístup",
+                "confirmRevokeDirectory": "Odobrať prístup k {path}? Predchádzajúce schválenia nástrojov už nebudú platné.",
+                "networkAccess": "Povoliť prístup k sieti (všetci hostitelia a miestne služby)",
+                "networkBlocked": "Sieťový prístup je blokovaný.",
+                "confirmNetwork": "Povoliť serveru {name} prístup k sieti vrátane miestnych služieb? Predchádzajúce schválenia nástrojov už nebudú platné.",
+                "confirmBlockNetwork": "Blokovať sieťový prístup servera {name}? Predchádzajúce schválenia nástrojov už nebudú platné.",
+                "managedStatus": "Spravovaná inštalácia: {version}",
+                "renewDirectory": "Obnoviť prístup",
+                "presetsTitle": "Odporúčané servery",
+                "presetsSubtitle": "Skontrolované predvoľby sa inštalujú až po potvrdení. Zostávajú vypnuté, kým ich nezapnete.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Vyhľadať dokumentáciu verejného repozitára.",
+                "presetInstall": "Inštalovať",
+                "presetInstalledDisabled": "Nainštalované a vypnuté",
+                "presetReady": "Pripravené"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "Zobraziť zdrojový kód"
         },
         "savedServers": {
-            "dragToReorder": "Potiahnutím zmeňte poradie",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Nastavte prihlasovacie údaje 4shared v Nastavenia > Poskytovatelia cloudu.",
-            "oauthConfigError": "Nastavte prihlasovacie údaje {provider} v Nastavenia > Poskytovatelia cloudu.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "Pridať štítok...",
             "tagsUpdated": "Štítky aktualizované",
             "addTag": "Pridať",
-            "noTags": "Žiadne štítky"
+            "noTags": "Žiadne štítky",
+            "collaborators": "Spolupracovníci",
+            "noCollaborators": "Zatiaľ s nikým nezdieľané",
+            "folderNotLocked": "Tento priečinok nie je zamknutý",
+            "roleEditor": "Editor",
+            "roleViewer": "Prezerajúci",
+            "rolePreviewer": "Náhľad",
+            "roleUploader": "Nahrávanie",
+            "rolePreviewerUploader": "Náhľad a nahrávanie",
+            "roleViewerUploader": "Prezeranie a nahrávanie",
+            "roleCoOwner": "Spoluvlastník"
         },
         "googledrive": {
             "star": "Označiť hviezdičkou",
             "unstar": "Zrušiť hviezdičku",
             "starred": "Súbor označený hviezdičkou",
-            "unstarred": "Hviezdička odstránená",
-            "addComment": "Pridať komentár",
-            "commentPlaceholder": "Napíšte svoj komentár...",
-            "commentAdded": "Komentár pridaný"
+            "unstarred": "Hviezdička odstránená"
         },
         "providers": {
             "title": "Poskytovatelia a integrácie",
@@ -4759,7 +4789,14 @@
             "participants": "účastníci",
             "saving": "Ukladanie...",
             "saved": "Uložené",
-            "saveNow": "Uložiť teraz"
+            "saveNow": "Uložiť teraz",
+            "noteType": "Typ poznámky",
+            "addTag": "Pridať štítok",
+            "newTag": "Nový štítok...",
+            "tagName": "Názov štítka",
+            "removeTag": "Odstrániť štítok",
+            "manageTags": "Spravovať štítky",
+            "deleteTagConfirm": "Odstrániť štítok „{name}“? Poznámky si ponechajú svoj text."
         },
         "shareLinkModal": {
             "title": "Odkaz na zdieľanie",
@@ -4952,7 +4989,8 @@
                 "rename": "Premenovať skupinu",
                 "delete": "Odstrániť skupinu",
                 "confirmDelete": "Odstrániť skupinu „{name}“? Servery v nej zostanú zachované, odstráni sa iba skupina.",
-                "chipHint": "Kliknutím filtrujte; pravým tlačidlom premenujete alebo odstránite"
+                "chipHint": "Kliknutím filtrujte; pravým tlačidlom premenujete, exportujete alebo odstránite",
+                "export": "Exportovať skupinu..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4977,7 +5015,8 @@
                 "offTitle": "Tento bucket nemá predvolené šifrovanie. Nie je to to isté ako nešifrovaný: SSE-C ani šifrovanie na strane klienta toto nastavenie nehlási.",
                 "unknownKeyTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože aplikačný kľúč nemá oprávnenie readBucketEncryption. Hodnota, ktorú nesmieme vidieť, neznamená, že je šifrovanie vypnuté.",
                 "unknownShapeTitle": "Nepodarilo sa nám prečítať nastavenie šifrovania tohto bucketu, pretože odpoveď nemala dokumentovaný tvar. Kľúč ju čítať smel, takže ide o odpoveď, nie o oprávnenia."
-            }
+            },
+            "exportProfile": "Exportovať..."
         },
         "gitlab": {
             "projectPath": "Cesta k projektu",
@@ -6033,6 +6072,27 @@
             "scopeSession": "Schváli tento nástroj po zvyšok relácie chatu.",
             "approve": "Schváliť",
             "rememberForChat": "Povoliť tento nástroj po zvyšok tohto chatu"
+        },
+        "s3": {
+            "storageClass": "Trieda úložiska",
+            "storageClassChanged": "Trieda úložiska zmenená na {storageClass}",
+            "restoreFromGlacier": "Obnoviť z Glacier",
+            "restoreTier": "Úroveň obnovenia",
+            "restoreDays": "Počet dní uchovania obnovenej kópie",
+            "restoreStarted": "Obnova vyžiadaná: po dokončení bude kópia čitateľná {days} dní",
+            "objectTags": "Značky objektu",
+            "noTags": "Žiadne značky",
+            "tagKey": "Kľúč",
+            "tagValue": "Hodnota",
+            "tagsSaved": "Značky uložené"
+        },
+        "azure": {
+            "accessTier": "Prístupová úroveň",
+            "accessTierChanged": "Prístupová úroveň nastavená na {tier}"
+        },
+        "fileComments": {
+            "title": "Komentáre",
+            "empty": "Zatiaľ žiadne komentáre"
         }
     }
 }
