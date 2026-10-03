@@ -266,8 +266,6 @@ pub mod rclone_filter;
 pub mod rclone_import;
 pub mod restic_import;
 pub mod restricted_chars;
-mod session_commands;
-mod session_manager;
 pub mod shell_quote;
 #[cfg(all(not(target_os = "macos"), feature = "local-stt"))]
 mod speech;
@@ -3381,12 +3379,6 @@ async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn check_connection(state: State<'_, AppState>) -> Result<bool, String> {
-    let ftp_manager = state.ftp_manager.lock().await;
-    Ok(ftp_manager.is_connected())
-}
-
-#[tauri::command]
 async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
@@ -5561,29 +5553,7 @@ async fn set_speed_limit(
     Ok(())
 }
 
-/// Get current global transfer speed limits (KB/s)
-#[tauri::command]
-async fn get_speed_limit(state: State<'_, AppState>) -> Result<(u64, u64), String> {
-    let dl = state
-        .speed_limits
-        .download_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    let ul = state
-        .speed_limits
-        .upload_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    Ok((dl, ul))
-}
-
 // ============ Environment Detection ============
-
-/// Check if the application is running as a Snap package
-#[tauri::command]
-fn is_running_as_snap() -> bool {
-    std::env::var("SNAP").is_ok()
-}
 
 // ============ Debug & Dependencies Commands ============
 
@@ -11638,13 +11608,12 @@ fn rebuild_menu_on_main(
 
 // ============ Sync Commands ============
 
-use cloud_config::{CloudConfig, CloudSyncStatus, ConflictStrategy};
+use cloud_config::{CloudConfig, CloudSyncStatus};
 use sync::{
-    classify_sync_error, classify_with_summary, delete_sync_journal, journal_sig_filename,
-    load_sync_index, load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample,
-    sign_journal, verify_local_file, CanaryResult, CanarySampleResult, CanarySummary,
-    CompareOptions, CompareReport, FileInfo, RetryPolicy, SyncEcStatus, SyncErrorInfo, SyncIndex,
-    SyncJournal, VerifyPolicy, VerifyResult,
+    classify_sync_error, classify_with_summary, delete_sync_journal, load_sync_index,
+    load_sync_journal, save_sync_index, save_sync_journal, select_canary_sample, verify_local_file,
+    CanaryResult, CanarySampleResult, CanarySummary, CompareOptions, CompareReport, FileInfo,
+    SyncEcStatus, SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -12503,194 +12472,6 @@ pub fn local_scan_progress_payload(
     })
 }
 
-/// Parallel local scan: directory traversal is sequential (fast), but SHA-256
-/// checksums are computed concurrently using a bounded JoinSet + Semaphore.
-/// Falls back to sequential scan when `compare_checksum` is false (no I/O benefit).
-///
-/// CLAUDE-AV-B3-13: this twin still swallows traversal failures (absent root,
-/// unreadable directory, mid-listing error) and answers `Ok(map)`, so a partial
-/// tree is indistinguishable from a complete one. That is not a live data-loss
-/// path today only because its single caller, the `get_parallel_scan_files`
-/// command, hands the map straight back and never deletes: no delete gate exists
-/// to attach a completeness signal to. Before wiring this into anything that
-/// propagates deletes, give it the [`get_local_files_recursive_checked`]
-/// treatment; do not assume `Ok` means the whole tree was seen.
-pub async fn get_local_files_recursive_parallel(
-    base_path: &str,
-    exclude_patterns: &[String],
-    compare_checksum: bool,
-    max_concurrent_hashes: usize,
-    cancel_flag: Option<&std::sync::atomic::AtomicBool>,
-) -> Result<HashMap<String, FileInfo>, String> {
-    // One compile per scan; an invalid pattern is an error, never dropped.
-    let excludes = crate::sync::compile_excludes(exclude_patterns)?;
-    let base = PathBuf::from(base_path);
-    if !base.exists() {
-        return Ok(HashMap::new());
-    }
-
-    // Phase 1: Walk the directory tree (sequential: fast, mostly metadata)
-    #[allow(clippy::type_complexity)]
-    let mut file_entries: Vec<(
-        String,
-        String,
-        u64,
-        Option<chrono::DateTime<chrono::Utc>>,
-        bool,
-    )> = Vec::new();
-    let mut dirs_to_process = vec![base.clone()];
-
-    while let Some(current_dir) = dirs_to_process.pop() {
-        if let Some(flag) = cancel_flag {
-            if flag.load(std::sync::atomic::Ordering::Relaxed) {
-                break;
-            }
-        }
-        let mut entries = match tokio::fs::read_dir(&current_dir).await {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
-
-            let relative_path = path
-                .strip_prefix(&base)
-                .map(|p| p.to_string_lossy().to_string().replace('\\', "/"))
-                .unwrap_or_else(|_| name.clone());
-
-            if excludes.is_excluded(&relative_path) {
-                continue;
-            }
-
-            // H22: Use symlink_metadata to avoid following symlinks outside sync root.
-            let metadata = tokio::fs::symlink_metadata(&path).await.ok();
-
-            // Skip symlinks entirely to prevent data exfiltration via malicious symlinks
-            if metadata
-                .as_ref()
-                .map(|m| m.file_type().is_symlink())
-                .unwrap_or(false)
-            {
-                continue;
-            }
-
-            let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
-            let modified = metadata.as_ref().and_then(|m| {
-                m.modified().ok().map(|t| {
-                    let datetime: chrono::DateTime<chrono::Utc> = t.into();
-                    datetime
-                })
-            });
-            let size = if is_dir {
-                0
-            } else {
-                metadata.as_ref().map(|m| m.len()).unwrap_or(0)
-            };
-            let abs_path = path.to_string_lossy().to_string();
-
-            // P2-1: Cap file index at 1M entries to prevent unbounded memory growth
-            if file_entries.len() >= 1_000_000 {
-                return Err(
-                    "File scan exceeded 1,000,000 entries. Consider narrowing the scan scope."
-                        .to_string(),
-                );
-            }
-
-            file_entries.push((relative_path, abs_path, size, modified, is_dir));
-
-            if is_dir {
-                dirs_to_process.push(path);
-            }
-        }
-    }
-
-    // Phase 2: Compute checksums in parallel (only when requested)
-    let mut files = HashMap::with_capacity(file_entries.len());
-
-    if compare_checksum {
-        let semaphore = std::sync::Arc::new(tokio::sync::Semaphore::new(
-            max_concurrent_hashes.clamp(1, 16),
-        ));
-        let mut join_set = tokio::task::JoinSet::new();
-
-        for (relative_path, abs_path, size, modified, is_dir) in file_entries {
-            if is_dir {
-                files.insert(
-                    relative_path,
-                    FileInfo {
-                        name: std::path::Path::new(&abs_path)
-                            .file_name()
-                            .map(|n| n.to_string_lossy().to_string())
-                            .unwrap_or_default(),
-                        path: abs_path,
-                        size,
-                        modified,
-                        is_dir: true,
-                        checksum_alg: None,
-                        checksum: None,
-                    },
-                );
-                continue;
-            }
-
-            let sem = semaphore.clone();
-            let path_clone = abs_path.clone();
-            let rel_clone = relative_path.clone();
-
-            join_set.spawn(async move {
-                let _permit = sem.acquire().await;
-                let checksum = compute_sha256(std::path::Path::new(&path_clone)).await;
-                (rel_clone, path_clone, size, modified, checksum)
-            });
-        }
-
-        while let Some(result) = join_set.join_next().await {
-            if let Ok((rel_path, abs_path, size, modified, checksum)) = result {
-                let name = std::path::Path::new(&abs_path)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                files.insert(
-                    rel_path,
-                    FileInfo {
-                        name,
-                        path: abs_path,
-                        size,
-                        modified,
-                        is_dir: false,
-                        checksum_alg: checksum.as_ref().map(|_| "sha256".to_string()),
-                        checksum,
-                    },
-                );
-            }
-        }
-    } else {
-        // No checksums: just convert entries to FileInfo directly
-        for (relative_path, abs_path, size, modified, is_dir) in file_entries {
-            let name = std::path::Path::new(&abs_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            files.insert(
-                relative_path,
-                FileInfo {
-                    name,
-                    path: abs_path,
-                    size,
-                    modified,
-                    is_dir,
-                    checksum_alg: None,
-                    checksum: None,
-                },
-            );
-        }
-    }
-
-    Ok(files)
-}
-
 /// Scan remote directory with progress events.
 ///
 /// CLAUDE-AV-B3-13: also reports [`ScanCompleteness`](crate::sync_core::ScanCompleteness),
@@ -12834,11 +12615,6 @@ async fn get_remote_files_recursive_with_progress(
 
     let _ = ftp_manager.change_dir(base_path).await;
     Ok((files, completeness))
-}
-
-#[tauri::command]
-fn get_compare_options_default() -> CompareOptions {
-    CompareOptions::default()
 }
 
 #[tauri::command]
@@ -13054,25 +12830,6 @@ fn delete_sync_profile_cmd_blocking(id: String) -> Result<(), String> {
 }
 
 // ─── Phase 3A+ Commands: Parallel Scan, Scheduler, Watcher ─────────────
-
-#[tauri::command]
-async fn get_parallel_scan_files(
-    base_path: String,
-    exclude_patterns: Vec<String>,
-    compare_checksum: bool,
-    max_concurrent_hashes: Option<usize>,
-) -> Result<HashMap<String, FileInfo>, String> {
-    validate_path(&base_path)?;
-    let concurrency = max_concurrent_hashes.unwrap_or(4);
-    get_local_files_recursive_parallel(
-        &base_path,
-        &exclude_patterns,
-        compare_checksum,
-        concurrency,
-        None,
-    )
-    .await
-}
 
 #[tauri::command]
 async fn get_sync_schedule_cmd() -> Result<sync_scheduler::SyncSchedule, String> {
@@ -13902,32 +13659,6 @@ fn delete_sync_snapshot_cmd_blocking(
     sync::delete_sync_snapshot(&snapshot_id)
 }
 
-#[tauri::command]
-async fn load_sync_snapshot_cmd(
-    snapshot_id: String,
-    local_path: Option<String>,
-    remote_path: Option<String>,
-) -> Result<sync::SyncSnapshot, String> {
-    tokio::task::spawn_blocking(move || {
-        load_sync_snapshot_cmd_blocking(snapshot_id, local_path, remote_path)
-    })
-    .await
-    .unwrap_or_else(|err| Err(format!("load_sync_snapshot_cmd task failed: {err}")))
-}
-
-/// The body of `load_sync_snapshot_cmd`, kept synchronous and run on the blocking pool.
-fn load_sync_snapshot_cmd_blocking(
-    snapshot_id: String,
-    local_path: Option<String>,
-    remote_path: Option<String>,
-) -> Result<sync::SyncSnapshot, String> {
-    let snapshot = sync::load_sync_snapshot(&snapshot_id)?;
-    if !snapshot_matches_pair(&snapshot, local_path.as_deref(), remote_path.as_deref()) {
-        return Err("Snapshot does not belong to the current sync pair".to_string());
-    }
-    Ok(snapshot)
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RestoreSnapshotResult {
     restored_from_remote: u32,
@@ -14134,113 +13865,9 @@ async fn restore_sync_snapshot_cmd(
 // Rename Detection
 // =============================
 
-/// Detect file renames by matching SHA-256 hashes between local_only and remote_only files.
-/// Returns pairs of (old_path, new_path, size) that are likely renames rather than delete+create.
-#[tauri::command]
-async fn detect_renames_cmd(
-    local_path: String,
-    comparisons: Vec<sync::FileComparison>,
-) -> Result<Vec<serde_json::Value>, String> {
-    use std::collections::HashMap;
-
-    // Separate candidates: local_only = potential new files, remote_only = potential deleted files
-    let local_only: Vec<&sync::FileComparison> = comparisons
-        .iter()
-        .filter(|c| c.status == sync::SyncStatus::LocalOnly && !c.is_dir)
-        .collect();
-    let remote_only: Vec<&sync::FileComparison> = comparisons
-        .iter()
-        .filter(|c| c.status == sync::SyncStatus::RemoteOnly && !c.is_dir)
-        .collect();
-
-    if local_only.is_empty() || remote_only.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    // Hash local_only files
-    let mut local_hashes: HashMap<String, Vec<&sync::FileComparison>> = HashMap::new();
-    for comp in &local_only {
-        let file = std::path::PathBuf::from(&local_path).join(&comp.relative_path);
-        if let Ok(hash) = sha256_file_hex(&file) {
-            local_hashes.entry(hash).or_default().push(comp);
-        }
-    }
-
-    // Match remote_only files by size against local hashes
-    // (We can't hash remote files, so we match by size first, then confirm by local hash)
-    let mut renames = Vec::new();
-    let mut used_locals: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    for remote_comp in &remote_only {
-        let remote_size = remote_comp
-            .remote_info
-            .as_ref()
-            .map(|i| i.size)
-            .unwrap_or(0);
-        // Find a local_only file with matching hash and similar size
-        for (hash, locals) in &local_hashes {
-            for local_comp in locals {
-                if used_locals.contains(&local_comp.relative_path) {
-                    continue;
-                }
-                let local_size = local_comp.local_info.as_ref().map(|i| i.size).unwrap_or(0);
-                if local_size == remote_size {
-                    renames.push(serde_json::json!({
-                        "old_path": remote_comp.relative_path,
-                        "new_path": local_comp.relative_path,
-                        "size": local_size,
-                        "hash": hash,
-                    }));
-                    used_locals.insert(local_comp.relative_path.clone());
-                    break;
-                }
-            }
-        }
-    }
-
-    Ok(renames)
-}
-
 // =============================
 // Delta Sync Commands (#155)
 // =============================
-
-/// Analyze a file pair and return delta sync stats (preview, no actual transfer)
-#[cfg(feature = "aerorsync")]
-#[tauri::command]
-async fn delta_sync_analyze(
-    local_path: String,
-    remote_path: String,
-) -> Result<aerorsync::delta_engine::DeltaResult, String> {
-    validate_path(&local_path)?;
-    validate_path(&remote_path)?;
-
-    // Read local file
-    let local_data = tokio::fs::read(&local_path)
-        .await
-        .map_err(|e| format!("Failed to read local file: {}", e))?;
-
-    if (local_data.len() as u64) < aerorsync::delta_engine::DELTA_MIN_FILE_SIZE {
-        return Err(format!(
-            "File too small for delta sync ({}B < {}B minimum)",
-            local_data.len(),
-            aerorsync::delta_engine::DELTA_MIN_FILE_SIZE
-        ));
-    }
-
-    // For analysis, we use the local file as both source and simulate
-    // In real usage, remote_data would come from provider.read_range()
-    let block_size = aerorsync::delta_engine::compute_block_size(local_data.len() as u64);
-    let sigs = aerorsync::delta_engine::compute_signatures(&local_data, block_size);
-
-    // Read remote (local copy for now: real impl would use provider)
-    let remote_data = tokio::fs::read(&remote_path)
-        .await
-        .map_err(|e| format!("Failed to read remote file: {}", e))?;
-
-    let (_, result) = aerorsync::delta_engine::compute_delta(&remote_data, &sigs);
-    Ok(result)
-}
 
 // =============================
 // Canary Sync Commands
@@ -14374,13 +14001,6 @@ async fn sync_canary_run(
     })
 }
 
-/// Approve canary results: placeholder that returns a success message.
-/// The actual full sync is triggered by the frontend calling `parallel_sync_execute`.
-#[tauri::command]
-async fn sync_canary_approve() -> Result<String, String> {
-    Ok("Canary approved: proceed with full sync".to_string())
-}
-
 // =============================
 // Signed Audit Log Commands
 // =============================
@@ -14397,95 +14017,14 @@ async fn get_journal_signing_key(
     if remote_path.contains('\0') {
         return Err("Remote path contains null bytes".to_string());
     }
-
-    let key_dir = portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
-        .join("sync-journal");
-    tokio::fs::create_dir_all(&key_dir)
+    tokio::task::spawn_blocking(move || sync::journal_signing_key(&local_path, &remote_path))
         .await
-        .map_err(|e| format!("Failed to create journal dir: {}", e))?;
-
-    let key_file = key_dir.join("signing.key");
-
-    // Load existing key or generate a new one
-    let secret = if key_file.exists() {
-        tokio::fs::read_to_string(&key_file)
-            .await
-            .map_err(|e| format!("Failed to read signing key: {}", e))?
-    } else {
-        use rand::RngCore;
-        let mut bytes = [0u8; 32];
-        rand::rngs::OsRng.fill_bytes(&mut bytes);
-        let hex_key = hex::encode(bytes);
-        tokio::fs::write(&key_file, &hex_key)
-            .await
-            .map_err(|e| format!("Failed to write signing key: {}", e))?;
-        // Restrict permissions on Unix
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&key_file, perms).ok();
-        }
-        hex_key
-    };
-
-    // Derive per-path-pair key via HMAC-SHA256(secret, local|remote|salt)
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    let data = format!("{}|{}|aeroftp-journal-signing", local_path, remote_path);
-    let key_bytes =
-        hex::decode(secret.trim()).map_err(|e| format!("Invalid signing key: {}", e))?;
-    let mut mac =
-        Hmac::<Sha256>::new_from_slice(&key_bytes).map_err(|e| format!("HMAC key error: {}", e))?;
-    mac.update(data.as_bytes());
-    Ok(hex::encode(mac.finalize().into_bytes()))
+        .unwrap_or_else(|err| Err(format!("get_journal_signing_key task failed: {err}")))
 }
 
-/// Sign an existing sync journal with HMAC-SHA256.
-/// Saves the hex-encoded signature as a .sig file alongside the journal.
-#[tauri::command]
-async fn sign_sync_journal(
-    local_path: String,
-    remote_path: String,
-    signing_key: String,
-) -> Result<String, String> {
-    validate_path(&local_path)?;
-    if remote_path.contains('\0') {
-        return Err("Remote path contains null bytes".to_string());
-    }
-
-    // Load the journal
-    let journal = load_sync_journal(&local_path, &remote_path)?
-        .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
-
-    // Decode hex signing key
-    let key_bytes =
-        hex::decode(&signing_key).map_err(|e| format!("Invalid hex signing key: {}", e))?;
-    if key_bytes.is_empty() {
-        return Err("Signing key cannot be empty".to_string());
-    }
-    if key_bytes.len() < 32 {
-        return Err("Signing key must be at least 32 bytes (64 hex chars)".to_string());
-    }
-
-    // Compute HMAC-SHA256 signature
-    let signature = sign_journal(&journal, &key_bytes)?;
-
-    // Save .sig file alongside the journal
-    let journal_dir = portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
-        .join("sync-journal");
-    let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
-    tokio::fs::write(&sig_path, signature.as_bytes())
-        .await
-        .map_err(|e| format!("Failed to write signature file: {}", e))?;
-
-    Ok(signature)
-}
-
-/// Verify an existing journal signature.
-/// Returns true if the stored signature matches the recomputed HMAC.
+/// Verify an existing journal signature. Journals are signed on every save
+/// (`sync::save_sync_journal`); returns true if the stored signature matches
+/// the recomputed HMAC.
 #[tauri::command]
 async fn verify_journal_signature(
     local_path: String,
@@ -14496,45 +14035,11 @@ async fn verify_journal_signature(
     if remote_path.contains('\0') {
         return Err("Remote path contains null bytes".to_string());
     }
-
-    // Load the journal
-    let journal = load_sync_journal(&local_path, &remote_path)?
-        .ok_or_else(|| "No sync journal found for this path pair".to_string())?;
-
-    // Read the .sig file
-    let journal_dir = portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?
-        .join("sync-journal");
-    let sig_path = journal_dir.join(journal_sig_filename(&local_path, &remote_path));
-    let stored_sig = tokio::fs::read_to_string(&sig_path)
-        .await
-        .map_err(|e| format!("Failed to read signature file: {}", e))?;
-
-    // Decode hex signing key
-    let key_bytes =
-        hex::decode(&signing_key).map_err(|e| format!("Invalid hex signing key: {}", e))?;
-    if key_bytes.is_empty() {
-        return Err("Signing key cannot be empty".to_string());
-    }
-    if key_bytes.len() < 32 {
-        return Err("Signing key must be at least 32 bytes (64 hex chars)".to_string());
-    }
-
-    // Recompute HMAC-SHA256
-    let computed_sig = sign_journal(&journal, &key_bytes)?;
-
-    // Constant-time comparison to prevent timing attacks
-    let a = computed_sig.as_bytes();
-    let b = stored_sig.trim().as_bytes();
-    let result = if a.len() != b.len() {
-        false
-    } else {
-        a.iter()
-            .zip(b.iter())
-            .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-            == 0
-    };
-    Ok(result)
+    tokio::task::spawn_blocking(move || {
+        sync::verify_journal_signature(&local_path, &remote_path, &signing_key)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("verify_journal_signature task failed: {err}")))
 }
 
 /// Execute sync transfers in parallel using a bounded Semaphore pool.
@@ -14916,11 +14421,6 @@ async fn execute_single_transfer(
 // ─── End Phase 3A+ Commands ────────────────────────────────────────────
 
 #[tauri::command]
-fn get_default_retry_policy() -> RetryPolicy {
-    RetryPolicy::default()
-}
-
-#[tauri::command]
 async fn verify_local_transfer(
     local_path: String,
     expected_size: u64,
@@ -15253,331 +14753,6 @@ async fn ai_list_models(
     }
 }
 
-// Tool execution request
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ToolRequest {
-    tool_name: String,
-    args: serde_json::Value,
-}
-
-// Allowed AI tool names (whitelist)
-const ALLOWED_AI_TOOLS: &[&str] = &[
-    "list_files",
-    "read_file",
-    "create_folder",
-    "delete_file",
-    "rename_file",
-    "download_file",
-    "upload_file",
-    "chmod",
-];
-
-/// Validate and sanitize a path argument from AI tool calls.
-/// Rejects null bytes, path traversal sequences, and excessively long paths.
-fn validate_tool_path(path: &str, param_name: &str) -> Result<(), String> {
-    if path.len() > 4096 {
-        return Err(format!("{}: path exceeds 4096 characters", param_name));
-    }
-    if path.contains('\0') {
-        return Err(format!("{}: path contains null bytes", param_name));
-    }
-    // Reject path traversal: literal ".." components
-    for component in path.split('/') {
-        if component == ".." {
-            return Err(format!(
-                "{}: path traversal ('..') is not allowed",
-                param_name
-            ));
-        }
-    }
-    // Also check backslash-separated (Windows paths)
-    for component in path.split('\\') {
-        if component == ".." {
-            return Err(format!(
-                "{}: path traversal ('..') is not allowed",
-                param_name
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// Validate a chmod mode string (must be octal digits, 3-4 chars).
-fn validate_chmod_mode(mode: &str) -> Result<(), String> {
-    if mode.len() < 3 || mode.len() > 4 {
-        return Err("mode must be 3-4 octal digits (e.g. '755')".to_string());
-    }
-    if !mode.chars().all(|c| c.is_ascii_digit() && c <= '7') {
-        return Err("mode must contain only octal digits (0-7)".to_string());
-    }
-    Ok(())
-}
-
-// Execute AI tool - routes to existing FTP commands
-#[tauri::command]
-async fn ai_execute_tool(
-    state: State<'_, AppState>,
-    app: AppHandle,
-    request: ToolRequest,
-) -> Result<serde_json::Value, String> {
-    // Validate tool name against whitelist
-    if !ALLOWED_AI_TOOLS.contains(&request.tool_name.as_str()) {
-        return Err(format!("Unknown or disallowed tool: {}", request.tool_name));
-    }
-
-    let args = request.args;
-
-    match request.tool_name.as_str() {
-        "list_files" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("/");
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                let files = get_local_files(path.to_string(), Some(true))
-                    .await
-                    .map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({
-                    "success": true,
-                    "count": files.len(),
-                    "files": files.iter().take(20).map(|f| {
-                        serde_json::json!({
-                            "name": f.name,
-                            "is_dir": f.is_dir,
-                            "size": f.size
-                        })
-                    }).collect::<Vec<_>>()
-                }))
-            } else {
-                let mut manager = state.ftp_manager.lock().await;
-                let files = manager.list_files().await.map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({
-                    "success": true,
-                    "count": files.len(),
-                    "files": files.iter().take(20).map(|f| {
-                        serde_json::json!({
-                            "name": f.name,
-                            "is_dir": f.is_dir,
-                            "size": f.size
-                        })
-                    }).collect::<Vec<_>>()
-                }))
-            }
-        }
-
-        "read_file" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                let content = read_local_file(path.to_string(), Some(5))
-                    .await
-                    .map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({
-                    "success": true,
-                    "content": content.chars().take(5000).collect::<String>(),
-                    "truncated": content.len() > 5000
-                }))
-            } else {
-                // AI tool preview: use FTP manager directly (provider path handled by Tauri command)
-                let content = {
-                    let mut ftp = state.ftp_manager.lock().await;
-                    let temp = std::env::temp_dir().join(format!(
-                        "aeroftp_ai_preview_{}",
-                        chrono::Utc::now().timestamp_millis()
-                    ));
-                    let temp_str = temp.to_string_lossy().to_string();
-                    ftp.download_file_with_progress(path, &temp_str, |_| true)
-                        .await
-                        .map_err(|e| format!("Failed to download: {}", e))?;
-                    let c = tokio::fs::read_to_string(&temp)
-                        .await
-                        .map_err(|e| format!("Failed to read: {}", e))?;
-                    let _ = tokio::fs::remove_file(&temp).await;
-                    c
-                };
-                Ok(serde_json::json!({
-                    "success": true,
-                    "content": content.chars().take(5000).collect::<String>(),
-                    "truncated": content.len() > 5000
-                }))
-            }
-        }
-
-        "create_folder" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                create_local_folder(path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            } else {
-                create_remote_folder(state.clone(), path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Created folder: {}", path) }),
-            )
-        }
-
-        "delete_file" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            validate_tool_path(path, "path")?;
-
-            if location == "local" {
-                delete_local_file(app.clone(), state.clone(), path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            } else {
-                // Assume file, not directory for simple delete
-                delete_remote_file(app.clone(), state.clone(), path.to_string(), false)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-            Ok(serde_json::json!({ "success": true, "message": format!("Deleted: {}", path) }))
-        }
-
-        "rename_file" => {
-            let location = args
-                .get("location")
-                .and_then(|v| v.as_str())
-                .unwrap_or("remote");
-            let old_path = args
-                .get("old_path")
-                .and_then(|v| v.as_str())
-                .ok_or("old_path required")?;
-            let new_path = args
-                .get("new_path")
-                .and_then(|v| v.as_str())
-                .ok_or("new_path required")?;
-            validate_tool_path(old_path, "old_path")?;
-            validate_tool_path(new_path, "new_path")?;
-
-            if location == "local" {
-                rename_local_file(
-                    app.clone(),
-                    old_path.to_string(),
-                    new_path.to_string(),
-                    None,
-                )
-                .await
-                .map_err(|e| e.to_string())?;
-            } else {
-                rename_remote_file(state.clone(), old_path.to_string(), new_path.to_string())
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Renamed {} to {}", old_path, new_path) }),
-            )
-        }
-
-        "download_file" => {
-            let remote_path = args
-                .get("remote_path")
-                .and_then(|v| v.as_str())
-                .ok_or("remote_path required")?;
-            let local_path = args
-                .get("local_path")
-                .and_then(|v| v.as_str())
-                .ok_or("local_path required")?;
-            validate_tool_path(remote_path, "remote_path")?;
-            validate_tool_path(local_path, "local_path")?;
-
-            download_file(
-                app,
-                state.clone(),
-                DownloadParams {
-                    remote_path: remote_path.to_string(),
-                    local_path: local_path.to_string(),
-                    modified: None,
-                    use_delta: true,
-                },
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Downloaded {} to {}", remote_path, local_path) }),
-            )
-        }
-
-        "upload_file" => {
-            let local_path = args
-                .get("local_path")
-                .and_then(|v| v.as_str())
-                .ok_or("local_path required")?;
-            let remote_path = args
-                .get("remote_path")
-                .and_then(|v| v.as_str())
-                .ok_or("remote_path required")?;
-            validate_tool_path(local_path, "local_path")?;
-            validate_tool_path(remote_path, "remote_path")?;
-
-            // AI tool upload: use FTP manager directly
-            {
-                let mut ftp = state.ftp_manager.lock().await;
-                ftp.upload_file_with_progress(local_path, remote_path, 0, |_| true)
-                    .await
-                    .map_err(|e| format!("Upload failed: {}", e))?;
-            }
-
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Uploaded {} to {}", local_path, remote_path) }),
-            )
-        }
-
-        "chmod" => {
-            let path = args
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or("path required")?;
-            let mode = args
-                .get("mode")
-                .and_then(|v| v.as_str())
-                .ok_or("mode required")?;
-            validate_tool_path(path, "path")?;
-            validate_chmod_mode(mode)?;
-
-            chmod_remote_file(state.clone(), path.to_string(), mode.to_string())
-                .await
-                .map_err(|e| e.to_string())?;
-
-            Ok(
-                serde_json::json!({ "success": true, "message": format!("Changed permissions of {} to {}", path, mode) }),
-            )
-        }
-
-        _ => unreachable!(), // tool_name already validated against ALLOWED_AI_TOOLS
-    }
-}
-
 // ============ AeroCloud Commands ============
 
 #[tauri::command]
@@ -15674,29 +14849,6 @@ fn remove_cloud_pair_blocking(pair_id: String) -> Result<cloud_pairs::CloudPairs
         let before = config.pairs.len();
         config.pairs.retain(|p| p.id != pair_id);
         if config.pairs.len() == before {
-            return Err("Pair not found".to_string());
-        }
-        Ok(config.clone())
-    })
-}
-
-#[tauri::command]
-async fn update_cloud_pair(
-    pair: cloud_pairs::CloudPathPair,
-) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    tokio::task::spawn_blocking(move || update_cloud_pair_blocking(pair))
-        .await
-        .unwrap_or_else(|err| Err(format!("update_cloud_pair task failed: {err}")))
-}
-
-/// The body of `update_cloud_pair`, kept synchronous and run on the blocking pool.
-fn update_cloud_pair_blocking(
-    pair: cloud_pairs::CloudPathPair,
-) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    cloud_pairs::with_cloud_pairs_mut(|config| {
-        if let Some(existing) = config.pairs.iter_mut().find(|p| p.id == pair.id) {
-            *existing = pair;
-        } else {
             return Err("Pair not found".to_string());
         }
         Ok(config.clone())
@@ -16141,34 +15293,6 @@ fn get_cloud_status_blocking() -> CloudSyncStatus {
     }
 }
 
-#[tauri::command]
-async fn enable_aerocloud(enabled: bool) -> Result<CloudConfig, String> {
-    tokio::task::spawn_blocking(move || enable_aerocloud_blocking(enabled))
-        .await
-        .unwrap_or_else(|err| Err(format!("enable_aerocloud task failed: {err}")))
-}
-
-/// The body of `enable_aerocloud`, kept synchronous and run on the blocking pool.
-fn enable_aerocloud_blocking(enabled: bool) -> Result<CloudConfig, String> {
-    let config = cloud_config::with_cloud_config_mut(|config| {
-        if enabled {
-            // Validate before enabling
-            cloud_config::validate_config(config)?;
-            cloud_config::ensure_cloud_folder(config)?;
-        }
-
-        config.enabled = enabled;
-        // Always clear the paused flag on explicit enable/disable so the two
-        // state machines (enable vs pause) never conflict on re-enable.
-        config.paused = false;
-        Ok(config.clone())
-    })?;
-
-    info!("AeroCloud {}", if enabled { "enabled" } else { "disabled" });
-
-    Ok(config)
-}
-
 /// Pause AeroCloud without removing its configuration.
 /// Stops the background sync worker and persists `paused = true`.
 /// The auto-start effect in the frontend respects this flag on next launch.
@@ -16188,6 +15312,9 @@ async fn pause_aerocloud(app: AppHandle) -> Result<CloudConfig, String> {
         config.paused = true;
         Ok(config.clone())
     })?;
+
+    // stop_background_sync left the tray on its idle icon; paused has its own.
+    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Paused);
 
     let _ = app.emit(
         "cloud-sync-status",
@@ -16215,6 +15342,11 @@ async fn resume_aerocloud(
         config.paused = false;
         Ok(config.clone())
     })?;
+
+    // pause_aerocloud put the tray on its Paused badge. With sync_on_startup
+    // off the worker waits for a trigger before its first cycle, so nothing
+    // else would repaint it.
+    tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);
 
     // Best-effort start. If a worker is already running start_background_sync
     // returns Ok early. If the config is invalid we surface the error so the
@@ -16399,21 +15531,6 @@ async fn get_default_cloud_folder() -> String {
 fn get_default_cloud_folder_blocking() -> String {
     let default_config = CloudConfig::default();
     default_config.local_folder.to_string_lossy().to_string()
-}
-
-#[tauri::command]
-async fn update_conflict_strategy(strategy: ConflictStrategy) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || update_conflict_strategy_blocking(strategy))
-        .await
-        .unwrap_or_else(|err| Err(format!("update_conflict_strategy task failed: {err}")))
-}
-
-/// The body of `update_conflict_strategy`, kept synchronous and run on the blocking pool.
-fn update_conflict_strategy_blocking(strategy: ConflictStrategy) -> Result<(), String> {
-    cloud_config::with_cloud_config_mut(|config| {
-        config.conflict_strategy = strategy;
-        Ok(())
-    })
 }
 
 #[tauri::command]
@@ -17125,13 +16242,6 @@ async fn set_tray_status(
     Ok(())
 }
 
-#[tauri::command]
-async fn update_tray_badge_cmd(app: AppHandle, state: String) -> Result<(), String> {
-    let badge_state = tray_badge::TrayBadgeState::from_str(&state);
-    tray_badge::update_tray_badge(&app, badge_state);
-    Ok(())
-}
-
 /// Save server credentials for background sync use
 #[tauri::command]
 async fn save_server_credentials(
@@ -17633,13 +16743,6 @@ async fn set_auto_lock_timeout(
     state.set_timeout(secs);
     persist_auto_lock_timeout(secs)?;
     Ok(())
-}
-
-#[tauri::command]
-async fn app_master_password_status(
-    state: State<'_, master_password::MasterPasswordState>,
-) -> Result<master_password::MasterPasswordStatus, String> {
-    Ok(master_password::MasterPasswordStatus::new(&state))
 }
 
 #[tauri::command]
@@ -18294,11 +17397,6 @@ pub async fn import_server_profiles_core_filtered(
     Ok(result)
 }
 
-#[tauri::command]
-async fn read_export_metadata(file_path: String) -> Result<profile_export::ExportMetadata, String> {
-    profile_export::read_metadata(std::path::Path::new(&file_path)).map_err(|e| e.to_string())
-}
-
 // ============ Full Keystore Export/Import ============
 
 #[tauri::command]
@@ -18662,11 +17760,6 @@ async fn vault_mount_start(
 #[tauri::command]
 async fn vault_mount_stop(key: String) -> Result<(), String> {
     vault_mount::stop(&key).await
-}
-
-#[tauri::command]
-async fn vault_mount_list() -> Result<Vec<vault_mount::VaultMountInfo>, String> {
-    Ok(vault_mount::list().await)
 }
 
 #[tauri::command]
@@ -19899,6 +18992,11 @@ pub fn run() {
             if tray_available {
                 let _tray = tray_builder.build(app)?;
                 info!("System tray icon initialized");
+                let cloud = cloud_config::load_cloud_config();
+                let initial = tray_badge::TrayBadgeState::at_startup(cloud.enabled, cloud.paused);
+                if initial != tray_badge::TrayBadgeState::Default {
+                    tray_badge::update_tray_badge(app.handle(), initial);
+                }
             } else {
                 log::warn!(
                     "System tray unavailable: libappindicator / ayatana-appindicator3 \
@@ -20060,8 +19158,7 @@ pub fn run() {
         // AeroShare: registry of the background drive sync tasks consumed by
         // provider_connect for protocol="peer" (lifecycle per D-GUI-1:
         // open-or-tray = serving, Quit = stop).
-        .manage(peer::runtime::PeerRuntime::default())
-        .manage(session_manager::MultiProviderState::new());
+        .manage(peer::runtime::PeerRuntime::default());
 
     // Add PTY state for terminal support (all platforms)
     let builder = builder.manage(create_pty_state());
@@ -20097,7 +19194,6 @@ pub fn run() {
             panic_safe::debug_panic_command,
             connect_ftp,
             disconnect_ftp,
-            check_connection,
             crate::portal_chooser::chooser_unavailable,
             ftp_noop,
             reconnect_ftp,
@@ -20113,8 +19209,6 @@ pub fn run() {
             stop_starting_transfers,
             reset_cancel_flag,
             set_speed_limit,
-            get_speed_limit,
-            is_running_as_snap,
             get_local_files,
             open_in_file_manager,
             open_local_file,
@@ -20162,7 +19256,6 @@ pub fn run() {
             rebuild_menu,
             compare_directories,
             compare_local_directories,
-            get_compare_options_default,
             load_sync_index_cmd,
             save_sync_index_cmd,
             load_sync_journal_cmd,
@@ -20179,7 +19272,6 @@ pub fn run() {
             delete_sync_profile_cmd,
             // Phase 3A+: Parallel sync, scan, scheduler, watcher
             parallel_sync_execute,
-            get_parallel_scan_files,
             get_sync_schedule_cmd,
             save_sync_schedule_cmd,
             get_watcher_status_cmd,
@@ -20198,18 +19290,12 @@ pub fn run() {
             flatten_local_descendants,
             create_sync_snapshot_cmd,
             list_sync_snapshots_cmd,
-            load_sync_snapshot_cmd,
             restore_sync_snapshot_cmd,
-            detect_renames_cmd,
             delete_sync_snapshot_cmd,
             #[cfg(feature = "aerorsync")]
-            delta_sync_analyze,
             sync_canary_run,
-            sync_canary_approve,
             get_journal_signing_key,
-            sign_sync_journal,
             verify_journal_signature,
-            get_default_retry_policy,
             verify_local_transfer,
             classify_transfer_error,
             sync_ec_generate,
@@ -20222,10 +19308,8 @@ pub fn run() {
             save_cloud_pairs_config_cmd,
             add_cloud_pair,
             remove_cloud_pair,
-            update_cloud_pair,
             setup_aerocloud,
             get_cloud_status,
-            enable_aerocloud,
             pause_aerocloud,
             resume_aerocloud,
             disable_aerocloud,
@@ -20246,14 +19330,12 @@ pub fn run() {
             generate_share_link_remote,
             generate_server_share_link,
             get_default_cloud_folder,
-            update_conflict_strategy,
             trigger_cloud_sync,
             // Background sync & tray commands
             start_background_sync,
             stop_background_sync,
             is_background_sync_running,
             set_tray_status,
-            update_tray_badge_cmd,
             save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
@@ -20273,7 +19355,6 @@ pub fn run() {
             disable_master_password,
             change_master_password,
             set_auto_lock_timeout,
-            app_master_password_status,
             app_master_password_update_activity,
             app_master_password_check_timeout,
             // Multi-user partition metadata
@@ -20342,11 +19423,9 @@ pub fn run() {
             peer_commands::peer_send_file,
             peer_commands::peer_receiver_start,
             peer_commands::peer_receiver_stop,
-            peer_commands::peer_receiver_status,
             peer_commands::peer_incoming_respond,
             peer_commands::peer_friends_presence,
             peer_commands::peer_send_knock,
-            peer_commands::peer_send_action,
             // AeroShare v4.1.0 security follow-ups (#370): anti-flood + discovery
             peer_commands::peer_contact_mute,
             peer_commands::peer_contact_unmute,
@@ -20358,10 +19437,6 @@ pub fn run() {
             peer_commands::aeroshare_inbox_root,
             settings::native_rsync_feature_compiled,
             #[cfg(feature = "aerorsync")]
-            settings::native_rsync_enabled_get,
-            #[cfg(feature = "aerorsync")]
-            settings::native_rsync_enabled_set,
-            #[cfg(feature = "aerorsync")]
             settings::native_rsync_mode_get,
             #[cfg(feature = "aerorsync")]
             settings::native_rsync_mode_set,
@@ -20370,7 +19445,6 @@ pub fn run() {
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,
-            read_export_metadata,
             // Generic profile bridge (12 expansion sources)
             bridge_commands::detect_bridge_config,
             bridge_commands::bridge_source_meta,
@@ -20413,7 +19487,6 @@ pub fn run() {
             ai_cancel_delegation,
             ai_test_provider,
             ai_list_models,
-            ai_execute_tool,
             ai_tools::validate_tool_args,
             ai_tools::prepare_ai_tool_approval,
             ai_tools::grant_ai_tool_approval,
@@ -20429,11 +19502,8 @@ pub fn run() {
             context_intelligence::detect_project_context,
             context_intelligence::scan_file_imports,
             context_intelligence::get_git_context,
-            context_intelligence::read_agent_memory,
-            context_intelligence::write_agent_memory,
             agent_memory_db::agent_memory_store,
             agent_memory_db::agent_memory_search,
-            agent_memory_db::agent_memory_delete,
             // Provider health check
             health_check::start_health_scan,
             speech::speech_model_status,
@@ -20461,7 +19531,6 @@ pub fn run() {
             aerovault_v2::vault_v2_open,
             aerovault_v2::is_vault_v2,
             aerovault_v2::vault_v2_peek,
-            aerovault_v2::vault_v2_security_info,
             aerovault_v2::vault_v2_add_files,
             aerovault_v2::vault_v2_extract_entry,
             aerovault_v2::vault_v2_extract_all,
@@ -20470,11 +19539,7 @@ pub fn run() {
             aerovault_v2::vault_v2_delete_entry,
             aerovault_v2::vault_v2_create_directory,
             aerovault_v2::vault_v2_delete_entries,
-            aerovault_v2::vault_v2_move_entry,
-            aerovault_v2::vault_v2_rename_entry,
-            aerovault_v2::vault_v2_copy_entry,
             aerovault_v2::vault_v2_add_files_to_dir,
-            aerovault_v2::vault_v2_compact,
             aerovault_v2::vault_v2_sync_compare,
             aerovault_v2::vault_v2_sync_apply,
             aerovault_v2::vault_v2_scan_directory,
@@ -20509,14 +19574,9 @@ pub fn run() {
             aerovault_v3::vault_v3_create_directory,
             aerovault_v3::vault_v3_delete_entry,
             aerovault_v3::vault_v3_delete_entries,
-            aerovault_v3::vault_v3_move_entry,
-            aerovault_v3::vault_v3_rename_entry,
-            aerovault_v3::vault_v3_copy_entry,
             aerovault_v3::vault_v3_change_password,
             aerovault_v3::vault_v3_change_mode,
             aerovault_v3::vault_v3_add_directory,
-            aerovault_v3::vault_v3_security_info,
-            aerovault_v3::vault_v3_has_error_correction,
             aerovault_v3::vault_v3_recovery_status,
             aerovault_v3::vault_v3_scrub,
             aerovault_v3::vault_v3_repair,
@@ -20540,10 +19600,7 @@ pub fn run() {
             rclone_crypt::rclone_crypt_secret_for_display,
             rclone_crypt::rclone_crypt_lock,
             rclone_crypt::rclone_crypt_decrypt_name,
-            rclone_crypt::rclone_crypt_encrypt_name,
-            rclone_crypt::rclone_crypt_decrypt_file,
             rclone_crypt::rclone_crypt_decrypt_file_path,
-            rclone_crypt::rclone_crypt_encrypt_file_path,
             rclone_crypt_provider_create_remote,
             // Native AeroCrypt overlay (mirrors the rclone set on our own codec)
             aerocrypt_provider::aerocrypt_unlock,
@@ -20580,11 +19637,7 @@ pub fn run() {
             ai_stream::ai_chat_stream,
             ai_stream::ai_cancel_stream,
             ai::ollama_pull_model,
-            ai::gemini_create_cache,
             ai::ollama_list_running,
-            ai::kimi_create_cache,
-            ai::kimi_upload_file,
-            ai::deepseek_fim_complete,
             // Multi-protocol provider commands
             provider_commands::provider_connect,
             provider_commands::provider_discover_targets,
@@ -20600,12 +19653,9 @@ pub fn run() {
             provider_commands::provider_lock_crypt_overlay,
             provider_commands::provider_rearm_cached_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
-            provider_commands::provider_check_connection,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
-            provider_commands::provider_go_up,
-            provider_commands::provider_pwd,
             provider_commands::provider_download_file,
             provider_commands::provider_detect_aero_remote,
             provider_commands::provider_detect_archive_meta_remote,
@@ -20619,26 +19669,16 @@ pub fn run() {
             provider_commands::provider_delete_dir,
             provider_commands::provider_rename,
             provider_commands::provider_server_copy,
-            provider_commands::provider_supports_server_copy,
-            provider_commands::provider_stat,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
             provider_commands::provider_keep_alive,
-            provider_commands::provider_server_info,
-            provider_commands::provider_file_size,
-            provider_commands::provider_exists,
             // OAuth2 cloud provider commands
-            provider_commands::oauth2_start_auth,
-            provider_commands::oauth2_complete_auth,
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
             provider_commands::twake_sign_in,
             provider_commands::oauth2_redirect_uri,
             provider_commands::oauth2_has_tokens,
-            provider_commands::oauth2_logout,
             // 4shared OAuth 1.0 commands
-            provider_commands::fourshared_start_auth,
-            provider_commands::fourshared_complete_auth,
             provider_commands::fourshared_full_auth,
             provider_commands::fourshared_connect,
             provider_commands::fourshared_has_tokens,
@@ -20646,21 +19686,13 @@ pub fn run() {
             provider_commands::zoho_list_trash,
             provider_commands::zoho_permanent_delete,
             provider_commands::zoho_restore_from_trash,
-            provider_commands::zoho_list_team_labels,
-            provider_commands::zoho_get_file_labels,
-            provider_commands::zoho_add_file_label,
-            provider_commands::zoho_remove_file_label,
-            provider_commands::zoho_create_label,
-            provider_commands::zoho_get_user_info,
             provider_commands::zoho_get_file_share_links,
             provider_commands::zoho_delete_share_link,
             provider_commands::zoho_create_native_document,
-            provider_commands::jottacloud_move_to_trash,
             provider_commands::jottacloud_list_trash,
             provider_commands::jottacloud_restore_from_trash,
             provider_commands::jottacloud_permanent_delete,
             provider_commands::jottacloud_empty_trash,
-            provider_commands::mega_move_to_trash,
             provider_commands::mega_list_trash,
             provider_commands::mega_restore_from_trash,
             provider_commands::mega_permanent_delete,
@@ -20671,7 +19703,6 @@ pub fn run() {
             provider_commands::filelu_set_folder_settings,
             provider_commands::filelu_list_deleted,
             provider_commands::filelu_restore_file,
-            provider_commands::filelu_restore_folder,
             provider_commands::filelu_permanent_delete,
             provider_commands::filelu_remote_url_upload,
             providers::koofr::koofr_list_trash,
@@ -20681,7 +19712,6 @@ pub fn run() {
             providers::webdav::webdav_restore_trash,
             providers::webdav::webdav_delete_trash,
             providers::webdav::webdav_empty_trash,
-            provider_commands::google_drive_trash_file,
             provider_commands::google_drive_list_trash,
             provider_commands::google_drive_restore_from_trash,
             provider_commands::google_drive_permanent_delete,
@@ -20700,23 +19730,17 @@ pub fn run() {
             provider_commands::google_drive_list_comments,
             provider_commands::google_drive_add_comment,
             provider_commands::google_drive_delete_comment,
-            provider_commands::google_drive_set_properties,
-            provider_commands::google_drive_set_description,
             provider_commands::dropbox_list_trash,
             provider_commands::dropbox_restore_from_trash,
             provider_commands::dropbox_permanent_delete,
             provider_commands::dropbox_account_type,
-            provider_commands::dropbox_set_tags,
-            provider_commands::dropbox_get_tags,
             provider_commands::onedrive_list_trash,
-            provider_commands::onedrive_trash_files,
             provider_commands::onedrive_restore_from_trash,
             provider_commands::onedrive_permanent_delete,
             provider_commands::box_list_trash,
             provider_commands::box_trash_files,
             provider_commands::box_restore_from_trash,
             provider_commands::box_permanent_delete,
-            provider_commands::box_move_file,
             provider_commands::box_list_comments,
             provider_commands::box_add_comment,
             provider_commands::box_delete_comment,
@@ -20739,7 +19763,6 @@ pub fn run() {
             provider_commands::provider_bucket_encryption,
             provider_commands::mega_df_query,
             provider_commands::mega_webdav_url,
-            provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,
             provider_commands::provider_scan_used,
@@ -20776,8 +19799,6 @@ pub fn run() {
             provider_commands::github_delete_release,
             provider_commands::github_delete_release_asset,
             provider_commands::github_download_release_asset,
-            provider_commands::github_get_release,
-            provider_commands::github_batch_commit,
             provider_commands::github_batch_upload,
             provider_commands::github_batch_delete,
             provider_commands::github_check_local_sync,
@@ -20785,7 +19806,6 @@ pub fn run() {
             // GitLab-specific commands
             provider_commands::gitlab_list_branches,
             provider_commands::gitlab_get_info,
-            provider_commands::gitlab_switch_branch,
             provider_commands::gitlab_batch_upload,
             provider_commands::gitlab_batch_delete,
             provider_commands::gitlab_list_releases,
@@ -20822,10 +19842,6 @@ pub fn run() {
             provider_commands::filen_notes_untag_note,
             provider_commands::provider_find,
             provider_commands::provider_set_speed_limit,
-            provider_commands::provider_get_speed_limit,
-            provider_commands::provider_supports_resume,
-            provider_commands::provider_resume_download,
-            provider_commands::provider_resume_upload,
             // File versions
             provider_commands::provider_supports_versions,
             provider_commands::provider_list_versions,
@@ -20875,19 +19891,6 @@ pub fn run() {
             provider_commands::provider_add_permission,
             provider_commands::provider_remove_permission,
             // Multi-session provider commands
-            session_commands::session_connect,
-            session_commands::session_disconnect,
-            session_commands::session_switch,
-            session_commands::session_list,
-            session_commands::session_info,
-            session_commands::session_list_files,
-            session_commands::session_change_dir,
-            session_commands::session_mkdir,
-            session_commands::session_delete,
-            session_commands::session_rename,
-            session_commands::session_download,
-            session_commands::session_upload,
-            session_commands::session_create_share_link,
             spawn_shell,
             pty_write,
             pty_resize,
@@ -20903,9 +19906,7 @@ pub fn run() {
             // Plugin system
             plugins::list_plugins,
             plugins::execute_plugin_tool,
-            plugins::install_plugin,
             plugins::remove_plugin,
-            plugins::trigger_plugin_hooks,
             // Plugin registry
             plugin_registry::fetch_plugin_registry,
             plugin_registry::install_plugin_from_registry,
@@ -20933,14 +19934,8 @@ pub fn run() {
             providers::mtp::commands::mtp_open_device,
             providers::mtp::commands::mtp_open_gvfs_mount,
             providers::mtp::commands::mtp_close_device,
-            providers::mtp::commands::mtp_backend_status,
             providers::mtp::commands::mtp_desktop_automounter_present,
             // Mission Green Badge - File sync status tracking
-            sync_badge::start_badge_server_cmd,
-            sync_badge::stop_badge_server_cmd,
-            sync_badge::set_file_badge,
-            sync_badge::clear_file_badge,
-            sync_badge::get_badge_status,
             sync_badge::install_shell_extension_cmd,
             sync_badge::uninstall_shell_extension_cmd,
             sync_badge::restart_file_manager_cmd,
@@ -20959,26 +19954,20 @@ pub fn run() {
             // TOTP 2FA
             totp::totp_setup_start,
             totp::totp_setup_verify,
-            totp::totp_verify,
             totp::totp_status,
             totp::totp_enable,
             totp::totp_disable,
-            totp::totp_load_secret,
             // Chat History SQLite
-            chat_history::chat_history_init,
             chat_history::chat_history_list_sessions,
             chat_history::chat_history_get_session,
             chat_history::chat_history_create_session,
             chat_history::chat_history_save_message,
             chat_history::chat_history_update_session_title,
             chat_history::chat_history_delete_session,
-            chat_history::chat_history_delete_sessions_bulk,
             chat_history::chat_history_clear_all,
             chat_history::chat_history_search,
             chat_history::chat_history_cleanup,
             chat_history::chat_history_stats,
-            chat_history::chat_history_export_session,
-            chat_history::chat_history_import,
             chat_history::chat_history_create_branch,
             chat_history::chat_history_switch_branch,
             chat_history::chat_history_delete_branch,
@@ -20991,7 +19980,6 @@ pub fn run() {
             file_tags::file_tags_set_tags,
             file_tags::file_tags_remove_tag,
             file_tags::file_tags_get_tags_for_files,
-            file_tags::file_tags_get_files_by_label,
             file_tags::file_tags_get_label_counts,
             // Vault History
             vault_history::vault_history_save,
@@ -21007,9 +19995,7 @@ pub fn run() {
             speedtest::speedtest_compare,
             speedtest::speedtest_cancel,
             speedtest::speedtest_history_record,
-            speedtest::speedtest_history_list,
             speedtest::speedtest_history_summary,
-            speedtest::speedtest_history_clear,
             // AeroImage
             image_edit::process_image,
             // InfiniCloud REST API
@@ -21024,7 +20010,6 @@ pub fn run() {
             mount_open_in_explorer,
             vault_mount_start,
             vault_mount_stop,
-            vault_mount_list,
             vault_mount_open,
             mount_suggest_path,
             mount_pick_drive_letter,

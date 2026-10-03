@@ -235,23 +235,6 @@ impl GooglePhotosProvider {
             .has_tokens(OAuthProvider::GooglePhotos, &self.profile_id)
     }
 
-    /// Start OAuth flow - returns (auth_url, state).
-    #[allow(dead_code)]
-    pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
-        self.oauth_manager
-            .start_auth_flow(&self.oauth_config())
-            .await
-    }
-
-    /// Complete OAuth flow with code.
-    #[allow(dead_code)]
-    pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
-        self.oauth_manager
-            .complete_auth_flow(&self.oauth_config(), code, state)
-            .await?;
-        Ok(())
-    }
-
     // -----------------------------------------------------------------------
     // API helpers
     // -----------------------------------------------------------------------

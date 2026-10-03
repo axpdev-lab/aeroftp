@@ -37,8 +37,9 @@
 //! this work was wrong. It was taken with a regex anchored at `pub fn`
 //! immediately after the attribute, which silently skipped every command
 //! declared inside a nested `mod` -- that is, most of `lib.rs`. It reported 38
-//! synchronous commands. There were 82, out of 853. There are now 23, and every
-//! one of them is here with its reason.
+//! synchronous commands. There were 82, out of 853. A second pass took that to
+//! 23; removing commands nothing called has taken more off since, and every
+//! one left is here with its reason.
 //!
 //! Getting from 82 to 23 took two passes. The first shipped the commands that
 //! do filesystem, keystore and clipboard work outside `lib.rs` and froze the
@@ -134,11 +135,6 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
          non-blocking.",
     ),
     (
-        "is_running_as_snap",
-        "reads the SNAP environment variable of this process; no syscall, and \
-         the value cannot change while we run.",
-    ),
-    (
         "is_autostart_launch",
         "scans this process's own argv for --autostart.",
     ),
@@ -151,14 +147,6 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
         "is_background_sync_running",
         "one atomic load from a static the background worker maintains; the \
          frontend polls it and must not pay a thread hop for a bool.",
-    ),
-    (
-        "get_compare_options_default",
-        "returns CompareOptions::default(), a struct of literals.",
-    ),
-    (
-        "get_default_retry_policy",
-        "returns RetryPolicy::default(), a struct of literals.",
     ),
     (
         "get_dependencies",

@@ -4477,9 +4477,6 @@
             "starred": "Ficheiro marcado com estrela",
             "unstarred": "Estrela removida do ficheiro"
         },
-        "dropbox": {
-            "manageTags": "Gerir etiquetas"
-        },
         "providers": {
             "title": "Provedores e Integrações",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Plano gratuito",
             "freeCardTier": "Grátis + cartão",
             "paidTier": "Pago"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Gerenciar rótulos",
-            "noLabels": "Nenhum rótulo disponível. Crie rótulos nas configurações do Zoho WorkDrive.",
-            "createLabel": "Criar rótulo",
-            "labelName": "Nome do rótulo"
         },
         "healthCheck": {
             "title": "Verificação de estado do servidor",

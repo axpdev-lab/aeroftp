@@ -4477,9 +4477,6 @@
             "starred": "Plik oznaczony gwiazdką",
             "unstarred": "Gwiazdka usunięta"
         },
-        "dropbox": {
-            "manageTags": "Zarządzaj tagami"
-        },
         "providers": {
             "title": "Dostawcy i integracje",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Plan bezpłatny",
             "freeCardTier": "Darmowy + karta",
             "paidTier": "Płatny"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Zarządzaj etykietami",
-            "noLabels": "Brak dostępnych etykiet. Utwórz etykiety w ustawieniach Zoho WorkDrive.",
-            "createLabel": "Utwórz etykietę",
-            "labelName": "Nazwa etykiety"
         },
         "healthCheck": {
             "title": "Kontrola stanu serwera",

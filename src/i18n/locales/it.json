@@ -4803,9 +4803,6 @@
             "starred": "File aggiunto ai preferiti",
             "unstarred": "File rimosso dai preferiti"
         },
-        "dropbox": {
-            "manageTags": "Gestisci tag"
-        },
         "providers": {
             "title": "Provider e integrazioni",
             "tabOAuth": "OAuth / API",
@@ -4843,12 +4840,6 @@
             "pages": "Pages",
             "prs": "PR",
             "devTools": "Dev Tools"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Gestisci etichette",
-            "noLabels": "Nessuna etichetta disponibile. Crea etichette nelle impostazioni di Zoho WorkDrive.",
-            "createLabel": "Crea etichetta",
-            "labelName": "Nome etichetta"
         },
         "healthCheck": {
             "title": "Controllo stato server",

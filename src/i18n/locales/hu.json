@@ -4477,9 +4477,6 @@
             "starred": "Fájl csillagozva",
             "unstarred": "Csillag eltávolítva"
         },
-        "dropbox": {
-            "manageTags": "Címkék kezelése"
-        },
         "providers": {
             "title": "Szolgáltatók és integrációk",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Ingyenes csomag",
             "freeCardTier": "Ingyenes + kártya",
             "paidTier": "Fizetős"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Címkék kezelése",
-            "noLabels": "Nincsenek elérhető címkék. Hozz létre címkéket a Zoho WorkDrive beállításaiban.",
-            "createLabel": "Címke létrehozása",
-            "labelName": "Címke neve"
         },
         "healthCheck": {
             "title": "Szerver állapotfelmérés",

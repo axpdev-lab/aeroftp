@@ -4477,9 +4477,6 @@
             "starred": "文件已加星标",
             "unstarred": "文件已取消星标"
         },
-        "dropbox": {
-            "manageTags": "管理标签"
-        },
         "providers": {
             "title": "服务商与集成",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "免费套餐",
             "freeCardTier": "免费 + 卡",
             "paidTier": "付费"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "管理标签",
-            "noLabels": "没有可用的标签。在 Zoho WorkDrive 设置中创建标签。",
-            "createLabel": "创建标签",
-            "labelName": "标签名称"
         },
         "healthCheck": {
             "title": "服务器健康检查",

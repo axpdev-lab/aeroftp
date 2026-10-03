@@ -4477,9 +4477,6 @@
             "starred": "Файл добавлен в избранное",
             "unstarred": "Файл убран из избранного"
         },
-        "dropbox": {
-            "manageTags": "Управление тегами"
-        },
         "providers": {
             "title": "Провайдеры и интеграции",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Бесплатный тариф",
             "freeCardTier": "Беспл. + карта",
             "paidTier": "Платно"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Управление метками",
-            "noLabels": "Нет доступных меток. Создавайте метки в параметрах Zoho WorkDrive.",
-            "createLabel": "Создать метку",
-            "labelName": "Название метки"
         },
         "healthCheck": {
             "title": "Проверка состояния сервера",
