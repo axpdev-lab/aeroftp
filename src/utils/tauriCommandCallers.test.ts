@@ -25,9 +25,13 @@ import libRs from '../../src-tauri/src/lib.rs?raw';
  * import nobody references does not, and neither does the export list. Each
  * declarator of `const a = ..., b = ...` is a declaration of its own. Names are
  * resolved through scopes, so a parameter, a local, a property key or a member
- * name spelled like the wrapper is not a use of it. A literal outside any named
- * declaration (a top-level call, an anonymous default export) counts as a
- * caller as it stands.
+ * name spelled like the wrapper is not a use of it. An import is matched to the
+ * module its specifier resolves to (the path, `.ts`, `.tsx` or the directory
+ * `index`, through `export ... from` re-exports), never to every export of the
+ * same name: another module's `start` is not a use of this one, and an import
+ * from a package or a module the scan does not read matches nothing. A literal
+ * outside any named declaration (a top-level call, an anonymous default export)
+ * counts as a caller as it stands.
  *
  * A hook, or any named top-level function whose every return is an object
  * literal, is followed to the member: code that runs only when a member is
@@ -234,6 +238,8 @@ interface Binding {
     decl: Node;
     /** For a binding an import makes (static, or destructured from `await import()`): the name imported. */
     imported: string | null;
+    /** The module specifier it was imported from, when it is a literal. */
+    source: string | null;
     /** The identifiers that resolve to it. */
     refs: Node[];
 }
@@ -257,7 +263,7 @@ interface ScannedFile {
     parents: Map<Node, Node>;
     /** Every string literal in code that runs (types excluded). */
     literals: Literal[];
-    calls: Array<{ node: Node; callee: string | null; imported: string | null; member: string | null }>;
+    calls: Array<{ node: Node; callee: string | null; imported: ImportRef | null; member: string | null }>;
     /** Named functions with the name of each simple parameter (null for a destructured one). */
     functions: Array<{ name: string; params: Array<string | null>; exported: string[] }>;
     /** Name-level value flow: whatever the sources name may end up in any of the targets. */
@@ -265,12 +271,20 @@ interface ScannedFile {
     /** Function node -> the name it is called by. */
     functionNames: Map<Node, string | null>;
     exported: Map<string, Set<string>>;
-    /** Local name -> the name it was imported by. */
-    imports: Map<string, string>;
+    /** Local name -> what it was imported as. */
+    imports: Map<string, ImportRef>;
     /** Top-level name -> members read by the uses outside its own declaration. Absent: unused here. */
     localUses: Map<string, Reads>;
-    /** Imported name -> members read through that import. Absent: never referenced here. */
-    importUses: Map<string, Reads>;
+    /** Each import referenced here, once per module and name, with the members read through it. */
+    importUses: Array<{ ref: ImportRef; reads: Reads }>;
+    /** `export { a as b } from './x'` and `export * from './x'` (imported and exported '*'). */
+    reexports: Array<{ source: string; imported: string; exported: string }>;
+}
+
+/** An imported name and the module specifier it comes from (null: not a literal). */
+interface ImportRef {
+    name: string;
+    source: string | null;
 }
 
 function scan(file: string, source: string): ScannedFile {
@@ -286,8 +300,8 @@ function scan(file: string, source: string): ScannedFile {
     const functionNames = new Map<Node, string | null>();
     const functionStack: Array<string | null> = [];
 
-    const declare = (scope: Scope, id: Node, decl: Node, imported: string | null = null): Binding => {
-        const binding: Binding = { name: id.name as string, decl, imported, refs: [] };
+    const declare = (scope: Scope, id: Node, decl: Node, imported: string | null = null, source: string | null = null): Binding => {
+        const binding: Binding = { name: id.name as string, decl, imported, source, refs: [] };
         scope.bindings.set(binding.name, binding);
         bindingOf.set(id, binding);
         return binding;
@@ -402,6 +416,7 @@ function scan(file: string, source: string): ScannedFile {
                         const name = prop.type === 'Property' ? keyName(prop) : null;
                         if (binding && name !== null) {
                             binding.imported = name;
+                            binding.source = stringValue(init.source as Node);
                             importBindings.push(binding);
                         }
                     }
@@ -507,7 +522,7 @@ function scan(file: string, source: string): ScannedFile {
             // A default import is matched by its local name, the way default exports are by their declared one.
             const local = (spec.local as Node).name as string;
             const name = spec.type === 'ImportNamespaceSpecifier' ? '*' : imported ? ((imported.name ?? imported.value) as string) : local;
-            importBindings.push(declare(moduleScope, spec.local as Node, statement, name));
+            importBindings.push(declare(moduleScope, spec.local as Node, statement, name, stringValue(statement.source as Node)));
         }
     }
     for (const statement of body) visitChild(program, statement, moduleScope);
@@ -613,18 +628,36 @@ function scan(file: string, source: string): ScannedFile {
         const refs = binding.refs.filter((r) => r.start < start || r.start >= end);
         if (refs.length > 0) localUses.set(binding.name, readsThrough(refs));
     }
-    const importUses = new Map<string, Reads>();
-    const addImportUse = (name: string, reads: Reads) =>
-        importUses.set(name, importUses.has(name) ? mergeReads(importUses.get(name) as Reads, reads) : reads);
+    const uses = new Map<string, { ref: ImportRef; reads: Reads }>();
+    const addImportUse = (name: string, source: string | null, reads: Reads) => {
+        const key = `${source}\n${name}`;
+        const seen = uses.get(key);
+        uses.set(key, { ref: { name, source }, reads: seen ? mergeReads(seen.reads, reads) : reads });
+    };
     for (const binding of importBindings) {
         if (binding.imported === '*') {
             for (const ref of binding.refs) {
                 const parent = parents.get(ref);
                 if (parent?.type !== 'MemberExpression' || parent.object !== ref || parent.computed) continue;
-                addImportUse((parent.property as Node).name as string, null);
+                addImportUse((parent.property as Node).name as string, binding.source, null);
             }
         } else if (binding.refs.length > 0) {
-            addImportUse(binding.imported as string, readsThrough(binding.refs));
+            addImportUse(binding.imported as string, binding.source, readsThrough(binding.refs));
+        }
+    }
+    const importUses = [...uses.values()];
+    const reexports: ScannedFile['reexports'] = [];
+    for (const statement of body) {
+        const source = statement.source ? stringValue(statement.source as Node) : null;
+        if (source === null) continue;
+        if (statement.type === 'ExportAllDeclaration' && !statement.exported) {
+            reexports.push({ source, imported: '*', exported: '*' });
+        } else if (statement.type === 'ExportNamedDeclaration') {
+            for (const spec of statement.specifiers as Node[]) {
+                const local = spec.local as Node;
+                const exported = spec.exported as Node;
+                reexports.push({ source, imported: (local.name ?? local.value) as string, exported: (exported.name ?? exported.value) as string });
+            }
         }
     }
 
@@ -632,7 +665,9 @@ function scan(file: string, source: string): ScannedFile {
     const calls = callNodes.map((node) => {
         const callee = unwrap(node.callee as Node);
         if (callee.type === 'Identifier') {
-            return { node, callee: callee.name as string, imported: refOf.get(callee)?.imported ?? null, member: null };
+            const binding = refOf.get(callee);
+            const imported = binding?.imported ? { name: binding.imported, source: binding.source } : null;
+            return { node, callee: callee.name as string, imported, member: null };
         }
         const member = callee.type === 'MemberExpression' && !callee.computed ? ((callee.property as Node).name as string) : null;
         return { node, callee: null, imported: null, member };
@@ -648,8 +683,8 @@ function scan(file: string, source: string): ScannedFile {
         });
         return [{ name, params: simple, exported: isTopLevel ? [...(exported.get(name) ?? [])] : [] }];
     });
-    const imports = new Map(importBindings.map((b) => [b.name, b.imported as string]));
-    return { file, parents, literals, calls, functions, flows, functionNames, exported, imports, localUses, importUses };
+    const imports = new Map(importBindings.map((b) => [b.name, { name: b.imported as string, source: b.source }]));
+    return { file, parents, literals, calls, functions, flows, functionNames, exported, imports, localUses, importUses, reexports };
 }
 
 /** The object literals a function returns, when every one of its own returns is one; else null. */
@@ -674,20 +709,74 @@ function isAppSource(file: string): boolean {
     return !/\.(?:test|spec)\.tsx?$/.test(file) && !file.includes('/__tests__/') && !file.endsWith('.d.ts');
 }
 
+/** Glob keys are relative to this directory (`./x.ts` here, `../x.ts` above); files are named from the repository root. */
+const repoPath = (key: string): string => (key.startsWith('../') ? `src/${key.slice(3)}` : `src/utils/${key.slice(2)}`);
+
 const appFiles = Object.entries(sources)
     .filter(([file]) => isAppSource(file))
-    .map(([file, source]) => scan(file, source));
+    .map(([file, source]) => scan(repoPath(file), source));
+
+/** A specifier with an extension other than a script's names an asset (JSON, CSS, an image), not a module the scan reads. */
+const isAsset = (source: string): boolean => /\.(?!(?:[cm]?[jt]sx?)$)[a-z0-9]+(?:\?\w+)?$/i.test(source);
+
+/**
+ * The scanned file a relative specifier names, from the importing file: the
+ * path itself, with `.ts` or `.tsx`, or its directory `index`. Null when none
+ * is scanned. A bare specifier (a package) is never app code.
+ */
+function resolveModule(from: string, source: string, files: Set<string>): string | null {
+    if (!source.startsWith('.')) return null;
+    const parts = from.split('/').slice(0, -1);
+    for (const part of source.replace(/\.[cm]?jsx?$/, '').split('/')) {
+        if (part === '.' || part === '') continue;
+        if (part === '..' && parts.length > 0 && parts[parts.length - 1] !== '..') parts.pop();
+        else parts.push(part);
+    }
+    const base = parts.join('/');
+    return [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`, `${base}/index.tsx`].find((c) => files.has(c)) ?? null;
+}
+
+/** An exported name of a scanned file: where an import ends up once re-exports are followed. */
+interface Origin {
+    file: ScannedFile;
+    name: string;
+}
+
+const originKey = (origin: Origin) => `${origin.file.file}#${origin.name}`;
 
 interface Analysis {
     /** Invoke-like call -> the argument positions that name the command. */
     commandArgs: Map<Node, Set<number>>;
     /** Per file: every name a command name can travel through on its way into an invoke-like call. */
     carrying: Map<ScannedFile, Set<string>>;
-    /** Exported names that carry a command into an invoke-like call in a file importing them. */
+    /** Exports (by origin key) that carry a command into an invoke-like call in a file importing them. */
     carryingExports: Set<string>;
-    /** Exported name -> the files exporting it. */
-    exporters: Map<string, ScannedFile[]>;
+    /** The exports an import in `importer` reaches: empty for a package or a module the scan does not read. */
+    originsOf: (importer: ScannedFile, ref: ImportRef) => Origin[];
     byValue: Map<string, Array<{ scanned: ScannedFile; literal: Literal }>>;
+}
+
+/** Follows re-exports (`export { a as b } from`, `export * from`) to the files that declare a name. */
+function originResolver(files: ScannedFile[]): Analysis['originsOf'] {
+    const byFile = new Map(files.map((f) => [f.file, f]));
+    const names = new Set(byFile.keys());
+    const provides = (file: ScannedFile, name: string, seen: Set<string>): Origin[] => {
+        const key = `${file.file}#${name}`;
+        if (seen.has(key)) return [];
+        seen.add(key);
+        const out: Origin[] = [...file.exported.values()].some((n) => n.has(name)) ? [{ file, name }] : [];
+        for (const reexport of file.reexports) {
+            const star = reexport.exported === '*';
+            if (star ? name === 'default' : reexport.exported !== name) continue;
+            const target = resolveModule(file.file, reexport.source, names);
+            if (target !== null) out.push(...provides(byFile.get(target) as ScannedFile, star ? name : reexport.imported, seen));
+        }
+        return out;
+    };
+    return (importer, ref) => {
+        const target = ref.source === null ? null : resolveModule(importer.file, ref.source, names);
+        return target === null ? [] : provides(byFile.get(target) as ScannedFile, ref.name, new Set());
+    };
 }
 
 const analyses = new WeakMap<ScannedFile[], Analysis>();
@@ -704,8 +793,14 @@ const analyses = new WeakMap<ScannedFile[], Analysis>();
 function analyze(files: ScannedFile[]): Analysis {
     const cached = analyses.get(files);
     if (cached) return cached;
+    const originsOf = originResolver(files);
     const forwardingByFile = new Map<ScannedFile, Map<string, Set<number>>>(files.map((f) => [f, new Map()]));
+    /** Origin key of an exported forwarder -> the positions it forwards. */
     const forwardingByExport = new Map<string, Set<number>>();
+    const forwardedThrough = (scanned: ScannedFile, ref: ImportRef): Set<number> | undefined => {
+        const positions = originsOf(scanned, ref).flatMap((o) => [...(forwardingByExport.get(originKey(o)) ?? [])]);
+        return positions.length > 0 ? new Set(positions) : undefined;
+    };
     const commandArgs = new Map<Node, Set<number>>();
     const carrying = new Map<ScannedFile, Set<string>>();
     const addPosition = (map: Map<string, Set<number>>, name: string, position: number): boolean => {
@@ -722,9 +817,9 @@ function analyze(files: ScannedFile[]): Analysis {
             const names = new Set<string>();
             for (const call of scanned.calls) {
                 const positions =
-                    call.callee === 'invoke' || call.imported === 'invoke' || call.member === 'invoke'
+                    call.callee === 'invoke' || call.imported?.name === 'invoke' || call.member === 'invoke'
                         ? first
-                        : ((call.imported !== null ? forwardingByExport.get(call.imported) : undefined) ??
+                        : ((call.imported !== null ? forwardedThrough(scanned, call.imported) : undefined) ??
                           (call.callee !== null ? forwarding.get(call.callee) : undefined));
                 if (!positions) continue;
                 commandArgs.set(call.node, positions);
@@ -746,20 +841,18 @@ function analyze(files: ScannedFile[]): Analysis {
                 fn.params.forEach((param, position) => {
                     if (param === null || !names.has(param)) return;
                     if (addPosition(forwarding, fn.name, position)) changed = true;
-                    for (const name of fn.exported) if (addPosition(forwardingByExport, name, position)) changed = true;
+                    for (const name of fn.exported) {
+                        if (addPosition(forwardingByExport, originKey({ file: scanned, name }), position)) changed = true;
+                    }
                 });
             }
         }
     }
     const carryingExports = new Set<string>();
-    const exporters = new Map<string, ScannedFile[]>();
     for (const scanned of files) {
         for (const name of carrying.get(scanned) as Set<string>) {
             const imported = scanned.imports.get(name);
-            if (imported !== undefined) carryingExports.add(imported);
-        }
-        for (const names of scanned.exported.values()) {
-            for (const name of names) exporters.set(name, [...(exporters.get(name) ?? []), scanned]);
+            if (imported !== undefined) for (const origin of originsOf(scanned, imported)) carryingExports.add(originKey(origin));
         }
     }
     const byValue = new Map<string, Array<{ scanned: ScannedFile; literal: Literal }>>();
@@ -770,7 +863,7 @@ function analyze(files: ScannedFile[]): Analysis {
             entries.push({ scanned, literal });
         }
     }
-    const analysis = { commandArgs, carrying, carryingExports, exporters, byValue };
+    const analysis = { commandArgs, carrying, carryingExports, originsOf, byValue };
     analyses.set(files, analysis);
     return analysis;
 }
@@ -788,7 +881,8 @@ function analyze(files: ScannedFile[]): Analysis {
 function reachesInvoke(literal: Literal, scanned: ScannedFile, analysis: Analysis): boolean {
     const carrying = analysis.carrying.get(scanned) as Set<string>;
     const keys: string[] = [];
-    const exportCarries = (name: string) => [...(scanned.exported.get(name) ?? [])].some((e) => analysis.carryingExports.has(e));
+    const exportCarries = (name: string) =>
+        [...(scanned.exported.get(name) ?? [])].some((e) => analysis.carryingExports.has(originKey({ file: scanned, name: e })));
     const flowsIn = (names: string[]) =>
         names.some((n) => carrying.has(n) || exportCarries(n)) || keys.some((k) => carrying.has(k));
     const enclosingName = (node: Node): string | null => {
@@ -839,7 +933,7 @@ function reachesInvoke(literal: Literal, scanned: ScannedFile, analysis: Analysi
                 const element = (scanned.parents.get(parent) as Node).name as Node;
                 if (element.type !== 'JSXIdentifier' || !/^[A-Z]/.test(element.name as string)) return false;
                 const imported = scanned.imports.get(element.name as string);
-                const owners = imported === undefined ? [scanned] : (analysis.exporters.get(imported) ?? []);
+                const owners = imported === undefined ? [scanned] : analysis.originsOf(scanned, imported).map((o) => o.file);
                 const props = [(parent.name as Node).name as string, ...keys];
                 return owners.some((f) => props.some((p) => (analysis.carrying.get(f) as Set<string>).has(p)));
             }
@@ -852,12 +946,14 @@ function reachesInvoke(literal: Literal, scanned: ScannedFile, analysis: Analysi
 }
 
 /** How a named top-level declaration is used from outside itself: undefined when it is not. */
-function usesOf(scanned: ScannedFile, name: string, files: ScannedFile[]): Reads | undefined {
+function usesOf(scanned: ScannedFile, name: string, files: ScannedFile[], analysis: Analysis): Reads | undefined {
     let uses: Reads | undefined = scanned.localUses.has(name) ? (scanned.localUses.get(name) as Reads) : undefined;
-    for (const exported of scanned.exported.get(name) ?? []) {
-        for (const other of files) {
-            if (other === scanned || !other.importUses.has(exported)) continue;
-            const reads = other.importUses.get(exported) as Reads;
+    const keys = new Set([...(scanned.exported.get(name) ?? [])].map((e) => originKey({ file: scanned, name: e })));
+    if (keys.size === 0) return uses;
+    for (const other of files) {
+        if (other === scanned) continue;
+        for (const { ref, reads } of other.importUses) {
+            if (!analysis.originsOf(other, ref).some((o) => keys.has(originKey(o)))) continue;
             uses = uses === undefined ? reads : mergeReads(uses, reads);
         }
     }
@@ -874,7 +970,7 @@ function callersOf(command: string, files: ScannedFile[] = appFiles): string[] {
             callers.push(scanned.file);
             continue;
         }
-        const reads = usesOf(scanned, literal.owner, files);
+        const reads = usesOf(scanned, literal.owner, files, analysis);
         if (reads === undefined) continue;
         if (literal.members === null) {
             callers.push(`${scanned.file} via ${literal.owner}`);
@@ -1108,6 +1204,66 @@ describe('registered Tauri commands have a frontend caller', () => {
             "import { createBranch as createBranchApi } from './api';\nexport const go = () => createBranchApi();\n",
         );
         expect(callersOf('fake_branch', [api, other, aliased])).toEqual(['src/fake/api.ts via createBranch']);
+    });
+
+    it('matches an import to the module it comes from, not to every export of that name', () => {
+        // A use of another module's `start` is not a use of this one.
+        const starter = scan('src/fake/starter.ts', "export const start = () => invoke('fake_start_cmd');\n");
+        const other = scan('src/fake/other.ts', 'export const start = () => 0;\n');
+        const user = scan('src/fake/user.ts', "import { start } from './other';\nstart();\n");
+        const pkg = scan('src/fake/pkg.ts', "import { start } from 'some-package';\nstart();\n");
+        expect(callersOf('fake_start_cmd', [starter, other, user, pkg])).toEqual([]);
+
+        // A forwarder elsewhere does not make a same-named function a forwarder.
+        const forwarder = scan('src/fake/forwarder.ts', 'export function run(command: string) { return invoke(command); }\n');
+        const logger = scan('src/fake/logger.ts', 'export function run(message: string) { console.log(message); }\n');
+        const logs = scan('src/fake/logs.ts', "import { run } from './logger';\nrun('fake_logged_run');\n");
+        const forwards = scan('src/fake/forwards.ts', "import { run } from './forwarder';\nrun('fake_forwarded_run');\n");
+        const runFiles = [forwarder, logger, logs, forwards];
+        expect(callersOf('fake_logged_run', runFiles)).toEqual([]);
+        expect(callersOf('fake_forwarded_run', runFiles)).toEqual(['src/fake/forwards.ts']);
+
+        // A constant carrying a command into an invoke does not make a same-named constant carry one.
+        const command = scan('src/fake/command.ts', "export const CMD = 'fake_carried_cmd';\n");
+        const invoker = scan('src/fake/invoker.ts', "import { CMD } from './command';\ninvoke(CMD);\n");
+        const label = scan('src/fake/label.ts', "export const CMD = 'fake_label_cmd';\n");
+        const printer = scan('src/fake/printer.ts', "import { CMD } from './label';\nconsole.log(CMD);\n");
+        const cmdFiles = [command, invoker, label, printer];
+        expect(callersOf('fake_label_cmd', cmdFiles)).toEqual([]);
+        expect(callersOf('fake_carried_cmd', cmdFiles)).toEqual(['src/fake/command.ts via CMD']);
+
+        // A prop reaches the component the element was imported from, not every component of that name.
+        const action = scan('src/fake/Action.tsx', 'export const Button = ({ name }: { name: string }) => <b onClick={() => invoke(name)} />;\n');
+        const plain = scan('src/fake/Plain.tsx', 'export const Button = ({ name }: { name: string }) => <span>{name}</span>;\n');
+        const page = scan('src/fake/page.tsx', "import { Button } from './Plain';\nrender(<Button name=\"fake_plain_prop\" />);\n");
+        const actions = scan('src/fake/actions.tsx', "import { Button } from './Action';\nrender(<Button name=\"fake_action_prop\" />);\n");
+        const propFiles = [action, plain, page, actions];
+        expect(callersOf('fake_plain_prop', propFiles)).toEqual([]);
+        expect(callersOf('fake_action_prop', propFiles)).toEqual(['src/fake/actions.tsx']);
+    });
+
+    it('follows an import through a directory index and through re-exports', () => {
+        const impl = scan(
+            'src/fake/lib/impl.ts',
+            "export const start = () => invoke('fake_barrel_start');\nexport const stop = () => invoke('fake_star_stop');\n",
+        );
+        const index = scan('src/fake/lib/index.ts', "export { start as begin } from './impl';\n");
+        const all = scan('src/fake/all.ts', "export * from './lib/impl';\n");
+        const app = scan('src/fake/app.ts', "import { begin } from './lib';\nimport { stop } from './all';\nbegin();\nstop();\n");
+        const files = [impl, index, all, app];
+        expect(callersOf('fake_barrel_start', files)).toEqual(['src/fake/lib/impl.ts via start']);
+        expect(callersOf('fake_star_stop', files)).toEqual(['src/fake/lib/impl.ts via stop']);
+    });
+
+    it('resolves every referenced relative import between app modules', () => {
+        const byFile = new Set(appFiles.map((f) => f.file));
+        const unresolved = appFiles.flatMap((scanned) =>
+            scanned.importUses
+                .filter(({ ref }) => ref.source !== null && ref.source.startsWith('.') && !isAsset(ref.source))
+                .filter(({ ref }) => resolveModule(scanned.file, ref.source as string, byFile) === null)
+                .map(({ ref }) => `${scanned.file}: ${ref.source}`),
+        );
+        expect(unresolved, 'an import the guard cannot follow matches nothing: teach resolveModule its form').toEqual([]);
     });
 
     it('excludes spec files from the callers', () => {
