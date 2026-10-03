@@ -3,8 +3,8 @@
 
 import argparse
 import contextlib
-import os
 import json
+import os
 from pathlib import Path
 import plistlib
 import subprocess
@@ -22,14 +22,15 @@ def cargo_binaries(manifest):
     return {target['name'] for target in package['targets'] if 'bin' in target['kind']}
 
 
-
 @contextlib.contextmanager
 def mounted(dmg):
     with tempfile.TemporaryDirectory(prefix='aeroftp-dmg-') as directory:
         mount = Path(directory) / 'volume'
         mount.mkdir()
+        # Both published and newly bundled installers embed our GPL license.
+        # Supply its answer through stdin so CI can mount without a terminal.
         subprocess.run(['hdiutil', 'attach', '-readonly', '-nobrowse', '-mountpoint',
-                        str(mount), str(dmg.resolve())], check=True)
+                        str(mount), str(dmg.resolve())], input='yes\n', text=True, check=True)
         try:
             yield mount / 'AeroFTP.app'
         finally:

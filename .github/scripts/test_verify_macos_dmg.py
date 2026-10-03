@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import plistlib
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -60,6 +61,16 @@ class DmgVerificationTests(unittest.TestCase):
              patch.object(dmg, 'minimum_version', side_effect=['10.13', '11.0']):
             with self.assertRaisesRegex(ValueError, 'Minimum macOS changed'):
                 dmg.verify(self.root / 'new.dmg', self.root / 'old.dmg', self.root / 'Cargo.toml', 'arm64')
+
+    def test_mount_accepts_the_packaged_license_without_a_terminal(self):
+        def attach(command, **kwargs):
+            if command[:2] == ['hdiutil', 'attach']:
+                if kwargs.get('input') != 'yes\n' or not kwargs.get('text'):
+                    raise subprocess.CalledProcessError(1, command, stderr='hdiutil: attach canceled')
+        with patch.object(dmg.subprocess, 'run', side_effect=attach) as run:
+            with dmg.mounted(self.root / 'licensed.dmg'):
+                pass
+            self.assertEqual(run.call_args_list[-1].args[0][:2], ['hdiutil', 'detach'])
 
     def test_mount_is_read_only_and_detached_on_validation_failure(self):
         with patch.object(dmg.subprocess, 'run') as run:
