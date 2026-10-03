@@ -183,6 +183,40 @@ class DmgVerificationTests(unittest.TestCase):
         self.assertIn('release download v9.9.9', calls)
         self.assertIn('AeroFTP_9.9.9_aarch64.dmg', (self.root / 'verify.log').read_text())
 
+    def test_an_unlisted_executable_with_the_wrong_architecture_fails(self):
+        helper = self.bins / 'helper'
+        helper.write_bytes(b'binary')
+        helper.chmod(0o755)
+        def architectures(command, **kwargs):
+            return 'x86_64\n' if command[-1].endswith('helper') else 'arm64\n'
+        with patch.object(dmg.subprocess, 'check_output', side_effect=architectures):
+            with self.assertRaisesRegex(ValueError, 'helper: expected arm64'):
+                dmg.verify_payload(self.app, {'aeroftp'}, 'arm64')
+
+    def verify_new_executable(self, helper_minimum):
+        load = 'Load command 1\n      cmd LC_BUILD_VERSION\n    minos {}\n      sdk 15.5\n'
+        def commands(command, **kwargs):
+            if command[0] == 'lipo':
+                return 'arm64\n'
+            return load.format(helper_minimum if command[-1].endswith('new_helper') else '11.0')
+        current = {'aeroftp', 'new_helper'}
+        output = io.StringIO()
+        with patch.object(dmg, 'mounted', side_effect=[contextlib.nullcontext(self.root / 'baseline.app'),
+                                                     contextlib.nullcontext(self.app)]), \
+             patch.object(dmg, 'cargo_binaries', return_value=current), \
+             patch.object(dmg, 'verify_payload', side_effect=[{'aeroftp'}, current]), \
+             patch.object(dmg, 'minimum_version', return_value='10.13'), \
+             patch.object(dmg.subprocess, 'check_output', side_effect=commands), \
+             contextlib.redirect_stdout(output):
+            dmg.verify(self.root / 'new.dmg', self.root / 'old.dmg', self.root / 'Cargo.toml', 'arm64')
+        return output.getvalue()
+
+    def test_a_new_executable_may_not_require_more_than_the_app(self):
+        # The plist says 10.13 on both architectures; the arm64 app itself starts at 11.0.
+        with self.assertRaisesRegex(ValueError, 'Minimum macOS increased for new_helper: 11.0 -> 12.0'):
+            self.verify_new_executable('12.0')
+        self.assertIn('new_helper', self.verify_new_executable('11.0'))
+
     def test_intel_legacy_macho_minimum_is_read(self):
         load = 'Load command 2\n      cmd LC_VERSION_MIN_MACOSX\n  cmdsize 16\n  version 10.13\n      sdk 14.5\n'
         with patch.object(dmg.subprocess, 'check_output', return_value=load):

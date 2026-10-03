@@ -90,10 +90,14 @@ def verify_payload(app, required, arch):
         binary = directory / name
         if not binary.is_file() or not os.access(binary, os.X_OK):
             raise ValueError(f'Missing executable: {binary}')
+    # Every packaged executable, required or not, must match the image's architecture.
+    executables = {path.name for path in directory.iterdir() if path.is_file() and os.access(path, os.X_OK)}
+    for name in sorted(executables):
+        binary = directory / name
         architectures = subprocess.check_output(['lipo', '-archs', str(binary)], text=True).split()
         if architectures != [arch]:
             raise ValueError(f'{binary}: expected {arch}, found {architectures}')
-    return {path.name for path in directory.iterdir() if path.is_file() and os.access(path, os.X_OK)}
+    return executables
 
 
 def verify(dmg, reference, manifest, arch, features=()):
@@ -110,13 +114,16 @@ def verify(dmg, reference, manifest, arch, features=()):
         current_bins = verify_payload(app, required, arch)
         for name in sorted(baseline_bins - current_bins):
             print(f'::warning::Baseline-only executable removed: {name}', flush=True)
+        # A new executable is held to the app's own floor on this architecture:
+        # the plist advertises 10.13 on both, but Apple Silicon binaries start at 11.0.
+        app_floor = baseline_targets['aeroftp'][0]
         for name in sorted(current_bins):
             minimum, _sdk = deployment_target(app / 'Contents/MacOS' / name)
+            reference = baseline_targets[name][0] if name in baseline_targets else app_floor
             if name not in baseline_targets:
-                print(f'::warning::No baseline deployment target for new executable: {name}', flush=True)
-            elif version_tuple(minimum) > version_tuple(baseline_targets[name][0]):
-                raise ValueError(f'Minimum macOS increased for {name}: '
-                                 f'{baseline_targets[name][0]} -> {minimum}')
+                print(f'New executable {name}: held to the app floor {app_floor}', flush=True)
+            if version_tuple(minimum) > version_tuple(reference):
+                raise ValueError(f'Minimum macOS increased for {name}: {reference} -> {minimum}')
     print(f'DMG verification passed: {dmg.name}, {arch}, verified Mach-O deployment targets, plist minimum {baseline_minimum}', flush=True)
 
 
