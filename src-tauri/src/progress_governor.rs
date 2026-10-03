@@ -903,6 +903,7 @@ mod tests {
             total: 10,
             bytes_transferred: 100,
             bytes_total: 1000,
+            peak_active: 0,
         };
         route_batch_started(&g, "batch-1");
         assert!(route_batch_progress(&g, snap.clone()).is_some());

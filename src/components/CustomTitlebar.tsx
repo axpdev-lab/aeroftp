@@ -509,9 +509,11 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                         lights up once AeroShare is active, since notifications only
                         originate from AeroShare. */}
                     {aeroShareEnabled && <NotificationBell />}
-                    {/* Security Tools: Cyber-theme easter egg (Ehud liked it, #369).
-                        Every theme reaches the same modal from the AeroTools
-                        toolbar launcher, so nothing is undiscoverable here. */}
+                    {/* Security Tools: Cyber-theme easter egg (Ehud liked it, #369),
+                        the one path that still opens the tools as a floating
+                        window. Every theme reaches them from the AeroTools
+                        toolbar launcher as a panel (#347), so nothing is
+                        undiscoverable here. */}
                     {appTheme === 'cyber' && (
                         <button
                             onClick={onShowCyberTools}

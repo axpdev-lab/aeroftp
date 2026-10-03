@@ -102,14 +102,9 @@
             "connectionFailed": "Conexiunea a eșuat",
             "reconnecting": "Se reconectează...",
             "quickConnect": "Conectare rapidă",
-            "savedServers": "Servere salvate",
-            "noSavedServers": "Niciun server salvat",
             "saveServer": "Salvează serverul",
-            "deleteServer": "Șterge serverul",
-            "editServer": "Editează serverul",
             "serverName": "Nume server",
             "initialPath": "Cale inițială",
-            "savedServersHelp": "Selectați un server pentru conectare.",
             "selectSshKey": "Selectați cheia privată SSH",
             "allFiles": "Toate fișierele",
             "sshKeys": "Chei SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Transformă orice server în cloudul tău personal cu sincronizare automată",
             "configureAerocloud": "Configurează AeroCloud",
             "aerocloudHelp": "Poți configura AeroCloud și din bara de stare",
-            "selectProviderPrompt": "Selectați un furnizor de mai sus sau alegeți \"Personalizat\" pentru configurare manuală",
-            "custom": "Personalizat",
             "change": "Schimbă",
             "emailAccount": "Cont de e-mail",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Parola dumneavoastră MEGA",
-            "dismiss": "Respinge",
             "authenticating": "Se autentifică...",
             "oauth2Connection": "Conexiune OAuth2",
             "securityTitle": "Stocare criptată a credențialelor",
@@ -170,7 +162,6 @@
             "docs": "Documentație",
             "minutes": "minute",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Caută servere...",
             "fourshared": {
                 "backToExistingAccount": "Înapoi la contul existent",
                 "configureCredentials": "Configurează acreditările OAuth 1.0",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "Parola aplicației",
             "koofrAppPasswordPlaceholder": "Lipiți parola aplicației Koofr aici",
             "koofrHelp": "Generați o parolă de aplicație la app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Duplică serverul",
-            "duplicateCredentialMissing": "Credențialul nu a fost copiat în duplicat. Reintroduceți parola înainte de conectare.",
             "saveAsNew": "Salvează ca nou",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Generați o cheie API în Immich → User Settings → API Keys",
             "immichOps": "Navigare, încărcare, descărcare, ștergere, albume, căutare, linkuri de partajare. Redenumirea și mutarea nu sunt acceptate.",
             "generatePassword": "Generează parolă",
-            "saveAndConnect": "Salvează și conectează",
-            "saveDisabledTotp": "Codurile TOTP sunt de unică folosință. Folosiți Salvează și conectează pentru a aplica acest cod acum.",
             "generatePersonalLoginToken": "Generează token de autentificare personal",
             "endpointUrl": "URL endpoint",
             "b2NativeAdvantagesTitle": "API nativ Backblaze B2: funcții suplimentare față de cel compatibil S3",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Conectați-vă din nou",
             "twakeSignedIn": "Conectat",
             "twakeWaitingBrowser": "Finalizați conectarea în browser...",
-            "twakeSignInHelp": "AeroFTP deschide Twake în browserul dumneavoastră și solicită acces doar la fișierele dumneavoastră. Dacă Twake afișează o eroare prima dată, conectați-vă la Twake în browser și conectați-vă din nou. Puteți revoca accesul oricând din Setări Twake, Dispozitive conectate."
+            "twakeSignInHelp": "AeroFTP deschide Twake în browserul dumneavoastră și solicită acces doar la fișierele dumneavoastră. Dacă Twake afișează o eroare prima dată, conectați-vă la Twake în browser și conectați-vă din nou. Puteți revoca accesul oricând din Setări Twake, Dispozitive conectate.",
+            "oauthKeysMissingTitle": "Lipsesc cheile aplicației {provider}",
+            "oauthKeysMissing": "În seif nu sunt stocate chei de aplicație pentru {provider}, deci AeroFTP nu se poate autentifica. AeroFTP nu include chei proprii: introdu cheile aplicației tale de dezvoltator {provider} în {location}, apoi conectează-te din nou.",
+            "oauthKeysOpenSettings": "Deschide setările OAuth",
+            "oauthKeysReadFailedTitle": "Nu se pot citi cheile aplicației {provider}",
+            "oauthKeysReadFailed": "AeroFTP nu a putut citi cheile aplicației {provider} din seif, deci nu se poate autentifica. Cheile nu au fost modificate. Eroare: {error}"
         },
         "browser": {
             "remote": "La distanță",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "Suprascrieri aplicate: {count}",
             "uiTokensRejected": "Intrări respinse: {count}",
             "keystorePreferencesFailed": "Importul s-a încheiat, dar preferințele aplicației nu au putut fi restaurate: {error}",
-            "keystorePreviewBackupUnreadable": "Lista de servere din această copie nu poate fi citită pe acest dispozitiv, așa că comparația folosește lista salvată în seiful copiei. Importul înlocuiește totuși lista de servere de pe acest dispozitiv."
+            "keystorePreviewBackupUnreadable": "Lista de servere din această copie nu poate fi citită pe acest dispozitiv, așa că comparația folosește lista salvată în seiful copiei. Importul înlocuiește totuși lista de servere de pe acest dispozitiv.",
+            "filterServersPlaceholder": "Filtrează după nume, gazdă, protocol sau utilizator",
+            "selectShown": "Selectează cele {count} afișate",
+            "deselectShown": "Deselectează cele {count} afișate",
+            "filterShownCount": "{shown} afișate",
+            "selectedHiddenByFilter": "{count} selectate, dar ascunse de filtru, încă incluse"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "Extras!",
             "extractedTo": "Fișiere extrase în {dest}",
             "fileLocked": "Fișier blocat",
+            "cutPartial": "Mutate {moved} din {total} elemente; restul rămân pe loc",
             "fileSkipped": "{count} fișier(e) omis(e)",
             "fileUnlocked": "Fișier deblocat",
             "loadTrashFailed": "Încărcarea coșului a eșuat",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "Strat criptat blocat",
             "aerocrypt_marker_migrate": "Se convertește marcajul AeroCrypt în .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcajul AeroCrypt a fost convertit în .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Se deblochează folderul {filename}..."
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "Serverul local nu a putut fi pornit.",
                     "serverFailed": "Serverul s-a oprit sau a trimis un răspuns nevalid.",
                     "httpUnauthorized": "Serverul a refuzat datele de autentificare salvate.",
-                    "unsupportedVersion": "Serverul folosește o versiune MCP pe care AeroFTP nu o acceptă."
+                    "unsupportedVersion": "Serverul folosește o versiune MCP pe care AeroFTP nu o acceptă.",
+                    "directoryInvalid": "Alege un director dedicat fără legături sau fișiere sensibile ale aplicațiilor.",
+                    "directoryChanged": "Directorul autorizat s-a schimbat sau lipsește. Selectează-l din nou pentru a reînnoi accesul.",
+                    "permissionCommand": "Modifică accesul folosind comenzile pentru permisiunile directoarelor și rețelei.",
+                    "installInvalid": "Această instalare gestionată nu este disponibilă sau manifestul ei este nevalid.",
+                    "installIntegrity": "Verificarea integrității pachetului a eșuat. Elimină și reinstalează serverul.",
+                    "installArchive": "Pachetul conține căi nesigure, legături sau un fișier de pornire nevalid.",
+                    "installRuntime": "Lipsește mediul de execuție de sistem necesar.",
+                    "installDownload": "Descărcarea pachetului a eșuat sau a depășit timpul limită.",
+                    "installLimit": "Pachetul depășește limitele de instalare.",
+                    "installExists": "Elimină instalarea existentă înainte de reinstalare.",
+                    "installIo": "Fișierele de instalare nu au putut fi citite sau scrise."
                 },
                 "routingNotice": "Serverele activate oferă instrumentele lor lui AeroAgent. Fiecare apel de instrument cere mai întâi aprobarea ta.",
                 "checkNow": "Verifică acum",
@@ -3089,7 +3099,26 @@
                 "healthError": "Indisponibil: {reason}",
                 "healthReady": "Pregătit, instrumente disponibile pentru AeroAgent: {count}",
                 "healthUnsupported": "Instrumente cu scheme neacceptate: {count}",
-                "healthShowTools": "Afișează instrumentele"
+                "healthShowTools": "Afișează instrumentele",
+                "directoryTitle": "Directoare doar pentru citire",
+                "grantDirectory": "Alege directorul",
+                "confirmDirectory": "Acordați acestui server acces doar pentru citire la toate fișierele din {path}? Acordați acces numai la un director dedicat serverului sau proiectului.",
+                "noDirectories": "Fără acces la directoare.",
+                "revokeDirectory": "Revocă accesul",
+                "confirmRevokeDirectory": "Revocați accesul la {path}? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
+                "networkAccess": "Permite accesul la rețea (toate gazdele și serviciile locale)",
+                "networkBlocked": "Accesul la rețea este blocat.",
+                "confirmNetwork": "Permiteți accesul lui {name} la rețea, inclusiv la serviciile locale? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
+                "confirmBlockNetwork": "Blocați accesul la rețea pentru {name}? Aprobările anterioare ale instrumentelor nu vor mai fi valabile.",
+                "managedStatus": "Instalare gestionată: {version}",
+                "renewDirectory": "Reînnoiește accesul",
+                "presetsTitle": "Servere recomandate",
+                "presetsSubtitle": "Seturile revizuite se instalează doar după confirmare. Rămân oprite până le activați.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Caută documentația unui depozit public.",
+                "presetInstall": "Instalează",
+                "presetInstalledDisabled": "Instalat și oprit",
+                "presetReady": "Gata"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "Vizualizare Sursă"
         },
         "savedServers": {
-            "dragToReorder": "Trage pentru a reordona",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Configurează acreditările 4shared în Setări > Furnizori cloud.",
-            "oauthConfigError": "Configurează acreditările {provider} în Setări > Furnizori cloud.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "Adaugă o etichetă...",
             "tagsUpdated": "Etichete actualizate",
             "addTag": "Adaugă",
-            "noTags": "Nicio etichetă"
+            "noTags": "Nicio etichetă",
+            "collaborators": "Colaboratori",
+            "noCollaborators": "Încă nu a fost partajat cu nimeni",
+            "folderNotLocked": "Acest folder nu este blocat",
+            "roleEditor": "Editor",
+            "roleViewer": "Vizualizator",
+            "rolePreviewer": "Previzualizator",
+            "roleUploader": "Încărcător",
+            "rolePreviewerUploader": "Previzualizator și încărcător",
+            "roleViewerUploader": "Vizualizator și încărcător",
+            "roleCoOwner": "Coproprietar"
         },
         "googledrive": {
             "star": "Marcați cu stea",
             "unstar": "Eliminați steaua",
             "starred": "Fișier marcat cu stea",
-            "unstarred": "Steaua a fost eliminată",
-            "addComment": "Adăugați un comentariu",
-            "commentPlaceholder": "Scrieți comentariul dvs...",
-            "commentAdded": "Comentariu adăugat"
+            "unstarred": "Steaua a fost eliminată"
         },
         "dropbox": {
             "manageTags": "Gestionați etichetele"
@@ -4768,7 +4798,14 @@
             "participants": "participanți",
             "saving": "Se salvează...",
             "saved": "Salvat",
-            "saveNow": "Salvează acum"
+            "saveNow": "Salvează acum",
+            "noteType": "Tip de notiță",
+            "addTag": "Adaugă etichetă",
+            "newTag": "Etichetă nouă...",
+            "tagName": "Numele etichetei",
+            "removeTag": "Elimină eticheta",
+            "manageTags": "Gestionează etichetele",
+            "deleteTagConfirm": "Ștergi eticheta „{name}”? Notițele își păstrează textul."
         },
         "shareLinkModal": {
             "title": "Link de partajare",
@@ -4961,7 +4998,8 @@
                 "rename": "Redenumește grupul",
                 "delete": "Șterge grupul",
                 "confirmDelete": "Ștergeți grupul „{name}”? Serverele din el sunt păstrate, se elimină doar grupul.",
-                "chipHint": "Clic pentru filtrare; clic dreapta pentru redenumire sau ștergere"
+                "chipHint": "Clic pentru a filtra; clic dreapta pentru a redenumi, exporta sau șterge",
+                "export": "Exportă grupul..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5024,8 @@
                 "offTitle": "Acest bucket nu are criptare implicită. Acest lucru nu este același lucru cu necriptat: SSE-C și criptarea de partea clientului nu sunt raportate de această setare.",
                 "unknownKeyTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece cheia de aplicație nu are capacitatea readBucketEncryption. O valoare pe care nu avem voie să o vedem nu înseamnă că criptarea este dezactivată.",
                 "unknownShapeTitle": "Nu am putut citi setarea de criptare a acestui bucket, deoarece răspunsul nu a avut o formă documentată. Cheia avea dreptul să o citească, așadar este vorba despre răspuns și nu despre permisiuni."
-            }
+            },
+            "exportProfile": "Exportă..."
         },
         "gitlab": {
             "projectPath": "Calea proiectului",
@@ -6042,6 +6081,27 @@
             "scopeSession": "Aprobă acest instrument pentru restul sesiunii de chat.",
             "approve": "Aprobă",
             "rememberForChat": "Permite acest instrument pentru restul acestui chat"
+        },
+        "s3": {
+            "storageClass": "Clasă de stocare",
+            "storageClassChanged": "Clasa de stocare a fost schimbată în {storageClass}",
+            "restoreFromGlacier": "Restaurează din Glacier",
+            "restoreTier": "Nivel de recuperare",
+            "restoreDays": "Zile de păstrare a copiei restaurate",
+            "restoreStarted": "Restaurare solicitată: când este gata, copia rămâne lizibilă timp de {days} zile",
+            "objectTags": "Etichete obiect",
+            "noTags": "Fără etichete",
+            "tagKey": "Cheie",
+            "tagValue": "Valoare",
+            "tagsSaved": "Etichete salvate"
+        },
+        "azure": {
+            "accessTier": "Nivel de acces",
+            "accessTierChanged": "Nivelul de acces a fost setat la {tier}"
+        },
+        "fileComments": {
+            "title": "Comentarii",
+            "empty": "Încă nu există comentarii"
         }
     }
 }

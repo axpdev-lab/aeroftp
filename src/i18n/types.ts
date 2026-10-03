@@ -97,11 +97,7 @@ export interface TranslationKeys {
         connectionFailed: string;
         reconnecting: string;
         quickConnect: string;
-        savedServers: string;
-        noSavedServers: string;
         saveServer: string;
-        deleteServer: string;
-        editServer: string;
         serverName: string;
         initialPath: string;
         unstableTitle: string;

@@ -35,7 +35,6 @@ interface OAuthConnectProps {
   connectionName?: string;
   onConnectionNameChange?: (name: string) => void;
   isEditing?: boolean;
-  existingNames?: string[];
   rightColumn?: React.ReactNode;
 }
 

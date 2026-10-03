@@ -325,6 +325,22 @@ pub fn provider_segmented_download_eligible(
     }
 }
 
+/// A user cancellation is independent of provider text and remote filenames.
+#[derive(Debug, thiserror::Error)]
+pub enum SegmentedDownloadError {
+    #[error("segmented download: Transfer cancelled by user")]
+    Cancelled,
+    #[error("{0}")]
+    Failed(String),
+}
+
+impl SegmentedDownloadError {
+    /// Identify user cancellation without interpreting provider text or paths.
+    pub fn is_cancelled(&self) -> bool {
+        matches!(self, Self::Cancelled)
+    }
+}
+
 /// Run the segmented (intra-file range) download path against the
 /// shared transport-agnostic engine. The caller is responsible for the
 /// capability gate (use [`provider_segmented_download_eligible`]) and
@@ -335,7 +351,7 @@ pub fn provider_segmented_download_eligible(
 /// `SegmentCutoff` produced in [`provider_segmented_download_eligible`], and
 /// `primary.clone_for_transfer()` is honestly supported.
 ///
-/// On exit: `local_path` is renamed atomically from its `.aerotmp`
+/// On exit: `local_path` is renamed atomically from its `.aerosegtmp`
 /// sibling on success; on any error the engine's `TempFileGuard`
 /// drops the temp.
 pub async fn run_provider_segmented_download(
@@ -346,7 +362,7 @@ pub async fn run_provider_segmented_download(
     segments: usize,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     cancel_token: CancellationToken,
-) -> Result<(), String> {
+) -> Result<(), SegmentedDownloadError> {
     use crate::providers::multi_thread::{
         parallel_refused, range_source_changed_through, read_range_source_through,
         run_concurrent_range_download, segmented_temp_path_for, source_changed,
@@ -357,7 +373,9 @@ pub async fn run_provider_segmented_download(
     use std::path::{Path, PathBuf};
 
     if segments < 2 {
-        return Err("segmented download: refusing to run with fewer than 2 segments".to_string());
+        return Err(SegmentedDownloadError::Failed(
+            "segmented download: refusing to run with fewer than 2 segments".to_string(),
+        ));
     }
 
     // What the object looks like before the windows start. Each worker reads
@@ -369,18 +387,38 @@ pub async fn run_provider_segmented_download(
     // Read on the caller's session, which is open and idle while the windows
     // run on their own: opening one costs a full handshake on SFTP and FTP,
     // about 1.3 seconds each, and that cost would be paid per file.
-    let before = match read_range_source_through(primary, remote_path).await {
+    let reading = tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
+        reading = read_range_source_through(primary, remote_path) => reading,
+    };
+    let before = match reading {
         Ok(reading) => match reading.matches_planned_size(file_size) {
             Ok(()) => reading,
-            Err(why) => return Err(parallel_refused("segmented download", remote_path, &why)),
+            Err(why) => {
+                return Err(SegmentedDownloadError::Failed(parallel_refused(
+                    "segmented download",
+                    remote_path,
+                    &why,
+                )))
+            }
         },
-        Err(why) => return Err(parallel_refused("segmented download", remote_path, &why)),
+        Err(why) => {
+            return Err(SegmentedDownloadError::Failed(parallel_refused(
+                "segmented download",
+                remote_path,
+                &why,
+            )))
+        }
     };
 
     // Pre-acquire N independent workers. The first failure aborts the
     // segmented path so the caller can fall back to single-stream.
     let mut workers: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(segments);
     for i in 0..segments {
+        if cancel_token.is_cancelled() {
+            return Err(SegmentedDownloadError::Cancelled);
+        }
         match primary.clone_for_transfer() {
             Ok(mut w) => {
                 w.set_range_validator(before.validator());
@@ -390,12 +428,12 @@ pub async fn run_provider_segmented_download(
                 for mut w in workers {
                     let _ = w.disconnect().await;
                 }
-                return Err(format!(
+                return Err(SegmentedDownloadError::Failed(format!(
                     "segmented download: clone {} of {} failed: {}",
                     i + 1,
                     segments,
                     e
-                ));
+                )));
             }
         }
     }
@@ -494,31 +532,70 @@ pub async fn run_provider_segmented_download(
         }
     };
 
-    let outcome =
-        run_concurrent_range_download(cfg, write_one_range, cancel_token, on_progress).await;
+    // Internal fail-fast cancels this child, while the caller's token retains
+    // an unambiguous user-cancellation signal for the typed outcome below.
+    let outcome = run_concurrent_range_download(
+        cfg,
+        write_one_range,
+        cancel_token.child_token(),
+        on_progress,
+    )
+    .await;
+    let temp = segmented_temp_path_for(Path::new(local_path));
+    if cancel_token.is_cancelled() {
+        // An error already cleans its claimed temporary in the range engine.
+        // Do not remove a temporary owned by another run whose claim we failed
+        // to acquire. Only a completed run handed its temporary back to us.
+        if matches!(outcome, Ok(ConcurrentRangeOutcome::Completed)) {
+            let _ = tokio::fs::remove_file(&temp).await;
+        }
+        return Err(SegmentedDownloadError::Cancelled);
+    }
 
     match outcome {
         Ok(ConcurrentRangeOutcome::Completed) => {
-            let temp = segmented_temp_path_for(Path::new(local_path));
-            let changed = range_source_changed_through(primary, remote_path, &before).await;
+            let changed = tokio::select! {
+                biased;
+                _ = cancel_token.cancelled() => {
+                    let _ = tokio::fs::remove_file(&temp).await;
+                    return Err(SegmentedDownloadError::Cancelled);
+                }
+                changed = range_source_changed_through(primary, remote_path, &before) => changed,
+            };
+            // Validation can finish in the same tick as Stop. Refuse publication
+            // even when the metadata future won the race.
+            if cancel_token.is_cancelled() {
+                let _ = tokio::fs::remove_file(&temp).await;
+                return Err(SegmentedDownloadError::Cancelled);
+            }
             match changed {
                 Some(what) => {
                     let _ = tokio::fs::remove_file(&temp).await;
-                    Err(source_changed("segmented download", remote_path, &what))
+                    Err(SegmentedDownloadError::Failed(source_changed(
+                        "segmented download",
+                        remote_path,
+                        &what,
+                    )))
                 }
                 None => match tokio::fs::rename(&temp, local_path).await {
                     Ok(()) => Ok(()),
                     Err(e) => {
                         let _ = tokio::fs::remove_file(&temp).await;
-                        Err(format!("segmented download: finalize failed: {}", e))
+                        Err(SegmentedDownloadError::Failed(format!(
+                            "segmented download: finalize failed: {}",
+                            e
+                        )))
                     }
                 },
             }
         }
-        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(
+        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(SegmentedDownloadError::Failed(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
-        ),
-        Err(e) => Err(format!("segmented download: {}", e)),
+        )),
+        Err(e) => Err(SegmentedDownloadError::Failed(format!(
+            "segmented download: {}",
+            e
+        ))),
     }
 }
 
@@ -1314,7 +1391,8 @@ impl ProviderDownloadExecutor {
                 on_progress,
                 self.cancel_token.clone(),
             )
-            .await,
+            .await
+            .map_err(|e| e.to_string()),
         )
     }
 
@@ -2800,11 +2878,25 @@ mod tests {
 
     /// Scripted download provider: fails the first `fail_first_n` attempts
     /// with a retryable error, optionally cancelling the run on a given call.
+    #[derive(Clone)]
+    struct ScriptedRanges {
+        started: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+        downloads: Arc<std::sync::atomic::AtomicUsize>,
+        fail: bool,
+        block_metadata: Option<usize>,
+        cancel_on_metadata: Option<CancellationToken>,
+        metadata_calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
     struct FlakyDownloadProvider {
         calls: std::sync::atomic::AtomicUsize,
         fail_first_n: usize,
         cancel_on_call: Option<(usize, CancellationToken)>,
         reusable: bool,
+        ranges: Option<ScriptedRanges>,
+        cancel_on_mkdir: Option<CancellationToken>,
+        upload_calls: usize,
     }
 
     impl FlakyDownloadProvider {
@@ -2814,6 +2906,9 @@ mod tests {
                 fail_first_n: n,
                 cancel_on_call: None,
                 reusable: false,
+                ranges: None,
+                cancel_on_mkdir: None,
+                upload_calls: 0,
             }
         }
 
@@ -2831,6 +2926,36 @@ mod tests {
 
     #[async_trait]
     impl StorageProvider for FlakyDownloadProvider {
+        fn clone_for_transfer(
+            &self,
+        ) -> Result<Box<dyn StorageProvider>, crate::providers::ProviderError> {
+            if self.ranges.is_none() {
+                return Err(crate::providers::ProviderError::NotSupported(
+                    "clone".to_string(),
+                ));
+            }
+            let mut worker = Self::fail_first(0);
+            worker.ranges = self.ranges.clone();
+            Ok(Box::new(worker))
+        }
+        async fn read_range(
+            &mut self,
+            _path: &str,
+            _offset: u64,
+            length: u64,
+        ) -> Result<Vec<u8>, crate::providers::ProviderError> {
+            let ranges = self.ranges.as_ref().expect("scripted range provider");
+            ranges.started.notify_one();
+            if ranges.fail {
+                return Err(crate::providers::ProviderError::TransferFailed(format!(
+                    "scripted range failure for {_path}"
+                )));
+            }
+            if ranges.block_metadata.is_none() && ranges.cancel_on_metadata.is_none() {
+                ranges.release.notified().await;
+            }
+            Ok(vec![0; length as usize])
+        }
         fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
             self
         }
@@ -2873,6 +2998,11 @@ mod tests {
             local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), crate::providers::ProviderError> {
+            if let Some(ranges) = &self.ranges {
+                ranges
+                    .downloads
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
             let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
             if call <= self.fail_first_n {
                 if let Some((cancel_call, token)) = &self.cancel_on_call {
@@ -2899,9 +3029,13 @@ mod tests {
             _remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), crate::providers::ProviderError> {
+            self.upload_calls += 1;
             Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
+            if let Some(cancel) = &self.cancel_on_mkdir {
+                cancel.cancel();
+            }
             Ok(())
         }
         async fn delete(&mut self, _path: &str) -> Result<(), crate::providers::ProviderError> {
@@ -2927,6 +3061,26 @@ mod tests {
             &mut self,
             _path: &str,
         ) -> Result<crate::providers::RemoteEntry, crate::providers::ProviderError> {
+            if let Some(ranges) = &self.ranges {
+                let call = ranges
+                    .metadata_calls
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                    + 1;
+                if call == 2 {
+                    if let Some(cancel) = &ranges.cancel_on_metadata {
+                        cancel.cancel();
+                    }
+                }
+                if ranges.block_metadata == Some(call) {
+                    ranges.started.notify_one();
+                    ranges.release.notified().await;
+                }
+                return Ok(crate::providers::RemoteEntry::file(
+                    "large.bin".to_string(),
+                    "/large.bin".to_string(),
+                    2 * 1024 * 1024,
+                ));
+            }
             Err(crate::providers::ProviderError::NotSupported(
                 "stat".to_string(),
             ))
@@ -2943,6 +3097,226 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, crate::providers::ProviderError> {
             Ok("flaky-download".to_string())
         }
+    }
+
+    #[tokio::test]
+    async fn segmented_stop_interrupts_blocked_ranges_and_removes_temporary() {
+        let state = crate::provider_commands::ProviderState::new();
+        let session = state.current_cancel_token().await;
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ranges.clone());
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("large.bin");
+        let temp = crate::providers::multi_thread::segmented_temp_path_for(&target);
+        let download = run_provider_segmented_download(
+            &mut provider,
+            "/large.bin",
+            target.to_str().unwrap(),
+            2 * 1024 * 1024,
+            2,
+            None,
+            session.child_token(),
+        );
+        tokio::pin!(download);
+        tokio::select! {
+            result = &mut download => panic!("blocked range completed before Stop: {result:?}"),
+            _ = tokio::time::sleep(Duration::from_secs(5)) => panic!("no range started"),
+            _ = ranges.started.notified() => {},
+        }
+        assert!(temp.exists(), "the in-flight temporary exists before Stop");
+        state.request_cancel().await;
+        let error = tokio::time::timeout(Duration::from_secs(1), &mut download)
+            .await
+            .expect("Stop must interrupt a blocked read promptly")
+            .unwrap_err();
+        assert!(error.is_cancelled(), "{error}");
+        assert!(!temp.exists(), "Stop removes the segmented temporary");
+        assert!(!target.exists(), "Stop does not publish a partial target");
+        assert_eq!(
+            ranges.downloads.load(std::sync::atomic::Ordering::SeqCst),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn segmented_stop_interrupts_metadata_before_and_after_ranges() {
+        for metadata_call in [1, 2] {
+            let session = CancellationToken::new();
+            let ranges = ScriptedRanges {
+                started: Arc::new(tokio::sync::Notify::new()),
+                release: Arc::new(tokio::sync::Notify::new()),
+                downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                fail: false,
+                block_metadata: Some(metadata_call),
+                cancel_on_metadata: None,
+                metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            };
+            let mut provider = FlakyDownloadProvider::fail_first(0);
+            provider.ranges = Some(ranges.clone());
+            let dir = tempfile::tempdir().unwrap();
+            let target = dir.path().join("large.bin");
+            std::fs::write(&target, b"original target").unwrap();
+            let temp = crate::providers::multi_thread::segmented_temp_path_for(&target);
+            let download = run_provider_segmented_download(
+                &mut provider,
+                "/large.bin",
+                target.to_str().unwrap(),
+                2 * 1024 * 1024,
+                2,
+                None,
+                session.child_token(),
+            );
+            tokio::pin!(download);
+            // Range-start notifications are also sent during the post-range case.
+            // Poll until the selected metadata request has entered its block.
+            loop {
+                tokio::select! {
+                    result = &mut download => panic!("metadata phase {metadata_call} completed before Stop: {result:?}"),
+                    _ = tokio::time::sleep(Duration::from_secs(5)) => panic!("metadata phase did not start"),
+                    _ = ranges.started.notified() => {},
+                }
+                if ranges
+                    .metadata_calls
+                    .load(std::sync::atomic::Ordering::SeqCst)
+                    >= metadata_call
+                {
+                    break;
+                }
+            }
+            session.cancel();
+            let error = tokio::time::timeout(Duration::from_secs(1), &mut download)
+                .await
+                .expect("Stop must interrupt blocked metadata promptly")
+                .unwrap_err();
+            assert!(error.is_cancelled(), "{error}");
+            assert!(
+                !temp.exists(),
+                "metadata cancellation removes the temporary"
+            );
+            assert_eq!(std::fs::read(&target).unwrap(), b"original target");
+        }
+    }
+
+    #[tokio::test]
+    async fn segmented_stop_at_metadata_completion_does_not_publish() {
+        let session = CancellationToken::new();
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: Some(session.clone()),
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ranges);
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("large.bin");
+        std::fs::write(&target, b"original target").unwrap();
+        let error = run_provider_segmented_download(
+            &mut provider,
+            "/large.bin",
+            target.to_str().unwrap(),
+            2 * 1024 * 1024,
+            2,
+            None,
+            session.child_token(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.is_cancelled(), "{error}");
+        assert!(!crate::providers::multi_thread::segmented_temp_path_for(&target).exists());
+        assert_eq!(std::fs::read(&target).unwrap(), b"original target");
+    }
+
+    #[tokio::test]
+    async fn segmented_failure_does_not_cancel_the_session_or_prevent_fallback() {
+        let session = CancellationToken::new();
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: true,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ranges.clone());
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("large.bin");
+        let error = run_provider_segmented_download(
+            &mut provider,
+            "/cancelled.bin",
+            target.to_str().unwrap(),
+            2 * 1024 * 1024,
+            2,
+            None,
+            session.child_token(),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            !session.is_cancelled(),
+            "internal range fail-fast must stay operation-local"
+        );
+        assert!(!error.is_cancelled(), "{error}");
+        assert!(error.to_string().contains("cancelled.bin"));
+        assert!(!crate::providers::multi_thread::segmented_temp_path_for(&target).exists());
+        provider
+            .download("/cancelled.bin", target.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            ranges.downloads.load(std::sync::atomic::Ordering::SeqCst),
+            1
+        );
+        assert_eq!(std::fs::read(target).unwrap(), b"ok");
+    }
+
+    #[tokio::test]
+    async fn cross_profile_stop_during_destination_setup_prevents_upload() {
+        let session = CancellationToken::new();
+        let mut source = FlakyDownloadProvider::fail_first(0);
+        let mut dest = FlakyDownloadProvider::fail_first(0);
+        dest.cancel_on_mkdir = Some(session.clone());
+        let options = crate::cross_profile_transfer::CrossProfileCopyOptions {
+            cancel_token: session,
+            ..Default::default()
+        };
+        let error = crate::cross_profile_transfer::copy_one_file_with_options(
+            &mut source,
+            &mut dest,
+            "/source.bin",
+            "/parent/target.bin",
+            None,
+            options,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            crate::transfer_dag::error::message_names_a_cancellation(&error.to_string()),
+            "{error}"
+        );
+        assert_eq!(
+            source.calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the source was already staged before Stop"
+        );
+        assert_eq!(
+            dest.upload_calls, 0,
+            "Stop during destination setup prevents the upload from starting"
+        );
     }
 
     #[tokio::test]

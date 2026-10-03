@@ -10,6 +10,7 @@ import { readTextFile } from '@tauri-apps/plugin-fs';
 import { AIChat } from './AIChat';
 import { useTranslation } from '../../i18n';
 import { CyberShieldIcon } from '../icons/CyberShieldIcon';
+import { CyberToolsPanel } from '../CyberToolsPanel';
 import type { EffectiveTheme } from '../../hooks/useTheme';
 import { usePointerDrag } from '../../hooks/usePointerDrag';
 import { isSafeLocalOpenPath, shellQuoteLocalPath } from '../../utils/openWithDefault';
@@ -50,14 +51,15 @@ interface DevToolsV2Props {
     onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
     /** SEC-P1-06: TOFU host key check before SSH shell open */
     onCheckHostKey?: (host: string, port: number) => Promise<boolean>;
-    /** Opens the Security Tools modal (state owned by App). AeroTools is the
-     *  always-available home for it; the titlebar button is a Cyber-theme
-     *  easter egg (#369). Hidden when the callback is not provided. */
-    onShowCyberTools?: () => void;
 }
 
 // Breakpoints for responsive layout (based on DevTools panel width)
 const BREAKPOINTS = {
+    // Show 4 columns above 1000px. The main window cannot be narrower than
+    // 1024px, so there every active panel gets a column (250px or more each,
+    // widened with the resize handles) instead of a lit toggle with nothing
+    // on screen.
+    FOUR_COLS: 1000,
     THREE_COLS: 900,   // Show 3 columns above 900px
     TWO_COLS: 600,     // Show 2 columns above 600px
 };
@@ -84,7 +86,6 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     onMaximizeChange,
     onFileMutation,
     onCheckHostKey,
-    onShowCyberTools,
 }) => {
     const t = useTranslation();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -327,6 +328,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         editor: true,
         terminal: false,
         chat: false,
+        security: false,
     });
 
     // A file handed in from outside (double-click, "View source", the OS file
@@ -386,6 +388,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                     editor: key === 'editor',
                     terminal: key === 'terminal',
                     chat: key === 'chat',
+                    security: false,
                 });
             }
         };
@@ -411,20 +414,23 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     const getVisiblePanels = useCallback((): (keyof PanelVisibility)[] => {
         const activePanels: (keyof PanelVisibility)[] = [];
 
-        // Priority order: editor > terminal > chat
+        // Priority order: editor > terminal > chat > security
         if (panels.editor) activePanels.push('editor');
         if (panels.terminal) activePanels.push('terminal');
         if (panels.chat) activePanels.push('chat');
+        if (panels.security) activePanels.push('security');
 
         // Use actual width (fallback to window width if 0)
         const width = containerWidth || window.innerWidth;
 
         // Limit based on responsive breakpoints
-        let maxPanels = 3;
+        let maxPanels = 4;
         if (width < BREAKPOINTS.TWO_COLS) {
             maxPanels = 1;
         } else if (width < BREAKPOINTS.THREE_COLS) {
             maxPanels = 2;
+        } else if (width < BREAKPOINTS.FOUR_COLS) {
+            maxPanels = 3;
         }
 
         // Return priority-based visible panels
@@ -641,17 +647,20 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                         {/* Security Tools sits with the other three launchers and
                             carries its full label (Ehud #347): icon-only next to
                             the Maximise/Close buttons read as a window control, so
-                            the entry point was being missed. */}
-                        {onShowCyberTools && (
-                            <button
-                                onClick={onShowCyberTools}
-                                className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${theme.buttonInactive}`}
-                                title={t('cyberTools.title')}
-                            >
-                                <CyberShieldIcon size={12} />
-                                {t('cyberTools.title')}
-                            </button>
-                        )}
+                            the entry point was being missed. Like them it toggles
+                            a column (#347): the floating window is only the
+                            Cyber-theme titlebar easter egg. */}
+                        <button
+                            onClick={() => togglePanel('security')}
+                            className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${panels.security
+                                ? 'bg-cyan-600 text-white'
+                                : theme.buttonInactive
+                                }`}
+                            title={t('cyberTools.title')}
+                        >
+                            <CyberShieldIcon size={12} />
+                            {t('cyberTools.title')}
+                        </button>
                     </div>
                 </div>
 
@@ -673,7 +682,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                 </div>
             </div>
 
-            {/* Resizable 3-Column Content Area */}
+            {/* Resizable Column Content Area */}
             <div className="flex-1 flex overflow-hidden">
                 {dropInfoToast && (
                     <div className="absolute right-4 top-12 z-40 rounded-md border border-emerald-400/40 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 shadow-lg">
@@ -802,6 +811,32 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                 <AIChat className="h-full" remotePath={remotePath} localPath={localPath} appTheme={appTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} activeFilePanel={activeFilePanel} isCloudConnection={isCloudConnection} onFileMutation={onFileMutation} editorFileName={editorFile?.name} editorFilePath={editorFile?.path} />
                             </div>
                         </div>
+
+                        {/* Resize handle after chat */}
+                        {visiblePanels.includes('chat') && isNotLastVisible('chat') && (
+                            <div
+                                onPointerDown={handlePanelResize(visiblePanels.indexOf('chat'))}
+                                className={`w-1 cursor-col-resize ${theme.resizeHandle} transition-colors flex-shrink-0 group flex items-center justify-center`}
+                            >
+                                <div className={`w-0.5 h-8 rounded-full ${theme.resizeBar} transition-opacity`} />
+                            </div>
+                        )}
+
+                        {/* Security Tools: unmounted while AeroTools is closed (it only
+                            hides itself), so its secrets and any staged copy of a
+                            dropped file go away on close, as they did with the window */}
+                        {isOpen && visiblePanels.includes('security') && (
+                            <div
+                                className="flex flex-col overflow-hidden"
+                                style={{ width: getPanelWidth('security') }}
+                            >
+                                <div className={`px-2 py-1 ${theme.panelHeader} border-b flex items-center gap-2`}>
+                                    <CyberShieldIcon size={12} className="text-cyan-400" />
+                                    <span className={`text-xs ${theme.text}`}>{t('cyberTools.title')}</span>
+                                </div>
+                                <CyberToolsPanel nativeDropScope="panel" />
+                            </div>
+                        )}
                     </>
                 )}
             </div>
