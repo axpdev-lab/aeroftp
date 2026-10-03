@@ -4,35 +4,23 @@
 import argparse
 import contextlib
 import os
+import json
 from pathlib import Path
 import plistlib
 import subprocess
 import tempfile
-import tomllib
 
 
 def cargo_binaries(manifest):
     """Include explicit binaries and Cargo's implicitly discovered GUI/helpers."""
-    with manifest.open('rb') as source:
-        cargo = tomllib.load(source)
-    names = {binary['name'] for binary in cargo.get('bin', [])}
-    if cargo['package'].get('autobins', True):
-        if (manifest.parent / 'src/main.rs').is_file():
-            names.add(cargo['package']['name'])
-        bins = manifest.parent / 'src/bin'
-        if bins.is_dir():
-            for path in bins.iterdir():
-                if path.suffix == '.rs':
-                    names.add(path.stem)
-                elif (path / 'main.rs').is_file():
-                    names.add(path.name)
-        # Explicit paths replace the automatically discovered target at that path.
-        for binary in cargo.get('bin', []):
-            path = Path(binary.get('path', ''))
-            if path.parent == Path('src/bin'):
-                names.discard(path.stem)
-                names.add(binary['name'])
-    return names
+    metadata = json.loads(subprocess.check_output([
+        'cargo', 'metadata', '--offline', '--no-deps', '--format-version', '1',
+        '--manifest-path', str(manifest.resolve()),
+    ], text=True))
+    package = next(package for package in metadata['packages']
+                   if Path(package['manifest_path']).resolve() == manifest.resolve())
+    return {target['name'] for target in package['targets'] if 'bin' in target['kind']}
+
 
 
 @contextlib.contextmanager

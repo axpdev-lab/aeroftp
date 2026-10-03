@@ -27,7 +27,7 @@ class DmgVerificationTests(unittest.TestCase):
 
     def test_cargo_inventory_includes_explicit_and_implicit_bins(self):
         manifest = self.root / 'Cargo.toml'
-        manifest.write_text('[package]\nname="aeroftp"\n[[bin]]\nname="aeroftp-cli"\npath="src/bin/aeroftp_cli.rs"\n')
+        manifest.write_text('[package]\nname="aeroftp"\nedition="2021"\n[[bin]]\nname="aeroftp-cli"\npath="src/bin/aeroftp_cli.rs"\n')
         bins = self.root / 'src/bin'
         bins.mkdir(parents=True)
         (bins / 'aeroftp_cli.rs').touch()
