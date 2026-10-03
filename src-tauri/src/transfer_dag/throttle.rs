@@ -116,8 +116,10 @@ pub fn owned_body_with(
     owned_body_bytes_with(bytes::Bytes::from(data), governor, direction)
 }
 
-/// A `reqwest` body for a refcounted payload. Unlimited: `Body::from(bytes)`,
-/// no copy. Capped: paced `Bytes::slice` windows, still no copy. This is the
+/// A `reqwest` body for a refcounted payload. Unlimited: the payload itself
+/// when it fits in one window, otherwise [`WindowedBytes`] over it, which hands
+/// hyper one window at a time and still declares the exact length. Capped:
+/// paced `Bytes::slice` windows. No variant copies the payload. This is the
 /// body S3 uses for signed part uploads, so a retry rebuilds it from the same
 /// `Bytes` for the price of a refcount.
 pub fn owned_body_bytes(data: bytes::Bytes, direction: TransferDirection) -> reqwest::Body {
@@ -131,13 +133,68 @@ pub fn owned_body_bytes_with(
     direction: TransferDirection,
 ) -> reqwest::Body {
     if governor_is_unlimited(&governor, direction) {
-        return reqwest::Body::from(data);
+        if data.len() <= OWNED_BODY_CHUNK_BYTES {
+            return reqwest::Body::from(data);
+        }
+        return reqwest::Body::wrap(WindowedBytes::new(data));
     }
     reqwest::Body::wrap_stream(throttle_stream_with(
         bytes_windows(data),
         governor,
         direction,
     ))
+}
+
+/// An uncapped owned body, handed to hyper one [`OWNED_BODY_CHUNK_BYTES`]
+/// window at a time, each window a slice of the payload, with the exact
+/// remaining length as its size hint so the request still carries a
+/// `Content-Length` and is never sent chunked.
+///
+/// Why not the payload as a single frame: on these connections hyper writes in
+/// its flatten mode, where every body frame is copied into the connection's
+/// own write buffer before it is sent. A 16 MiB part sent as one frame was
+/// copied whole, and the buffer kept that capacity for the life of the pooled
+/// connection, doubling on the next part (16 MiB + headers no longer fits), so
+/// each of the four part connections held a part-sized copy next to the part
+/// itself. Measured on a 300 MiB S3 multipart upload with parts living
+/// seconds (WAN, or loopback through a 5 MB/s relay): peak RSS 207 to 216 MB,
+/// with 4 live 16 MiB part buffers plus 4 live 32 MiB write buffers grown in
+/// `hyper::proto::h1::io::WriteBuf::buffer`. A window-sized frame keeps that
+/// copy to one window, because hyper stops pulling frames once its buffer
+/// holds about 400 KiB.
+pub struct WindowedBytes {
+    rest: bytes::Bytes,
+}
+
+impl WindowedBytes {
+    pub fn new(data: bytes::Bytes) -> Self {
+        Self { rest: data }
+    }
+}
+
+impl http_body::Body for WindowedBytes {
+    type Data = bytes::Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        if self.rest.is_empty() {
+            return std::task::Poll::Ready(None);
+        }
+        let take = self.rest.len().min(OWNED_BODY_CHUNK_BYTES);
+        let window = self.rest.split_to(take);
+        std::task::Poll::Ready(Some(Ok(http_body::Frame::data(window))))
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.rest.is_empty()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::SizeHint::with_exact(self.rest.len() as u64)
+    }
 }
 
 /// The paced windows of a refcounted payload: slices, not copies.
@@ -386,6 +443,85 @@ mod tests {
             g.directional_bandwidth(TransferDirection::Upload)
                 .granted_bytes(),
             data.len() as u64
+        );
+    }
+
+    /// Every frame a body hands hyper, in order.
+    async fn frames_of<B>(mut body: B) -> Vec<bytes::Bytes>
+    where
+        B: http_body::Body<Data = bytes::Bytes> + Unpin,
+        B::Error: std::fmt::Debug,
+    {
+        let mut out = Vec::new();
+        while let Some(frame) =
+            std::future::poll_fn(|cx| std::pin::Pin::new(&mut body).poll_frame(cx)).await
+        {
+            out.push(frame.expect("frame").into_data().expect("data frame"));
+        }
+        out
+    }
+
+    /// The defect this pins: an uncapped part went to hyper as ONE frame, and
+    /// hyper copied the whole frame into its connection write buffer. The
+    /// window body must never hand over more than one window at a time, must
+    /// hand over slices of the payload rather than copies, and must keep
+    /// declaring the exact remaining length so the request is not sent chunked.
+    #[tokio::test]
+    async fn windowed_bytes_hands_over_slices_no_larger_than_a_window_with_an_exact_length() {
+        let data: Vec<u8> = (0..(OWNED_BODY_CHUNK_BYTES * 3 + 7))
+            .map(|i| (i % 241) as u8)
+            .collect();
+        let payload = bytes::Bytes::from(data.clone());
+        let body = WindowedBytes::new(payload.clone());
+        assert_eq!(
+            http_body::Body::size_hint(&body).exact(),
+            Some(data.len() as u64)
+        );
+        let frames = frames_of(body).await;
+        assert_eq!(frames.len(), 4);
+        assert!(frames.iter().all(|f| f.len() <= OWNED_BODY_CHUNK_BYTES));
+        assert_eq!(frames[0].as_ptr(), payload.as_ptr(), "a slice, not a copy");
+        assert_eq!(frames.concat(), data);
+
+        let mut partly = WindowedBytes::new(payload);
+        let _ = std::future::poll_fn(|cx| {
+            http_body::Body::poll_frame(std::pin::Pin::new(&mut partly), cx)
+        })
+        .await;
+        assert_eq!(
+            http_body::Body::size_hint(&partly).exact(),
+            Some((data.len() - OWNED_BODY_CHUNK_BYTES) as u64),
+            "the hint follows what is left"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_uncapped_owned_body_larger_than_a_window_is_windowed_with_its_length() {
+        let g = capped(0, 0);
+        let len = 16 * 1024 * 1024 + 3;
+        let body = owned_body_bytes_with(
+            bytes::Bytes::from(vec![7u8; len]),
+            Arc::clone(&g),
+            TransferDirection::Upload,
+        );
+        assert_eq!(http_body::Body::size_hint(&body).exact(), Some(len as u64));
+        assert!(
+            body.as_bytes().is_none(),
+            "a part-sized body must not reach hyper as one frame"
+        );
+        let frames = frames_of(body).await;
+        assert!(frames.iter().all(|f| f.len() <= OWNED_BODY_CHUNK_BYTES));
+        assert_eq!(frames.iter().map(|f| f.len()).sum::<usize>(), len);
+
+        // One window or less stays the plain, reusable body.
+        let small = owned_body_bytes_with(
+            bytes::Bytes::from(vec![1u8; OWNED_BODY_CHUNK_BYTES]),
+            g,
+            TransferDirection::Upload,
+        );
+        assert_eq!(
+            small.as_bytes().map(<[u8]>::len),
+            Some(OWNED_BODY_CHUNK_BYTES)
         );
     }
 
