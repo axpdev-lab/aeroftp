@@ -516,9 +516,10 @@ section below for the exact coverage and the remaining gaps.
 
 ## Engine telemetry (DAG-P2-07)
 
-Blocks A-D populate the metric core; blocks E, F, G add the unified stats
-surface, the slow optimization loop, and the nightly CI benchmark. The
-paragraphs below describe the whole wave.
+Blocks A-D populate the metric core; blocks E and G add the unified stats
+surface and the nightly CI benchmark. Block F, a slow optimization loop, was
+removed in #591's engine fix (its paragraph below says why). The paragraphs
+below describe the whole wave.
 
 `TransferDagMetrics` (`src-tauri/src/transfer_dag/metrics.rs`) carries the
 logical/wire/local-payload byte triple, backpressure, and fallback counters,
@@ -528,6 +529,9 @@ resource lease wait), `run_nanos_total` (runner execution), `slot_peak`
 and `ttfb_nanos_total` with `ttfb_samples`. All new fields are additive with
 serde defaults, and `absorb()` merges per-file subgraph metrics into job-level
 totals across the streaming batch/sync frontier (sums; max for `slot_peak`).
+The fold's max is not a streamed job's concurrency, since every whole-file
+subgraph reports 1, so the batch runner and the sync driver overwrite the
+job's `slot_peak` with the most files that held a transfer session together.
 The executor attributes timing per node through `NodeTiming`; cancel and
 timeout wrapper arms attest wait/run up to the abort via a shared
 `RunnerStartSlot` stamp instead of fabricating durations, and the `JoinError`
@@ -620,22 +624,26 @@ one-slot process-global store (`transfer_dag/engine_stats.rs`); it reports
 the MCP server's own `aeroftp_transfer`/`transfer_tree` tools use the direct
 cross-profile path and do not run the DAG engine, so they are not counted.
 
-Block F is the slow optimization loop. After a job drains fully successfully
-(never on cancellation, never with per-file failures, and never while
-`--aimd-disable` is set), the batch/sync runner
-distills the populated job telemetry into a `JobThroughputObservation`
-(aggregate throughput against the transfer-phase wall clock, which brackets
-the streaming frontier and excludes scan/plan and per-runner setup rather
-than spanning the whole job, dispatch-wait ratio, concurrency high-water) and feeds
-it to `AdaptiveProfileRegistry::observe_job` under the same
-`AdaptiveProfileKey` (endpoint + workload) the P2-06 seed/feedback path uses.
-The loop is decrease-biased: a plateau (more concurrency without more
-throughput) or a wait-dominated dispatch shaves one slot off the learned safe
-target; only a job that beats the throughput baseline by more than 5% at low
-wait steps the target up by one toward the concurrency that achieved it
-(bounded recovery). It shares the registry's key isolation, TTL, capacity and
-LRU eviction, and injectable clock, so it stays bounded and never poisons a
-profile across a cancellation.
+Block F was a slow optimization loop, removed in #591's engine fix. At job end
+it compared each job's aggregate throughput with the best earlier job to the
+same endpoint and moved the learned file target: down on a plateau or a
+wait-dominated dispatch, up one step toward the concurrency that ran. Both its
+input and its rules made it a ratchet toward one file at a time. Its
+concurrency input was the frontier's fold of per-file `slot_peak`, which is 1
+for a whole file, so every job looked serial and the first "raise" wrote a
+target of 1. With an honest concurrency it still spiralled: a narrow job (one
+file, or a lower setting) set the baseline, so the first raise capped the next
+wide job at baseline plus one; the "wait" it read as starvation is the job
+queueing on its own AIMD permits and the frontier's pipeline headroom, which a
+lower target only lengthens; and it compared jobs of different file counts and
+sizes as if width were the only variable. Measured on the batch runner, each
+sequence ended at 1 to 4 files at 8 slots
+(`job_history_without_congestion_never_narrows_the_next_batch`). Learned
+targets now come only from congestion (D2 signals, Retry-After) and the
+bounded healthy recovery after it, the P2-06 path above. A job's `slot_peak`
+is the most files that held a transfer session together: the batch runner
+tracks it next to the `active` count, the sync driver from its workers in
+flight.
 
 Block G is a schedule-only nightly workflow
 (`.github/workflows/nightly-telemetry.yml`): it runs the deterministic DAG

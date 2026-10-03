@@ -56,12 +56,7 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
     sourceModified: Date | undefined,
     sourceIsRemote: boolean,
     queueCount: number = 0
-  ): Promise<{ action: OverwriteAction; newName?: string }> => {
-    // Read from ref to get the latest value within async loops (state is stale in closures)
-    if (overwriteApplyToAllRef.current.enabled) {
-      return { action: overwriteApplyToAllRef.current.action };
-    }
-
+  ): Promise<{ action: OverwriteAction; newName?: string; destinationExists: boolean }> => {
     // Check if destination file exists
     let destFile: LocalFile | RemoteFile | undefined;
     if (sourceIsRemote) {
@@ -69,23 +64,31 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
     } else {
       destFile = remoteFiles.find(f => f.name === sourceName && !f.is_dir);
     }
+    // #591: callers that batch files keep an existing SFTP destination on the
+    // single-file path, which is the one that can send an rsync delta.
+    const destinationExists = !!destFile;
+
+    // Read from ref to get the latest value within async loops (state is stale in closures)
+    if (overwriteApplyToAllRef.current.enabled) {
+      return { action: overwriteApplyToAllRef.current.action, destinationExists };
+    }
 
     if (!destFile) {
-      return { action: 'overwrite' };
+      return { action: 'overwrite', destinationExists };
     }
 
     if (fileExistsAction && fileExistsAction !== 'ask') {
       if (fileExistsAction === 'overwrite') {
-        return { action: 'overwrite' };
+        return { action: 'overwrite', destinationExists };
       }
       if (fileExistsAction === 'resume') {
         // Resume only makes sense against an interrupted partial (destination
         // smaller than the source). Anything else falls back to overwrite. The
         // backend fail-safes crypt/unsupported providers to a full re-send.
-        return { action: sourceSize > (destFile.size || 0) ? 'resume' : 'overwrite' };
+        return { action: sourceSize > (destFile.size || 0) ? 'resume' : 'overwrite', destinationExists };
       }
       if (fileExistsAction === 'skip') {
-        return { action: 'skip' };
+        return { action: 'skip', destinationExists };
       }
       if (fileExistsAction === 'rename') {
         const ext = sourceName.includes('.') ? '.' + sourceName.split('.').pop() : '';
@@ -99,7 +102,7 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
           counter++;
           newName = `${baseName} (${counter})${ext}`;
         }
-        return { action: 'rename', newName };
+        return { action: 'rename', newName, destinationExists };
       }
 
       // === SMART SYNC OPTIONS ===
@@ -111,9 +114,9 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
       if (fileExistsAction === 'overwrite_if_newer') {
         // Overwrite only if source file is more recent (with tolerance)
         if (sourceDate > destDate + TOLERANCE_MS) {
-          return { action: 'overwrite' };
+          return { action: 'overwrite', destinationExists };
         }
-        return { action: 'skip' };
+        return { action: 'skip', destinationExists };
       }
 
       if (fileExistsAction === 'overwrite_if_different') {
@@ -121,9 +124,9 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
         const dateDiffers = Math.abs(sourceDate - destDate) > TOLERANCE_MS;
         const sizeDiffers = sourceSize !== (destFile.size || 0);
         if (dateDiffers || sizeDiffers) {
-          return { action: 'overwrite' };
+          return { action: 'overwrite', destinationExists };
         }
-        return { action: 'skip' };
+        return { action: 'skip', destinationExists };
       }
 
       if (fileExistsAction === 'skip_if_identical') {
@@ -131,9 +134,9 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
         const dateSame = Math.abs(sourceDate - destDate) <= TOLERANCE_MS;
         const sizeSame = sourceSize === (destFile.size || 0);
         if (dateSame && sizeSame) {
-          return { action: 'skip' };
+          return { action: 'skip', destinationExists };
         }
-        return { action: 'overwrite' };
+        return { action: 'overwrite', destinationExists };
       }
     }
 
@@ -160,7 +163,7 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
             setOverwriteApplyToAll(applyToAllValue);
             overwriteApplyToAllRef.current = applyToAllValue;
           }
-          resolve({ action: result.action, newName: result.newName });
+          resolve({ action: result.action, newName: result.newName, destinationExists });
         },
       });
     });

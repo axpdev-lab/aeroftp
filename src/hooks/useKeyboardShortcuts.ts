@@ -9,13 +9,17 @@ interface ShortcutConfig {
     [key: string]: KeyHandler;
 }
 
+// A container marked `data-keyboard-island` keeps its keys the way an input
+// does, buttons included: Security Tools in AeroTools sits next to the file
+// panels, and a Tab or Delete on one of its buttons must not switch or delete
+// files behind it.
 const isTextEditingTarget = (element: HTMLElement | null): boolean => {
     if (!element) return false;
     const tag = element.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || element.isContentEditable) {
         return true;
     }
-    return !!element.closest('.monaco-editor, .xterm, [role="textbox"], [contenteditable="true"]');
+    return !!element.closest('.monaco-editor, .xterm, [role="textbox"], [contenteditable="true"], [data-keyboard-island]');
 };
 
 export const useKeyboardShortcuts = (config: ShortcutConfig, deps: React.DependencyList = []) => {

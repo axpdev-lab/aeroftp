@@ -102,14 +102,9 @@
             "connectionFailed": "Połączenie nieudane",
             "reconnecting": "Ponowne łączenie...",
             "quickConnect": "Szybkie połączenie",
-            "savedServers": "Zapisane serwery",
-            "noSavedServers": "Brak zapisanych serwerów",
             "saveServer": "Zapisz serwer",
-            "deleteServer": "Usuń serwer",
-            "editServer": "Edytuj serwer",
             "serverName": "Nazwa serwera",
             "initialPath": "Ścieżka początkowa",
-            "savedServersHelp": "Wybierz serwer, aby się połączyć.",
             "selectSshKey": "Wybierz klucz prywatny SSH",
             "allFiles": "Wszystkie pliki",
             "sshKeys": "Klucze SSH",
@@ -126,13 +121,10 @@
             "aerocloudDesc": "Zamień dowolny serwer w osobistą chmurę z automatyczną synchronizacją",
             "configureAerocloud": "Konfiguruj AeroCloud",
             "aerocloudHelp": "AeroCloud możesz również skonfigurować z paska stanu",
-            "selectProviderPrompt": "Wybierz dostawcę powyżej lub wybierz \"Niestandardowy\" do ręcznej konfiguracji",
-            "custom": "Niestandardowy",
             "change": "Zmień",
             "emailAccount": "Konto e-mail",
             "megaEmailPlaceholder": "your-email@mega.nz",
             "megaPasswordPlaceholder": "Twoje hasło MEGA",
-            "dismiss": "Odrzuć",
             "authenticating": "Uwierzytelnianie...",
             "oauth2Connection": "Połączenie OAuth2",
             "securityTitle": "Szyfrowane przechowywanie danych logowania",
@@ -170,7 +162,6 @@
             "docs": "Dokumentacja",
             "minutes": "minut",
             "localPathPlaceholder": "/home/user/projects",
-            "searchServers": "Szukaj serwerów...",
             "fourshared": {
                 "backToExistingAccount": "Powrót do istniejącego konta",
                 "configureCredentials": "Skonfiguruj dane uwierzytelniające OAuth 1.0",
@@ -242,8 +233,6 @@
             "koofrAppPassword": "Hasło aplikacji",
             "koofrAppPasswordPlaceholder": "Wklej tutaj hasło aplikacji Koofr",
             "koofrHelp": "Wygeneruj hasło aplikacji w app.koofr.net → Preferences → Password → App Passwords",
-            "duplicateServer": "Duplikuj serwer",
-            "duplicateCredentialMissing": "Poświadczenie nie zostało skopiowane do duplikatu. Wprowadź hasło ponownie przed połączeniem.",
             "saveAsNew": "Zapisz jako nowy",
             "yandexdiskToken": "OAuth Token",
             "yandexdiskTokenPlaceholder": "Yandex OAuth token",
@@ -261,8 +250,6 @@
             "immichApiKeyHelp": "Wygeneruj klucz API w Immich → User Settings → API Keys",
             "immichOps": "Przeglądanie, przesyłanie, pobieranie, usuwanie, albumy, wyszukiwanie, linki udostępniania. Zmiana nazwy i przenoszenie nie są obsługiwane.",
             "generatePassword": "Wygeneruj hasło",
-            "saveAndConnect": "Zapisz i połącz",
-            "saveDisabledTotp": "Kody TOTP są jednorazowe. Użyj Zapisz i połącz, aby zastosować ten kod teraz.",
             "generatePersonalLoginToken": "Wygeneruj osobisty token logowania",
             "endpointUrl": "Adres URL punktu końcowego",
             "b2NativeAdvantagesTitle": "Natywne API Backblaze B2: dodatkowe funkcje w porównaniu z trybem zgodnym z S3",
@@ -334,7 +321,12 @@
             "twakeSignInAgain": "Zaloguj się ponownie",
             "twakeSignedIn": "Zalogowano",
             "twakeWaitingBrowser": "Dokończ logowanie w przeglądarce...",
-            "twakeSignInHelp": "AeroFTP otwiera Twake w Twojej przeglądarce i prosi o dostęp tylko do Twoich plików. Jeśli Twake pokaże błąd za pierwszym razem, zaloguj się do Twake w przeglądarce i zaloguj się ponownie. Dostęp możesz odwołać w dowolnym momencie w ustawieniach Twake, Połączone urządzenia."
+            "twakeSignInHelp": "AeroFTP otwiera Twake w Twojej przeglądarce i prosi o dostęp tylko do Twoich plików. Jeśli Twake pokaże błąd za pierwszym razem, zaloguj się do Twake w przeglądarce i zaloguj się ponownie. Dostęp możesz odwołać w dowolnym momencie w ustawieniach Twake, Połączone urządzenia.",
+            "oauthKeysMissingTitle": "Brak kluczy aplikacji {provider}",
+            "oauthKeysMissing": "W sejfie nie zapisano kluczy aplikacji dla {provider}, więc AeroFTP nie może się zalogować. AeroFTP nie zawiera własnych kluczy: wprowadź klucze swojej aplikacji deweloperskiej {provider} w {location}, a następnie połącz się ponownie.",
+            "oauthKeysOpenSettings": "Otwórz ustawienia OAuth",
+            "oauthKeysReadFailedTitle": "Nie można odczytać kluczy aplikacji {provider}",
+            "oauthKeysReadFailed": "AeroFTP nie mógł odczytać kluczy aplikacji {provider} z sejfu, więc nie może się zalogować. Klucze nie zostały zmienione. Błąd: {error}"
         },
         "browser": {
             "remote": "Zdalny",
@@ -1197,7 +1189,12 @@
             "uiTokensApplied": "Zastosowane nadpisania: {count}",
             "uiTokensRejected": "Odrzucone wpisy: {count}",
             "keystorePreferencesFailed": "Import zakończył się, ale nie udało się przywrócić Twoich preferencji aplikacji: {error}",
-            "keystorePreviewBackupUnreadable": "Listy serwerów z tej kopii nie można odczytać na tym urządzeniu, więc porównanie korzysta z listy zapisanej w sejfie kopii. Import mimo to zastępuje listę serwerów na tym urządzeniu."
+            "keystorePreviewBackupUnreadable": "Listy serwerów z tej kopii nie można odczytać na tym urządzeniu, więc porównanie korzysta z listy zapisanej w sejfie kopii. Import mimo to zastępuje listę serwerów na tym urządzeniu.",
+            "filterServersPlaceholder": "Filtruj według nazwy, hosta, protokołu lub użytkownika",
+            "selectShown": "Zaznacz wyświetlone ({count})",
+            "deselectShown": "Odznacz wyświetlone ({count})",
+            "filterShownCount": "wyświetlono: {shown}",
+            "selectedHiddenByFilter": "Zaznaczone: {count}, ale ukryte przez filtr, nadal uwzględnione"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1469,6 +1466,7 @@
             "extracted": "Wypakowano!",
             "extractedTo": "Pliki wypakowane do {dest}",
             "fileLocked": "Plik zablokowany",
+            "cutPartial": "Przeniesiono {moved} z {total} elementów; pozostałe zostają na miejscu",
             "fileSkipped": "Pominięto {count} plik(ów)",
             "fileUnlocked": "Plik odblokowany",
             "loadTrashFailed": "Nie udało się załadować kosza",
@@ -1714,7 +1712,8 @@
             "overlay_locked": "Zaszyfrowana nakładka zablokowana",
             "aerocrypt_marker_migrate": "Konwertowanie znacznika AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Znacznik AeroCrypt przekonwertowany na .aerocrypt.tsv",
-            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed"
+            "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
+            "box_unlock_folder": "[Box] Odblokowywanie folderu {filename}..."
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -3080,7 +3079,18 @@
                     "startFailed": "Nie udało się uruchomić lokalnego serwera.",
                     "serverFailed": "Serwer zatrzymał się lub wysłał nieprawidłową odpowiedź.",
                     "httpUnauthorized": "Serwer odrzucił zapisane dane uwierzytelniające.",
-                    "unsupportedVersion": "Serwer używa wersji MCP, której AeroFTP nie obsługuje."
+                    "unsupportedVersion": "Serwer używa wersji MCP, której AeroFTP nie obsługuje.",
+                    "directoryInvalid": "Wybierz osobny katalog bez dowiązań ani poufnych plików aplikacji.",
+                    "directoryChanged": "Udostępniony katalog został zmieniony lub nie istnieje. Wybierz go ponownie, aby odnowić dostęp.",
+                    "permissionCommand": "Zmień dostęp za pomocą ustawień uprawnień do katalogów i sieci.",
+                    "installInvalid": "Ta zarządzana instalacja jest niedostępna lub jej manifest jest nieprawidłowy.",
+                    "installIntegrity": "Weryfikacja integralności pakietu nie powiodła się. Usuń i ponownie zainstaluj serwer.",
+                    "installArchive": "Pakiet zawiera niebezpieczne ścieżki, dowiązania lub nieprawidłowy plik startowy.",
+                    "installRuntime": "Brakuje wymaganego systemowego środowiska uruchomieniowego.",
+                    "installDownload": "Pobieranie pakietu nie powiodło się lub przekroczyło limit czasu.",
+                    "installLimit": "Pakiet przekracza limity instalacji.",
+                    "installExists": "Usuń istniejącą instalację przed ponowną instalacją.",
+                    "installIo": "Nie można odczytać lub zapisać plików instalacji."
                 },
                 "routingNotice": "Włączone serwery udostępniają swoje narzędzia AeroAgent. Każde wywołanie narzędzia najpierw prosi o Twoje zatwierdzenie.",
                 "checkNow": "Sprawdź teraz",
@@ -3089,7 +3099,26 @@
                 "healthError": "Niedostępny: {reason}",
                 "healthReady": "Gotowy, narzędzia dostępne dla AeroAgent: {count}",
                 "healthUnsupported": "Narzędzia z nieobsługiwanymi schematami: {count}",
-                "healthShowTools": "Pokaż narzędzia"
+                "healthShowTools": "Pokaż narzędzia",
+                "directoryTitle": "Katalogi tylko do odczytu",
+                "grantDirectory": "Wybierz katalog",
+                "confirmDirectory": "Przyznać temu serwerowi dostęp tylko do odczytu do wszystkich plików w {path}? Przyznawaj dostęp tylko do katalogu przeznaczonego dla serwera lub projektu.",
+                "noDirectories": "Brak dostępu do katalogów.",
+                "revokeDirectory": "Odbierz dostęp",
+                "confirmRevokeDirectory": "Odebrać dostęp do {path}? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
+                "networkAccess": "Zezwól na dostęp do sieci (wszystkie hosty i usługi lokalne)",
+                "networkBlocked": "Dostęp do sieci jest zablokowany.",
+                "confirmNetwork": "Zezwolić {name} na dostęp do sieci, w tym usług lokalnych? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
+                "confirmBlockNetwork": "Zablokować dostęp do sieci dla {name}? Wcześniejsze zatwierdzenia narzędzi przestaną obowiązywać.",
+                "managedStatus": "Zarządzana instalacja: {version}",
+                "renewDirectory": "Odnów dostęp",
+                "presetsTitle": "Zalecane serwery",
+                "presetsSubtitle": "Sprawdzone zestawy instalują się dopiero po potwierdzeniu. Pozostają wyłączone, dopóki ich nie włączysz.",
+                "presetDeepwikiName": "DeepWiki",
+                "presetDeepwikiReason": "Wyszukaj dokumentację publicznego repozytorium.",
+                "presetInstall": "Zainstaluj",
+                "presetInstalledDisabled": "Zainstalowano i wyłączono",
+                "presetReady": "Gotowe"
             }
         },
         "archive": {
@@ -4097,12 +4126,6 @@
             "viewSource": "Wyświetl źródło"
         },
         "savedServers": {
-            "dragToReorder": "Przeciągnij, aby zmienić kolejność",
-            "e2eAes128": "E2E AES-128 - {username}",
-            "e2eAes256": "E2E AES-256 - {username}",
-            "foursharedConfigError": "Skonfiguruj dane uwierzytelniające 4shared w Ustawienia > Dostawcy chmury.",
-            "oauthConfigError": "Skonfiguruj dane uwierzytelniające {provider} w Ustawienia > Dostawcy chmury.",
-            "oauthError": "OAuth - {username}",
             "s3Provider": "{bucket} - {provider}",
             "standardDisplay": "{username}@{host}:{port}",
             "webdavDisplay": "{username}@{host}",
@@ -4436,16 +4459,23 @@
             "tagsPlaceholder": "Dodaj tag...",
             "tagsUpdated": "Tagi zaktualizowane",
             "addTag": "Dodaj",
-            "noTags": "Brak tagów"
+            "noTags": "Brak tagów",
+            "collaborators": "Współpracownicy",
+            "noCollaborators": "Jeszcze nie udostępniono nikomu",
+            "folderNotLocked": "Ten folder nie jest zablokowany",
+            "roleEditor": "Edytor",
+            "roleViewer": "Przeglądający",
+            "rolePreviewer": "Podglądający",
+            "roleUploader": "Przesyłający",
+            "rolePreviewerUploader": "Podglądający i przesyłający",
+            "roleViewerUploader": "Przeglądający i przesyłający",
+            "roleCoOwner": "Współwłaściciel"
         },
         "googledrive": {
             "star": "Oznacz gwiazdką",
             "unstar": "Usuń gwiazdkę",
             "starred": "Plik oznaczony gwiazdką",
-            "unstarred": "Gwiazdka usunięta",
-            "addComment": "Dodaj komentarz",
-            "commentPlaceholder": "Napisz swój komentarz...",
-            "commentAdded": "Komentarz dodany"
+            "unstarred": "Gwiazdka usunięta"
         },
         "dropbox": {
             "manageTags": "Zarządzaj tagami"
@@ -4768,7 +4798,14 @@
             "participants": "uczestników",
             "saving": "Zapisywanie...",
             "saved": "Zapisano",
-            "saveNow": "Zapisz teraz"
+            "saveNow": "Zapisz teraz",
+            "noteType": "Typ notatki",
+            "addTag": "Dodaj tag",
+            "newTag": "Nowy tag...",
+            "tagName": "Nazwa tagu",
+            "removeTag": "Usuń tag",
+            "manageTags": "Zarządzaj tagami",
+            "deleteTagConfirm": "Usunąć tag „{name}”? Notatki zachowają swój tekst."
         },
         "shareLinkModal": {
             "title": "Link udostępniania",
@@ -4961,7 +4998,8 @@
                 "rename": "Zmień nazwę grupy",
                 "delete": "Usuń grupę",
                 "confirmDelete": "Usunąć grupę „{name}”? Serwery w niej pozostaną, usunięta zostanie tylko grupa.",
-                "chipHint": "Kliknij, aby filtrować; kliknij prawym przyciskiem, aby zmienić nazwę lub usunąć"
+                "chipHint": "Kliknij, aby filtrować; kliknij prawym przyciskiem, aby zmienić nazwę, wyeksportować lub usunąć",
+                "export": "Eksportuj grupę..."
             },
             "cryptBadge": {
                 "aerocrypt": "AeroCrypt",
@@ -4986,7 +5024,8 @@
                 "offTitle": "Ten zasobnik nie ma domyślnego szyfrowania. To nie to samo co niezaszyfrowany: SSE-C i szyfrowanie po stronie klienta nie są raportowane przez to ustawienie.",
                 "unknownKeyTitle": "Nie udało się odczytać ustawienia szyfrowania tego zasobnika, ponieważ klucz aplikacji nie ma uprawnienia readBucketEncryption. Wartość, której nie wolno nam zobaczyć, nie oznacza, że szyfrowanie jest wyłączone.",
                 "unknownShapeTitle": "Nie udało się odczytać ustawienia szyfrowania tego zasobnika, ponieważ odpowiedź nie miała udokumentowanej postaci. Klucz miał prawo ją odczytać, więc rzecz dotyczy odpowiedzi, a nie uprawnień."
-            }
+            },
+            "exportProfile": "Eksportuj..."
         },
         "gitlab": {
             "projectPath": "Ścieżka projektu",
@@ -6042,6 +6081,27 @@
             "scopeSession": "Zatwierdza to narzędzie do końca sesji czatu.",
             "approve": "Zatwierdź",
             "rememberForChat": "Zezwól na to narzędzie do końca tego czatu"
+        },
+        "s3": {
+            "storageClass": "Klasa magazynowania",
+            "storageClassChanged": "Zmieniono klasę magazynowania na {storageClass}",
+            "restoreFromGlacier": "Przywróć z Glacier",
+            "restoreTier": "Warstwa pobierania",
+            "restoreDays": "Liczba dni przechowywania przywróconej kopii",
+            "restoreStarted": "Zażądano przywrócenia: gdy będzie gotowa, kopia pozostanie dostępna do odczytu przez {days} dni",
+            "objectTags": "Tagi obiektu",
+            "noTags": "Brak tagów",
+            "tagKey": "Klucz",
+            "tagValue": "Wartość",
+            "tagsSaved": "Zapisano tagi"
+        },
+        "azure": {
+            "accessTier": "Warstwa dostępu",
+            "accessTierChanged": "Ustawiono warstwę dostępu na {tier}"
+        },
+        "fileComments": {
+            "title": "Komentarze",
+            "empty": "Brak komentarzy"
         }
     }
 }
