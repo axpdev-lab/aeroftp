@@ -11,9 +11,9 @@ import { ConfirmOverlay } from './common/ConfirmOverlay';
 import { MODAL_Z } from '../utils/modalLayers';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
-import type { ProviderType } from '../types';
 import { getUiLocale } from '../utils/formatters';
 import { copyText } from '../utils/clipboard';
+import { loadShareLinkCapabilities, NO_SHARE_LINK_CAPABILITIES, type ShareLinkCapabilities } from '../utils/shareLinkCapabilities';
 
 /** Backend response from provider_create_share_link */
 interface ShareLinkResult {
@@ -32,127 +32,10 @@ interface ShareLinkInfo {
   permissions: string | null;
 }
 
-/** Per-provider capability flags */
-interface ShareLinkCapabilities {
-  expiration: boolean;
-  password: boolean;
-  permissions: boolean;
-  availablePermissions: string[];
-  hasAdvancedOptions: boolean;
-  supportsList: boolean;
-  supportsRevoke: boolean;
-}
-
-/** Map of provider capabilities for share link advanced options */
-function getShareLinkCapabilities(provider: ProviderType | string): ShareLinkCapabilities {
-  const caps: ShareLinkCapabilities = {
-    expiration: false,
-    password: false,
-    permissions: false,
-    availablePermissions: [],
-    hasAdvancedOptions: false,
-    supportsList: false,
-    supportsRevoke: false,
-  };
-
-  switch (provider) {
-    case 'googledrive':
-      caps.permissions = true;
-      caps.availablePermissions = ['view', 'comment', 'edit'];
-      break;
-    case 'dropbox':
-      caps.expiration = true;
-      caps.password = true; // Pro+ only
-      caps.permissions = true;
-      caps.availablePermissions = ['view', 'edit'];
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'onedrive':
-      caps.expiration = true;
-      caps.password = true; // Personal only
-      caps.permissions = true;
-      caps.availablePermissions = ['view', 'edit'];
-      break;
-    case 'box':
-      caps.expiration = true; // Paid only
-      caps.password = true; // Paid only
-      caps.permissions = true;
-      caps.availablePermissions = ['view', 'edit'];
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'pcloud':
-      caps.expiration = true; // Premium only
-      caps.password = true; // Premium only
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'filen':
-      caps.expiration = true;
-      caps.password = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'zohoworkdrive':
-      caps.expiration = true;
-      caps.password = true;
-      caps.permissions = true;
-      caps.availablePermissions = ['view', 'edit'];
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'kdrive':
-      caps.expiration = true;
-      caps.password = true;
-      caps.permissions = true;
-      caps.availablePermissions = ['view', 'edit'];
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'drime':
-      caps.expiration = true;
-      caps.password = true;
-      caps.permissions = true;
-      caps.availablePermissions = ['view', 'edit'];
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'webdav':
-      caps.expiration = true;
-      caps.password = true;
-      break;
-    case 's3':
-      caps.expiration = true;
-      break;
-    case 'azure':
-      caps.expiration = true;
-      break;
-    case 'opendrive':
-      caps.expiration = true;
-      break;
-    case 'koofr':
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'yandexdisk':
-      caps.supportsList = true;
-      caps.supportsRevoke = true;
-      break;
-    case 'mega':
-      caps.supportsRevoke = true;
-      break;
-    // No advanced options: jottacloud, github, filelu
-  }
-
-  caps.hasAdvancedOptions = caps.expiration || caps.password || caps.permissions;
-  return caps;
-}
-
 interface ShareLinkModalProps {
   path: string;
   fileName: string;
   providerName: string;
-  providerType?: ProviderType | string;
   providerIcon?: React.ReactNode;
   onClose: () => void;
 }
@@ -167,13 +50,14 @@ const EXPIRATION_PRESETS = [
   { label: '30 days', value: 2592000 },
 ] as const;
 
-export function ShareLinkModal({ path, fileName, providerName, providerType, providerIcon, onClose }: ShareLinkModalProps) {
+export function ShareLinkModal({ path, fileName, providerName, providerIcon, onClose }: ShareLinkModalProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const humanLog = useHumanizedLog();
-  const caps = React.useMemo(() => getShareLinkCapabilities(providerType || ''), [providerType]);
+  // What the connected provider offers, as it reports it; nothing until it answers.
+  const [caps, setCaps] = useState<ShareLinkCapabilities>(NO_SHARE_LINK_CAPABILITIES);
 
-  const [state, setState] = useState<ModalState>(caps.hasAdvancedOptions ? 'options' : 'loading');
+  const [state, setState] = useState<ModalState>('loading');
   const [shareUrl, setShareUrl] = useState('');
   const [sharePassword, setSharePassword] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -213,13 +97,15 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
     }
   }, [path]);
 
-  const handleRevoke = useCallback(async (linkPath: string) => {
-    setRevokingId(linkPath);
+  const handleRevoke = useCallback(async (linkId: string) => {
+    setRevokingId(linkId);
     const log = humanLogRef.current;
     const logId = log.logRaw('activity.share_link_deleting', 'INFO', { provider: providerName, filename: fileName }, 'running');
     try {
-      await invoke('provider_remove_share_link', { path: linkPath });
-      setExistingLinks(prev => prev.filter(l => l.id !== linkPath));
+      // The backend removes by the shared item's path; the id picks one link
+      // where a provider keeps several on the same item.
+      await invoke('provider_remove_share_link', { path, linkId });
+      setExistingLinks(prev => prev.filter(l => l.id !== linkId));
       log.updateEntry(logId, { status: 'success', message: t('activity.share_link_deleted', { provider: providerName, filename: fileName }) });
     } catch (err) {
       setManageError(String(err));
@@ -227,7 +113,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
     } finally {
       setRevokingId(null);
     }
-  }, [fileName, providerName, t]);
+  }, [path, fileName, providerName, t]);
 
   // Load links when switching to manage tab
   useEffect(() => {
@@ -272,12 +158,18 @@ export function ShareLinkModal({ path, fileName, providerName, providerType, pro
     }
   }, [path, providerName, fileName, t]);
 
-  // Auto-generate for providers without advanced options
-  const didRun = React.useRef(false);
+  // Ask the provider what it offers: show the options when it has any,
+  // otherwise create the link straight away. A modal closed before the answer
+  // arrives creates nothing; StrictMode's remount asks again.
   useEffect(() => {
-    if (didRun.current || caps.hasAdvancedOptions) return;
-    didRun.current = true;
-    generateLink();
+    let cancelled = false;
+    void loadShareLinkCapabilities(invoke).then((loaded) => {
+      if (cancelled) return;
+      setCaps(loaded);
+      if (loaded.hasAdvancedOptions) setState('options');
+      else generateLink();
+    });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -38,6 +38,9 @@ type HmacSha256 = Hmac<Sha256>;
 /// Azure API version
 const API_VERSION: &str = "2024-11-04";
 
+/// Blob access tiers `Set Blob Tier` accepts (Archive rehydrates through the same call).
+pub const AZURE_ACCESS_TIERS: &[&str] = &["Hot", "Cool", "Cold", "Archive"];
+
 /// AZ-001: Threshold for switching from single Put Blob to block upload (100 MB)
 const BLOCK_UPLOAD_THRESHOLD: u64 = 100 * 1024 * 1024;
 
@@ -2532,6 +2535,11 @@ impl AzureProvider {
     /// Set the access tier of a blob (Hot, Cool, Cold, Archive).
     /// For rehydration from Archive, set tier to Hot or Cool.
     pub async fn set_blob_tier(&self, blob_path: &str, tier: &str) -> Result<(), ProviderError> {
+        if !AZURE_ACCESS_TIERS.contains(&tier) {
+            return Err(ProviderError::InvalidConfig(format!(
+                "Not an access tier: {tier}"
+            )));
+        }
         let resolved = self.resolve_blob_path(blob_path);
         let url = format!("{}?comp=tier", self.blob_url(&resolved));
 
@@ -3931,6 +3939,16 @@ Time:2026-01-01</Message>
         assert_eq!(items[0].name, "a& &b.txt");
         assert_eq!(items[0].size, 3);
         assert_eq!(items[1].name, " &x.txt");
+    }
+
+    /// The tier arrives over IPC: only the four Azure names pass.
+    #[tokio::test]
+    async fn blob_tier_is_allow_listed() {
+        let p = test_provider();
+        // A well-formed header value that is not a block blob access tier.
+        let r = p.set_blob_tier("/b.txt", "P30").await;
+        assert!(matches!(r, Err(ProviderError::InvalidConfig(_))), "{r:?}");
+        assert_eq!(AZURE_ACCESS_TIERS, ["Hot", "Cool", "Cold", "Archive"]);
     }
 }
 
