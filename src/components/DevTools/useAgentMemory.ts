@@ -83,16 +83,6 @@ export function useAgentMemory(projectPath: string | undefined) {
         return () => { mountedRef.current = false; };
     }, [projectPath, refreshMemory]);
 
-    // Append new entry
-    const appendMemory = useCallback(async (entry: string, category: string = 'general') => {
-        if (!projectPath) return;
-        try {
-            await invoke('agent_memory_store', { projectPath, category, content: entry, serverHost: null });
-            await refreshMemory(10);
-        } catch {
-            // Silent failure
-        }
-    }, [projectPath, refreshMemory]);
 
     const searchMemory = useCallback(async (query: string, limit = 5) => {
         if (!projectPath) return '';
@@ -104,5 +94,5 @@ export function useAgentMemory(projectPath: string | undefined) {
         }
     }, [formatEntries, projectPath]);
 
-    return { memory, appendMemory, searchMemory, refreshMemory };
+    return { memory, searchMemory, refreshMemory };
 }

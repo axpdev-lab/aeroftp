@@ -16224,24 +16224,6 @@ fn is_background_sync_running() -> bool {
     BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst)
 }
 
-#[tauri::command]
-async fn set_tray_status(
-    app: AppHandle,
-    status: String,
-    tooltip: Option<String>,
-) -> Result<(), String> {
-    let _ = app.emit(
-        "tray-status-update",
-        serde_json::json!({
-            "status": status,
-            "tooltip": tooltip.unwrap_or_else(|| "AeroCloud".to_string())
-        }),
-    );
-
-    info!("Tray status updated: {}", status);
-    Ok(())
-}
-
 /// Save server credentials for background sync use
 #[tauri::command]
 async fn save_server_credentials(
@@ -19335,7 +19317,6 @@ pub fn run() {
             start_background_sync,
             stop_background_sync,
             is_background_sync_running,
-            set_tray_status,
             save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
@@ -19502,7 +19483,6 @@ pub fn run() {
             context_intelligence::detect_project_context,
             context_intelligence::scan_file_imports,
             context_intelligence::get_git_context,
-            agent_memory_db::agent_memory_store,
             agent_memory_db::agent_memory_search,
             // Provider health check
             health_check::start_health_scan,

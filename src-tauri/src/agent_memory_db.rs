@@ -479,26 +479,6 @@ fn insert_entry(
 }
 
 #[tauri::command]
-pub async fn agent_memory_store(
-    app: AppHandle,
-    project_path: String,
-    category: String,
-    content: String,
-    server_host: Option<String>,
-) -> Result<AgentMemoryEntry, String> {
-    let db = app.state::<AgentMemoryDb>();
-    let conn = acquire_lock(&db);
-    archive_stale_entries_if_due(&conn)?;
-    insert_entry(
-        &conn,
-        &project_path,
-        &category,
-        &content,
-        server_host.as_deref(),
-    )
-}
-
-#[tauri::command]
 pub async fn agent_memory_search(
     app: AppHandle,
     project_path: String,

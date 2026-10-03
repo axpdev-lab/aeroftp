@@ -23,11 +23,6 @@ interface CloudSyncStatusEvent {
     message: string;
 }
 
-interface TrayStatusUpdateEvent {
-    status: string;
-    tooltip: string;
-}
-
 /**
  * Custom hook for managing AeroCloud tray icon and background sync
  * 
@@ -93,13 +88,6 @@ export function useTraySync() {
         }
     });
 
-    useTauriListener<TrayStatusUpdateEvent>('tray-status-update', (event) => {
-        const { tooltip } = event.payload;
-        setTrayState(prev => ({
-            ...prev,
-            tooltip: tooltip || prev.tooltip,
-        }));
-    });
 
     /**
      * Start background sync process
@@ -150,16 +138,6 @@ export function useTraySync() {
         }
     }, []);
 
-    /**
-     * Update tray status manually
-     */
-    const setTrayStatus = useCallback(async (status: string, tooltip?: string): Promise<void> => {
-        try {
-            await invoke('set_tray_status', { status, tooltip });
-        } catch (err) {
-            console.error('Failed to update tray status:', err);
-        }
-    }, []);
 
     /**
      * Toggle background sync on/off
@@ -179,7 +157,6 @@ export function useTraySync() {
         startBackgroundSync,
         stopBackgroundSync,
         toggleBackgroundSync,
-        setTrayStatus,
     };
 }
 

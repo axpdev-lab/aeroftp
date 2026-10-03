@@ -906,6 +906,12 @@ const AUDITED_UNCALLED: Record<string, string> = {
     debug_panic_command:
         'Debug builds only (#[cfg(debug_assertions)]): panics on purpose so a developer can check from the ' +
         'devtools console that invoke() rejects instead of hanging (panic_safe.rs). No screen is meant to call it.',
+    file_tags_create_label:
+        'Custom file-tag labels (beyond the seven Finder-style presets) have had backend create, rename and ' +
+        'delete since v2.5.0 but never a screen; useFileTags exposes them unread. Building the label manager ' +
+        'or dropping custom labels is an owner decision, tracked in the release tracker.',
+    file_tags_delete_label: 'Same decision as file_tags_create_label (custom label manager).',
+    file_tags_update_label: 'Same decision as file_tags_create_label (custom label manager).',
     parallel_sync_execute:
         'Parallel FTP sync over transfer_pool.rs. No sync ever called it, and fd10ff6f0 left it in tree for ' +
         'APPENDIX-DAG-ENGINE Fase 2 to adopt or retire: that appendix decides, not this list.',
