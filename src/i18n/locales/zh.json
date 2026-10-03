@@ -5520,7 +5520,10 @@
                     "parent": "备份文件夹不能包含 '..'。",
                     "name": "此备份文件夹名称无效。"
                 }
-            }
+            },
+            "savedPresetLimits": "应用方向、删除、排除和验证设置。已保存的比较规则、重试、流和压缩设置不会应用。运行前请检查“比较”选项卡和当前传输设置。",
+            "savedPresetsLoadFailed": "无法加载已保存的预设：{error}",
+            "savedPresets": "已保存的预设"
         },
         "accountLock": {
             "title": "选择一个账户",

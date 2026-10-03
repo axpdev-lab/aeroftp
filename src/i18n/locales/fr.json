@@ -5520,7 +5520,10 @@
                     "parent": "Le dossier de sauvegarde ne peut pas contenir '..'.",
                     "name": "Ce nom de dossier de sauvegarde n'est pas valide."
                 }
-            }
+            },
+            "savedPresetLimits": "Applique le sens, les suppressions, les exclusions et la vérification. Les règles de comparaison, les nouvelles tentatives, les flux et la compression enregistrés ne sont pas appliqués. Vérifiez l'onglet Comparer et les paramètres de transfert actuels avant l'exécution.",
+            "savedPresetsLoadFailed": "Impossible de charger les préréglages enregistrés : {error}",
+            "savedPresets": "Préréglages enregistrés"
         },
         "accountLock": {
             "title": "Choisissez un compte",

@@ -5520,7 +5520,10 @@
                     "parent": "Sikkerhedskopimappen må ikke indeholde '..'.",
                     "name": "Dette navn på sikkerhedskopimappen er ikke gyldigt."
                 }
-            }
+            },
+            "savedPresetLimits": "Anvender retning, sletninger, udeladelser og verificering. Gemte sammenligningsregler, genforsøg, streams og komprimering anvendes ikke. Gennemgå fanen Sammenlign og de aktuelle overførselsindstillinger før kørsel.",
+            "savedPresetsLoadFailed": "Kunne ikke indlæse gemte forudindstillinger: {error}",
+            "savedPresets": "Gemte forudindstillinger"
         },
         "accountLock": {
             "title": "Vælg en konto",

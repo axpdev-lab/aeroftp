@@ -5520,7 +5520,10 @@
                     "parent": "Varunduskaust ei tohi sisaldada '..'.",
                     "name": "See varunduskausta nimi pole kehtiv."
                 }
-            }
+            },
+            "savedPresetLimits": "Rakendab suuna, kustutamised, välistused ja kontrollimise. Salvestatud võrdlusreegleid, korduskatseid, vooge ja tihendamist ei rakendata. Enne käivitamist vaadake üle vahekaart Võrdlus ja praegused edastusseaded.",
+            "savedPresetsLoadFailed": "Salvestatud eelseadistusi ei saanud laadida: {error}",
+            "savedPresets": "Salvestatud eelseadistused"
         },
         "accountLock": {
             "title": "Vali konto",

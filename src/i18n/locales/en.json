@@ -5768,7 +5768,10 @@
                     "parent": "The backup folder cannot contain '..'.",
                     "name": "This backup folder name is not valid."
                 }
-            }
+            },
+            "savedPresetLimits": "Applies direction, deletions, exclusions and verification. Saved comparison rules, retries, streams and compression are not applied. Review Compare and the current transfer settings before running.",
+            "savedPresetsLoadFailed": "Could not load saved presets: {error}",
+            "savedPresets": "Saved presets"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

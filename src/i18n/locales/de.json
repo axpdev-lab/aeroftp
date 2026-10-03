@@ -5520,7 +5520,10 @@
                     "parent": "Der Backup-Ordner darf kein '..' enthalten.",
                     "name": "Dieser Name für den Backup-Ordner ist ungültig."
                 }
-            }
+            },
+            "savedPresetLimits": "Wendet Richtung, Löschungen, Ausschlüsse und Überprüfung an. Gespeicherte Vergleichsregeln, Wiederholungsversuche, Streams und Komprimierung werden nicht angewendet. Prüfen Sie vor dem Start den Tab Vergleichen und die aktuellen Übertragungseinstellungen.",
+            "savedPresetsLoadFailed": "Gespeicherte Voreinstellungen konnten nicht geladen werden: {error}",
+            "savedPresets": "Gespeicherte Voreinstellungen"
         },
         "accountLock": {
             "title": "Konto auswählen",

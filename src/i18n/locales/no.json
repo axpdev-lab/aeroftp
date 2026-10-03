@@ -5539,7 +5539,10 @@
                     "parent": "Sikkerhetskopimappen kan ikke inneholde '..'.",
                     "name": "Dette navnet på sikkerhetskopimappen er ikke gyldig."
                 }
-            }
+            },
+            "savedPresetLimits": "Bruker retning, slettinger, utelatelser og verifisering. Lagrede sammenligningsregler, nye forsøk, strømmer og komprimering brukes ikke. Se gjennom fanen Sammenlign og gjeldende overføringsinnstillinger før kjøring.",
+            "savedPresetsLoadFailed": "Kunne ikke laste lagrede forhåndsinnstillinger: {error}",
+            "savedPresets": "Lagrede forhåndsinnstillinger"
         },
         "accountLock": {
             "title": "Velg en konto",

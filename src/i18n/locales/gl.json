@@ -5539,7 +5539,10 @@
                     "parent": "O cartafol de copia de seguranza non pode conter '..'.",
                     "name": "Este nome de cartafol de copia de seguranza non é válido."
                 }
-            }
+            },
+            "savedPresetLimits": "Aplica a dirección, as eliminacións, as exclusións e a verificación. Non se aplican as regras de comparación, os reintentos, os fluxos nin a compresión gardados. Revise a lapela Comparar e a configuración de transferencia actual antes de executar.",
+            "savedPresetsLoadFailed": "Non se puideron cargar os preaxustes gardados: {error}",
+            "savedPresets": "Preaxustes gardados"
         },
         "accountLock": {
             "title": "Escolla unha conta",

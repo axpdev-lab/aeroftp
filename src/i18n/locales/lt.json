@@ -5520,7 +5520,10 @@
                     "parent": "Atsarginių kopijų aplanke negali būti '..'.",
                     "name": "Šis atsarginių kopijų aplanko pavadinimas netinkamas."
                 }
-            }
+            },
+            "savedPresetLimits": "Taiko kryptį, trynimą, išimtis ir patikrą. Išsaugotos palyginimo taisyklės, pakartotiniai bandymai, srautai ir glaudinimas netaikomi. Prieš paleisdami peržiūrėkite skirtuką Palyginti ir dabartinius perdavimo nustatymus.",
+            "savedPresetsLoadFailed": "Nepavyko įkelti išsaugotų išankstinių nustatymų: {error}",
+            "savedPresets": "Išsaugoti išankstiniai nustatymai"
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

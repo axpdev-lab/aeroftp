@@ -5539,7 +5539,10 @@
                     "parent": "Babeskopien karpetak ezin du '..' eduki.",
                     "name": "Babeskopien karpetaren izen hau ez da baliozkoa."
                 }
-            }
+            },
+            "savedPresetLimits": "Norabidea, ezabaketak, bazterketak eta egiaztapena aplikatzen ditu. Gordetako konparazio-arauak, berriz saiatzeko aukerak, korronteak eta konpresioa ez dira aplikatzen. Exekutatu aurretik, berrikusi Konparatu fitxa eta uneko transferentzia-ezarpenak.",
+            "savedPresetsLoadFailed": "Ezin izan dira gordetako aurrezarpenak kargatu: {error}",
+            "savedPresets": "Gordetako aurrezarpenak"
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

@@ -5520,7 +5520,10 @@
                     "parent": "Folder sandaran tidak boleh mengandungi '..'.",
                     "name": "Nama folder sandaran ini tidak sah."
                 }
-            }
+            },
+            "savedPresetLimits": "Menggunakan arah, pemadaman, pengecualian dan pengesahan. Peraturan perbandingan, percubaan semula, aliran dan pemampatan yang disimpan tidak digunakan. Semak tab Bandingkan dan tetapan pemindahan semasa sebelum menjalankan.",
+            "savedPresetsLoadFailed": "Tidak dapat memuatkan pratetap tersimpan: {error}",
+            "savedPresets": "Pratetap tersimpan"
         },
         "accountLock": {
             "title": "Pilih akaun",

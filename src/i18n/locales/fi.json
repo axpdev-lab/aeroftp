@@ -5520,7 +5520,10 @@
                     "parent": "Varmuuskopiokansio ei voi sisältää merkintää '..'.",
                     "name": "Tämä varmuuskopiokansion nimi ei kelpaa."
                 }
-            }
+            },
+            "savedPresetLimits": "Ottaa käyttöön suunnan, poistot, poissulkemiset ja varmennuksen. Tallennettuja vertailusääntöjä, uudelleenyrityksiä, virtoja ja pakkausta ei oteta käyttöön. Tarkista Vertaa-välilehti ja nykyiset siirtoasetukset ennen suorittamista.",
+            "savedPresetsLoadFailed": "Tallennettuja esiasetuksia ei voitu ladata: {error}",
+            "savedPresets": "Tallennetut esiasetukset"
         },
         "accountLock": {
             "title": "Valitse tili",

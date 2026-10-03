@@ -5520,7 +5520,10 @@
                     "parent": "Folderul de backup nu poate conține '..'.",
                     "name": "Acest nume de folder de backup nu este valid."
                 }
-            }
+            },
+            "savedPresetLimits": "Aplică direcția, ștergerile, excluderile și verificarea. Regulile de comparare, reîncercările, fluxurile și compresia salvate nu sunt aplicate. Verificați fila Comparare și setările de transfer curente înainte de rulare.",
+            "savedPresetsLoadFailed": "Nu s-au putut încărca presetările salvate: {error}",
+            "savedPresets": "Presetări salvate"
         },
         "accountLock": {
             "title": "Alegeți un cont",

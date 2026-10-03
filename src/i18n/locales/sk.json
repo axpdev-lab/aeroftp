@@ -5520,7 +5520,10 @@
                     "parent": "Priečinok záloh nemôže obsahovať '..'.",
                     "name": "Tento názov priečinka záloh nie je platný."
                 }
-            }
+            },
+            "savedPresetLimits": "Použije smer, mazanie, vylúčenia a overovanie. Uložené pravidlá porovnávania, opakované pokusy, dátové prúdy a kompresia sa nepoužijú. Pred spustením skontrolujte kartu Porovnanie a aktuálne nastavenia prenosu.",
+            "savedPresetsLoadFailed": "Nepodarilo sa načítať uložené predvoľby: {error}",
+            "savedPresets": "Uložené predvoľby"
         },
         "accountLock": {
             "title": "Vyberte účet",

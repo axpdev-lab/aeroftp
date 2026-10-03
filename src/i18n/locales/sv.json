@@ -5520,7 +5520,10 @@
                     "parent": "Säkerhetskopieringsmappen får inte innehålla '..'.",
                     "name": "Det här namnet på säkerhetskopieringsmappen är inte giltigt."
                 }
-            }
+            },
+            "savedPresetLimits": "Tillämpar riktning, borttagningar, undantag och verifiering. Sparade jämförelseregler, återförsök, strömmar och komprimering tillämpas inte. Granska fliken Jämför och de aktuella överföringsinställningarna före körning.",
+            "savedPresetsLoadFailed": "Kunde inte läsa in sparade förinställningar: {error}",
+            "savedPresets": "Sparade förinställningar"
         },
         "accountLock": {
             "title": "Välj ett konto",

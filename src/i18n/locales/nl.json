@@ -5520,7 +5520,10 @@
                     "parent": "De back-upmap mag geen '..' bevatten.",
                     "name": "Deze naam voor de back-upmap is niet geldig."
                 }
-            }
+            },
+            "savedPresetLimits": "Past richting, verwijderingen, uitsluitingen en verificatie toe. Opgeslagen vergelijkingsregels, nieuwe pogingen, streams en compressie worden niet toegepast. Controleer het tabblad Vergelijken en de huidige overdrachtsinstellingen voordat u begint.",
+            "savedPresetsLoadFailed": "Opgeslagen voorinstellingen konden niet worden geladen: {error}",
+            "savedPresets": "Opgeslagen voorinstellingen"
         },
         "accountLock": {
             "title": "Kies een account",

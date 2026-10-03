@@ -5520,7 +5520,10 @@
                     "parent": "Mapa varnostnih kopij ne sme vsebovati '..'.",
                     "name": "To ime mape varnostnih kopij ni veljavno."
                 }
-            }
+            },
+            "savedPresetLimits": "Uporabi smer, brisanja, izključitve in preverjanje. Shranjena pravila primerjave, ponovni poskusi, tokovi in stiskanje se ne uporabijo. Pred zagonom preglejte zavihek Primerjava in trenutne nastavitve prenosa.",
+            "savedPresetsLoadFailed": "Shranjene prednastavitve ni bilo mogoče naložiti: {error}",
+            "savedPresets": "Shranjene prednastavitve"
         },
         "accountLock": {
             "title": "Izberite račun",

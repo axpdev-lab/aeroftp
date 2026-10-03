@@ -5520,7 +5520,10 @@
                     "parent": "Dublējumu mape nedrīkst saturēt '..'.",
                     "name": "Šis dublējumu mapes nosaukums nav derīgs."
                 }
-            }
+            },
+            "savedPresetLimits": "Piemēro virzienu, dzēšanu, izņēmumus un pārbaudi. Saglabātie salīdzināšanas noteikumi, atkārtotie mēģinājumi, plūsmas un saspiešana netiek piemēroti. Pirms palaišanas pārskatiet cilni Salīdzināt un pašreizējos pārsūtīšanas iestatījumus.",
+            "savedPresetsLoadFailed": "Neizdevās ielādēt saglabātos priekšiestatījumus: {error}",
+            "savedPresets": "Saglabātie priekšiestatījumi"
         },
         "accountLock": {
             "title": "Izvēlieties kontu",

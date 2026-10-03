@@ -5520,7 +5520,10 @@
                     "parent": "Složka záloh nemůže obsahovat '..'.",
                     "name": "Tento název složky záloh není platný."
                 }
-            }
+            },
+            "savedPresetLimits": "Použije směr, mazání, vyloučení a ověřování. Uložená pravidla porovnání, opakování, datové proudy a komprese se nepoužijí. Před spuštěním zkontrolujte kartu Porovnání a aktuální nastavení přenosu.",
+            "savedPresetsLoadFailed": "Uložené předvolby se nepodařilo načíst: {error}",
+            "savedPresets": "Uložené předvolby"
         },
         "accountLock": {
             "title": "Vyberte účet",

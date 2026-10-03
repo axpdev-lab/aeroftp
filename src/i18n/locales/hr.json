@@ -5520,7 +5520,10 @@
                     "parent": "Mapa sigurnosnih kopija ne smije sadržavati '..'.",
                     "name": "Ovaj naziv mape sigurnosnih kopija nije valjan."
                 }
-            }
+            },
+            "savedPresetLimits": "Primjenjuje smjer, brisanja, izuzimanja i provjeru. Spremljena pravila usporedbe, ponovni pokušaji, tokovi i kompresija ne primjenjuju se. Prije pokretanja pregledajte karticu Usporedba i trenutačne postavke prijenosa.",
+            "savedPresetsLoadFailed": "Nije moguće učitati spremljene predloške postavki: {error}",
+            "savedPresets": "Spremljeni predlošci postavki"
         },
         "accountLock": {
             "title": "Odaberite račun",

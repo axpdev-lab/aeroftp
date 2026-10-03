@@ -5520,7 +5520,10 @@
                     "parent": "La carpeta de copia de seguridad no puede contener '..'.",
                     "name": "Este nombre de carpeta de copia de seguridad no es válido."
                 }
-            }
+            },
+            "savedPresetLimits": "Aplica la dirección, las eliminaciones, las exclusiones y la verificación. No se aplican las reglas de comparación, los reintentos, los flujos ni la compresión guardados. Revise la pestaña Comparar y la configuración de transferencia actual antes de ejecutar.",
+            "savedPresetsLoadFailed": "No se pudieron cargar los ajustes preestablecidos guardados: {error}",
+            "savedPresets": "Ajustes preestablecidos guardados"
         },
         "accountLock": {
             "title": "Elige una cuenta",

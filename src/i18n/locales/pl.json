@@ -5520,7 +5520,10 @@
                     "parent": "Folder kopii zapasowych nie może zawierać '..'.",
                     "name": "Ta nazwa folderu kopii zapasowych jest nieprawidłowa."
                 }
-            }
+            },
+            "savedPresetLimits": "Stosuje kierunek, usuwanie, wykluczenia i weryfikację. Zapisane reguły porównywania, ponawiania prób, strumienie i kompresja nie są stosowane. Przed uruchomieniem sprawdź kartę Porównaj i bieżące ustawienia transferu.",
+            "savedPresetsLoadFailed": "Nie udało się wczytać zapisanych ustawień wstępnych: {error}",
+            "savedPresets": "Zapisane ustawienia wstępne"
         },
         "accountLock": {
             "title": "Wybierz konto",

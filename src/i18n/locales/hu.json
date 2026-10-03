@@ -5520,7 +5520,10 @@
                     "parent": "A biztonsági mentés mappája nem tartalmazhat '..' elemet.",
                     "name": "Ez a biztonsági mentési mappanév nem érvényes."
                 }
-            }
+            },
+            "savedPresetLimits": "Alkalmazza az irányt, a törléseket, a kizárásokat és az ellenőrzést. A mentett összehasonlítási szabályok, újrapróbálkozások, adatfolyamok és tömörítés nem kerülnek alkalmazásra. Futtatás előtt tekintse át az Összehasonlítás lapot és az aktuális átviteli beállításokat.",
+            "savedPresetsLoadFailed": "A mentett előbeállítások betöltése sikertelen: {error}",
+            "savedPresets": "Mentett előbeállítások"
         },
         "accountLock": {
             "title": "Válasszon fiókot",

@@ -5737,7 +5737,10 @@
                     "parent": "La cartella di backup non può contenere '..'.",
                     "name": "Questo nome di cartella di backup non è valido."
                 }
-            }
+            },
+            "savedPresetLimits": "Applica direzione, eliminazioni, esclusioni e verifica. Le regole di confronto, i tentativi, i flussi e la compressione salvati non vengono applicati. Controlla la scheda Confronta e le impostazioni di trasferimento attuali prima di eseguire.",
+            "savedPresetsLoadFailed": "Impossibile caricare le preimpostazioni salvate: {error}",
+            "savedPresets": "Preimpostazioni salvate"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

@@ -25,7 +25,7 @@ import {
 import { useTranslation } from '../../i18n';
 import { ConfirmOverlay } from '../common/ConfirmOverlay';
 import { MODAL_Z } from '../../utils/modalLayers';
-import { deleteSavedSyncProfile, isDeletableSyncProfile } from '../../utils/syncProfiles';
+import { deleteSavedSyncProfile, isDeletableSyncProfile, notifySyncProfilesChanged } from '../../utils/syncProfiles';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import {
     overlayLivePlanOnTemplate,
@@ -436,6 +436,7 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                 builtin: false,
             };
             await invoke('save_sync_profile_cmd', { profile: toSave });
+            notifySyncProfilesChanged();
             setResult({
                 success: true,
                 message:

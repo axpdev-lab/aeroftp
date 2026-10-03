@@ -5539,7 +5539,10 @@
                     "parent": "Hindi puwedeng maglaman ng '..' ang backup folder.",
                     "name": "Hindi valid ang pangalang ito ng backup folder."
                 }
-            }
+            },
+            "savedPresetLimits": "Inilalapat ang direksyon, mga pagbura, pagbubukod at beripikasyon. Hindi inilalapat ang mga naka-save na panuntunan sa paghahambing, muling pagsubok, stream at compression. Suriin ang tab na Ihambing at ang kasalukuyang mga setting ng paglilipat bago patakbuhin.",
+            "savedPresetsLoadFailed": "Hindi ma-load ang mga naka-save na preset: {error}",
+            "savedPresets": "Mga naka-save na preset"
         },
         "accountLock": {
             "title": "Pumili ng account",

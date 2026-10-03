@@ -5539,7 +5539,10 @@
                     "parent": "Öryggisafritsmappan má ekki innihalda '..'.",
                     "name": "Þetta heiti á öryggisafritsmöppu er ekki gilt."
                 }
-            }
+            },
+            "savedPresetLimits": "Beitir stefnu, eyðingum, útilokunum og sannprófun. Vistaðar samanburðarreglur, endurtilraunir, straumar og þjöppun eru ekki notuð. Farðu yfir flipann Bera saman og núverandi flutningsstillingar áður en keyrt er.",
+            "savedPresetsLoadFailed": "Ekki tókst að hlaða vistuðum forstillingum: {error}",
+            "savedPresets": "Vistaðar forstillingar"
         },
         "accountLock": {
             "title": "Veldu reikning",
