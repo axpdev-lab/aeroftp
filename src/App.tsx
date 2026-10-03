@@ -2041,7 +2041,7 @@ const App: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const profiles = await loadSavedServerProfiles();
+        const profiles = await loadSavedServerProfilesStrict();
         const { migrated, changed } = await migrateFilenApiKeysToVault(
           profiles,
           (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
@@ -2049,7 +2049,7 @@ const App: React.FC = () => {
         );
         if (cancelled) return;
         if (changed) {
-          await storeSavedServerProfiles(migrated).catch(() => { });
+          await storeSavedServerProfiles(migrated);
           setServersRefreshKey(k => k + 1);
         }
         if (migrated.every((p) => !p.options?.filen_api_key)) {
@@ -8193,17 +8193,18 @@ const App: React.FC = () => {
     ));
     // Update saved servers in vault (localStorage may be empty after vault migration)
     try {
-      const servers = await loadSavedServerProfiles();
+      const servers = await loadSavedServerProfilesStrict();
       if (servers) {
         const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
         if (idx !== -1) {
           servers[idx].faviconUrl = faviconUrl;
-          try { await storeSavedServerProfiles(servers); } catch { /* ignore */ }
+          await storeSavedServerProfiles(servers);
+          setServersRefreshKey(k => k + 1);
         }
       }
-    } catch { /* ignore */ }
-    // Refresh the My Servers list (vault is now up-to-date)
-    setServersRefreshKey(k => k + 1);
+    } catch (err) {
+      logger.warn('Detected favicon could not be saved to the profile', err);
+    }
   }, []);
 
   useFaviconDetection(sessions, activeSessionId, handleFaviconDetected);
