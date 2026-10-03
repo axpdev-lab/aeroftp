@@ -4477,9 +4477,6 @@
             "starred": "Το αρχείο σημειώθηκε με αστέρι",
             "unstarred": "Το αστέρι αφαιρέθηκε"
         },
-        "dropbox": {
-            "manageTags": "Διαχείριση ετικετών"
-        },
         "providers": {
             "title": "Πάροχοι & Ενσωματώσεις",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Δωρεάν πλάνο",
             "freeCardTier": "Δωρεάν + κάρτα",
             "paidTier": "Επί πληρωμή"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Διαχείριση ετικετών",
-            "noLabels": "Δεν υπάρχουν διαθέσιμες ετικέτες. Δημιουργήστε ετικέτες στις ρυθμίσεις Zoho WorkDrive.",
-            "createLabel": "Δημιουργία ετικέτας",
-            "labelName": "Όνομα ετικέτας"
         },
         "healthCheck": {
             "title": "Έλεγχος υγείας διακομιστή",

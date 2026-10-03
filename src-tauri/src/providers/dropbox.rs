@@ -423,23 +423,6 @@ impl DropboxProvider {
             .has_tokens(OAuthProvider::Dropbox, &self.profile_id)
     }
 
-    /// Start OAuth flow (called via oauth2_start_auth command)
-    #[allow(dead_code)]
-    pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
-        self.oauth_manager
-            .start_auth_flow(&self.oauth_config())
-            .await
-    }
-
-    /// Complete OAuth flow (called via oauth2_connect command)
-    #[allow(dead_code)]
-    pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
-        self.oauth_manager
-            .complete_auth_flow(&self.oauth_config(), code, state)
-            .await?;
-        Ok(())
-    }
-
     /// `path` in the user's own form, absolute: relative to the current
     /// folder unless it starts with `/`, and not yet encoded.
     fn absolute_user_path(&self, path: &str) -> String {
@@ -844,74 +827,6 @@ impl DropboxProvider {
             .to_string())
     }
 
-    /// Get tags for a file
-    pub async fn get_tags(
-        &mut self,
-        paths: &[String],
-    ) -> Result<Vec<(String, Vec<String>)>, ProviderError> {
-        let entries: Vec<String> = paths
-            .iter()
-            .map(|p| {
-                if p.starts_with('/') {
-                    self.normalize_path(p)
-                } else {
-                    self.normalize_path(&format!("{}/{}", self.current_path, p))
-                }
-            })
-            .collect();
-
-        let body = serde_json::json!({ "paths": entries });
-        let url = format!("{}/files/tags/get", API_BASE);
-
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Get tags failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        #[derive(Deserialize)]
-        struct TagValue {
-            #[serde(default)]
-            tag_text: Option<String>,
-        }
-        #[derive(Deserialize)]
-        struct PathTag {
-            path: String,
-            #[serde(default)]
-            tags: Vec<TagValue>,
-        }
-        #[derive(Deserialize)]
-        struct PathsToTags {
-            paths_to_tags: Vec<PathTag>,
-        }
-
-        let result: PathsToTags = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-        Ok(result
-            .paths_to_tags
-            .iter()
-            .map(|pt| {
-                let tags: Vec<String> = pt.tags.iter().filter_map(|t| t.tag_text.clone()).collect();
-                (pt.path.clone(), tags)
-            })
-            .collect())
-    }
-
     /// Add a tag to a file
     pub async fn add_tag(&mut self, path: &str, tag: &str) -> Result<(), ProviderError> {
         let full_path = if path.starts_with('/') {
@@ -983,44 +898,6 @@ impl DropboxProvider {
         }
 
         info!("Removed tag '{}' from: {}", tag, path);
-        Ok(())
-    }
-
-    /// Set all tags on a file (replaces existing)
-    pub async fn set_tags(&mut self, path: &str, tags: &[String]) -> Result<(), ProviderError> {
-        let full_path = if path.starts_with('/') {
-            self.normalize_path(path)
-        } else {
-            self.normalize_path(&format!("{}/{}", self.current_path, path))
-        };
-
-        // Get current tags
-        let current = self.get_tags(std::slice::from_ref(&full_path)).await?;
-        let current_tags: Vec<String> = current
-            .first()
-            .map(|(_, tags)| tags.clone())
-            .unwrap_or_default();
-
-        // Remove tags not in new set
-        for old_tag in &current_tags {
-            if !tags
-                .iter()
-                .any(|t| t.to_lowercase() == old_tag.to_lowercase())
-            {
-                self.remove_tag(&full_path, old_tag).await?;
-            }
-        }
-
-        // Add new tags not in current set
-        for new_tag in tags {
-            if !current_tags
-                .iter()
-                .any(|t| t.to_lowercase() == new_tag.to_lowercase())
-            {
-                self.add_tag(&full_path, new_tag).await?;
-            }
-        }
-
         Ok(())
     }
 

@@ -403,7 +403,6 @@ FileLu exposes privacy and management features beyond generic file operations:
 | **Folder Settings** | `/folder/setting` | `filelu_set_folder_settings` | FileDrop (anonymous uploads) + Public Folder |
 | **List Trash** | `/files/deleted` | `filelu_list_deleted` | Returns deleted files with timestamps |
 | **Restore File** | `/file/restore` | `filelu_restore_file` | Restore by `file_code` |
-| **Restore Folder** | `/folder/restore` | `filelu_restore_folder` | Restore by `fld_id` |
 | **Permanent Delete** | `/file/remove` | `filelu_permanent_delete` | Bypass trash, irrecoverable |
 | **Remote URL Upload** | `/upload/url` | `filelu_remote_url_upload` | FileLu fetches file from URL server-side |
 
@@ -453,7 +452,6 @@ Box exposes management and collaboration features beyond generic file operations
 | **Soft Delete** | `DELETE /files/{id}` | `box_trash_files` | Moves to trash (recoverable) |
 | **Restore from Trash** | `POST /files/{id}` | `box_restore_from_trash` | Supports file and folder types |
 | **Permanent Delete** | `DELETE /files/{id}/trash` | `box_permanent_delete` | Irrecoverable deletion |
-| **Move Item** | `PUT /files/{id}` | `box_move_file` | Server-side move between folders |
 | **Tags** | `PUT /files/{id}` | `box_set_tags` | Free-text tags, shown as inline chips |
 | **Comments** | `/files/{id}/comments` | `box_add_comment` / `box_delete_comment` | File-level comments |
 | **Collaborations** | `/collaborations` | `box_add_collaboration` / `box_remove_collaboration` | Role-based sharing |

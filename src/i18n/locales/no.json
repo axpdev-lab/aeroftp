@@ -4496,9 +4496,6 @@
             "starred": "Filen er stjernemerket",
             "unstarred": "Stjernemerking fjernet"
         },
-        "dropbox": {
-            "manageTags": "Administrer etiketter"
-        },
         "providers": {
             "title": "Leverandører og integrasjoner",
             "tabOAuth": "OAuth / API",
@@ -4536,12 +4533,6 @@
             "freeTier": "Gratis abonnement",
             "freeCardTier": "Gratis + kort",
             "paidTier": "Betalt"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Administrer etiketter",
-            "noLabels": "Ingen etiketter tilgjengelige. Opprett en nedenfor.",
-            "createLabel": "Opprett etikett",
-            "labelName": "Etikettnavn"
         },
         "healthCheck": {
             "title": "Servertilstandskontroll",

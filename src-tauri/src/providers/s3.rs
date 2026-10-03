@@ -5795,7 +5795,7 @@ impl StorageProvider for S3Provider {
 
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         // Legacy alias kept so the rest of the codebase
-        // (provider_commands::provider_supports_server_copy, CLI helpers,
+        // (copy_fallback::server_side_copy_with_fallback, CLI helpers,
         // MCP tools) keeps working unchanged. New DAG runner code reaches
         // for `server_side_copy` directly, which now owns the real
         // x-amz-copy-source implementation.

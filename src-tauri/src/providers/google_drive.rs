@@ -390,23 +390,6 @@ impl GoogleDriveProvider {
             .has_tokens(OAuthProvider::Google, &self.profile_id)
     }
 
-    /// Start OAuth flow - returns URL to open (called via oauth2_start_auth command)
-    #[allow(dead_code)]
-    pub async fn start_auth(&self) -> Result<(String, String), ProviderError> {
-        self.oauth_manager
-            .start_auth_flow(&self.oauth_config())
-            .await
-    }
-
-    /// Complete OAuth flow with code (called via oauth2_connect command)
-    #[allow(dead_code)]
-    pub async fn complete_auth(&self, code: &str, state: &str) -> Result<(), ProviderError> {
-        self.oauth_manager
-            .complete_auth_flow(&self.oauth_config(), code, state)
-            .await?;
-        Ok(())
-    }
-
     /// List files in a folder by ID
     async fn list_folder(&self, folder_id: &str) -> Result<Vec<DriveFile>, ProviderError> {
         let mut all_files = Vec::new();
@@ -1149,98 +1132,6 @@ impl GoogleDriveProvider {
         }
 
         info!("Deleted comment {} from: {}", comment_id, path);
-        Ok(())
-    }
-
-    /// Set custom file properties (key-value pairs)
-    pub async fn set_properties(
-        &mut self,
-        path: &str,
-        properties: &HashMap<String, String>,
-    ) -> Result<(), ProviderError> {
-        let path_is_absolute = path.starts_with('/');
-        let path = path.trim_matches('/');
-        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
-            (&path[..pos], &path[pos + 1..])
-        } else {
-            ("", path)
-        };
-
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
-
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
-
-        let url = format!("{}/files/{}", self.drive_api(), file.id);
-        let body = serde_json::json!({ "properties": properties });
-
-        let response = self
-            .client
-            .patch(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Set properties failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        info!("Set properties on: {}", path);
-        Ok(())
-    }
-
-    /// Set file description
-    pub async fn set_description(
-        &mut self,
-        path: &str,
-        description: &str,
-    ) -> Result<(), ProviderError> {
-        let path_is_absolute = path.starts_with('/');
-        let path = path.trim_matches('/');
-        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
-            (&path[..pos], &path[pos + 1..])
-        } else {
-            ("", path)
-        };
-
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
-
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
-
-        let url = format!("{}/files/{}", self.drive_api(), file.id);
-        let body = serde_json::json!({ "description": description });
-
-        let response = self
-            .client
-            .patch(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .header(CONTENT_TYPE, "application/json")
-            .body(body.to_string())
-            .send()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::Other(format!(
-                "Set description failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        info!("Set description on: {}", path);
         Ok(())
     }
 

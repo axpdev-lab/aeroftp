@@ -4477,9 +4477,6 @@
             "starred": "Tiedosto merkitty tähdellä",
             "unstarred": "Tähti poistettu tiedostosta"
         },
-        "dropbox": {
-            "manageTags": "Hallitse tunnisteita"
-        },
         "providers": {
             "title": "Palveluntarjoajat ja integraatiot",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Ilmainen taso",
             "freeCardTier": "Ilmainen + kortti",
             "paidTier": "Maksullinen"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Hallitse tunnisteita",
-            "noLabels": "Tunnisteita ei ole saatavilla. Luo tunnisteita Zoho WorkDrive -asetuksissa.",
-            "createLabel": "Luo tunnus",
-            "labelName": "Tunnuksen nimi"
         },
         "healthCheck": {
             "title": "Palvelimen kuntotarkistus",

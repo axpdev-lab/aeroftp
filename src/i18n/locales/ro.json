@@ -4477,9 +4477,6 @@
             "starred": "Fișier marcat cu stea",
             "unstarred": "Steaua a fost eliminată"
         },
-        "dropbox": {
-            "manageTags": "Gestionați etichetele"
-        },
         "providers": {
             "title": "Furnizori și Integrări",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Plan gratuit",
             "freeCardTier": "Gratis + card",
             "paidTier": "Cu plată"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Gestionați etichetele",
-            "noLabels": "Nicio etichetă disponibilă. Creați etichete în setările Zoho WorkDrive.",
-            "createLabel": "Creați eticheta",
-            "labelName": "Nume etichetă"
         },
         "healthCheck": {
             "title": "Verificare stare server",

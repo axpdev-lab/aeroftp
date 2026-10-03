@@ -4477,9 +4477,6 @@
             "starred": "ফাইল তারকাচিহ্নিত হয়েছে",
             "unstarred": "ফাইলের তারকাচিহ্ন সরানো হয়েছে"
         },
-        "dropbox": {
-            "manageTags": "ট্যাগ পরিচালনা"
-        },
         "providers": {
             "title": "প্রদানকারী ও ইন্টিগ্রেশন",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "ফ্রি প্ল্যান",
             "freeCardTier": "ফ্রি + কার্ড",
             "paidTier": "পেইড"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "লেবেল পরিচালনা করুন",
-            "noLabels": "কোনো লেবেল উপলব্ধ নেই। Zoho WorkDrive সেটিংসে লেবেল তৈরি করুন।",
-            "createLabel": "লেবেল তৈরি করুন",
-            "labelName": "লেবেল নাম"
         },
         "healthCheck": {
             "title": "সার্ভার স্বাস্থ্য পরীক্ষা",

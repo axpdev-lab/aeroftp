@@ -1448,16 +1448,6 @@ impl FileLuProvider {
         Ok(())
     }
 
-    /// Restore a folder from trash by fld_id.
-    pub async fn restore_deleted_folder(&mut self, fld_id: u64) -> Result<(), ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-        let url = self.api_url_with("folder/restore", &[("fld_id", &fld_id.to_string())]);
-        self.get_with_retry(&url).await?;
-        Ok(())
-    }
-
     /// Upload a file from a remote URL into the given destination folder.
     /// Returns the file_code of the newly created file.
     pub async fn remote_url_upload(

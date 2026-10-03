@@ -266,8 +266,6 @@ pub mod rclone_filter;
 pub mod rclone_import;
 pub mod restic_import;
 pub mod restricted_chars;
-mod session_commands;
-mod session_manager;
 pub mod shell_quote;
 #[cfg(all(not(target_os = "macos"), feature = "local-stt"))]
 mod speech;
@@ -3381,12 +3379,6 @@ async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn check_connection(state: State<'_, AppState>) -> Result<bool, String> {
-    let ftp_manager = state.ftp_manager.lock().await;
-    Ok(ftp_manager.is_connected())
-}
-
-#[tauri::command]
 async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
@@ -5559,22 +5551,6 @@ async fn set_speed_limit(
         download_kb, upload_kb
     );
     Ok(())
-}
-
-/// Get current global transfer speed limits (KB/s)
-#[tauri::command]
-async fn get_speed_limit(state: State<'_, AppState>) -> Result<(u64, u64), String> {
-    let dl = state
-        .speed_limits
-        .download_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    let ul = state
-        .speed_limits
-        .upload_bps
-        .load(std::sync::atomic::Ordering::Relaxed)
-        / 1024;
-    Ok((dl, ul))
 }
 
 // ============ Environment Detection ============
@@ -18320,11 +18296,6 @@ async fn vault_mount_stop(key: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn vault_mount_list() -> Result<Vec<vault_mount::VaultMountInfo>, String> {
-    Ok(vault_mount::list().await)
-}
-
-#[tauri::command]
 async fn vault_mount_open(key: String) -> Result<(), String> {
     vault_mount::open_in_file_manager(&key).await
 }
@@ -19715,8 +19686,7 @@ pub fn run() {
         // AeroShare: registry of the background drive sync tasks consumed by
         // provider_connect for protocol="peer" (lifecycle per D-GUI-1:
         // open-or-tray = serving, Quit = stop).
-        .manage(peer::runtime::PeerRuntime::default())
-        .manage(session_manager::MultiProviderState::new());
+        .manage(peer::runtime::PeerRuntime::default());
 
     // Add PTY state for terminal support (all platforms)
     let builder = builder.manage(create_pty_state());
@@ -19752,7 +19722,6 @@ pub fn run() {
             panic_safe::debug_panic_command,
             connect_ftp,
             disconnect_ftp,
-            check_connection,
             crate::portal_chooser::chooser_unavailable,
             ftp_noop,
             reconnect_ftp,
@@ -19768,7 +19737,6 @@ pub fn run() {
             stop_starting_transfers,
             reset_cancel_flag,
             set_speed_limit,
-            get_speed_limit,
             is_running_as_snap,
             get_local_files,
             open_in_file_manager,
@@ -20112,7 +20080,6 @@ pub fn run() {
             aerovault_v2::vault_v2_open,
             aerovault_v2::is_vault_v2,
             aerovault_v2::vault_v2_peek,
-            aerovault_v2::vault_v2_security_info,
             aerovault_v2::vault_v2_add_files,
             aerovault_v2::vault_v2_extract_entry,
             aerovault_v2::vault_v2_extract_all,
@@ -20121,11 +20088,7 @@ pub fn run() {
             aerovault_v2::vault_v2_delete_entry,
             aerovault_v2::vault_v2_create_directory,
             aerovault_v2::vault_v2_delete_entries,
-            aerovault_v2::vault_v2_move_entry,
-            aerovault_v2::vault_v2_rename_entry,
-            aerovault_v2::vault_v2_copy_entry,
             aerovault_v2::vault_v2_add_files_to_dir,
-            aerovault_v2::vault_v2_compact,
             aerovault_v2::vault_v2_sync_compare,
             aerovault_v2::vault_v2_sync_apply,
             aerovault_v2::vault_v2_scan_directory,
@@ -20160,14 +20123,9 @@ pub fn run() {
             aerovault_v3::vault_v3_create_directory,
             aerovault_v3::vault_v3_delete_entry,
             aerovault_v3::vault_v3_delete_entries,
-            aerovault_v3::vault_v3_move_entry,
-            aerovault_v3::vault_v3_rename_entry,
-            aerovault_v3::vault_v3_copy_entry,
             aerovault_v3::vault_v3_change_password,
             aerovault_v3::vault_v3_change_mode,
             aerovault_v3::vault_v3_add_directory,
-            aerovault_v3::vault_v3_security_info,
-            aerovault_v3::vault_v3_has_error_correction,
             aerovault_v3::vault_v3_recovery_status,
             aerovault_v3::vault_v3_scrub,
             aerovault_v3::vault_v3_repair,
@@ -20247,12 +20205,9 @@ pub fn run() {
             provider_commands::provider_lock_crypt_overlay,
             provider_commands::provider_rearm_cached_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
-            provider_commands::provider_check_connection,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
-            provider_commands::provider_go_up,
-            provider_commands::provider_pwd,
             provider_commands::provider_download_file,
             provider_commands::provider_detect_aero_remote,
             provider_commands::provider_detect_archive_meta_remote,
@@ -20266,26 +20221,16 @@ pub fn run() {
             provider_commands::provider_delete_dir,
             provider_commands::provider_rename,
             provider_commands::provider_server_copy,
-            provider_commands::provider_supports_server_copy,
-            provider_commands::provider_stat,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
             provider_commands::provider_keep_alive,
-            provider_commands::provider_server_info,
-            provider_commands::provider_file_size,
-            provider_commands::provider_exists,
             // OAuth2 cloud provider commands
-            provider_commands::oauth2_start_auth,
-            provider_commands::oauth2_complete_auth,
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
             provider_commands::twake_sign_in,
             provider_commands::oauth2_redirect_uri,
             provider_commands::oauth2_has_tokens,
-            provider_commands::oauth2_logout,
             // 4shared OAuth 1.0 commands
-            provider_commands::fourshared_start_auth,
-            provider_commands::fourshared_complete_auth,
             provider_commands::fourshared_full_auth,
             provider_commands::fourshared_connect,
             provider_commands::fourshared_has_tokens,
@@ -20293,21 +20238,13 @@ pub fn run() {
             provider_commands::zoho_list_trash,
             provider_commands::zoho_permanent_delete,
             provider_commands::zoho_restore_from_trash,
-            provider_commands::zoho_list_team_labels,
-            provider_commands::zoho_get_file_labels,
-            provider_commands::zoho_add_file_label,
-            provider_commands::zoho_remove_file_label,
-            provider_commands::zoho_create_label,
-            provider_commands::zoho_get_user_info,
             provider_commands::zoho_get_file_share_links,
             provider_commands::zoho_delete_share_link,
             provider_commands::zoho_create_native_document,
-            provider_commands::jottacloud_move_to_trash,
             provider_commands::jottacloud_list_trash,
             provider_commands::jottacloud_restore_from_trash,
             provider_commands::jottacloud_permanent_delete,
             provider_commands::jottacloud_empty_trash,
-            provider_commands::mega_move_to_trash,
             provider_commands::mega_list_trash,
             provider_commands::mega_restore_from_trash,
             provider_commands::mega_permanent_delete,
@@ -20318,7 +20255,6 @@ pub fn run() {
             provider_commands::filelu_set_folder_settings,
             provider_commands::filelu_list_deleted,
             provider_commands::filelu_restore_file,
-            provider_commands::filelu_restore_folder,
             provider_commands::filelu_permanent_delete,
             provider_commands::filelu_remote_url_upload,
             providers::koofr::koofr_list_trash,
@@ -20328,7 +20264,6 @@ pub fn run() {
             providers::webdav::webdav_restore_trash,
             providers::webdav::webdav_delete_trash,
             providers::webdav::webdav_empty_trash,
-            provider_commands::google_drive_trash_file,
             provider_commands::google_drive_list_trash,
             provider_commands::google_drive_restore_from_trash,
             provider_commands::google_drive_permanent_delete,
@@ -20347,23 +20282,17 @@ pub fn run() {
             provider_commands::google_drive_list_comments,
             provider_commands::google_drive_add_comment,
             provider_commands::google_drive_delete_comment,
-            provider_commands::google_drive_set_properties,
-            provider_commands::google_drive_set_description,
             provider_commands::dropbox_list_trash,
             provider_commands::dropbox_restore_from_trash,
             provider_commands::dropbox_permanent_delete,
             provider_commands::dropbox_account_type,
-            provider_commands::dropbox_set_tags,
-            provider_commands::dropbox_get_tags,
             provider_commands::onedrive_list_trash,
-            provider_commands::onedrive_trash_files,
             provider_commands::onedrive_restore_from_trash,
             provider_commands::onedrive_permanent_delete,
             provider_commands::box_list_trash,
             provider_commands::box_trash_files,
             provider_commands::box_restore_from_trash,
             provider_commands::box_permanent_delete,
-            provider_commands::box_move_file,
             provider_commands::box_list_comments,
             provider_commands::box_add_comment,
             provider_commands::box_delete_comment,
@@ -20386,7 +20315,6 @@ pub fn run() {
             provider_commands::provider_bucket_encryption,
             provider_commands::mega_df_query,
             provider_commands::mega_webdav_url,
-            provider_commands::provider_disk_usage,
             provider_commands::provider_calculate_folder_size,
             provider_commands::provider_cancel_folder_size,
             provider_commands::provider_scan_used,
@@ -20423,8 +20351,6 @@ pub fn run() {
             provider_commands::github_delete_release,
             provider_commands::github_delete_release_asset,
             provider_commands::github_download_release_asset,
-            provider_commands::github_get_release,
-            provider_commands::github_batch_commit,
             provider_commands::github_batch_upload,
             provider_commands::github_batch_delete,
             provider_commands::github_check_local_sync,
@@ -20432,7 +20358,6 @@ pub fn run() {
             // GitLab-specific commands
             provider_commands::gitlab_list_branches,
             provider_commands::gitlab_get_info,
-            provider_commands::gitlab_switch_branch,
             provider_commands::gitlab_batch_upload,
             provider_commands::gitlab_batch_delete,
             provider_commands::gitlab_list_releases,
@@ -20469,10 +20394,6 @@ pub fn run() {
             provider_commands::filen_notes_untag_note,
             provider_commands::provider_find,
             provider_commands::provider_set_speed_limit,
-            provider_commands::provider_get_speed_limit,
-            provider_commands::provider_supports_resume,
-            provider_commands::provider_resume_download,
-            provider_commands::provider_resume_upload,
             // File versions
             provider_commands::provider_supports_versions,
             provider_commands::provider_list_versions,
@@ -20522,19 +20443,6 @@ pub fn run() {
             provider_commands::provider_add_permission,
             provider_commands::provider_remove_permission,
             // Multi-session provider commands
-            session_commands::session_connect,
-            session_commands::session_disconnect,
-            session_commands::session_switch,
-            session_commands::session_list,
-            session_commands::session_info,
-            session_commands::session_list_files,
-            session_commands::session_change_dir,
-            session_commands::session_mkdir,
-            session_commands::session_delete,
-            session_commands::session_rename,
-            session_commands::session_download,
-            session_commands::session_upload,
-            session_commands::session_create_share_link,
             spawn_shell,
             pty_write,
             pty_resize,
@@ -20667,7 +20575,6 @@ pub fn run() {
             mount_open_in_explorer,
             vault_mount_start,
             vault_mount_stop,
-            vault_mount_list,
             vault_mount_open,
             mount_suggest_path,
             mount_pick_drive_letter,

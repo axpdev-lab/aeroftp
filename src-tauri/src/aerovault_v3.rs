@@ -1538,7 +1538,6 @@ pub async fn is_vault_v3(path: String) -> Result<bool, String> {
 ///
 /// Returns true if a non-critical (or any) "error-correction.reed-solomon" entry is present
 /// in the extension directory.
-#[tauri::command]
 pub async fn vault_v3_has_error_correction(path: String) -> Result<bool, String> {
     aerovault::v3::VaultV3::has_error_correction(Path::new(&path))
 }
@@ -1901,7 +1900,6 @@ pub async fn vault_v3_delete_entries(
     }))
 }
 
-#[tauri::command]
 pub async fn vault_v3_move_entry(
     vault_path: String,
     password: String,
@@ -1924,7 +1922,6 @@ pub async fn vault_v3_move_entry(
     }))
 }
 
-#[tauri::command]
 pub async fn vault_v3_rename_entry(
     vault_path: String,
     password: String,
@@ -1953,7 +1950,6 @@ pub async fn vault_v3_rename_entry(
     }))
 }
 
-#[tauri::command]
 pub async fn vault_v3_copy_entry(
     vault_path: String,
     password: String,
@@ -2098,47 +2094,6 @@ pub async fn vault_v3_extract_all_impl(
     })
     .await
     .map_err(|e| format!("vault extract task failed: {e}"))?
-}
-
-#[tauri::command]
-pub async fn vault_v3_security_info(path: Option<String>) -> serde_json::Value {
-    let mut info = serde_json::json!({
-        "version": "3.0-draft",
-        "pipeline": [
-            "small-file-batching",
-            "gear-cdc",
-            "blake3-keyed-128 chunk ids",
-            "zstd per chunk",
-            "AES-256-GCM-SIV",
-            "BLAKE3-256 cipher block hashes",
-            "extension directory for Error Correction (reed-solomon)"
-        ],
-        "compression_profiles": {
-            "fast": 3,
-            "balanced": 9,
-            "archive": 19
-        },
-        "compatibility": "v4 is expected to read v3 directly; v3 skips unknown non-critical extensions",
-        "error_correction_support": "live: detached Reed-Solomon (.aerocorrect) parity with create/scrub/repair/export-parity, detached-sidecar refresh, and embedded/detached/both placements; reconstruction is re-verified against authenticated material (all-or-nothing). See AEROVAULT-V3-SPEC and #272."
-    });
-
-    if let Some(p) = path {
-        if let Ok(has_error_correction) = vault_v3_has_error_correction(p).await {
-            if let Some(obj) = info.as_object_mut() {
-                obj.insert(
-                    "error_correction".to_string(),
-                    serde_json::json!({
-                        "enabled": has_error_correction,
-                        "algorithm": "reed-solomon",
-                        "version": 1,
-                        "critical": false
-                    }),
-                );
-            }
-        }
-    }
-
-    info
 }
 
 #[cfg(test)]

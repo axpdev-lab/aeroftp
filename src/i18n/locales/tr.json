@@ -4477,9 +4477,6 @@
             "starred": "Dosya yıldızlandı",
             "unstarred": "Dosyanın yıldızı kaldırıldı"
         },
-        "dropbox": {
-            "manageTags": "Etiketleri yönet"
-        },
         "providers": {
             "title": "Sağlayıcılar ve Entegrasyonlar",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Ücretsiz plan",
             "freeCardTier": "Ücretsiz + kart",
             "paidTier": "Ücretli"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Etiketleri Yönet",
-            "noLabels": "Kullanılabilir etiket yok. Zoho WorkDrive ayarlarında etiketler oluşturun.",
-            "createLabel": "Etiket Oluştur",
-            "labelName": "Etiket adı"
         },
         "healthCheck": {
             "title": "Sunucu sağlık kontrolü",

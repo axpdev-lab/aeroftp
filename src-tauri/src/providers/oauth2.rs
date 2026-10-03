@@ -1009,15 +1009,6 @@ impl OAuth2Manager {
         Ok(())
     }
 
-    /// Alias for delete_tokens
-    pub fn clear_tokens(
-        &self,
-        provider: OAuthProvider,
-        profile_id: &str,
-    ) -> Result<(), ProviderError> {
-        self.delete_tokens(provider, profile_id)
-    }
-
     /// Check if tokens exist for the given provider/profile pair. Honours the
     /// same lazy-migration rules as `load_tokens`. Issue #214.
     pub fn has_tokens(&self, provider: OAuthProvider, profile_id: &str) -> bool {

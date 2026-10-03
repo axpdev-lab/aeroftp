@@ -4477,9 +4477,6 @@
             "starred": "Fail tärniga märgitud",
             "unstarred": "Tärn eemaldatud"
         },
-        "dropbox": {
-            "manageTags": "Halda silte"
-        },
         "providers": {
             "title": "Teenusepakkujad ja integratsioonid",
             "tabOAuth": "OAuth / API",
@@ -4517,12 +4514,6 @@
             "freeTier": "Tasuta pakett",
             "freeCardTier": "Tasuta + kaart",
             "paidTier": "Tasuline"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Halda sildeid",
-            "noLabels": "Sildeid ei ole saadaval. Looge sildeid Zoho WorkDrive seadetes.",
-            "createLabel": "Loo silt",
-            "labelName": "Sildi nimi"
         },
         "healthCheck": {
             "title": "Serveri seisundikontroll",

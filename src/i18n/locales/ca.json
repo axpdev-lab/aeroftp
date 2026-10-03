@@ -4496,9 +4496,6 @@
             "starred": "Fitxer destacat",
             "unstarred": "Fitxer sense destacar"
         },
-        "dropbox": {
-            "manageTags": "Gestionar etiquetes"
-        },
         "providers": {
             "title": "Proveïdors i integracions",
             "tabOAuth": "OAuth / API",
@@ -4536,12 +4533,6 @@
             "freeTier": "Pla gratuït",
             "freeCardTier": "Gratis + targeta",
             "paidTier": "De pagament"
-        },
-        "zohoworkdrive": {
-            "manageLabels": "Gestionar etiquetes",
-            "noLabels": "No hi ha etiquetes disponibles. Crea'n una a continuació.",
-            "createLabel": "Crear etiqueta",
-            "labelName": "Nom de l'etiqueta"
         },
         "healthCheck": {
             "title": "Comprovació del servidor",
