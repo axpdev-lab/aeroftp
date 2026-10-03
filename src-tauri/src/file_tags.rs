@@ -415,9 +415,21 @@ pub async fn file_tags_get_files_by_label(
 // `follow_move` / `follow_delete` after the filesystem change succeeds. Moving
 // to the OS trash keeps the tags, so a file restored to its path gets them back.
 
-/// `path` without trailing separators (a root stays as it is).
+/// Whether `path` is a Windows path (drive letter or UNC), where `\` and `/`
+/// both separate components. On any other path a backslash is part of a name.
+fn is_windows_path(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    (bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':')
+        || path.starts_with("\\\\")
+}
+
+/// `path` without trailing separators of its own style (a root stays as it is).
 fn trim_separators(path: &str) -> &str {
-    let trimmed = path.trim_end_matches(['/', '\\']);
+    let trimmed = if is_windows_path(path) {
+        path.trim_end_matches(['/', '\\'])
+    } else {
+        path.trim_end_matches('/')
+    };
     if trimmed.is_empty() {
         path
     } else {
@@ -425,8 +437,8 @@ fn trim_separators(path: &str) -> &str {
     }
 }
 
-/// Every tag row of `path` and of anything under it, whichever separator the
-/// stored paths use. An exact prefix comparison, not LIKE: LIKE folds ASCII
+/// Every tag row of `path` and of anything under it, with the separators of the
+/// path's own style. An exact prefix comparison, not LIKE: LIKE folds ASCII
 /// case and would match `/data/Foo` for `/data/foo`, and `%` or `_` in a name
 /// would need escaping.
 const UNDER_PATH: &str = "file_path = ?1 \
@@ -434,7 +446,9 @@ const UNDER_PATH: &str = "file_path = ?1 \
      OR substr(file_path, 1, length(?3)) = ?3";
 
 fn under_patterns(path: &str) -> (String, String) {
-    (format!("{path}/"), format!("{path}\\"))
+    // A Unix path has a single separator, so its second pattern repeats it.
+    let second = if is_windows_path(path) { '\\' } else { '/' };
+    (format!("{path}/"), format!("{path}{second}"))
 }
 
 /// Drop the tags of `path` and of everything under it.
@@ -629,6 +643,28 @@ mod tests {
                 ("C:\\work\\app\\d.rs".to_string(), 6),
             ]
         );
+    }
+
+    /// On a Unix path a backslash is a character of the name, not a separator:
+    /// `/tmp/a\b` is a sibling of `/tmp/a`, so a move or delete of `/tmp/a`
+    /// leaves it alone. A drive or UNC path still matches both separators.
+    #[test]
+    fn a_unix_backslash_is_part_of_the_name_not_a_separator() {
+        let mut conn = db();
+        tag(&conn, "/tmp/a", 1);
+        tag(&conn, "/tmp/a\\b", 2);
+        tag(&conn, "/tmp/a/c", 3);
+        move_tags_in_conn(&mut conn, "/tmp/a", "/tmp/z").unwrap();
+        assert_eq!(
+            tagged(&conn),
+            [
+                ("/tmp/a\\b".to_string(), 2),
+                ("/tmp/z".to_string(), 1),
+                ("/tmp/z/c".to_string(), 3),
+            ]
+        );
+        forget_tags_in_conn(&conn, "/tmp/z").unwrap();
+        assert_eq!(tagged(&conn), [("/tmp/a\\b".to_string(), 2)]);
     }
 
     /// A move that overwrote a tagged file takes the moved file's tags, and a
