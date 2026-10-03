@@ -3639,6 +3639,8 @@ impl StorageProvider for WebDavProvider {
         // exists for, on files of arbitrary size. Reopening also guarantees the
         // replay starts at offset zero instead of wherever the first attempt
         // stopped reading.
+        // Keep one watermark across the original PUT and its Digest replay.
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
         let put_body = || async {
             let file = tokio::fs::File::open(local_path)
                 .await
@@ -3647,7 +3649,7 @@ impl StorageProvider for WebDavProvider {
                 tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024),
                 crate::transfer_dag::governor::TransferDirection::Upload,
             );
-            Ok::<reqwest::Body, ProviderError>(reqwest::Body::wrap_stream(stream))
+            Ok::<reqwest::Body, ProviderError>(reqwest::Body::wrap_stream(progress.track(stream)))
         };
 
         let nonce_used = self.digest_nonce_snapshot();
@@ -3677,9 +3679,7 @@ impl StorageProvider for WebDavProvider {
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
-                if let Some(progress) = on_progress {
-                    progress(total_size, total_size);
-                }
+                progress.complete();
                 Ok(())
             }
             status => Err(upload_failure_error(status)),
@@ -5254,6 +5254,159 @@ mod tests {
             verify_cert: true,
             anonymous: false,
         }
+    }
+
+    #[tokio::test]
+    async fn upload_progress_reports_body_bytes_before_success() {
+        use super::super::upload_progress::fixture::{
+            assert_real_progress, recorder, serve_logged, temp_file, Route,
+        };
+
+        let (base, server, received) = serve_logged(vec![Route {
+            method: axum::http::Method::PUT,
+            path: "/up",
+            status: 201,
+            body: String::new(),
+            busy_first: false,
+        }])
+        .await;
+        let file = temp_file(1024 * 1024);
+        let (callback, updates) = recorder();
+        let mut provider = WebDavProvider::new(test_config(&base)).unwrap();
+        provider.connected = true;
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/up", Some(callback))
+            .await;
+        server.abort();
+        outcome.unwrap();
+        assert_eq!(*received.lock().unwrap(), [("/up", 1024 * 1024)]);
+        assert_real_progress(&updates.lock().unwrap(), 1024 * 1024, true);
+    }
+
+    #[tokio::test]
+    async fn upload_progress_never_completes_a_refused_body() {
+        use super::super::upload_progress::fixture::{
+            assert_real_progress, recorder, serve_logged, temp_file, Route,
+        };
+
+        let (base, server, received) = serve_logged(vec![Route {
+            method: axum::http::Method::PUT,
+            path: "/up",
+            status: 500,
+            body: String::new(),
+            busy_first: false,
+        }])
+        .await;
+        let file = temp_file(1024 * 1024);
+        let (callback, updates) = recorder();
+        let mut provider = WebDavProvider::new(test_config(&base)).unwrap();
+        provider.connected = true;
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/up", Some(callback))
+            .await;
+        server.abort();
+        assert!(outcome.is_err(), "a refused PUT must fail");
+        assert_eq!(*received.lock().unwrap(), [("/up", 1024 * 1024)]);
+        assert_real_progress(&updates.lock().unwrap(), 1024 * 1024, false);
+    }
+
+    #[tokio::test]
+    async fn upload_progress_waits_for_acknowledgement_before_completion() {
+        use super::super::upload_progress::fixture::{assert_real_progress, recorder, temp_file};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let drained = std::sync::Arc::new(tokio::sync::Notify::new());
+        let acknowledge = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
+        let handler_drained = drained.clone();
+        let handler_acknowledge = acknowledge.clone();
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::put(move |body: axum::body::Body| {
+                let drained = handler_drained.clone();
+                let acknowledge = handler_acknowledge.clone();
+                async move {
+                    let bytes = axum::body::to_bytes(body, 1024 * 1024).await.unwrap();
+                    assert_eq!(bytes.len(), 1024 * 1024);
+                    drained.notify_one();
+                    let _permit = acknowledge.acquire().await.unwrap();
+                    axum::http::StatusCode::CREATED
+                }
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let file = temp_file(1024 * 1024);
+        let (callback, updates) = recorder();
+        let mut provider = WebDavProvider::new(test_config(&base)).unwrap();
+        provider.connected = true;
+        let upload = provider.upload(file.path().to_str().unwrap(), "/up", Some(callback));
+        tokio::pin!(upload);
+        tokio::select! {
+            result = &mut upload => panic!("PUT returned before acknowledgement: {result:?}"),
+            ready = tokio::time::timeout(std::time::Duration::from_secs(5), drained.notified()) => {
+                ready.expect("server must consume the PUT body before acknowledgement");
+                assert_real_progress(&updates.lock().unwrap(), 1024 * 1024, false);
+            }
+        }
+        acknowledge.add_permits(1);
+        let outcome = upload.await;
+        server.abort();
+        outcome.unwrap();
+        assert_real_progress(&updates.lock().unwrap(), 1024 * 1024, true);
+    }
+
+    #[tokio::test]
+    async fn upload_progress_stays_monotonic_across_a_digest_replay() {
+        use super::super::upload_progress::fixture::{assert_real_progress, recorder, temp_file};
+        use axum::response::IntoResponse;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let handler_received = received.clone();
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::put(move |body: axum::body::Body| {
+                let received = handler_received.clone();
+                async move {
+                    let bytes = axum::body::to_bytes(body, 1024 * 1024).await.unwrap();
+                    let mut received = received.lock().unwrap();
+                    received.push(bytes.len());
+                    if received.len() == 1 {
+                        (
+                            axum::http::StatusCode::UNAUTHORIZED,
+                            [(
+                                axum::http::header::WWW_AUTHENTICATE,
+                                r#"Digest realm="r", nonce="rotated", qop="auth", stale=true"#,
+                            )],
+                        )
+                            .into_response()
+                    } else {
+                        axum::http::StatusCode::CREATED.into_response()
+                    }
+                }
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let file = temp_file(1024 * 1024);
+        let (callback, updates) = recorder();
+        let mut provider = digest_provider(&base);
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/up", Some(callback))
+            .await;
+        server.abort();
+        outcome.unwrap();
+        assert_eq!(*received.lock().unwrap(), [1024 * 1024, 1024 * 1024]);
+        assert_eq!(provider.digest_auth.as_ref().unwrap().nonce(), "rotated");
+        let updates = updates.lock().unwrap();
+        assert_real_progress(&updates, 1024 * 1024, true);
+        assert_eq!(
+            updates
+                .iter()
+                .filter(|&&(sent, total)| sent == total)
+                .count(),
+            1
+        );
     }
 
     #[test]
