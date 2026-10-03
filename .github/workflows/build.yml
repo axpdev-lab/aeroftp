@@ -130,6 +130,12 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
+      # The opt-in vault seeder is not part of release/default targets.
+      # Type-check it explicitly, without executing it or touching a vault.
+      - name: Test-only profile seeder still compiles
+        working-directory: src-tauri
+        run: cargo check --locked --bin seed_test_profiles --features test-seed
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test

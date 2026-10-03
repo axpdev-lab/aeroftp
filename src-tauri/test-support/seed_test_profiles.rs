@@ -1,6 +1,6 @@
 // Test helper: seeds docker harness profiles into the encrypted vault.
 // Additive-only: does not touch runtime code paths.
-// Run: cargo run --bin seed_test_profiles
+// Run: cargo run --features test-seed --bin seed_test_profiles
 //
 // Optional: set `AEROFTP_SEED_AERORSYNC_E2E=1` to also seed two SFTP profiles
 // pointed at a `linuxserver/openssh-server` container with rsync installed,
