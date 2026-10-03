@@ -142,8 +142,8 @@ each node performs I/O on every path:
 `PreserveMetadata` → `CommitTemp` → `EmitProgress`.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/facb3d32-2ec4-48ea-ae57-07603f39531d">
-  <img alt="Shaping: the seven-node envelope with the transfer-core slot, and the six shapes the builder can put in it" src="https://github.com/user-attachments/assets/15231d59-1f2b-4991-a4e4-6e68cd916dd9" width="900">
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/d8d62b49-0b01-434f-8ba6-d521b126eaca">
+  <img alt="Shaping: the seven-node envelope with the transfer-core slot, and the six shapes the builder can put in it" src="https://github.com/user-attachments/assets/33c14326-95d1-4464-b50e-c9bb3123f02a" width="900">
 </picture>
 
 *Shaping. Before the first byte moves, the builder reads the provider's capabilities and the object size and fills the transfer-core slot with one of six shapes. The envelope around it is the same for every shape, and only the blue nodes move payload. The grey dots stand for the envelope nodes on either side of the core (Acquire before it, Verify after it).*
@@ -388,8 +388,8 @@ resident nodes are therefore `O(active_file_cap x nodes_per_file)`, not
 `O(total_files x nodes_per_file)`.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/e16f13a2-f366-45ca-bde1-b6bd751bebcb">
-  <img alt="Many files: work source, bounded backlog, bounded active set of per-file subgraphs, done; every job draws from the process-wide governor" src="https://github.com/user-attachments/assets/f38608e8-5ea2-4370-9f0b-4650291d0f53" width="900">
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/d7366ea4-9b50-4e4f-a55e-dc80fc1d9128">
+  <img alt="Many files: work source, bounded backlog, bounded active set of per-file subgraphs, done; every job draws from the process-wide governor" src="https://github.com/user-attachments/assets/c7766af3-57fd-4f16-92a0-f6c2fab24112" width="900">
 </picture>
 
 *Many files. Only files admitted into the active set exist as graphs: each subgraph is built on admission and dropped when the file is done, so resident graph memory follows the active window, not the size of the job. Every job also draws from one process-wide governor, so concurrent jobs share endpoint slots, the speed limit, part memory and disk.*
