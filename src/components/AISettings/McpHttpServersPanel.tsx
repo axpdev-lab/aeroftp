@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { notifyMcpServersChanged } from '../DevTools/aiChatMcp';
+import { MCP_SERVERS_CHANGED, notifyMcpServersChanged } from '../DevTools/aiChatMcp';
 import { describeMcpError } from './mcpErrors';
 import { AuthFields, authInput, McpHttpServerCard, type HttpAuthMode, type HttpServerView } from './McpHttpServerCard';
 
@@ -31,6 +31,11 @@ export function McpHttpServersPanel() {
         if (sequence === refreshSequence.current) setServers(result);
     }, []);
     useEffect(() => { void refresh().catch(cause => setError(describeMcpError(t, cause))); }, [refresh, t]);
+    useEffect(() => {
+        const changed = () => { void refresh().catch(cause => setError(describeMcpError(t, cause))); };
+        window.addEventListener(MCP_SERVERS_CHANGED, changed);
+        return () => window.removeEventListener(MCP_SERVERS_CHANGED, changed);
+    }, [refresh, t]);
 
     const add = async () => {
         if (!idValid(id) || !endpointValid(endpoint.trim())) { setError(t('ai.mcpClient.invalidHttp')); return; }

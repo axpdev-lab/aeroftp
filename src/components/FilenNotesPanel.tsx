@@ -13,6 +13,7 @@ import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { formatDate as formatDateFull } from '../utils';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
+import { changeNoteType, createTagOnNote, deleteTag, renameTag, tagNote, untagNote } from '../utils/filenNoteTags';
 
 // ─── Types ───
 
@@ -115,9 +116,25 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const [newType, setNewType] = useState<NoteTypeOption>('text');
   const [showCreateForm, setShowCreateForm] = useState(false);
 
+  // State: tags
+  const [newTagName, setNewTagName] = useState<string | null>(null);
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [renamingTag, setRenamingTag] = useState<{ uuid: string; name: string } | null>(null);
+  const [pendingDeleteTag, setPendingDeleteTag] = useState<FilenNoteTag | null>(null);
+
   // Refs
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The open note, so a late request result is applied only to the note it was made on
+  const selectedUuidRef = useRef<string | null>(null);
+  const creatingTagRef = useRef(false);
+  // A second type change while one is pending could leave the server and the
+  // editor on different types when the first one fails: the selector waits.
+  const [typeChangePending, setTypeChangePending] = useState(false);
+
+  useEffect(() => {
+    selectedUuidRef.current = selectedNote?.uuid ?? null;
+  }, [selectedNote]);
 
   // ── Data loading ──
 
@@ -466,6 +483,104 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     });
   }, [notes, filter, searchQuery]);
 
+  // ── Note type and tags ──
+
+  // The type goes through Filen's own change endpoint: sent only with the next
+  // content save, a type change without a text edit was lost on reload.
+  const handleTypeChange = useCallback(async (next: NoteTypeOption) => {
+    if (!selectedNote) return;
+    const previous = noteType;
+    // A pending auto-save carries the old type and, landing after the change,
+    // would put it back: cancel it and save the edit ahead of the change.
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    setNoteType(next);
+    setTypeChangePending(true);
+    try {
+      if (dirty) {
+        await invoke('filen_notes_edit_content', { uuid: selectedNote.uuid, content: noteContent, noteType: previous });
+      }
+      await changeNoteType(invoke, selectedNote.uuid, next);
+      setNotes(prev => prev.map(n => (n.uuid === selectedNote.uuid ? { ...n, noteType: next } : n)));
+      setSelectedNote(prev => (prev && prev.uuid === selectedNote.uuid ? { ...prev, noteType: next } : prev));
+    } catch (err) {
+      if (selectedUuidRef.current === selectedNote.uuid) setNoteType(previous);
+      setError(String(err));
+    } finally {
+      setTypeChangePending(false);
+    }
+  }, [selectedNote, noteType, dirty, noteContent]);
+
+  const setNoteTags = useCallback((noteUuid: string, update: (tags: { uuid: string }[]) => { uuid: string }[]) => {
+    setNotes(prev => prev.map(n => (n.uuid === noteUuid ? { ...n, tags: update(n.tags) } : n)));
+    setSelectedNote(prev => (prev && prev.uuid === noteUuid ? { ...prev, tags: update(prev.tags) } : prev));
+  }, []);
+
+  const reloadTags = useCallback(async () => {
+    setTags(await invoke<FilenNoteTag[]>('filen_notes_tags_list'));
+  }, []);
+
+  const handleAddTag = useCallback(async (tagUuid: string) => {
+    if (!selectedNote) return;
+    try {
+      await tagNote(invoke, selectedNote.uuid, tagUuid);
+      setNoteTags(selectedNote.uuid, current => [...current, { uuid: tagUuid }]);
+    } catch (err) {
+      setError(String(err));
+    }
+  }, [selectedNote, setNoteTags]);
+
+  const handleRemoveTag = useCallback(async (tagUuid: string) => {
+    if (!selectedNote) return;
+    try {
+      await untagNote(invoke, selectedNote.uuid, tagUuid);
+      setNoteTags(selectedNote.uuid, current => current.filter(tg => tg.uuid !== tagUuid));
+    } catch (err) {
+      setError(String(err));
+    }
+  }, [selectedNote, setNoteTags]);
+
+  const handleCreateTag = useCallback(async () => {
+    // Enter pressed again while the request runs would create the tag twice
+    if (!selectedNote || !newTagName?.trim() || creatingTagRef.current) return;
+    creatingTagRef.current = true;
+    try {
+      const tagUuid = await createTagOnNote(invoke, selectedNote.uuid, newTagName);
+      setNoteTags(selectedNote.uuid, current => [...current, { uuid: tagUuid }]);
+      setNewTagName(null);
+      await reloadTags();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      creatingTagRef.current = false;
+    }
+  }, [selectedNote, newTagName, setNoteTags, reloadTags]);
+
+  const handleRenameTag = useCallback(async () => {
+    if (!renamingTag?.name.trim()) return;
+    try {
+      await renameTag(invoke, renamingTag.uuid, renamingTag.name);
+      setRenamingTag(null);
+      await reloadTags();
+    } catch (err) {
+      setError(String(err));
+    }
+  }, [renamingTag, reloadTags]);
+
+  const handleDeleteTag = useCallback(async (tag: FilenNoteTag) => {
+    setPendingDeleteTag(null);
+    try {
+      await deleteTag(invoke, tag.uuid);
+      setNotes(prev => prev.map(n => ({ ...n, tags: n.tags.filter(tg => tg.uuid !== tag.uuid) })));
+      setSelectedNote(prev => (prev ? { ...prev, tags: prev.tags.filter(tg => tg.uuid !== tag.uuid) } : prev));
+      await reloadTags();
+    } catch (err) {
+      setError(String(err));
+    }
+  }, [reloadTags]);
+
   // ── Tag resolution ──
 
   const getTagName = useCallback((tagUuid: string) => {
@@ -561,7 +676,9 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           </button>
           <select
             value={noteType}
-            onChange={e => setNoteType(e.target.value as NoteTypeOption)}
+            onChange={e => void handleTypeChange(e.target.value as NoteTypeOption)}
+            disabled={typeChangePending}
+            aria-label={t('filenNotes.noteType')}
             className="text-xs bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded px-1.5 py-0.5 text-gray-700 dark:text-gray-300"
           >
             {Object.entries(NOTE_TYPE_LABELS).map(([k, label]) => (
@@ -595,15 +712,99 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         />
       )}
 
-      {/* Editor footer: tags */}
-      {selectedNote && selectedNote.tags.length > 0 && (
-        <div className="flex items-center gap-1 px-4 py-2 border-t border-gray-200 dark:border-gray-700">
-          <Tag size={11} className="text-gray-400" />
-          {selectedNote.tags.map(tag => (
-            <span key={tag.uuid} className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
-              {getTagName(tag.uuid)}
-            </span>
-          ))}
+      {/* Editor footer: tags (add, remove, create; rename and delete in the manager) */}
+      {selectedNote && (
+        <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1">
+            <Tag size={11} className="text-gray-400" />
+            {selectedNote.tags.map(tag => (
+              <span key={tag.uuid} className="inline-flex items-center gap-0.5 text-xs bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                {getTagName(tag.uuid)}
+                <button
+                  onClick={() => void handleRemoveTag(tag.uuid)}
+                  className="hover:text-red-500"
+                  title={t('filenNotes.removeTag')}
+                  aria-label={t('filenNotes.removeTag')}
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))}
+            {newTagName === null ? (
+              <select
+                value=""
+                onChange={e => {
+                  if (e.target.value === '__new__') setNewTagName('');
+                  else if (e.target.value) void handleAddTag(e.target.value);
+                }}
+                aria-label={t('filenNotes.addTag')}
+                className="text-xs bg-transparent border border-dashed border-gray-300 dark:border-gray-600 rounded px-1 py-0.5 text-gray-500"
+              >
+                <option value="">{t('filenNotes.addTag')}</option>
+                {tags.filter(tg => !selectedNote.tags.some(st => st.uuid === tg.uuid)).map(tg => (
+                  <option key={tg.uuid} value={tg.uuid}>{tg.name}</option>
+                ))}
+                <option value="__new__">{t('filenNotes.newTag')}</option>
+              </select>
+            ) : (
+              <input
+                autoFocus
+                value={newTagName}
+                onChange={e => setNewTagName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void handleCreateTag(); }
+                  if (e.key === 'Escape') { e.stopPropagation(); setNewTagName(null); }
+                }}
+                onBlur={() => { if (!newTagName.trim()) setNewTagName(null); }}
+                placeholder={t('filenNotes.tagName')}
+                aria-label={t('filenNotes.tagName')}
+                className="text-xs bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5 w-28"
+              />
+            )}
+            {tags.length > 0 && (
+              <button
+                onClick={() => setShowTagManager(v => !v)}
+                className="ml-auto text-[11px] text-gray-500 hover:underline"
+              >
+                {t('filenNotes.manageTags')}
+              </button>
+            )}
+          </div>
+          {showTagManager && (
+            <div className="space-y-1">
+              {tags.map(tg => (
+                <div key={tg.uuid} className="flex items-center gap-1.5 text-xs">
+                  {renamingTag?.uuid === tg.uuid ? (
+                    <input
+                      autoFocus
+                      value={renamingTag.name}
+                      onChange={e => setRenamingTag({ uuid: tg.uuid, name: e.target.value })}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); void handleRenameTag(); }
+                        if (e.key === 'Escape') { e.stopPropagation(); setRenamingTag(null); }
+                      }}
+                      aria-label={t('filenNotes.tagName')}
+                      className="flex-1 bg-transparent border border-gray-300 dark:border-gray-600 rounded px-1.5 py-0.5"
+                    />
+                  ) : (
+                    <span className="flex-1 truncate text-gray-700 dark:text-gray-300">{tg.name}</span>
+                  )}
+                  {pendingDeleteTag?.uuid === tg.uuid ? (
+                    <>
+                      <span className="text-red-500">{t('filenNotes.deleteTagConfirm', { name: tg.name })}</span>
+                      <button onClick={() => void handleDeleteTag(tg)} className="text-red-500 hover:underline">{t('common.delete')}</button>
+                      <button onClick={() => setPendingDeleteTag(null)} className="text-gray-500 hover:underline">{t('common.cancel')}</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => setRenamingTag({ uuid: tg.uuid, name: tg.name })} className="text-gray-500 hover:underline">{t('common.rename')}</button>
+                      <button onClick={() => setPendingDeleteTag(tg)} className="text-red-500 hover:underline">{t('common.delete')}</button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

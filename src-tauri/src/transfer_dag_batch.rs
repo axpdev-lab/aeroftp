@@ -238,11 +238,6 @@ where
 
     let entries = Arc::new(entries);
 
-    // DAG-P2-07 (block F): keep a handle to the same profile-bound controller
-    // the run uses, so the slow optimization loop can feed this job's realized
-    // telemetry back to the exact endpoint/workload key after the run drains.
-    let aimd_for_slow_loop = Arc::clone(&aimd);
-
     // Everything shared across the whole batch. Only a file's subgraph, its
     // node bindings, and its multipart runtime are built fresh on admission.
     let ctx = Arc::new(BatchStreamContext {
@@ -271,10 +266,6 @@ where
     // the whole frontier, so every per-file subgraph's execute_dag nests and
     // each real HTTP first-byte sample is counted exactly once for the job
     // (per-file subgraph metrics report ttfb_samples == 0). Folded below.
-    // DAG-P2-07 (block F): bracket the transfer phase with its own clock. The
-    // slow-loop throughput denominator must exclude the pre-frontier setup
-    // (caps/identity/AIMD construction) that `started_at` spans.
-    let transfer_started_at = Instant::now();
     let ttfb_guard = crate::transfer_dag::ttfb::TtfbRecorder::install();
     let mut streaming_summary =
         crate::transfer_dag::run_streaming(source, streaming_config, move |item, admission| {
@@ -292,23 +283,11 @@ where
         .metrics
         .ttfb_samples
         .saturating_add(u32::try_from(ttfb_samples).unwrap_or(u32::MAX));
-    // DAG-P2-07 (block F): feed this job's populated throughput/wait/plateau
-    // telemetry into the slow optimization loop, but only on a job that
-    // actually drained clean: never on cancellation (a torn-down run cannot
-    // poison the learned profile) and never with per-file failures (a
-    // retry-storm file can depress or inflate the baseline). The controller
-    // itself is the guard for `--aimd-disable` and for the no-profile
-    // (test-injected) case.
+    // The frontier's fold keeps the max of per-file `slot_peak`, which is 1
+    // for a whole file whatever ran beside it. The job-level value is the
+    // most files that held a transfer session together (#591).
+    streaming_summary.metrics.slot_peak = progress.lock().await.peak_active;
     let cancelled = cancel.load(Ordering::Relaxed);
-    let failed = progress.lock().await.failed;
-    if !cancelled && failed == 0 {
-        if let Some(obs) = crate::transfer_dag::JobThroughputObservation::from_metrics(
-            &streaming_summary.metrics,
-            transfer_started_at.elapsed(),
-        ) {
-            aimd_for_slow_loop.observe_job(crate::transfer_dag::AdaptiveClass::File, obs);
-        }
-    }
 
     // DAG-P2-07 (block E): the frontier folded every per-file subgraph metrics
     // into one job-level total. Combine it with the wall clock and the process
@@ -697,10 +676,7 @@ where
         .acquire_job(endpoint, TransferPriority::Background, [disk_request])
         .await;
 
-    {
-        let mut snapshot = progress.lock().await;
-        snapshot.active += 1;
-    }
+    mark_file_active(&mut *progress.lock().await);
 
     let outcome = executor
         .execute_with_session(entry.clone(), session_lease)
@@ -725,6 +701,28 @@ where
     let node_outcome = node_outcome_for_file_result(&outcome);
     account_outcome(progress, sink, progress_observer, outcome, bytes, true).await;
     node_outcome
+}
+
+/// Whether a multipart node must stop (#591).
+///
+/// `cancel` is the batch flag: "start no further file". It stops a file whose
+/// multipart session has not begun yet. A begun file is in flight, and like a
+/// single-shot file in flight it only stops on a hard cancel, which reaches
+/// the executor (`is_transfer_cancelled`: the token every caller cancels on a
+/// hard stop). Without this split the GUI's first Stop, which promises the
+/// files in flight finish, aborted a large S3/B2/Azure upload part-way.
+fn multipart_should_stop(cancel: &AtomicBool, hard_cancelled: bool, begun: bool) -> bool {
+    hard_cancelled || (!begun && cancel.load(Ordering::Relaxed))
+}
+
+/// A file now holds a transfer session: count it and keep the high-water.
+///
+/// `peak_active` is the job's real file concurrency. The streaming frontier
+/// cannot measure it: it folds per-file subgraphs, each of which runs one
+/// transfer node, so their `slot_peak` is 1 whatever ran beside them.
+fn mark_file_active(snapshot: &mut BatchProgressSnapshot) {
+    snapshot.active += 1;
+    snapshot.peak_active = snapshot.peak_active.max(snapshot.active);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -771,7 +769,8 @@ where
 
     // Pre-cancel before begin/lease: leave the file unaccounted (legacy contract).
     // After begin, record cancellation so CommitTemp aborts once.
-    let cancelled_now = cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled();
+    let cancelled_now =
+        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
     if cancelled_now {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
@@ -821,14 +820,14 @@ where
             }
             SessionLeaseSlot::Vacant => {
                 // Re-check cancel before acquiring a lease for an unstarted file.
-                if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+                if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun())
+                {
                     return NodeOutcome::Completed;
                 }
                 match session_pool.acquire().await {
                     Ok(lease) => {
                         *slot = SessionLeaseSlot::Held(lease);
-                        let mut snapshot = progress.lock().await;
-                        snapshot.active += 1;
+                        mark_file_active(&mut *progress.lock().await);
                     }
                     Err(error) => {
                         tracing::warn!("Multipart session acquisition failed: {}", error);
@@ -849,7 +848,7 @@ where
         }
     }
 
-    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+    if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
         }
@@ -865,7 +864,7 @@ where
     if state.has_failure().await {
         return NodeOutcome::Completed;
     }
-    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+    if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
         }
@@ -901,7 +900,7 @@ where
     // providers read a bounded window; owning providers materialize it inside
     // `multipart_upload_part_body`. Both stay inside the held `buffer_bytes`
     // lease, and a read error surfaces as a typed part failure from the call.
-    if cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled() {
+    if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         // Session already begun: cancel is a terminal file failure.
         state.record_failure(cancelled_failure()).await;
         return NodeOutcome::Completed;
@@ -1001,7 +1000,8 @@ where
     let state = Arc::clone(&runtime.state);
 
     // All part nodes have drained (DAG dependency). Decide complete vs abort.
-    let cancel_flag = cancel.load(Ordering::Relaxed) || executor.is_transfer_cancelled();
+    let cancel_flag =
+        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
     let lease_was_held = {
         let slot = runtime.session_lease.lock().await;
         matches!(*slot, SessionLeaseSlot::Held(_))
@@ -1725,88 +1725,98 @@ mod tests {
         );
     }
 
-    /// DAG-P2-07 (block F) wiring: a drained successful batch feeds its
-    /// realized telemetry into the shared BatchSyncFile profile key through
-    /// `observe_job`.
-    #[tokio::test]
-    async fn batch_dag_drained_success_records_the_slow_loop_baseline() {
-        use crate::transfer_dag::{
-            AdaptiveProfileConfig, AdaptiveProfileKey, AdaptiveProfileRegistry, AdaptiveWorkload,
-            EndpointIdentity, TransferBudget,
-        };
-        let registry = Arc::new(AdaptiveProfileRegistry::new(
-            AdaptiveProfileConfig::default(),
-        ));
-        let endpoint = EndpointIdentity::new("mock", "slow-loop-host", "slow-loop-acct");
+    /// Runs one batch of `files` entries at `max_concurrent` against
+    /// `endpoint`, building its controller from `registry` exactly as
+    /// production builds it from the process-global one, and returns the most
+    /// files the executor saw in flight together.
+    async fn run_learning_job(
+        registry: &Arc<crate::transfer_dag::AdaptiveProfileRegistry>,
+        endpoint: &crate::transfer_dag::EndpointIdentity,
+        files: usize,
+        max_concurrent: u32,
+    ) -> (TransferBatchResult, usize) {
         let aimd = batch_aimd_controller(
-            &TransferBudget::from_file_slots(2),
-            Some(crate::providers::ProviderType::S3),
+            &crate::transfer_dag::TransferBudget::from_file_slots(max_concurrent as u16),
+            Some(crate::providers::ProviderType::WebDav),
             endpoint.clone(),
-            registry.clone(),
+            Arc::clone(registry),
             AimdConfig::default(),
         );
-        let executor = Arc::new(MockExecutor::new(4));
+        let executor = Arc::new(MockExecutor::new(8));
+        let entries = (0..files).map(|i| entry(&format!("f{i}"), 1_000)).collect();
         let result = execute_batch_dag_with_aimd(
             Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(vec![entry("a", 100), entry("b", 200)], 2),
+            batch(entries, max_concurrent),
             Arc::clone(&executor),
             Arc::new(AtomicBool::new(false)),
             None,
             aimd,
         )
         .await;
-
-        assert_eq!(result.completed, 2);
-        assert_eq!(result.failed, 0);
-        let snapshot = registry.snapshot();
-        assert_eq!(
-            snapshot.len(),
-            1,
-            "a drained successful batch records exactly one profile entry"
-        );
-        assert_eq!(
-            snapshot[0].key,
-            AdaptiveProfileKey::new(endpoint, AdaptiveWorkload::BatchSyncFile)
-        );
+        (result, executor.peak())
     }
 
-    /// DAG-P2-07 (block F) no-poison guard: a batch that drained with a
-    /// per-file failure records nothing into the slow-loop registry (a
-    /// retry-storm file can depress or inflate the learned baseline).
+    /// #591: what a batch learns about a server must not make the next one
+    /// slower without a congestion signal. The former job-end loop compared
+    /// throughput across unlike jobs and, fed a concurrency of 1 by the
+    /// frontier's fold, taught a server "one file at a time" after any two
+    /// batches: a one-file job, then a faster eight-file job, and every batch
+    /// after that ran serially. Each sequence here failed that way.
     #[tokio::test]
-    async fn batch_dag_drained_with_a_failed_file_records_nothing_in_the_slow_loop() {
-        use crate::transfer_dag::{
-            AdaptiveProfileConfig, AdaptiveProfileRegistry, EndpointIdentity, TransferBudget,
-        };
-        let registry = Arc::new(AdaptiveProfileRegistry::new(
-            AdaptiveProfileConfig::default(),
-        ));
-        let aimd = batch_aimd_controller(
-            &TransferBudget::from_file_slots(2),
-            Some(crate::providers::ProviderType::S3),
-            EndpointIdentity::new("mock", "slow-loop-host", "slow-loop-acct"),
-            registry.clone(),
-            AimdConfig::default(),
-        );
-        let mut executor = MockExecutor::new(4);
-        executor.fail.insert("bad".to_string());
-        let executor = Arc::new(executor);
-        let result = execute_batch_dag_with_aimd(
-            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
-            batch(vec![entry("bad", 100), entry("good", 200)], 2),
-            Arc::clone(&executor),
-            Arc::new(AtomicBool::new(false)),
-            None,
-            aimd,
-        )
-        .await;
+    async fn job_history_without_congestion_never_narrows_the_next_batch() {
+        let sequences: [(&str, &[(usize, u32)]); 3] = [
+            (
+                "one file, then a selection",
+                &[(1, 8), (8, 8), (8, 8), (2, 8), (8, 8)],
+            ),
+            (
+                "setting raised from 1 to 8",
+                &[(8, 1), (8, 8), (8, 2), (8, 8)],
+            ),
+            (
+                "lower setting, then wider",
+                &[(8, 3), (8, 8), (3, 8), (16, 8), (16, 8)],
+            ),
+        ];
+        for (name, jobs) in sequences {
+            let registry = Arc::new(crate::transfer_dag::AdaptiveProfileRegistry::new(
+                crate::transfer_dag::AdaptiveProfileConfig::default(),
+            ));
+            let endpoint = crate::transfer_dag::EndpointIdentity::new("webdav", name, "");
+            for (job, &(files, max_concurrent)) in jobs.iter().enumerate() {
+                let (result, peak) =
+                    run_learning_job(&registry, &endpoint, files, max_concurrent).await;
+                assert_eq!(result.completed as usize, files, "{name}, job {job}");
+                assert_eq!(
+                    peak,
+                    files.min(max_concurrent as usize),
+                    "{name}, job {job}: {files} files at {max_concurrent} slots"
+                );
+            }
+            assert!(
+                registry.is_empty(),
+                "{name}: a job without congestion teaches the server nothing"
+            );
+        }
+    }
 
-        assert_eq!(result.failed, 1);
-        assert_eq!(result.completed, 1);
-        assert!(
-            registry.is_empty(),
-            "a batch with per-file failures must not feed the slow loop"
-        );
+    /// The job's `slot_peak` is the most files that transferred together.
+    /// The frontier folds per-file subgraphs, each of which reports 1 for a
+    /// whole file, so before this the engine stats said 1 for every batch.
+    #[tokio::test]
+    async fn engine_stats_report_the_files_that_ran_together() {
+        let registry = Arc::new(crate::transfer_dag::AdaptiveProfileRegistry::new(
+            crate::transfer_dag::AdaptiveProfileConfig::default(),
+        ));
+        let endpoint = crate::transfer_dag::EndpointIdentity::new("webdav", "slot-peak", "");
+        let (result, peak) = run_learning_job(&registry, &endpoint, 8, 8).await;
+        assert_eq!(peak, 8);
+        let stats = result.engine_stats.expect("a drained batch has stats");
+        assert_eq!(stats.metrics.slot_peak, 8);
+
+        let (result, peak) = run_learning_job(&registry, &endpoint, 6, 2).await;
+        assert_eq!(peak, 2);
+        assert_eq!(result.engine_stats.expect("stats").metrics.slot_peak, 2);
     }
 
     #[tokio::test]
@@ -2436,6 +2446,91 @@ mod tests {
         assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    /// #591: the batch flag means "start no further file". The GUI's first
+    /// Stop raises only that flag and promises the files in flight finish; a
+    /// multipart file whose session has begun is in flight, so it must not be
+    /// aborted part-way by it. Before the fix every part node re-read the flag
+    /// and the file was aborted after its first part.
+    async fn run_multipart_with_stop_on_first_part(
+        files: usize,
+        max_concurrent: u32,
+        hard: bool,
+    ) -> (TransferBatchResult, Arc<MockExecutor>) {
+        let chunk = 8u64;
+        let file_size = 24u64; // 3 parts each
+        let dir = tempfile::tempdir().expect("tempdir");
+        let entries = (0..files)
+            .map(|i| {
+                let path = dir.path().join(format!("source{i}.bin"));
+                std::fs::write(&path, vec![7u8; file_size as usize]).expect("write");
+                entry_with_local(&format!("m{i}"), file_size, path.to_str().unwrap())
+            })
+            .collect();
+        let mut mock = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(1, chunk))
+            .with_multipart_wire();
+        mock.part_delay = Duration::from_millis(40);
+        let executor = Arc::new(mock);
+        let stop = Arc::new(AtomicBool::new(false));
+        let watcher = {
+            let executor = Arc::clone(&executor);
+            let stop = Arc::clone(&stop);
+            tokio::spawn(async move {
+                while executor.part_calls.load(AtomicOrdering::SeqCst) == 0 {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+                if hard {
+                    // A hard cancel reaches the executor's token as well.
+                    executor.cancelled.store(true, Ordering::Relaxed);
+                }
+                stop.store(true, Ordering::Relaxed);
+            })
+        };
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(entries, max_concurrent),
+            Arc::clone(&executor),
+            Arc::clone(&stop),
+            None,
+        )
+        .await;
+        watcher.await.expect("watcher");
+        (result, executor)
+    }
+
+    #[tokio::test]
+    async fn multipart_soft_stop_after_begin_lets_the_file_finish() {
+        let (result, executor) = run_multipart_with_stop_on_first_part(1, 4, false).await;
+        assert_eq!(result.completed, 1, "{result:?}");
+        assert_eq!(result.failed, 0);
+        assert_eq!(executor.part_calls.load(AtomicOrdering::SeqCst), 3);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_soft_stop_starts_no_further_file() {
+        let (result, executor) = run_multipart_with_stop_on_first_part(2, 1, false).await;
+        assert_eq!(
+            result.completed, 1,
+            "the file in flight finishes: {result:?}"
+        );
+        assert_eq!(
+            executor.begin_calls.load(AtomicOrdering::SeqCst),
+            1,
+            "the second file never begins"
+        );
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn multipart_hard_cancel_after_begin_still_aborts_the_file() {
+        let (result, executor) = run_multipart_with_stop_on_first_part(1, 4, true).await;
+        assert_eq!(result.completed, 0, "{result:?}");
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
     }
 
     #[tokio::test]

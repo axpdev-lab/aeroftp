@@ -687,6 +687,41 @@ describe('remoteSyncRunner — verify policy', () => {
         expect(statuses.some(([, s]) => s === 'verify_failed')).toBe(true);
     });
 
+    it('passes the failure message with an error or verify_failed status', async () => {
+        // The Transfer Queue row of a failed file shows this message (#364).
+        const statuses: Array<[string, string, string | undefined]> = [];
+        const { invoke } = makeInvoke({
+            ...denyUpload,
+            download_file: (_args, idx) => {
+                if (idx === 0) throw new Error('connection reset');
+                return undefined;
+            },
+            verify_local_transfer: (): VerifyResult => ({
+                path: '/home/u/work/short.txt',
+                passed: false,
+                policy: 'size_only',
+                expected_size: 100,
+                actual_size: 40,
+                size_match: false,
+                mtime_match: null,
+                hash_match: null,
+                message: 'size mismatch',
+            }),
+        });
+        await runRemoteSync(
+            [file('up.txt', 'upload'), file('gone.txt', 'download'), file('short.txt', 'download', { size: 100 })],
+            noDirs,
+            baseConfig({ verifyPolicy: 'size_only' }),
+            { onFileStatus: (p, s, m) => statuses.push([p, s, m]) },
+            noWaitDeps(invoke),
+        );
+        expect(statuses.filter(([, s]) => s === 'error' || s === 'verify_failed')).toEqual([
+            ['up.txt', 'error', 'Error: permission denied'],
+            ['gone.txt', 'error', 'Error: connection reset'],
+            ['short.txt', 'verify_failed', 'short.txt: size mismatch'],
+        ]);
+    });
+
     it('does not call the verifier when policy is none', async () => {
         const { invoke, calls } = makeInvoke();
         await runRemoteSync(

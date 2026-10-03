@@ -3342,6 +3342,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
             supports_permissions: true,
             available_permissions: vec!["view".into(), "edit".into()],
             supports_list_links: true,
+            // Revoked one link at a time through `remove_share_link_by_id`:
+            // a file can carry several.
             supports_revoke: true,
         }
     }
@@ -3360,6 +3362,20 @@ impl StorageProvider for ZohoWorkdriveProvider {
             })
             .collect();
         Ok(links)
+    }
+
+    async fn remove_share_link_by_id(
+        &mut self,
+        _path: &str,
+        link_id: &str,
+    ) -> Result<(), ProviderError> {
+        // The id becomes a URL path segment.
+        if !super::is_link_id(link_id) {
+            return Err(ProviderError::InvalidPath(format!(
+                "Not a Zoho WorkDrive link id: {link_id}"
+            )));
+        }
+        self.delete_share_link(link_id).await
     }
 
     async fn create_share_link(
@@ -4606,6 +4622,47 @@ mod tests {
         assert_eq!(
             find_byte_amount_by_keys(&json!({"x": 1}), ZOHO_TOTAL_QUOTA_KEYS),
             None
+        );
+    }
+
+    /// A WorkDrive file can carry several external links, and the Manage
+    /// list offers each one: revoking deletes the one picked, by its id.
+    /// There was no `remove_share_link` at all, so the button only failed.
+    #[tokio::test]
+    async fn revoking_a_listed_link_deletes_that_link_id() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                seen.lock().unwrap().push(format!(
+                    "{method} {}{}",
+                    uri.path(),
+                    uri.query().map(|q| format!("?{q}")).unwrap_or_default()
+                ));
+                async { (axum::http::StatusCode::NO_CONTENT, r#""#) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+
+        provider
+            .remove_share_link_by_id("/a.txt", "abc123")
+            .await
+            .expect("deleted");
+        let refused = provider.remove_share_link_by_id("/a.txt", "abc/../x").await;
+        assert!(
+            matches!(refused, Err(ProviderError::InvalidPath(_))),
+            "{refused:?}"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["DELETE /workdrive/api/v1/links/abc123"]
         );
     }
 }
