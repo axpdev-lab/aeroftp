@@ -126,6 +126,9 @@ jobs:
       - name: i18n validation
         run: npm run i18n:validate
 
+      - name: DMG verifier regression tests
+        run: python3 -m unittest discover -s .github/scripts -p test_verify_macos_dmg.py -v
+
       - name: Rust linting (clippy)
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
@@ -148,21 +151,19 @@ jobs:
             target: linux
           - platform: windows-latest
             target: windows
-          # Two per-arch macOS DMGs, both built on macos-14 (Sonoma). Pinned
-          # to macos-14 (not macos-latest) because Tauri's `bundle_dmg.sh`
-          # fails on macOS 15 (Sequoia). The Intel leg cross-compiles to
-          # x86_64-apple-darwin on the arm64 runner: a single `universal`
-          # leg is intentionally avoided because tauri's universal pseudo-
-          # target lipo's only the main GUI binary, leaving the extra package
-          # bins (aeroftp-cli, aeroftp-dispatch, aerorsync_serve, ...) absent
-          # from the universal dir and breaking `.app` bundling. A real target
-          # triple builds and bundles every bin natively in one pass. The old
-          # macos-13 (Intel) leg was removed: GitHub retired that runner image
-          # on 2025-12-08, leaving the job queued forever.
-          - platform: macos-14
+          # Compare both supported arm64 runner images before selecting the
+          # permanent pin. Intel still cross-compiles with a real target triple,
+          # so every Cargo binary is included (no universal pseudo-target).
+          - platform: macos-15
             target: macos
             arch: aarch64
-          - platform: macos-14
+          - platform: macos-15
+            target: macos
+            arch: x64
+          - platform: macos-latest
+            target: macos
+            arch: aarch64
+          - platform: macos-latest
             target: macos
             arch: x64
 
@@ -364,6 +365,33 @@ jobs:
           cp src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg \
             src-tauri/target/release/bundle/dmg/
           ls -la src-tauri/target/release/bundle/dmg/
+
+      # A published macos-14 DMG is the compatibility baseline, including
+      # implicit Cargo helpers. Mount both read-only and always detach them.
+      - name: Verify macOS DMG payload and minimum system version
+        if: matrix.target == 'macos'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          baseline_dir="${RUNNER_TEMP}/aeroftp-dmg-baseline"
+          mkdir -p "$baseline_dir"
+          gh release download v4.2.1 --repo axpdev-lab/aeroftp \
+            --pattern "AeroFTP_4.2.1_${PACKAGE_ARCH}.dmg" --dir "$baseline_dir"
+          expected_arch=arm64
+          if [[ "$PACKAGE_ARCH" == x64 ]]; then expected_arch=x86_64; fi
+          shopt -s nullglob
+          images=(src-tauri/target/release/bundle/dmg/*.dmg)
+          if [[ "${#images[@]}" != 1 ]]; then
+            echo "::error::Expected exactly one DMG, found ${#images[@]}"
+            exit 1
+          fi
+          python3 .github/scripts/verify-macos-dmg.py \
+            --dmg "${images[0]}" \
+            --reference "$baseline_dir/AeroFTP_4.2.1_${PACKAGE_ARCH}.dmg" \
+            --arch "$expected_arch"
 
       - name: Patch Debian dispatcher layout
         if: matrix.target == 'linux'
@@ -632,7 +660,7 @@ jobs:
         if: matrix.target == 'macos'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: aeroftp-macos-${{ matrix.arch }}-${{ github.sha }}
+          name: aeroftp-macos-${{ matrix.arch }}-${{ matrix.platform }}-${{ github.sha }}
           path: src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: warn
           retention-days: 1
