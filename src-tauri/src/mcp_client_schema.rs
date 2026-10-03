@@ -174,6 +174,12 @@ fn bounds_leave_a_value(kind: &str, property: &Value) -> bool {
     let (Some((low, low_inclusive)), Some((high, high_inclusive))) = (lower, upper) else {
         return true;
     };
+    // The exact order first: beyond 2^53 two different bounds share one f64.
+    match numeric_order(low, high) {
+        Some(Ordering::Less) => {}
+        Some(Ordering::Equal) if low_inclusive && high_inclusive => {}
+        _ => return false,
+    }
     if kind == "integer" {
         let (Some(low), Some(high)) = (low.as_f64(), high.as_f64()) else {
             return false;
@@ -190,11 +196,7 @@ fn bounds_leave_a_value(kind: &str, property: &Value) -> bool {
         };
         return first <= last;
     }
-    match numeric_order(low, high) {
-        Some(Ordering::Less) => true,
-        Some(Ordering::Equal) => low_inclusive && high_inclusive,
-        _ => false,
-    }
+    true
 }
 
 fn validate_schema(schema: &Value) -> Result<(), SchemaError> {
@@ -492,6 +494,9 @@ mod tests {
             json!({"type":"integer","exclusiveMinimum":5,"maximum":5.5}),
             json!({"type":"integer","minimum":5.2,"maximum":5.8}),
             json!({"type":"integer","exclusiveMinimum":5,"exclusiveMaximum":6}),
+            // Beyond 2^53 both bounds round to the same f64: the exact order decides.
+            json!({"type":"integer","minimum":9007199254740993u64,"maximum":9007199254740992u64}),
+            json!({"type":"integer","minimum":9007199254740993u64,"exclusiveMaximum":9007199254740993u64}),
         ] {
             assert_eq!(
                 validate_schema(&schema(property.clone())),
