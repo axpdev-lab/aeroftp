@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Cài đặt sẵn đồng bộ",
-            "nothingToDo": "Cài đặt sẵn đồng bộ",
+            "nothingToDo": "Không có gì để đồng bộ",
             "allSkipped": "Không có mục nào có thể thực hiện cho cài đặt sẵn này.",
-            "deletesDeferred": "Cài đặt sẵn đồng bộ",
             "builtinModesGroup": "Chế độ tích hợp sẵn",
             "savedPresetsGroup": "Các preset đã lưu của bạn"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Thư mục sao lưu không được chứa '..'.",
                     "name": "Tên thư mục sao lưu này không hợp lệ."
                 }
-            }
+            },
+            "savedPresetLimits": "Áp dụng hướng, thao tác xóa, loại trừ và xác minh. Các quy tắc so sánh, lần thử lại, luồng và nén đã lưu không được áp dụng. Xem lại thẻ So sánh và cài đặt truyền hiện tại trước khi chạy.",
+            "savedPresetsLoadFailed": "Không thể tải các cấu hình đặt sẵn đã lưu: {error}",
+            "savedPresets": "Cấu hình đặt sẵn đã lưu"
         },
         "accountLock": {
             "title": "Chọn tài khoản",

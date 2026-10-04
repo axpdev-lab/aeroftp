@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Predefinits de sincronització",
-            "nothingToDo": "Predefinits de sincronització",
+            "nothingToDo": "Res per sincronitzar",
             "allSkipped": "No hi ha entrades accionables per a aquest predefinit.",
-            "deletesDeferred": "Predefinits de sincronització",
             "builtinModesGroup": "Modes integrats",
             "savedPresetsGroup": "Les vostres predefinicions desades"
         },
@@ -5541,7 +5540,10 @@
                     "parent": "La carpeta de còpia de seguretat no pot contenir '..'.",
                     "name": "Aquest nom de carpeta de còpia de seguretat no és vàlid."
                 }
-            }
+            },
+            "savedPresetLimits": "Aplica la direcció, les supressions, les exclusions i la verificació. No s'apliquen les regles de comparació, els reintents, els fluxos ni la compressió desats. Reviseu la pestanya Comparació i la configuració de transferència actual abans d'executar.",
+            "savedPresetsLoadFailed": "No s'han pogut carregar els preajustos desats: {error}",
+            "savedPresets": "Preajustos desats"
         },
         "accountLock": {
             "title": "Trieu un compte",

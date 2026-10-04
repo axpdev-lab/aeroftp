@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Forstillingar samstillingar",
-            "nothingToDo": "Forstillingar samstillingar",
+            "nothingToDo": "Ekkert til að samstilla",
             "allSkipped": "Engar framkvæmanlegar færslur fyrir þessa forstillingu.",
-            "deletesDeferred": "Forstillingar samstillingar",
             "builtinModesGroup": "Innbyggðir hamir",
             "savedPresetsGroup": "Vistaðar forstillingar þínar"
         },
@@ -5541,7 +5540,10 @@
                     "parent": "Öryggisafritsmappan má ekki innihalda '..'.",
                     "name": "Þetta heiti á öryggisafritsmöppu er ekki gilt."
                 }
-            }
+            },
+            "savedPresetLimits": "Beitir stefnu, eyðingum, útilokunum og sannprófun. Vistaðar samanburðarreglur, endurtilraunir, straumar og þjöppun eru ekki notuð. Farðu yfir flipann Bera saman og núverandi flutningsstillingar áður en keyrt er.",
+            "savedPresetsLoadFailed": "Ekki tókst að hlaða vistuðum forstillingum: {error}",
+            "savedPresets": "Vistaðar forstillingar"
         },
         "accountLock": {
             "title": "Veldu reikning",

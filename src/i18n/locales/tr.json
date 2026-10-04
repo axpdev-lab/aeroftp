@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Senkronizasyon önayarları",
-            "nothingToDo": "Senkronizasyon önayarları",
+            "nothingToDo": "Eşitlenecek bir şey yok",
             "allSkipped": "Bu önayar için yürütülebilir giriş yok.",
-            "deletesDeferred": "Senkronizasyon önayarları",
             "builtinModesGroup": "Yerleşik modlar",
             "savedPresetsGroup": "Kayıtlı hazır ayarlarınız"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Yedek klasörü '..' içeremez.",
                     "name": "Bu yedek klasörü adı geçerli değil."
                 }
-            }
+            },
+            "savedPresetLimits": "Yön, silme, hariç tutma ve doğrulamayı uygular. Kaydedilen karşılaştırma kuralları, yeniden denemeler, akışlar ve sıkıştırma uygulanmaz. Çalıştırmadan önce Karşılaştır sekmesini ve geçerli aktarım ayarlarını gözden geçirin.",
+            "savedPresetsLoadFailed": "Kaydedilen ön ayarlar yüklenemedi: {error}",
+            "savedPresets": "Kaydedilen ön ayarlar"
         },
         "accountLock": {
             "title": "Bir hesap seçin",

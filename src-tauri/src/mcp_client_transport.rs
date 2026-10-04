@@ -508,16 +508,32 @@ mod tests {
         )
     }
 
+    /// Budgets a cooperative peer has to meet are the production ones: they
+    /// bound a hang, not the runner's speed. On a windows-2022 runner with every
+    /// core busy the fixture took up to 3.2 s to answer and up to 0.63 s to exit
+    /// after EOF (idle: 25 ms at most), in modern and stderr-flood mode alike,
+    /// beyond the 2 s and 250 ms these tests used to allow.
     fn limits() -> Limits {
+        Limits::default()
+    }
+
+    /// Only for a wait the test expects to expire, because the peer never
+    /// answers or never exits. A short budget then leans toward the asserted
+    /// outcome instead of away from it, and keeps those tests quick.
+    fn expiring() -> Limits {
         Limits {
-            request: Duration::from_secs(2),
+            request: Duration::from_millis(250),
             shutdown: Duration::from_millis(250),
         }
     }
 
     async fn connect(mode: &str) -> Result<StdioSupervisor, TransportError> {
+        connect_with(mode, limits()).await
+    }
+
+    async fn connect_with(mode: &str, limits: Limits) -> Result<StdioSupervisor, TransportError> {
         let (config, env) = fixture(mode);
-        StdioSupervisor::connect(config, env, limits(), &CancellationToken::new()).await
+        StdioSupervisor::connect(config, env, limits, &CancellationToken::new()).await
     }
 
     #[tokio::test]
@@ -544,7 +560,11 @@ mod tests {
         ));
         let mut peer = connect("notification-flood").await.unwrap();
         peer.disable_restart();
-        peer.limits.request = Duration::from_millis(100);
+        // The flood's interval also keeps the peer alive past EOF.
+        peer.limits = Limits {
+            request: Duration::from_millis(100),
+            ..expiring()
+        };
         assert_eq!(
             peer.call("tools/list", Map::new(), &CancellationToken::new())
                 .await,
@@ -604,7 +624,7 @@ mod tests {
         let (config, env) = fixture("modern-slow-probe");
         let limits = Limits {
             request: Duration::from_secs(20),
-            shutdown: Duration::from_millis(250),
+            ..limits()
         };
         let mut supervisor =
             StdioSupervisor::connect(config, env, limits, &CancellationToken::new())
@@ -642,7 +662,10 @@ mod tests {
 
     #[tokio::test]
     async fn only_typed_probe_silence_can_reach_legacy_handshake() {
-        assert_eq!(connect("silent").await.err(), Some(TransportError::Timeout));
+        assert_eq!(
+            connect_with("silent", expiring()).await.err(),
+            Some(TransportError::Timeout)
+        );
         assert_eq!(
             connect("no-overlap").await.err(),
             Some(TransportError::Protocol(ProtocolError::UnsupportedVersion))
@@ -655,6 +678,8 @@ mod tests {
             connect("malformed").await.err(),
             Some(TransportError::Frame(FrameError::InvalidJson))
         );
+        // Waits out the full budget: a short one could expire before the
+        // partial frame arrives and read as silence.
         assert_eq!(
             connect("partial-hang").await.err(),
             Some(TransportError::Frame(FrameError::Incomplete))
@@ -731,6 +756,7 @@ mod tests {
     #[tokio::test]
     async fn session_timeout_is_bounded_and_restart_is_not_a_retry() {
         let mut supervisor = connect("session-silent").await.unwrap();
+        supervisor.limits.request = expiring().request;
         assert_eq!(
             supervisor
                 .call("tools/list", Map::new(), &CancellationToken::new())
@@ -791,6 +817,6 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        assert!(!peer.shutdown(limits().shutdown).await);
+        assert!(!peer.shutdown(expiring().shutdown).await);
     }
 }

@@ -38,7 +38,7 @@ import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -793,13 +793,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         if (saveState === 'saving') return; // prevent double-click
         setSaveState('saving');
         try {
+            // General settings must not replace a newer/unavailable partition
+            // with the list captured when this dialog was opened.
+            const currentServers = await loadSavedServerProfilesStrict();
             // Normalize font values before saving to vault
             settings.fontSize = clampAppFontSize(settings.fontSize);
             settings.fontFamily = normalizeAppFontFamily(settings.fontFamily);
             settings.introHubIconSize = clampIntroHubIconSize(settings.introHubIconSize);
 
             await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
-            storeSavedServerProfiles(servers).catch(() => {});
+            await storeSavedServerProfiles(currentServers);
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
@@ -845,7 +848,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 onClose();
             }, 600);
         } catch (e) {
-            logger.debug('Settings save failed:', e);
+            logger.warn('Settings save failed:', e);
+            window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(e) },
+            }));
             setSaveState('idle');
         }
     };
@@ -3765,13 +3771,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                                 // an empty one is a real answer, not a missing list.
                                                                                 const decided = result.profilesAfterDecisions !== undefined && result.profilesAfterDecisions !== null;
                                                                                 if (Array.isArray(importedProfiles) && (importedProfiles.length > 0 || decided)) {
-                                                                                    await storeSavedServerProfiles(importedProfiles).catch(() => {});
+                                                                                    await storeSavedServerProfiles(importedProfiles);
                                                                                     setServers(importedProfiles);
                                                                                     onServersChanged?.();
                                                                                 }
                                                                             }
-                                                                        } catch {
-                                                                            /* vault may not contain server profiles */
+                                                                        } catch (err) {
+                                                                            logger.warn('Imported server profiles could not be persisted', err);
+                                                                            setKeystoreImportResult(null);
+                                                                            setKeystoreMessage({ type: 'error', text: String(err) });
+                                                                            return;
                                                                         }
 
                                                                         // Reset import state

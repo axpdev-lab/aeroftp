@@ -52,7 +52,9 @@ import {
     sameExcludePatterns,
 } from '../../utils/aeroSyncExcludes';
 import { buildCliSyncCommand, type CliNoEquivalentReason } from '../../utils/aeroSyncCliCommand';
-import { parseSyncExcludePatterns } from '../../utils/syncTemplateApply';
+import { SavedPresetPicker, useSavedSyncProfiles } from './SavedPresetPicker';
+import type { SyncProfile } from '../../types';
+import { buildAeroSyncTabStatePatch, parseSyncExcludePatterns } from '../../utils/syncTemplateApply';
 import { copyText } from '../../utils/clipboard';
 import type {
     AeroSyncCanarySelection,
@@ -199,6 +201,14 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // Which command text the last copy was for, so a changed plan never
     // shows "Copied" for a command that was not.
     const [copyResult, setCopyResult] = React.useState<{ text: string; ok: boolean } | null>(null);
+    const savedProfiles = useSavedSyncProfiles();
+    const [selectedSavedProfileId, setSelectedSavedProfileId] = useStickyState('plan.selectedSavedProfileId', '');
+    React.useEffect(() => {
+        if (!savedProfiles.loading && !savedProfiles.error && selectedSavedProfileId
+            && !savedProfiles.profiles.some(p => p.id === selectedSavedProfileId)) {
+            setSelectedSavedProfileId('');
+        }
+    }, [savedProfiles.loading, savedProfiles.error, savedProfiles.profiles, selectedSavedProfileId, setSelectedSavedProfileId]);
     const [preset, setPreset] = useStickyState<SyncPreset>('plan.preset', 'backup');
     const [direction, setDirection] = useStickyState<PresetDirection>('plan.direction', 'left-to-right');
     const [conflictPolicy, setConflictPolicy] = useStickyState<ConflictPolicy>('plan.conflictPolicy', 'skip');
@@ -261,7 +271,7 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
 
     React.useEffect(() => {
         setConfirmedDestructive(false);
-    }, [preset, direction, conflictPolicy, versionedBackup.enabled, versionedBackup.backupDir]);
+    }, [preset, direction, conflictPolicy, versionedBackup.enabled, versionedBackup.backupDir, selectedSavedProfileId]);
 
     // GAP-9a: any move away from Maniac re-arms the confirmation gate, so a
     // later return to Maniac always re-prompts.
@@ -288,6 +298,21 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
             setEcEnabled(false);
         }
     }, [preset]);
+
+    const applySavedProfile = (profile: SyncProfile) => {
+        // Saved profiles have settings only: never apply the mapper's path keys.
+        const patch = buildAeroSyncTabStatePatch({
+            localPath: '', remotePath: '', direction: profile.direction,
+            deleteOrphans: profile.delete_orphans, excludePatterns: profile.exclude_patterns,
+            verifyPolicy: profile.verify_policy,
+        }, (pairKind ?? null) as AeroSyncPairKind | null, versionedBackup);
+        setPreset(patch['plan.preset'] as SyncPreset);
+        setDirection(patch['plan.direction'] as PresetDirection);
+        setExcludeText(patch['sync.exclude'] as string);
+        setVerifyPolicy(patch['plan.verifyPolicy'] as AeroSyncVerifyPolicy);
+        setSelectedSavedProfileId(profile.id);
+        setConfirmedDestructive(false);
+    };
 
     if (!result) {
         if (loading) {
@@ -393,10 +418,16 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
                             key={option}
                             preset={option}
                             active={preset === option}
-                            onSelect={() => setPreset(option)}
+                            onSelect={() => { setSelectedSavedProfileId(''); setPreset(option); }}
                         />
                     ))}
                 </div>
+
+                <SavedPresetPicker
+                    {...savedProfiles}
+                    selectedId={selectedSavedProfileId}
+                    onSelect={applySavedProfile}
+                />
 
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                     <div className="text-[11px] text-gray-500 dark:text-gray-400">

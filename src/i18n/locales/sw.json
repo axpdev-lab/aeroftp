@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Mipangilio ya usawazishaji",
-            "nothingToDo": "Mipangilio ya usawazishaji",
+            "nothingToDo": "Hakuna cha kusawazisha",
             "allSkipped": "Hakuna ingizo linaloweza kutekelezwa kwa mpangilio huu.",
-            "deletesDeferred": "Mipangilio ya usawazishaji",
             "builtinModesGroup": "Hali zilizojengewa ndani",
             "savedPresetsGroup": "Mipangilio yako iliyohifadhiwa"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Folda ya hifadhi rudufu haiwezi kuwa na '..'.",
                     "name": "Jina hili la folda ya hifadhi rudufu si sahihi."
                 }
-            }
+            },
+            "savedPresetLimits": "Hutumia mwelekeo, ufutaji, viondoaji na uthibitishaji. Sheria za kulinganisha, majaribio ya kurudia, mitiririko na ubanaji vilivyohifadhiwa havitumiki. Kagua kichupo cha Linganisha na mipangilio ya sasa ya uhamishaji kabla ya kuendesha.",
+            "savedPresetsLoadFailed": "Imeshindwa kupakia mipangilio iliyohifadhiwa: {error}",
+            "savedPresets": "Mipangilio iliyohifadhiwa"
         },
         "accountLock": {
             "title": "Chagua akaunti",

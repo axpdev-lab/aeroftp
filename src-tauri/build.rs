@@ -46,6 +46,7 @@ const DEPENDENCY_CATEGORIES: &[(&str, &[&str])] = &[
         &[
             "axum",
             "http",
+            "http-body",
             "http-body-util",
             "hyper",
             "hyper-util",

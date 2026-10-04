@@ -96,6 +96,7 @@ dependencies = [
  "hmac 0.12.1",
  "hound",
  "http",
+ "http-body",
  "http-body-util",
  "hyper",
  "hyper-util",

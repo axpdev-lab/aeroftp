@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Pratetap penyegerakan",
-            "nothingToDo": "Pratetap penyegerakan",
+            "nothingToDo": "Tiada apa-apa untuk disegerakkan",
             "allSkipped": "Tiada entri boleh dilaksanakan untuk pratetap ini.",
-            "deletesDeferred": "Pratetap penyegerakan",
             "builtinModesGroup": "Mod terbina dalam",
             "savedPresetsGroup": "Pratetap tersimpan anda"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Folder sandaran tidak boleh mengandungi '..'.",
                     "name": "Nama folder sandaran ini tidak sah."
                 }
-            }
+            },
+            "savedPresetLimits": "Menggunakan arah, pemadaman, pengecualian dan pengesahan. Peraturan perbandingan, percubaan semula, aliran dan pemampatan yang disimpan tidak digunakan. Semak tab Bandingkan dan tetapan pemindahan semasa sebelum menjalankan.",
+            "savedPresetsLoadFailed": "Tidak dapat memuatkan pratetap tersimpan: {error}",
+            "savedPresets": "Pratetap tersimpan"
         },
         "accountLock": {
             "title": "Pilih akaun",

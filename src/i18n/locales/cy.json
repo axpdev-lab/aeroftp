@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Rhag-osodiadau cysoni",
-            "nothingToDo": "Rhag-osodiadau cysoni",
+            "nothingToDo": "Dim byd i'w gysoni",
             "allSkipped": "Dim cofnodion gweithredadwy ar gyfer y rhag-osodiad hwn.",
-            "deletesDeferred": "Rhag-osodiadau cysoni",
             "builtinModesGroup": "Moddau adeiledig",
             "savedPresetsGroup": "Eich rhagosodedigion wedi'u cadw"
         },
@@ -5541,7 +5540,10 @@
                     "parent": "Ni all y ffolder wrth gefn gynnwys '..'.",
                     "name": "Nid yw enw'r ffolder wrth gefn hwn yn ddilys."
                 }
-            }
+            },
+            "savedPresetLimits": "Yn cymhwyso cyfeiriad, dileu, eithriadau a dilysu. Ni chymhwysir rheolau cymharu, ailgeisiau, ffrydiau na chywasgu sydd wedi'u cadw. Adolygwch y tab Cymharu a'r gosodiadau trosglwyddo cyfredol cyn rhedeg.",
+            "savedPresetsLoadFailed": "Methu llwytho'r rhagosodiadau sydd wedi'u cadw: {error}",
+            "savedPresets": "Rhagosodiadau wedi’u cadw"
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

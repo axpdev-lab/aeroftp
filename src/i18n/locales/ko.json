@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "동기화 프리셋",
-            "nothingToDo": "동기화 프리셋",
+            "nothingToDo": "동기화할 항목이 없습니다",
             "allSkipped": "이 프리셋에 대해 실행 가능한 항목이 없습니다.",
-            "deletesDeferred": "동기화 프리셋",
             "builtinModesGroup": "기본 제공 모드",
             "savedPresetsGroup": "저장된 프리셋"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "백업 폴더에는 '..'을 포함할 수 없습니다.",
                     "name": "이 백업 폴더 이름은 유효하지 않습니다."
                 }
-            }
+            },
+            "savedPresetLimits": "방향, 삭제, 제외 및 검증을 적용합니다. 저장된 비교 규칙, 재시도, 스트림 및 압축은 적용되지 않습니다. 실행 전에 비교 탭과 현재 전송 설정을 확인하세요.",
+            "savedPresetsLoadFailed": "저장된 프리셋을 불러올 수 없습니다: {error}",
+            "savedPresets": "저장된 프리셋"
         },
         "accountLock": {
             "title": "계정 선택",

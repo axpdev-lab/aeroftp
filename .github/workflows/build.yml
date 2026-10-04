@@ -129,9 +129,11 @@ jobs:
       - name: DMG verifier regression tests
         run: python3 -m unittest discover -s .github/scripts -p test_verify_macos_dmg.py -v
 
+      # Lint the opt-in test helper in the existing library/target pass.
+      # Packaging keeps default features; the helper is never executed here.
       - name: Rust linting (clippy)
         working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --all-targets --features test-seed -- -D warnings
 
       - name: Rust tests
         working-directory: src-tauri

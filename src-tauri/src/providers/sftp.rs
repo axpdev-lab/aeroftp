@@ -267,33 +267,106 @@ async fn close_sftp_file(file: russh_sftp::client::fs::File, ended: &Cancellatio
 /// it gives the session up. It covers the case the end of the transport does
 /// not: an SSH connection that still answers its keepalives while the SFTP
 /// server behind it stopped answering. It leans toward patience. Writes go
-/// out in pieces of [`SFTP_WRITE_PIECE`] (2 MiB), and russh-sftp keeps at most
-/// 8 writes of just under 256 KiB in flight, so one wait covers at most about
-/// 9 acknowledgements, about 2.25 MiB: only a link that cannot move that in
-/// five minutes (about 7.5 KB/s) trips it, whatever `--buffer-size` is.
+/// out one WRITE at a time ([`SftpWriteBuffer`]) and russh-sftp keeps at most
+/// 8 in flight, so a write waits for at most one acknowledgement and the close
+/// for the 8 still in flight, about 2 MiB with OpenSSH's writes of just under
+/// 256 KiB: only a link that cannot move that in five minutes (about 7 KB/s)
+/// trips it, whatever `--buffer-size` is.
 const SFTP_WRITE_ACK_BOUND: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// The piece an upload hands to the SFTP file at a time (see
-/// [`SFTP_WRITE_ACK_BOUND`]): a write of a whole 16 MiB buffer would return
-/// only after most of it was acknowledged, and the bound would trip on links
-/// eight times faster. 2 MiB, not 256 KiB: russh-sftp's largest write is just
-/// under 256 KiB, so a 256 KiB piece went out as a full write plus a tail of a
-/// few bytes and halved the data in flight; 2 MiB is also the most tokio reads
-/// from the file per call, so the wire pattern is the one it always was.
-const SFTP_WRITE_PIECE: usize = 2 * 1024 * 1024;
+/// The buffer between an upload's local file and its remote handle.
+///
+/// russh-sftp cuts what it is handed into WRITEs of at most the server's
+/// write length (OpenSSH announces 261120 bytes, 1 KiB under 256 KiB, through
+/// `limits@openssh.com`) and keeps at most 8 in flight on a handle. Handed a
+/// whole buffer at a time, it sent the end of each buffer as a short WRITE:
+/// the 256 KiB default went out as 261120 bytes plus 1024, half of the 8
+/// slots carried 1 KiB, and an upload kept about 0.8 MB on the wire where
+/// 2 MB fit. A 300 MiB upload to the lab over a 47 ms link took 18 to 24 s,
+/// and 10 to 11.5 s with a buffer of exactly one WRITE (2026-10-03). So the
+/// buffer hands over one WRITE at a time, learns the session's write length
+/// from the first WRITE that comes back short, and reads more before what is
+/// left is less than a whole WRITE: only the last WRITE of a file is short,
+/// whatever the server's limit and the buffer size.
+struct SftpWriteBuffer {
+    buf: Vec<u8>,
+    start: usize,
+    end: usize,
+    eof: bool,
+    /// The session's write length, once a WRITE carried less than it was
+    /// offered.
+    max_write: Option<usize>,
+}
 
-/// Writes `data` to `file` piece by piece, each piece under
-/// [`until_sftp_acks`].
-async fn write_sftp_acked(
-    file: &mut russh_sftp::client::fs::File,
-    data: &[u8],
-    ended: &CancellationToken,
-) -> std::io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    for piece in data.chunks(SFTP_WRITE_PIECE) {
-        until_sftp_acks(ended, file.write_all(piece)).await?;
+impl SftpWriteBuffer {
+    fn new(size: usize) -> Self {
+        Self {
+            buf: vec![0u8; size.max(1)],
+            start: 0,
+            end: 0,
+            eof: false,
+            max_write: None,
+        }
     }
-    Ok(())
+
+    /// Reads from `local` until the buffer is full or the file ends, when
+    /// what is left would not make a whole WRITE (while the write length is
+    /// not known, when nothing is left). Returns the bytes read.
+    async fn refill<R>(&mut self, local: &mut R) -> std::io::Result<usize>
+    where
+        R: tokio::io::AsyncRead + Unpin,
+    {
+        use tokio::io::AsyncReadExt;
+        let whole_write = self.max_write.unwrap_or(self.buf.len());
+        if self.eof || self.end - self.start >= whole_write {
+            return Ok(0);
+        }
+        self.buf.copy_within(self.start..self.end, 0);
+        self.end -= self.start;
+        self.start = 0;
+        let mut read = 0;
+        while self.end < self.buf.len() {
+            let n = local.read(&mut self.buf[self.end..]).await?;
+            if n == 0 {
+                self.eof = true;
+                break;
+            }
+            self.end += n;
+            read += n;
+        }
+        Ok(read)
+    }
+
+    /// Whether every byte of the file went into a WRITE.
+    fn is_done(&self) -> bool {
+        self.eof && self.start == self.end
+    }
+
+    /// Hands the next WRITE to `file`, under [`until_sftp_acks`], and returns
+    /// the bytes it carried.
+    async fn write_next<W>(
+        &mut self,
+        file: &mut W,
+        ended: &CancellationToken,
+    ) -> std::io::Result<usize>
+    where
+        W: tokio::io::AsyncWrite + Unpin,
+    {
+        use tokio::io::AsyncWriteExt;
+        let offered = self.end - self.start;
+        let n = until_sftp_acks(ended, file.write(&self.buf[self.start..self.end])).await?;
+        if n == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "the SFTP session took no bytes of a WRITE",
+            ));
+        }
+        if n < offered {
+            self.max_write = Some(self.max_write.map_or(n, |m| m.max(n)));
+        }
+        self.start += n;
+        Ok(n)
+    }
 }
 
 /// A wait on write acknowledgements (a write that fills the pipeline, the
@@ -2703,33 +2776,34 @@ impl StorageProvider for SftpProvider {
             let remote_file = &mut remote_file;
             let ended = &ended;
             async move {
-                let mut buffer = vec![0u8; buffer_size];
+                let mut buffer = SftpWriteBuffer::new(buffer_size);
                 let mut transferred: u64 = 0;
                 let start = std::time::Instant::now();
                 let global_bw = crate::transfer_dag::governor::global();
 
                 loop {
-                    let bytes_read = tokio::io::AsyncReadExt::read(&mut local_file, &mut buffer)
-                        .await
-                        .map_err(|e| {
-                            ProviderError::TransferFailed(format!("Local read error: {}", e))
-                        })?;
+                    let bytes_read = buffer.refill(&mut local_file).await.map_err(|e| {
+                        ProviderError::TransferFailed(format!("Local read error: {}", e))
+                    })?;
 
-                    if bytes_read == 0 {
+                    if buffer.is_done() {
                         break;
                     }
 
-                    global_bw
-                        .charge(
-                            crate::transfer_dag::governor::TransferDirection::Upload,
-                            bytes_read as u64,
-                        )
-                        .await;
-                    write_sftp_acked(remote_file, &buffer[..bytes_read], ended)
+                    if bytes_read > 0 {
+                        global_bw
+                            .charge(
+                                crate::transfer_dag::governor::TransferDirection::Upload,
+                                bytes_read as u64,
+                            )
+                            .await;
+                    }
+                    let written = buffer
+                        .write_next(remote_file, ended)
                         .await
                         .map_err(|e| classify_russh_write_err(e, "Remote write error"))?;
 
-                    transferred += bytes_read as u64;
+                    transferred += written as u64;
 
                     if let Some(ref progress) = on_progress {
                         progress(transferred, total_size);
@@ -2838,7 +2912,7 @@ impl StorageProvider for SftpProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         use russh_sftp::protocol::OpenFlags;
-        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        use tokio::io::AsyncSeekExt;
 
         self.ensure_connected().await?;
 
@@ -2942,7 +3016,7 @@ impl StorageProvider for SftpProvider {
                                 ))
                             })?;
 
-                        let mut buffer = vec![0u8; buffer_size];
+                        let mut buffer = SftpWriteBuffer::new(buffer_size);
                         let mut transferred: u64 = start_offset;
                         if let Some(ref progress) = on_progress {
                             progress(transferred, total_size);
@@ -2951,27 +3025,25 @@ impl StorageProvider for SftpProvider {
                         let global_bw = crate::transfer_dag::governor::global();
 
                         loop {
-                            let bytes_read = AsyncReadExt::read(&mut local_file, &mut buffer)
-                                .await
-                                .map_err(|e| {
-                                    ProviderError::TransferFailed(format!(
-                                        "Local read error: {}",
-                                        e
-                                    ))
-                                })?;
-                            if bytes_read == 0 {
+                            let bytes_read = buffer.refill(&mut local_file).await.map_err(|e| {
+                                ProviderError::TransferFailed(format!("Local read error: {}", e))
+                            })?;
+                            if buffer.is_done() {
                                 break;
                             }
-                            global_bw
-                                .charge(
-                                    crate::transfer_dag::governor::TransferDirection::Upload,
-                                    bytes_read as u64,
-                                )
-                                .await;
-                            write_sftp_acked(remote_file, &buffer[..bytes_read], ended)
+                            if bytes_read > 0 {
+                                global_bw
+                                    .charge(
+                                        crate::transfer_dag::governor::TransferDirection::Upload,
+                                        bytes_read as u64,
+                                    )
+                                    .await;
+                            }
+                            let written = buffer
+                                .write_next(remote_file, ended)
                                 .await
                                 .map_err(|e| classify_russh_write_err(e, "Remote write error"))?;
-                            transferred += bytes_read as u64;
+                            transferred += written as u64;
                             if let Some(ref progress) = on_progress {
                                 progress(transferred, total_size);
                             }
@@ -3516,8 +3588,9 @@ impl StorageProvider for SftpProvider {
         // by multiple concurrent `SSH_FXP_WRITE` packets at different
         // offsets over one channel, but in practice (a) most servers
         // serialise writes on the open file handle, and (b) `russh-sftp`
-        // does not expose per-write concurrency controls; `upload` above
-        // streams the file through one `sftp.create` handle. Real
+        // pipelines the WRITEs of one handle in order (8 in flight, which
+        // already fill OpenSSH's 2 MiB channel window) and knows no parts;
+        // `upload` above streams the file through one `sftp.create` handle. Real
         // file-level parallelism on SFTP comes from `SftpConnectionPool`
         // re-dialling independent SSH channels (see
         // `transfer_executor_kind` below).
@@ -5849,7 +5922,15 @@ mod tests {
             }
             // Both ends drop here: the client reads end of stream.
         });
-        let mut provider = SftpProvider::new(SftpConfig {
+        let mut provider = provider_without_a_session();
+        provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+        provider
+    }
+
+    /// A provider for a test to give an SFTP session over an in-memory
+    /// transport: it never dials.
+    fn provider_without_a_session() -> SftpProvider {
+        SftpProvider::new(SftpConfig {
             host: "example.com".to_string(),
             port: 22,
             username: "testuser".to_string(),
@@ -5859,9 +5940,7 @@ mod tests {
             initial_path: None,
             timeout_secs: 30,
             trust_unknown_hosts: false,
-        });
-        provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
-        provider
+        })
     }
 
     /// Longer than any of these transfers takes against the in-memory server,
@@ -6122,29 +6201,300 @@ mod tests {
         );
     }
 
-    /// The write bound holds per acknowledgement, not per write: 16 MiB
-    /// handed over at once to a server that takes 6 s over each write all go
-    /// out, each piece acknowledged in time. One write of the 16 MiB would
-    /// wait for about 56 acknowledgements and give up at 300 s. (An upload
-    /// reads its file at most 2 MiB at a time, tokio's `MAX_BUF`, so it does
-    /// not reach this today; the pieces keep the bound from depending on it.)
+    /// The write bound holds per acknowledgement, not per buffer: an upload
+    /// with the largest buffer `--buffer-size` allows (16 MiB) to a server
+    /// that takes 6 s over each write goes through, each WRITE acknowledged in
+    /// time. The 16 MiB handed to russh-sftp in one write would wait for about
+    /// 56 acknowledgements and give up at 300 s.
     #[tokio::test(start_paused = true)]
-    async fn a_large_write_to_a_slow_server_stays_inside_the_ack_bound() {
-        let provider = provider_on_a_server_that_goes_away(
+    async fn a_large_buffer_to_a_slow_server_stays_inside_the_ack_bound() {
+        let size = 16 * 1024 * 1024;
+        let mut provider = provider_on_a_server_that_goes_away(
             GoAwayAt::SlowWrites(std::time::Duration::from_secs(6)),
-            Vec::new(),
+            vec![0u8; size],
         )
         .await;
-        let sftp = provider.sftp.as_ref().expect("a session");
-        let mut file = sftp.create("/big.bin").await.expect("create");
-        let data = vec![0u8; 16 * 1024 * 1024];
-        let written = tokio::time::timeout(
+        provider.set_chunk_sizes(Some(size as u64), None);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, size);
+        let uploaded = tokio::time::timeout(
             SFTP_WRITE_ACK_BOUND * 10,
-            write_sftp_acked(&mut file, &data, &sftp.ended),
+            provider.upload(&local, "/big.bin", None),
         )
         .await
-        .expect("the write hung");
-        written.expect("every piece was acknowledged in time");
+        .expect("the upload hung");
+        uploaded.expect("every WRITE was acknowledged in time");
+    }
+
+    /// OpenSSH's write length, as its sftp-server announces it through
+    /// `limits@openssh.com`: 1 KiB under its 256 KiB packet.
+    const OPENSSH_MAX_WRITE: usize = 256 * 1024 - 1024;
+
+    /// An SFTP server that announces OpenSSH's limits and keeps the offset
+    /// and length of every WRITE. The remote file starts `remote_len` bytes
+    /// long, for a resume to append to.
+    struct OpenSshShapedServer {
+        writes: Arc<std::sync::Mutex<Vec<(u64, usize)>>>,
+        remote_len: u64,
+    }
+
+    impl russh_sftp::server::Handler for OpenSshShapedServer {
+        type Error = russh_sftp::protocol::StatusCode;
+
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+
+        async fn init(
+            &mut self,
+            _version: u32,
+            _extensions: std::collections::HashMap<String, String>,
+        ) -> Result<russh_sftp::protocol::Version, Self::Error> {
+            let mut version = russh_sftp::protocol::Version::new();
+            version
+                .extensions
+                .insert(russh_sftp::extensions::LIMITS.to_string(), "1".to_string());
+            Ok(version)
+        }
+
+        async fn extended(
+            &mut self,
+            id: u32,
+            request: String,
+            _data: Vec<u8>,
+        ) -> Result<russh_sftp::protocol::Packet, Self::Error> {
+            if request != russh_sftp::extensions::LIMITS {
+                return Err(self.unimplemented());
+            }
+            let limits = russh_sftp::extensions::LimitsExtension {
+                max_packet_len: 256 * 1024,
+                max_read_len: OPENSSH_MAX_WRITE as u64,
+                max_write_len: OPENSSH_MAX_WRITE as u64,
+                max_open_handles: 0,
+            };
+            let data = russh_sftp::ser::to_bytes(&limits)
+                .map_err(|_| russh_sftp::protocol::StatusCode::Failure)?
+                .to_vec();
+            Ok(russh_sftp::protocol::Packet::ExtendedReply(
+                russh_sftp::protocol::ExtendedReply { id, data },
+            ))
+        }
+
+        async fn open(
+            &mut self,
+            id: u32,
+            filename: String,
+            _pflags: russh_sftp::protocol::OpenFlags,
+            _attrs: russh_sftp::protocol::FileAttributes,
+        ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            Ok(russh_sftp::protocol::Handle {
+                id,
+                handle: filename,
+            })
+        }
+
+        async fn close(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            Ok(GoingAwayServer::ok(id))
+        }
+
+        async fn write(
+            &mut self,
+            id: u32,
+            _handle: String,
+            offset: u64,
+            data: Vec<u8>,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            self.writes
+                .lock()
+                .expect("write log")
+                .push((offset, data.len()));
+            self.remote_len = self.remote_len.max(offset + data.len() as u64);
+            Ok(GoingAwayServer::ok(id))
+        }
+
+        async fn stat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(self.remote_len),
+                    permissions: Some(0o100644),
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn setstat(
+            &mut self,
+            id: u32,
+            _path: String,
+            _attrs: russh_sftp::protocol::FileAttributes,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            Ok(GoingAwayServer::ok(id))
+        }
+    }
+
+    /// A provider whose SFTP session runs over the transport of an
+    /// [`OpenSshShapedServer`], with the server's WRITE log.
+    async fn provider_on_an_openssh_shaped_server(
+        remote_len: u64,
+    ) -> (SftpProvider, Arc<std::sync::Mutex<Vec<(u64, usize)>>>) {
+        let (client, server) = tokio::io::duplex(1 << 20);
+        let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        russh_sftp::server::run(
+            server,
+            OpenSshShapedServer {
+                writes: Arc::clone(&writes),
+                remote_len,
+            },
+        )
+        .await;
+        let mut provider = provider_without_a_session();
+        provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+        (provider, writes)
+    }
+
+    /// Every WRITE of an upload but the last is a whole one at OpenSSH's
+    /// write length, at the default buffer and on a resume, and the WRITEs
+    /// follow each other with no gap. The 256 KiB default is 1 KiB over that
+    /// length: handed to russh-sftp a buffer at a time, each buffer went out
+    /// as 261120 bytes plus 1024, half of the 8 WRITEs in flight carried
+    /// 1 KiB, and a 300 MiB upload to the lab took 18 to 24 s instead of 10
+    /// to 11.5 s (2026-10-03).
+    #[tokio::test]
+    async fn an_upload_sends_whole_writes_at_opensshs_write_length() {
+        let len = 3 * 1024 * 1024 + 12_345;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = local_file(&dir, len);
+        let mut wrong = Vec::new();
+        for (case, partial) in [("upload", 0u64), ("resume", 1_000_000)] {
+            let (mut provider, writes) = provider_on_an_openssh_shaped_server(partial).await;
+            let outcome = if partial == 0 {
+                provider.upload(&local, "/up.bin", None).await
+            } else {
+                provider
+                    .resume_upload(&local, "/up.bin", partial, None)
+                    .await
+            };
+            outcome.unwrap_or_else(|e| panic!("{case}: {e:?}"));
+            let writes = writes.lock().expect("write log").clone();
+            let mut next = partial;
+            for (i, &(offset, n)) in writes.iter().enumerate() {
+                if offset != next {
+                    wrong.push(format!("{case}: WRITE {i} at {offset}, not {next}"));
+                }
+                if n != OPENSSH_MAX_WRITE && i + 1 < writes.len() {
+                    wrong.push(format!("{case}: WRITE {i} of {n} bytes"));
+                }
+                next = offset + n as u64;
+            }
+            if next != len as u64 {
+                wrong.push(format!(
+                    "{case}: the WRITEs end at {next}, the file at {len}"
+                ));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "only the last WRITE may be short: {wrong:#?}"
+        );
+    }
+
+    /// Takes at most `cap` bytes per write, as russh-sftp's `File` takes at
+    /// most the session's write length, and keeps what it took.
+    struct CappedWriter {
+        cap: usize,
+        lens: Vec<usize>,
+        data: Vec<u8>,
+    }
+
+    impl tokio::io::AsyncWrite for CappedWriter {
+        fn poll_write(
+            mut self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+            buf: &[u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            let n = buf.len().min(self.cap);
+            self.lens.push(n);
+            self.data.extend_from_slice(&buf[..n]);
+            std::task::Poll::Ready(Ok(n))
+        }
+
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    /// Whatever the buffer and the session's write length, the upload buffer
+    /// sends only whole WRITEs until the last one, and the bytes arrive whole
+    /// and in order. An empty file sends none.
+    #[tokio::test]
+    async fn the_upload_buffer_sends_whole_writes_until_the_last() {
+        let source: Vec<u8> = (0..3_000_000u32).map(|i| (i % 251) as u8).collect();
+        let ended = CancellationToken::new();
+        let mut wrong = Vec::new();
+        for (buffer, cap, len) in [
+            // The default against OpenSSH.
+            (256 * 1024, OPENSSH_MAX_WRITE, source.len()),
+            // `--buffer-size 2M`, and the 16 MiB cap.
+            (2 * 1024 * 1024, OPENSSH_MAX_WRITE, source.len()),
+            (16 * 1024 * 1024, OPENSSH_MAX_WRITE, source.len()),
+            // A buffer under the write length: every WRITE is the buffer.
+            (64 * 1024, OPENSSH_MAX_WRITE, source.len()),
+            // Neither a multiple of the other.
+            (250_000, 100_000, source.len()),
+            (256 * 1024, OPENSSH_MAX_WRITE, 0),
+        ] {
+            let mut local = &source[..len];
+            let mut remote = CappedWriter {
+                cap,
+                lens: Vec::new(),
+                data: Vec::new(),
+            };
+            let mut pending = SftpWriteBuffer::new(buffer);
+            loop {
+                pending.refill(&mut local).await.expect("read");
+                if pending.is_done() {
+                    break;
+                }
+                pending
+                    .write_next(&mut remote, &ended)
+                    .await
+                    .expect("write");
+            }
+            let whole = buffer.min(cap);
+            let before_last = remote.lens.split_last().map_or(&[][..], |(_, rest)| rest);
+            let short: Vec<_> = before_last.iter().filter(|&&n| n != whole).collect();
+            if !short.is_empty() {
+                wrong.push(format!(
+                    "buffer {buffer}, write length {cap}: {} short WRITEs before the last",
+                    short.len()
+                ));
+            }
+            if remote.data != source[..len] {
+                wrong.push(format!(
+                    "buffer {buffer}, write length {cap}: the bytes differ"
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// A request timeout on the way into or out of the remote file fails the

@@ -3,6 +3,13 @@
 
 import type { SyncProfile } from '../types';
 
+export const SYNC_PROFILES_CHANGED_EVENT = 'aeroftp-sync-profiles-changed';
+
+/** Notify mounted preset lists only once a storage mutation has succeeded. */
+export function notifySyncProfilesChanged(): void {
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(SYNC_PROFILES_CHANGED_EVENT));
+}
+
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 /**
@@ -28,6 +35,7 @@ export async function deleteSavedSyncProfile(
         throw new Error(`"${profile.name}" is built in and cannot be deleted`);
     }
     await invoke('delete_sync_profile_cmd', { id: profile.id });
+    notifySyncProfilesChanged();
     try {
         return { left: await invoke<SyncProfile[]>('load_sync_profiles_cmd'), reloadError: null };
     } catch (err) {

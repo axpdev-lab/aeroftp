@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Synchronisatievoorinstellingen",
-            "nothingToDo": "Synchronisatievoorinstellingen",
+            "nothingToDo": "Niets te synchroniseren",
             "allSkipped": "Geen uitvoerbare items voor deze voorinstelling.",
-            "deletesDeferred": "Synchronisatievoorinstellingen",
             "builtinModesGroup": "Ingebouwde modi",
             "savedPresetsGroup": "Je opgeslagen presets"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "De back-upmap mag geen '..' bevatten.",
                     "name": "Deze naam voor de back-upmap is niet geldig."
                 }
-            }
+            },
+            "savedPresetLimits": "Past richting, verwijderingen, uitsluitingen en verificatie toe. Opgeslagen vergelijkingsregels, nieuwe pogingen, streams en compressie worden niet toegepast. Controleer het tabblad Vergelijken en de huidige overdrachtsinstellingen voordat u begint.",
+            "savedPresetsLoadFailed": "Opgeslagen voorinstellingen konden niet worden geladen: {error}",
+            "savedPresets": "Opgeslagen voorinstellingen"
         },
         "accountLock": {
             "title": "Kies een account",

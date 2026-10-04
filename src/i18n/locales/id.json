@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Preset sinkronisasi",
-            "nothingToDo": "Preset sinkronisasi",
+            "nothingToDo": "Tidak ada yang perlu disinkronkan",
             "allSkipped": "Tidak ada entri yang dapat dieksekusi untuk preset ini.",
-            "deletesDeferred": "Preset sinkronisasi",
             "builtinModesGroup": "Mode bawaan",
             "savedPresetsGroup": "Preset tersimpan Anda"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Folder cadangan tidak boleh berisi '..'.",
                     "name": "Nama folder cadangan ini tidak valid."
                 }
-            }
+            },
+            "savedPresetLimits": "Menerapkan arah, penghapusan, pengecualian, dan verifikasi. Aturan perbandingan, percobaan ulang, aliran, dan kompresi yang disimpan tidak diterapkan. Tinjau tab Bandingkan dan pengaturan transfer saat ini sebelum menjalankan.",
+            "savedPresetsLoadFailed": "Tidak dapat memuat preset tersimpan: {error}",
+            "savedPresets": "Preset tersimpan"
         },
         "accountLock": {
             "title": "Pilih akun",

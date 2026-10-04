@@ -54,6 +54,11 @@ jobs:
         working-directory: ./src-tauri
         run: cargo fmt --all -- --check
 
+      # Exercise actual Tauri target selection with tiny existing binaries,
+      # including stale test-helper artifacts, without compiling the app.
+      - name: Release binary selection excludes test helpers
+        run: python3 -m unittest discover -s .github/scripts -p test_release_binary_gate.py -v
+
       - name: Frontend unit tests (vitest)
         run: npm run test:unit
 

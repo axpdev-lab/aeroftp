@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Předvolby synchronizace",
-            "nothingToDo": "Předvolby synchronizace",
+            "nothingToDo": "Není co synchronizovat",
             "allSkipped": "Žádné proveditelné položky pro tuto předvolbu.",
-            "deletesDeferred": "Předvolby synchronizace",
             "builtinModesGroup": "Vestavěné režimy",
             "savedPresetsGroup": "Vaše uložené předvolby"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Složka záloh nemůže obsahovat '..'.",
                     "name": "Tento název složky záloh není platný."
                 }
-            }
+            },
+            "savedPresetLimits": "Použije směr, mazání, vyloučení a ověřování. Uložená pravidla porovnání, opakování, datové proudy a komprese se nepoužijí. Před spuštěním zkontrolujte kartu Porovnání a aktuální nastavení přenosu.",
+            "savedPresetsLoadFailed": "Uložené předvolby se nepodařilo načíst: {error}",
+            "savedPresets": "Uložené předvolby"
         },
         "accountLock": {
             "title": "Vyberte účet",

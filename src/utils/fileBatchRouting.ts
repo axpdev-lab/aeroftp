@@ -84,12 +84,9 @@ export function fileBatchCommand(
  *   no delta step), and an existing destination is the one case where a
  *   delta can save the transfer. A new file gains nothing from either.
  *
- * `destinationExists` comes from checkOverwrite, which looks at the listing
- * of the panel on screen. For a paste or a planner run into another folder
- * that listing is not the destination, so on SFTP a file existing only over
- * there goes in the batch (it loses the delta, nothing else) and one existing
- * only here goes single (it loses the parallelism, nothing else). Safe both
- * ways; it is checkOverwrite's long-standing limit, not a new one.
+ * `destinationExists` comes from checkOverwrite against a snapshot of the
+ * actual destination directory, loaded once before planning the file batch.
+ * This preserves delta/resume routing for off-panel paste and planner targets.
  *
  * - a file whose destination another file of the same transfer already
  *   writes (`destinationClaimed`: two picked files with one name from

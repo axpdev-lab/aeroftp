@@ -15,7 +15,7 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { loadSavedServerProfiles, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 import { getStorageDedupKey } from '../../utils/storageDedup';
 import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
@@ -756,38 +756,47 @@ export function MyServersPanel({
         setOverIdx(idx);
     }, [dragIdx, maybeAutoScrollWhileDrag]);
 
-    const handleDrop = useCallback((idx: number, e: React.DragEvent) => {
-        e.preventDefault();
-        const visible = visibleListRef.current;
-        if (visible.length === 0) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
-        let transferredId = '';
-        try { transferredId = e.dataTransfer.getData('text/plain'); } catch { /* WebKit fallback below */ }
-        const sourceId = dragServerIdRef.current || transferredId;
-        const fromVisible = visible.findIndex((server) => server.id === sourceId);
-        if (fromVisible < 0) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
+    const handleDrop = useCallback(async (idx: number, e: React.DragEvent) => {
+        try {
+            e.preventDefault();
+            const visible = visibleListRef.current;
+            if (visible.length === 0) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
+            let transferredId = '';
+            try { transferredId = e.dataTransfer.getData('text/plain'); } catch { /* WebKit fallback below */ }
+            const sourceId = dragServerIdRef.current || transferredId;
+            const fromVisible = visible.findIndex((server) => server.id === sourceId);
+            if (fromVisible < 0) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
 
-        // Drop ON a row inherits that row's visible index. Top/bottom sentinels
-        // pin the ends of the visible list (append uses length as "after last").
-        const rawTarget = idx === DRAG_SENTINEL_TOP
-            ? 0
-            : idx === DRAG_SENTINEL_BOTTOM
-                ? visible.length
-                : idx;
-        if (fromVisible === rawTarget) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
+            // Drop ON a row inherits that row's visible index. Top/bottom sentinels
+            // pin the ends of the visible list (append uses length as "after last").
+            const rawTarget = idx === DRAG_SENTINEL_TOP
+                ? 0
+                : idx === DRAG_SENTINEL_BOTTOM
+                    ? visible.length
+                    : idx;
+            if (fromVisible === rawTarget) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
 
-        const updated = reorderVisibleInFull(servers, visible, fromVisible, rawTarget);
-        if (updated.every((s, i) => s.id === servers[i]?.id)) {
+            const currentServers = await loadSavedServerProfilesStrict();
+            const updated = reorderVisibleInFull(currentServers, visible, fromVisible, rawTarget);
+            if (updated.every((s, i) => s.id === currentServers[i]?.id)) {
+                dragServerIdRef.current = null;
+                setDragIdx(null);
+                setOverIdx(null);
+                return;
+            }
+            await storeSavedServerProfiles(updated);
+            setServers(updated);
+        } catch (err) {
+            logger.warn('Saved profile operation failed', err);
+            window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(err) },
+            }));
+        } finally {
             dragServerIdRef.current = null;
             setDragIdx(null);
             setOverIdx(null);
-            return;
         }
-        setServers(updated);
-        storeSavedServerProfiles(updated).catch(() => {});
-        dragServerIdRef.current = null;
-        setDragIdx(null);
-        setOverIdx(null);
-    }, [servers]);
+    }, [servers, t]);
 
     const handleDragEnd = useCallback(() => {
         dragServerIdRef.current = null;
@@ -1292,45 +1301,53 @@ export function MyServersPanel({
     ]);
 
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
-        const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-        const dup: ServerProfile = {
-            ...server,
-            id: newId,
-            name: `${server.name} (copy)`,
-            lastConnected: undefined,
-            hasStoredCredential: false,
-            hasStoredFilenApiKey: false,
-            hasStoredAeroCryptPassword: false,
-            hasStoredAeroCryptSalt: false,
-        };
-        const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol);
-        dup.hasStoredCredential = copiedSecrets.server;
-        dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
-        dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
-        dup.hasStoredAeroCryptSalt = copiedSecrets.aerocrypt_overlay_salt;
-        // Append the copy at the tail, consistent with add/import and the
-        // SavedServers duplicate handler. The list has no id/order sort (array
-        // position IS the order), so prepending made the copy jump to the top.
-        const updated = [...servers, dup];
-        setServers(updated);
-        storeSavedServerProfiles(updated).catch(() => {});
-        // Log the same two entries as an edit that overlaps an existing profile,
-        // so the duplicate action is traceable: a "potential duplicate" warning
-        // (the copy shares the source's endpoint+username) then a confirmation.
-        const dedupKey = getStorageDedupKey(dup);
-        logActivity(
-            'PROFILE_DUPLICATE',
-            `Duplicate profile detected: "${dup.name}" overlaps with "${server.name}"`,
-            'success',
-            `dedupKey=${dedupKey}`,
-        );
-        logActivity(
-            'PROFILE_SAVE',
-            `Profile duplicated: "${server.name}" → "${dup.name}"`,
-            'success',
-            `dedupKey=${dedupKey}`,
-        );
-    }, [servers, logActivity]);
+        try {
+            const currentServers = await loadSavedServerProfilesStrict();
+            const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+            const dup: ServerProfile = {
+                ...server,
+                id: newId,
+                name: `${server.name} (copy)`,
+                lastConnected: undefined,
+                hasStoredCredential: false,
+                hasStoredFilenApiKey: false,
+                hasStoredAeroCryptPassword: false,
+                hasStoredAeroCryptSalt: false,
+            };
+            const copiedSecrets = await copyProfileVaultSecrets(server.id, newId, server.protocol);
+            dup.hasStoredCredential = copiedSecrets.server;
+            dup.hasStoredFilenApiKey = copiedSecrets.filen_api_key;
+            dup.hasStoredAeroCryptPassword = copiedSecrets.aerocrypt_overlay_pw;
+            dup.hasStoredAeroCryptSalt = copiedSecrets.aerocrypt_overlay_salt;
+            // Append the copy at the tail, consistent with add/import and the
+            // SavedServers duplicate handler. The list has no id/order sort (array
+            // position IS the order), so prepending made the copy jump to the top.
+            const updated = [...currentServers, dup];
+            await storeSavedServerProfiles(updated);
+            setServers(updated);
+            // Log the same two entries as an edit that overlaps an existing profile,
+            // so the duplicate action is traceable: a "potential duplicate" warning
+            // (the copy shares the source's endpoint+username) then a confirmation.
+            const dedupKey = getStorageDedupKey(dup);
+            logActivity(
+                'PROFILE_DUPLICATE',
+                `Duplicate profile detected: "${dup.name}" overlaps with "${server.name}"`,
+                'success',
+                `dedupKey=${dedupKey}`,
+            );
+            logActivity(
+                'PROFILE_SAVE',
+                `Profile duplicated: "${server.name}" → "${dup.name}"`,
+                'success',
+                `dedupKey=${dedupKey}`,
+            );
+        } catch (err) {
+            logger.warn('Saved profile operation failed', err);
+            window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(err) },
+            }));
+        }
+    }, [servers, logActivity, t]);
 
     const handleDelete = useCallback((server: ServerProfile) => {
         setDeleteTarget(server);
@@ -1340,15 +1357,23 @@ export function MyServersPanel({
         setRenamingId(server.id);
     }, []);
 
-    const handleRenameSubmit = useCallback((server: ServerProfile, newName: string) => {
-        const trimmed = newName.trim();
-        if (trimmed && trimmed !== server.name) {
-            const updated = servers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
-            setServers(updated);
-            storeSavedServerProfiles(updated).catch(() => {});
+    const handleRenameSubmit = useCallback(async (server: ServerProfile, newName: string) => {
+        try {
+            const trimmed = newName.trim();
+            if (trimmed && trimmed !== server.name) {
+                const currentServers = await loadSavedServerProfilesStrict();
+                const updated = currentServers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
+                await storeSavedServerProfiles(updated);
+                setServers(updated);
+            }
+            setRenamingId(null);
+        } catch (err) {
+            logger.warn('Saved profile operation failed', err);
+            window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(err) },
+            }));
         }
-        setRenamingId(null);
-    }, [servers]);
+    }, [servers, t]);
 
     const handleRenameCancel = useCallback(() => {
         setRenamingId(null);
@@ -1405,22 +1430,30 @@ export function MyServersPanel({
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [searchQuery, activeFilter, activeGroupId, crossProfileSelection.length, renamingId, deleteTarget, healthCheckTarget, speedTestTarget]);
 
-    const confirmDelete = useCallback(() => {
-        if (!deleteTarget) return;
-        const updated = servers.filter(s => s.id !== deleteTarget.id);
-        setServers(updated);
-        storeSavedServerProfiles(updated).catch(() => {});
-        deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
-        // Drop the deleted profile from any group it belonged to (#320).
-        pruneServerFromGroups(deleteTarget.id).catch(() => {});
-        setGroups(prev => prev.map(g => (
-            g.members.includes(deleteTarget.id)
-                ? { ...g, members: g.members.filter(m => m !== deleteTarget.id) }
-                : g
-        )));
-        onServersChange?.(updated.length);
-        setDeleteTarget(null);
-    }, [deleteTarget, servers, onServersChange]);
+    const confirmDelete = useCallback(async () => {
+        try {
+            if (!deleteTarget) return;
+            const currentServers = await loadSavedServerProfilesStrict();
+            const updated = currentServers.filter(s => s.id !== deleteTarget.id);
+            await storeSavedServerProfiles(updated);
+            setServers(updated);
+            deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
+            // Drop the deleted profile from any group it belonged to (#320).
+            pruneServerFromGroups(deleteTarget.id).catch(() => {});
+            setGroups(prev => prev.map(g => (
+                g.members.includes(deleteTarget.id)
+                    ? { ...g, members: g.members.filter(m => m !== deleteTarget.id) }
+                    : g
+            )));
+            onServersChange?.(updated.length);
+            setDeleteTarget(null);
+        } catch (err) {
+            logger.warn('Saved profile operation failed', err);
+            window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(err) },
+            }));
+        }
+    }, [deleteTarget, servers, onServersChange, t]);
 
     const handleOpenMount = useCallback(async (server: ServerProfile) => {
         try {

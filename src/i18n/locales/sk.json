@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Predvoľby synchronizácie",
-            "nothingToDo": "Predvoľby synchronizácie",
+            "nothingToDo": "Nie je čo synchronizovať",
             "allSkipped": "Žiadne vykonateľné položky pre túto predvoľbu.",
-            "deletesDeferred": "Predvoľby synchronizácie",
             "builtinModesGroup": "Vstavané režimy",
             "savedPresetsGroup": "Vaše uložené predvoľby"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Priečinok záloh nemôže obsahovať '..'.",
                     "name": "Tento názov priečinka záloh nie je platný."
                 }
-            }
+            },
+            "savedPresetLimits": "Použije smer, mazanie, vylúčenia a overovanie. Uložené pravidlá porovnávania, opakované pokusy, dátové prúdy a kompresia sa nepoužijú. Pred spustením skontrolujte kartu Porovnanie a aktuálne nastavenia prenosu.",
+            "savedPresetsLoadFailed": "Nepodarilo sa načítať uložené predvoľby: {error}",
+            "savedPresets": "Uložené predvoľby"
         },
         "accountLock": {
             "title": "Vyberte účet",

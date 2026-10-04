@@ -3999,9 +3999,8 @@
             "title": "Sync presets",
             "builtinModesGroup": "Built-in modes",
             "savedPresetsGroup": "Your saved presets",
-            "nothingToDo": "Sync presets",
-            "allSkipped": "No actionable entries for this preset.",
-            "deletesDeferred": "Sync presets"
+            "nothingToDo": "Nothing to sync",
+            "allSkipped": "No actionable entries for this preset."
         },
         "syncPanel": {
             "close": "Close",
@@ -5770,7 +5769,10 @@
                     "parent": "The backup folder cannot contain '..'.",
                     "name": "This backup folder name is not valid."
                 }
-            }
+            },
+            "savedPresetLimits": "Applies direction, deletions, exclusions and verification. Saved comparison rules, retries, streams and compression are not applied. Review Compare and the current transfer settings before running.",
+            "savedPresetsLoadFailed": "Could not load saved presets: {error}",
+            "savedPresets": "Saved presets"
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

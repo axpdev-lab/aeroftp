@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Prednastavitve sinhronizacije",
-            "nothingToDo": "Prednastavitve sinhronizacije",
+            "nothingToDo": "Ni ničesar za sinhronizacijo",
             "allSkipped": "Za to prednastavitev ni izvedljivih vnosov.",
-            "deletesDeferred": "Prednastavitve sinhronizacije",
             "builtinModesGroup": "Vgrajeni načini",
             "savedPresetsGroup": "Vaše shranjene prednastavitve"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "Mapa varnostnih kopij ne sme vsebovati '..'.",
                     "name": "To ime mape varnostnih kopij ni veljavno."
                 }
-            }
+            },
+            "savedPresetLimits": "Uporabi smer, brisanja, izključitve in preverjanje. Shranjena pravila primerjave, ponovni poskusi, tokovi in stiskanje se ne uporabijo. Pred zagonom preglejte zavihek Primerjava in trenutne nastavitve prenosa.",
+            "savedPresetsLoadFailed": "Shranjene prednastavitve ni bilo mogoče naložiti: {error}",
+            "savedPresets": "Shranjene prednastavitve"
         },
         "accountLock": {
             "title": "Izberite račun",

@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Predefinições de sincronização",
-            "nothingToDo": "Predefinições de sincronização",
+            "nothingToDo": "Nada para sincronizar",
             "allSkipped": "Nenhuma entrada acionável para esta predefinição.",
-            "deletesDeferred": "Predefinições de sincronização",
             "builtinModesGroup": "Modos integrados",
             "savedPresetsGroup": "As suas predefinições guardadas"
         },
@@ -5522,7 +5521,10 @@
                     "parent": "A pasta de backup não pode conter '..'.",
                     "name": "Este nome de pasta de backup não é válido."
                 }
-            }
+            },
+            "savedPresetLimits": "Aplica a direção, as eliminações, as exclusões e a verificação. As regras de comparação, as novas tentativas, os fluxos e a compressão guardados não são aplicados. Reveja o separador Comparar e as definições de transferência atuais antes de executar.",
+            "savedPresetsLoadFailed": "Não foi possível carregar as predefinições guardadas: {error}",
+            "savedPresets": "Predefinições guardadas"
         },
         "accountLock": {
             "title": "Escolha uma conta",

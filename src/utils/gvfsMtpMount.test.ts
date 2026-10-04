@@ -33,7 +33,7 @@ describe('isGvfsMtpPath', () => {
   });
 
   it('rejects ordinary local paths', () => {
-    expect(isGvfsMtpPath('/home/axpdev')).toBe(false);
+    expect(isGvfsMtpPath('/home/alice')).toBe(false);
     expect(isGvfsMtpPath('/media/axpdev/USB')).toBe(false);
     expect(isGvfsMtpPath('/run/user/1001/gvfs/smb-share:server=nas')).toBe(false);
   });
@@ -118,7 +118,7 @@ describe('isPathOnOrUnderMount', () => {
   it('does not match a sibling path with a shared prefix', () => {
     // /run/user/1001/gvfs/mtp:host=Sony_... vs same + trailing junk without separator
     expect(isPathOnOrUnderMount(`${XPERIA_MOUNT}2`, XPERIA_MOUNT)).toBe(false);
-    expect(isPathOnOrUnderMount('/home/axpdev', XPERIA_MOUNT)).toBe(false);
+    expect(isPathOnOrUnderMount('/home/alice', XPERIA_MOUNT)).toBe(false);
     expect(isPathOnOrUnderMount('/run/user/1001/gvfs/mtp:host=Other_Phone', XPERIA_MOUNT)).toBe(false);
   });
 

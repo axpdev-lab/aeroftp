@@ -1,0 +1,43 @@
+# Text is stored with LF endings and checked out with LF endings on every
+# operating system, Windows included. Without this file a Windows checkout
+# (core.autocrlf=true, the Git for Windows default and the setting of the
+# GitHub Windows runners) wrote every text file with CRLF, so a test that reads
+# a source file as text, and anything generated from the tree, differed from
+# Linux and macOS by its line endings alone.
+* text=auto eol=lf
+
+# Binary content. Git's own detection classifies every file tracked today
+# correctly; these patterns keep a future file of these types from being
+# guessed as text and converted.
+*.png binary
+*.jpg binary
+*.bmp binary
+*.ico binary
+*.icns binary
+*.pdf binary
+*.bin binary
+*.gz binary
+*.zip binary
+*.7z binary
+*.rar binary
+*.dll binary
+*.dmg binary
+
+# cmd.exe misreads labels in a batch file with LF endings. None is tracked
+# today: the rule is here so the first one does not have to find that out.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Plain text handed to a Windows user as it was checked out keeps the
+# checkout's native endings, which is what it had before this file existed.
+# LICENSE is the license page of the NSIS installer, and NSIS documents that
+# page as requiring DOS line endings; the portable README and marker are copied
+# into the Windows portable ZIP.
+LICENSE !eol
+src-tauri/installer/portable/README.txt !eol
+src-tauri/installer/portable/portable.marker !eol
+
+# Bytes kept exactly as captured or vendored, CRLF included: the real rsync
+# transcripts the protocol tests replay, and the upstream EnVar NSIS plug-in.
+src-tauri/src/aerorsync/capture/artifacts_real/frozen/** -text
+src-tauri/installer/EnVar/** -text

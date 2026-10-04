@@ -1863,8 +1863,8 @@ mod tests {
     #[test]
     fn absolute_path_returned_unchanged() {
         assert_eq!(
-            resolve_local_path("/home/axpdev", Some("/tmp")),
-            "/home/axpdev"
+            resolve_local_path("/home/alice", Some("/tmp")),
+            "/home/alice"
         );
         assert_eq!(resolve_local_path("/", Some("/tmp")), "/");
     }
@@ -1872,17 +1872,17 @@ mod tests {
     #[test]
     fn relative_path_joined_with_base() {
         assert_eq!(
-            resolve_local_path("foo", Some("/home/axpdev")),
-            "/home/axpdev/foo"
+            resolve_local_path("foo", Some("/home/alice")),
+            "/home/alice/foo"
         );
         assert_eq!(
-            resolve_local_path("axpdev/", Some("/home/axpdev")),
-            "/home/axpdev/axpdev/"
+            resolve_local_path("alice/", Some("/home/alice")),
+            "/home/alice/alice/"
         );
         // Trailing slash in base must not produce double-slash on join.
         assert_eq!(
-            resolve_local_path("foo", Some("/home/axpdev/")),
-            "/home/axpdev/foo"
+            resolve_local_path("foo", Some("/home/alice/")),
+            "/home/alice/foo"
         );
     }
 
@@ -1894,23 +1894,23 @@ mod tests {
 
     #[test]
     fn tilde_expanded_to_home_when_alone() {
-        with_home("/home/axpdev", || {
-            assert_eq!(resolve_local_path("~", None), "/home/axpdev");
+        with_home("/home/alice", || {
+            assert_eq!(resolve_local_path("~", None), "/home/alice");
             // Base must NOT override tilde expansion: `~` always means $HOME.
-            assert_eq!(resolve_local_path("~", Some("/tmp")), "/home/axpdev");
+            assert_eq!(resolve_local_path("~", Some("/tmp")), "/home/alice");
         });
     }
 
     #[test]
     fn tilde_slash_expanded_to_home_subpath() {
-        with_home("/home/axpdev", || {
+        with_home("/home/alice", || {
             assert_eq!(
                 resolve_local_path("~/Documents", None),
-                "/home/axpdev/Documents"
+                "/home/alice/Documents"
             );
             assert_eq!(
                 resolve_local_path("~/Documents/foo.txt", Some("/tmp")),
-                "/home/axpdev/Documents/foo.txt"
+                "/home/alice/Documents/foo.txt"
             );
         });
     }

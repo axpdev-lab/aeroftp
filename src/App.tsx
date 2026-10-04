@@ -492,6 +492,7 @@ import { GlobalTooltip } from './components/GlobalTooltip';
 import { TransferProgressBar } from './components/TransferProgressBar';
 import { ImageThumbnail } from './components/ImageThumbnail';
 import { signatureOf } from './utils/thumbnailCache';
+import { loadOverwriteDestination } from './utils/overwriteDestination';
 import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
 import type { FileBatchDirection, FileBatchSessionFlags, FolderTransferOutcome } from './utils/fileBatchRouting';
 import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
@@ -1788,13 +1789,13 @@ const App: React.FC = () => {
     if (!isConnected || !connectionParams.server || !currentLocalPath) return true;
 
     // Extract server name without 'ftp.' prefix and port
-    // e.g., "ftp.ericsolar.it:21" -> "ericsolar"
+    // e.g., "ftp.example.com:21" -> "example"
     const serverHost = connectionParams.server.split(':')[0]; // Remove port
     const serverName = serverHost.replace(/^ftp\./, '').replace(/^www\./, ''); // Remove ftp./www.
-    const serverBase = serverName.split('.')[0]; // Get first part (e.g., "ericsolar" from "ericsolar.it")
+    const serverBase = serverName.split('.')[0]; // Get first part (e.g., "example" from "example.com")
 
     // Check if local path contains a reference to a different server
-    // Common patterns: /var/www/html/www.ericsolar.it, /home/user/ericsolar, etc.
+    // Common patterns: /var/www/html/www.example.com, /home/user/example, etc.
     const localPathLower = currentLocalPath.toLowerCase();
     const serverBaseLower = serverBase.toLowerCase();
 
@@ -2041,7 +2042,7 @@ const App: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const profiles = await loadSavedServerProfiles();
+        const profiles = await loadSavedServerProfilesStrict();
         const { migrated, changed } = await migrateFilenApiKeysToVault(
           profiles,
           (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
@@ -2049,7 +2050,7 @@ const App: React.FC = () => {
         );
         if (cancelled) return;
         if (changed) {
-          await storeSavedServerProfiles(migrated).catch(() => { });
+          await storeSavedServerProfiles(migrated);
           setServersRefreshKey(k => k + 1);
         }
         if (migrated.every((p) => !p.options?.filen_api_key)) {
@@ -7198,7 +7199,7 @@ const App: React.FC = () => {
     if (!server || CLOUD_API_PROTOCOLS.includes(protocol)) return { resolvedIp: null, connectingLogId: null };
     // Extract pure hostname for DNS resolution
     // Full URLs: "https://webdav.cloudme.com/path/" → "webdav.cloudme.com"
-    // Path-style: "axpnas.ddns.net/axpdev/dav" → "axpnas.ddns.net"
+    // Path-style: "nas.example.net/user/dav" → "nas.example.net"
     let hostname = server;
     try { hostname = new URL(server).hostname; } catch {
       // Not a full URL: strip path and port for DNS lookup
@@ -8193,17 +8194,18 @@ const App: React.FC = () => {
     ));
     // Update saved servers in vault (localStorage may be empty after vault migration)
     try {
-      const servers = await loadSavedServerProfiles();
+      const servers = await loadSavedServerProfilesStrict();
       if (servers) {
         const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
         if (idx !== -1) {
           servers[idx].faviconUrl = faviconUrl;
-          try { await storeSavedServerProfiles(servers); } catch { /* ignore */ }
+          await storeSavedServerProfiles(servers);
+          setServersRefreshKey(k => k + 1);
         }
       }
-    } catch { /* ignore */ }
-    // Refresh the My Servers list (vault is now up-to-date)
-    setServersRefreshKey(k => k + 1);
+    } catch (err) {
+      logger.warn('Detected favicon could not be saved to the profile', err);
+    }
   }, []);
 
   useFaviconDetection(sessions, activeSessionId, handleFaviconDetected);
@@ -9658,6 +9660,18 @@ const App: React.FC = () => {
 
   // checkOverwrite and resetOverwriteSettings provided by useOverwriteCheck hook
 
+  const getOverwriteDestination = (direction: FileBatchDirection, path: string) => {
+    const activeSession = sessions.find(s => s.id === activeSessionId);
+    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    return loadOverwriteDestination({
+      direction,
+      path,
+      isProviderSession: usesProviderApi(protocol),
+      aeroVaultSessionId: aeroVaultOverlaySession?.sessionId,
+      visibleRemotePath: currentRemotePath,
+    }, invoke);
+  };
+
   // Helper: check folder overwrite in 'ask' mode: shows FolderOverwriteDialog
   const checkFolderOverwrite = useCallback(async (
     folderName: string,
@@ -9766,12 +9780,14 @@ const App: React.FC = () => {
 
           if (!_skipConflictCheck) {
             // Check file conflict before downloading (single file transfers only)
+            const destinationFiles = await getOverwriteDestination('download', downloadPath);
             const overwriteResult = await checkOverwrite(
               fileName,
               fileSize || remoteFileInfo?.size || 0,
               remoteFileInfo?.modified ? new Date(remoteFileInfo.modified) : undefined,
               true, // sourceIsRemote = true for download
-              0
+              0,
+              destinationFiles,
             );
 
             if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
@@ -9942,13 +9958,15 @@ const App: React.FC = () => {
 
         if (!_skipConflictCheck) {
           // Check file conflict before uploading (single file transfers only)
+          const destinationFiles = await getOverwriteDestination('upload', remoteBase);
           const localFileInfo = localFiles.find(f => f.name === fileName && !f.is_dir);
           const overwriteResult = await checkOverwrite(
             fileName,
             fileSize || localFileInfo?.size || 0,
             localFileInfo?.modified ? new Date(localFileInfo.modified) : undefined,
             false, // sourceIsRemote = false for upload
-            0
+            0,
+            destinationFiles,
           );
 
           if (overwriteResult.action === 'cancel' || overwriteResult.action === 'skip') {
@@ -11284,7 +11302,7 @@ const App: React.FC = () => {
       && !opts.resumeJournal;
     if (nothingToRun) {
       notify.info(
-        t('syncPresets.nothingToDo') || 'AeroSync',
+        t('syncPresets.nothingToDo') || 'Nothing to sync',
         t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
       );
       return;
@@ -11476,7 +11494,7 @@ const App: React.FC = () => {
       && !opts.resumeJournal;
     if (nothingToRun) {
       notify.info(
-        t('syncPresets.nothingToDo') || 'AeroSync',
+        t('syncPresets.nothingToDo') || 'Nothing to sync',
         t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
       );
       return;
@@ -12133,6 +12151,18 @@ const App: React.FC = () => {
     const resumes = new Set<Entry>();
     // Destinations already written by an earlier file of this transfer.
     const claimedDestinations = new Set<string>();
+    // Resolve once per batch, before creating queue rows or invoking a writer.
+    // A failed listing is a failed preflight, never an empty destination.
+    let destinationFiles: LocalFile[] | RemoteFile[];
+    try {
+      destinationFiles = [...await getOverwriteDestination(direction, targetDir)];
+    } catch (error) {
+      resetOverwriteSettings();
+      result.failed = items.length;
+      result.aborted = true;
+      notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+      return result;
+    }
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       const overwriteResult = await checkOverwrite(
@@ -12141,6 +12171,7 @@ const App: React.FC = () => {
         item.modified ? new Date(item.modified) : undefined,
         isDownload,
         items.length - i - 1,
+        destinationFiles,
       );
       if (overwriteResult.action === 'cancel') {
         resetOverwriteSettings();
@@ -12177,6 +12208,15 @@ const App: React.FC = () => {
         destinationClaimed: claimedDestinations.has(destination),
       });
       claimedDestinations.add(destination);
+      // Rename must preserve every source, including a name that was free
+      // before this batch. Let the next check see the targets already chosen.
+      if (fileExistsAction === 'rename' || overwriteResult.action === 'rename') {
+        const reserved: RemoteFile = {
+          name: finalName, path: destination, size: item.size,
+          modified: item.modified, is_dir: false, permissions: null,
+        };
+        destinationFiles.push(reserved);
+      }
       if (single) {
         singles.push(entry);
         if (!isDownload && overwriteResult.action === 'resume') resumes.add(entry);

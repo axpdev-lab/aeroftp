@@ -2271,10 +2271,24 @@ mod tests {
     // --- DAG-P0-05: graph-scoped cancel, fail-fast, typed timeout ----------
 
     /// First part failure cancels siblings; they exit well under the 2s grace.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    ///
+    /// Paused clock: virtual time only advances while every task is parked, so
+    /// `elapsed` counts the executor's own waits and none of the time a loaded
+    /// runner leaves the test unscheduled (3.1s of wall clock on a Windows CI
+    /// run). The cooperative cancel ends the run at node 0's 20ms failure; the
+    /// force-abort fallback would end it at the grace. That grace is armed on
+    /// the wall clock, so a real stall can shorten the fallback's virtual wait
+    /// but never lengthen the cooperative path: the bound stays far below it.
+    /// A stall at least as long as the grace, landing between arming it and
+    /// the next grace check (no await in between), makes the executor
+    /// force-abort before any sibling is polled. That run does not exercise
+    /// the cooperative cancel and passes whether it works or not; asserting
+    /// that the fallback stayed unused would turn it into a red on healthy
+    /// code instead.
+    #[tokio::test(start_paused = true)]
     async fn fail_fast_cancels_siblings_under_two_seconds() {
         use std::sync::atomic::AtomicBool;
-        use std::time::Instant;
+        use tokio::time::Instant;
 
         let mut dag = TransferDag::default();
         // Three independent parts (wide frontier, window large enough).
@@ -2342,8 +2356,8 @@ mod tests {
             other => panic!("expected NodeFailed, got {other:?}"),
         }
         assert!(
-            elapsed < Duration::from_secs(2),
-            "fail-fast must finish under 2s, took {elapsed:?}"
+            elapsed < Duration::from_millis(100),
+            "siblings must exit on the graph cancel, not the force-abort grace; took {elapsed:?}"
         );
 
         // Every started node got a terminal observer event.
@@ -2366,10 +2380,11 @@ mod tests {
 
     /// A sibling that never checks cancel itself (long sleep, no race_cancel)
     /// is still terminated by the executor's graph-token select — not by an
-    /// unbounded drain. Wall time stays well under the 2s fail-fast gate.
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    /// unbounded drain. On the paused clock (see the test above) the run ends
+    /// at the 30ms failure instead of reaching the force-abort grace.
+    #[tokio::test(start_paused = true)]
     async fn fail_fast_terminates_sibling_that_never_checks_cancel() {
-        use std::time::Instant;
+        use tokio::time::Instant;
 
         let mut dag = TransferDag::default();
         dag.add_node(
@@ -2421,8 +2436,8 @@ mod tests {
             DagExecutionError::NodeFailed { node_id: 0, .. }
         ));
         assert!(
-            elapsed < Duration::from_secs(2),
-            "non-self-checking sibling must be terminated under 2s, took {elapsed:?}"
+            elapsed < Duration::from_millis(100),
+            "a sibling that ignores cancel must end on the graph cancel, not the grace; took {elapsed:?}"
         );
         assert_eq!(
             sibling_finished.load(Ordering::SeqCst),
