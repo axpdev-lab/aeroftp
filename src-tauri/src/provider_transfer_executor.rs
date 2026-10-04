@@ -365,8 +365,8 @@ pub async fn run_provider_segmented_download(
 ) -> Result<(), SegmentedDownloadError> {
     use crate::providers::multi_thread::{
         parallel_refused, range_source_changed_through, read_range_source_through,
-        run_concurrent_range_download, segmented_temp_path_for, source_changed,
-        ConcurrentRangeConfig, ConcurrentRangeOutcome,
+        run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
+        ConcurrentRangeOutcome, SegmentedRun,
     };
     use crate::providers::ProviderError;
     use std::collections::VecDeque;
@@ -541,23 +541,22 @@ pub async fn run_provider_segmented_download(
         on_progress,
     )
     .await;
-    let temp = segmented_temp_path_for(Path::new(local_path));
     if cancel_token.is_cancelled() {
-        // An error already cleans its claimed temporary in the range engine.
-        // Do not remove a temporary owned by another run whose claim we failed
-        // to acquire. Only a completed run handed its temporary back to us.
-        if matches!(outcome, Ok(ConcurrentRangeOutcome::Completed)) {
-            let _ = tokio::fs::remove_file(&temp).await;
-        }
+        // An error already cleans its claimed temporary in the range engine,
+        // and a temporary owned by another run whose claim we failed to
+        // acquire is never ours to remove. A completed run handed its
+        // temporary back to us: dropping it removes it under its claim.
+        drop(outcome);
         return Err(SegmentedDownloadError::Cancelled);
     }
 
     match outcome {
-        Ok(ConcurrentRangeOutcome::Completed) => {
+        Ok(SegmentedRun::Completed(temp)) => {
+            // The temporary stays claimed through this reading and the rename.
             let changed = tokio::select! {
                 biased;
                 _ = cancel_token.cancelled() => {
-                    let _ = tokio::fs::remove_file(&temp).await;
+                    temp.discard();
                     return Err(SegmentedDownloadError::Cancelled);
                 }
                 changed = range_source_changed_through(primary, remote_path, &before) => changed,
@@ -565,31 +564,28 @@ pub async fn run_provider_segmented_download(
             // Validation can finish in the same tick as Stop. Refuse publication
             // even when the metadata future won the race.
             if cancel_token.is_cancelled() {
-                let _ = tokio::fs::remove_file(&temp).await;
+                temp.discard();
                 return Err(SegmentedDownloadError::Cancelled);
             }
             match changed {
                 Some(what) => {
-                    let _ = tokio::fs::remove_file(&temp).await;
+                    temp.discard();
                     Err(SegmentedDownloadError::Failed(source_changed(
                         "segmented download",
                         remote_path,
                         &what,
                     )))
                 }
-                None => match tokio::fs::rename(&temp, local_path).await {
+                None => match temp.publish(Path::new(local_path)).await {
                     Ok(()) => Ok(()),
-                    Err(e) => {
-                        let _ = tokio::fs::remove_file(&temp).await;
-                        Err(SegmentedDownloadError::Failed(format!(
-                            "segmented download: finalize failed: {}",
-                            e
-                        )))
-                    }
+                    Err(e) => Err(SegmentedDownloadError::Failed(format!(
+                        "segmented download: finalize failed: {}",
+                        e
+                    ))),
                 },
             }
         }
-        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(SegmentedDownloadError::Failed(
+        Ok(SegmentedRun::ServerIgnoredRange) => Err(SegmentedDownloadError::Failed(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
         )),
         Err(e) => Err(SegmentedDownloadError::Failed(format!(
