@@ -497,8 +497,14 @@ jobs:
 
           # --- Re-package using appimagetool ---
           cd /tmp/appimage-fix
-          APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-          APPIMAGETOOL_SHA256="a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
+          # A versioned release, not `continuous`: upstream rebuilds that one on
+          # every commit, so a pinned checksum on it fails at the next upstream
+          # merge (2026-10-04: two commits, a rebuild at 14:58 UTC, every Linux
+          # build red). 1.9.1 is built from 8c8c91f76, the same source as the
+          # `continuous` binary pinned until then; the checksum is the digest
+          # GitHub publishes for the asset.
+          APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+          APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
           wget -q "$APPIMAGETOOL_URL" -O appimagetool
           echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c - || {
             echo "::error::appimagetool checksum mismatch: possible supply chain compromise. Update APPIMAGETOOL_SHA256 in build.yml after verification."
