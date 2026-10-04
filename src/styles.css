@@ -578,13 +578,18 @@ tbody tr.selected,
   }
 }
 
-/* Size and Modified columns - don't wrap */
+/* The 2nd and 3rd column of a table do not wrap. This rule used to
+   right-align them too, in every table of the app, because they were once
+   always Size and Modified. It is positional, so it right-aligned whatever
+   sat there (in AeroFile, Size and Encryption under left-aligned headers) and,
+   being more specific than a utility class, it overrode an explicit
+   `text-left`. Alignment is each table's own: a column that wants the right
+   says `text-right`. */
 td:nth-child(2),
 th:nth-child(2),
 td:nth-child(3),
 th:nth-child(3) {
   white-space: nowrap;
-  text-align: right;
 }
 
 /* ======================================
@@ -1012,14 +1017,6 @@ html[dir="rtl"] table {
 html[dir="rtl"] th,
 html[dir="rtl"] td {
   text-align: right;
-}
-
-/* Size and modified columns stay right-aligned in RTL (which is left visually) */
-html[dir="rtl"] td:nth-child(2),
-html[dir="rtl"] th:nth-child(2),
-html[dir="rtl"] td:nth-child(3),
-html[dir="rtl"] th:nth-child(3) {
-  text-align: left;
 }
 
 /* File browser panels - reverse layout */
