@@ -1357,9 +1357,23 @@ impl B2Provider {
         self.copy_large_file_inner(source_file_id, to_key, size)
             .await?;
         // Delete the original version, as `rename` does.
-        self.do_delete_file_version(from_key, source_file_id)
+        self.remove_renamed_source(from_key, source_file_id)
             .await
             .map_err(|e| source_delete_failed(to_key, e))
+    }
+
+    /// Delete the version a rename copied, then make sure the name is gone
+    /// from view. On a bucket that keeps older versions, deleting the newest
+    /// one makes the one before it current again, and the source was still
+    /// there after the rename: it is then hidden, as `delete` hides a file,
+    /// which keeps those older versions.
+    async fn remove_renamed_source(&self, name: &str, file_id: &str) -> Result<(), ProviderError> {
+        self.do_delete_file_version(name, file_id).await?;
+        match self.lookup_file_id(name).await {
+            Ok(_) => self.do_hide_file(name).await.map(|_| ()),
+            Err(ProviderError::NotFound(_)) => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     /// The copy half of [`Self::rename_large_file_inner`]: b2_copy_part into a
@@ -1540,13 +1554,29 @@ impl B2Provider {
         }
         // A delete that fails leaves the folder under both names: that is a
         // failed rename, never a success.
+        let under_both_names = |done: usize, e: ProviderError| {
+            ProviderError::Other(format!(
+                "rename copied {} files to {to}, but deleting the originals failed after \
+                 {done} of them, so the folder now exists under both names: {e}",
+                files.len()
+            ))
+        };
         for (deleted, (name, file_id, _)) in files.iter().enumerate() {
-            if let Err(e) = self.do_delete_file_version(name, file_id).await {
-                return Err(ProviderError::Other(format!(
-                    "rename copied {} files to {to}, but deleting the originals failed after \
-                     {deleted} of them, so the folder now exists under both names: {e}",
-                    files.len()
-                )));
+            self.do_delete_file_version(name, file_id)
+                .await
+                .map_err(|e| under_both_names(deleted, e))?;
+        }
+        // On a bucket that keeps older versions, deleting the newest version
+        // of a file makes the one before it current again, and the folder was
+        // still there: what is left is hidden, as `delete` hides a file.
+        let surfaced = self
+            .list_files_under(&prefix)
+            .await
+            .map_err(|e| under_both_names(files.len(), e))?;
+        for (name, _, _) in &surfaced {
+            match self.do_hide_file(name).await {
+                Ok(_) | Err(ProviderError::NotFound(_)) => {}
+                Err(e) => return Err(under_both_names(files.len(), e)),
             }
         }
         b2_log(&format!(
@@ -1653,10 +1683,10 @@ impl B2Provider {
             Err(e) => return Err(e),
         };
         // Delete (hard) the original version so this is a true rename.
-        let del = match self.do_delete_file_version(&from_key, &file_id).await {
+        let del = match self.remove_renamed_source(&from_key, &file_id).await {
             Err(e) if is_b2_token_failure(&e) => {
                 if self.maybe_reauth(&e).await {
-                    self.do_delete_file_version(&from_key, &file_id).await
+                    self.remove_renamed_source(&from_key, &file_id).await
                 } else {
                     Err(e)
                 }
@@ -5290,15 +5320,35 @@ mod tests {
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
         std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     ) {
+        provider_for_rename_on(destination_taken, delete_status, false).await
+    }
+
+    /// [`provider_for_rename`] on a bucket that, with `keeps_versions`, holds
+    /// an older version of every file: deleting the newest one makes that
+    /// one current, so the name is still listed until it is hidden. Without
+    /// it a deleted version is gone from the listings.
+    async fn provider_for_rename_on(
+        destination_taken: bool,
+        delete_status: u16,
+        keeps_versions: bool,
+    ) -> (
+        B2Provider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    ) {
         use std::sync::Arc;
         let ops: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
         let copies: Arc<std::sync::Mutex<Vec<serde_json::Value>>> = Arc::default();
+        let deleted: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::default();
+        let hidden: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::default();
         let seen = Arc::clone(&ops);
         let seen_copies = Arc::clone(&copies);
         let app = axum::Router::new().fallback(axum::routing::any(
             move |req: axum::extract::Request| {
                 let seen = Arc::clone(&seen);
                 let seen_copies = Arc::clone(&seen_copies);
+                let deleted = Arc::clone(&deleted);
+                let hidden = Arc::clone(&hidden);
                 async move {
                     let op = req.uri().path().rsplit('/').next().unwrap_or("").to_string();
                     let body: serde_json::Value = serde_json::from_slice(
@@ -5322,18 +5372,34 @@ mod tests {
                             "contentLength": 3, "uploadTimestamp": 1_700_000_000_000i64,
                         })
                     };
+                    let listed = |name: &str, id: &str| {
+                        if hidden.lock().unwrap().contains(name) {
+                            None
+                        } else if deleted.lock().unwrap().contains(name) {
+                            keeps_versions.then(|| file(name, "older-id"))
+                        } else {
+                            Some(file(name, id))
+                        }
+                    };
                     match op.as_str() {
                         "b2_list_file_names" => {
-                            let files = match body["prefix"].as_str() {
-                                Some("a.txt") => vec![file("a.txt", "src-id")],
+                            let files: Vec<serde_json::Value> = match body["prefix"].as_str() {
+                                Some("a.txt") => listed("a.txt", "src-id").into_iter().collect(),
                                 Some("b.txt") if destination_taken => {
                                     vec![file("b.txt", "dst-id")]
                                 }
                                 // `d` is a folder: only `d/x.txt` holds it.
-                                Some("d") | Some("d/") => vec![file("d/x.txt", "x-id")],
+                                Some("d") | Some("d/") => {
+                                    listed("d/x.txt", "x-id").into_iter().collect()
+                                }
                                 _ => vec![],
                             };
                             json(200, serde_json::json!({ "files": files, "nextFileName": null }))
+                        }
+                        "b2_hide_file" => {
+                            let name = body["fileName"].as_str().unwrap_or_default().to_string();
+                            hidden.lock().unwrap().insert(name);
+                            json(200, serde_json::json!({ "action": "hide" }))
                         }
                         "b2_copy_file" => json(
                             200,
@@ -5342,6 +5408,8 @@ mod tests {
                             }),
                         ),
                         "b2_delete_file_version" if delete_status == 200 => {
+                            let name = body["fileName"].as_str().unwrap_or_default().to_string();
+                            deleted.lock().unwrap().insert(name);
                             json(200, serde_json::json!({}))
                         }
                         "b2_delete_file_version" => json(
@@ -5382,7 +5450,9 @@ mod tests {
                 "b2_list_file_names",
                 "b2_list_file_names",
                 "b2_copy_file",
-                "b2_delete_file_version"
+                "b2_delete_file_version",
+                // The source is gone from view: nothing to hide.
+                "b2_list_file_names"
             ]
         );
     }
@@ -5484,10 +5554,36 @@ mod tests {
         assert_eq!(copies.len(), 1, "{copies:?}");
         assert_eq!(copies[0]["sourceFileId"], "src-id");
         assert_eq!(copies[0]["fileName"], "b.txt");
+        let ops = ops.lock().unwrap();
+        assert!(
+            ops.iter().any(|op| op == "b2_delete_file_version"),
+            "{ops:?}"
+        );
+        assert!(!ops.iter().any(|op| op == "b2_hide_file"), "{ops:?}");
+    }
+
+    /// On a bucket that keeps older versions, deleting the version a rename
+    /// copied made the one before it current, and the source was still there
+    /// after the rename. It is hidden now, as `delete` hides a file.
+    #[tokio::test]
+    async fn a_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
+        let (mut provider, ops, _) = provider_for_rename_on(false, 200, true).await;
+        provider.rename("/a.txt", "/b.txt").await.expect("rename");
         assert_eq!(
             ops.lock().unwrap().last().map(String::as_str),
-            Some("b2_delete_file_version")
+            Some("b2_hide_file")
         );
+        let left = provider.list_files_under("a.txt").await.unwrap();
+        assert!(left.is_empty(), "{left:?}");
+    }
+
+    /// The same for a folder: no file under the old prefix stays in view.
+    #[tokio::test]
+    async fn a_folder_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
+        let (mut provider, _, _) = provider_for_rename_on(false, 200, true).await;
+        provider.rename("/d", "/e").await.expect("folder rename");
+        let left = provider.list_files_under("d/").await.unwrap();
+        assert!(left.is_empty(), "{left:?}");
     }
 
     /// A copy-then-delete onto itself would delete the only version.
