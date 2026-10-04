@@ -215,6 +215,70 @@ impl Drop for TempFileGuard {
     }
 }
 
+/// What a segmented run hands back to its caller.
+#[must_use]
+#[derive(Debug)]
+pub enum SegmentedRun {
+    /// Every window is in the temporary, which now belongs to the caller: it
+    /// reads the source again, then publishes the temporary or discards it.
+    Completed(SegmentedTemp),
+    /// The server ignored `Range`. Nothing was kept.
+    ServerIgnoredRange,
+}
+
+impl SegmentedRun {
+    pub fn outcome(&self) -> ConcurrentRangeOutcome {
+        match self {
+            Self::Completed(_) => ConcurrentRangeOutcome::Completed,
+            Self::ServerIgnoredRange => ConcurrentRangeOutcome::ServerIgnoredRange,
+        }
+    }
+}
+
+/// The temporary of a completed segmented run, still claimed.
+///
+/// The claim taken when the run created the temporary stays with this value
+/// until the temporary is published or discarded. A second segmented download
+/// of the same file therefore finds it live through the caller's second
+/// reading of the source and its rename, instead of taking it for stale and
+/// replacing it with a pre-sized file of its own that the first caller would
+/// then publish, holes included. Dropped without being published, the
+/// temporary is removed while still claimed.
+#[must_use = "a completed segmented run is published or discarded"]
+#[derive(Debug)]
+pub struct SegmentedTemp {
+    path: PathBuf,
+    published: bool,
+    #[cfg(unix)]
+    _claim: std::fs::File,
+}
+
+impl SegmentedTemp {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Rename the temporary to `final_path` while it is still claimed. When
+    /// the rename fails the temporary is removed.
+    pub async fn publish(mut self, final_path: &Path) -> std::io::Result<()> {
+        let renamed = tokio::fs::rename(&self.path, final_path).await;
+        self.published = renamed.is_ok();
+        renamed
+    }
+
+    /// Remove the temporary while it is still claimed.
+    pub fn discard(self) {}
+}
+
+impl Drop for SegmentedTemp {
+    fn drop(&mut self) {
+        // The claim is a field, so it is released only after this removal.
+        if !self.published {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
 /// What a remote object looked like at one moment: the validator the provider
 /// publishes for it, plus the size and modification time every provider has.
 ///
@@ -527,7 +591,7 @@ pub async fn run_concurrent_range_download<W, WFut>(
     write_one_range: W,
     cancel: CancellationToken,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-) -> Result<ConcurrentRangeOutcome, ProviderError>
+) -> Result<SegmentedRun, ProviderError>
 where
     W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
     WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
@@ -543,8 +607,9 @@ where
 
     let temp_path = segmented_temp_path_for(&config.final_path);
     // DAG-P2-01b: a segmented transfer remains one foreground job for the
-    // global governor. The lease covers pre-allocation, every range and the
-    // final atomic commit; range fan-out must not multiply endpoint permits.
+    // global governor. The lease covers pre-allocation and every range; range
+    // fan-out must not multiply endpoint permits. The publication is the
+    // caller's, under the claim the run hands back with the temporary.
     let _governor_lease = crate::transfer_dag::governor::global()
         .acquire_job(
             config.endpoint_identity.clone(),
@@ -566,9 +631,10 @@ where
     // file is refused instead of truncating this one's windows, and a stale
     // one is replaced. The windows write through handles of their own, which
     // an advisory lock leaves alone; Windows locks are not advisory, so there
-    // the temporary is created as before.
+    // the temporary is created as before. A completed run hands the claim to
+    // its caller with the temporary (`SegmentedTemp`).
     #[cfg(unix)]
-    let _claim = {
+    let claim = {
         let temp = temp_path.clone();
         let file = tokio::task::spawn_blocking(move || {
             crate::providers::atomic_write::temp_claim::create_fresh(&temp)
@@ -621,11 +687,14 @@ where
     match outcome {
         ConcurrentRangeOutcome::Completed => {
             guard.commit();
-            Ok(ConcurrentRangeOutcome::Completed)
+            Ok(SegmentedRun::Completed(SegmentedTemp {
+                path: temp_path,
+                published: false,
+                #[cfg(unix)]
+                _claim: claim,
+            }))
         }
-        ConcurrentRangeOutcome::ServerIgnoredRange => {
-            Ok(ConcurrentRangeOutcome::ServerIgnoredRange)
-        }
+        ConcurrentRangeOutcome::ServerIgnoredRange => Ok(SegmentedRun::ServerIgnoredRange),
     }
 }
 
@@ -1173,7 +1242,7 @@ pub(crate) async fn download_via_concurrent_range<F, Fut>(
     fetch_range: F,
     cancel: CancellationToken,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-) -> Result<ConcurrentRangeOutcome, ProviderError>
+) -> Result<SegmentedRun, ProviderError>
 where
     F: Fn(u64, u64) -> Fut + Send + Sync + 'static,
     Fut: std::future::Future<Output = Result<reqwest::Response, ProviderError>> + Send + 'static,
@@ -1536,28 +1605,24 @@ pub(crate) async fn try_http_concurrent_range_download(
     match download_via_concurrent_range(cfg, fetch_range, CancellationToken::new(), on_progress)
         .await
     {
-        Ok(ConcurrentRangeOutcome::Completed) => {
-            let temp = segmented_temp_path_for(Path::new(&req.local_path));
+        Ok(SegmentedRun::Completed(temp)) => {
             if let Some(what) =
                 http_range_source_moved(&req, validator.as_deref(), last_modified.as_deref(), total)
                     .await
             {
-                let _ = tokio::fs::remove_file(&temp).await;
+                temp.discard();
                 tracing::warn!(
                     "[multi-thread] {}; single-stream fallback",
                     source_changed("http range", &req.url, &what)
                 );
                 return HttpRangeAttempt::Fallback(fallback_progress);
             }
-            match tokio::fs::rename(&temp, &req.local_path).await {
+            match temp.publish(Path::new(&req.local_path)).await {
                 Ok(()) => HttpRangeAttempt::Completed,
-                Err(e) => {
-                    let _ = tokio::fs::remove_file(&temp).await;
-                    HttpRangeAttempt::Failed(ProviderError::IoError(e))
-                }
+                Err(e) => HttpRangeAttempt::Failed(ProviderError::IoError(e)),
             }
         }
-        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
+        Ok(SegmentedRun::ServerIgnoredRange) => {
             // Server honoured the probe then ignored a real Range: rare
             // inconsistency. The helper already removed the temp.
             tracing::warn!(
@@ -2602,7 +2667,8 @@ mod tests {
         assert_eq!(reported_total, total);
         assert_eq!(completed.load(Ordering::SeqCst), 0);
         release.add_permits(2);
-        assert_eq!(download.await.unwrap(), ConcurrentRangeOutcome::Completed);
+        let run = download.await.unwrap();
+        assert_eq!(run.outcome(), ConcurrentRangeOutcome::Completed);
         {
             let reports = reports.lock().unwrap();
             assert_eq!(reports.last(), Some(&(total, total)));
@@ -2617,6 +2683,7 @@ mod tests {
         // The caller publishes the validated temporary; the range engine
         // leaves the destination untouched.
         assert!(!final_path.exists());
+        drop(run);
     }
 
     #[tokio::test]
@@ -2858,6 +2925,49 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
+    /// A completed run hands its temporary to the caller, which reads the
+    /// source again and only then publishes it. Until that publication a
+    /// second segmented download of the same file must find the temporary
+    /// claimed: one that took it for stale would replace it with its own
+    /// pre-sized file, holes included, and the first caller would rename
+    /// that into place.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_completed_run_keeps_its_temporary_claimed_until_published() {
+        let dir = scratch_dir("claim-until-published");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let final_path = dir.join("result.bin");
+        let temp_path = segmented_temp_path_for(&final_path);
+        let config = ConcurrentRangeConfig {
+            final_path: final_path.clone(),
+            provider_type: super::super::ProviderType::S3,
+            endpoint_identity: crate::transfer_dag::EndpointIdentity::new("s3", "claim", ""),
+            total_size: 10,
+            streams: 3,
+            max_streams: 16,
+            max_parallel: 2,
+        };
+
+        let run = run_concurrent_range_download(
+            config,
+            deterministic_writer(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let second = crate::providers::atomic_write::temp_claim::create_fresh(&temp_path);
+        assert!(
+            second.is_err(),
+            "a second segmented download took the temporary of a run not yet published"
+        );
+        assert_eq!(tokio::fs::read(&temp_path).await.unwrap().len(), 10);
+        drop(second);
+        drop(run);
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
     #[tokio::test]
     async fn concurrent_range_download_uses_promoted_graph_without_escape_hatch() {
         let dir = scratch_dir("promoted-default");
@@ -2883,12 +2993,13 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(outcome, ConcurrentRangeOutcome::Completed);
+        assert_eq!(outcome.outcome(), ConcurrentRangeOutcome::Completed);
         let bytes = tokio::fs::read(&temp_path).await.unwrap();
         assert_eq!(bytes.len(), 10);
         for (offset, byte) in bytes.iter().enumerate() {
             assert_eq!(*byte, (offset % 251) as u8);
         }
+        drop(outcome);
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 

@@ -1593,8 +1593,9 @@ impl B2Provider {
     /// concurrency, progress aggregation, cooperative cancellation. Equivalent
     /// to rclone `--multi-thread-streams N`.
     ///
-    /// Returns `Err` on any hard failure (including the server ignoring
-    /// `Range`); the caller falls back to the single-stream `do_download`.
+    /// Returns the claimed temporary for the caller to publish, or `Err` on
+    /// any hard failure (including the server ignoring `Range`); the caller
+    /// falls back to the single-stream `do_download`.
     async fn download_multi_thread(
         &self,
         remote_path: &str,
@@ -1602,9 +1603,10 @@ impl B2Provider {
         total_size: u64,
         streams: usize,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<crate::providers::multi_thread::SegmentedTemp, ProviderError> {
         use crate::providers::multi_thread::{
             run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+            SegmentedRun,
         };
         use std::collections::VecDeque;
         use std::path::PathBuf;
@@ -1737,8 +1739,8 @@ impl B2Provider {
             // The windows are in `<local>.aerosegtmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
-            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
-            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => Err(ProviderError::NotSupported(
+            Ok(SegmentedRun::Completed(temp)) => Ok(temp),
+            Ok(SegmentedRun::ServerIgnoredRange) => Err(ProviderError::NotSupported(
                 "b2 multi-thread: server returned 200 (ignored Range)".to_string(),
             )),
             Err(e) => Err(e),
@@ -1762,7 +1764,7 @@ impl B2Provider {
     ) -> Result<bool, ProviderError> {
         use super::multi_thread::{
             parallel_refused, range_source_changed_through, read_range_source_through,
-            segmented_temp_path_for, source_changed,
+            source_changed,
         };
         use std::path::Path;
 
@@ -1780,11 +1782,11 @@ impl B2Provider {
             }
         };
 
-        match self
+        let temp = match self
             .download_multi_thread(remote_path, local_path, total_size, streams, on_progress)
             .await
         {
-            Ok(()) => {}
+            Ok(temp) => temp,
             // A window answered for another range, or with a body that is not
             // the length it declared. The engine already removed the staged
             // file, and one stream does not depend on the server's ranges.
@@ -1793,25 +1795,20 @@ impl B2Provider {
                 return Ok(false);
             }
             Err(e) => return Err(e),
-        }
+        };
 
-        let temp = segmented_temp_path_for(Path::new(local_path));
+        // The temporary stays claimed through this reading and the rename.
         if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
-            let _ = tokio::fs::remove_file(&temp).await;
+            temp.discard();
             tracing::warn!("{}", source_changed("b2 multi-thread", remote_path, &what));
             return Ok(false);
         }
-        match tokio::fs::rename(&temp, local_path).await {
+        match temp.publish(Path::new(local_path)).await {
             Ok(()) => Ok(true),
-            Err(e) => {
-                // The engine handed the temp over when it reported the windows
-                // complete, so nothing else will remove it.
-                let _ = tokio::fs::remove_file(&temp).await;
-                Err(ProviderError::Other(format!(
-                    "b2 multi-thread finalize: {}",
-                    e
-                )))
-            }
+            Err(e) => Err(ProviderError::Other(format!(
+                "b2 multi-thread finalize: {}",
+                e
+            ))),
         }
     }
 

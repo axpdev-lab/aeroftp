@@ -33961,8 +33961,7 @@ async fn pget_segmented_download(
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
         open_after_transfer, range_source_changed_through, read_range_source_through,
-        run_concurrent_range_download, segmented_temp_path_for, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome,
+        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome, SegmentedRun,
     };
 
     let actual_segments = pget_effective_segments(file_size, segments);
@@ -34238,10 +34237,10 @@ async fn pget_segmented_download(
     }
 
     match outcome {
-        Ok(ConcurrentRangeOutcome::Completed) => {
-            // The engine left `<local>.aerosegtmp` committed; atomically
-            // promote it to the final path like every other CLI transfer.
-            let temp = segmented_temp_path_for(Path::new(local_path));
+        Ok(SegmentedRun::Completed(temp)) => {
+            // The engine handed back `<local>.aerosegtmp`, still claimed
+            // through the second reading below and the rename, and it is
+            // promoted atomically like every other CLI transfer.
             // A session of its own for the second reading, opened now rather
             // than kept idle through the transfer: the connections that read
             // the windows are closed by the engine, and a session parked for
@@ -34271,19 +34270,18 @@ async fn pget_segmented_download(
             .await;
             // Stopped before the file could be checked: nothing is published.
             let Some(changed) = second_reading else {
-                let _ = tokio::fs::remove_file(&temp).await;
+                temp.discard();
                 return interrupted_exit(None, format, "the download did not finish").await;
             };
             if let Some(what) = changed {
-                let _ = tokio::fs::remove_file(&temp).await;
+                temp.discard();
                 if !quiet {
                     eprintln!("pget: {remote_path} was not published ({what}); single download");
                 }
                 return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
                     .await;
             }
-            if let Err(e) = tokio::fs::rename(&temp, local_path).await {
-                let _ = tokio::fs::remove_file(&temp).await;
+            if let Err(e) = temp.publish(Path::new(local_path)).await {
                 print_error(format, &format!("pget: finalize failed: {}", e), 4);
                 return 4;
             }
@@ -34322,7 +34320,7 @@ async fn pget_segmented_download(
             }
             0
         }
-        Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
+        Ok(SegmentedRun::ServerIgnoredRange) => {
             // `read_range` cannot produce this (no HTTP-200 semantics); the
             // engine already dropped the temp. Defensive honest fallback.
             pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
