@@ -85,6 +85,30 @@ const SFTP_MULTI_THREAD_CUTOFF_DEFAULT: u64 = 250 * 1024 * 1024;
 /// exposed through `multi_thread_cutoff_floor` so the batch executor
 /// applies the same bound as the single-file path.
 const SFTP_MULTI_THREAD_CUTOFF_FLOOR: u64 = 1024 * 1024;
+
+/// The SSH client configuration of every SFTP connection: the provider's own
+/// and each one a pool, range or transfer worker dials.
+///
+/// Nagle's algorithm is off (`nodelay`; russh leaves it on). During a download
+/// everything this side sends is small: READ requests, and the WINDOW_ADJUST
+/// that lets the server send more. With Nagle on, each of them waits until the
+/// previous small segment is acknowledged, and when the server has just run
+/// out of data to send, nothing carries that acknowledgement back but its
+/// delayed-ACK timer: the credit that would let it send again waits on the
+/// pause it should end. Over the lab's slower, lossier path it changed nothing
+/// measurable; over a faster one, a probe that set the same option from outside
+/// the process roughly halved one connection's time (2026-10-04, 300 MiB).
+fn sftp_ssh_client_config(timeout_secs: u64, preferred: Preferred) -> Config {
+    Config {
+        inactivity_timeout: Some(std::time::Duration::from_secs(timeout_secs * 2)),
+        keepalive_interval: Some(std::time::Duration::from_secs(15)), // Send keepalive every 15s
+        keepalive_max: 3, // Allow 3 missed keepalives before disconnect
+        preferred,
+        nodelay: true,
+        ..Default::default()
+    }
+}
+
 /// Map a russh / russh-sftp / io error onto a [`ProviderError`].
 ///
 /// The russh family does not type-tag transport-level failures (broken
@@ -1805,13 +1829,7 @@ impl StorageProvider for SftpProvider {
         } else {
             Preferred::default()
         };
-        let config = Config {
-            inactivity_timeout: Some(std::time::Duration::from_secs(self.config.timeout_secs * 2)),
-            keepalive_interval: Some(std::time::Duration::from_secs(15)), // Send keepalive every 15s
-            keepalive_max: 3, // Allow 3 missed keepalives before disconnect
-            preferred,
-            ..Default::default()
-        };
+        let config = sftp_ssh_client_config(self.config.timeout_secs, preferred);
 
         // Connect to SSH server
         let addr = format!("{}:{}", self.config.host, self.config.port);
@@ -5484,6 +5502,25 @@ mod tests {
         };
         let provider = SftpProvider::new(config);
         assert!(provider.supports_transfer_worker_reuse());
+    }
+
+    #[test]
+    fn sftp_connections_send_small_packets_without_waiting_for_an_ack() {
+        let config = sftp_ssh_client_config(30, Preferred::default());
+        assert!(
+            config.nodelay,
+            "with Nagle on, every READ request and WINDOW_ADJUST waits for the previous small segment's ACK"
+        );
+        // The rest of the configuration is what `connect` used before.
+        assert_eq!(
+            config.inactivity_timeout,
+            Some(std::time::Duration::from_secs(60))
+        );
+        assert_eq!(
+            config.keepalive_interval,
+            Some(std::time::Duration::from_secs(15))
+        );
+        assert_eq!(config.keepalive_max, 3);
     }
 
     #[test]
