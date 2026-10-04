@@ -1354,6 +1354,7 @@ impl B2Provider {
     async fn rename_large_file_inner(
         &mut self,
         source_file_id: &str,
+        source_uploaded: Option<i64>,
         from_key: &str,
         to_key: &str,
         size: u64,
@@ -1361,7 +1362,7 @@ impl B2Provider {
         self.copy_large_file_inner(source_file_id, to_key, size)
             .await?;
         // Delete the original version, as `rename` does.
-        self.remove_renamed_source(from_key, source_file_id)
+        self.remove_renamed_source(from_key, source_file_id, source_uploaded)
             .await
             .map_err(|e| source_delete_failed(to_key, e))
     }
@@ -1370,7 +1371,9 @@ impl B2Provider {
     /// from view. On a bucket that keeps older versions, deleting the newest
     /// one makes the one before it current again, and the source was still
     /// there after the rename: it is then hidden, as `delete` hides a file,
-    /// which keeps those older versions.
+    /// which keeps those older versions. A version uploaded after the one
+    /// renamed (`uploaded`) is someone else's write during the rename, and
+    /// stays in view.
     ///
     /// A token that expires between the steps is renewed for the step that
     /// failed, never by running the earlier steps again: deleting a version
@@ -1379,6 +1382,7 @@ impl B2Provider {
         &mut self,
         name: &str,
         file_id: &str,
+        uploaded: Option<i64>,
     ) -> Result<(), ProviderError> {
         if let Err(e) = self.do_delete_file_version(name, file_id).await {
             if !(is_b2_token_failure(&e) && self.maybe_reauth(&e).await) {
@@ -1387,6 +1391,12 @@ impl B2Provider {
             self.do_delete_file_version(name, file_id).await?;
         }
         match self.lookup_file_id_renewing(name).await {
+            Ok((_, _, now)) if uploaded_after(now, uploaded) => {
+                b2_log(&format!(
+                    "kept {name}: uploaded during its rename, after the version renamed"
+                ));
+                return Ok(());
+            }
             Ok(_) => {}
             Err(ProviderError::NotFound(_)) => return Ok(()),
             Err(e) => return Err(e),
@@ -1477,7 +1487,7 @@ impl B2Provider {
     async fn list_files_under(
         &mut self,
         prefix: &str,
-    ) -> Result<Vec<(String, String, u64)>, ProviderError> {
+    ) -> Result<Vec<(String, String, u64, Option<i64>)>, ProviderError> {
         let mut files = Vec::new();
         let mut start: Option<String> = None;
         loop {
@@ -1508,7 +1518,7 @@ impl B2Provider {
                         f.file_name
                     )));
                 };
-                files.push((f.file_name, file_id, f.content_length));
+                files.push((f.file_name, file_id, f.content_length, f.upload_timestamp));
             }
             match resp.next_file_name {
                 Some(next) if !next.is_empty() => start = Some(next),
@@ -1576,10 +1586,10 @@ impl B2Provider {
         }
 
         let files = self.list_files_under(&prefix).await?;
-        for (name, _, _) in &files {
+        for (name, _, _, _) in &files {
             self.validate_header_budget(&name.replacen(&prefix, &to_prefix, 1), 0)?;
         }
-        for (copied, (name, file_id, size)) in files.iter().enumerate() {
+        for (copied, (name, file_id, size, _)) in files.iter().enumerate() {
             let new_name = name.replacen(&prefix, &to_prefix, 1);
             // A token can expire during a long rename: renew it and run the
             // step that failed again, never the steps before it.
@@ -1610,7 +1620,7 @@ impl B2Provider {
                 files.len()
             ))
         };
-        for (deleted, (name, file_id, _)) in files.iter().enumerate() {
+        for (deleted, (name, file_id, _, _)) in files.iter().enumerate() {
             if let Err(e) = self.do_delete_file_version(name, file_id).await {
                 if !(is_b2_token_failure(&e) && self.maybe_reauth(&e).await) {
                     return Err(under_both_names(deleted, e));
@@ -1623,18 +1633,22 @@ impl B2Provider {
         // On a bucket that keeps older versions, deleting the newest version
         // of a file makes the one before it current again, and the folder was
         // still there: those names are hidden, as `delete` hides a file. Only
-        // the names this rename deleted: a file written under the old prefix
-        // since the listing is someone else's, and stays.
-        let renamed: std::collections::HashSet<&str> =
-            files.iter().map(|(name, _, _)| name.as_str()).collect();
+        // the versions this rename uncovered: a file written under the old
+        // prefix since the listing, at a new name or over a renamed one, is
+        // someone else's, and stays.
+        let renamed: std::collections::HashMap<&str, Option<i64>> = files
+            .iter()
+            .map(|(name, _, _, uploaded)| (name.as_str(), *uploaded))
+            .collect();
         let surfaced = self
             .list_files_under(&prefix)
             .await
             .map_err(|e| under_both_names(files.len(), e))?;
-        for (name, _, _) in surfaced
-            .iter()
-            .filter(|(name, _, _)| renamed.contains(name.as_str()))
-        {
+        for (name, _, _, _) in surfaced.iter().filter(|(name, _, _, now)| {
+            renamed
+                .get(name.as_str())
+                .is_some_and(|uploaded| !uploaded_after(*now, *uploaded))
+        }) {
             let mut hidden = self.do_hide_file(name).await;
             if let Err(e) = &hidden {
                 if is_b2_token_failure(e) && self.maybe_reauth(e).await {
@@ -1676,7 +1690,7 @@ impl B2Provider {
             return Ok(());
         }
         self.validate_header_budget(&to_key, 0)?;
-        let (file_id, size) = match self.lookup_file_id_renewing(&from_key).await {
+        let (file_id, size, uploaded) = match self.lookup_file_id_renewing(&from_key).await {
             Ok(v) => v,
             // No file holds the name: a folder is only the prefix of the files
             // under it, and moves as all of them.
@@ -1713,13 +1727,13 @@ impl B2Provider {
             // delete_source dance, with cancel-on-failure for the in-progress
             // upload session.
             return match self
-                .rename_large_file_inner(&file_id, &from_key, &to_key, size)
+                .rename_large_file_inner(&file_id, uploaded, &from_key, &to_key, size)
                 .await
             {
                 Ok(()) => Ok(()),
                 Err(e) if is_b2_token_failure(&e) => {
                     if self.maybe_reauth(&e).await {
-                        self.rename_large_file_inner(&file_id, &from_key, &to_key, size)
+                        self.rename_large_file_inner(&file_id, uploaded, &from_key, &to_key, size)
                             .await
                     } else {
                         Err(e)
@@ -1740,7 +1754,7 @@ impl B2Provider {
             Err(e) => return Err(e),
         };
         // Delete (hard) the original version so this is a true rename.
-        self.remove_renamed_source(&from_key, &file_id)
+        self.remove_renamed_source(&from_key, &file_id, uploaded)
             .await
             .map_err(|e| source_delete_failed(&copied.file_name, e))
     }
@@ -2142,7 +2156,10 @@ impl B2Provider {
     /// `lookup_file_id`, renewing an expired token and looking once more.
     /// Every look a rename makes before it changes anything goes through
     /// here, so a token that expires between two of them never stops it.
-    async fn lookup_file_id_renewing(&mut self, key: &str) -> Result<(String, u64), ProviderError> {
+    async fn lookup_file_id_renewing(
+        &mut self,
+        key: &str,
+    ) -> Result<(String, u64, Option<i64>), ProviderError> {
         match self.lookup_file_id(key).await {
             Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => {
                 self.lookup_file_id(key).await
@@ -2151,8 +2168,9 @@ impl B2Provider {
         }
     }
 
-    /// Look up the latest version's `fileId` and `contentLength` for a given key.
-    async fn lookup_file_id(&self, key: &str) -> Result<(String, u64), ProviderError> {
+    /// Look up the latest version's `fileId`, `contentLength` and upload time
+    /// (ms) for a given key.
+    async fn lookup_file_id(&self, key: &str) -> Result<(String, u64, Option<i64>), ProviderError> {
         let resp = self.list_file_names(key, None, None, 1).await?;
         let f = resp
             .files
@@ -2162,7 +2180,7 @@ impl B2Provider {
         let fid = f
             .file_id
             .ok_or_else(|| ProviderError::ServerError("missing fileId in list response".into()))?;
-        Ok((fid, f.content_length))
+        Ok((fid, f.content_length, f.upload_timestamp))
     }
 
     /// `b2_list_file_versions` paginated page. Returns every version that
@@ -3733,7 +3751,7 @@ impl StorageProvider for B2Provider {
         let from_key = self.b2_key(&from_abs);
         let to_key = self.b2_key(&to_abs);
         self.validate_header_budget(&to_key, 0)?;
-        let (file_id, size) = self.lookup_file_id_renewing(&from_key).await?;
+        let (file_id, size, _) = self.lookup_file_id_renewing(&from_key).await?;
         if size > COPY_MAX_SIZE {
             // b2_copy_file is rejected above 5 GB. The chunked b2_copy_part
             // workflow is only wired into rename() today (it always
@@ -4022,6 +4040,15 @@ fn source_delete_failed(copied_to: &str, error: ProviderError) -> ProviderError 
         "rename copied the file to {copied_to}, but deleting the source failed, \
          so it now exists under both names: {error}"
     ))
+}
+
+/// Whether a version listed at `now` was uploaded after the version a rename
+/// moved (`renamed`). B2 records upload times on the server, so a later time
+/// means a write that happened during the rename. Without both times the
+/// version is treated as an older one, which is what it is on a bucket that
+/// keeps versions.
+fn uploaded_after(now: Option<i64>, renamed: Option<i64>) -> bool {
+    matches!((now, renamed), (Some(now), Some(renamed)) if now > renamed)
 }
 
 /// True when an error indicates the master auth token must be refreshed.
@@ -5372,19 +5399,28 @@ mod tests {
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
         std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     ) {
-        provider_for_rename_on(destination_taken, delete_status, false, false).await
+        provider_for_rename_on(destination_taken, delete_status, AfterDelete::Gone, false).await
     }
 
-    /// [`provider_for_rename`] on a bucket that, with `keeps_versions`, holds
-    /// an older version of every file: deleting the newest one makes that
-    /// one current, so the name is still listed until it is hidden. Without
-    /// it a deleted version is gone from the listings. With `late_file`,
+    /// What a name shows once the rename deleted the version it copied.
+    #[derive(Clone, Copy)]
+    enum AfterDelete {
+        /// Nothing: the bucket keeps no older versions.
+        Gone,
+        /// An older version, made current again; listed until it is hidden.
+        OlderVersion,
+        /// A version someone uploaded during the rename, after the one copied.
+        NewerUpload,
+    }
+
+    /// [`provider_for_rename`] on a bucket where a deleted version leaves
+    /// `after_delete` in view under its name. With `late_file`,
     /// `d/late.txt` appears under the folder once the first copy is made, as
     /// a file someone else writes there during the rename.
     async fn provider_for_rename_on(
         destination_taken: bool,
         delete_status: u16,
-        keeps_versions: bool,
+        after_delete: AfterDelete,
         late_file: bool,
     ) -> (
         B2Provider,
@@ -5434,7 +5470,15 @@ mod tests {
                         if hidden.lock().unwrap().contains(name) {
                             None
                         } else if deleted.lock().unwrap().contains(name) {
-                            keeps_versions.then(|| file(name, "older-id"))
+                            match after_delete {
+                                AfterDelete::Gone => None,
+                                AfterDelete::OlderVersion => Some(file(name, "older-id")),
+                                AfterDelete::NewerUpload => {
+                                    let mut newer = file(name, "newer-id");
+                                    newer["uploadTimestamp"] = serde_json::json!(1_700_000_060_000i64);
+                                    Some(newer)
+                                }
+                            }
                         } else {
                             Some(file(name, id))
                         }
@@ -5632,7 +5676,8 @@ mod tests {
     /// after the rename. It is hidden now, as `delete` hides a file.
     #[tokio::test]
     async fn a_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
-        let (mut provider, ops, _) = provider_for_rename_on(false, 200, true, false).await;
+        let (mut provider, ops, _) =
+            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, false).await;
         provider.rename("/a.txt", "/b.txt").await.expect("rename");
         assert_eq!(
             ops.lock().unwrap().last().map(String::as_str),
@@ -5832,16 +5877,50 @@ mod tests {
 
     /// The pass after the deletes hides only the names this rename deleted:
     /// a file written under the old prefix during the rename stays in view.
+    /// A file uploaded at the source name while the rename ran is newer than
+    /// the version renamed: it is someone else's, and is not hidden.
+    #[tokio::test]
+    async fn a_file_uploaded_at_the_source_name_during_a_rename_stays_in_view() {
+        let (mut provider, ops, _) =
+            provider_for_rename_on(false, 200, AfterDelete::NewerUpload, false).await;
+        provider.rename("/a.txt", "/b.txt").await.expect("rename");
+        assert!(
+            !ops.lock().unwrap().iter().any(|op| op == "b2_hide_file"),
+            "{:?}",
+            ops.lock().unwrap()
+        );
+        let left = provider.list_files_under("a.txt").await.unwrap();
+        assert_eq!(left.len(), 1, "{left:?}");
+        assert_eq!(left[0].1, "newer-id");
+    }
+
+    /// The same under a folder: a file uploaded over a renamed name stays.
+    #[tokio::test]
+    async fn a_file_uploaded_over_a_renamed_name_in_a_folder_stays_in_view() {
+        let (mut provider, ops, _) =
+            provider_for_rename_on(false, 200, AfterDelete::NewerUpload, false).await;
+        provider.rename("/d", "/e").await.expect("folder rename");
+        assert!(
+            !ops.lock().unwrap().iter().any(|op| op == "b2_hide_file"),
+            "{:?}",
+            ops.lock().unwrap()
+        );
+        let left = provider.list_files_under("d/").await.unwrap();
+        assert_eq!(left.len(), 1, "{left:?}");
+        assert_eq!(left[0].1, "newer-id");
+    }
+
     #[tokio::test]
     async fn a_file_written_under_the_folder_during_its_rename_is_not_hidden() {
-        let (mut provider, _, _) = provider_for_rename_on(false, 200, true, true).await;
+        let (mut provider, _, _) =
+            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, true).await;
         provider.rename("/d", "/e").await.expect("folder rename");
         let left: Vec<String> = provider
             .list_files_under("d/")
             .await
             .unwrap()
             .into_iter()
-            .map(|(name, _, _)| name)
+            .map(|(name, _, _, _)| name)
             .collect();
         assert_eq!(left, ["d/late.txt"]);
     }
@@ -5849,7 +5928,8 @@ mod tests {
     /// The same for a folder: no file under the old prefix stays in view.
     #[tokio::test]
     async fn a_folder_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
-        let (mut provider, _, _) = provider_for_rename_on(false, 200, true, false).await;
+        let (mut provider, _, _) =
+            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, false).await;
         provider.rename("/d", "/e").await.expect("folder rename");
         let left = provider.list_files_under("d/").await.unwrap();
         assert!(left.is_empty(), "{left:?}");
