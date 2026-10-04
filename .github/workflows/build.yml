@@ -512,6 +512,23 @@ jobs:
             exit 1
           }
           chmod +x appimagetool
+          # The AppImage type-2 runtime is the first code that runs when a user
+          # starts the AppImage. Without --runtime-file appimagetool downloads
+          # the latest one from type2-runtime's `continuous` release on every
+          # build, unchecked. It is pinned to the versioned release 20251108,
+          # whose asset stays downloadable and checkable against the digest
+          # GitHub publishes. Known gap: 20251108 predates 8f39b89e2 (extraction
+          # directories created 0700 instead of 0755 when the AppImage runs
+          # extracted), which 4.2.1 shipped through `continuous`. Move to the
+          # first versioned release that contains it.
+          RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
+          RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+          wget -q "$RUNTIME_URL" -O runtime-x86_64
+          echo "${RUNTIME_SHA256}  runtime-x86_64" | sha256sum -c - || {
+            echo "::error::AppImage runtime checksum mismatch: the asset of type2-runtime release 20251108 is not the one pinned. Verify it before updating RUNTIME_SHA256 in build.yml."
+            echo "Actual checksum: $(sha256sum runtime-x86_64 | cut -d' ' -f1)"
+            exit 1
+          }
           # -u embeds the zsync update information that AppImageUpdate,
           # appimageupdatetool and AppImage managers (AM/AppMan) read to find
           # the delta-update file, and makes appimagetool generate the .zsync
@@ -519,8 +536,22 @@ jobs:
           # name Tauri produces.
           UPDATE_INFO="gh-releases-zsync|axpdev-lab|aeroftp|latest|AeroFTP_*_amd64.AppImage.zsync"
           ARCH=x86_64 ./appimagetool --appimage-extract-and-run \
+            --runtime-file runtime-x86_64 \
             -u "$UPDATE_INFO" \
-            squashfs-root "$APPIMAGE"
+            squashfs-root "$APPIMAGE" >appimagetool.log 2>&1 || {
+            cat appimagetool.log
+            echo "::error::appimagetool failed"
+            exit 1
+          }
+          # No pipe into tee: this step runs without pipefail, and a pipe would
+          # hide appimagetool's exit code.
+          cat appimagetool.log
+          # The pinned runtime must be the one embedded: appimagetool says when
+          # it fetches its own instead.
+          if grep -q 'Downloading runtime file' appimagetool.log; then
+            echo "::error::appimagetool downloaded a runtime instead of using the pinned runtime-x86_64"
+            exit 1
+          fi
           NEW_SIZE=$(du -m "$APPIMAGE" | cut -f1)
           echo "AppImage re-packaged: ${ORIG_SIZE}MB -> ${NEW_SIZE}MB (system libs only)"
 
