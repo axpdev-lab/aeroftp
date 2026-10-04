@@ -5237,7 +5237,9 @@
             "title": "Presetări de sincronizare",
             "nothingToDo": "Presetări de sincronizare",
             "allSkipped": "Nu există intrări executabile pentru această presetare.",
-            "deletesDeferred": "Presetări de sincronizare"
+            "deletesDeferred": "Presetări de sincronizare",
+            "builtinModesGroup": "Moduri integrate",
+            "savedPresetsGroup": "Presetările dvs. salvate"
         },
         "aerosync": {
             "title": "AeroSync",

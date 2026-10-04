@@ -603,9 +603,25 @@ export const SyncTemplateDialog: React.FC<SyncTemplateDialogProps> = ({
                                         value={presetId}
                                         onChange={e => setPresetId(e.target.value)}
                                     >
-                                        {syncProfiles.map(p => (
-                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                        ))}
+                                        {/* Ehud #347: the flat list mixed the built-in
+                                            sync modes with the user's saved presets and
+                                            nothing said which was which. Two optgroups
+                                            split by the same rule the delete button
+                                            uses (`isDeletableSyncProfile`). */}
+                                        {syncProfiles.some(p => !isDeletableSyncProfile(p)) && (
+                                            <optgroup label={t('syncPresets.builtinModesGroup')}>
+                                                {syncProfiles.filter(p => !isDeletableSyncProfile(p)).map(p => (
+                                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
+                                        {syncProfiles.some(isDeletableSyncProfile) && (
+                                            <optgroup label={t('syncPresets.savedPresetsGroup')}>
+                                                {syncProfiles.filter(isDeletableSyncProfile).map(p => (
+                                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                                ))}
+                                            </optgroup>
+                                        )}
                                     </select>
                                     {(() => {
                                         // Saved presets only: the built-in ones are not files to delete.

@@ -5237,7 +5237,9 @@
             "title": "Synchronisatievoorinstellingen",
             "nothingToDo": "Synchronisatievoorinstellingen",
             "allSkipped": "Geen uitvoerbare items voor deze voorinstelling.",
-            "deletesDeferred": "Synchronisatievoorinstellingen"
+            "deletesDeferred": "Synchronisatievoorinstellingen",
+            "builtinModesGroup": "Ingebouwde modi",
+            "savedPresetsGroup": "Je opgeslagen presets"
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5237,7 +5237,9 @@
             "title": "Sync-Voreinstellungen",
             "nothingToDo": "Sync-Voreinstellungen",
             "allSkipped": "Keine ausführbaren Einträge für diese Voreinstellung.",
-            "deletesDeferred": "Sync-Voreinstellungen"
+            "deletesDeferred": "Sync-Voreinstellungen",
+            "builtinModesGroup": "Integrierte Modi",
+            "savedPresetsGroup": "Ihre gespeicherten Voreinstellungen"
         },
         "aerosync": {
             "title": "AeroSync",

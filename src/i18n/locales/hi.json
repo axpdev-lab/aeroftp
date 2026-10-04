@@ -5237,7 +5237,9 @@
             "title": "सिंक प्रीसेट",
             "nothingToDo": "सिंक प्रीसेट",
             "allSkipped": "इस प्रीसेट के लिए कोई कार्रवाई योग्य प्रविष्टि नहीं है।",
-            "deletesDeferred": "सिंक प्रीसेट"
+            "deletesDeferred": "सिंक प्रीसेट",
+            "builtinModesGroup": "अंतर्निर्मित मोड",
+            "savedPresetsGroup": "आपके सहेजे गए प्रीसेट"
         },
         "aerosync": {
             "title": "AeroSync",

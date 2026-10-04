@@ -5237,7 +5237,9 @@
             "title": "동기화 프리셋",
             "nothingToDo": "동기화 프리셋",
             "allSkipped": "이 프리셋에 대해 실행 가능한 항목이 없습니다.",
-            "deletesDeferred": "동기화 프리셋"
+            "deletesDeferred": "동기화 프리셋",
+            "builtinModesGroup": "기본 제공 모드",
+            "savedPresetsGroup": "저장된 프리셋"
         },
         "aerosync": {
             "title": "AeroSync",

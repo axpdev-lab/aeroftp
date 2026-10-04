@@ -5237,7 +5237,9 @@
             "title": "Шаблони за синхронизация",
             "nothingToDo": "Шаблони за синхронизация",
             "allSkipped": "Няма елементи за изпълнение в този шаблон.",
-            "deletesDeferred": "Шаблони за синхронизация"
+            "deletesDeferred": "Шаблони за синхронизация",
+            "builtinModesGroup": "Вградени режими",
+            "savedPresetsGroup": "Вашите запазени шаблони"
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5237,7 +5237,9 @@
             "title": "Pratetap penyegerakan",
             "nothingToDo": "Pratetap penyegerakan",
             "allSkipped": "Tiada entri boleh dilaksanakan untuk pratetap ini.",
-            "deletesDeferred": "Pratetap penyegerakan"
+            "deletesDeferred": "Pratetap penyegerakan",
+            "builtinModesGroup": "Mod terbina dalam",
+            "savedPresetsGroup": "Pratetap tersimpan anda"
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5237,7 +5237,9 @@
             "title": "Пресети синхронізації",
             "nothingToDo": "Пресети синхронізації",
             "allSkipped": "Немає виконуваних записів для цього пресету.",
-            "deletesDeferred": "Пресети синхронізації"
+            "deletesDeferred": "Пресети синхронізації",
+            "builtinModesGroup": "Вбудовані режими",
+            "savedPresetsGroup": "Ваші збережені пресети"
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5454,7 +5454,9 @@
             "title": "Preset di sincronizzazione",
             "nothingToDo": "Nessuna azione da eseguire",
             "allSkipped": "Nessuna voce eseguibile per questo preset.",
-            "deletesDeferred": "Eliminazioni rimandate per sicurezza"
+            "deletesDeferred": "Eliminazioni rimandate per sicurezza",
+            "builtinModesGroup": "Modalità integrate",
+            "savedPresetsGroup": "I tuoi preset salvati"
         },
         "aerosync": {
             "title": "AeroSync",

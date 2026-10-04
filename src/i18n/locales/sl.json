@@ -5237,7 +5237,9 @@
             "title": "Prednastavitve sinhronizacije",
             "nothingToDo": "Prednastavitve sinhronizacije",
             "allSkipped": "Za to prednastavitev ni izvedljivih vnosov.",
-            "deletesDeferred": "Prednastavitve sinhronizacije"
+            "deletesDeferred": "Prednastavitve sinhronizacije",
+            "builtinModesGroup": "Vgrajeni načini",
+            "savedPresetsGroup": "Vaše shranjene prednastavitve"
         },
         "aerosync": {
             "title": "AeroSync",

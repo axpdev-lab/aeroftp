@@ -5237,7 +5237,9 @@
             "title": "Cài đặt sẵn đồng bộ",
             "nothingToDo": "Cài đặt sẵn đồng bộ",
             "allSkipped": "Không có mục nào có thể thực hiện cho cài đặt sẵn này.",
-            "deletesDeferred": "Cài đặt sẵn đồng bộ"
+            "deletesDeferred": "Cài đặt sẵn đồng bộ",
+            "builtinModesGroup": "Chế độ tích hợp sẵn",
+            "savedPresetsGroup": "Các preset đã lưu của bạn"
         },
         "aerosync": {
             "title": "AeroSync",

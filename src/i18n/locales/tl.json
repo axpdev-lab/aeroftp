@@ -5256,7 +5256,9 @@
             "title": "Mga preset ng sync",
             "nothingToDo": "Mga preset ng sync",
             "allSkipped": "Walang maaaring isagawa na entry para sa preset na ito.",
-            "deletesDeferred": "Mga preset ng sync"
+            "deletesDeferred": "Mga preset ng sync",
+            "builtinModesGroup": "Mga built-in na mode",
+            "savedPresetsGroup": "Ang iyong mga naka-save na preset"
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5237,7 +5237,9 @@
             "title": "Preajustes de sincronización",
             "nothingToDo": "Preajustes de sincronización",
             "allSkipped": "No hay entradas accionables para este preajuste.",
-            "deletesDeferred": "Preajustes de sincronización"
+            "deletesDeferred": "Preajustes de sincronización",
+            "builtinModesGroup": "Modos integrados",
+            "savedPresetsGroup": "Tus preajustes guardados"
         },
         "aerosync": {
             "title": "AeroSync",

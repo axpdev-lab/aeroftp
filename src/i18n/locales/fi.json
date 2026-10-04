@@ -5237,7 +5237,9 @@
             "title": "Synkronoinnin esiasetukset",
             "nothingToDo": "Synkronoinnin esiasetukset",
             "allSkipped": "Tälle esiasetukselle ei ole suoritettavia merkintöjä.",
-            "deletesDeferred": "Synkronoinnin esiasetukset"
+            "deletesDeferred": "Synkronoinnin esiasetukset",
+            "builtinModesGroup": "Sisäänrakennetut tilat",
+            "savedPresetsGroup": "Tallennetut esiasetuksesi"
         },
         "aerosync": {
             "title": "AeroSync",

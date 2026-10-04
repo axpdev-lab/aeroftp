@@ -5256,7 +5256,9 @@
             "title": "Synkroniseringsforhåndsinnstillinger",
             "nothingToDo": "Synkroniseringsforhåndsinnstillinger",
             "allSkipped": "Ingen kjørbare oppføringer for denne forhåndsinnstillingen.",
-            "deletesDeferred": "Synkroniseringsforhåndsinnstillinger"
+            "deletesDeferred": "Synkroniseringsforhåndsinnstillinger",
+            "builtinModesGroup": "Innebygde moduser",
+            "savedPresetsGroup": "Dine lagrede forhåndsinnstillinger"
         },
         "aerosync": {
             "title": "AeroSync",

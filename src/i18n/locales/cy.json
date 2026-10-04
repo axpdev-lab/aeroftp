@@ -5256,7 +5256,9 @@
             "title": "Rhag-osodiadau cysoni",
             "nothingToDo": "Rhag-osodiadau cysoni",
             "allSkipped": "Dim cofnodion gweithredadwy ar gyfer y rhag-osodiad hwn.",
-            "deletesDeferred": "Rhag-osodiadau cysoni"
+            "deletesDeferred": "Rhag-osodiadau cysoni",
+            "builtinModesGroup": "Moddau adeiledig",
+            "savedPresetsGroup": "Eich rhagosodedigion wedi'u cadw"
         },
         "aerosync": {
             "title": "AeroSync",

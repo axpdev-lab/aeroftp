@@ -5237,7 +5237,9 @@
             "title": "Profile synchronizacji",
             "nothingToDo": "Profile synchronizacji",
             "allSkipped": "Brak wykonywalnych wpisów dla tego profilu.",
-            "deletesDeferred": "Profile synchronizacji"
+            "deletesDeferred": "Profile synchronizacji",
+            "builtinModesGroup": "Wbudowane tryby",
+            "savedPresetsGroup": "Twoje zapisane presety"
         },
         "aerosync": {
             "title": "AeroSync",

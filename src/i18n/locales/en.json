@@ -3997,6 +3997,8 @@
         },
         "syncPresets": {
             "title": "Sync presets",
+            "builtinModesGroup": "Built-in modes",
+            "savedPresetsGroup": "Your saved presets",
             "nothingToDo": "Sync presets",
             "allSkipped": "No actionable entries for this preset.",
             "deletesDeferred": "Sync presets"

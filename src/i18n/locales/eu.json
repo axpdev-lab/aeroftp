@@ -5256,7 +5256,9 @@
             "title": "Sinkronizazio aurrezarpenak",
             "nothingToDo": "Sinkronizazio aurrezarpenak",
             "allSkipped": "Aurrezarpen honetarako ez dago sarrera exekutagarririk.",
-            "deletesDeferred": "Sinkronizazio aurrezarpenak"
+            "deletesDeferred": "Sinkronizazio aurrezarpenak",
+            "builtinModesGroup": "Integratutako moduak",
+            "savedPresetsGroup": "Gordetako aurrezarpenak"
         },
         "aerosync": {
             "title": "AeroSync",

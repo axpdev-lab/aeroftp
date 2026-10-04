@@ -5237,7 +5237,9 @@
             "title": "同期プリセット",
             "nothingToDo": "同期プリセット",
             "allSkipped": "このプリセットには実行可能なエントリがありません。",
-            "deletesDeferred": "同期プリセット"
+            "deletesDeferred": "同期プリセット",
+            "builtinModesGroup": "組み込みモード",
+            "savedPresetsGroup": "保存済みプリセット"
         },
         "aerosync": {
             "title": "AeroSync",

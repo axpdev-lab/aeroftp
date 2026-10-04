@@ -56,4 +56,14 @@ describe('saved sync presets can be deleted', () => {
         expect(dialogSource).toMatch(/setPresetId\(current =>\s*left\.some\(\(?p\)? => p\.id === current\)/);
         expect(dialogSource).toMatch(/if \(reloadError\) setResult\(\{ success: false, message: reloadError \}\);/);
     });
+
+    it('groups the preset selector into built-in modes and saved presets', () => {
+        // Ehud #347: a flat list mixed the built-in sync modes with the user's
+        // saved presets and nothing said which was which.
+        expect(dialogSource).toContain("<optgroup label={t('syncPresets.builtinModesGroup')}>");
+        expect(dialogSource).toContain("<optgroup label={t('syncPresets.savedPresetsGroup')}>");
+        // Same split rule as the delete button: saved means deletable.
+        expect(dialogSource).toContain('syncProfiles.filter(isDeletableSyncProfile)');
+        expect(dialogSource).toContain('syncProfiles.filter(p => !isDeletableSyncProfile(p))');
+    });
 });

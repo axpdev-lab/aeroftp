@@ -5237,7 +5237,9 @@
             "title": "Mipangilio ya usawazishaji",
             "nothingToDo": "Mipangilio ya usawazishaji",
             "allSkipped": "Hakuna ingizo linaloweza kutekelezwa kwa mpangilio huu.",
-            "deletesDeferred": "Mipangilio ya usawazishaji"
+            "deletesDeferred": "Mipangilio ya usawazishaji",
+            "builtinModesGroup": "Hali zilizojengewa ndani",
+            "savedPresetsGroup": "Mipangilio yako iliyohifadhiwa"
         },
         "aerosync": {
             "title": "AeroSync",

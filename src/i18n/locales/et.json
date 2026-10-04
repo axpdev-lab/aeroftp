@@ -5237,7 +5237,9 @@
             "title": "Sünkroonimise eelseaded",
             "nothingToDo": "Sünkroonimise eelseaded",
             "allSkipped": "Selle eelseade jaoks pole täidetavaid kirjeid.",
-            "deletesDeferred": "Sünkroonimise eelseaded"
+            "deletesDeferred": "Sünkroonimise eelseaded",
+            "builtinModesGroup": "Sisseehitatud režiimid",
+            "savedPresetsGroup": "Teie salvestatud eelseaded"
         },
         "aerosync": {
             "title": "AeroSync",

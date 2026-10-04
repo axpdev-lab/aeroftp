@@ -5237,7 +5237,9 @@
             "title": "Preset sinkronisasi",
             "nothingToDo": "Preset sinkronisasi",
             "allSkipped": "Tidak ada entri yang dapat dieksekusi untuk preset ini.",
-            "deletesDeferred": "Preset sinkronisasi"
+            "deletesDeferred": "Preset sinkronisasi",
+            "builtinModesGroup": "Mode bawaan",
+            "savedPresetsGroup": "Preset tersimpan Anda"
         },
         "aerosync": {
             "title": "AeroSync",
