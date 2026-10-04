@@ -5,6 +5,96 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.2] - 2026-10-04
+
+### MCP Servers for AeroAgent, Faster SFTP, and Parallel Selections
+
+A patch release with two things you will notice at once. AeroAgent reaches 1.6: it can now use the tools of MCP servers, local or remote, each call approved in its own window, it can hand read-only work to scoped workers, and Amazon Bedrock joins its providers. SFTP got much faster: uploads move twice the data at a time, downloads keep the server busy, and both use less memory. Selecting several files now transfers them in parallel on every protocol. Around those, providers gained the actions their services offer (S3 storage classes and Glacier restore, Azure access tiers, Box and Google Drive comments, GitLab links, Filen note tags), folder renames work on B2 and ImageKit, and a long sweep removed more than a hundred backend commands nothing called, among them one that handed a decrypted credential to the interface.
+
+Every change listed here is tracked, with its commit and its discussion, in the release tracker: [AeroFTP 4.2.2, known issues, patches and updates](https://github.com/axpdev-lab/aeroftp/issues/998).
+
+Thank you to everyone who uses AeroFTP and tells us what works and what does not: several of the changes below exist because someone took the time to report them, and the people who shaped this release by name are listed at the end.
+
+#### What changes for you
+
+The short version, split by where you meet it. Everything in this list appears again further down with the detail and the commit.
+
+**In the app**
+
+- **AeroAgent 1.6 can use MCP servers.** In AI Settings > MCP you add local servers (started in a sandbox, Linux only for now) and remote ones over HTTP, with a bearer token or a browser sign-in whose secrets stay in the backend. AeroAgent sees the tools of the servers you enable, and every call is checked again and approved once in the approval window, never remembered for the chat. A Recommended servers section starts with DeepWiki, and a local server can be given read-only access to folders you pick and confirm.
+- **AeroAgent can delegate read-only work, and talks to Amazon Bedrock.** Up to two scoped workers run side by side on local folders or on pinned S3 profiles, within one shared budget, and Stop cancels them with the chat. Amazon Bedrock is a new provider, with region and model settings.
+- **SFTP is much faster.** A single upload now sends whole write requests, so twice as much data is in flight: 300 MiB over a 47 ms link went from about 20 s to about 10.6 s. Downloads ask for one read per chunk, so the server never idles between rounds (about 46-52 s down to 34-39 s on one connection, 22-27 s to 17-24 s on four), small packets no longer wait for an acknowledgement (one connection on a faster line: 33-35 s down to 17-18 s), and a segmented download shares one memory budget across its connections (25 to 33 MB less at the peak).
+- **Selecting several files transfers them in parallel, on every protocol.** A multi-file selection used to go one file at a time; it is now one parallel batch, the first Stop lets the files in flight finish, and a cut deletes only the sources that arrived. Parallel transfers also no longer get pinned to one file at a time on a server after a few batches.
+- **Segmented downloads show real progress, stop when asked, and never publish another download's file.** Progress, speed and ETA move while the ranges run, Stop interrupts a large download at once, and two downloads of the same file can no longer leave the second one's empty, pre-sized file in place.
+- **Provider actions from the context menu.** S3 objects get Storage Class, Object Tags and Restore from Glacier; Azure blobs get Access Tier; Box and Google Drive files get a comments window, Box gets collaborators and Unlock Folder; GitLab files get View on GitLab, and View on GitHub opens the browser again; Filen notes manage their tags. Share Link offers the options the connected provider actually supports.
+- **Folders can be renamed on B2 and ImageKit.** B2 answered "Path not found" and ImageKit refused; on B2 the rename also no longer leaves the source in view on a bucket that keeps file versions.
+- **AeroSync shows its work.** A sync run fills the Transfer Queue with a row per file, saved presets are selectable in the Plan and can be deleted, the preset list separates built-in modes from your own presets, and the CLI flags appear beside the options they match.
+- **AeroImage says once per section whether an edit loses data**, and Quick Connect calls the saved name "Profile name", with one Optional heading for the S3 temporary-credential fields.
+- **Saving a server can no longer fail quietly.** A failed save keeps the editor open with your input instead of closing as saved, an overwrite check looks at the real destination, editing a saved OAuth server saves again, and a saved OAuth server whose app keys are missing says so and opens the OAuth settings.
+- **WebDAV works behind an HTTPS reverse proxy**, refuses a redirect that would leave HTTPS, and shows upload progress as the bytes go out.
+- **Security fixes you get without doing anything.** Deleting a file from an AeroVault v2 vault removes its encrypted data from the vault file; a developer test tool shipped by mistake in the 4.2.1 Windows installers and macOS DMGs is gone; and more than a hundred backend commands nothing called are removed, including one that returned a decrypted credential and one that wrote agent memory without approval.
+- **Linux AppImages are ready for delta updates.** From this release on each AppImage carries its update information and a `.zsync` file next to it, so the next update can fetch only the parts that changed; AM / AppMan join the install methods. The app no longer crashes at start-up on GNOME with appmenu-gtk-module, and opening the approval window no longer reloads the main window.
+- **Smaller things that now behave**: Security Tools open as a column next to the editor, the native menu follows a language change, file tags follow renames and moves, the AeroCloud tray badge shows Paused, Export works from a server's context menu, and the Flatpak import results that only inform show OK alone.
+
+**In the CLI and for automation**
+
+- **The SFTP speed-ups apply to `get`, `put`, `pget` and `sync` too**, and S3 multipart uploads keep each part once (peak memory 156-159 MB instead of 208-216 MB on 300 MiB) and reuse the connection of the connect probe.
+- **`pget` and every segmented download keep their temporary locked until it is published** (Linux, local filesystems), so two downloads of one file can no longer leave a file with holes behind an exit 0.
+- **`--transfer-engine` says what it does.** The help and the docs name the transfers the override reaches, and `-v` names the real one in use.
+
+#### Added
+- **AeroAgent 1.6: MCP servers.** Local STDIO servers and remote Streamable HTTP servers are managed per user in AI Settings > MCP, with every secret held by the backend, never by the interface, and an OAuth sign-in the backend runs (the interface sees only an opaque attempt and a redacted outcome; a loopback callback on 127.0.0.1 only). AeroAgent receives the tools of the enabled servers through live snapshots; every call is re-resolved by the backend, refused when the server's binding or the tool's schema changed, and approved once in the approval window, never remembered for the chat, and Stop cancels it. Tool schemas are checked against a bounded subset (enumerations, numeric bounds compared exactly, lengths), so the official reference servers work and an out-of-range argument is refused before approval; SDK-based HTTP servers such as DeepWiki connect through a narrow fallback. Local servers run in a file-only sandbox with no network, can be given read-only access to folders the user picks and confirms, and stay closed on Windows and macOS until an equivalent sandbox exists. A Recommended servers section installs DeepWiki by id, disabled until enabled (#999, #1003, #1004, #1026, #1033, #1038).
+- **AeroAgent 1.6: scoped workers.** AeroAgent can hand read-only work to up to two workers at once, on local folders or on up to two pinned S3 profiles, with one ledger and one budget shared with the chat, bounded results, and cancellation that reaches every worker; worker cards stay readable after Stop (#999).
+- **Amazon Bedrock as an AeroAgent provider**, with region and model configuration, the model catalog, streaming and non-streaming inference, and endpoints checked for HTTPS before any credentialed request (#999).
+- **Linux AppImage delta updates.** From this release each AppImage carries its update information and is published with its `.zsync` file, so AppImageUpdate and AM can download only the blocks that changed when the next release comes; this release is the first that can be checked end to end, and that check follows the tag. The publication fails closed when the release assets are ambiguous (@shuvashish76, #900, #999).
+- **Provider actions in the context menu.** S3 objects: Storage Class, Object Tags and Restore from Glacier; Azure blobs: Access Tier; the backend checks every class and tier it is sent (#1030). Box and Google Drive files: a comments window (list, add, delete); Box: collaborators and Unlock Folder (#1029). GitLab: View on GitLab, self-hosted included (#1028). Filen notes: add, remove, create, rename and delete tags from the editor, and a note type change is saved at once (#1031).
+- **Folder rename on B2 and ImageKit.** B2 copies every file under the new prefix and deletes the originals only once every copy is made, refuses a folder moved into itself, never merges two folders, and says where everything is if it stops part way; ImageKit uses its renameFolder job and refuses a name it would rewrite. On a B2 bucket that keeps versions, a renamed file or folder no longer stays in view under its old name (#1064).
+- **AeroSync: saved presets in the Plan.** A saved preset can be applied in the Plan tab without changing the endpoints, with the fields it cannot carry named; right-to-left plans swap the source bucket roles correctly (#1055). The preset selector groups the built-in modes apart from your saved presets (@EhudKirsh, #347, #1059), and the Plan and Local mirror tabs show `--exclude` and `--dry-run` beside their options (@EhudKirsh, #347, #1035).
+- **Right-click a server in My Servers to export it**, and filter the server lists of Import and Export, where "select all" acts on the rows shown (#1008).
+- **Security Tools open as a column next to Editor, Terminal and AI Agent** instead of a window over the app; the Cyber theme keeps the window (@EhudKirsh, #1037).
+- **The README lists the AM and AppMan install for Linux** (@shuvashish76, #900).
+
+#### Fixed
+- **Single-file SFTP uploads send whole WRITE requests.** OpenSSH accepts 261120 bytes per WRITE and the upload buffer is 262144, so every buffer went out as a full WRITE plus a 1 KiB one, and half of the eight WRITEs in flight carried 1 KiB: about 0.8 MB stayed on the wire where 2 MB fit. A 300 MiB upload over a 47 ms link went from a median of 19.99 s to 10.62 s, every upload verified on the server (#1057).
+- **SFTP downloads read each chunk in one READ.** Each 256 KiB chunk went out as two serial READs, and the server sat idle for a round trip at the end of every round. A 300 MiB download over a 47 ms link went from 51.7, 46.9 and 45.8 s to 36.1, 39.1 and 34.2 s on one connection and from 22.7, 26.8 and 21.7 s to 17.2, 23.6 and 19.8 s on four, with peak memory down from 162-180 MB to 142-151 MB (#1063).
+- **SFTP connections turn off Nagle's algorithm.** The small READ and window-adjust packets of a download waited for the previous one to be acknowledged; on one connection over a faster line a 300 MiB download went from 32.66 and 35.11 s to 18.50 and 17.41 s. Uploads were measured too: no regression (#1067).
+- **A segmented SFTP download shares one read-ahead budget across its connections**, instead of each connection taking the whole one-connection window: four connections keep 16 READs each, and the peak memory of a 300 MiB download fell by 25 to 33 MB with no consistent time cost (#1066).
+- **Selecting several files transfers them in parallel on every protocol.** A multi-file selection in the file browser ran one file at a time; it is now one parallel batch, the first Stop finishes the files in flight, and a cut deletes only the sources that arrived (@roflhouse, #591, #1013). Parallel transfers no longer get pinned to one file at a time on a server after a few batches, folders or syncs (#591, #1021).
+- **A segmented download can no longer publish another download's half-written file.** The engine released its lock on the temporary before the last check and rename, so a second segmented download of the same file could replace it with its own empty, pre-sized file, and the first one published that; the lock is now held until the file is published, on all six paths that use the engine (Linux, local filesystems; elsewhere as before) (#951, #1062).
+- **Segmented downloads show real progress and stop when asked.** Progress, speed and ETA move while the ranges run instead of staying indeterminate until a range finishes (#1040), and Stop interrupts a large segmented download on HTTP providers and a cross-profile copy at once, never publishing a partial file (#1036).
+- **WebDAV.** Folders open again on servers behind an HTTPS reverse proxy (a bare 401 before), a redirect that would leave HTTPS is refused with an error naming the server misconfiguration instead of dropping the credentials (#1011), and uploads show streamed progress that stays monotonic across a Digest retry and completes only after the server accepts the file.
+- **S3 multipart uploads keep each part once** (peak memory 156-159 MB instead of 208-216 MB on 300 MiB) and S3 commands reuse the connect probe's connection (#1056).
+- **Saving and overwriting are checked before they report success.** Overwrite checks inspect the real destination, keep an empty listing apart from a failed one and refuse to write when the check failed, and a batch rename gives repeated names distinct paths (#1049). A failed save of a server profile keeps the editor and your input, never reports success, and puts back any credential it touched; saved-server actions, settings, imports and background metadata are stored before the interface shows them (#1053). Editing a saved OAuth server can be saved again, and a failed save is reported (#1009); a saved OAuth server whose app keys are missing says so and opens the OAuth settings (#1014).
+- **AeroSync.** A sync run fills the Transfer Queue, each file with live progress and its outcome (@EhudKirsh, #364, #1034); journals are signed on every save so History can verify them, and saved presets can be deleted (#1023); the notice for a preset with nothing to run has its own title, "Nothing to sync" (#1060).
+- **Share Link** offers the expiry, password and permission options the connected provider reports, Revoke works on every provider that lists links, and closing the window early no longer creates a link (#1019).
+- **AeroAgent MCP on Linux**: the main window no longer reloads when the approval window opens, and the approval and extraction windows no longer crash with appmenu-gtk-module (#1017); the app no longer crashes at start-up on GNOME with appmenu-gtk-module when the interface is slow to load (#1005).
+- **The native menu is translated again after a language change**, and rebuilding it no longer brings back a menu bar hidden on Linux (#1032). File tags follow local renames, moves and deletes, folders included (#1027). Pausing AeroCloud shows the Paused tray badge (#1025).
+- **Saving a profile another user account on this device already has shows a warning and an Activity Log entry**; the multi-user check behind it was never called (#1015).
+- **AeroImage marks loss once per section.** Crop, rotate, flip and invert share one section, titled Lossless on PNG and the other formats that keep pixels, and Lossy on JPEG and GIF, where saving re-encodes; resize and the colour controls stay in the Lossy section. Quick Connect calls the saved name "Profile name", and the S3 session token and AssumeRole fields share one Optional heading (@EhudKirsh, #347, #1068).
+- **The Flatpak import results that only inform show OK alone** instead of a Cancel that offered no choice (#1065).
+
+#### Security
+- **Deleting a file from an AeroVault v2 vault removes its encrypted data from the vault file**; it stayed there before (#1022).
+- **A developer tool that writes test profiles into the vault, shipped by mistake in the 4.2.1 Windows installers and macOS DMGs, is no longer packaged** (#1043).
+- **More than a hundred backend commands that nothing in the app called are removed**: seven multi-user commands, one of which returned a decrypted per-user credential to the interface (#1016); the old AeroAgent tool router and plugin-hook runner that acted without approval (#1024); one that wrote agent memory without approval (#1041); eleven vault, 24 provider, 28 legacy session and provider, 19 miscellaneous and 14 sync commands (#1018, #1020, #1022, #1023, #1025). A test now requires every registered command to have a caller, following hooks and imports to their real module (#1016, #1041).
+- **DOMPurify 3.4.16** for sanitized HTML and SVG previews (#1002).
+- **The Snap Store revision of 4.2.1 was rebuilt against USN-8863-1 (GStreamer Good Plugins)**, published as r225 with no code change.
+
+#### Changed
+- **AeroAgent is version 1.6** in AI Settings and the chat header (#1061).
+- **`--transfer-engine` and the transfer engine docs say what the router does**: the override reaches the plain single-file transfer, plain WebDAV and Nextcloud downloads take the direct path, and `-v` names the real override; the engine docs gain five figures and a method for measuring the engine against the direct path (#1044, #1045, #1046, #1048).
+- **The 4.2.0 changelog no longer quotes an S3 multi-stream figure measured on one stream**; it gives the 4.2.1 measurement (#1050).
+- **macOS installers build on macos-15** before the macos-14 image is retired, with the same minimum macOS (10.13 Intel, 11.0 Apple Silicon), and every DMG is checked against the last release (#1039).
+- **Every checkout gets LF line endings**, Windows included; what the Windows installers ship is unchanged (#1051).
+
+#### Contributors
+
+Thanks to the people who shaped this release:
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+[<img src="https://github.com/roflhouse.png?size=48" width="48" height="48" alt="@roflhouse" />](https://github.com/roflhouse)
+[<img src="https://github.com/shuvashish76.png?size=48" width="48" height="48" alt="@shuvashish76" />](https://github.com/shuvashish76)
+
 ## [4.2.1] - 2026-09-30
 
 ### Four New Ways to Connect, and a Round of Repairs
