@@ -979,10 +979,18 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     />
                 )}
 
-                {/* Session token for AWS STS temporary credentials (AssumeRole / SSO),
-                    issue #301. Only meaningful on AWS / self-hosted STS-capable
-                    backends, so it is shown for the generic S3 tile and hidden on
-                    purpose-built presets (Wasabi, R2, B2, Filen, ...) that have no STS. */}
+                {/* Session token + AssumeRole below are all optional (AWS STS
+                    temporary credentials, issue #301). Per Ehud (discussion #347)
+                    the word is written once as a section caption instead of
+                    repeating "(optional)" on every label. Only meaningful on AWS /
+                    self-hosted STS-capable backends, so it is shown for the
+                    generic S3 tile and hidden on purpose-built presets (Wasabi,
+                    R2, B2, Filen, ...) that have no STS. */}
+                {(!providerConfig || providerConfig.isGeneric) && (
+                    <div className="pt-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                        {t('common.optional')}
+                    </div>
+                )}
                 {(!providerConfig || providerConfig.isGeneric) && (
                     <div>
                         <label className="block text-sm font-medium mb-1.5">

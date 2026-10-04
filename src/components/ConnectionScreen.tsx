@@ -362,7 +362,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
 
             {wantToSave && (
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('connection.connectionNameOptional')}</label>
+                    <label className="block text-sm font-medium mb-1.5">{t('connection.profileName')}</label>
                     <input
                         type="text"
                         value={saveName}
@@ -3164,7 +3164,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 <div className="pb-3 border-b border-gray-200 dark:border-gray-700/50">
                     <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                         <Save size={14} />
-                        {t('connection.connectionNameOptional')}
+                        {t('connection.profileName')}
                     </label>
                     <div className="flex items-center gap-2">
                         {showIcon && renderProfileIconButton()}
@@ -5146,13 +5146,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div>
                                                 <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                                                     <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
+                                                    {t('connection.profileName')}
                                                 </label>
                                                 <input
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNameOptional')}
+                                                    placeholder={t('connection.profileName')}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-transparent"
                                                 />
                                                 {renderIconPicker()}
@@ -5921,13 +5921,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div>
                                                 <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                                                     <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
+                                                    {t('connection.profileName')}
                                                 </label>
                                                 <input
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNameOptional')}
+                                                    placeholder={t('connection.profileName')}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                                                 />
                                                 {renderIconPicker()}
@@ -6063,13 +6063,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             <div>
                                                 <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
                                                     <Save size={14} />
-                                                    {t('connection.connectionNameOptional')}
+                                                    {t('connection.profileName')}
                                                 </label>
                                                 <input
                                                     type="text"
                                                     value={connectionName}
                                                     onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.connectionNameOptional')}
+                                                    placeholder={t('connection.profileName')}
                                                     className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                                                 />
                                             </div>

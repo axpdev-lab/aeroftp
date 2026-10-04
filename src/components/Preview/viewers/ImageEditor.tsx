@@ -5,7 +5,13 @@
  * AeroImage Editor Sidebar Panel
  *
  * Rendered to the right of the image when edit mode is active.
- * Provides geometry transforms, color adjustments, and effects.
+ * Operations are grouped into a LOSSLESS section and a LOSSY section
+ * (#270, regrouped per Ehud's wish in discussion #347): the label is
+ * written once as the section title instead of repeating a badge on
+ * every control. The backend (image_edit.rs) decodes and re-encodes
+ * pixels, so on a lossy source (JPEG/GIF) even the pixel-exact
+ * operations are re-encoded on save: the first section is then marked
+ * LOSSY as well, with the shared format note explaining why.
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -33,7 +39,7 @@ import {
     INITIAL_EDIT_STATE,
     ImageMetadata,
     PreviewFileData,
-    LossKind,
+    formatLossKind,
 } from '../types';
 
 interface ImageEditorProps {
@@ -51,33 +57,6 @@ const ROTATION_CYCLE: readonly (0 | 90 | 180 | 270)[] = [0, 90, 180, 270];
 
 const RESIZE_PRESETS = [50, 75, 150, 200] as const;
 
-// Lossless / lossy badge (#270). Each operation is tagged so the user knows
-// whether it preserves the picture exactly (green) or alters pixels
-// irreversibly (amber). The reading still depends on the chosen output format,
-// which the Save dialog spells out.
-const LossTag: React.FC<{ kind: LossKind }> = ({ kind }) => {
-    const { t } = useI18n();
-    const lossless = kind === 'lossless';
-    return (
-        <span
-            title={
-                lossless
-                    ? t('preview.image.edit.losslessHint') || 'Reversible: pixels are preserved exactly when saved to a lossless format'
-                    : t('preview.image.edit.lossyHint') || 'Alters pixels: the change cannot be perfectly undone'
-            }
-            className={`px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide border ${
-                lossless
-                    ? 'bg-green-500/15 text-green-400 border-green-500/30'
-                    : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-            }`}
-        >
-            {lossless
-                ? t('preview.image.edit.lossless') || 'Lossless'
-                : t('preview.image.edit.lossy') || 'Lossy'}
-        </span>
-    );
-};
-
 // Reusable slider row
 interface SliderRowProps {
     label: string;
@@ -87,19 +66,17 @@ interface SliderRowProps {
     max: number;
     step: number;
     unit?: string;
-    badge?: React.ReactNode;
     onChange: (v: number) => void;
     onReset: () => void;
 }
 
 const SliderRow: React.FC<SliderRowProps> = React.memo(
-    ({ label, icon, value, min, max, step, unit, badge, onChange, onReset }) => (
+    ({ label, icon, value, min, max, step, unit, onChange, onReset }) => (
         <div className="px-3 py-1.5">
             <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-primary)]">
                     {icon}
                     <span>{label}</span>
-                    {badge}
                 </div>
                 <div className="flex items-center gap-1">
                     <span className="text-xs text-[var(--color-text-tertiary)] tabular-nums w-10 text-right">
@@ -131,19 +108,30 @@ const SliderRow: React.FC<SliderRowProps> = React.memo(
 );
 SliderRow.displayName = 'SliderRow';
 
-// Collapsible section wrapper
+// Collapsible section wrapper. `tone` colors the title once (green for the
+// LOSSLESS section, amber for LOSSY) so the word does not need repeating on
+// every control inside.
 interface SectionProps {
     title: string;
+    tone?: 'green' | 'amber';
+    hint?: string;
     expanded: boolean;
     onToggle: () => void;
     children: React.ReactNode;
 }
 
-const Section: React.FC<SectionProps> = ({ title, expanded, onToggle, children }) => (
+const Section: React.FC<SectionProps> = ({ title, tone, hint, expanded, onToggle, children }) => (
     <div className="border-t border-[var(--color-border)]">
         <button
             onClick={onToggle}
-            className="flex items-center justify-between w-full px-3 py-2 text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wider cursor-pointer hover:bg-[var(--color-bg-tertiary)]"
+            title={hint}
+            className={`flex items-center justify-between w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider cursor-pointer hover:bg-[var(--color-bg-tertiary)] ${
+                tone === 'green'
+                    ? 'text-green-400'
+                    : tone === 'amber'
+                        ? 'text-amber-400'
+                        : 'text-[var(--color-text-secondary)]'
+            }`}
         >
             <span>{title}</span>
             <ChevronRight
@@ -178,6 +166,7 @@ const ToggleBtn: React.FC<ToggleBtnProps> = ({ active, onClick, children, title 
 );
 
 const ImageEditor: React.FC<ImageEditorProps> = ({
+    file,
     metadata,
     editState,
     onEditStateChange,
@@ -188,9 +177,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     const { t } = useI18n();
 
     // Section collapse state (all expanded by default)
-    const [geoOpen, setGeoOpen] = useState(true);
-    const [adjOpen, setAdjOpen] = useState(true);
-    const [fxOpen, setFxOpen] = useState(true);
+    const [losslessOpen, setLosslessOpen] = useState(true);
+    const [lossyOpen, setLossyOpen] = useState(true);
 
     // Aspect ratio lock
     const [lockAspect, setLockAspect] = useState(true);
@@ -199,6 +187,17 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         if (!metadata || metadata.height === 0) return 1;
         return metadata.width / metadata.height;
     }, [metadata]);
+
+    // Pixel-exact operations (crop, right-angle rotate, flip, invert) only stay
+    // lossless when the save target stores pixels exactly. AeroImage re-encodes
+    // on save, so on a lossy source (JPEG/GIF) the whole pipeline is lossy and
+    // the first section is marked LOSSY too (Ehud, discussion #347).
+    const sourceFormat = useMemo(() => {
+        if (metadata?.format) return metadata.format;
+        const ext = file.name.split('.').pop();
+        return ext ?? '';
+    }, [metadata, file.name]);
+    const sourceLossy = formatLossKind(sourceFormat) === 'lossy';
 
     // Patch helper: merges partial state
     const patch = useCallback(
@@ -272,12 +271,28 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                 </button>
             </div>
 
-            {/* ─── Geometry ──────────────────────────────────────────── */}
+            {/* ─── Lossless operations (LOSSY when the source is JPEG/GIF) ── */}
             <Section
-                title={t('preview.image.edit.geometry') || 'Geometry'}
-                expanded={geoOpen}
-                onToggle={() => setGeoOpen((p) => !p)}
+                title={
+                    sourceLossy
+                        ? t('preview.image.edit.lossy') || 'Lossy'
+                        : t('preview.image.edit.lossless') || 'Lossless'
+                }
+                tone={sourceLossy ? 'amber' : 'green'}
+                hint={
+                    sourceLossy
+                        ? t('preview.image.edit.lossyHint') || 'Alters pixels: the change cannot be perfectly undone'
+                        : t('preview.image.edit.losslessHint') || 'Reversible: pixels are preserved exactly when saved to a lossless format'
+                }
+                expanded={losslessOpen}
+                onToggle={() => setLosslessOpen((p) => !p)}
             >
+                {sourceLossy && (
+                    <p className="px-3 pt-1 text-[10px] text-amber-400/90 italic leading-snug">
+                        {t('preview.image.edit.formatLossyNote') || 'Lossy format: re-encoding discards some image data, including any lossless edits.'}
+                    </p>
+                )}
+
                 {/* Crop toggle */}
                 <div className="px-3 py-1.5 flex items-center gap-2">
                     <ToggleBtn
@@ -288,7 +303,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <Crop size={14} />
                         <span>{t('preview.image.edit.crop') || 'Crop'}</span>
                     </ToggleBtn>
-                    <LossTag kind="lossless" />
                 </div>
 
                 {/* Rotate */}
@@ -297,7 +311,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <span className="text-xs text-[var(--color-text-secondary)]">
                             {t('preview.image.edit.rotate') || 'Rotate'}
                         </span>
-                        <LossTag kind="lossless" />
                     </div>
                     <div className="flex gap-1.5">
                         <button
@@ -330,7 +343,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <span className="text-xs text-[var(--color-text-secondary)]">
                             {t('preview.image.edit.flip') || 'Flip'}
                         </span>
-                        <LossTag kind="lossless" />
                     </div>
                     <div className="flex gap-1.5">
                         <ToggleBtn
@@ -350,15 +362,31 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     </div>
                 </div>
 
+                {/* Invert */}
+                <div className="px-3 py-1.5">
+                    <ToggleBtn
+                        active={editState.invert}
+                        onClick={() => patch({ invert: !editState.invert })}
+                    >
+                        {t('preview.image.edit.invert') || 'Invert'}
+                    </ToggleBtn>
+                </div>
+            </Section>
+
+            {/* ─── Lossy operations ────────────────────────────────────── */}
+            <Section
+                title={t('preview.image.edit.lossy') || 'Lossy'}
+                tone="amber"
+                hint={t('preview.image.edit.lossyHint') || 'Alters pixels: the change cannot be perfectly undone'}
+                expanded={lossyOpen}
+                onToggle={() => setLossyOpen((p) => !p)}
+            >
                 {/* Resize */}
                 <div className="px-3 py-1.5">
                     <div className="flex items-center justify-between mb-1.5">
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-xs text-[var(--color-text-secondary)]">
-                                {t('preview.image.edit.resize') || 'Resize'}
-                            </span>
-                            <LossTag kind="lossy" />
-                        </div>
+                        <span className="text-xs text-[var(--color-text-secondary)]">
+                            {t('preview.image.edit.resize') || 'Resize'}
+                        </span>
                         <button
                             onClick={() => setLockAspect((p) => !p)}
                             className={`p-1 rounded ${
@@ -405,14 +433,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         ))}
                     </div>
                 </div>
-            </Section>
 
-            {/* ─── Adjustments ───────────────────────────────────────── */}
-            <Section
-                title={t('preview.image.edit.adjustments') || 'Adjustments'}
-                expanded={adjOpen}
-                onToggle={() => setAdjOpen((p) => !p)}
-            >
                 <SliderRow
                     label={t('preview.image.edit.brightness') || 'Brightness'}
                     icon={<Sun size={13} />}
@@ -420,7 +441,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={-100}
                     max={100}
                     step={1}
-                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ brightness: v })}
                     onReset={() => patch({ brightness: 0 })}
                 />
@@ -431,7 +451,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={-100}
                     max={100}
                     step={1}
-                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ contrast: v })}
                     onReset={() => patch({ contrast: 0 })}
                 />
@@ -443,18 +462,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     max={180}
                     step={1}
                     unit="°"
-                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ hue: v })}
                     onReset={() => patch({ hue: 0 })}
                 />
-            </Section>
-
-            {/* ─── Effects ───────────────────────────────────────────── */}
-            <Section
-                title={t('preview.image.edit.effects') || 'Effects'}
-                expanded={fxOpen}
-                onToggle={() => setFxOpen((p) => !p)}
-            >
                 <SliderRow
                     label={t('preview.image.edit.blur') || 'Blur'}
                     icon={<Droplets size={13} />}
@@ -462,7 +472,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={0}
                     max={10}
                     step={0.1}
-                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ blur: v })}
                     onReset={() => patch({ blur: 0 })}
                 />
@@ -473,7 +482,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                     min={0}
                     max={10}
                     step={0.1}
-                    badge={<LossTag kind="lossy" />}
                     onChange={(v) => patch({ sharpen: v })}
                     onReset={() => patch({ sharpen: 0 })}
                 />
@@ -482,25 +490,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         {t('preview.image.edit.sharpenNote') || 'Applied on save'}
                     </div>
                 )}
-                <div className="px-3 py-1.5 space-y-1.5">
-                    <div className="flex items-center gap-2">
-                        <ToggleBtn
-                            active={editState.grayscale}
-                            onClick={() => patch({ grayscale: !editState.grayscale })}
-                        >
-                            {t('preview.image.edit.grayscale') || 'Grayscale'}
-                        </ToggleBtn>
-                        <LossTag kind="lossy" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <ToggleBtn
-                            active={editState.invert}
-                            onClick={() => patch({ invert: !editState.invert })}
-                        >
-                            {t('preview.image.edit.invert') || 'Invert'}
-                        </ToggleBtn>
-                        <LossTag kind="lossless" />
-                    </div>
+                <div className="px-3 py-1.5">
+                    <ToggleBtn
+                        active={editState.grayscale}
+                        onClick={() => patch({ grayscale: !editState.grayscale })}
+                    >
+                        {t('preview.image.edit.grayscale') || 'Grayscale'}
+                    </ToggleBtn>
                 </div>
             </Section>
 
