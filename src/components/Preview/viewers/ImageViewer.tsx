@@ -528,6 +528,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         <CropOverlay
                             imageRef={imageRef}
                             aspectRatio={null}
+                            initialCrop={editState.crop}
                             onCropChange={handleCropChange}
                             onCancel={() => setCropMode(false)}
                         />

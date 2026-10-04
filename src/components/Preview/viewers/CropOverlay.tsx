@@ -8,8 +8,8 @@
  * 8 resize handles, and a dimension badge. Supports free and
  * fixed-aspect-ratio cropping via mouse interaction.
  *
- * The selection starts as the whole image, its handles on the image edges,
- * as in other image editors. Every coordinate is relative to the image's own
+ * The selection starts from the crop already chosen, or else as the whole
+ * image with its handles on the image edges, as in other image editors. Every coordinate is relative to the image's own
  * box, and the drawing sits in a frame placed over that box: the overlay
  * itself covers the whole viewer, where the image is centred with margins,
  * and drawing in the overlay's frame shifted the selection by the margin, so
@@ -23,6 +23,8 @@ import { useI18n } from '../../../i18n';
 interface CropOverlayProps {
     imageRef: React.RefObject<HTMLImageElement | null>;
     aspectRatio: number | null;
+    /** The crop already chosen (natural pixels), to start from; none: the whole image. */
+    initialCrop?: CropRect | null;
     onCropChange: (natural: CropRect) => void;
     onCancel: () => void;
 }
@@ -42,7 +44,7 @@ export function cropCoversWholeImage(c: CropRect, naturalWidth: number, naturalH
     return c.x <= 0 && c.y <= 0 && c.x + c.width >= naturalWidth && c.y + c.height >= naturalHeight;
 }
 
-export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio, onCropChange, onCancel }) => {
+export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio, initialCrop, onCropChange, onCancel }) => {
     useI18n(); // keep hook call even if not used for keys yet
 
     // Screen-space crop rect (relative to image bounding rect)
@@ -179,28 +181,39 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
     }, [imgRect, clampScreen, enforce, emitCrop]);
 
-    // Start with the whole image selected, and keep the selection on the same
-    // part of the image when the viewer is resized.
+    // Start from the crop already chosen, or else the whole image, and keep
+    // the selection on the same part of the image when the viewer changes.
     useEffect(() => {
         const img = imageRef.current;
         if (!img) return undefined;
         let last = img.getBoundingClientRect();
         if (last.width > 0 && last.height > 0) {
-            const whole = { x: 0, y: 0, w: last.width, h: last.height };
-            setCrop(whole);
-            emitCrop(whole);
+            const kx = img.naturalWidth > 0 ? last.width / img.naturalWidth : 1;
+            const ky = img.naturalHeight > 0 ? last.height / img.naturalHeight : 1;
+            const start = initialCrop
+                ? { x: initialCrop.x * kx, y: initialCrop.y * ky, w: initialCrop.width * kx, h: initialCrop.height * ky }
+                : { x: 0, y: 0, w: last.width, h: last.height };
+            setCrop(start);
+            emitCrop(start);
         }
         if (typeof ResizeObserver === 'undefined') return undefined;
+        // The image is centred in the viewer: the viewer can change width while
+        // the image, limited by its height, keeps its size and only moves. So
+        // the overlay (which covers the viewer) is watched too, and every
+        // change places the frame again.
         const observer = new ResizeObserver(() => {
             const now = img.getBoundingClientRect();
             if (now.width <= 0 || now.height <= 0) return;
             const sx = last.width > 0 ? now.width / last.width : 1;
             const sy = last.height > 0 ? now.height / last.height : 1;
             last = now;
-            setCrop((c) => (c ? { x: c.x * sx, y: c.y * sy, w: c.w * sx, h: c.h * sy } : c));
+            if (sx !== 1 || sy !== 1) {
+                setCrop((c) => (c ? { x: c.x * sx, y: c.y * sy, w: c.w * sx, h: c.h * sy } : c));
+            }
             setLayout((n) => n + 1);
         });
         observer.observe(img);
+        if (overlayRef.current) observer.observe(overlayRef.current);
         return () => observer.disconnect();
         // Once per crop session: emitCrop changes with its parent's callback.
         // eslint-disable-next-line react-hooks/exhaustive-deps
