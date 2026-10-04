@@ -23,7 +23,9 @@
 #      warnings are printed for a human to judge one by one. Those are NOT
 #      failed on: dynamic loading legitimately looks like an unused library,
 #      and #465 asks for them to be assessed individually rather than
-#      blanket-ignored.
+#      blanket-ignored. A linter that cannot run (no build provider, no
+#      network) leaves the gate green but says the lint half is UNVERIFIED,
+#      never OK. Tested with stub tools: .github/scripts/test_snap_gpu_lint_check.py.
 #
 # Usage:
 #   scripts/snap-gpu-lint-check.sh <snap-file>
@@ -44,7 +46,8 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h|--help)
-      sed -n '2,33p' "$0"
+      # The whole comment header, however long it grows.
+      awk 'NR == 1 { next } /^#/ { print; next } { exit }' "$0"
       exit 0
       ;;
     *)
@@ -173,22 +176,42 @@ LINT_OUT="$TMP/lint.txt"
 # The linter is allowed to fail: it needs a build instance and may be
 # unavailable on a given runner. Its absence must not turn a green content
 # check into a red gate, and its presence must not hide a gpu: warning.
-if ! snapcraft lint "$SNAP_FILE" >"$LINT_OUT" 2>&1; then
-  echo "note: snapcraft lint exited non-zero; output follows"
+LINT_RC=0
+snapcraft lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+if [ "$LINT_RC" -ne 0 ]; then
+  echo "note: snapcraft lint exited $LINT_RC; output follows"
 fi
 sed 's/^/    /' "$LINT_OUT"
 
-if grep -qE '^\s*gpu:' "$LINT_OUT"; then
+# Did the linter run? snapcraft prints its findings under a "Lint OK:",
+# "Lint warnings:", "Lint errors:" or "Lint information:" header
+# (snapcraft/linters/linters.py, `report`), and prints nothing at all when it
+# finds nothing. So a zero exit, or a report header, means it ran; a non-zero
+# exit with no header means it stopped before linting (on 2026-10-04 the build
+# provider refused to start without network access). Reading the second case
+# as "no gpu: lines, so clean" printed an OK nobody had verified.
+if [ "$LINT_RC" -ne 0 ] && ! grep -qE '^[[:space:]]*Lint (OK|warnings|errors|information):' "$LINT_OUT"; then
+  reason="$(grep -v '^[[:space:]]*$' "$LINT_OUT" | tail -n 1 | cut -c1-200)"
+  reason="${reason//%/%25}"
+  echo
+  echo "::warning::snapcraft lint did not run (${reason:-exit $LINT_RC, no output}); the gpu:/library: lint half of #465 criterion 5 is UNVERIFIED in this run"
+  exit 0
+fi
+
+# Each finding is printed as "- <linter>: <file>: <text>". The leading dash is
+# optional here so that a bare "gpu: ..." line still counts: matching only the
+# bare form missed every real finding and printed OK over a gpu: warning.
+if grep -qE '^[[:space:]]*(-[[:space:]]*)?gpu:' "$LINT_OUT"; then
   echo
   echo "::error::snapcraft lint still reports gpu: warnings, listed above."
   exit 1
 fi
 
-if grep -qE '^\s*library:' "$LINT_OUT"; then
+if grep -qE '^[[:space:]]*(-[[:space:]]*)?library:' "$LINT_OUT"; then
   echo
   echo "::warning::snapcraft lint reports library: warnings. Not a failure:" \
        "assess each one (dynamically loaded vs genuinely unused) instead of" \
        "adding a blanket ignore. See #465."
 fi
 
-echo "OK: snapcraft lint reports no gpu: warnings."
+echo "OK: snapcraft lint ran and reports no gpu: warnings."
