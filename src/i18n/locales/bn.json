@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "সিঙ্ক প্রিসেট",
-            "nothingToDo": "সিঙ্ক প্রিসেট",
-            "allSkipped": "এই প্রিসেটের জন্য কোনও কার্যকর এন্ট্রি নেই।",
-            "deletesDeferred": "সিঙ্ক প্রিসেট"
+            "nothingToDo": "সিঙ্ক করার কিছু নেই",
+            "allSkipped": "এই প্রিসেটের জন্য কোনও কার্যকর এন্ট্রি নেই।"
         },
         "aerosync": {
             "title": "AeroSync",

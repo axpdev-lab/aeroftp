@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Preset sinkronisasi",
-            "nothingToDo": "Preset sinkronisasi",
-            "allSkipped": "Tidak ada entri yang dapat dieksekusi untuk preset ini.",
-            "deletesDeferred": "Preset sinkronisasi"
+            "nothingToDo": "Tidak ada yang perlu disinkronkan",
+            "allSkipped": "Tidak ada entri yang dapat dieksekusi untuk preset ini."
         },
         "aerosync": {
             "title": "AeroSync",

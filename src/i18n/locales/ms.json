@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Pratetap penyegerakan",
-            "nothingToDo": "Pratetap penyegerakan",
-            "allSkipped": "Tiada entri boleh dilaksanakan untuk pratetap ini.",
-            "deletesDeferred": "Pratetap penyegerakan"
+            "nothingToDo": "Tiada apa-apa untuk disegerakkan",
+            "allSkipped": "Tiada entri boleh dilaksanakan untuk pratetap ini."
         },
         "aerosync": {
             "title": "AeroSync",

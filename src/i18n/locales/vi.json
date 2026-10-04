@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Cài đặt sẵn đồng bộ",
-            "nothingToDo": "Cài đặt sẵn đồng bộ",
-            "allSkipped": "Không có mục nào có thể thực hiện cho cài đặt sẵn này.",
-            "deletesDeferred": "Cài đặt sẵn đồng bộ"
+            "nothingToDo": "Không có gì để đồng bộ",
+            "allSkipped": "Không có mục nào có thể thực hiện cho cài đặt sẵn này."
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Synkronoinnin esiasetukset",
-            "nothingToDo": "Synkronoinnin esiasetukset",
-            "allSkipped": "Tälle esiasetukselle ei ole suoritettavia merkintöjä.",
-            "deletesDeferred": "Synkronoinnin esiasetukset"
+            "nothingToDo": "Ei synkronoitavaa",
+            "allSkipped": "Tälle esiasetukselle ei ole suoritettavia merkintöjä."
         },
         "aerosync": {
             "title": "AeroSync",

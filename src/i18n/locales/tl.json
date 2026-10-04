@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Mga preset ng sync",
-            "nothingToDo": "Mga preset ng sync",
-            "allSkipped": "Walang maaaring isagawa na entry para sa preset na ito.",
-            "deletesDeferred": "Mga preset ng sync"
+            "nothingToDo": "Walang ise-sync",
+            "allSkipped": "Walang maaaring isagawa na entry para sa preset na ito."
         },
         "aerosync": {
             "title": "AeroSync",

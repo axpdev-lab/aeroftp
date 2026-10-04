@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Préréglages de synchronisation",
-            "nothingToDo": "Préréglages de synchronisation",
-            "allSkipped": "Aucune entrée exploitable pour ce préréglage.",
-            "deletesDeferred": "Préréglages de synchronisation"
+            "nothingToDo": "Rien à synchroniser",
+            "allSkipped": "Aucune entrée exploitable pour ce préréglage."
         },
         "aerosync": {
             "title": "AeroSync",

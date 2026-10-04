@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Sünkroonimise eelseaded",
-            "nothingToDo": "Sünkroonimise eelseaded",
-            "allSkipped": "Selle eelseade jaoks pole täidetavaid kirjeid.",
-            "deletesDeferred": "Sünkroonimise eelseaded"
+            "nothingToDo": "Pole midagi sünkroonida",
+            "allSkipped": "Selle eelseade jaoks pole täidetavaid kirjeid."
         },
         "aerosync": {
             "title": "AeroSync",

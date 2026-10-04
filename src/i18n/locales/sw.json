@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Mipangilio ya usawazishaji",
-            "nothingToDo": "Mipangilio ya usawazishaji",
-            "allSkipped": "Hakuna ingizo linaloweza kutekelezwa kwa mpangilio huu.",
-            "deletesDeferred": "Mipangilio ya usawazishaji"
+            "nothingToDo": "Hakuna cha kusawazisha",
+            "allSkipped": "Hakuna ingizo linaloweza kutekelezwa kwa mpangilio huu."
         },
         "aerosync": {
             "title": "AeroSync",

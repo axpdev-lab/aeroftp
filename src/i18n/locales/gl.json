@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Predefinicións de sincronización",
-            "nothingToDo": "Predefinicións de sincronización",
-            "allSkipped": "Non hai entradas accionables para esta predefinición.",
-            "deletesDeferred": "Predefinicións de sincronización"
+            "nothingToDo": "Nada que sincronizar",
+            "allSkipped": "Non hai entradas accionables para esta predefinición."
         },
         "aerosync": {
             "title": "AeroSync",

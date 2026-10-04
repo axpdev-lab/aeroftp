@@ -5452,9 +5452,8 @@
         },
         "syncPresets": {
             "title": "Preset di sincronizzazione",
-            "nothingToDo": "Nessuna azione da eseguire",
-            "allSkipped": "Nessuna voce eseguibile per questo preset.",
-            "deletesDeferred": "Eliminazioni rimandate per sicurezza"
+            "nothingToDo": "Niente da sincronizzare",
+            "allSkipped": "Nessuna voce eseguibile per questo preset."
         },
         "aerosync": {
             "title": "AeroSync",

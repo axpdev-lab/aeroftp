@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Profile synchronizacji",
-            "nothingToDo": "Profile synchronizacji",
-            "allSkipped": "Brak wykonywalnych wpisów dla tego profilu.",
-            "deletesDeferred": "Profile synchronizacji"
+            "nothingToDo": "Nie ma nic do synchronizacji",
+            "allSkipped": "Brak wykonywalnych wpisów dla tego profilu."
         },
         "aerosync": {
             "title": "AeroSync",

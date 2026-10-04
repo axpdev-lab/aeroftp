@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Sinkronizazio aurrezarpenak",
-            "nothingToDo": "Sinkronizazio aurrezarpenak",
-            "allSkipped": "Aurrezarpen honetarako ez dago sarrera exekutagarririk.",
-            "deletesDeferred": "Sinkronizazio aurrezarpenak"
+            "nothingToDo": "Ez dago sinkronizatzeko ezer",
+            "allSkipped": "Aurrezarpen honetarako ez dago sarrera exekutagarririk."
         },
         "aerosync": {
             "title": "AeroSync",

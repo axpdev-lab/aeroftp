@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Rhag-osodiadau cysoni",
-            "nothingToDo": "Rhag-osodiadau cysoni",
-            "allSkipped": "Dim cofnodion gweithredadwy ar gyfer y rhag-osodiad hwn.",
-            "deletesDeferred": "Rhag-osodiadau cysoni"
+            "nothingToDo": "Dim byd i'w gysoni",
+            "allSkipped": "Dim cofnodion gweithredadwy ar gyfer y rhag-osodiad hwn."
         },
         "aerosync": {
             "title": "AeroSync",

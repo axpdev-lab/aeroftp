@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Synkroniseringspresets",
-            "nothingToDo": "Synkroniseringspresets",
-            "allSkipped": "Ingen handlingsbare poster for denne preset.",
-            "deletesDeferred": "Synkroniseringspresets"
+            "nothingToDo": "Intet at synkronisere",
+            "allSkipped": "Ingen handlingsbare poster for denne preset."
         },
         "aerosync": {
             "title": "AeroSync",

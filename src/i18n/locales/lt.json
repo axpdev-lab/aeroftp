@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Sinchronizavimo išankstiniai nustatymai",
-            "nothingToDo": "Sinchronizavimo išankstiniai nustatymai",
-            "allSkipped": "Šiam išankstiniam nustatymui nėra vykdomų įrašų.",
-            "deletesDeferred": "Sinchronizavimo išankstiniai nustatymai"
+            "nothingToDo": "Nėra ką sinchronizuoti",
+            "allSkipped": "Šiam išankstiniam nustatymui nėra vykdomų įrašų."
         },
         "aerosync": {
             "title": "AeroSync",

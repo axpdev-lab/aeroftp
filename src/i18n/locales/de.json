@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Sync-Voreinstellungen",
-            "nothingToDo": "Sync-Voreinstellungen",
-            "allSkipped": "Keine ausführbaren Einträge für diese Voreinstellung.",
-            "deletesDeferred": "Sync-Voreinstellungen"
+            "nothingToDo": "Nichts zu synchronisieren",
+            "allSkipped": "Keine ausführbaren Einträge für diese Voreinstellung."
         },
         "aerosync": {
             "title": "AeroSync",

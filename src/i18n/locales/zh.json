@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "同步预设",
-            "nothingToDo": "同步预设",
-            "allSkipped": "此预设没有可执行的条目。",
-            "deletesDeferred": "同步预设"
+            "nothingToDo": "没有需要同步的内容",
+            "allSkipped": "此预设没有可执行的条目。"
         },
         "aerosync": {
             "title": "AeroSync",

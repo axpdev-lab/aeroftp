@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Forstillingar samstillingar",
-            "nothingToDo": "Forstillingar samstillingar",
-            "allSkipped": "Engar framkvæmanlegar færslur fyrir þessa forstillingu.",
-            "deletesDeferred": "Forstillingar samstillingar"
+            "nothingToDo": "Ekkert til að samstilla",
+            "allSkipped": "Engar framkvæmanlegar færslur fyrir þessa forstillingu."
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Synchronisatievoorinstellingen",
-            "nothingToDo": "Synchronisatievoorinstellingen",
-            "allSkipped": "Geen uitvoerbare items voor deze voorinstelling.",
-            "deletesDeferred": "Synchronisatievoorinstellingen"
+            "nothingToDo": "Niets te synchroniseren",
+            "allSkipped": "Geen uitvoerbare items voor deze voorinstelling."
         },
         "aerosync": {
             "title": "AeroSync",

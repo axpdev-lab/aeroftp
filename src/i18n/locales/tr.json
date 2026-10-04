@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Senkronizasyon önayarları",
-            "nothingToDo": "Senkronizasyon önayarları",
-            "allSkipped": "Bu önayar için yürütülebilir giriş yok.",
-            "deletesDeferred": "Senkronizasyon önayarları"
+            "nothingToDo": "Eşitlenecek bir şey yok",
+            "allSkipped": "Bu önayar için yürütülebilir giriş yok."
         },
         "aerosync": {
             "title": "AeroSync",

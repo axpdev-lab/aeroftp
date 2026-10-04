@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Presetări de sincronizare",
-            "nothingToDo": "Presetări de sincronizare",
-            "allSkipped": "Nu există intrări executabile pentru această presetare.",
-            "deletesDeferred": "Presetări de sincronizare"
+            "nothingToDo": "Nimic de sincronizat",
+            "allSkipped": "Nu există intrări executabile pentru această presetare."
         },
         "aerosync": {
             "title": "AeroSync",

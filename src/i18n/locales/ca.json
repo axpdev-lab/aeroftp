@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Predefinits de sincronització",
-            "nothingToDo": "Predefinits de sincronització",
-            "allSkipped": "No hi ha entrades accionables per a aquest predefinit.",
-            "deletesDeferred": "Predefinits de sincronització"
+            "nothingToDo": "Res per sincronitzar",
+            "allSkipped": "No hi ha entrades accionables per a aquest predefinit."
         },
         "aerosync": {
             "title": "AeroSync",

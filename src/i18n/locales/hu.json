@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Szinkronizációs beállítások",
-            "nothingToDo": "Szinkronizációs beállítások",
-            "allSkipped": "Nincs végrehajtható bejegyzés ehhez a beállításhoz.",
-            "deletesDeferred": "Szinkronizációs beállítások"
+            "nothingToDo": "Nincs mit szinkronizálni",
+            "allSkipped": "Nincs végrehajtható bejegyzés ehhez a beállításhoz."
         },
         "aerosync": {
             "title": "AeroSync",

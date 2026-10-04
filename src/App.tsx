@@ -11302,7 +11302,7 @@ const App: React.FC = () => {
       && !opts.resumeJournal;
     if (nothingToRun) {
       notify.info(
-        t('syncPresets.nothingToDo') || 'AeroSync',
+        t('syncPresets.nothingToDo') || 'Nothing to sync',
         t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
       );
       return;
@@ -11494,7 +11494,7 @@ const App: React.FC = () => {
       && !opts.resumeJournal;
     if (nothingToRun) {
       notify.info(
-        t('syncPresets.nothingToDo') || 'AeroSync',
+        t('syncPresets.nothingToDo') || 'Nothing to sync',
         t('syncPresets.allSkipped') || 'No actionable entries for this preset.',
       );
       return;

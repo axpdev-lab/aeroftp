@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Předvolby synchronizace",
-            "nothingToDo": "Předvolby synchronizace",
-            "allSkipped": "Žádné proveditelné položky pro tuto předvolbu.",
-            "deletesDeferred": "Předvolby synchronizace"
+            "nothingToDo": "Není co synchronizovat",
+            "allSkipped": "Žádné proveditelné položky pro tuto předvolbu."
         },
         "aerosync": {
             "title": "AeroSync",

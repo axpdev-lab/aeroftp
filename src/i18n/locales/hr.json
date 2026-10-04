@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Predlošci sinkronizacije",
-            "nothingToDo": "Predlošci sinkronizacije",
-            "allSkipped": "Nema izvršivih stavki za ovaj predložak.",
-            "deletesDeferred": "Predlošci sinkronizacije"
+            "nothingToDo": "Nema ničega za sinkronizaciju",
+            "allSkipped": "Nema izvršivih stavki za ovaj predložak."
         },
         "aerosync": {
             "title": "AeroSync",

@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "Synkroniseringsförinställningar",
-            "nothingToDo": "Synkroniseringsförinställningar",
-            "allSkipped": "Inga utförbara poster för denna förinställning.",
-            "deletesDeferred": "Synkroniseringsförinställningar"
+            "nothingToDo": "Inget att synkronisera",
+            "allSkipped": "Inga utförbara poster för denna förinställning."
         },
         "aerosync": {
             "title": "AeroSync",

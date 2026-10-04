@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "동기화 프리셋",
-            "nothingToDo": "동기화 프리셋",
-            "allSkipped": "이 프리셋에 대해 실행 가능한 항목이 없습니다.",
-            "deletesDeferred": "동기화 프리셋"
+            "nothingToDo": "동기화할 항목이 없습니다",
+            "allSkipped": "이 프리셋에 대해 실행 가능한 항목이 없습니다."
         },
         "aerosync": {
             "title": "AeroSync",

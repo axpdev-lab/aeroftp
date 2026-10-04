@@ -5254,9 +5254,8 @@
         },
         "syncPresets": {
             "title": "Synkroniseringsforhåndsinnstillinger",
-            "nothingToDo": "Synkroniseringsforhåndsinnstillinger",
-            "allSkipped": "Ingen kjørbare oppføringer for denne forhåndsinnstillingen.",
-            "deletesDeferred": "Synkroniseringsforhåndsinnstillinger"
+            "nothingToDo": "Ingenting å synkronisere",
+            "allSkipped": "Ingen kjørbare oppføringer for denne forhåndsinnstillingen."
         },
         "aerosync": {
             "title": "AeroSync",

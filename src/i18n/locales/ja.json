@@ -5235,9 +5235,8 @@
         },
         "syncPresets": {
             "title": "同期プリセット",
-            "nothingToDo": "同期プリセット",
-            "allSkipped": "このプリセットには実行可能なエントリがありません。",
-            "deletesDeferred": "同期プリセット"
+            "nothingToDo": "同期するものはありません",
+            "allSkipped": "このプリセットには実行可能なエントリがありません。"
         },
         "aerosync": {
             "title": "AeroSync",
