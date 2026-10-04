@@ -1853,6 +1853,13 @@ pub trait StorageProvider: Send + Sync {
     /// window. Providers other than SFTP ignore this setting.
     fn set_sftp_readahead(&mut self, _window: Option<usize>) {}
 
+    /// Configure the SFTP read-ahead window a download preset asks for (the
+    /// GUI, `--sftp-download-preset`): `Some(n)` is a ceiling per connection,
+    /// under which the connections of one segmented download share the
+    /// default budget; `None` disables read-ahead. Providers other than SFTP
+    /// ignore this setting.
+    fn set_sftp_readahead_preset(&mut self, _window: Option<usize>) {}
+
     /// Pin every later ranged read to one version of the object.
     ///
     /// A multi-stream download reads its windows in parallel, so an object

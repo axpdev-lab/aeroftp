@@ -726,12 +726,23 @@ enum SftpReadaheadSetting {
     LegacyEnvironment,
     Disabled,
     Window(usize),
+    /// A download preset's window (the GUI, `--sftp-download-preset`): at most
+    /// this many READs per connection, and below that the connections of one
+    /// segmented download share the default budget like the CLI default does.
+    Shared(usize),
 }
 
 impl SftpReadaheadSetting {
     fn from_explicit(window: Option<usize>) -> Self {
         match window.and_then(normalize_sftp_readahead_window) {
             Some(window) => Self::Window(window),
+            None => Self::Disabled,
+        }
+    }
+
+    fn from_preset(window: Option<usize>) -> Self {
+        match window.and_then(normalize_sftp_readahead_window) {
+            Some(window) => Self::Shared(window),
             None => Self::Disabled,
         }
     }
@@ -747,7 +758,7 @@ impl SftpReadaheadSetting {
                 Some(raw) => parse_sftp_readahead_window(Some(raw)),
             },
             Self::Disabled => None,
-            Self::Window(window) => Some(window),
+            Self::Window(window) | Self::Shared(window) => Some(window),
         }
     }
 
@@ -756,15 +767,17 @@ impl SftpReadaheadSetting {
             Self::LegacyEnvironment => {
                 self.requested_window_from(std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref())
             }
-            Self::Disabled | Self::Window(_) => self.requested_window_from(None),
+            Self::Disabled | Self::Window(_) | Self::Shared(_) => self.requested_window_from(None),
         }
     }
 
     /// The window, in chunks of `chunk` bytes, each of the `connections` of
     /// one segmented download asks for. Nothing asked: the measured default
     /// is a budget for the whole download, which its connections share (see
-    /// [`shared_default_readahead_window`]). Anything asked (CLI, preset, GUI
-    /// or the environment) is a per-connection value and stays as asked.
+    /// [`shared_default_readahead_window`]). A preset's window is a ceiling
+    /// per connection, under which its connections share the same budget.
+    /// A window asked on the command line or in the environment is a
+    /// per-connection value and stays as asked.
     fn requested_window_per_connection_from(
         self,
         legacy_raw: Option<&str>,
@@ -774,6 +787,9 @@ impl SftpReadaheadSetting {
         match (self, legacy_raw) {
             (Self::LegacyEnvironment, None) => {
                 Some(shared_default_readahead_window(connections, chunk))
+            }
+            (Self::Shared(window), _) => {
+                Some(shared_default_readahead_window(connections, chunk).min(window))
             }
             _ => self.requested_window_from(legacy_raw),
         }
@@ -786,23 +802,31 @@ impl SftpReadaheadSetting {
                 connections,
                 chunk,
             ),
-            Self::Disabled | Self::Window(_) => {
+            Self::Disabled | Self::Window(_) | Self::Shared(_) => {
                 self.requested_window_per_connection_from(None, connections, chunk)
             }
         }
     }
 
-    /// Whether a download reads ahead with the shared default rather than a
-    /// window that was asked for.
-    fn uses_shared_default_from(self, legacy_raw: Option<&str>) -> bool {
-        matches!((self, legacy_raw), (Self::LegacyEnvironment, None))
+    /// How many handles a connection's shared window may grow back to on a
+    /// server that sends less per READ than the chunk: the handles the
+    /// release opened on a connection with this setting, 32 for the default
+    /// and the preset's own window for a preset. A window asked on the
+    /// command line or in the environment stays as asked and never grows.
+    fn grow_cap_from(self, legacy_raw: Option<&str>) -> Option<usize> {
+        match (self, legacy_raw) {
+            (Self::LegacyEnvironment, None) => Some(SFTP_READAHEAD_DEFAULT_WINDOW),
+            (Self::Shared(window), _) => Some(window),
+            _ => None,
+        }
     }
 
-    fn uses_shared_default(self) -> bool {
+    fn grow_cap(self) -> Option<usize> {
         match self {
-            Self::LegacyEnvironment => self
-                .uses_shared_default_from(std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref()),
-            Self::Disabled | Self::Window(_) => false,
+            Self::LegacyEnvironment => {
+                self.grow_cap_from(std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref())
+            }
+            Self::Disabled | Self::Window(_) | Self::Shared(_) => self.grow_cap_from(None),
         }
     }
 }
@@ -1190,12 +1214,13 @@ impl SftpProvider {
         let requested_readahead_window = self
             .sftp_readahead
             .requested_window_per_connection(streams, buffer_size);
-        // On a server that sends less per READ than the chunk, the shared
-        // default may grow back to the handles the release opened on each
-        // connection, never past them; a window that was asked for stays as
-        // asked (see `sftp_readahead_range_into`).
-        let readahead_grow_to = self.sftp_readahead.uses_shared_default().then(|| {
-            SFTP_READAHEAD_DEFAULT_WINDOW.min(
+        // On a server that sends less per READ than the chunk, a shared
+        // window (the default or a preset's) may grow back to the handles the
+        // release opened on each connection, never past them; a window asked
+        // on the command line or in the environment stays as asked (see
+        // `sftp_readahead_range_into`).
+        let readahead_grow_to = self.sftp_readahead.grow_cap().map(|cap| {
+            cap.min(
                 SFTP_READAHEAD_JOB_MAX_HANDLES / streams.clamp(1, SFTP_MULTI_THREAD_MAX_STREAMS),
             )
         });
@@ -3840,6 +3865,10 @@ impl StorageProvider for SftpProvider {
         self.sftp_readahead = SftpReadaheadSetting::from_explicit(window);
     }
 
+    fn set_sftp_readahead_preset(&mut self, window: Option<usize>) {
+        self.sftp_readahead = SftpReadaheadSetting::from_preset(window);
+    }
+
     fn supports_delta_sync(&self) -> bool {
         true
     }
@@ -5417,12 +5446,19 @@ mod tests {
                 );
             }
         }
-        // Only the shared default may grow back on a server with a small read
-        // length; whatever was asked stays as asked.
-        assert!(legacy.uses_shared_default_from(None));
-        assert!(!legacy.uses_shared_default_from(Some("64")));
-        assert!(!SftpReadaheadSetting::from_explicit(Some(16)).uses_shared_default_from(None));
-        assert!(!SftpReadaheadSetting::Disabled.uses_shared_default_from(None));
+        // Only a shared window may grow back on a server with a small read
+        // length, to what the release opened; whatever was asked on the
+        // command line or in the environment stays as asked.
+        assert_eq!(
+            legacy.grow_cap_from(None),
+            Some(SFTP_READAHEAD_DEFAULT_WINDOW)
+        );
+        assert_eq!(legacy.grow_cap_from(Some("64")), None);
+        assert_eq!(
+            SftpReadaheadSetting::from_explicit(Some(16)).grow_cap_from(None),
+            None
+        );
+        assert_eq!(SftpReadaheadSetting::Disabled.grow_cap_from(None), None);
         // Whatever was asked stays a per-connection value.
         let explicit = SftpReadaheadSetting::from_explicit(Some(16));
         assert_eq!(
@@ -6965,6 +7001,112 @@ mod tests {
         Ok(std::fs::read(&path).expect("read back"))
     }
 
+    /// The GUI arms every SFTP download with a preset, and `fast`, its
+    /// default, asks 8 connections x 16 READs: as a per-connection value that
+    /// kept 128 READs in flight for one large file, the depth the shared
+    /// budget took away from the CLI default. A preset's window is now a
+    /// ceiling: one connection and the four of `balanced` keep 16, more
+    /// connections share the budget, and a server with a small read length
+    /// grows a connection back to the preset's 16 and no further.
+    #[test]
+    fn a_preset_window_is_a_ceiling_under_the_shared_budget() {
+        let kib = 1024;
+        let preset = SftpReadaheadSetting::from_preset(Some(16));
+        assert_eq!(preset, SftpReadaheadSetting::Shared(16));
+        assert_eq!(preset.requested_window_from(None), Some(16));
+        assert_eq!(
+            preset.requested_window_per_connection_from(None, 1, 256 * kib),
+            Some(16)
+        );
+        assert_eq!(
+            preset.requested_window_per_connection_from(None, 4, 256 * kib),
+            Some(16)
+        );
+        assert_eq!(
+            preset.requested_window_per_connection_from(None, 8, 256 * kib),
+            Some(8),
+            "the eight connections of a preset must share the budget, not keep 16 each"
+        );
+        assert_eq!(
+            preset.requested_window_per_connection_from(None, 12, 256 * kib),
+            Some(5)
+        );
+        for chunk in [32 * kib, 64 * kib, 256 * kib, 1024 * kib] {
+            for connections in 1..=SFTP_MULTI_THREAD_MAX_STREAMS {
+                let each = preset
+                    .requested_window_per_connection_from(None, connections, chunk)
+                    .unwrap();
+                assert!(
+                    (2..=16).contains(&each),
+                    "{connections} connections of {chunk}-byte chunks: {each} READs, the preset asked 16"
+                );
+            }
+        }
+        // A preset grows back to its own window and is not changed by the
+        // environment, like any other preset value.
+        assert_eq!(preset.grow_cap_from(None), Some(16));
+        assert_eq!(preset.grow_cap_from(Some("64")), Some(16));
+        assert_eq!(
+            preset.requested_window_per_connection_from(Some("64"), 8, 256 * kib),
+            Some(8)
+        );
+        assert_eq!(
+            SftpReadaheadSetting::from_preset(None),
+            SftpReadaheadSetting::Disabled
+        );
+        assert_eq!(
+            SftpReadaheadSetting::from_preset(Some(1)),
+            SftpReadaheadSetting::Disabled
+        );
+    }
+
+    /// What the GUI does with a preset reaches the provider as a shared
+    /// window, not as a per-connection one.
+    #[test]
+    fn the_gui_arms_a_preset_as_a_shared_window() {
+        use crate::sftp_download_tuning::SftpDownloadPreset;
+        use crate::transfer_settings::DownloadSegmentsRequest;
+        let mut provider = SftpProvider::new(SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        for (preset, streams, setting) in [
+            (
+                SftpDownloadPreset::Fast,
+                8,
+                SftpReadaheadSetting::Shared(16),
+            ),
+            (
+                SftpDownloadPreset::Balanced,
+                4,
+                SftpReadaheadSetting::Shared(16),
+            ),
+            (
+                SftpDownloadPreset::Compatibility,
+                1,
+                SftpReadaheadSetting::Disabled,
+            ),
+        ] {
+            crate::provider_commands::arm_download_streams(
+                &mut provider,
+                &DownloadSegmentsRequest::MeasuredDefault,
+                Some(preset),
+            );
+            assert_eq!(provider.multi_thread_streams, streams, "{preset}");
+            assert_eq!(
+                provider.sftp_readahead, setting,
+                "{preset}: a preset's window must reach the provider as a shared window"
+            );
+        }
+    }
+
     /// One READ is in flight per handle, so on a server that sends 32 KiB per
     /// READ the 16 handles a shared default gives each of four connections
     /// would hold a quarter of the bytes the release kept in flight. The shared
@@ -6983,6 +7125,9 @@ mod tests {
                 SFTP_READAHEAD_DEFAULT_WINDOW,
             ),
             ("a window that was asked for", 8, None, 8),
+            // The eight connections of the `fast` preset get 8 each from the
+            // shared budget and grow back to the preset's own 16, no further.
+            ("a preset's shared window", 8, Some(16), 16),
         ] {
             let server = ReadCappingServer::new(&data, 32 * 1024, false);
             let max_open = Arc::clone(&server.max_open);

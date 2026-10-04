@@ -7170,6 +7170,9 @@ struct CliSftpDownloadTuning {
     connections: usize,
     readahead: Option<usize>,
     readahead_is_explicit: bool,
+    /// The window came from the preset, not from `--sftp-readahead`: like the
+    /// GUI, it is a ceiling per connection under the shared budget.
+    readahead_from_preset: bool,
     cutoff: u64,
 }
 
@@ -7186,10 +7189,11 @@ fn parse_cli_sftp_readahead(raw: &str) -> Result<usize, String> {
 
 fn format_cli_sftp_download_tuning(tuning: CliSftpDownloadTuning) -> String {
     let readahead = if tuning.readahead_is_explicit {
-        tuning
-            .readahead
-            .map(|window| window.to_string())
-            .unwrap_or_else(|| "disabled".to_string())
+        match tuning.readahead {
+            Some(window) if tuning.readahead_from_preset => format!("shared up to {window}"),
+            Some(window) => window.to_string(),
+            None => "disabled".to_string(),
+        }
     } else {
         "legacy-env".to_string()
     };
@@ -7290,13 +7294,14 @@ fn resolve_cli_sftp_download_tuning(
     } else {
         cli.multi_thread_streams.clamp(1, 16)
     };
-    let (readahead, readahead_is_explicit) = if let Some(window) = cli.sftp_readahead {
-        (Some(window), true)
-    } else if let Some(resolved) = resolved_preset {
-        (resolved.readahead_window, true)
-    } else {
-        (None, false)
-    };
+    let (readahead, readahead_is_explicit, readahead_from_preset) =
+        if let Some(window) = cli.sftp_readahead {
+            (Some(window), true, false)
+        } else if let Some(resolved) = resolved_preset {
+            (resolved.readahead_window, true, true)
+        } else {
+            (None, false, false)
+        };
     let cutoff = match resolved_preset {
         Some(resolved) => resolved.multi_connection_cutoff,
         None => parse_cli_multi_thread_cutoff(cli)?,
@@ -7307,6 +7312,7 @@ fn resolve_cli_sftp_download_tuning(
         connections,
         readahead,
         readahead_is_explicit,
+        readahead_from_preset,
         cutoff,
     }))
 }
@@ -30216,7 +30222,9 @@ async fn create_and_connect_with(
         }
     }
     if let Some(tuning) = sftp_tuning {
-        if tuning.readahead_is_explicit {
+        if tuning.readahead_from_preset {
+            provider.set_sftp_readahead_preset(tuning.readahead);
+        } else if tuning.readahead_is_explicit {
             provider.set_sftp_readahead(tuning.readahead);
         }
         if cli.verbose > 0 {
@@ -76473,6 +76481,10 @@ mod tests {
             assert_eq!(tuning.connections, connections);
             assert_eq!(tuning.readahead, readahead);
             assert!(tuning.readahead_is_explicit);
+            assert!(
+                tuning.readahead_from_preset,
+                "{preset}: a preset's window is a ceiling under the shared budget, as in the GUI"
+            );
             assert_eq!(
                 tuning.cutoff,
                 ftp_client_gui_lib::sftp_download_tuning::SFTP_PRESET_MULTI_CONNECTION_CUTOFF
@@ -76493,6 +76505,10 @@ mod tests {
             .unwrap();
         assert_eq!(tuning.connections, 9);
         assert_eq!(tuning.readahead, Some(64));
+        assert!(
+            !tuning.readahead_from_preset,
+            "--sftp-readahead stays a per-connection value"
+        );
         assert_eq!(tuning.preset, Some(SftpDownloadPreset::Balanced));
         assert_eq!(resolve_cli_sftp_download_tuning(&cli, false).unwrap(), None);
     }
@@ -76508,6 +76524,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(!tuning.readahead_is_explicit);
+        assert!(!tuning.readahead_from_preset);
         assert!(format_cli_sftp_download_tuning(tuning).contains("readahead=legacy-env"));
     }
 
@@ -76525,6 +76542,18 @@ mod tests {
         assert_eq!(
             diagnostic,
             "SFTP download tuning: preset=fast, connections=6, readahead=48, cutoff=250.0 MB"
+        );
+
+        let mut preset_only = test_cli();
+        preset_only.sftp_download_preset = Some(SftpDownloadPreset::Fast);
+        let diagnostic = format_cli_sftp_download_tuning(
+            resolve_cli_sftp_download_tuning(&preset_only, true)
+                .unwrap()
+                .unwrap(),
+        );
+        assert_eq!(
+            diagnostic,
+            "SFTP download tuning: preset=fast, connections=8, readahead=shared up to 16, cutoff=250.0 MB"
         );
     }
 

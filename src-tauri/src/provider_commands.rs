@@ -3146,7 +3146,7 @@ pub(crate) fn arm_download_streams(
         if let Some(preset) = sftp_download_preset {
             let tuning = preset.resolve();
             provider.set_multi_thread_download(tuning.connections, tuning.multi_connection_cutoff);
-            provider.set_sftp_readahead(tuning.readahead_window);
+            provider.set_sftp_readahead_preset(tuning.readahead_window);
             info!(
                 "download streams requested: {}",
                 crate::transfer_settings::ResolvedDownloadSegments::sftp_preset(preset)
