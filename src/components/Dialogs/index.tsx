@@ -104,6 +104,8 @@ interface ConfirmDialogProps {
     /** Optional third choice, rendered between Cancel and the confirm button. */
     secondaryLabel?: string;
     onSecondary?: () => void;
+    /** A message to acknowledge, not a choice: no Cancel button. */
+    informational?: boolean;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -114,6 +116,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     confirmColor = 'red',
     secondaryLabel,
     onSecondary,
+    informational = false,
 }) => {
     const t = useTranslation();
     const colorMap = {
@@ -130,12 +133,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in">
                 <p className="text-gray-900 dark:text-gray-100 mb-4">{message}</p>
                 <div className="flex justify-end gap-2">
-                    <button
-                        onClick={onCancel}
-                        className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-                    >
-                        {t('common.cancel')}
-                    </button>
+                    {!informational && (
+                        <button
+                            onClick={onCancel}
+                            className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                        >
+                            {t('common.cancel')}
+                        </button>
+                    )}
                     {secondaryLabel && onSecondary && (
                         <button
                             onClick={onSecondary}

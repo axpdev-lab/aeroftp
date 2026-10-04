@@ -987,7 +987,7 @@ const App: React.FC = () => {
   }, [scanningState.active]);
 
   // Dialogs
-  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green'; secondaryLabel?: string; onSecondary?: () => void } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green'; secondaryLabel?: string; onSecondary?: () => void; informational?: boolean } | null>(null);
   const [pendingUnifiedTransferPlan, setPendingUnifiedTransferPlan] = useState<{
     plan: UnifiedTransferPlan;
     sourceLocalPanelId?: 'local' | 'local2';
@@ -1995,6 +1995,8 @@ const App: React.FC = () => {
               confirmColor: 'blue',
               onConfirm: result.restart ? () => { invoke('restart_app'); } : () => setConfirmDialog(null),
               onCancel: () => setConfirmDialog(null),
+              // Nothing to decide without a restart: OK only.
+              informational: !result.restart,
             });
           },
           close: () => setConfirmDialog(null),
@@ -16390,7 +16392,7 @@ const App: React.FC = () => {
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
         {settings.showTransferProgress !== false && <TransferToastContainer onOpen={transferQueue.show} />}
         <GlobalTooltip />
-        {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} confirmLabel={confirmDialog.confirmLabel} confirmColor={confirmDialog.confirmColor} secondaryLabel={confirmDialog.secondaryLabel} onSecondary={confirmDialog.onSecondary} />}
+        {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} confirmLabel={confirmDialog.confirmLabel} confirmColor={confirmDialog.confirmColor} secondaryLabel={confirmDialog.secondaryLabel} onSecondary={confirmDialog.onSecondary} informational={confirmDialog.informational} />}
         {pendingUnifiedTransferPlan && (
           <UnifiedTransferPlanDialog
             plan={pendingUnifiedTransferPlan.plan}
