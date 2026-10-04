@@ -502,8 +502,6 @@ struct ListBucketsResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct B2File {
-    // Phase 2 (delete by version, hide-then-purge workflow) needs this.
-    #[allow(dead_code)]
     #[serde(default)]
     file_id: Option<String>,
     file_name: String,
@@ -1356,6 +1354,23 @@ impl B2Provider {
         to_key: &str,
         size: u64,
     ) -> Result<(), ProviderError> {
+        self.copy_large_file_inner(source_file_id, to_key, size)
+            .await?;
+        // Delete the original version, as `rename` does.
+        self.do_delete_file_version(from_key, source_file_id)
+            .await
+            .map_err(|e| source_delete_failed(to_key, e))
+    }
+
+    /// The copy half of [`Self::rename_large_file_inner`]: b2_copy_part into a
+    /// new large file at `to_key`, cancelled on failure, finished on success.
+    /// The source is left as it is.
+    async fn copy_large_file_inner(
+        &mut self,
+        source_file_id: &str,
+        to_key: &str,
+        size: u64,
+    ) -> Result<(), ProviderError> {
         if size > MAX_FILE_SIZE {
             return Err(ProviderError::NotSupported(format!(
                 "source file is {} bytes; B2 caps single files at 10 TB.",
@@ -1416,10 +1431,129 @@ impl B2Provider {
         }
         // Materialize the new file. After this call the destination key is live.
         self.finish_large_file(&large_file_id, part_sha1s).await?;
-        // Delete the original version, as `rename` does.
-        self.do_delete_file_version(from_key, source_file_id)
-            .await
-            .map_err(|e| source_delete_failed(to_key, e))
+        Ok(())
+    }
+
+    /// Every file under `prefix` (its `.bzEmpty` marker included), as
+    /// `(name, file id, size)`, through every page of `b2_list_file_names`.
+    async fn list_files_under(
+        &mut self,
+        prefix: &str,
+    ) -> Result<Vec<(String, String, u64)>, ProviderError> {
+        let mut files = Vec::new();
+        let mut start: Option<String> = None;
+        let mut first_call = true;
+        loop {
+            let resp = match self
+                .list_file_names(prefix, None, start.as_deref(), DEFAULT_LIST_PAGE)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) if first_call && is_b2_token_failure(&e) => {
+                    if self.maybe_reauth(&e).await {
+                        self.list_file_names(prefix, None, start.as_deref(), DEFAULT_LIST_PAGE)
+                            .await?
+                    } else {
+                        return Err(e);
+                    }
+                }
+                Err(e) => return Err(e),
+            };
+            first_call = false;
+            for f in resp.files {
+                if f.action != "upload" {
+                    continue;
+                }
+                let Some(file_id) = f.file_id else {
+                    return Err(ProviderError::ServerError(format!(
+                        "b2_list_file_names returned {} without a file id",
+                        f.file_name
+                    )));
+                };
+                files.push((f.file_name, file_id, f.content_length));
+            }
+            match resp.next_file_name {
+                Some(next) if !next.is_empty() => start = Some(next),
+                _ => break,
+            }
+        }
+        Ok(files)
+    }
+
+    /// Rename or replace a folder: B2 has no folders, only names with a
+    /// common prefix, so every file under `from_key/` is copied to the same
+    /// name under `to_key/`, and the originals are deleted once every copy
+    /// is made. The same contract as the S3 provider's folder rename: a
+    /// folder never merges into another, a file and a folder never replace
+    /// each other, and a failure part way says what is where.
+    async fn move_folder(
+        &mut self,
+        from: &str,
+        to: &str,
+        from_key: &str,
+        to_key: &str,
+        overwrite: bool,
+    ) -> Result<(), ProviderError> {
+        let prefix = format!("{from_key}/");
+        let to_prefix = format!("{to_key}/");
+        let occupant_is_file = match self.lookup_file_id(to_key).await {
+            Ok(_) => true,
+            Err(ProviderError::NotFound(_)) => false,
+            Err(e) => return Err(e),
+        };
+        let occupant_is_dir = self.is_a_folder(to_key).await?;
+        if !overwrite && (occupant_is_file || occupant_is_dir) {
+            return Err(ProviderError::AlreadyExists(to.to_string()));
+        }
+        if occupant_is_file {
+            super::refuse_replace_across_types(to, true, false)?;
+        }
+        if occupant_is_dir {
+            return Err(ProviderError::AlreadyExists(format!(
+                "{to} is a folder, and on B2 moving a folder over it would merge the two: \
+                 nothing was changed"
+            )));
+        }
+
+        let files = self.list_files_under(&prefix).await?;
+        for (name, _, _) in &files {
+            self.validate_header_budget(&name.replacen(&prefix, &to_prefix, 1), 0)?;
+        }
+        for (copied, (name, file_id, size)) in files.iter().enumerate() {
+            let new_name = name.replacen(&prefix, &to_prefix, 1);
+            let copy = if *size > COPY_MAX_SIZE {
+                self.copy_large_file_inner(file_id, &new_name, *size).await
+            } else {
+                self.copy_file_to(file_id, &new_name).await.map(|_| ())
+            };
+            if let Err(e) = copy {
+                // The copies made so far stay under the destination, so a
+                // retry would be refused as AlreadyExists with nothing to
+                // say why: say it here.
+                return Err(ProviderError::Other(format!(
+                    "rename copied {copied} of {} files to {to} before copying {name} failed; \
+                     the originals are all still in {from}, the {copied} copies stay under \
+                     {to}, and a retry is refused until they are removed: {e}",
+                    files.len()
+                )));
+            }
+        }
+        // A delete that fails leaves the folder under both names: that is a
+        // failed rename, never a success.
+        for (deleted, (name, file_id, _)) in files.iter().enumerate() {
+            if let Err(e) = self.do_delete_file_version(name, file_id).await {
+                return Err(ProviderError::Other(format!(
+                    "rename copied {} files to {to}, but deleting the originals failed after \
+                     {deleted} of them, so the folder now exists under both names: {e}",
+                    files.len()
+                )));
+            }
+        }
+        b2_log(&format!(
+            "renamed folder {from} to {to} ({} files copied and deleted)",
+            files.len()
+        ));
+        Ok(())
     }
 
     /// Rename or replace by b2_copy_file (b2_copy_part above 5 GB) then a
@@ -1445,14 +1579,24 @@ impl B2Provider {
             return Ok(());
         }
         self.validate_header_budget(&to_key, 0)?;
-        let (file_id, size) = match self.lookup_file_id(&from_key).await {
-            Ok(v) => v,
+        let looked_up = match self.lookup_file_id(&from_key).await {
             Err(e) if is_b2_token_failure(&e) => {
                 if self.maybe_reauth(&e).await {
-                    self.lookup_file_id(&from_key).await?
+                    self.lookup_file_id(&from_key).await
                 } else {
                     return Err(e);
                 }
+            }
+            other => other,
+        };
+        let (file_id, size) = match looked_up {
+            Ok(v) => v,
+            // No file holds the name: a folder is only the prefix of the files
+            // under it, and moves as all of them.
+            Err(ProviderError::NotFound(_)) if self.is_a_folder(&from_key).await? => {
+                return self
+                    .move_folder(from, to, &from_key, &to_key, overwrite)
+                    .await;
             }
             Err(e) => return Err(e),
         };
@@ -5263,6 +5407,57 @@ mod tests {
             "{:?}",
             ops.lock().unwrap()
         );
+    }
+
+    /// A folder is only the prefix of the files under it, and a rename of one
+    /// answered "Path not found". It now moves as all of its files: each is
+    /// copied under the new prefix, then the originals are deleted.
+    #[tokio::test]
+    async fn a_folder_renames_as_the_files_under_it() {
+        let (mut provider, ops, copies) = provider_for_rename(false, 200).await;
+        provider.rename("/d", "/e").await.expect("folder rename");
+        let copies = copies.lock().unwrap();
+        assert_eq!(copies.len(), 1, "{copies:?}");
+        assert_eq!(copies[0]["sourceFileId"], "x-id");
+        assert_eq!(copies[0]["fileName"], "e/x.txt");
+        let ops = ops.lock().unwrap();
+        let copy_at = ops.iter().position(|op| op == "b2_copy_file").unwrap();
+        let delete_at = ops
+            .iter()
+            .position(|op| op == "b2_delete_file_version")
+            .expect("the original is deleted");
+        assert!(copy_at < delete_at, "{ops:?}");
+    }
+
+    /// A folder never takes a file's place, renamed or replaced, and nothing is
+    /// copied before the refusal.
+    #[tokio::test]
+    async fn a_folder_onto_a_file_is_refused_before_copying() {
+        let (mut provider, ops, _) = provider_for_rename(false, 200).await;
+        let renamed = provider.rename("/d", "/a.txt").await;
+        assert!(
+            matches!(renamed, Err(ProviderError::AlreadyExists(_))),
+            "{renamed:?}"
+        );
+        let replaced = provider.replace("/d", "/a.txt").await;
+        assert!(replaced.is_err(), "{replaced:?}");
+        assert!(
+            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
+            "{:?}",
+            ops.lock().unwrap()
+        );
+    }
+
+    /// A delete that fails after every copy leaves the folder under both
+    /// names: an error that says so, never an Ok.
+    #[tokio::test]
+    async fn a_folder_rename_whose_deletes_fail_is_an_error() {
+        let (mut provider, _, _) = provider_for_rename(false, 403).await;
+        let err = provider
+            .rename("/d", "/e")
+            .await
+            .expect_err("the originals are still there");
+        assert!(err.to_string().contains("under both names"), "{err}");
     }
 
     /// Two copies under an Ok is the one outcome a rename must never give.

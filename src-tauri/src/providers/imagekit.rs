@@ -192,6 +192,15 @@ struct BulkFolderRequest<'a> {
     include_file_versions: bool,
 }
 
+/// `POST /bulkJobs/renameFolder` (official SDK, `folders.rename`).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameFolderRequest<'a> {
+    folder_path: &'a str,
+    new_folder_name: &'a str,
+    purge_cache: bool,
+}
+
 /// How the wait for a folder job ended.
 #[derive(Debug)]
 enum FolderJob {
@@ -591,16 +600,86 @@ impl ImageKitProvider {
         if entry.is_dir {
             let src_name = basename(&source);
             let dest_name = basename(&target);
-            if src_name != dest_name {
-                return Err(ProviderError::NotSupported(
-                    "ImageKit folder rename is not exposed as a synchronous API; move to a destination folder is supported".to_string(),
-                ));
+            if src_name == dest_name {
+                return self
+                    .start_folder_job("moveFolder", &source, &parent_path(&target), false)
+                    .await;
             }
-            self.start_folder_job("moveFolder", &source, &parent_path(&target), false)
+            refuse_rewritten_folder_name(dest_name)?;
+            let src_parent = parent_path(&source);
+            let dest_parent = parent_path(&target);
+            if folder_path(&src_parent) == folder_path(&dest_parent) {
+                return self.rename_folder_job(&source, dest_name).await;
+            }
+            // A rename and a move are two jobs: rename in place, then move.
+            // The renamed folder must not meet a folder of that name first.
+            let renamed = format!("{}/{dest_name}", src_parent.trim_end_matches('/'));
+            if self.path_exists(&renamed).await? {
+                return Err(ProviderError::Other(format!(
+                    "Cannot move {source} to {target} in two steps: {renamed} already exists, \
+                     so the folder cannot be renamed in place first"
+                )));
+            }
+            self.rename_folder_job(&source, dest_name).await?;
+            self.start_folder_job("moveFolder", &renamed, &dest_parent, false)
                 .await
+                .map_err(|e| {
+                    ProviderError::Other(format!(
+                        "renamed {source} to {renamed}, but moving it to {dest_parent} failed, \
+                         so it is still there: {e}"
+                    ))
+                })
         } else {
             self.move_file(&source, &target, overwrite).await
         }
+    }
+
+    /// Rename the folder `source` in place to `new_name` with the
+    /// `renameFolder` job, and wait for it like the other folder jobs. The
+    /// CDN cache of the old URLs is not purged (it would count against the
+    /// account's monthly purge quota).
+    async fn rename_folder_job(&self, source: &str, new_name: &str) -> Result<(), ProviderError> {
+        let renamed = format!("{}/{new_name}", parent_path(source).trim_end_matches('/'));
+        if let Some(outcome) = self
+            .resume_folder_job("renameFolder", source, &renamed)
+            .await
+        {
+            return outcome;
+        }
+        let folder = normalize_path(source);
+        let resp = self
+            .auth(
+                self.client
+                    .post(format!("{}/bulkJobs/renameFolder", self.api_base())),
+            )
+            .json(&RenameFolderRequest {
+                folder_path: folder.trim_end_matches('/'),
+                new_folder_name: new_name,
+                purge_cache: false,
+            })
+            .send()
+            .await
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(self.parse_error(resp).await);
+        }
+        let job = resp
+            .json::<IkBulkJob>()
+            .await
+            .map_err(|e| ProviderError::ParseError(format!("bulk job response: {e}")))?;
+        if job.job_id.is_empty() {
+            return Err(ProviderError::ParseError(
+                "ImageKit queued the folder rename without a jobId, so its outcome cannot be \
+                 checked"
+                    .to_string(),
+            ));
+        }
+        tracing::debug!("ImageKit folder rename job started: {}", job.job_id);
+        self.wait_remembering(
+            &Self::folder_job_key("renameFolder", source, &renamed),
+            &job.job_id,
+        )
+        .await
     }
 
     fn folder_job_key(endpoint: &str, source: &str, destination: &str) -> String {
@@ -1423,6 +1502,31 @@ fn folder_copy_destination(source: &str, target: &str) -> Result<String, Provide
     Ok(parent_path(target))
 }
 
+/// `renameFolder` replaces every character of the new name that is not a
+/// letter, a digit or `-` with `_` (official SDK, `FolderRenameParams`). A
+/// name it would rewrite is refused before anything changes, rather than
+/// leaving the folder under a name nobody asked for.
+fn refuse_rewritten_folder_name(name: &str) -> Result<(), ProviderError> {
+    let rewritten: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if rewritten == name {
+        return Ok(());
+    }
+    Err(ProviderError::NotSupported(format!(
+        "ImageKit would rename the folder to \"{rewritten}\", not \"{name}\": a folder name \
+         there keeps only letters, digits and '-', and every other character becomes '_'. \
+         Nothing was changed"
+    )))
+}
+
 fn basename(path: &str) -> &str {
     path.trim_end_matches('/')
         .rsplit('/')
@@ -1524,6 +1628,111 @@ mod tests {
         provider.connected = true;
         provider.api_base_override = Some(format!("http://{addr}"));
         (provider, polls)
+    }
+
+    /// An ImageKit double holding the folder `/src/photos`, which completes
+    /// every folder job at once and records each `POST` to `/bulkJobs` with
+    /// its body.
+    async fn provider_recording_folder_jobs() -> (
+        ImageKitProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+    ) {
+        use std::sync::Arc;
+        let posts: Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>> = Arc::default();
+        let seen = Arc::clone(&posts);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let listing_src = req.uri().query().unwrap_or("").contains("path=%2Fsrc&");
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let body: serde_json::Value = serde_json::from_slice(
+                        &axum::body::to_bytes(req.into_body(), 64 * 1024).await.unwrap(),
+                    )
+                    .unwrap_or_default();
+                    let reply = match (method.as_str(), path.as_str()) {
+                        ("GET", "/files") if listing_src => serde_json::json!([{
+                            "fileId": "", "name": "photos", "filePath": "/src/photos", "type": "folder",
+                        }]),
+                        ("GET", "/files") => serde_json::json!([]),
+                        ("POST", job) if job.starts_with("/bulkJobs/") => {
+                            seen.lock().unwrap().push((job.to_string(), body));
+                            serde_json::json!({ "jobId": "J" })
+                        }
+                        ("GET", "/bulkJobs/J") => serde_json::json!({
+                            "jobId": "J", "type": "RENAME_FOLDER", "status": "Completed",
+                        }),
+                        _ => serde_json::json!({ "message": "unexpected" }),
+                    };
+                    axum::Json(reply)
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, posts)
+    }
+
+    /// A folder rename was refused as not supported, while ImageKit renames a
+    /// folder with the `renameFolder` job. In one folder it is that job.
+    #[tokio::test]
+    async fn a_folder_renames_in_place_with_the_rename_folder_job() {
+        let (mut provider, posts) = provider_recording_folder_jobs().await;
+        provider
+            .rename("/src/photos", "/src/albums")
+            .await
+            .expect("folder rename");
+        let posts = posts.lock().unwrap();
+        assert_eq!(posts.len(), 1, "{posts:?}");
+        assert_eq!(posts[0].0, "/bulkJobs/renameFolder");
+        assert_eq!(
+            posts[0].1,
+            serde_json::json!({
+                "folderPath": "/src/photos", "newFolderName": "albums", "purgeCache": false,
+            })
+        );
+    }
+
+    /// A new name and a new parent: renamed in place, then moved.
+    #[tokio::test]
+    async fn a_folder_renamed_into_another_folder_is_renamed_then_moved() {
+        let (mut provider, posts) = provider_recording_folder_jobs().await;
+        provider
+            .rename("/src/photos", "/dst/albums")
+            .await
+            .expect("folder rename and move");
+        let jobs: Vec<String> = posts
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(job, _)| job.clone())
+            .collect();
+        assert_eq!(jobs, ["/bulkJobs/renameFolder", "/bulkJobs/moveFolder"]);
+        assert_eq!(
+            posts.lock().unwrap()[1].1["sourceFolderPath"],
+            "/src/albums/"
+        );
+    }
+
+    /// ImageKit turns every character of a new folder name other than a
+    /// letter, a digit or `-` into `_`: such a name is refused before any job
+    /// is queued, rather than renaming the folder to something else.
+    #[tokio::test]
+    async fn a_folder_name_imagekit_would_rewrite_is_refused() {
+        let (mut provider, posts) = provider_recording_folder_jobs().await;
+        let outcome = provider.rename("/src/photos", "/src/my albums").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(ref m)) if m.contains("my_albums")),
+            "{outcome:?}"
+        );
+        assert!(posts.lock().unwrap().is_empty());
+        assert!(refuse_rewritten_folder_name("albums_2026-10").is_ok());
+        assert!(refuse_rewritten_folder_name("fotografía").is_ok());
     }
 
     #[tokio::test]
