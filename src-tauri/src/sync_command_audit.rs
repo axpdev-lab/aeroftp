@@ -106,6 +106,13 @@ const MAIN_THREAD_ALLOWED: &[(&str, &str)] = &[
         "one atomic store; the cancellation is observed by the worker itself.",
     ),
     (
+        "cancel_compare",
+        "one atomic store, or one push on a list of at most 32 ids, under the \
+         compare_cancel mutex; that mutex is only ever held for a map or list \
+         operation, never across I/O, so the command cannot wait on anything \
+         outside the process.",
+    ),
+    (
         "restart_app",
         "must be on the main thread: it tears down the single-instance plugin \
          and calls AppHandle::restart, which drives the event loop.",
