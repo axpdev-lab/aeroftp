@@ -18555,8 +18555,13 @@ pub fn run() {
             // (`html.rounded-window` in styles.css, set by WindowResizeEdges).
             // Only on a composited screen: without a compositor the
             // transparent pixels would show black instead of the desktop.
+            // AEROFTP_SQUARE_CORNERS=1 keeps the window opaque: the way out
+            // for a driver that cannot draw a transparent window, where the
+            // app itself might show nothing to switch it off from.
             #[cfg(target_os = "linux")]
-            let main_builder = if gtk::gdk::Screen::default().is_some_and(|s| s.is_composited()) {
+            let main_builder = if std::env::var_os("AEROFTP_SQUARE_CORNERS").is_none()
+                && gtk::gdk::Screen::default().is_some_and(|s| s.is_composited())
+            {
                 main_builder
                     .transparent(true)
                     .initialization_script("window.__AEROFTP_ROUNDED_CORNERS__ = true;")
