@@ -73,6 +73,9 @@ const SFTP_READAHEAD_JOB_MAX_HANDLES: usize = 256;
 /// still takes the serial loop, which owns the precise throttle.
 const SFTP_READAHEAD_DEFAULT_WINDOW: usize = 32;
 const SFTP_READAHEAD_MAX_WINDOW: usize = 1024;
+/// The smallest chunk a read-ahead takes from the length of a server's first
+/// reply (never above the configured chunk).
+const SFTP_READAHEAD_MIN_LEARNED_CHUNK: u64 = 32 * 1024;
 
 /// Default intra-file cutoff: below this a single SFTP stream is faster
 /// than paying N SSH handshakes. Matches the S3 default (250 MiB) so the
@@ -3956,6 +3959,36 @@ async fn sftp_pipelined_read_window(
     Ok(buf)
 }
 
+/// One READ of at most `want` bytes at `abs_off`: what the server sends back
+/// for a single request, which russh-sftp asks for no larger than the
+/// session's read length. Empty at end of file.
+async fn sftp_read_once(
+    file: &mut russh_sftp::client::fs::File,
+    abs_off: u64,
+    want: usize,
+    ended: &CancellationToken,
+) -> Result<Vec<u8>, ProviderError> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    file.seek(std::io::SeekFrom::Start(abs_off))
+        .await
+        .map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Seek error (readahead): {}", s))
+            })
+        })?;
+    let mut buf = vec![0u8; want];
+    let n = until_sftp_ends(ended, file.read(&mut buf))
+        .await
+        .map_err(|e| {
+            classify_russh_err(e, |s| {
+                ProviderError::TransferFailed(format!("Read error (readahead): {}", s))
+            })
+        })?;
+    buf.truncate(n);
+    Ok(buf)
+}
+
 /// Removes a partial read-ahead download temp on drop unless disarmed after a
 /// successful commit, so a mid-transfer error or a dropped future never leaves
 /// an orphan `.aeroardtmp` behind.
@@ -4022,32 +4055,7 @@ impl Drop for ReadaheadTempGuard {
     }
 }
 
-/// Sliding-window read-ahead for the byte range `[start, start + expected)` on
-/// ONE SFTP session, written positioned into the already-open `out` at each
-/// chunk's absolute offset.
-///
-/// Why this exists: russh-sftp's `File` reads serially (one `SSH_FXP_READ`
-/// awaited per `poll_read`; upstream AspectUnk/russh-sftp#70), so a single SFTP
-/// connection downloads far below the link while its writes pipeline
-/// (`write_nowait`) and upload runs ~3x faster on the same session. We cannot
-/// reach the private `RawSftpSession` to add a symmetric `read_nowait`, but the
-/// session multiplexes concurrent requests by id with no global lock, so we keep
-/// `window` `SSH_FXP_READ` continuously in flight: open `window` cheap file
-/// handles and let each free handle claim the next chunk. Unlike the batched
-/// `sftp_pipelined_download` there is no per-window barrier: the readers feed a
-/// single writer over a bounded channel, so the pipe never drains between
-/// batches. Composes with the
-/// PD-SFTP-2 independent-connection pool (N connections x this read-ahead).
-///
-/// Strict: every chunk must return its full `want` (a short read before the
-/// range end is a truncation / mid-transfer change -> hard error, never a silent
-/// short write; the SHA-256 gate backs it). Cancellation is honored before and
-/// during each read. `aggregate` always accumulates bytes written (the PD-SFTP-2
-/// pool observes progress through it). `on_progress`, when set, is additionally
-/// called from the single writer with the running total against
-/// `total_for_progress`; it is taken by value (an owned `Box<dyn Fn + Send>` is
-/// `Send`, so holding it across the writer's awaits keeps this future `Send`,
-/// with no spawned ticker to leak).
+/// Closes every handle of `files`, each one awaited (see [`close_sftp_file`]).
 async fn close_sftp_files(files: Vec<russh_sftp::client::fs::File>, ended: &CancellationToken) {
     for file in files {
         close_sftp_file(file, ended).await;
@@ -4071,6 +4079,32 @@ async fn shutdown_sftp_file(
     first
 }
 
+/// Sliding-window read-ahead for the byte range `[start, start + expected)` on
+/// ONE SFTP session, written positioned into the already-open `out` at each
+/// chunk's absolute offset.
+///
+/// Why this exists: russh-sftp's `File` reads serially (one `SSH_FXP_READ`
+/// awaited per `poll_read`; upstream AspectUnk/russh-sftp#70), so a single SFTP
+/// connection downloads far below the link while its writes pipeline
+/// (`write_nowait`) and upload runs ~3x faster on the same session. We cannot
+/// reach the private `RawSftpSession` to add a symmetric `read_nowait`, but the
+/// session multiplexes concurrent requests by id with no global lock, so we keep
+/// `window` `SSH_FXP_READ` continuously in flight: open `window` cheap file
+/// handles and let each free handle claim the next chunk. Unlike the batched
+/// `sftp_pipelined_download` there is no per-window barrier: the readers feed a
+/// single writer over a bounded channel, and every chunk is one READ (the first
+/// READ sizes them), so the pipe never drains between batches. Composes with the
+/// PD-SFTP-2 independent-connection pool (N connections x this read-ahead).
+///
+/// Strict: every chunk must return its full `want` (a short read before the
+/// range end is a truncation / mid-transfer change -> hard error, never a silent
+/// short write; the SHA-256 gate backs it). Cancellation is honored before and
+/// during each read. `aggregate` always accumulates bytes written (the PD-SFTP-2
+/// pool observes progress through it). `on_progress`, when set, is additionally
+/// called from the single writer with the running total against
+/// `total_for_progress`; it is taken by value (an owned `Box<dyn Fn + Send>` is
+/// `Send`, so holding it across the writer's awaits keeps this future `Send`,
+/// with no spawned ticker to leak).
 #[allow(clippy::too_many_arguments)]
 async fn sftp_readahead_range_into(
     sftp: &SftpChannel,
@@ -4162,6 +4196,57 @@ async fn sftp_readahead_range_into(
         }
     };
 
+    // One chunk, one READ. russh-sftp cuts a READ at the session's read length,
+    // and OpenSSH's (261120 bytes) is 1 KiB under the 256 KiB default chunk:
+    // every chunk took a second READ for its last KiB, sent only once the
+    // first reply was in, and the server queued it behind every reply already
+    // asked for. So the handles went round in step, and each round ended with
+    // the server sending the tails and then nothing for a round trip, until
+    // the next round of READs arrived (lab, 47 ms link, 2026-10-04: the
+    // server's send queue ran empty every ~1.2 s). The first READ comes back
+    // with what the server sends for one request, and that sizes every chunk
+    // after it.
+    let mut handles = handles;
+    let first_want = chunk.min(expected) as usize;
+    let Some(probe) = handles.first_mut() else {
+        return Err(ProviderError::TransferFailed(
+            "Failed to open remote file (readahead): no handle".to_string(),
+        ));
+    };
+    let first = tokio::select! {
+        _ = cancel.cancelled() => Err(ProviderError::TransferFailed(
+            SFTP_TRANSFER_CANCELLED.to_string(),
+        )),
+        r = sftp_read_once(probe, start, first_want, &sftp.ended) => r,
+    };
+    let first = match first {
+        Ok(first) if !first.is_empty() => first,
+        Ok(_) => {
+            close_sftp_files(handles, &sftp.ended).await;
+            return Err(ProviderError::TransferFailed(format!(
+                "Short read at offset {} (0 of {} bytes): remote file changed or truncated",
+                start, first_want
+            )));
+        }
+        Err(e) => {
+            close_sftp_files(handles, &sftp.ended).await;
+            return Err(e);
+        }
+    };
+    // A first reply of only a few bytes does not size the rest below the floor:
+    // the readers still loop on short replies, so the floor costs nothing in
+    // correctness.
+    let configured = chunk;
+    let chunk = if first.len() < first_want {
+        (first.len() as u64).max(SFTP_READAHEAD_MIN_LEARNED_CHUNK.min(configured))
+    } else {
+        configured
+    };
+    // What is left of the range after the first READ, in chunks of that size.
+    let rest_start = start + first.len() as u64;
+    let rest = expected - first.len() as u64;
+    let n_chunks = rest.div_ceil(chunk);
+
     // `eff_window` readers -> one writer. The writer owns `out` (no cursor race)
     // and is the sole caller of `on_progress`.
     let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(eff_window.max(2));
@@ -4190,8 +4275,8 @@ async fn sftp_readahead_range_into(
                                 break;
                             }
                             let rel_off = j * chunk;
-                            let abs_off = start + rel_off;
-                            let want = std::cmp::min(chunk, expected - rel_off) as usize;
+                            let abs_off = rest_start + rel_off;
+                            let want = std::cmp::min(chunk, rest - rel_off) as usize;
                             let buf = tokio::select! {
                                 _ = work_cancel.cancelled() => {
                                     return Err(ProviderError::TransferFailed(
@@ -4246,7 +4331,16 @@ async fn sftp_readahead_range_into(
     let writer = {
         let work_cancel = work_cancel.clone();
         async move {
-            while let Some((abs_off, buf)) = rx.recv().await {
+            // The first READ's bytes, then the readers' chunks.
+            let mut first = Some((start, first));
+            loop {
+                let (abs_off, buf) = match first.take() {
+                    Some(piece) => piece,
+                    None => match rx.recv().await {
+                        Some(piece) => piece,
+                        None => break,
+                    },
+                };
                 if work_cancel.is_cancelled() {
                     return Err(ProviderError::TransferFailed(
                         SFTP_TRANSFER_CANCELLED.to_string(),
@@ -6404,6 +6498,220 @@ mod tests {
         assert!(
             wrong.is_empty(),
             "only the last WRITE may be short: {wrong:#?}"
+        );
+    }
+
+    /// An SFTP server for downloads that answers each READ with at most `cap`
+    /// bytes of `data` and keeps the offset and length every READ asked for.
+    /// With `announce`, it states `cap` as its read length through
+    /// `limits@openssh.com`, as OpenSSH does; without it, it states nothing and
+    /// simply sends less than it was asked for, as other servers do. With
+    /// `first_cap`, its very first reply is shorter still.
+    struct ReadCappingServer {
+        data: Arc<Vec<u8>>,
+        cap: usize,
+        announce: bool,
+        first_cap: Option<usize>,
+        reads: Arc<std::sync::Mutex<Vec<(u64, u32)>>>,
+    }
+
+    impl ReadCappingServer {
+        fn new(data: &[u8], cap: usize, announce: bool) -> Self {
+            Self {
+                data: Arc::new(data.to_vec()),
+                cap,
+                announce,
+                first_cap: None,
+                reads: Arc::new(std::sync::Mutex::new(Vec::new())),
+            }
+        }
+
+        /// A provider whose SFTP session runs over this server's transport.
+        async fn serve(self) -> SftpProvider {
+            let (client, server) = tokio::io::duplex(1 << 20);
+            russh_sftp::server::run(server, self).await;
+            let mut provider = provider_without_a_session();
+            provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+            provider
+        }
+    }
+
+    impl russh_sftp::server::Handler for ReadCappingServer {
+        type Error = russh_sftp::protocol::StatusCode;
+
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+
+        async fn init(
+            &mut self,
+            _version: u32,
+            _extensions: std::collections::HashMap<String, String>,
+        ) -> Result<russh_sftp::protocol::Version, Self::Error> {
+            let mut version = russh_sftp::protocol::Version::new();
+            if self.announce {
+                version
+                    .extensions
+                    .insert(russh_sftp::extensions::LIMITS.to_string(), "1".to_string());
+            }
+            Ok(version)
+        }
+
+        async fn extended(
+            &mut self,
+            id: u32,
+            request: String,
+            _data: Vec<u8>,
+        ) -> Result<russh_sftp::protocol::Packet, Self::Error> {
+            if request != russh_sftp::extensions::LIMITS {
+                return Err(self.unimplemented());
+            }
+            let limits = russh_sftp::extensions::LimitsExtension {
+                max_packet_len: 256 * 1024,
+                max_read_len: self.cap as u64,
+                max_write_len: self.cap as u64,
+                max_open_handles: 0,
+            };
+            let data = russh_sftp::ser::to_bytes(&limits)
+                .map_err(|_| russh_sftp::protocol::StatusCode::Failure)?
+                .to_vec();
+            Ok(russh_sftp::protocol::Packet::ExtendedReply(
+                russh_sftp::protocol::ExtendedReply { id, data },
+            ))
+        }
+
+        async fn open(
+            &mut self,
+            id: u32,
+            filename: String,
+            _pflags: russh_sftp::protocol::OpenFlags,
+            _attrs: russh_sftp::protocol::FileAttributes,
+        ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            Ok(russh_sftp::protocol::Handle {
+                id,
+                handle: filename,
+            })
+        }
+
+        async fn close(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            Ok(GoingAwayServer::ok(id))
+        }
+
+        async fn stat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(self.data.len() as u64),
+                    permissions: Some(0o100644),
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn read(
+            &mut self,
+            id: u32,
+            _handle: String,
+            offset: u64,
+            len: u32,
+        ) -> Result<russh_sftp::protocol::Data, Self::Error> {
+            self.reads.lock().expect("read log").push((offset, len));
+            let start = usize::try_from(offset).unwrap_or(usize::MAX);
+            if start >= self.data.len() {
+                return Err(russh_sftp::protocol::StatusCode::Eof);
+            }
+            let cap = self.first_cap.take().unwrap_or(self.cap);
+            let end = self.data.len().min(start + (len as usize).min(cap));
+            Ok(russh_sftp::protocol::Data {
+                id,
+                data: self.data[start..end].to_vec(),
+            })
+        }
+    }
+
+    /// A file's bytes, distinct at every offset that matters.
+    fn pattern(len: usize) -> Vec<u8> {
+        (0..len).map(|i| (i % 251) as u8).collect()
+    }
+
+    /// Downloads `/down.bin` through `provider` and returns its bytes.
+    async fn download_bytes(provider: &mut SftpProvider) -> Result<Vec<u8>, ProviderError> {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("down.bin");
+        provider
+            .download("/down.bin", &local.to_string_lossy(), None)
+            .await?;
+        Ok(std::fs::read(&local).expect("downloaded file"))
+    }
+
+    /// Every read-ahead chunk is one READ, whatever the server sends back for
+    /// one: no READ but the first and the last of the file asks for anything
+    /// other than a whole reply. The 256 KiB default chunk is 1 KiB over
+    /// OpenSSH's read length, and every chunk took a second READ for its last
+    /// KiB, sent once the first reply was in and queued behind every reply
+    /// already asked for: the handles went round in step and the server sat
+    /// with nothing to send for a round trip every round. A 300 MiB download
+    /// from the lab took 51 to 57 s on one connection and 38 or 32 s with
+    /// chunks of one READ (2026-10-04). A first reply of a few bytes does not
+    /// size the chunks below 32 KiB.
+    #[tokio::test]
+    async fn a_readahead_download_asks_for_each_chunk_in_one_read() {
+        let data = pattern(3 * 1024 * 1024 + 12_345);
+        let size = data.len() as u64;
+        let mut wrong = Vec::new();
+        for (case, cap, announce, first_cap, chunk) in [
+            (
+                "OpenSSH's read length",
+                OPENSSH_MAX_WRITE,
+                true,
+                None,
+                OPENSSH_MAX_WRITE,
+            ),
+            (
+                "replies cut at 64 KiB, no limits stated",
+                64 * 1024,
+                false,
+                None,
+                64 * 1024,
+            ),
+            (
+                "a first reply of 1000 bytes",
+                OPENSSH_MAX_WRITE,
+                true,
+                Some(1000),
+                32 * 1024,
+            ),
+        ] {
+            let mut server = ReadCappingServer::new(&data, cap, announce);
+            server.first_cap = first_cap;
+            let reads = Arc::clone(&server.reads);
+            let mut provider = server.serve().await;
+            let got = download_bytes(&mut provider)
+                .await
+                .unwrap_or_else(|e| panic!("{case}: {e:?}"));
+            if got != data {
+                wrong.push(format!("{case}: the downloaded bytes differ"));
+            }
+            for &(offset, len) in reads.lock().expect("read log").iter() {
+                let inside = offset > 0 && offset + u64::from(len) < size;
+                if inside && len as usize != chunk {
+                    wrong.push(format!(
+                        "{case}: READ of {len} bytes at {offset}, chunks are {chunk} bytes"
+                    ));
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "a read-ahead chunk took more than one READ: {wrong:#?}"
         );
     }
 
