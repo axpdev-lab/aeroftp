@@ -854,7 +854,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                   <tr className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
                     <th className="text-left px-4 py-2 font-medium">{t('browser.name')}</th>
                     <th className="text-left px-4 py-2 font-medium">{t('trash.originalPath')}</th>
-                    <th className="text-right px-4 py-2 font-medium">{t('browser.size')}</th>
+                    <th className="text-left px-4 py-2 font-medium">{t('browser.size')}</th>
                     <th className="text-left px-4 py-2 font-medium">{t('trash.deletedAt')}</th>
                     <th className="text-center px-4 py-2 font-medium">{t('common.actions')}</th>
                   </tr>
@@ -869,7 +869,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                       <td className="px-4 py-2 text-gray-500 text-xs truncate max-w-[200px]" title={item.original_path}>
                         {item.original_path}
                       </td>
-                      <td className="px-4 py-2 text-right text-gray-500">
+                      <td className="px-4 py-2 text-gray-500">
                         {item.is_dir ? '\u2014' : formatBytes(item.size)}
                       </td>
                       <td className="px-4 py-2 text-gray-500 text-xs">
