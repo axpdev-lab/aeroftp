@@ -145,8 +145,8 @@ impl AsyncTlsConnector for FtpsConnector {
 use super::checksum_matrix;
 use super::multi_thread::{
     parallel_refused, range_source_changed_through, read_range_source_through,
-    run_concurrent_range_download, segmented_temp_path_for, source_changed, ConcurrentRangeConfig,
-    ConcurrentRangeOutcome,
+    run_concurrent_range_download, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+    SegmentedRun, SegmentedTemp,
 };
 use super::{
     ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
@@ -340,26 +340,22 @@ impl FtpProvider {
             }
         };
 
-        self.download_intra_file_pooled(&resolved, local_path, total_size, on_progress)
+        let temp = self
+            .download_intra_file_pooled(&resolved, local_path, total_size, on_progress)
             .await?;
 
-        let temp = segmented_temp_path_for(Path::new(local_path));
+        // The temporary stays claimed through this reading and the rename.
         if let Some(what) = range_source_changed_through(self, &resolved, &before).await {
-            let _ = tokio::fs::remove_file(&temp).await;
+            temp.discard();
             tracing::warn!("{}", source_changed("FTP intra-file", &resolved, &what));
             return Ok(false);
         }
-        match tokio::fs::rename(&temp, local_path).await {
+        match temp.publish(Path::new(local_path)).await {
             Ok(()) => {
                 tracing::info!("FTP: intra-file download complete: {}", remote_path);
                 Ok(true)
             }
-            Err(e) => {
-                // The engine handed the temp over when it reported the windows
-                // complete, so nothing else will remove it.
-                let _ = tokio::fs::remove_file(&temp).await;
-                Err(ProviderError::IoError(e))
-            }
+            Err(e) => Err(ProviderError::IoError(e)),
         }
     }
 
@@ -383,7 +379,7 @@ impl FtpProvider {
         local_path: &str,
         total_size: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<SegmentedTemp, ProviderError> {
         let spec = self
             .connection_spec
             .clone()
@@ -445,12 +441,12 @@ impl FtpProvider {
             // The windows are in `<local>.aerosegtmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
-            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
-            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
+            Ok(SegmentedRun::Completed(temp)) => Ok(temp),
+            Ok(SegmentedRun::ServerIgnoredRange) => {
                 // Unreachable for FTP: REST+RETR cannot "ignore" a range.
-                // Never silently re-download (it would double the bytes).
-                let _ =
-                    tokio::fs::remove_file(segmented_temp_path_for(Path::new(local_path))).await;
+                // Never silently re-download (it would double the bytes). The
+                // engine already removed its temporary; one found at that name
+                // now belongs to another download.
                 Err(ProviderError::TransferFailed(
                     "FTP intra-file: unexpected ServerIgnoredRange (REST/RETR has no HTTP-200 analogue)"
                         .to_string(),
