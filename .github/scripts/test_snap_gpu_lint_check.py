@@ -85,6 +85,31 @@ class SnapLintPassTests(unittest.TestCase):
         self.assertIn('#465 criterion 5 is UNVERIFIED in this run', out)
         self.assertNotIn('OK: snapcraft lint', out)
 
+    def test_a_linter_that_exits_with_no_output_is_unverified(self):
+        rc, out = self.run_gate('', 1)
+        self.assertEqual(rc, 0, out)
+        self.assertIn('::warning::snapcraft lint did not run (exit 1, no output)', out)
+        self.assertNotIn('OK: snapcraft lint', out)
+
+    def test_a_timestamped_gpu_finding_fails_the_gate(self):
+        # Debug and trace verbosity put a craft-cli timestamp in front of
+        # every line.
+        report = (
+            '2026-10-04 12:00:01.123 Running linter.\n'
+            '2026-10-04 12:00:01.456 Lint warnings:\n'
+            '2026-10-04 12:00:01.457 - gpu: usr/lib/dri/iris_dri.so: GPU library primed in the snap.\n'
+        )
+        rc, out = self.run_gate(report, 0)
+        self.assertEqual(rc, 1, out)
+        self.assertIn('::error::snapcraft lint still reports gpu: warnings', out)
+
+    def test_a_timestamped_report_header_counts_as_a_run(self):
+        report = '2026-10-04 12:00:01.456 Lint warnings:\n2026-10-04 12:00:01.457 - library: libfoo.so.1: unused library.\n'
+        rc, out = self.run_gate(report, 1)
+        self.assertEqual(rc, 0, out)
+        self.assertNotIn('UNVERIFIED', out)
+        self.assertIn('OK: snapcraft lint ran and reports no gpu: warnings.', out)
+
     def test_library_findings_warn_and_still_pass(self):
         report = 'Lint warnings:\n- library: libfoo.so.1: unused library usr/lib/libfoo.so.1.\n'
         rc, out = self.run_gate(report, 0)

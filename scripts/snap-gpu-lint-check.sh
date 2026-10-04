@@ -183,6 +183,11 @@ if [ "$LINT_RC" -ne 0 ]; then
 fi
 sed 's/^/    /' "$LINT_OUT"
 
+# In debug and trace verbosity craft-cli puts a timestamp in front of every
+# line ("2026-10-04 12:00:01.456 Lint warnings:"); the patterns below accept
+# one, so a gpu: finding cannot pass for a clean lint behind it.
+STAMP='([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9:.]+ )?'
+
 # Did the linter run? snapcraft prints its findings under a "Lint OK:",
 # "Lint warnings:", "Lint errors:" or "Lint information:" header
 # (snapcraft/linters/linters.py, `report`), and prints nothing at all when it
@@ -190,8 +195,12 @@ sed 's/^/    /' "$LINT_OUT"
 # exit with no header means it stopped before linting (on 2026-10-04 the build
 # provider refused to start without network access). Reading the second case
 # as "no gpu: lines, so clean" printed an OK nobody had verified.
-if [ "$LINT_RC" -ne 0 ] && ! grep -qE '^[[:space:]]*Lint (OK|warnings|errors|information):' "$LINT_OUT"; then
-  reason="$(grep -v '^[[:space:]]*$' "$LINT_OUT" | tail -n 1 | cut -c1-200)"
+if [ "$LINT_RC" -ne 0 ] && ! grep -qE "^${STAMP}[[:space:]]*Lint (OK|warnings|errors|information):" "$LINT_OUT"; then
+  # `|| true`: with no output at all grep exits 1, and under pipefail the
+  # assignment would end the script with exit 1, which here means "the snap
+  # ships its own GPU userspace".
+  reason="$(grep -v '^[[:space:]]*$' "$LINT_OUT" | tail -n 1 | cut -c1-200 || true)"
+  reason="${reason//$'\r'/}"
   reason="${reason//%/%25}"
   echo
   echo "::warning::snapcraft lint did not run (${reason:-exit $LINT_RC, no output}); the gpu:/library: lint half of #465 criterion 5 is UNVERIFIED in this run"
@@ -201,13 +210,13 @@ fi
 # Each finding is printed as "- <linter>: <file>: <text>". The leading dash is
 # optional here so that a bare "gpu: ..." line still counts: matching only the
 # bare form missed every real finding and printed OK over a gpu: warning.
-if grep -qE '^[[:space:]]*(-[[:space:]]*)?gpu:' "$LINT_OUT"; then
+if grep -qE "^${STAMP}[[:space:]]*(-[[:space:]]*)?gpu:" "$LINT_OUT"; then
   echo
   echo "::error::snapcraft lint still reports gpu: warnings, listed above."
   exit 1
 fi
 
-if grep -qE '^[[:space:]]*(-[[:space:]]*)?library:' "$LINT_OUT"; then
+if grep -qE "^${STAMP}[[:space:]]*(-[[:space:]]*)?library:" "$LINT_OUT"; then
   echo
   echo "::warning::snapcraft lint reports library: warnings. Not a failure:" \
        "assess each one (dynamically loaded vs genuinely unused) instead of" \
