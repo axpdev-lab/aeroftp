@@ -478,6 +478,7 @@ import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
 import { describeScanIncompleteError, isCompareCancelled, isScanIncompleteError } from './utils/scanCompleteness';
+import { useCancelStaleCompare } from './hooks/useCancelStaleCompare';
 import { useTranslation } from './i18n';
 
 // Components
@@ -11294,18 +11295,10 @@ const App: React.FC = () => {
     t,
   ]);
 
-  /**
-   * Stop the recursive compare the dialog is waiting for, if one runs. The
-   * token bump makes its eventual result (or COMPARE_CANCELLED) stale, and
-   * `cancel_compare` stops the scan itself: without it, closing the dialog
-   * left a scan of a whole home folder running with no way to end it.
-   */
-  const stopAeroSyncCompare = useCallback(() => {
-    const progressId = aeroSync?.context.compareLoading ? aeroSync.context.scanProgressId : undefined;
-    if (!progressId) return;
-    aeroSyncCompareSeqRef.current += 1;
-    invoke<boolean>('cancel_compare', { progressId }).catch(() => { /* already finished */ });
-  }, [aeroSync]);
+  // The compare the dialog is waiting for is stopped as soon as it is not
+  // waited for any more (Stop, close, a new open, a session teardown): see
+  // useCancelStaleCompare.
+  useCancelStaleCompare(aeroSync?.context.compareLoading ? aeroSync.context.scanProgressId : undefined);
 
   // GAP-5: shared connected-remote sync launcher. Builds the RemoteSyncConfig,
   // runs the CO-5 SFTP delta-eligibility probe (informational, never blocks),
@@ -16427,7 +16420,7 @@ const App: React.FC = () => {
             isOpen
             initialTab={aeroSync.initialTab}
             context={aeroSync.context}
-            onClose={() => { stopAeroSyncCompare(); setAeroSync(null); }}
+            onClose={() => setAeroSync(null)}
             onApplyMirrorLeftToRight={handleCompareMirrorLeftToRight}
             onApplyMirrorRightToLeft={handleCompareMirrorRightToLeft}
             onExecutePreset={executeSyncPresetPlan}
@@ -16441,7 +16434,8 @@ const App: React.FC = () => {
               true,
             )}
             onStopCompare={() => {
-              stopAeroSyncCompare();
+              // The result still on its way is stale; the hook cancels the scan.
+              aeroSyncCompareSeqRef.current += 1;
               setAeroSync((prev) => (prev
                 ? {
                   ...prev,
