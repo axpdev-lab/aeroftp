@@ -187,15 +187,22 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         const img = imageRef.current;
         if (!img) return undefined;
         let last = img.getBoundingClientRect();
-        if (last.width > 0 && last.height > 0) {
-            const kx = img.naturalWidth > 0 ? last.width / img.naturalWidth : 1;
-            const ky = img.naturalHeight > 0 ? last.height / img.naturalHeight : 1;
-            const start = initialCrop
+        let started = false;
+        // On the first box with a size: the image can still be laid out at
+        // zero size when the overlay mounts, and then the first observation
+        // is where the selection starts.
+        const start = (box: DOMRect) => {
+            if (started || box.width <= 0 || box.height <= 0) return;
+            started = true;
+            const kx = img.naturalWidth > 0 ? box.width / img.naturalWidth : 1;
+            const ky = img.naturalHeight > 0 ? box.height / img.naturalHeight : 1;
+            const first = initialCrop
                 ? { x: initialCrop.x * kx, y: initialCrop.y * ky, w: initialCrop.width * kx, h: initialCrop.height * ky }
-                : { x: 0, y: 0, w: last.width, h: last.height };
-            setCrop(start);
-            emitCrop(start);
-        }
+                : { x: 0, y: 0, w: box.width, h: box.height };
+            setCrop(first);
+            emitCrop(first);
+        };
+        start(last);
         if (typeof ResizeObserver === 'undefined') return undefined;
         // The image is centred in the viewer: the viewer can change width while
         // the image, limited by its height, keeps its size and only moves. So
@@ -204,6 +211,12 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         const observer = new ResizeObserver(() => {
             const now = img.getBoundingClientRect();
             if (now.width <= 0 || now.height <= 0) return;
+            if (!started) {
+                start(now);
+                last = now;
+                setLayout((n) => n + 1);
+                return;
+            }
             const sx = last.width > 0 ? now.width / last.width : 1;
             const sy = last.height > 0 ? now.height / last.height : 1;
             last = now;

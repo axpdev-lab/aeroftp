@@ -116,3 +116,13 @@ it('follows the image when the viewer changes and the image only moves', async (
     expect(px(frame(), 'left')).toBe(200);
     expect([px(border(), 'width'), px(border(), 'height')]).toEqual([400, 300]);
 });
+
+it('starts the selection on the first box with a size, when the image mounts at zero size', async () => {
+    IMAGE = { ...IMAGE, width: 0, height: 0 };
+    await mount();
+    expect(border()).toBeNull();
+    IMAGE = { ...IMAGE, width: 400, height: 300 };
+    await act(async () => fireResize());
+    expect([px(border(), 'left'), px(border(), 'top'), px(border(), 'width'), px(border(), 'height')]).toEqual([0, 0, 400, 300]);
+    expect(crops[crops.length - 1]).toEqual({ x: 0, y: 0, width: 800, height: 600 });
+});
