@@ -244,26 +244,55 @@ impl SegmentedRun {
 /// replacing it with a pre-sized file of its own that the first caller would
 /// then publish, holes included. Dropped without being published, the
 /// temporary is removed while still claimed.
+///
+/// The claim is taken only where `atomic_write::temp_claim` uses locks (Linux,
+/// local filesystems); elsewhere the temporary is handled as before it.
 #[must_use = "a completed segmented run is published or discarded"]
 #[derive(Debug)]
 pub struct SegmentedTemp {
+    held: Option<ClaimedTemp>,
+}
+
+/// The temporary's path and the claim on it. Whoever holds this value owns
+/// the temporary; the claim is released when it is dropped.
+#[derive(Debug)]
+struct ClaimedTemp {
     path: PathBuf,
-    published: bool,
     #[cfg(unix)]
     _claim: std::fs::File,
 }
 
-impl SegmentedTemp {
-    pub fn path(&self) -> &Path {
-        &self.path
+impl ClaimedTemp {
+    /// Remove the temporary; the claim is released afterwards, with `self`.
+    fn remove(self) {
+        let _ = std::fs::remove_file(&self.path);
     }
+}
 
+impl SegmentedTemp {
     /// Rename the temporary to `final_path` while it is still claimed. When
     /// the rename fails the temporary is removed.
+    ///
+    /// The temporary and its claim move into the blocking task that renames
+    /// it, so a caller that stops awaiting part way cannot leave a `Drop`
+    /// behind that removes by name a temporary another run has created there
+    /// since the rename.
     pub async fn publish(mut self, final_path: &Path) -> std::io::Result<()> {
-        let renamed = tokio::fs::rename(&self.path, final_path).await;
-        self.published = renamed.is_ok();
-        renamed
+        let Some(held) = self.held.take() else {
+            return Err(std::io::Error::other(
+                "segmented temporary already handed over",
+            ));
+        };
+        let final_path = final_path.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            let renamed = std::fs::rename(&held.path, &final_path);
+            if renamed.is_err() {
+                held.remove();
+            }
+            renamed
+        })
+        .await
+        .map_err(std::io::Error::other)?
     }
 
     /// Remove the temporary while it is still claimed.
@@ -272,9 +301,8 @@ impl SegmentedTemp {
 
 impl Drop for SegmentedTemp {
     fn drop(&mut self) {
-        // The claim is a field, so it is released only after this removal.
-        if !self.published {
-            let _ = std::fs::remove_file(&self.path);
+        if let Some(held) = self.held.take() {
+            held.remove();
         }
     }
 }
@@ -688,10 +716,11 @@ where
         ConcurrentRangeOutcome::Completed => {
             guard.commit();
             Ok(SegmentedRun::Completed(SegmentedTemp {
-                path: temp_path,
-                published: false,
-                #[cfg(unix)]
-                _claim: claim,
+                held: Some(ClaimedTemp {
+                    path: temp_path,
+                    #[cfg(unix)]
+                    _claim: claim,
+                }),
             }))
         }
         ConcurrentRangeOutcome::ServerIgnoredRange => Ok(SegmentedRun::ServerIgnoredRange),
@@ -2931,7 +2960,8 @@ mod tests {
     /// claimed: one that took it for stale would replace it with its own
     /// pre-sized file, holes included, and the first caller would rename
     /// that into place.
-    #[cfg(unix)]
+    /// Linux only, like the claim itself (`temp_claim` uses locks there).
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn a_completed_run_keeps_its_temporary_claimed_until_published() {
         let dir = scratch_dir("claim-until-published");
@@ -2965,6 +2995,50 @@ mod tests {
         assert_eq!(tokio::fs::read(&temp_path).await.unwrap().len(), 10);
         drop(second);
         drop(run);
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// Publishing renames the temporary into place and releases the claim:
+    /// the lock follows the inode, so a claim kept past the rename would
+    /// still hold the published file.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn publishing_moves_the_temporary_and_releases_its_claim() {
+        let dir = scratch_dir("publish-releases-claim");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let final_path = dir.join("result.bin");
+        let temp_path = segmented_temp_path_for(&final_path);
+        let config = ConcurrentRangeConfig {
+            final_path: final_path.clone(),
+            provider_type: super::super::ProviderType::S3,
+            endpoint_identity: crate::transfer_dag::EndpointIdentity::new("s3", "publish", ""),
+            total_size: 10,
+            streams: 3,
+            max_streams: 16,
+            max_parallel: 2,
+        };
+
+        let run = run_concurrent_range_download(
+            config,
+            deterministic_writer(),
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .unwrap();
+        let SegmentedRun::Completed(temp) = run else {
+            panic!("expected a completed run");
+        };
+        temp.publish(&final_path).await.unwrap();
+
+        assert_eq!(tokio::fs::read(&final_path).await.unwrap().len(), 10);
+        assert!(!temp_path.exists());
+        let published = std::fs::File::open(&final_path).unwrap();
+        assert!(
+            published.try_lock().is_ok(),
+            "the claim outlived the publication"
+        );
+        drop(published);
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
