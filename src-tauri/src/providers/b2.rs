@@ -675,6 +675,9 @@ pub struct B2Provider {
     /// Files at/above this size use multi-thread download when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
+    /// `b2_authorize_account`; a test points it at its own double so that a
+    /// token renewal can be exercised.
+    authorize_url: String,
 }
 
 impl B2Provider {
@@ -703,6 +706,7 @@ impl B2Provider {
             connected: false,
             multi_thread_streams: 1,
             multi_thread_cutoff: MULTI_THREAD_CUTOFF_DEFAULT,
+            authorize_url: AUTHORIZE_URL.to_string(),
         }
     }
 
@@ -736,7 +740,7 @@ impl B2Provider {
         ));
         let req = self
             .client
-            .get(AUTHORIZE_URL)
+            .get(&self.authorize_url)
             .header(AUTHORIZATION, format!("Basic {}", basic))
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("authorize build: {}", e)))?;
@@ -1486,14 +1490,15 @@ impl B2Provider {
     ) -> Result<Vec<(String, String, u64)>, ProviderError> {
         let mut files = Vec::new();
         let mut start: Option<String> = None;
-        let mut first_call = true;
         loop {
+            // A token can expire on any page of a long listing, not only the
+            // first: renew it and ask for the same page again.
             let resp = match self
                 .list_file_names(prefix, None, start.as_deref(), DEFAULT_LIST_PAGE)
                 .await
             {
                 Ok(r) => r,
-                Err(e) if first_call && is_b2_token_failure(&e) => {
+                Err(e) if is_b2_token_failure(&e) => {
                     if self.maybe_reauth(&e).await {
                         self.list_file_names(prefix, None, start.as_deref(), DEFAULT_LIST_PAGE)
                             .await?
@@ -1503,7 +1508,6 @@ impl B2Provider {
                 }
                 Err(e) => return Err(e),
             };
-            first_call = false;
             for f in resp.files {
                 if f.action != "upload" {
                     continue;
@@ -1522,6 +1526,21 @@ impl B2Provider {
             }
         }
         Ok(files)
+    }
+
+    /// Copy one file of a folder rename to `new_name`: b2_copy_file, or the
+    /// b2_copy_part workflow above its 5 GB ceiling.
+    async fn copy_folder_file(
+        &mut self,
+        file_id: &str,
+        new_name: &str,
+        size: u64,
+    ) -> Result<(), ProviderError> {
+        if size > COPY_MAX_SIZE {
+            self.copy_large_file_inner(file_id, new_name, size).await
+        } else {
+            self.copy_file_to(file_id, new_name).await.map(|_| ())
+        }
     }
 
     /// Rename or replace a folder: B2 has no folders, only names with a
@@ -1572,11 +1591,14 @@ impl B2Provider {
         }
         for (copied, (name, file_id, size)) in files.iter().enumerate() {
             let new_name = name.replacen(&prefix, &to_prefix, 1);
-            let copy = if *size > COPY_MAX_SIZE {
-                self.copy_large_file_inner(file_id, &new_name, *size).await
-            } else {
-                self.copy_file_to(file_id, &new_name).await.map(|_| ())
-            };
+            // A token can expire during a long rename: renew it and run the
+            // step that failed again, never the steps before it.
+            let mut copy = self.copy_folder_file(file_id, &new_name, *size).await;
+            if let Err(e) = &copy {
+                if is_b2_token_failure(e) && self.maybe_reauth(e).await {
+                    copy = self.copy_folder_file(file_id, &new_name, *size).await;
+                }
+            }
             if let Err(e) = copy {
                 // The copies made so far stay under the destination, so a
                 // retry would be refused as AlreadyExists with nothing to
@@ -1599,9 +1621,14 @@ impl B2Provider {
             ))
         };
         for (deleted, (name, file_id, _)) in files.iter().enumerate() {
-            self.do_delete_file_version(name, file_id)
-                .await
-                .map_err(|e| under_both_names(deleted, e))?;
+            if let Err(e) = self.do_delete_file_version(name, file_id).await {
+                if !(is_b2_token_failure(&e) && self.maybe_reauth(&e).await) {
+                    return Err(under_both_names(deleted, e));
+                }
+                self.do_delete_file_version(name, file_id)
+                    .await
+                    .map_err(|e| under_both_names(deleted, e))?;
+            }
         }
         // On a bucket that keeps older versions, deleting the newest version
         // of a file makes the one before it current again, and the folder was
@@ -1618,7 +1645,13 @@ impl B2Provider {
             .iter()
             .filter(|(name, _, _)| renamed.contains(name.as_str()))
         {
-            match self.do_hide_file(name).await {
+            let mut hidden = self.do_hide_file(name).await;
+            if let Err(e) = &hidden {
+                if is_b2_token_failure(e) && self.maybe_reauth(e).await {
+                    hidden = self.do_hide_file(name).await;
+                }
+            }
+            match hidden {
                 Ok(_) | Err(ProviderError::NotFound(_)) => {}
                 Err(e) => return Err(under_both_names(files.len(), e)),
             }
@@ -3171,17 +3204,16 @@ impl StorageProvider for B2Provider {
             prefix.push('/');
         }
         let mut start: Option<String> = None;
-        let mut first_call = true;
         loop {
-            // No delimiter → recursive flat listing under the prefix. Wrap
-            // only the first round in reauth retry; subsequent pages run
-            // with a freshly minted token.
+            // No delimiter → recursive flat listing under the prefix. A token
+            // can expire on any page, not only the first: renew it and ask for
+            // the same page again.
             let resp = match self
                 .list_file_names(&prefix, None, start.as_deref(), DEFAULT_LIST_PAGE)
                 .await
             {
                 Ok(r) => r,
-                Err(e) if first_call && is_b2_token_failure(&e) => {
+                Err(e) if is_b2_token_failure(&e) => {
                     if self.maybe_reauth(&e).await {
                         self.list_file_names(&prefix, None, start.as_deref(), DEFAULT_LIST_PAGE)
                             .await?
@@ -3191,7 +3223,6 @@ impl StorageProvider for B2Provider {
                 }
                 Err(e) => return Err(e),
             };
-            first_call = false;
             for f in &resp.files {
                 // Per-file 404 is not an error (concurrent delete/hide).
                 let r = self.do_hide_file(&f.file_name).await;
@@ -5624,6 +5655,160 @@ mod tests {
         );
         let left = provider.list_files_under("a.txt").await.unwrap();
         assert!(left.is_empty(), "{left:?}");
+    }
+
+    /// A B2 double for a folder rename of `d` (two files on two listing pages)
+    /// whose token expires once, on the `expire_on`-th call of `expire_op`
+    /// (counted from 1; for `b2_list_file_names`, only the calls that ask
+    /// for the second page count). A renewal through `b2_authorize_account`
+    /// gives a new token that every later call accepts. Returns the provider
+    /// and the operations it received, in order.
+    async fn provider_whose_token_expires(
+        expire_op: &'static str,
+        expire_on: usize,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::Arc;
+        let ops: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&ops);
+        let counted: Arc<std::sync::Mutex<usize>> = Arc::default();
+        let deleted: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::default();
+        let base: Arc<std::sync::OnceLock<String>> = Arc::default();
+        let base_for_app = Arc::clone(&base);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                let counted = Arc::clone(&counted);
+                let deleted = Arc::clone(&deleted);
+                let base = Arc::clone(&base_for_app);
+                async move {
+                    let op = req.uri().path().rsplit('/').next().unwrap_or("").to_string();
+                    let body: serde_json::Value = serde_json::from_slice(
+                        &axum::body::to_bytes(req.into_body(), 64 * 1024).await.unwrap(),
+                    )
+                    .unwrap_or_default();
+                    seen.lock().unwrap().push(op.clone());
+                    let json = |status: u16, value: serde_json::Value| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(value.to_string()))
+                            .unwrap()
+                    };
+                    let counts = op == expire_op
+                        && (op != "b2_list_file_names" || body["startFileName"] == "d/y.txt");
+                    if counts {
+                        let mut n = counted.lock().unwrap();
+                        *n += 1;
+                        if *n == expire_on {
+                            return json(
+                                401,
+                                serde_json::json!({
+                                    "status": 401, "code": "expired_auth_token", "message": "expired",
+                                }),
+                            );
+                        }
+                    }
+                    let file = |name: &str, id: &str| {
+                        serde_json::json!({
+                            "fileId": id, "fileName": name, "action": "upload",
+                            "contentLength": 3, "uploadTimestamp": 1_700_000_000_000i64,
+                        })
+                    };
+                    let live = |name: &str| !deleted.lock().unwrap().contains(name);
+                    match op.as_str() {
+                        "b2_authorize_account" => json(
+                            200,
+                            serde_json::json!({
+                                "accountId": "account",
+                                "authorizationToken": "renewed",
+                                "apiInfo": { "storageApi": {
+                                    "apiUrl": base.get().unwrap(),
+                                    "downloadUrl": base.get().unwrap(),
+                                }},
+                            }),
+                        ),
+                        "b2_list_buckets" => json(
+                            200,
+                            serde_json::json!({ "buckets": [{ "bucketId": "bucket", "bucketName": "b" }] }),
+                        ),
+                        "b2_list_file_names" => {
+                            let prefix = body["prefix"].as_str().unwrap_or("");
+                            let second_page = body["startFileName"] == "d/y.txt";
+                            let (files, next) = match prefix {
+                                "d" | "d/" if second_page => (
+                                    vec![file("d/y.txt", "y-id")],
+                                    serde_json::Value::Null,
+                                ),
+                                "d" | "d/" => (
+                                    vec![file("d/x.txt", "x-id")],
+                                    serde_json::json!("d/y.txt"),
+                                ),
+                                _ => (vec![], serde_json::Value::Null),
+                            };
+                            let files: Vec<serde_json::Value> = files
+                                .into_iter()
+                                .filter(|f| live(f["fileName"].as_str().unwrap()))
+                                .collect();
+                            json(200, serde_json::json!({ "files": files, "nextFileName": next }))
+                        }
+                        "b2_copy_file" => json(
+                            200,
+                            serde_json::json!({
+                                "fileId": "copy-id", "fileName": body["fileName"], "contentLength": 3,
+                            }),
+                        ),
+                        "b2_delete_file_version" => {
+                            let name = body["fileName"].as_str().unwrap_or_default().to_string();
+                            deleted.lock().unwrap().insert(name);
+                            json(200, serde_json::json!({}))
+                        }
+                        _ => json(400, serde_json::json!({ "status": 400, "code": "bad_request", "message": op })),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        base.set(format!("http://{addr}")).unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = empty_provider();
+        provider.api_url = format!("http://{addr}");
+        provider.authorize_url = format!("http://{addr}/b2api/v4/b2_authorize_account");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, ops)
+    }
+
+    /// A token can expire anywhere in a long folder rename. Each step renews
+    /// it and runs again alone: the second listing page, a copy, a delete.
+    #[tokio::test]
+    async fn a_folder_rename_renews_an_expired_token_at_any_step() {
+        for (op, nth) in [
+            ("b2_list_file_names", 1),
+            ("b2_copy_file", 2),
+            ("b2_delete_file_version", 1),
+        ] {
+            let (mut provider, ops) = provider_whose_token_expires(op, nth).await;
+            provider
+                .rename("/d", "/e")
+                .await
+                .unwrap_or_else(|e| panic!("token expiring on {op}: {e}"));
+            let ops = ops.lock().unwrap();
+            assert!(
+                ops.iter().any(|seen| seen == "b2_authorize_account"),
+                "{op}: {ops:?}"
+            );
+            assert_eq!(
+                ops.iter().filter(|seen| *seen == "b2_copy_file").count(),
+                if op == "b2_copy_file" { 3 } else { 2 },
+                "{op}: {ops:?}"
+            );
+        }
     }
 
     /// Into one of its own subfolders the copies land under the prefix being
