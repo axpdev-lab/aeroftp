@@ -131,10 +131,15 @@ export function useRoundedWindowCorners(): void {
     const win = getCurrentWindow();
     const root = document.documentElement;
     let live = true;
+    // Resize events come in bursts and each asks the window again: only the
+    // latest answer counts, or an earlier "not maximized" arriving last would
+    // round a maximized window.
+    let asked = 0;
     const update = () => {
+      const ask = ++asked;
       Promise.all([win.isMaximized(), win.isFullscreen()])
         .then(([maximized, fullscreen]) => {
-          if (live) root.classList.toggle('rounded-window', !maximized && !fullscreen);
+          if (live && ask === asked) root.classList.toggle('rounded-window', !maximized && !fullscreen);
         })
         .catch(() => {});
     };
