@@ -1107,8 +1107,7 @@ async fn pget_via_shared_engine(
     segments: usize,
 ) -> Result<(), ftp_client_gui_lib::providers::ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
-        aerotmp_path_for, run_concurrent_range_download, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome,
+        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome, SegmentedRun,
     };
     use ftp_client_gui_lib::providers::ProviderError;
     use std::collections::VecDeque;
@@ -1201,14 +1200,8 @@ async fn pget_via_shared_engine(
     match run_concurrent_range_download(cfg, write_one_range, CancellationToken::new(), None)
         .await?
     {
-        ConcurrentRangeOutcome::Completed => {
-            let temp = aerotmp_path_for(out);
-            tokio::fs::rename(&temp, out)
-                .await
-                .map_err(ProviderError::IoError)?;
-            Ok(())
-        }
-        ConcurrentRangeOutcome::ServerIgnoredRange => Err(ProviderError::TransferFailed(
+        SegmentedRun::Completed(temp) => temp.publish(out).await.map_err(ProviderError::IoError),
+        SegmentedRun::ServerIgnoredRange => Err(ProviderError::TransferFailed(
             "read_range unexpectedly produced ServerIgnoredRange".to_string(),
         )),
     }

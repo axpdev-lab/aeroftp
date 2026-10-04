@@ -39,12 +39,18 @@ const crossProfile = readFileSync('src-tauri/src/cross_profile_transfer.rs', 'ut
 
 describe('segmented publication boundaries', () => {
   it('reports success once the final file has been atomically committed', () => {
-    const publication = executor.slice(
-      executor.indexOf('None => match tokio::fs::rename(&temp, local_path).await'),
-      executor.indexOf('Ok(ConcurrentRangeOutcome::ServerIgnoredRange) =>'),
-    );
+    // A missing anchor must fail here: slicing on -1 gives '' and turned a
+    // renamed call into an unrelated-looking assertion failure.
+    const start = executor.indexOf('None => match temp.publish(Path::new(local_path)).await');
+    // Through the end of the function, so a cancellation added after the
+    // publication arm is caught too.
+    const end = executor.indexOf('\n}\n', start);
+    expect(start, 'publication anchor').toBeGreaterThanOrEqual(0);
+    expect(end, 'executor function end').toBeGreaterThan(start);
+    const publication = executor.slice(start, end);
     expect(publication).toContain('Ok(()) => Ok(())');
     expect(publication).not.toContain('Ok(()) if cancel_token.is_cancelled()');
+    expect(publication).not.toContain('SegmentedDownloadError::Cancelled');
   });
 
   it('checks cancellation after staging succeeds before permitting a cross-profile upload', () => {
