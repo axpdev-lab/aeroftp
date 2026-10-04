@@ -5772,7 +5772,12 @@
             },
             "savedPresetLimits": "Applies direction, deletions, exclusions and verification. Saved comparison rules, retries, streams and compression are not applied. Review Compare and the current transfer settings before running.",
             "savedPresetsLoadFailed": "Could not load saved presets: {error}",
-            "savedPresets": "Saved presets"
+            "savedPresets": "Saved presets",
+            "startCompare": "Start compare",
+            "stopCompare": "Stop",
+            "compareStopped": "Compare stopped.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "The compare reads both folders and every folder under them. On a large tree it can take a while, and you can stop it."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

@@ -99,6 +99,14 @@ export interface AeroSyncContext {
     /** Identity of the backend compare whose global progress events belong to this dialog. */
     scanProgressId?: string;
     /**
+     * A recursive compare is possible but has not run: AeroSync never starts
+     * one by itself, since it reads both trees in full. The Compare and Plan
+     * tabs offer to start it.
+     */
+    compareIdle?: boolean;
+    /** The last compare was stopped by the user. */
+    compareStopped?: boolean;
+    /**
      * GAP-6: an interrupted connected-remote sync journal for this path
      * pair, if one exists. When set, the dialog surfaces a resume banner.
      */
@@ -162,4 +170,8 @@ export interface AeroSyncDialogProps {
     onDismissJournal: () => void;
     /** Re-run the compare with the Plan tab's exclude patterns and backup folder. */
     onRescan?: (args: { userExcludes: string[]; backupDir: string }) => void;
+    /** Start the recursive compare of the pair (context.compareIdle). */
+    onStartCompare?: () => void;
+    /** Stop the recursive compare that is running (context.compareLoading). */
+    onStopCompare?: () => void;
 }

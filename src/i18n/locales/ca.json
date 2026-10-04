@@ -5543,7 +5543,12 @@
             },
             "savedPresetLimits": "Aplica la direcció, les supressions, les exclusions i la verificació. No s'apliquen les regles de comparació, els reintents, els fluxos ni la compressió desats. Reviseu la pestanya Comparació i la configuració de transferència actual abans d'executar.",
             "savedPresetsLoadFailed": "No s'han pogut carregar els preajustos desats: {error}",
-            "savedPresets": "Preajustos desats"
+            "savedPresets": "Preajustos desats",
+            "startCompare": "Inicia la comparació",
+            "stopCompare": "Atura",
+            "compareStopped": "Comparació aturada.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "La comparació llegeix les dues carpetes i totes les carpetes que contenen. En un arbre gran pot trigar una estona, i la pots aturar."
         },
         "accountLock": {
             "title": "Trieu un compte",

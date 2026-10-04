@@ -39,6 +39,8 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     onResumeJournal,
     onDismissJournal,
     onRescan,
+    onStartCompare,
+    onStopCompare,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -273,6 +275,9 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                             result={context.compareResult}
                             loading={context.compareLoading}
                             scanProgressId={context.scanProgressId}
+                            stopped={context.compareStopped}
+                            onStartCompare={context.compareIdle ? onStartCompare : undefined}
+                            onStopCompare={onStopCompare}
                             leftLabel={context.leftLabel}
                             rightLabel={context.rightLabel}
                             pairKind={context.pairKind}
@@ -288,6 +293,12 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                         <PlanTabContent
                             result={context.compareResult}
                             loading={context.compareLoading}
+                            scanProgressId={context.scanProgressId}
+                            compareStopped={context.compareStopped}
+                            leftLabel={context.leftLabel}
+                            rightLabel={context.rightLabel}
+                            onStartCompare={context.compareIdle ? onStartCompare : undefined}
+                            onStopCompare={onStopCompare}
                             pairKind={context.pairKind}
                             canExecute={canExecutePlan}
                             onExecute={onExecutePreset}

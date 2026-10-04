@@ -5741,7 +5741,12 @@
             },
             "savedPresetLimits": "Applica direzione, eliminazioni, esclusioni e verifica. Le regole di confronto, i tentativi, i flussi e la compressione salvati non vengono applicati. Controlla la scheda Confronta e le impostazioni di trasferimento attuali prima di eseguire.",
             "savedPresetsLoadFailed": "Impossibile caricare le preimpostazioni salvate: {error}",
-            "savedPresets": "Preimpostazioni salvate"
+            "savedPresets": "Preimpostazioni salvate",
+            "startCompare": "Avvia confronto",
+            "stopCompare": "Ferma",
+            "compareStopped": "Confronto fermato.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Il confronto legge entrambe le cartelle e tutte le sottocartelle. Su un albero grande può richiedere tempo, e puoi fermarlo."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

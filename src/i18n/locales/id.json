@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Menerapkan arah, penghapusan, pengecualian, dan verifikasi. Aturan perbandingan, percobaan ulang, aliran, dan kompresi yang disimpan tidak diterapkan. Tinjau tab Bandingkan dan pengaturan transfer saat ini sebelum menjalankan.",
             "savedPresetsLoadFailed": "Tidak dapat memuat preset tersimpan: {error}",
-            "savedPresets": "Preset tersimpan"
+            "savedPresets": "Preset tersimpan",
+            "startCompare": "Mulai bandingkan",
+            "stopCompare": "Hentikan",
+            "compareStopped": "Perbandingan dihentikan.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Perbandingan membaca kedua folder dan semua folder di bawahnya. Pada pohon yang besar, proses ini bisa memakan waktu, dan Anda dapat menghentikannya."
         },
         "accountLock": {
             "title": "Pilih akun",

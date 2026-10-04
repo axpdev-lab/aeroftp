@@ -7404,11 +7404,9 @@ pub async fn provider_compare_directories(
         local_path, remote_path
     );
 
-    // Reset the provider cancel flag: takes ownership for this compare run.
-    // The user's next Cancel click flips it back to true and the scan stops.
-    state
-        .cancel_flag
-        .store(false, std::sync::atomic::Ordering::Relaxed);
+    // A flag of its own, raised by `cancel_compare` (see `compare_cancel`):
+    // the provider transfer cancel flag is neither reset nor read here.
+    let cancel = crate::compare_cancel::CompareCancel::register(progress_id.as_deref());
 
     let _ = app.emit(
         "sync_scan_progress",
@@ -7426,12 +7424,15 @@ pub async fn provider_compare_directories(
         &local_path,
         &options.exclude_patterns,
         options.compare_checksum,
-        Some(&state.cancel_flag),
+        Some(cancel.flag()),
         Some(&app),
         progress_id.as_deref(),
     )
     .await
     .map_err(|e| format!("Failed to scan local directory: {}", e))?;
+    if cancel.is_cancelled() {
+        return Err(crate::COMPARE_CANCELLED.to_string());
+    }
 
     // CLAUDE-AV-B3-13: same guard as `compare_directories`. This path shares the
     // walker, so a half-read local tree would reach the Compare tab as a set of
@@ -7484,11 +7485,8 @@ pub async fn provider_compare_directories(
     if list_model.is_clone_pool() {
         use crate::sync_core::scan::{scan_remote_tree_with_provider_lock_checked, ScanOptions};
 
-        if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
-            return Err(format!(
-                "{}: compare cancelled by user before the remote tree was fully listed.",
-                crate::SCAN_INCOMPLETE_MARKER
-            ));
+        if cancel.is_cancelled() {
+            return Err(crate::COMPARE_CANCELLED.to_string());
         }
 
         let scan_options = ScanOptions {
@@ -7508,7 +7506,7 @@ pub async fn provider_compare_directories(
                 &remote_path,
                 &scan_options,
                 &list_model,
-                Some(state.cancel_flag.clone()),
+                Some(cancel.shared()),
                 Some(&scan_observer),
             )
             .await;
@@ -7524,11 +7522,8 @@ pub async fn provider_compare_directories(
         // returns the partial results it gathered. Surface the same
         // user-facing error the per-directory legacy path returned so the UI
         // does not treat a cancelled compare as a completed one.
-        if state.cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
-            return Err(format!(
-                "{}: compare cancelled by user before the remote tree was fully listed.",
-                crate::SCAN_INCOMPLETE_MARKER
-            ));
+        if cancel.is_cancelled() {
+            return Err(crate::COMPARE_CANCELLED.to_string());
         }
 
         for entry in remote_entries {
@@ -7576,12 +7571,12 @@ pub async fn provider_compare_directories(
     } else {
         let local_count = local_files.len();
         let generation = &state.connection_generation;
-        let (rows, links) = walk_compare_remote_serially(
+        let walked = walk_compare_remote_serially(
             &state.provider,
             &remote_path,
             &options.exclude_patterns,
             crate::sync_core::scan::MAX_SCAN_ENTRIES,
-            &state.cancel_flag,
+            cancel.flag(),
             &|| generation.load(Ordering::SeqCst) == compare_generation,
             &mut |remote_count, dirs_found, bytes_found| {
                 let _ = app.emit(
@@ -7596,7 +7591,11 @@ pub async fn provider_compare_directories(
                 );
             },
         )
-        .await?;
+        .await;
+        if cancel.is_cancelled() {
+            return Err(crate::COMPARE_CANCELLED.to_string());
+        }
+        let (rows, links) = walked?;
         remote_files = rows;
         remote_boundaries.links = links;
     }

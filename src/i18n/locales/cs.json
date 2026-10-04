@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Použije směr, mazání, vyloučení a ověřování. Uložená pravidla porovnání, opakování, datové proudy a komprese se nepoužijí. Před spuštěním zkontrolujte kartu Porovnání a aktuální nastavení přenosu.",
             "savedPresetsLoadFailed": "Uložené předvolby se nepodařilo načíst: {error}",
-            "savedPresets": "Uložené předvolby"
+            "savedPresets": "Uložené předvolby",
+            "startCompare": "Spustit porovnání",
+            "stopCompare": "Zastavit",
+            "compareStopped": "Porovnání zastaveno.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Porovnání načte obě složky i všechny složky v nich. U velkého stromu to může chvíli trvat a můžete ho zastavit."
         },
         "accountLock": {
             "title": "Vyberte účet",

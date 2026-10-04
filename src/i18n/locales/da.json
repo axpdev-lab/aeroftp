@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Anvender retning, sletninger, udeladelser og verificering. Gemte sammenligningsregler, genforsøg, streams og komprimering anvendes ikke. Gennemgå fanen Sammenlign og de aktuelle overførselsindstillinger før kørsel.",
             "savedPresetsLoadFailed": "Kunne ikke indlæse gemte forudindstillinger: {error}",
-            "savedPresets": "Gemte forudindstillinger"
+            "savedPresets": "Gemte forudindstillinger",
+            "startCompare": "Start sammenligning",
+            "stopCompare": "Stop",
+            "compareStopped": "Sammenligning stoppet.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Sammenligningen læser begge mapper og alle mapper under dem. På et stort træ kan det tage et stykke tid, og du kan stoppe den."
         },
         "accountLock": {
             "title": "Vælg en konto",

@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Ottaa käyttöön suunnan, poistot, poissulkemiset ja varmennuksen. Tallennettuja vertailusääntöjä, uudelleenyrityksiä, virtoja ja pakkausta ei oteta käyttöön. Tarkista Vertaa-välilehti ja nykyiset siirtoasetukset ennen suorittamista.",
             "savedPresetsLoadFailed": "Tallennettuja esiasetuksia ei voitu ladata: {error}",
-            "savedPresets": "Tallennetut esiasetukset"
+            "savedPresets": "Tallennetut esiasetukset",
+            "startCompare": "Aloita vertailu",
+            "stopCompare": "Pysäytä",
+            "compareStopped": "Vertailu pysäytetty.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Vertailu lukee molemmat kansiot ja kaikki niiden alla olevat kansiot. Suurella puulla se voi kestää hetken, ja voit pysäyttää sen."
         },
         "accountLock": {
             "title": "Valitse tili",

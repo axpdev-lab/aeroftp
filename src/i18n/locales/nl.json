@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Past richting, verwijderingen, uitsluitingen en verificatie toe. Opgeslagen vergelijkingsregels, nieuwe pogingen, streams en compressie worden niet toegepast. Controleer het tabblad Vergelijken en de huidige overdrachtsinstellingen voordat u begint.",
             "savedPresetsLoadFailed": "Opgeslagen voorinstellingen konden niet worden geladen: {error}",
-            "savedPresets": "Opgeslagen voorinstellingen"
+            "savedPresets": "Opgeslagen voorinstellingen",
+            "startCompare": "Vergelijking starten",
+            "stopCompare": "Stoppen",
+            "compareStopped": "Vergelijking gestopt.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "De vergelijking leest beide mappen en alle mappen daaronder. Bij een grote boomstructuur kan dit even duren, en je kunt het stoppen."
         },
         "accountLock": {
             "title": "Kies een account",

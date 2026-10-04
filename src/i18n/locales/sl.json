@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Uporabi smer, brisanja, izključitve in preverjanje. Shranjena pravila primerjave, ponovni poskusi, tokovi in stiskanje se ne uporabijo. Pred zagonom preglejte zavihek Primerjava in trenutne nastavitve prenosa.",
             "savedPresetsLoadFailed": "Shranjene prednastavitve ni bilo mogoče naložiti: {error}",
-            "savedPresets": "Shranjene prednastavitve"
+            "savedPresets": "Shranjene prednastavitve",
+            "startCompare": "Začni primerjavo",
+            "stopCompare": "Ustavi",
+            "compareStopped": "Primerjava ustavljena.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Primerjava prebere obe mapi in vse mape v njiju. Pri velikem drevesu lahko traja nekaj časa, ustavite pa jo lahko."
         },
         "accountLock": {
             "title": "Izberite račun",

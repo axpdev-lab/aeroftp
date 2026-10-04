@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "应用方向、删除、排除和验证设置。已保存的比较规则、重试、流和压缩设置不会应用。运行前请检查“比较”选项卡和当前传输设置。",
             "savedPresetsLoadFailed": "无法加载已保存的预设：{error}",
-            "savedPresets": "已保存的预设"
+            "savedPresets": "已保存的预设",
+            "startCompare": "开始比较",
+            "stopCompare": "停止",
+            "compareStopped": "比较已停止。",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "比较会读取两个文件夹及其下的所有文件夹。对于大型目录树，可能需要一些时间，您可以随时停止。"
         },
         "accountLock": {
             "title": "选择一个账户",

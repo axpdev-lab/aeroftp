@@ -11,7 +11,6 @@ import {
     FileJson,
     FileSpreadsheet,
     FileWarning,
-    Loader2,
     type LucideIcon,
 } from 'lucide-react';
 import { pickSave } from '../../utils/pickPath';
@@ -30,7 +29,7 @@ import {
     compareRowsToJson,
 } from '../../utils/compareExport';
 import { formatBytes } from '../../utils/formatters';
-import { useScanProgress, formatElapsed } from '../../hooks/useScanProgress';
+import { CompareScanState } from './CompareScanState';
 import { useTranslation } from '../../i18n';
 import {
     bucketDescriptionLabel,
@@ -44,6 +43,12 @@ interface CompareTabContentProps {
     /** GAP-5: true while the recursive connected-remote scan is running. */
     loading?: boolean;
     scanProgressId?: string;
+    /** The last compare was stopped by the user. */
+    stopped?: boolean;
+    /** Start the recursive compare; absent when there is no pair to compare. */
+    onStartCompare?: () => void;
+    /** Stop the recursive compare that is running. */
+    onStopCompare?: () => void;
     leftLabel: string;
     rightLabel: string;
     pairKind?: string | null;
@@ -241,6 +246,9 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     result,
     loading,
     scanProgressId,
+    stopped,
+    onStartCompare,
+    onStopCompare,
     leftLabel,
     rightLabel,
     pairKind,
@@ -256,8 +264,6 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
         () => entriesThatWillNotFit(result, pairKind, remoteLimits, remoteBasePath),
         [result, pairKind, remoteLimits, remoteBasePath],
     );
-    // Live counters for the scan the spinner below used to hide entirely.
-    const { totals: scanTotals, elapsedMs: scanElapsedMs } = useScanProgress(!!loading && !result, scanProgressId);
 
     // Hooks must run unconditionally: the recursive connected-remote scan
     // (GAP-5) flips `result` from null to a value while this component stays
@@ -319,22 +325,17 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     };
 
     if (!result) {
-        if (loading) {
+        if (loading || onStartCompare) {
             return (
-                <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                    <Loader2 size={24} className="animate-spin text-blue-500" />
-                    {t('syncPanel.scanning') || 'Scanning directories'}
-                    {/* The same numbers the summary will show when the scan
-                        finishes, shown while they are still the only thing to
-                        go on: a scan that is working and a scan that is stuck
-                        used to look identical. */}
-                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs tabular-nums text-gray-400 dark:text-gray-500">
-                        <span>⏱ {formatElapsed(scanElapsedMs)}</span>
-                        <span>📄 {scanTotals.files.toLocaleString()}</span>
-                        <span>📁 {scanTotals.dirs.toLocaleString()}</span>
-                        <span>{formatBytes(scanTotals.bytes)}</span>
-                    </div>
-                </div>
+                <CompareScanState
+                    loading={!!loading}
+                    scanProgressId={scanProgressId}
+                    stopped={stopped}
+                    leftLabel={leftLabel}
+                    rightLabel={rightLabel}
+                    onStart={onStartCompare}
+                    onStop={onStopCompare}
+                />
             );
         }
         return (

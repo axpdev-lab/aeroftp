@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Áp dụng hướng, thao tác xóa, loại trừ và xác minh. Các quy tắc so sánh, lần thử lại, luồng và nén đã lưu không được áp dụng. Xem lại thẻ So sánh và cài đặt truyền hiện tại trước khi chạy.",
             "savedPresetsLoadFailed": "Không thể tải các cấu hình đặt sẵn đã lưu: {error}",
-            "savedPresets": "Cấu hình đặt sẵn đã lưu"
+            "savedPresets": "Cấu hình đặt sẵn đã lưu",
+            "startCompare": "Bắt đầu so sánh",
+            "stopCompare": "Dừng",
+            "compareStopped": "Đã dừng so sánh.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "So sánh sẽ đọc cả hai thư mục và mọi thư mục bên dưới. Với cây thư mục lớn, quá trình này có thể mất một lúc, và bạn có thể dừng lại."
         },
         "accountLock": {
             "title": "Chọn tài khoản",

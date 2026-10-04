@@ -57,6 +57,7 @@ pub mod ai_stream;
 mod ai_tools;
 pub mod app_events;
 mod archive_browse;
+pub(crate) mod compare_cancel;
 #[cfg(target_os = "linux")]
 mod localhost_security;
 mod mcp_client_bridge;
@@ -11857,6 +11858,17 @@ async fn sync_ec_verify_repair(
     }
 }
 
+/// The error a compare returns when `cancel_compare` stopped it: the
+/// frontend shows a stopped compare, not a failed scan.
+pub(crate) const COMPARE_CANCELLED: &str = "COMPARE_CANCELLED";
+
+/// Stop the AeroSync compare running under `progress_id`. `false` when none
+/// runs under it any more.
+#[tauri::command]
+fn cancel_compare(progress_id: String) -> bool {
+    compare_cancel::cancel(&progress_id)
+}
+
 #[tauri::command]
 async fn compare_directories(
     app: AppHandle,
@@ -11882,11 +11894,9 @@ async fn compare_directories(
         local_path, remote_path
     );
 
-    // Reset the shared cancel flag so this compare starts clean.
-    // A user who cancelled a previous operation may have left the flag in whatever
-    // state; we take ownership of it for the duration of this compare and rely on
-    // `cancel_transfer` to flip it back to true if the user asks for a stop.
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    // A flag of its own, raised by `cancel_compare` (see `compare_cancel`):
+    // the transfer cancel flag is neither reset nor read here.
+    let cancel = compare_cancel::CompareCancel::register(progress_id.as_deref());
 
     // Emit scan phase: scanning (both local and remote concurrently)
     let _ = app.emit(
@@ -11906,7 +11916,7 @@ async fn compare_directories(
         &local_path,
         &options.exclude_patterns,
         options.compare_checksum,
-        Some(&state.cancel_flag),
+        Some(cancel.flag()),
         Some(&app),
         progress_id.as_deref(),
     );
@@ -11919,13 +11929,16 @@ async fn compare_directories(
             &remote_path,
             &options.exclude_patterns,
             0,
-            Some(&state.cancel_flag),
+            Some(cancel.flag()),
             progress_id.as_deref(),
         )
         .await
     };
 
     let (local_result, remote_result) = tokio::join!(local_future, remote_future);
+    if cancel.is_cancelled() {
+        return Err(COMPARE_CANCELLED.to_string());
+    }
     let (local_files, local_scan) =
         local_result.map_err(|e| format!("Failed to scan local directory: {}", e))?;
     let (remote_files, remote_scan) =
@@ -12018,7 +12031,6 @@ fn classify_walked_pair(
 #[tauri::command]
 async fn compare_local_directories(
     app: AppHandle,
-    state: State<'_, AppState>,
     left_path: String,
     right_path: String,
     options: Option<CompareOptions>,
@@ -12043,9 +12055,8 @@ async fn compare_local_directories(
         left_path, right_path
     );
 
-    // Take ownership of the shared cancel flag for the duration of this scan,
-    // matching `compare_directories`.
-    state.cancel_flag.store(false, Ordering::Relaxed);
+    // A flag of its own, raised by `cancel_compare` (see `compare_cancel`).
+    let cancel = compare_cancel::CompareCancel::register(progress_id.as_deref());
 
     let _ = app.emit(
         "sync_scan_progress",
@@ -12058,7 +12069,7 @@ async fn compare_local_directories(
         &left_path,
         &options.exclude_patterns,
         options.compare_checksum,
-        Some(&state.cancel_flag),
+        Some(cancel.flag()),
         Some(&app),
         progress_id.as_deref(),
     );
@@ -12067,12 +12078,15 @@ async fn compare_local_directories(
         &right_path,
         &options.exclude_patterns,
         options.compare_checksum,
-        Some(&state.cancel_flag),
+        Some(cancel.flag()),
         Some(&app),
         progress_id.as_deref(),
     );
 
     let (left_result, right_result) = tokio::join!(left_future, right_future);
+    if cancel.is_cancelled() {
+        return Err(COMPARE_CANCELLED.to_string());
+    }
     let (left_files, left_scan) =
         left_result.map_err(|e| format!("Failed to scan left directory: {}", e))?;
     let (right_files, right_scan) =
@@ -19238,6 +19252,7 @@ pub fn run() {
             rebuild_menu,
             compare_directories,
             compare_local_directories,
+            cancel_compare,
             load_sync_index_cmd,
             save_sync_index_cmd,
             load_sync_journal_cmd,

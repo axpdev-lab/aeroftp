@@ -5543,7 +5543,12 @@
             },
             "savedPresetLimits": "Beitir stefnu, eyðingum, útilokunum og sannprófun. Vistaðar samanburðarreglur, endurtilraunir, straumar og þjöppun eru ekki notuð. Farðu yfir flipann Bera saman og núverandi flutningsstillingar áður en keyrt er.",
             "savedPresetsLoadFailed": "Ekki tókst að hlaða vistuðum forstillingum: {error}",
-            "savedPresets": "Vistaðar forstillingar"
+            "savedPresets": "Vistaðar forstillingar",
+            "startCompare": "Hefja samanburð",
+            "stopCompare": "Stöðva",
+            "compareStopped": "Samanburður stöðvaður.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Samanburðurinn les báðar möppurnar og allar möppur undir þeim. Á stóru tré getur það tekið nokkurn tíma og þú getur stöðvað hann."
         },
         "accountLock": {
             "title": "Veldu reikning",

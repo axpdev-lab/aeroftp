@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Wendet Richtung, Löschungen, Ausschlüsse und Überprüfung an. Gespeicherte Vergleichsregeln, Wiederholungsversuche, Streams und Komprimierung werden nicht angewendet. Prüfen Sie vor dem Start den Tab Vergleichen und die aktuellen Übertragungseinstellungen.",
             "savedPresetsLoadFailed": "Gespeicherte Voreinstellungen konnten nicht geladen werden: {error}",
-            "savedPresets": "Gespeicherte Voreinstellungen"
+            "savedPresets": "Gespeicherte Voreinstellungen",
+            "startCompare": "Vergleich starten",
+            "stopCompare": "Stopp",
+            "compareStopped": "Vergleich gestoppt.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Der Vergleich liest beide Ordner und alle darunterliegenden Ordner. Bei einer großen Struktur kann das eine Weile dauern, und Sie können ihn abbrechen."
         },
         "accountLock": {
             "title": "Konto auswählen",

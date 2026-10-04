@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Applique le sens, les suppressions, les exclusions et la vérification. Les règles de comparaison, les nouvelles tentatives, les flux et la compression enregistrés ne sont pas appliqués. Vérifiez l'onglet Comparer et les paramètres de transfert actuels avant l'exécution.",
             "savedPresetsLoadFailed": "Impossible de charger les préréglages enregistrés : {error}",
-            "savedPresets": "Préréglages enregistrés"
+            "savedPresets": "Préréglages enregistrés",
+            "startCompare": "Lancer la comparaison",
+            "stopCompare": "Arrêter",
+            "compareStopped": "Comparaison arrêtée.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "La comparaison lit les deux dossiers et tous les dossiers qu'ils contiennent. Sur une grande arborescence, cela peut prendre un moment, et vous pouvez l'arrêter."
         },
         "accountLock": {
             "title": "Choisissez un compte",

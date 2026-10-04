@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "方向、削除、除外、検証を適用します。保存された比較ルール、再試行、ストリーム、圧縮は適用されません。実行前に「比較」タブと現在の転送設定を確認してください。",
             "savedPresetsLoadFailed": "保存されたプリセットを読み込めませんでした: {error}",
-            "savedPresets": "保存されたプリセット"
+            "savedPresets": "保存されたプリセット",
+            "startCompare": "比較を開始",
+            "stopCompare": "停止",
+            "compareStopped": "比較を停止しました。",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "比較では、両方のフォルダーとその下のすべてのフォルダーを読み取ります。大きなツリーでは時間がかかることがありますが、途中で停止できます。"
         },
         "accountLock": {
             "title": "アカウントを選択",

@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Primjenjuje smjer, brisanja, izuzimanja i provjeru. Spremljena pravila usporedbe, ponovni pokušaji, tokovi i kompresija ne primjenjuju se. Prije pokretanja pregledajte karticu Usporedba i trenutačne postavke prijenosa.",
             "savedPresetsLoadFailed": "Nije moguće učitati spremljene predloške postavki: {error}",
-            "savedPresets": "Spremljeni predlošci postavki"
+            "savedPresets": "Spremljeni predlošci postavki",
+            "startCompare": "Pokreni usporedbu",
+            "stopCompare": "Zaustavi",
+            "compareStopped": "Usporedba zaustavljena.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Usporedba čita obje mape i sve mape unutar njih. Na velikom stablu može potrajati, a možete je zaustaviti."
         },
         "accountLock": {
             "title": "Odaberite račun",

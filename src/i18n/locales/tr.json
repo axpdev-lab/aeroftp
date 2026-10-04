@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Yön, silme, hariç tutma ve doğrulamayı uygular. Kaydedilen karşılaştırma kuralları, yeniden denemeler, akışlar ve sıkıştırma uygulanmaz. Çalıştırmadan önce Karşılaştır sekmesini ve geçerli aktarım ayarlarını gözden geçirin.",
             "savedPresetsLoadFailed": "Kaydedilen ön ayarlar yüklenemedi: {error}",
-            "savedPresets": "Kaydedilen ön ayarlar"
+            "savedPresets": "Kaydedilen ön ayarlar",
+            "startCompare": "Karşılaştırmayı başlat",
+            "stopCompare": "Durdur",
+            "compareStopped": "Karşılaştırma durduruldu.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Karşılaştırma her iki klasörü ve altındaki tüm klasörleri okur. Büyük bir ağaçta biraz zaman alabilir ve durdurabilirsiniz."
         },
         "accountLock": {
             "title": "Bir hesap seçin",

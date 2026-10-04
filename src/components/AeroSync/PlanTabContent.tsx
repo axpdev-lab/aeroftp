@@ -12,7 +12,6 @@ import {
     Terminal,
     FlaskConical,
     Gauge,
-    Loader2,
     ShieldAlert,
     ShieldCheck,
     Skull,
@@ -63,11 +62,21 @@ import type {
     AeroSyncSpeedMode,
     AeroSyncVerifyPolicy,
 } from './types';
+import { CompareScanState } from './CompareScanState';
 
 interface PlanTabContentProps {
     result: CompareResult | null;
     /** GAP-5: true while the recursive connected-remote scan is running. */
     loading?: boolean;
+    scanProgressId?: string;
+    /** The last compare was stopped by the user. */
+    compareStopped?: boolean;
+    leftLabel?: string;
+    rightLabel?: string;
+    /** Start the recursive compare; absent when there is no pair to compare. */
+    onStartCompare?: () => void;
+    /** Stop the recursive compare that is running. */
+    onStopCompare?: () => void;
     pairKind?: string | null;
     canExecute: boolean;
     onExecute: (plan: PresetPlan, runtime: AeroSyncRuntime) => void;
@@ -185,6 +194,12 @@ const CANARY_SELECTIONS: AeroSyncCanarySelection[] = ['random', 'newest', 'large
 export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     result,
     loading,
+    scanProgressId,
+    compareStopped,
+    leftLabel,
+    rightLabel,
+    onStartCompare,
+    onStopCompare,
     pairKind,
     canExecute,
     onExecute,
@@ -315,12 +330,17 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     };
 
     if (!result) {
-        if (loading) {
+        if (loading || onStartCompare) {
             return (
-                <div className="flex flex-col items-center gap-2 p-8 text-center text-sm text-gray-500 dark:text-gray-400">
-                    <Loader2 size={24} className="animate-spin text-blue-500" />
-                    {t('syncPanel.scanning') || 'Scanning directories'}
-                </div>
+                <CompareScanState
+                    loading={!!loading}
+                    scanProgressId={scanProgressId}
+                    stopped={compareStopped}
+                    leftLabel={leftLabel ?? ''}
+                    rightLabel={rightLabel ?? ''}
+                    onStart={onStartCompare}
+                    onStop={onStopCompare}
+                />
             );
         }
         return (

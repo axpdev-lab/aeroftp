@@ -20,6 +20,18 @@
 // no rows, no plan, a blocking error.
 export const SCAN_INCOMPLETE_MARKER = 'SCAN_INCOMPLETE';
 
+/**
+ * The exact error a compare returns when `cancel_compare` stopped it. Matched
+ * whole, not as a substring: any other failure must still be reported.
+ */
+export const COMPARE_CANCELLED = 'COMPARE_CANCELLED';
+
+export function isCompareCancelled(error: unknown): boolean {
+  if (error == null) return false;
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw.trim() === COMPARE_CANCELLED;
+}
+
 export function isScanIncompleteError(error: unknown): boolean {
   if (error == null) return false;
   if (error instanceof Error) return error.message.includes(SCAN_INCOMPLETE_MARKER);

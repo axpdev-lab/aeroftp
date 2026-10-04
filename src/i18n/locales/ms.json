@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Menggunakan arah, pemadaman, pengecualian dan pengesahan. Peraturan perbandingan, percubaan semula, aliran dan pemampatan yang disimpan tidak digunakan. Semak tab Bandingkan dan tetapan pemindahan semasa sebelum menjalankan.",
             "savedPresetsLoadFailed": "Tidak dapat memuatkan pratetap tersimpan: {error}",
-            "savedPresets": "Pratetap tersimpan"
+            "savedPresets": "Pratetap tersimpan",
+            "startCompare": "Mulakan perbandingan",
+            "stopCompare": "Henti",
+            "compareStopped": "Perbandingan dihentikan.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Perbandingan membaca kedua-dua folder dan semua folder di bawahnya. Pada pokok yang besar, ia mungkin mengambil sedikit masa, dan anda boleh menghentikannya."
         },
         "accountLock": {
             "title": "Pilih akaun",

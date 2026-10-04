@@ -5543,7 +5543,12 @@
             },
             "savedPresetLimits": "Inilalapat ang direksyon, mga pagbura, pagbubukod at beripikasyon. Hindi inilalapat ang mga naka-save na panuntunan sa paghahambing, muling pagsubok, stream at compression. Suriin ang tab na Ihambing at ang kasalukuyang mga setting ng paglilipat bago patakbuhin.",
             "savedPresetsLoadFailed": "Hindi ma-load ang mga naka-save na preset: {error}",
-            "savedPresets": "Mga naka-save na preset"
+            "savedPresets": "Mga naka-save na preset",
+            "startCompare": "Simulan ang paghahambing",
+            "stopCompare": "Ihinto",
+            "compareStopped": "Huminto ang paghahambing.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Binabasa ng paghahambing ang parehong folder at ang bawat folder sa ilalim ng mga ito. Sa malaking tree, maaari itong magtagal, at maaari mo itong ihinto."
         },
         "accountLock": {
             "title": "Pumili ng account",

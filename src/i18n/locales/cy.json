@@ -5543,7 +5543,12 @@
             },
             "savedPresetLimits": "Yn cymhwyso cyfeiriad, dileu, eithriadau a dilysu. Ni chymhwysir rheolau cymharu, ailgeisiau, ffrydiau na chywasgu sydd wedi'u cadw. Adolygwch y tab Cymharu a'r gosodiadau trosglwyddo cyfredol cyn rhedeg.",
             "savedPresetsLoadFailed": "Methu llwytho'r rhagosodiadau sydd wedi'u cadw: {error}",
-            "savedPresets": "Rhagosodiadau wedi’u cadw"
+            "savedPresets": "Rhagosodiadau wedi’u cadw",
+            "startCompare": "Dechrau cymharu",
+            "stopCompare": "Stopio",
+            "compareStopped": "Cymharu wedi'i stopio.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Mae'r gymhariaeth yn darllen y ddau ffolder a phob ffolder oddi tanynt. Ar goeden fawr gall gymryd amser, a gallwch ei stopio."
         },
         "accountLock": {
             "title": "Dewiswch gyfrif",

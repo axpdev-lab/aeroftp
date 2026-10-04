@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Hutumia mwelekeo, ufutaji, viondoaji na uthibitishaji. Sheria za kulinganisha, majaribio ya kurudia, mitiririko na ubanaji vilivyohifadhiwa havitumiki. Kagua kichupo cha Linganisha na mipangilio ya sasa ya uhamishaji kabla ya kuendesha.",
             "savedPresetsLoadFailed": "Imeshindwa kupakia mipangilio iliyohifadhiwa: {error}",
-            "savedPresets": "Mipangilio iliyohifadhiwa"
+            "savedPresets": "Mipangilio iliyohifadhiwa",
+            "startCompare": "Anza kulinganisha",
+            "stopCompare": "Simamisha",
+            "compareStopped": "Ulinganishaji umesimamishwa.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Ulinganishaji husoma folda zote mbili na kila folda iliyo chini yake. Kwenye mti mkubwa unaweza kuchukua muda, na unaweza kuusimamisha."
         },
         "accountLock": {
             "title": "Chagua akaunti",

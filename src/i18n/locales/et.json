@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Rakendab suuna, kustutamised, välistused ja kontrollimise. Salvestatud võrdlusreegleid, korduskatseid, vooge ja tihendamist ei rakendata. Enne käivitamist vaadake üle vahekaart Võrdlus ja praegused edastusseaded.",
             "savedPresetsLoadFailed": "Salvestatud eelseadistusi ei saanud laadida: {error}",
-            "savedPresets": "Salvestatud eelseadistused"
+            "savedPresets": "Salvestatud eelseadistused",
+            "startCompare": "Alusta võrdlust",
+            "stopCompare": "Peata",
+            "compareStopped": "Võrdlus peatatud.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Võrdlus loeb mõlemat kausta ja kõiki nende all olevaid kaustu. Suure puu puhul võib see veidi aega võtta ja saate selle peatada."
         },
         "accountLock": {
             "title": "Vali konto",

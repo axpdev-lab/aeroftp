@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Aplica a direção, as eliminações, as exclusões e a verificação. As regras de comparação, as novas tentativas, os fluxos e a compressão guardados não são aplicados. Reveja o separador Comparar e as definições de transferência atuais antes de executar.",
             "savedPresetsLoadFailed": "Não foi possível carregar as predefinições guardadas: {error}",
-            "savedPresets": "Predefinições guardadas"
+            "savedPresets": "Predefinições guardadas",
+            "startCompare": "Iniciar comparação",
+            "stopCompare": "Parar",
+            "compareStopped": "Comparação parada.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "A comparação lê ambas as pastas e todas as pastas dentro delas. Numa árvore grande pode demorar um pouco, e pode pará-la."
         },
         "accountLock": {
             "title": "Escolha uma conta",

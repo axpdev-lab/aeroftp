@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Tillämpar riktning, borttagningar, undantag och verifiering. Sparade jämförelseregler, återförsök, strömmar och komprimering tillämpas inte. Granska fliken Jämför och de aktuella överföringsinställningarna före körning.",
             "savedPresetsLoadFailed": "Kunde inte läsa in sparade förinställningar: {error}",
-            "savedPresets": "Sparade förinställningar"
+            "savedPresets": "Sparade förinställningar",
+            "startCompare": "Starta jämförelse",
+            "stopCompare": "Stoppa",
+            "compareStopped": "Jämförelsen stoppad.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Jämförelsen läser båda mapparna och alla mappar under dem. På ett stort träd kan det ta en stund, och du kan stoppa den."
         },
         "accountLock": {
             "title": "Välj ett konto",

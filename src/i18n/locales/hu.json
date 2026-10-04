@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Alkalmazza az irányt, a törléseket, a kizárásokat és az ellenőrzést. A mentett összehasonlítási szabályok, újrapróbálkozások, adatfolyamok és tömörítés nem kerülnek alkalmazásra. Futtatás előtt tekintse át az Összehasonlítás lapot és az aktuális átviteli beállításokat.",
             "savedPresetsLoadFailed": "A mentett előbeállítások betöltése sikertelen: {error}",
-            "savedPresets": "Mentett előbeállítások"
+            "savedPresets": "Mentett előbeállítások",
+            "startCompare": "Összehasonlítás indítása",
+            "stopCompare": "Leállítás",
+            "compareStopped": "Az összehasonlítás leállítva.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Az összehasonlítás beolvassa mindkét mappát és az alattuk lévő összes mappát. Nagy fa esetén ez eltarthat egy ideig, és leállíthatja."
         },
         "accountLock": {
             "title": "Válasszon fiókot",

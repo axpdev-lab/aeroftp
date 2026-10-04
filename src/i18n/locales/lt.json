@@ -5524,7 +5524,12 @@
             },
             "savedPresetLimits": "Taiko kryptį, trynimą, išimtis ir patikrą. Išsaugotos palyginimo taisyklės, pakartotiniai bandymai, srautai ir glaudinimas netaikomi. Prieš paleisdami peržiūrėkite skirtuką Palyginti ir dabartinius perdavimo nustatymus.",
             "savedPresetsLoadFailed": "Nepavyko įkelti išsaugotų išankstinių nustatymų: {error}",
-            "savedPresets": "Išsaugoti išankstiniai nustatymai"
+            "savedPresets": "Išsaugoti išankstiniai nustatymai",
+            "startCompare": "Pradėti palyginimą",
+            "stopCompare": "Stabdyti",
+            "compareStopped": "Palyginimas sustabdytas.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Palyginimas nuskaito abu aplankus ir visus juose esančius aplankus. Dideliame medyje tai gali užtrukti, o jį galite sustabdyti."
         },
         "accountLock": {
             "title": "Pasirinkite paskyrą",

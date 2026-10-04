@@ -5543,7 +5543,12 @@
             },
             "savedPresetLimits": "Aplica a dirección, as eliminacións, as exclusións e a verificación. Non se aplican as regras de comparación, os reintentos, os fluxos nin a compresión gardados. Revise a lapela Comparar e a configuración de transferencia actual antes de executar.",
             "savedPresetsLoadFailed": "Non se puideron cargar os preaxustes gardados: {error}",
-            "savedPresets": "Preaxustes gardados"
+            "savedPresets": "Preaxustes gardados",
+            "startCompare": "Iniciar comparación",
+            "stopCompare": "Deter",
+            "compareStopped": "Comparación detida.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "A comparación le os dous cartafoles e todos os cartafoles que conteñen. Nunha árbore grande pode tardar un pouco, e podes detela."
         },
         "accountLock": {
             "title": "Escolla unha conta",

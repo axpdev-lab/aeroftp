@@ -5543,7 +5543,12 @@
             },
             "savedPresetLimits": "Norabidea, ezabaketak, bazterketak eta egiaztapena aplikatzen ditu. Gordetako konparazio-arauak, berriz saiatzeko aukerak, korronteak eta konpresioa ez dira aplikatzen. Exekutatu aurretik, berrikusi Konparatu fitxa eta uneko transferentzia-ezarpenak.",
             "savedPresetsLoadFailed": "Ezin izan dira gordetako aurrezarpenak kargatu: {error}",
-            "savedPresets": "Gordetako aurrezarpenak"
+            "savedPresets": "Gordetako aurrezarpenak",
+            "startCompare": "Hasi konparazioa",
+            "stopCompare": "Gelditu",
+            "compareStopped": "Konparazioa geldituta.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Konparazioak bi karpetak eta haien azpiko karpeta guztiak irakurtzen ditu. Zuhaitz handi batean denbora pixka bat har dezake, eta gelditu dezakezu."
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",

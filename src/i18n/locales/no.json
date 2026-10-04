@@ -5543,7 +5543,12 @@
             },
             "savedPresetLimits": "Bruker retning, slettinger, utelatelser og verifisering. Lagrede sammenligningsregler, nye forsøk, strømmer og komprimering brukes ikke. Se gjennom fanen Sammenlign og gjeldende overføringsinnstillinger før kjøring.",
             "savedPresetsLoadFailed": "Kunne ikke laste lagrede forhåndsinnstillinger: {error}",
-            "savedPresets": "Lagrede forhåndsinnstillinger"
+            "savedPresets": "Lagrede forhåndsinnstillinger",
+            "startCompare": "Start sammenligning",
+            "stopCompare": "Stopp",
+            "compareStopped": "Sammenligningen er stoppet.",
+            "comparePair": "{left} ↔ {right}",
+            "compareStartHint": "Sammenligningen leser begge mappene og alle mapper under dem. På et stort tre kan det ta en stund, og du kan stoppe den."
         },
         "accountLock": {
             "title": "Velg en konto",
