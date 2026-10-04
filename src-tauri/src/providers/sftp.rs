@@ -31,9 +31,9 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, parallel_refused, run_concurrent_range_download, segmented_temp_path_for,
-    share_progress, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
-    RangeSourceFingerprint, AFTER_TRANSFER_READ_RETRY,
+    aerotmp_path_for, parallel_refused, run_concurrent_range_download, share_progress,
+    source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
+    SegmentedRun, SegmentedTemp, AFTER_TRANSFER_READ_RETRY,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -1018,7 +1018,8 @@ impl SftpProvider {
             }
         };
 
-        self.download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
+        let temp = self
+            .download_intra_file_pooled(remote_path, local_path, total_size, on_progress)
             .await?;
 
         // One retry, the same tolerance the shared comparison gives the other
@@ -1041,23 +1042,18 @@ impl SftpProvider {
                 }
             }
         };
-        let temp = segmented_temp_path_for(Path::new(local_path));
+        // The temporary stays claimed through the reading above and the rename.
         if let Some(what) = changed {
-            let _ = tokio::fs::remove_file(&temp).await;
+            temp.discard();
             tracing::warn!("{}", source_changed("SFTP intra-file", remote_path, &what));
             return Ok(false);
         }
-        match tokio::fs::rename(&temp, local_path).await {
+        match temp.publish(Path::new(local_path)).await {
             Ok(()) => {
                 tracing::info!("SFTP: intra-file download complete: {}", remote_path);
                 Ok(true)
             }
-            Err(e) => {
-                // The engine handed the temp over when it reported the windows
-                // complete, so nothing else will remove it.
-                let _ = tokio::fs::remove_file(&temp).await;
-                Err(ProviderError::IoError(e))
-            }
+            Err(e) => Err(ProviderError::IoError(e)),
         }
     }
 
@@ -1087,7 +1083,7 @@ impl SftpProvider {
         local_path: &str,
         total_size: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<SegmentedTemp, ProviderError> {
         let spec = self
             .connection_spec
             .clone()
@@ -1171,12 +1167,12 @@ impl SftpProvider {
             // The windows are in `<local>.aerosegtmp` and the file is not
             // published here: the caller reads the object again through the
             // session it already holds and publishes only if it did not move.
-            Ok(ConcurrentRangeOutcome::Completed) => Ok(()),
-            Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
+            Ok(SegmentedRun::Completed(temp)) => Ok(temp),
+            Ok(SegmentedRun::ServerIgnoredRange) => {
                 // Unreachable for SFTP: seek+read cannot "ignore" a range.
-                // Never silently re-download (it would double the bytes).
-                let _ =
-                    tokio::fs::remove_file(segmented_temp_path_for(Path::new(local_path))).await;
+                // Never silently re-download (it would double the bytes). The
+                // engine already removed its temporary; one found at that name
+                // now belongs to another download.
                 Err(ProviderError::TransferFailed(
                     "SFTP intra-file: unexpected range-ignored outcome".to_string(),
                 ))
