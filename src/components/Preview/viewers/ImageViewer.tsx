@@ -20,7 +20,7 @@ import type { ImageResult } from '../types';
 import { useI18n } from '../../../i18n';
 import { useImagePreviewBg, writeImagePreviewBg, IMAGE_PREVIEW_BG_PRESETS } from '../../../utils/imagePreviewBg';
 import ImageEditor from './ImageEditor';
-import { CropOverlay } from './CropOverlay';
+import { CropOverlay, cropCoversWholeImage } from './CropOverlay';
 import { ImageSaveDialog } from './ImageSaveDialog';
 import { copyText } from '../../../utils/clipboard';
 
@@ -260,7 +260,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     }, []);
 
     const handleCropChange = useCallback((natural: CropRect) => {
-        setEditState(prev => ({ ...prev, crop: natural }));
+        // The selection starts as the whole image: that is no crop at all,
+        // and must not add a Crop operation to the save.
+        const img = imageRef.current;
+        const whole = !!img && cropCoversWholeImage(natural, img.naturalWidth, img.naturalHeight);
+        setEditState(prev => ({ ...prev, crop: whole ? null : natural }));
     }, []);
 
     const handleSaveResult = useCallback((result: ImageResult) => {
