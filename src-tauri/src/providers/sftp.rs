@@ -73,9 +73,40 @@ const SFTP_READAHEAD_JOB_MAX_HANDLES: usize = 256;
 /// still takes the serial loop, which owns the precise throttle.
 const SFTP_READAHEAD_DEFAULT_WINDOW: usize = 32;
 const SFTP_READAHEAD_MAX_WINDOW: usize = 1024;
+/// The measured default window of one connection in bytes: 32 READs of the
+/// 256 KiB default chunk.
+const SFTP_READAHEAD_DEFAULT_BYTES: u64 = SFTP_READAHEAD_DEFAULT_WINDOW as u64 * 256 * 1024;
+/// What the connections of one download share when nothing was asked: twice
+/// the one-connection default, so one or two connections keep that default
+/// and more connections split it.
+const SFTP_READAHEAD_SHARED_BUDGET: u64 = 2 * SFTP_READAHEAD_DEFAULT_BYTES;
+/// The least one connection of a segmented download keeps in flight when the
+/// connections share the default budget: four 256 KiB READs.
+const SFTP_READAHEAD_MIN_SHARED_BYTES: u64 = 4 * 256 * 1024;
 /// The smallest chunk a read-ahead takes from the length of a server's first
 /// reply (never above the configured chunk).
 const SFTP_READAHEAD_MIN_LEARNED_CHUNK: u64 = 32 * 1024;
+
+/// The default window as a budget for one download instead of a value for
+/// each of its connections, counted in chunks of `chunk` bytes. Every READ in
+/// flight holds a chunk-sized buffer here until its reply has been written
+/// out, so the window per connection is what a segmented download keeps in
+/// memory, times its connections. Each connection used to take the whole
+/// default: four connections held 128 READs of 256 KiB, and a 300 MiB download
+/// peaked at 142 to 151 MB of RSS, against 117 to 120 MB with 16 READs per
+/// connection, as fast or faster in two rounds of three, and 102 to 106 MB with
+/// 8, which was slower in most rounds (lab, 47 ms link, 2026-10-04). The budget
+/// is in bytes, so a smaller chunk gets more READs for the same depth; never
+/// fewer than two, below which there is no read-ahead at all.
+fn shared_default_readahead_window(connections: usize, chunk: usize) -> usize {
+    let per_connection = (SFTP_READAHEAD_SHARED_BUDGET / connections.max(1) as u64).clamp(
+        SFTP_READAHEAD_MIN_SHARED_BYTES,
+        SFTP_READAHEAD_DEFAULT_BYTES,
+    );
+    usize::try_from(per_connection / chunk.max(4096) as u64)
+        .unwrap_or(usize::MAX)
+        .max(2)
+}
 
 /// Default intra-file cutoff: below this a single SFTP stream is faster
 /// than paying N SSH handshakes. Matches the S3 default (250 MiB) so the
@@ -728,6 +759,52 @@ impl SftpReadaheadSetting {
             Self::Disabled | Self::Window(_) => self.requested_window_from(None),
         }
     }
+
+    /// The window, in chunks of `chunk` bytes, each of the `connections` of
+    /// one segmented download asks for. Nothing asked: the measured default
+    /// is a budget for the whole download, which its connections share (see
+    /// [`shared_default_readahead_window`]). Anything asked (CLI, preset, GUI
+    /// or the environment) is a per-connection value and stays as asked.
+    fn requested_window_per_connection_from(
+        self,
+        legacy_raw: Option<&str>,
+        connections: usize,
+        chunk: usize,
+    ) -> Option<usize> {
+        match (self, legacy_raw) {
+            (Self::LegacyEnvironment, None) => {
+                Some(shared_default_readahead_window(connections, chunk))
+            }
+            _ => self.requested_window_from(legacy_raw),
+        }
+    }
+
+    fn requested_window_per_connection(self, connections: usize, chunk: usize) -> Option<usize> {
+        match self {
+            Self::LegacyEnvironment => self.requested_window_per_connection_from(
+                std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref(),
+                connections,
+                chunk,
+            ),
+            Self::Disabled | Self::Window(_) => {
+                self.requested_window_per_connection_from(None, connections, chunk)
+            }
+        }
+    }
+
+    /// Whether a download reads ahead with the shared default rather than a
+    /// window that was asked for.
+    fn uses_shared_default_from(self, legacy_raw: Option<&str>) -> bool {
+        matches!((self, legacy_raw), (Self::LegacyEnvironment, None))
+    }
+
+    fn uses_shared_default(self) -> bool {
+        match self {
+            Self::LegacyEnvironment => self
+                .uses_shared_default_from(std::env::var("AEROFTP_SFTP_READAHEAD").ok().as_deref()),
+            Self::Disabled | Self::Window(_) => false,
+        }
+    }
 }
 
 /// SFTP Provider
@@ -1110,7 +1187,18 @@ impl SftpProvider {
         let current_dir = self.current_dir.clone();
         let home_dir = self.home_dir.clone();
         let compression_enabled = self.compression_enabled;
-        let requested_readahead_window = self.sftp_readahead.requested_window();
+        let requested_readahead_window = self
+            .sftp_readahead
+            .requested_window_per_connection(streams, buffer_size);
+        // On a server that sends less per READ than the chunk, the shared
+        // default may grow back to the handles the release opened on each
+        // connection, never past them; a window that was asked for stays as
+        // asked (see `sftp_readahead_range_into`).
+        let readahead_grow_to = self.sftp_readahead.uses_shared_default().then(|| {
+            SFTP_READAHEAD_DEFAULT_WINDOW.min(
+                SFTP_READAHEAD_JOB_MAX_HANDLES / streams.clamp(1, SFTP_MULTI_THREAD_MAX_STREAMS),
+            )
+        });
 
         let cfg = ConcurrentRangeConfig {
             final_path: PathBuf::from(local_path),
@@ -1149,6 +1237,7 @@ impl SftpProvider {
                     compression_enabled,
                     streams,
                     requested_readahead_window,
+                    readahead_grow_to,
                     start,
                     end,
                     temp_path,
@@ -3959,6 +4048,83 @@ async fn sftp_pipelined_read_window(
     Ok(buf)
 }
 
+/// Opens `n` read handles on `full_path` at once. A server with a tighter
+/// handle limit gets fewer: when an OPEN fails, the ones that did open are
+/// closed, awaited (Drop would only queue `close_nowait`), and half as many
+/// are asked for, down to one; failing that one is the error. Cancellation
+/// covers the OPEN fan-out as well.
+async fn open_readahead_handles(
+    sftp: &SftpChannel,
+    full_path: &str,
+    n: usize,
+    cancel: &CancellationToken,
+) -> Result<Vec<russh_sftp::client::fs::File>, ProviderError> {
+    let mut n = n.max(1);
+    loop {
+        let open_fut = futures_util::future::join_all(
+            (0..n).map(|_| until_sftp_ends(&sftp.ended, sftp.open(full_path))),
+        );
+        tokio::pin!(open_fut);
+        let mut cancelled = false;
+        let opened = tokio::select! {
+            _ = cancel.cancelled() => {
+                cancelled = true;
+                // Stay in this function: wait for in-flight OPENs so their
+                // File values can be closed with await. Beyond 2s the
+                // remaining opens are dropped (close_nowait).
+                match tokio::time::timeout(std::time::Duration::from_secs(2), &mut open_fut)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(_) => {
+                        return Err(ProviderError::TransferFailed(
+                            SFTP_TRANSFER_CANCELLED.to_string(),
+                        ));
+                    }
+                }
+            }
+            result = &mut open_fut => result,
+        };
+        let mut ok = Vec::new();
+        let mut err = None;
+        for r in opened {
+            match r {
+                Ok(file) => ok.push(file),
+                Err(e) => err = Some(e),
+            }
+        }
+        if cancelled {
+            close_sftp_files(ok, &sftp.ended).await;
+            return Err(ProviderError::TransferFailed(
+                SFTP_TRANSFER_CANCELLED.to_string(),
+            ));
+        }
+        match err {
+            None => return Ok(ok),
+            Some(e) if n > 1 => {
+                close_sftp_files(ok, &sftp.ended).await;
+                let reduced = (n / 2).max(1);
+                tracing::warn!(
+                    "SFTP read-ahead: opening {} handles failed ({}); retrying with {}",
+                    n,
+                    e,
+                    reduced
+                );
+                n = reduced;
+            }
+            Some(e) => {
+                close_sftp_files(ok, &sftp.ended).await;
+                return Err(classify_russh_err(e, |s| {
+                    ProviderError::TransferFailed(format!(
+                        "Failed to open remote file (readahead): {}",
+                        s
+                    ))
+                }));
+            }
+        }
+    }
+}
+
 /// One READ of at most `want` bytes at `abs_off`: what the server sends back
 /// for a single request, which russh-sftp asks for no larger than the
 /// session's read length. Empty at end of file.
@@ -4114,6 +4280,7 @@ async fn sftp_readahead_range_into(
     out: &mut tokio::fs::File,
     chunk: usize,
     window: usize,
+    grow_to: Option<usize>,
     aggregate: &Arc<AtomicU64>,
     cancel: &CancellationToken,
     total_for_progress: u64,
@@ -4126,75 +4293,8 @@ async fn sftp_readahead_range_into(
     }
     let chunk = (chunk.max(4096)) as u64;
     let n_chunks = expected.div_ceil(chunk).max(1);
-    let mut eff_window = (window.clamp(1, SFTP_READAHEAD_MAX_WINDOW) as u64).min(n_chunks) as usize;
-
-    // Open concurrently, but degrade on servers with a tighter handle limit.
-    // Cancellation covers the OPEN fan-out as well as subsequent reads.
-    // Successful opens from a failed batch are closed and awaited before
-    // retrying with a smaller window: Drop would only queue close_nowait.
-    let handles = loop {
-        let open_fut = futures_util::future::join_all(
-            (0..eff_window).map(|_| until_sftp_ends(&sftp.ended, sftp.open(full_path))),
-        );
-        tokio::pin!(open_fut);
-        let mut cancelled = false;
-        let opened = tokio::select! {
-            _ = cancel.cancelled() => {
-                cancelled = true;
-                // Stay in this function: wait for in-flight OPENs so their
-                // File values can be closed with await. Beyond 2s the
-                // remaining opens are dropped (close_nowait).
-                match tokio::time::timeout(std::time::Duration::from_secs(2), &mut open_fut)
-                    .await
-                {
-                    Ok(r) => r,
-                    Err(_) => {
-                        return Err(ProviderError::TransferFailed(
-                            SFTP_TRANSFER_CANCELLED.to_string(),
-                        ));
-                    }
-                }
-            }
-            result = &mut open_fut => result,
-        };
-        let mut ok = Vec::new();
-        let mut err = None;
-        for r in opened {
-            match r {
-                Ok(file) => ok.push(file),
-                Err(e) => err = Some(e),
-            }
-        }
-        if cancelled {
-            close_sftp_files(ok, &sftp.ended).await;
-            return Err(ProviderError::TransferFailed(
-                SFTP_TRANSFER_CANCELLED.to_string(),
-            ));
-        }
-        match err {
-            None => break ok,
-            Some(e) if eff_window > 1 => {
-                close_sftp_files(ok, &sftp.ended).await;
-                let reduced = (eff_window / 2).max(1);
-                tracing::warn!(
-                    "SFTP read-ahead: opening {} handles failed ({}); retrying with {}",
-                    eff_window,
-                    e,
-                    reduced
-                );
-                eff_window = reduced;
-            }
-            Some(e) => {
-                close_sftp_files(ok, &sftp.ended).await;
-                return Err(classify_russh_err(e, |s| {
-                    ProviderError::TransferFailed(format!(
-                        "Failed to open remote file (readahead): {}",
-                        s
-                    ))
-                }));
-            }
-        }
-    };
+    let eff_window = (window.clamp(1, SFTP_READAHEAD_MAX_WINDOW) as u64).min(n_chunks) as usize;
+    let handles = open_readahead_handles(sftp, full_path, eff_window, cancel).await?;
 
     // One chunk, one READ. russh-sftp cuts a READ at the session's read length,
     // and OpenSSH's (261120 bytes) is 1 KiB under the 256 KiB default chunk:
@@ -4246,6 +4346,37 @@ async fn sftp_readahead_range_into(
     let rest_start = start + first.len() as u64;
     let rest = expected - first.len() as u64;
     let n_chunks = rest.div_ceil(chunk);
+
+    // Each handle keeps one READ in flight, so on a server that sends less
+    // per READ than the configured chunk a window holds fewer bytes than it
+    // was sized for. With `grow_to`, the window grows back toward those bytes,
+    // but never past `grow_to` handles (the handles the release opened on a
+    // connection): a server with a small read length gets no less depth than
+    // before and no new load. Without it the window stays as asked. A server
+    // that will not open more handles leaves the read-ahead with the ones it
+    // already has; the bytes already read are kept either way.
+    if let Some(grow_to) = grow_to.filter(|_| chunk < configured) {
+        let target = usize::try_from(handles.len() as u64 * configured / chunk)
+            .unwrap_or(usize::MAX)
+            .min(grow_to)
+            .min(SFTP_READAHEAD_MAX_WINDOW)
+            .min(usize::try_from(n_chunks).unwrap_or(usize::MAX));
+        if target > handles.len() {
+            match open_readahead_handles(sftp, full_path, target - handles.len(), cancel).await {
+                Ok(more) => handles.extend(more),
+                Err(e) if is_transfer_cancellation(&e) => {
+                    close_sftp_files(handles, &sftp.ended).await;
+                    return Err(e);
+                }
+                Err(e) => tracing::warn!(
+                    "SFTP read-ahead: no more handles ({}); reading with {}",
+                    e,
+                    handles.len()
+                ),
+            }
+        }
+    }
+    let eff_window = handles.len();
 
     // `eff_window` readers -> one writer. The writer owns `out` (no cursor race)
     // and is the sole caller of `on_progress`.
@@ -4489,6 +4620,7 @@ async fn sftp_readahead_download(
         &mut out,
         chunk,
         window,
+        None,
         &aggregate,
         cancel,
         total_size,
@@ -4906,6 +5038,7 @@ async fn sftp_download_one_range(
     compression_enabled: bool,
     parallel_connections: usize,
     requested_readahead_window: Option<usize>,
+    readahead_grow_to: Option<usize>,
     start: u64,
     end: u64,
     temp_path: PathBuf,
@@ -4955,6 +5088,7 @@ async fn sftp_download_one_range(
                 &mut out,
                 buffer_size,
                 window,
+                readahead_grow_to,
                 &aggregate,
                 &cancel,
                 expected,
@@ -5240,6 +5374,72 @@ mod tests {
         assert_eq!(
             SftpReadaheadSetting::from_explicit(Some(1)),
             SftpReadaheadSetting::Disabled
+        );
+    }
+
+    #[test]
+    fn the_default_readahead_window_is_shared_by_the_connections_of_one_download() {
+        let legacy = SftpReadaheadSetting::LegacyEnvironment;
+        let kib = 1024;
+        // One connection keeps the measured default.
+        assert_eq!(
+            legacy.requested_window_per_connection_from(None, 1, 256 * kib),
+            Some(SFTP_READAHEAD_DEFAULT_WINDOW)
+        );
+        // The CLI default splits a large file over four connections: each one
+        // took the whole window, 128 READs of 256 KiB in flight for one file.
+        assert_eq!(
+            legacy.requested_window_per_connection_from(None, 4, 256 * kib),
+            Some(16),
+            "each of four connections must keep a quarter of the shared budget, not a whole window"
+        );
+        // The budget is bytes: a smaller chunk gets more READs, the same depth.
+        assert_eq!(
+            legacy.requested_window_per_connection_from(None, 4, 32 * kib),
+            Some(128)
+        );
+        for chunk in [32 * kib, 64 * kib, 256 * kib, 1024 * kib] {
+            for connections in 1..=SFTP_MULTI_THREAD_MAX_STREAMS {
+                let each = legacy
+                    .requested_window_per_connection_from(None, connections, chunk)
+                    .unwrap();
+                assert!(
+                    each >= 2,
+                    "{connections} connections of {chunk}-byte chunks: {each} READs is no read-ahead"
+                );
+                let bytes = (each * chunk * connections) as u64;
+                let budget = SFTP_READAHEAD_SHARED_BUDGET
+                    .max(SFTP_READAHEAD_MIN_SHARED_BYTES * connections as u64)
+                    .max((2 * chunk * connections) as u64);
+                assert!(
+                    bytes <= budget,
+                    "{connections} connections of {chunk}-byte chunks keep {bytes} bytes in flight for one download"
+                );
+            }
+        }
+        // Only the shared default may grow back on a server with a small read
+        // length; whatever was asked stays as asked.
+        assert!(legacy.uses_shared_default_from(None));
+        assert!(!legacy.uses_shared_default_from(Some("64")));
+        assert!(!SftpReadaheadSetting::from_explicit(Some(16)).uses_shared_default_from(None));
+        assert!(!SftpReadaheadSetting::Disabled.uses_shared_default_from(None));
+        // Whatever was asked stays a per-connection value.
+        let explicit = SftpReadaheadSetting::from_explicit(Some(16));
+        assert_eq!(
+            explicit.requested_window_per_connection_from(None, 8, 256 * kib),
+            Some(16)
+        );
+        assert_eq!(
+            SftpReadaheadSetting::Disabled.requested_window_per_connection_from(None, 4, 256 * kib),
+            None
+        );
+        assert_eq!(
+            legacy.requested_window_per_connection_from(Some("64"), 4, 256 * kib),
+            Some(64)
+        );
+        assert_eq!(
+            legacy.requested_window_per_connection_from(Some("off"), 4, 256 * kib),
+            None
         );
     }
 
@@ -6506,12 +6706,17 @@ mod tests {
     /// With `announce`, it states `cap` as its read length through
     /// `limits@openssh.com`, as OpenSSH does; without it, it states nothing and
     /// simply sends less than it was asked for, as other servers do. With
-    /// `first_cap`, its very first reply is shorter still.
+    /// `first_cap`, its very first reply is shorter still. With `open_limit`,
+    /// it refuses an OPEN while that many handles are open, and it keeps the
+    /// most handles that were ever open at once.
     struct ReadCappingServer {
         data: Arc<Vec<u8>>,
         cap: usize,
         announce: bool,
         first_cap: Option<usize>,
+        open_limit: Option<usize>,
+        open_now: usize,
+        max_open: Arc<std::sync::atomic::AtomicUsize>,
         reads: Arc<std::sync::Mutex<Vec<(u64, u32)>>>,
     }
 
@@ -6522,6 +6727,9 @@ mod tests {
                 cap,
                 announce,
                 first_cap: None,
+                open_limit: None,
+                open_now: 0,
+                max_open: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 reads: Arc::new(std::sync::Mutex::new(Vec::new())),
             }
         }
@@ -6587,6 +6795,12 @@ mod tests {
             _pflags: russh_sftp::protocol::OpenFlags,
             _attrs: russh_sftp::protocol::FileAttributes,
         ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            if self.open_limit.is_some_and(|limit| self.open_now >= limit) {
+                return Err(russh_sftp::protocol::StatusCode::Failure);
+            }
+            self.open_now += 1;
+            self.max_open
+                .fetch_max(self.open_now, std::sync::atomic::Ordering::SeqCst);
             Ok(russh_sftp::protocol::Handle {
                 id,
                 handle: filename,
@@ -6598,6 +6812,7 @@ mod tests {
             id: u32,
             _handle: String,
         ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            self.open_now = self.open_now.saturating_sub(1);
             Ok(GoingAwayServer::ok(id))
         }
 
@@ -6713,6 +6928,105 @@ mod tests {
             wrong.is_empty(),
             "a read-ahead chunk took more than one READ: {wrong:#?}"
         );
+    }
+
+    /// Runs the read-ahead over the whole of `size` bytes of `/down.bin` on the
+    /// provider's session, with 256 KiB chunks, and returns what landed in the
+    /// output.
+    async fn readahead_into_file(
+        provider: &SftpProvider,
+        size: u64,
+        window: usize,
+        grow_to: Option<usize>,
+    ) -> Result<Vec<u8>, ProviderError> {
+        use tokio::io::AsyncWriteExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("out.bin");
+        let mut out = tokio::fs::File::create(&path).await.expect("output file");
+        out.set_len(size).await.expect("output size");
+        sftp_readahead_range_into(
+            provider.get_sftp().expect("session"),
+            "/down.bin",
+            0,
+            size,
+            &mut out,
+            256 * 1024,
+            window,
+            grow_to,
+            &Arc::new(AtomicU64::new(0)),
+            &CancellationToken::new(),
+            size,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await?;
+        out.flush().await.expect("flush");
+        drop(out);
+        Ok(std::fs::read(&path).expect("read back"))
+    }
+
+    /// One READ is in flight per handle, so on a server that sends 32 KiB per
+    /// READ the 16 handles a shared default gives each of four connections
+    /// would hold a quarter of the bytes the release kept in flight. The shared
+    /// window grows back to the release's 32 handles a connection, and never
+    /// past them; a window that was asked for stays as asked.
+    #[tokio::test]
+    async fn a_shared_readahead_grows_back_to_the_release_handles_and_no_further() {
+        let data = pattern(9 * 1024 * 1024 + 4_321);
+        let size = data.len() as u64;
+        let mut wrong = Vec::new();
+        for (case, window, grow_to, handles) in [
+            (
+                "the shared default",
+                16,
+                Some(SFTP_READAHEAD_DEFAULT_WINDOW),
+                SFTP_READAHEAD_DEFAULT_WINDOW,
+            ),
+            ("a window that was asked for", 8, None, 8),
+        ] {
+            let server = ReadCappingServer::new(&data, 32 * 1024, false);
+            let max_open = Arc::clone(&server.max_open);
+            let provider = server.serve().await;
+            let got = readahead_into_file(&provider, size, window, grow_to)
+                .await
+                .unwrap_or_else(|e| panic!("{case}: {e:?}"));
+            if got != data {
+                wrong.push(format!("{case}: the bytes differ"));
+            }
+            let open = max_open.load(std::sync::atomic::Ordering::SeqCst);
+            if open != handles {
+                wrong.push(format!(
+                    "{case}: {open} handles kept {} KiB in flight, expected {handles} handles",
+                    open * 32
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// The handles a smaller read length asks for are opened after the first
+    /// READ, and a server that will not open them leaves the read-ahead with
+    /// the handles it already has: the range finishes, and the bytes the first
+    /// READ brought are kept.
+    #[tokio::test]
+    async fn a_readahead_goes_on_with_the_handles_it_has_when_the_server_refuses_more() {
+        let data = pattern(9 * 1024 * 1024 + 4_321);
+        let mut server = ReadCappingServer::new(&data, 32 * 1024, false);
+        server.open_limit = Some(2);
+        let max_open = Arc::clone(&server.max_open);
+        let provider = server.serve().await;
+        let got = readahead_into_file(
+            &provider,
+            data.len() as u64,
+            16,
+            Some(SFTP_READAHEAD_DEFAULT_WINDOW),
+        )
+        .await
+        .unwrap_or_else(|e| {
+            panic!("the download failed when the server refused more handles: {e:?}")
+        });
+        assert!(got == data, "the downloaded bytes differ");
+        assert!(max_open.load(std::sync::atomic::Ordering::SeqCst) <= 2);
     }
 
     /// Takes at most `cap` bytes per write, as russh-sftp's `File` takes at
