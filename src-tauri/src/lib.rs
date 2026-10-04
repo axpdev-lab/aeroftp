@@ -18549,6 +18549,20 @@ pub fn run() {
                 .hidden_title(true);
             #[cfg(not(target_os = "macos"))]
             let main_builder = main_builder.decorations(false);
+            // Linux: the compositor rounds only the windows it decorates, so
+            // this borderless one had square corners, where Windows 11 rounds
+            // them itself. A transparent window lets the page cut its own
+            // (`html.rounded-window` in styles.css, set by WindowResizeEdges).
+            // Only on a composited screen: without a compositor the
+            // transparent pixels would show black instead of the desktop.
+            #[cfg(target_os = "linux")]
+            let main_builder = if gtk::gdk::Screen::default().is_some_and(|s| s.is_composited()) {
+                main_builder
+                    .transparent(true)
+                    .initialization_script("window.__AEROFTP_ROUNDED_CORNERS__ = true;")
+            } else {
+                main_builder
+            };
             let main_builder = match portable::webview_data_dir() {
                 Some(dir) => main_builder.data_directory(dir),
                 None => main_builder,

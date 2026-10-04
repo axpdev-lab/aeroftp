@@ -123,6 +123,26 @@ body {
   /* Tighter tracking */
 }
 
+/* Rounded corners of the Linux main window, which is borderless and
+   transparent there (lib.rs) and so draws its own. The class is set by
+   WindowResizeEdges, never while maximized or fullscreen. html and body stay
+   transparent because a background on either paints the whole window,
+   corners included: #root carries it instead. clip-path, unlike overflow,
+   also cuts the fixed overlays such as dialog backdrops. */
+html.rounded-window,
+html.rounded-window body {
+  background: transparent;
+}
+
+html.rounded-window body {
+  clip-path: inset(0 round 10px);
+}
+
+html.rounded-window #root {
+  min-height: 100vh;
+  background-color: var(--color-bg-secondary);
+}
+
 /* Scrollbar Styling - Main window nearly invisible */
 * {
   scrollbar-width: thin;
