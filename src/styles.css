@@ -125,7 +125,8 @@ body {
 
 /* Rounded corners of the Linux main window, which is borderless and
    transparent there (lib.rs) and so draws its own. The class is set by
-   WindowResizeEdges, never while maximized or fullscreen. html and body stay
+   WindowResizeEdges, never while maximized or fullscreen. 8px is the
+   radius Windows 11 gives its windows. html and body stay
    transparent because a background on either paints the whole window,
    corners included: #root carries it instead. clip-path, unlike overflow,
    also cuts the fixed overlays such as dialog backdrops. */
@@ -135,7 +136,7 @@ html.rounded-window body {
 }
 
 html.rounded-window body {
-  clip-path: inset(0 round 10px);
+  clip-path: inset(0 round 8px);
 }
 
 html.rounded-window #root {
