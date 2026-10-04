@@ -547,7 +547,11 @@ jobs:
           # hide appimagetool's exit code.
           cat appimagetool.log
           # The pinned runtime must be the one embedded: appimagetool says when
-          # it fetches its own instead.
+          # it fetches its own instead. This reads appimagetool's own message,
+          # which cannot change while appimagetool is pinned by digest above:
+          # whoever moves that pin checks the string still matches. A byte
+          # comparison of the AppImage head with the runtime cannot work, since
+          # -u writes the update information into a section of the runtime.
           if grep -q 'Downloading runtime file' appimagetool.log; then
             echo "::error::appimagetool downloaded a runtime instead of using the pinned runtime-x86_64"
             exit 1
