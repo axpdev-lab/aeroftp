@@ -624,9 +624,13 @@ impl ImageKitProvider {
             self.start_folder_job("moveFolder", &renamed, &dest_parent, false)
                 .await
                 .map_err(|e| {
+                    // The move job may only be unfinished, not failed: say
+                    // where the folder is until it completes, and that a
+                    // retry of the original rename cannot find it any more.
                     ProviderError::Other(format!(
-                        "renamed {source} to {renamed}, but moving it to {dest_parent} failed, \
-                         so it is still there: {e}"
+                        "renamed {source} to {renamed}, but moving it to {dest_parent} did not \
+                         complete, so until it does the folder is at {renamed}; move it from \
+                         there, since {source} no longer exists: {e}"
                     ))
                 })
         } else {

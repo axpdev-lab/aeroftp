@@ -1367,13 +1367,43 @@ impl B2Provider {
     /// one makes the one before it current again, and the source was still
     /// there after the rename: it is then hidden, as `delete` hides a file,
     /// which keeps those older versions.
-    async fn remove_renamed_source(&self, name: &str, file_id: &str) -> Result<(), ProviderError> {
-        self.do_delete_file_version(name, file_id).await?;
-        match self.lookup_file_id(name).await {
-            Ok(_) => self.do_hide_file(name).await.map(|_| ()),
-            Err(ProviderError::NotFound(_)) => Ok(()),
-            Err(e) => Err(e),
+    ///
+    /// A token that expires between the steps is renewed for the step that
+    /// failed, never by running the earlier steps again: deleting a version
+    /// already gone would turn a finished rename into an error.
+    async fn remove_renamed_source(
+        &mut self,
+        name: &str,
+        file_id: &str,
+    ) -> Result<(), ProviderError> {
+        if let Err(e) = self.do_delete_file_version(name, file_id).await {
+            if !(is_b2_token_failure(&e) && self.maybe_reauth(&e).await) {
+                return Err(e);
+            }
+            self.do_delete_file_version(name, file_id).await?;
         }
+        let still_listed = match self.lookup_file_id(name).await {
+            Err(e) if is_b2_token_failure(&e) => {
+                if self.maybe_reauth(&e).await {
+                    self.lookup_file_id(name).await
+                } else {
+                    Err(e)
+                }
+            }
+            other => other,
+        };
+        match still_listed {
+            Ok(_) => {}
+            Err(ProviderError::NotFound(_)) => return Ok(()),
+            Err(e) => return Err(e),
+        }
+        if let Err(e) = self.do_hide_file(name).await {
+            if !(is_b2_token_failure(&e) && self.maybe_reauth(&e).await) {
+                return Err(e);
+            }
+            self.do_hide_file(name).await?;
+        }
+        Ok(())
     }
 
     /// The copy half of [`Self::rename_large_file_inner`]: b2_copy_part into a
@@ -1510,6 +1540,13 @@ impl B2Provider {
     ) -> Result<(), ProviderError> {
         let prefix = format!("{from_key}/");
         let to_prefix = format!("{to_key}/");
+        // Into itself the copies land under the prefix being moved, and the
+        // listing that follows the deletes would take them for originals.
+        if to_prefix.starts_with(&prefix) {
+            return Err(ProviderError::InvalidPath(format!(
+                "cannot move the folder {from} into itself ({to}): nothing was changed"
+            )));
+        }
         let occupant_is_file = match self.lookup_file_id(to_key).await {
             Ok(_) => true,
             Err(ProviderError::NotFound(_)) => false,
@@ -1568,12 +1605,19 @@ impl B2Provider {
         }
         // On a bucket that keeps older versions, deleting the newest version
         // of a file makes the one before it current again, and the folder was
-        // still there: what is left is hidden, as `delete` hides a file.
+        // still there: those names are hidden, as `delete` hides a file. Only
+        // the names this rename deleted: a file written under the old prefix
+        // since the listing is someone else's, and stays.
+        let renamed: std::collections::HashSet<&str> =
+            files.iter().map(|(name, _, _)| name.as_str()).collect();
         let surfaced = self
             .list_files_under(&prefix)
             .await
             .map_err(|e| under_both_names(files.len(), e))?;
-        for (name, _, _) in &surfaced {
+        for (name, _, _) in surfaced
+            .iter()
+            .filter(|(name, _, _)| renamed.contains(name.as_str()))
+        {
             match self.do_hide_file(name).await {
                 Ok(_) | Err(ProviderError::NotFound(_)) => {}
                 Err(e) => return Err(under_both_names(files.len(), e)),
@@ -1683,17 +1727,9 @@ impl B2Provider {
             Err(e) => return Err(e),
         };
         // Delete (hard) the original version so this is a true rename.
-        let del = match self.remove_renamed_source(&from_key, &file_id).await {
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.remove_renamed_source(&from_key, &file_id).await
-                } else {
-                    Err(e)
-                }
-            }
-            other => other,
-        };
-        del.map_err(|e| source_delete_failed(&copied.file_name, e))
+        self.remove_renamed_source(&from_key, &file_id)
+            .await
+            .map_err(|e| source_delete_failed(&copied.file_name, e))
     }
 
     /// Streamed download to a local path. Borrows `&self` only so the trait
@@ -5320,17 +5356,20 @@ mod tests {
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
         std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     ) {
-        provider_for_rename_on(destination_taken, delete_status, false).await
+        provider_for_rename_on(destination_taken, delete_status, false, false).await
     }
 
     /// [`provider_for_rename`] on a bucket that, with `keeps_versions`, holds
     /// an older version of every file: deleting the newest one makes that
     /// one current, so the name is still listed until it is hidden. Without
-    /// it a deleted version is gone from the listings.
+    /// it a deleted version is gone from the listings. With `late_file`,
+    /// `d/late.txt` appears under the folder once the first copy is made, as
+    /// a file someone else writes there during the rename.
     async fn provider_for_rename_on(
         destination_taken: bool,
         delete_status: u16,
         keeps_versions: bool,
+        late_file: bool,
     ) -> (
         B2Provider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -5341,6 +5380,7 @@ mod tests {
         let copies: Arc<std::sync::Mutex<Vec<serde_json::Value>>> = Arc::default();
         let deleted: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::default();
         let hidden: Arc<std::sync::Mutex<std::collections::HashSet<String>>> = Arc::default();
+        let copied_once = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let seen = Arc::clone(&ops);
         let seen_copies = Arc::clone(&copies);
         let app = axum::Router::new().fallback(axum::routing::any(
@@ -5349,6 +5389,7 @@ mod tests {
                 let seen_copies = Arc::clone(&seen_copies);
                 let deleted = Arc::clone(&deleted);
                 let hidden = Arc::clone(&hidden);
+                let copied_once = Arc::clone(&copied_once);
                 async move {
                     let op = req.uri().path().rsplit('/').next().unwrap_or("").to_string();
                     let body: serde_json::Value = serde_json::from_slice(
@@ -5358,6 +5399,7 @@ mod tests {
                     seen.lock().unwrap().push(op.clone());
                     if op == "b2_copy_file" {
                         seen_copies.lock().unwrap().push(body.clone());
+                        copied_once.store(true, std::sync::atomic::Ordering::SeqCst);
                     }
                     let json = |status: u16, value: serde_json::Value| {
                         axum::response::Response::builder()
@@ -5390,7 +5432,14 @@ mod tests {
                                 }
                                 // `d` is a folder: only `d/x.txt` holds it.
                                 Some("d") | Some("d/") => {
-                                    listed("d/x.txt", "x-id").into_iter().collect()
+                                    let mut files: Vec<serde_json::Value> =
+                                        listed("d/x.txt", "x-id").into_iter().collect();
+                                    if late_file
+                                        && copied_once.load(std::sync::atomic::Ordering::SeqCst)
+                                    {
+                                        files.extend(listed("d/late.txt", "late-id"));
+                                    }
+                                    files
                                 }
                                 _ => vec![],
                             };
@@ -5567,7 +5616,7 @@ mod tests {
     /// after the rename. It is hidden now, as `delete` hides a file.
     #[tokio::test]
     async fn a_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
-        let (mut provider, ops, _) = provider_for_rename_on(false, 200, true).await;
+        let (mut provider, ops, _) = provider_for_rename_on(false, 200, true, false).await;
         provider.rename("/a.txt", "/b.txt").await.expect("rename");
         assert_eq!(
             ops.lock().unwrap().last().map(String::as_str),
@@ -5577,10 +5626,45 @@ mod tests {
         assert!(left.is_empty(), "{left:?}");
     }
 
+    /// Into one of its own subfolders the copies land under the prefix being
+    /// moved, and the pass that hides what the deletes left in view took them
+    /// for originals: the folder vanished under both names behind an Ok. It
+    /// is refused before anything is copied.
+    #[tokio::test]
+    async fn a_folder_moved_into_itself_is_refused_before_copying() {
+        let (mut provider, ops, _) = provider_for_rename(false, 200).await;
+        let outcome = provider.rename("/d", "/d/sub").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
+            "{:?}",
+            ops.lock().unwrap()
+        );
+    }
+
+    /// The pass after the deletes hides only the names this rename deleted:
+    /// a file written under the old prefix during the rename stays in view.
+    #[tokio::test]
+    async fn a_file_written_under_the_folder_during_its_rename_is_not_hidden() {
+        let (mut provider, _, _) = provider_for_rename_on(false, 200, true, true).await;
+        provider.rename("/d", "/e").await.expect("folder rename");
+        let left: Vec<String> = provider
+            .list_files_under("d/")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|(name, _, _)| name)
+            .collect();
+        assert_eq!(left, ["d/late.txt"]);
+    }
+
     /// The same for a folder: no file under the old prefix stays in view.
     #[tokio::test]
     async fn a_folder_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
-        let (mut provider, _, _) = provider_for_rename_on(false, 200, true).await;
+        let (mut provider, _, _) = provider_for_rename_on(false, 200, true, false).await;
         provider.rename("/d", "/e").await.expect("folder rename");
         let left = provider.list_files_under("d/").await.unwrap();
         assert!(left.is_empty(), "{left:?}");
