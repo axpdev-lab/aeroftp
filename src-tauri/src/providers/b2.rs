@@ -1386,17 +1386,7 @@ impl B2Provider {
             }
             self.do_delete_file_version(name, file_id).await?;
         }
-        let still_listed = match self.lookup_file_id(name).await {
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.lookup_file_id(name).await
-                } else {
-                    Err(e)
-                }
-            }
-            other => other,
-        };
-        match still_listed {
+        match self.lookup_file_id_renewing(name).await {
             Ok(_) => {}
             Err(ProviderError::NotFound(_)) => return Ok(()),
             Err(e) => return Err(e),
@@ -1566,7 +1556,7 @@ impl B2Provider {
                 "cannot move the folder {from} into itself ({to}): nothing was changed"
             )));
         }
-        let occupant_is_file = match self.lookup_file_id(to_key).await {
+        let occupant_is_file = match self.lookup_file_id_renewing(to_key).await {
             Ok(_) => true,
             Err(ProviderError::NotFound(_)) => false,
             Err(e) => return Err(e),
@@ -1686,17 +1676,7 @@ impl B2Provider {
             return Ok(());
         }
         self.validate_header_budget(&to_key, 0)?;
-        let looked_up = match self.lookup_file_id(&from_key).await {
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.lookup_file_id(&from_key).await
-                } else {
-                    return Err(e);
-                }
-            }
-            other => other,
-        };
-        let (file_id, size) = match looked_up {
+        let (file_id, size) = match self.lookup_file_id_renewing(&from_key).await {
             Ok(v) => v,
             // No file holds the name: a folder is only the prefix of the files
             // under it, and moves as all of them.
@@ -1710,7 +1690,7 @@ impl B2Provider {
         // The trait promises no overwrite, and b2_copy_file would put a new
         // version on top of whatever the destination holds: look first.
         if !overwrite {
-            match self.lookup_file_id(&to_key).await {
+            match self.lookup_file_id_renewing(&to_key).await {
                 Ok(_) => return Err(ProviderError::AlreadyExists(to.to_string())),
                 Err(ProviderError::NotFound(_)) => {}
                 Err(e) => return Err(e),
@@ -2146,11 +2126,29 @@ impl B2Provider {
     /// Whether a folder is at `key`: B2 has no folders, only names under
     /// `key/` (a `.bzEmpty` marker included), so one listing of that prefix
     /// answers.
-    async fn is_a_folder(&self, key: &str) -> Result<bool, ProviderError> {
-        let listed = self
-            .list_file_names(&format!("{key}/"), None, None, 1)
-            .await?;
+    /// Renews an expired token and lists again: the rename that asks has
+    /// changed nothing yet, so a token expiring here must not end it.
+    async fn is_a_folder(&mut self, key: &str) -> Result<bool, ProviderError> {
+        let prefix = format!("{key}/");
+        let listed = match self.list_file_names(&prefix, None, None, 1).await {
+            Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => {
+                self.list_file_names(&prefix, None, None, 1).await
+            }
+            other => other,
+        }?;
         Ok(!listed.files.is_empty())
+    }
+
+    /// `lookup_file_id`, renewing an expired token and looking once more.
+    /// Every look a rename makes before it changes anything goes through
+    /// here, so a token that expires between two of them never stops it.
+    async fn lookup_file_id_renewing(&mut self, key: &str) -> Result<(String, u64), ProviderError> {
+        match self.lookup_file_id(key).await {
+            Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => {
+                self.lookup_file_id(key).await
+            }
+            other => other,
+        }
     }
 
     /// Look up the latest version's `fileId` and `contentLength` for a given key.
@@ -3735,17 +3733,7 @@ impl StorageProvider for B2Provider {
         let from_key = self.b2_key(&from_abs);
         let to_key = self.b2_key(&to_abs);
         self.validate_header_budget(&to_key, 0)?;
-        let (file_id, size) = match self.lookup_file_id(&from_key).await {
-            Ok(v) => v,
-            Err(e) if is_b2_token_failure(&e) => {
-                if self.maybe_reauth(&e).await {
-                    self.lookup_file_id(&from_key).await?
-                } else {
-                    return Err(e);
-                }
-            }
-            Err(e) => return Err(e),
-        };
+        let (file_id, size) = self.lookup_file_id_renewing(&from_key).await?;
         if size > COPY_MAX_SIZE {
             // b2_copy_file is rejected above 5 GB. The chunked b2_copy_part
             // workflow is only wired into rename() today (it always
@@ -5657,7 +5645,9 @@ mod tests {
     /// A B2 double for a folder rename of `d` (two files on two listing pages)
     /// whose token expires once, on the `expire_on`-th call of `expire_op`
     /// (counted from 1; for `b2_list_file_names`, only the calls that ask
-    /// for the second page count). A renewal through `b2_authorize_account`
+    /// for the second page count, and `b2_list_file_names <prefix>` counts
+    /// the one-file looks a rename makes first: `d` and `d/` for the source,
+    /// `e` and `e/` for the destination). A renewal through `b2_authorize_account`
     /// gives a new token that every later call accepts. Returns the provider
     /// and the operations it received, in order.
     async fn provider_whose_token_expires(
@@ -5691,8 +5681,15 @@ mod tests {
                             .body(axum::body::Body::from(value.to_string()))
                             .unwrap()
                     };
-                    let counts = op == expire_op
-                        && (op != "b2_list_file_names" || body["startFileName"] == "d/y.txt");
+                    let counts = match expire_op.split_once(' ') {
+                        Some((expire_op, prefix)) => {
+                            op == expire_op && body["prefix"] == prefix && body["maxFileCount"] == 1
+                        }
+                        None => {
+                            op == expire_op
+                                && (op != "b2_list_file_names" || body["startFileName"] == "d/y.txt")
+                        }
+                    };
                     if counts {
                         let mut n = counted.lock().unwrap();
                         *n += 1;
@@ -5782,10 +5779,16 @@ mod tests {
     }
 
     /// A token can expire anywhere in a long folder rename. Each step renews
-    /// it and runs again alone: the second listing page, a copy, a delete.
+    /// it and runs again alone: the looks at the source and the destination
+    /// made before anything changes, the second listing page, a copy, a
+    /// delete.
     #[tokio::test]
     async fn a_folder_rename_renews_an_expired_token_at_any_step() {
         for (op, nth) in [
+            ("b2_list_file_names d", 1),
+            ("b2_list_file_names d/", 1),
+            ("b2_list_file_names e", 1),
+            ("b2_list_file_names e/", 1),
             ("b2_list_file_names", 1),
             ("b2_copy_file", 2),
             ("b2_delete_file_version", 1),
