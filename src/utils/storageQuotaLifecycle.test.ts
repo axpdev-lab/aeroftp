@@ -255,6 +255,21 @@ describe('App used-storage scan display', () => {
     expect(f.quota.current).toEqual({ used: 123, total: 100, free: 0, files: 1 });
   });
 
+  it('puts back the figure a suspect empty scan replaced', async () => {
+    const scan = deferred<ScanResult>();
+    const progress = withProgress();
+    const f = fixture('usable quota', { holdFirstProfileRead: false, scan: () => scan.promise, listen: progress.listen });
+    f.quota.current = { used: 5, total: 100, free: 95 };
+    const running = f.runtime.scan();
+    await vi.waitFor(() => expect(f.commands.map(c => c.command)).toContain('provider_scan_used'));
+    progress.emit({ payload: { used: 0, file_count: 0, scanning: false } });
+    expect(f.quota.current).toEqual({ used: 0, total: 100, free: 100, files: 0 });
+    // Folders listed, no file counted: a Depth: infinity read as Depth: 1.
+    scan.resolve({ ...completeScan, used: 0, file_count: 0, dir_count: 4 });
+    await running;
+    expect(f.quota.current).toEqual({ used: 5, total: 100, free: 95 });
+  });
+
   it('shows the running figure with no total too', async () => {
     const scan = deferred<ScanResult>();
     const progress = withProgress();

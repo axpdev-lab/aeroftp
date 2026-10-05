@@ -3711,6 +3711,9 @@ const App: React.FC = () => {
         // overwriting a good number with a false 0. A genuinely empty
         // location (0 files AND 0 directories) falls through to the success
         // branch below and is recorded as 0 bytes.
+        // Its running figure is on screen by now (every progress report
+        // writes it): put back what the scan replaced, as cancel and failure do.
+        restoreQuotaBeforeScan();
         notify.error(
           t('statusBar.usedScanFailed'),
           t('statusBar.usedScanEmpty', { path: scanRoot }),

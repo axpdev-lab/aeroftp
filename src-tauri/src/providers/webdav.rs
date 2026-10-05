@@ -2265,18 +2265,19 @@ impl WebDavProvider {
                 self.parse_propfind_response(&xml, &list_path)
             }
             other => {
-                // A refusal, not a passing failure: the server will answer the
-                // same next time. Credentials (401) and throttling (408, 429)
-                // say nothing about Depth: infinity, and neither does a 5xx
-                // other than 501 Not Implemented.
-                let passing = matches!(
+                // Only the answers that refuse the depth itself are remembered:
+                // 403 (RFC 4918's answer to a refused infinite depth), 400,
+                // 405 and 501. Any other status says something else (a missing
+                // root, a lock, credentials, throttling, a stopped redirect),
+                // and taking it for a refusal would cost the folder walk for
+                // the rest of the session on a server that supports the depth.
+                if matches!(
                     other,
-                    StatusCode::UNAUTHORIZED
-                        | StatusCode::REQUEST_TIMEOUT
-                        | StatusCode::TOO_MANY_REQUESTS
-                ) || (other.is_server_error()
-                    && other != StatusCode::NOT_IMPLEMENTED);
-                if !passing {
+                    StatusCode::FORBIDDEN
+                        | StatusCode::BAD_REQUEST
+                        | StatusCode::METHOD_NOT_ALLOWED
+                        | StatusCode::NOT_IMPLEMENTED
+                ) {
                     self.infinity_refused = true;
                 }
                 Err(ProviderError::ServerError(format!(
@@ -7708,7 +7709,12 @@ mod infinity_refusal_tests {
     async fn a_refusing_status_is_remembered_and_a_passing_one_is_not() {
         for (status, asked_twice) in [
             (StatusCode::FORBIDDEN, false),
+            (StatusCode::BAD_REQUEST, false),
+            (StatusCode::METHOD_NOT_ALLOWED, false),
             (StatusCode::NOT_IMPLEMENTED, false),
+            (StatusCode::NOT_FOUND, true),
+            (StatusCode::FOUND, true),
+            (StatusCode::LOCKED, true),
             (StatusCode::UNAUTHORIZED, true),
             (StatusCode::TOO_MANY_REQUESTS, true),
             (StatusCode::SERVICE_UNAVAILABLE, true),
