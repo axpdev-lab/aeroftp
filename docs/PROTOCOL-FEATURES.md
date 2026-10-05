@@ -171,6 +171,13 @@ folder made with mkdir on that preset is not kept until a file is uploaded
 into it. A file that already has the folder's name is left in place and the
 mkdir says so. `s3_dir_markers=false` on any other S3 profile skips the marker
 the same way, and `s3_dir_markers=true` writes it even on the Filen preset.
+A download of a file this session just uploaded waits up to 10 seconds when
+the first GET answers 404. Filen Desktop keeps the object in its write cache
+for about 5 seconds (`--vfs-write-back 5s`) before it can be read back.
+A file that is already gone from the account but still sits in that cache is
+invisible to HEAD, so an upload into its name still answers 500. That 500 is
+the upload itself. Delete the stale file in Filen, and clear it from the
+Filen Desktop cache, before trying again.
 
 S3 profiles exported to rclone enable `directory_markers = true`. For older
 exports or independently configured remotes, enable that setting in the S3

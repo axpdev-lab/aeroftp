@@ -410,6 +410,10 @@ pub struct S3Provider {
     /// sessions, retired at completion/abort; no upload payload is retained.
     multipart_baselines:
         Arc<std::sync::Mutex<HashMap<String, super::s3_delta_baseline::MultipartBaseline>>>,
+    /// Keys uploaded this session while directory markers are skipped, and when.
+    /// A GET of one of them can 404 until `rclone serve s3` finishes its
+    /// write-back. Shared across clones of this provider.
+    recent_markerless_uploads: Arc<std::sync::Mutex<HashMap<String, tokio::time::Instant>>>,
     #[cfg(test)]
     baseline_test_path: Option<PathBuf>,
     config: S3Config,
@@ -620,6 +624,7 @@ impl S3Provider {
             current_prefix: String::new(),
             connected: false,
             multipart_baselines: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            recent_markerless_uploads: Arc::new(std::sync::Mutex::new(HashMap::new())),
             #[cfg(test)]
             baseline_test_path: None,
             clock_offset_secs: 0,
@@ -4040,6 +4045,71 @@ impl S3Provider {
         }
     }
 
+    /// How long a GET may wait for an object this session just uploaded.
+    /// Filen Desktop runs `rclone serve s3 --vfs-write-back 5s`, so the object
+    /// is not visible for about five seconds. Ten seconds covers that copy.
+    const MARKERLESS_WRITE_BACK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+    fn note_markerless_upload(&self, key: &str) {
+        if !self.config.skip_dir_markers {
+            return;
+        }
+        self.recent_markerless_uploads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key.to_string(), tokio::time::Instant::now());
+    }
+
+    fn markerless_upload_is_fresh(&self, key: &str) -> bool {
+        if !self.config.skip_dir_markers {
+            return false;
+        }
+        let mut noted = self
+            .recent_markerless_uploads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let cutoff = tokio::time::Instant::now()
+            .checked_sub(Self::MARKERLESS_WRITE_BACK_WAIT)
+            .unwrap_or_else(tokio::time::Instant::now);
+        noted.retain(|_, at| *at >= cutoff);
+        noted.contains_key(key)
+    }
+
+    fn forget_markerless_upload(&self, key: &str) {
+        self.recent_markerless_uploads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(key);
+    }
+
+    /// GET `key`. When this session uploaded it on a preset that skips
+    /// directory markers, a 404 is retried until the write-back wait ends.
+    /// Any other key returns the first response, including a 404.
+    async fn get_after_own_markerless_upload(
+        &self,
+        key: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let wait_for_write_back = self.markerless_upload_is_fresh(key);
+        let deadline = tokio::time::Instant::now() + Self::MARKERLESS_WRITE_BACK_WAIT;
+        let mut pause = std::time::Duration::from_millis(250);
+        loop {
+            let response = self.s3_request(Method::GET, key, None, None).await?;
+            if !wait_for_write_back || response.status() != StatusCode::NOT_FOUND {
+                if response.status().is_success() {
+                    self.forget_markerless_upload(key);
+                }
+                return Ok(response);
+            }
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                self.forget_markerless_upload(key);
+                return Ok(response);
+            }
+            tokio::time::sleep(pause.min(deadline.saturating_duration_since(now))).await;
+            pause = (pause * 2).min(std::time::Duration::from_secs(2));
+        }
+    }
+
     /// Whether `key` is an object, or a folder with at least one object under
     /// `key/`, in at most two listings of one key each. The rename check used
     /// to page through every key that merely starts with `key`: in a large
@@ -4898,8 +4968,10 @@ impl StorageProvider for S3Provider {
             on_progress
         };
 
-        // DL-01: Retry handled by s3_request → send_with_retry (429, 5xx)
-        let response = self.s3_request(Method::GET, key, None, None).await?;
+        // DL-01: Retry handled by s3_request → send_with_retry (429, 5xx).
+        // A 404 of a key this session just uploaded is waited out separately:
+        // rclone's write-back hides the object for a few seconds.
+        let response = self.get_after_own_markerless_upload(key).await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -5137,6 +5209,7 @@ impl StorageProvider for S3Provider {
                 if let Some(progress) = on_progress {
                     progress(total_size, total_size);
                 }
+                self.note_markerless_upload(key);
                 Ok(())
             }
             status => {
@@ -9098,6 +9171,137 @@ mod tests {
             } else {
                 result.expect("mkdir");
             }
+        }
+    }
+
+    /// rclone's write-back hides a just-uploaded object. The first GETs 404,
+    /// then the object is there, and the download must wait rather than fail.
+    #[tokio::test]
+    async fn markerless_get_retries_a_404_after_this_sessions_upload() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let gets = Arc::new(AtomicUsize::new(0));
+        let gets_for_handler = Arc::clone(&gets);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let gets = Arc::clone(&gets_for_handler);
+                async move {
+                    if req.method() == Method::GET {
+                        let seen = gets.fetch_add(1, Ordering::SeqCst);
+                        if seen < 2 {
+                            return axum::http::Response::builder()
+                                .status(404)
+                                .body(axum::body::Body::empty())
+                                .unwrap();
+                        }
+                        return axum::http::Response::builder()
+                            .status(200)
+                            .header("content-length", "2")
+                            .body(axum::body::Body::from("ok"))
+                            .unwrap();
+                    }
+                    axum::http::Response::builder()
+                        .status(200)
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let src = std::env::temp_dir().join(format!("aero-wb-src-{}", std::process::id()));
+        let dst = std::env::temp_dir().join(format!("aero-wb-dst-{}", std::process::id()));
+        std::fs::write(&src, b"hi").unwrap();
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.config.skip_dir_markers = true;
+        provider.connected = true;
+        provider
+            .upload(src.to_str().unwrap(), "/fresh.dat", None)
+            .await
+            .expect("upload");
+        provider
+            .download("/fresh.dat", dst.to_str().unwrap(), None)
+            .await
+            .expect("download waits out the 404s");
+        server.abort();
+        assert_eq!(std::fs::read(&dst).unwrap(), b"ok");
+        assert_eq!(gets.load(Ordering::SeqCst), 3, "two 404s, then the object");
+        let _ = std::fs::remove_file(&src);
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    /// A missing file this session did not upload, and a preset that still
+    /// writes markers, must not sit through the write-back wait.
+    #[tokio::test]
+    async fn markerless_get_does_not_wait_for_an_unrelated_404() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        for (skip, upload_first) in [(true, false), (false, true)] {
+            let gets = Arc::new(AtomicUsize::new(0));
+            let gets_for_handler = Arc::clone(&gets);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let gets = Arc::clone(&gets_for_handler);
+                    async move {
+                        if req.method() == Method::GET {
+                            gets.fetch_add(1, Ordering::SeqCst);
+                            return axum::http::Response::builder()
+                                .status(404)
+                                .body(axum::body::Body::empty())
+                                .unwrap();
+                        }
+                        axum::http::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::empty())
+                            .unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let src = std::env::temp_dir().join(format!(
+                "aero-wb-nowait-{}-{}",
+                skip as u8,
+                std::process::id()
+            ));
+            let dst = std::env::temp_dir().join(format!(
+                "aero-wb-nowait-dst-{}-{}",
+                skip as u8,
+                std::process::id()
+            ));
+            std::fs::write(&src, b"hi").unwrap();
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.config.skip_dir_markers = skip;
+            provider.connected = true;
+            if upload_first {
+                provider
+                    .upload(src.to_str().unwrap(), "/fresh.dat", None)
+                    .await
+                    .expect("upload");
+            }
+            let started = std::time::Instant::now();
+            let error = provider
+                .download("/fresh.dat", dst.to_str().unwrap(), None)
+                .await
+                .expect_err("the object is not there");
+            let elapsed = started.elapsed();
+            server.abort();
+            assert!(
+                matches!(error, ProviderError::NotFound(_)),
+                "skip={skip} upload_first={upload_first}: {error}"
+            );
+            assert_eq!(gets.load(Ordering::SeqCst), 1, "skip={skip} retried a 404");
+            assert!(
+                elapsed < std::time::Duration::from_secs(2),
+                "skip={skip} waited {elapsed:?}"
+            );
+            let _ = std::fs::remove_file(&src);
+            let _ = std::fs::remove_file(&dst);
         }
     }
 
