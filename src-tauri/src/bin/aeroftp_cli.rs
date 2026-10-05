@@ -45424,7 +45424,7 @@ fn note_trash_purge(
         }
         Ok(false) => {}
         Err(e) => errors.push(format!(
-            "trash purge of {} failed (item still in trash, will be auto-deleted by provider retention): {}",
+            "trash purge of {} failed, check the provider's trash: {}",
             path, e
         )),
     }

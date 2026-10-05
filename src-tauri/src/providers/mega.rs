@@ -867,8 +867,16 @@ impl StorageProvider for MegaCmdProvider {
             }
         };
         // Restored or purged meanwhile from another client: not in the bin,
-        // so not this call's to delete for good.
-        if !self.bin_handles().await?.contains(&handle) {
+        // so not this call's to delete for good. A failed listing or `mega-rm`
+        // puts the record back, so a retry still finds the node to purge.
+        let in_bin = match self.bin_handles().await {
+            Ok(handles) => handles.contains(&handle),
+            Err(e) => {
+                self.trashed.insert(at, (resolved, Ok(handle)));
+                return Err(e);
+            }
+        };
+        if !in_bin {
             return Ok(false);
         }
         match self
@@ -877,7 +885,10 @@ impl StorageProvider for MegaCmdProvider {
         {
             Ok(_) => Ok(true),
             Err(ProviderError::NotFound(_)) => Ok(false),
-            Err(e) => Err(e),
+            Err(e) => {
+                self.trashed.insert(at, (resolved, Ok(handle)));
+                Err(e)
+            }
         }
     }
 
@@ -1574,6 +1585,37 @@ mod tests {
         assert!(moves(&log).is_empty(), "{:?}", moves(&log));
         provider.replace("/a.txt", "/b.txt").await.expect("replace");
         assert_eq!(moves(&log), ["/a.txt /b.txt"]);
+    }
+
+    /// A purge that fails on the bin listing or on `mega-rm` keeps its record,
+    /// so a retry still purges the node instead of answering "nothing to purge".
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_purge_keeps_the_node_for_a_retry() {
+        let (mut provider, _log, dir) = provider_on_stand_in_megacmd();
+        let read = |file: &str| std::fs::read_to_string(dir.path().join(file)).unwrap_or_default();
+        let listing = |file: &str, line: &str| {
+            std::fs::write(dir.path().join(file), format!("{line}\n")).unwrap()
+        };
+        listing(
+            "folder-handles.txt",
+            "----  1  3  05Oct2026  08:42:55  H:run1  run.dat",
+        );
+        provider.delete("/demo/run.dat").await.unwrap();
+        listing(
+            "bin-handles.txt",
+            "----  1  3  05Oct2026  08:42:55  H:run1  run.dat",
+        );
+
+        for fault in ["bin-fails", "rm-fails"] {
+            std::fs::write(dir.path().join(fault), "").unwrap();
+            let failed = provider.delete_permanent("/demo/run.dat").await;
+            assert!(failed.is_err(), "{fault}: {failed:?}");
+            std::fs::remove_file(dir.path().join(fault)).unwrap();
+        }
+        assert_eq!(read("rm.log"), "");
+        assert!(provider.delete_permanent("/demo/run.dat").await.unwrap());
+        assert_eq!(read("rm.log"), "-r -f H:run1\n");
     }
 
     /// #368: `mega-mv` to //bin puts an item under its own name, and the bin

@@ -593,9 +593,9 @@ fn body_cut_short(error: &reqwest::Error, received: u64, announced: u64) -> Stri
         source = inner.source();
     }
     if announced > 0 {
-        format!("the server ended the download after {received} of {announced} bytes ({cause})")
+        format!("the download stopped after {received} of {announced} bytes ({cause})")
     } else {
-        format!("the server ended the download after {received} bytes ({cause})")
+        format!("the download stopped after {received} bytes ({cause})")
     }
 }
 

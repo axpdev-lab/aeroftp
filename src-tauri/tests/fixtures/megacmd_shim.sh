@@ -9,12 +9,17 @@
 # The rubbish bin (`mega-ls -l //bin`) lists the lines of bin.txt next to the
 # link, and every mega-rm is appended to rm.log. With --show-handles the bin
 # lists bin-handles.txt and any other path lists folder-handles.txt, the path
-# asked for is appended to ls.log, and a file ls-fails makes it fail.
+# asked for is appended to ls.log, and a file ls-fails makes it fail. A file
+# bin-fails makes the bin listing fail, and a file rm-fails makes mega-rm fail.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
         if [ "$1" = "-l" ] && [ "$2" = "--show-handles" ]; then
             if [ "$3" = "//bin" ]; then
+                if [ -f "$here/bin-fails" ]; then
+                    echo "Failed to list //bin" >&2
+                    exit 2
+                fi
                 listing=bin-handles.txt
             else
                 echo "$3" >> "$here/ls.log"
@@ -45,6 +50,10 @@ case "$(basename "$0")" in
         exit 53
         ;;
     mega-rm)
+        if [ -f "$here/rm-fails" ]; then
+            echo "Failed to remove $*" >&2
+            exit 2
+        fi
         echo "$*" >> "$here/rm.log"
         ;;
     mega-mv)
