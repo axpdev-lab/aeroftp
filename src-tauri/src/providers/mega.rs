@@ -30,10 +30,20 @@ const MAX_RETRIES: usize = 2;
 /// Delay between retries (milliseconds).
 const RETRY_DELAY_MS: u64 = 2000;
 
+/// How many moves to the rubbish bin a session remembers for the purge that
+/// may follow them. A purge follows its own delete straight away, so only the
+/// latest moves matter; the bound keeps a long session of deletes from growing
+/// the record.
+const TRASHED_KEPT: usize = 256;
+
 pub struct MegaCmdProvider {
     config: MegaConfig,
     connected: bool,
     current_path: String,
+    /// What this session moved to the rubbish bin, oldest first: the resolved
+    /// path and the node handle it went in as, or `None` when its folder held
+    /// more than one item of that name and the node could not be told apart.
+    trashed: std::collections::VecDeque<(String, Option<String>)>,
     /// A folder of stand-in `mega-*` scripts, in tests.
     #[cfg(test)]
     cmd_dir: Option<std::path::PathBuf>,
@@ -45,6 +55,7 @@ impl MegaCmdProvider {
             config,
             connected: false,
             current_path: "/".to_string(),
+            trashed: std::collections::VecDeque::new(),
             #[cfg(test)]
             cmd_dir: None,
         }
@@ -803,45 +814,41 @@ impl StorageProvider for MegaCmdProvider {
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
         // `delete()` runs `mega-mv <abs_path> //bin/`, which puts the item
         // straight under the rubbish bin by its own name: /a/b/run lands at
-        // //bin/run, not //bin/a/b/run (MEGAcmd 2.6.0, measured 2026-10-05).
-        // This used to purge //bin/a/b/run, find nothing, answer "already
-        // purged", and leave every benchmark run in the bin (#368). The name
-        // alone can also match an item trashed earlier, so the purge runs only
-        // when exactly one item in the bin carries it; with several it refuses
-        // rather than delete the wrong one for good.
+        // //bin/run (MEGAcmd 2.6.0, measured 2026-10-05). This used to purge
+        // //bin/a/b/run, find nothing, answer "already purged", and leave every
+        // benchmark run in the bin (#368). A name can also belong to an item
+        // trashed earlier, and the bin keeps every one of them, so the purge
+        // goes by the node handle `move_to_trash` read before the move: the
+        // item this session put there and nothing else.
         let resolved = self.resolve_path(path);
-        let Some(name) = resolved
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
-        else {
+        let Some(at) = self.trashed.iter().rposition(|(p, _)| *p == resolved) else {
+            // Not moved to the bin by this session: no item there can be told
+            // to be this path's, so nothing is purged.
             return Ok(false);
         };
-        let in_bin = match self.list_trash().await {
-            Ok(entries) => entries.iter().filter(|entry| entry.name == name).count(),
-            Err(ProviderError::NotFound(_)) => 0,
-            Err(e) => return Err(e),
+        let Some((_, handle)) = self.trashed.remove(at) else {
+            return Ok(false);
         };
-        match in_bin {
-            0 => Ok(false),
-            1 => {
-                let rubbish_path = format!("//bin/{}", name);
-                match self
-                    .run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &rubbish_path])
-                    .await
-                {
-                    Ok(_) => Ok(true),
-                    // Purged meanwhile by another client: nothing left to do.
-                    Err(ProviderError::NotFound(_)) => Ok(false),
-                    Err(e) => Err(e),
-                }
-            }
-            several => Err(ProviderError::Other(format!(
-                "{several} items named '{name}' are in the MEGA rubbish bin, so AeroFTP \
-                 cannot tell which one to delete for good; empty it from MEGA"
-            ))),
+        let Some(handle) = handle else {
+            let name = resolved.rsplit('/').next().unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "'{name}' was moved to the MEGA rubbish bin, but its folder held more than \
+                 one item of that name, so AeroFTP cannot tell which one in the bin is it \
+                 and left it there; empty it from MEGA"
+            )));
+        };
+        // Restored or purged meanwhile from another client: not in the bin,
+        // so not this call's to delete for good.
+        if !self.bin_handles().await?.contains(&handle) {
+            return Ok(false);
+        }
+        match self
+            .run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &handle])
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(ProviderError::NotFound(_)) => Ok(false),
+            Err(e) => Err(e),
         }
     }
 
@@ -1225,11 +1232,58 @@ impl StorageProvider for MegaCmdProvider {
 impl MegaCmdProvider {
     /// Move a file or directory to the MEGA rubbish bin (soft delete).
     /// Uses `mega-mv` to //bin instead of `mega-rm` which permanently deletes.
+    ///
+    /// The node handle is read first and kept with the path, so that a purge
+    /// right after (`delete_permanent`) removes this node from the bin and no
+    /// other item of the same name. Not finding it does not stop the move.
     pub async fn move_to_trash(&mut self, path: &str) -> Result<(), ProviderError> {
         let p = self.resolve_path(path);
+        let handle = self.node_handle(&p).await;
         self.run_mega_cmd_with_reauth("mega-mv", &[&p, "//bin/"])
             .await?;
+        if self.trashed.len() == TRASHED_KEPT {
+            self.trashed.pop_front();
+        }
+        self.trashed.push_back((p, handle));
         Ok(())
+    }
+
+    /// The handle (`H:...`) of the node at `path`, read from its folder's
+    /// listing; `None` when the folder holds no item of that name, more than
+    /// one, or could not be listed. A listing of the path itself would not do:
+    /// for a folder `mega-ls` lists what it holds.
+    async fn node_handle(&mut self, path: &str) -> Option<String> {
+        let (parent, name) = path.trim_end_matches('/').rsplit_once('/')?;
+        let parent = if parent.is_empty() { "/" } else { parent };
+        let listing = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", parent])
+            .await
+            .ok()?;
+        let mut matches = listing
+            .lines()
+            .filter_map(parse_handle_line)
+            .filter(|(_, n)| *n == name)
+            .map(|(handle, _)| handle);
+        match (matches.next(), matches.next()) {
+            (Some(handle), None) => Some(handle.to_string()),
+            _ => None,
+        }
+    }
+
+    /// The handles of the items at the top of the rubbish bin.
+    async fn bin_handles(&mut self) -> Result<Vec<String>, ProviderError> {
+        match self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", "//bin"])
+            .await
+        {
+            Ok(listing) => Ok(listing
+                .lines()
+                .filter_map(parse_handle_line)
+                .map(|(handle, _)| handle.to_string())
+                .collect()),
+            Err(ProviderError::NotFound(_)) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        }
     }
 
     /// TRASH-02: List items in the MEGA rubbish bin via `mega-ls //bin`.
@@ -1331,6 +1385,18 @@ fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, Provid
 
 /// What follows the first `columns` whitespace-separated columns of `line`
 /// and the whitespace after them, with its own spaces kept.
+/// The handle and name of one `mega-ls -l --show-handles` line
+/// (`FLAGS VERS SIZE DATE TIME HANDLE NAME`); `None` for a header, a section
+/// line or a line without a handle column.
+fn parse_handle_line(line: &str) -> Option<(&str, &str)> {
+    let handle = line.split_whitespace().nth(5)?;
+    if !handle.starts_with("H:") {
+        return None;
+    }
+    let name = rest_after_columns(line, 6);
+    (!name.is_empty()).then_some((handle, name))
+}
+
 fn rest_after_columns(line: &str, columns: usize) -> &str {
     let mut rest = line;
     for _ in 0..columns {
@@ -1459,43 +1525,101 @@ mod tests {
         assert_eq!(moves(&log), ["/a.txt /b.txt"]);
     }
 
-    /// #368: `mega-mv` to //bin puts an item under its own name, so the purge
-    /// that follows a benchmark's delete looks there, and only when the name is
-    /// unique in the bin.
+    /// #368: `mega-mv` to //bin puts an item under its own name, and the bin
+    /// keeps every item of a name, so the purge after a delete goes by the node
+    /// handle read before the move, and touches nothing this session did not
+    /// put there.
     #[cfg(unix)]
     #[tokio::test]
-    async fn the_purge_after_a_delete_finds_the_item_by_its_own_name() {
+    async fn the_purge_after_a_delete_removes_that_node_and_nothing_else() {
         let (mut provider, _log, dir) = provider_on_stand_in_megacmd();
         let removals = || std::fs::read_to_string(dir.path().join("rm.log")).unwrap_or_default();
-        let bin = |lines: &[&str]| {
-            std::fs::write(dir.path().join("bin.txt"), lines.join("\n") + "\n").unwrap()
+        let listing = |file: &str, lines: &[&str]| {
+            std::fs::write(dir.path().join(file), lines.join("\n") + "\n").unwrap()
         };
 
-        // Nothing of that name in the bin: nothing to purge, nothing removed.
-        bin(&["d---  -  -  13Jul2026  14:07:26  older-run"]);
-        assert!(!provider.delete_permanent("/demo/1bd68585").await.unwrap());
-        assert_eq!(removals(), "");
-
-        // The run just trashed, alone under its name: purged at //bin/<name>.
-        bin(&[
-            "d---  -  -  05Oct2026  08:42:55  1bd68585",
-            "d---  -  -  13Jul2026  14:07:26  older-run",
-        ]);
+        // An older run of the same name is in the bin too: the purge takes the
+        // node this delete moved, by its handle, and leaves the older one.
+        listing(
+            "folder-handles.txt",
+            &["d---  -  -  05Oct2026  08:42:55  H:runNow1  1bd68585"],
+        );
+        provider.delete("/demo/1bd68585").await.unwrap();
+        listing(
+            "bin-handles.txt",
+            &[
+                "d---  -  -  05Oct2026  08:42:55  H:runNow1  1bd68585",
+                "d---  -  -  13Jul2026  14:07:26  H:runOld1  1bd68585",
+            ],
+        );
         assert!(provider.delete_permanent("/demo/1bd68585").await.unwrap());
-        assert_eq!(removals(), "-r -f //bin/1bd68585\n");
+        assert_eq!(removals(), "-r -f H:runNow1\n");
+        // Once: the record is spent.
+        assert!(!provider.delete_permanent("/demo/1bd68585").await.unwrap());
+        assert_eq!(removals(), "-r -f H:runNow1\n");
 
-        // Two items share the name: refused, nothing removed.
-        std::fs::remove_file(dir.path().join("rm.log")).unwrap();
-        bin(&[
-            "d---  -  -  05Oct2026  08:42:55  report",
-            "d---  -  -  13Jul2026  14:07:26  report",
-        ]);
-        let outcome = provider.delete_permanent("/docs/report").await;
+        // A path this session never moved to the bin is not purged, even when
+        // the bin holds exactly one item of its name.
+        listing(
+            "bin-handles.txt",
+            &["d---  -  -  13Jul2026  14:07:26  H:report1  report"],
+        );
+        assert!(!provider.delete_permanent("/docs/report").await.unwrap());
+        assert_eq!(removals(), "-r -f H:runNow1\n");
+
+        // Restored from the bin meanwhile: not in the bin, not purged.
+        listing(
+            "folder-handles.txt",
+            &["----  1  3  05Oct2026  08:42:55  H:back1  kept.txt"],
+        );
+        provider.delete("/docs/kept.txt").await.unwrap();
+        listing("bin-handles.txt", &[]);
+        assert!(!provider.delete_permanent("/docs/kept.txt").await.unwrap());
+        assert_eq!(removals(), "-r -f H:runNow1\n");
+
+        // Its folder held two items of that name: the node could not be told
+        // apart before the move, so the purge is refused and says so.
+        listing(
+            "folder-handles.txt",
+            &[
+                "----  1  3  05Oct2026  08:42:55  H:twin1  twin.txt",
+                "----  1  3  05Oct2026  08:42:55  H:twin2  twin.txt",
+            ],
+        );
+        provider.delete("/docs/twin.txt").await.unwrap();
+        listing(
+            "bin-handles.txt",
+            &["----  1  3  05Oct2026  08:42:55  H:twin1  twin.txt"],
+        );
+        let outcome = provider.delete_permanent("/docs/twin.txt").await;
         assert!(
             matches!(outcome, Err(ProviderError::Other(_))),
             "{outcome:?}"
         );
-        assert_eq!(removals(), "");
+        assert_eq!(removals(), "-r -f H:runNow1\n");
+    }
+
+    /// A `--show-handles` line gives its handle and its name, spaces kept; a
+    /// header, a section line and a line without a handle give nothing.
+    #[test]
+    fn parse_handle_line_reads_the_handle_column() {
+        assert_eq!(
+            parse_handle_line("d---    -            - 05Oct2026 10:44:08 H:26wmgAjC hprobe"),
+            Some(("H:26wmgAjC", "hprobe"))
+        );
+        assert_eq!(
+            parse_handle_line("----  1  3  15Jan2026  14:30  H:abc  a  b.txt "),
+            Some(("H:abc", "a  b.txt "))
+        );
+        assert_eq!(
+            parse_handle_line("FLAGS VERS      SIZE            DATE          HANDLE NAME"),
+            None
+        );
+        assert_eq!(parse_handle_line("/aeroftp-demo-368: "), None);
+        assert_eq!(
+            parse_handle_line("----  1  3  15Jan2026  14:30  a.txt"),
+            None
+        );
     }
 
     fn test_provider() -> MegaCmdProvider {

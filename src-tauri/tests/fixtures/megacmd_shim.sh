@@ -7,10 +7,18 @@
 # The root holds the files a.txt and b.txt and the folder d. Every mega-mv is
 # appended to mv.log next to the link it was invoked through (not resolved).
 # The rubbish bin (`mega-ls -l //bin`) lists the lines of bin.txt next to the
-# link, and every mega-rm is appended to rm.log.
+# link, and every mega-rm is appended to rm.log. With --show-handles the bin
+# lists bin-handles.txt and any other folder lists folder-handles.txt.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
+        if [ "$1" = "-l" ] && [ "$2" = "--show-handles" ]; then
+            echo "$3: "
+            echo 'FLAGS VERS SIZE DATE HANDLE NAME'
+            if [ "$3" = "//bin" ]; then listing=bin-handles.txt; else listing=folder-handles.txt; fi
+            [ -f "$here/$listing" ] && cat "$here/$listing"
+            exit 0
+        fi
         if [ "$1" = "-l" ] && [ "$2" = "/" ]; then
             echo 'FLAGS VERS SIZE DATE TIME NAME'
             echo '----  1  3  15Jan2026  14:30  a.txt'

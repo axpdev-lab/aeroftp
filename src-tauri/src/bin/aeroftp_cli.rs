@@ -45407,6 +45407,29 @@ fn benchmark_remote_roots_from_prefix(prefix: &str, report_id: &str) -> (String,
 /// `AlreadyExists` as success. Returns the error of the deepest component that
 /// still failed (so the caller can decide whether to hard-fail), or `Ok` when
 /// the full path now exists.
+/// The benchmark's word on the trash purge of `path`: announced when it purged,
+/// a line in `errors` when the provider refused or failed, nothing when there
+/// was nothing to purge.
+fn note_trash_purge(
+    path: &str,
+    outcome: Result<bool, ProviderError>,
+    announce: bool,
+    errors: &mut Vec<String>,
+) {
+    match outcome {
+        Ok(true) => {
+            if announce {
+                eprintln!("trash purge: {} hard-deleted", path);
+            }
+        }
+        Ok(false) => {}
+        Err(e) => errors.push(format!(
+            "trash purge of {} failed (item still in trash, will be auto-deleted by provider retention): {}",
+            path, e
+        )),
+    }
+}
+
 async fn benchmark_mkdir_p(
     provider: &mut Box<dyn StorageProvider>,
     path: &str,
@@ -46294,19 +46317,10 @@ async fn cmd_benchmark(
     // pCloud, Jottacloud, OpenDrive) is a soft delete and the test root ends
     // up in the recycle bin. Hard-purge it so quotas do not silently fill up
     // across repeated benchmark runs. No-op for FTP/SFTP/S3/plain WebDAV.
+    let announce_purge = !cli.quiet && matches!(format, OutputFormat::Text);
     if rmdir_ok {
-        match provider.delete_permanent(&test_root).await {
-            Ok(true) => {
-                if !cli.quiet && matches!(format, OutputFormat::Text) {
-                    eprintln!("trash purge: {} hard-deleted", test_root);
-                }
-            }
-            Ok(false) => {}
-            Err(e) => errors.push(format!(
-                "trash purge of {} failed (item still in trash, will be auto-deleted by provider retention): {}",
-                test_root, e
-            )),
-        }
+        let outcome = provider.delete_permanent(&test_root).await;
+        note_trash_purge(&test_root, outcome, announce_purge, &mut errors);
     }
 
     // Remove the shared `aeroftp-bench` base dir too (issue #368: the reporter
@@ -46331,8 +46345,10 @@ async fn cmd_benchmark(
         if base_empty {
             if provider.rmdir_recursive(&bench_base).await.is_ok() {
                 // Hard-purge the soft-deleted base on consumer clouds, mirroring
-                // the test_root trash purge above.
-                let _ = provider.delete_permanent(&bench_base).await;
+                // the test_root trash purge above, refusal included: its result
+                // used to be dropped, so a base left in the bin said nothing (#368).
+                let outcome = provider.delete_permanent(&bench_base).await;
+                note_trash_purge(&bench_base, outcome, announce_purge, &mut errors);
             } else {
                 errors.push(format!(
                     "note: empty scratch folder '{}' could not be removed automatically; delete it manually",
@@ -79644,6 +79660,26 @@ mod tests {
         assert_eq!(cfg.runs_per_size, 1);
         assert_eq!(cfg.warmup_runs, 0);
         assert_eq!(cfg.operations, vec!["upload", "download"]);
+    }
+
+    #[test]
+    fn a_refused_trash_purge_is_reported() {
+        let mut errors = Vec::new();
+        note_trash_purge("aeroftp-bench", Ok(false), false, &mut errors);
+        note_trash_purge("aeroftp-bench", Ok(true), false, &mut errors);
+        assert!(errors.is_empty(), "{errors:?}");
+        note_trash_purge(
+            "aeroftp-bench",
+            Err(ProviderError::Other("2 items named 'aeroftp-bench'".into())),
+            false,
+            &mut errors,
+        );
+        assert_eq!(errors.len(), 1);
+        assert!(
+            errors[0].starts_with("trash purge of aeroftp-bench failed")
+                && errors[0].ends_with("2 items named 'aeroftp-bench'"),
+            "{errors:?}"
+        );
     }
 
     #[test]
