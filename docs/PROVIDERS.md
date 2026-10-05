@@ -100,6 +100,14 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
   copy-then-delete rename to act on. AeroFTP returns an actionable message
   asking you to add a file inside the folder first, or to use the native Filen
   API or the WebDAV bridge for that operation.
+- **Koofr (`.bin` files):** Koofr refuses to serve any file whose name ends in
+  `.bin`, whatever it holds. The API answers `403 FileBlocked` ("File download
+  restricted due to possible dangerous content"); WebDAV answers 200 with the
+  size, then ends the body with no data, which AeroFTP reports as "the server
+  ended the download after 0 of N bytes". Uploads, listings and renames are not
+  affected, so renaming such a file (for example to `.dat`) makes it
+  downloadable. The speed test and the benchmark name their payloads `.dat` for
+  this reason (#368).
 - **OpenDrive (host self-heal):** a profile switched from the WebDAV preset
   (`webdav.opendrive.com`) into native API mode now normalizes its host to
   `dev.opendrive.com`, so the native session flow no longer leaks the WebDAV
