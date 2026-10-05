@@ -40,6 +40,8 @@ function fixture(mode: Mode, options: {
   holdFirstProfileRead?: boolean;
   scan?: () => Promise<ScanResult>;
   listen?: () => Promise<() => void>;
+  /** Queue functional updates until `flush`, as React may until it renders. */
+  deferUpdates?: boolean;
 } = {}) {
   const holdFirstProfileRead = options.holdFirstProfileRead ?? true;
   let profilesRequested!: () => void;
@@ -67,9 +69,15 @@ function fixture(mode: Mode, options: {
   const persist = vi.fn(async (..._args: unknown[]) => {});
   // A real state cell, so a functional update sees what the previous one left.
   const quota: { current: Quota } = { current: null };
+  const queued: Array<(prev: Quota) => Quota> = [];
   const display = vi.fn((next: Quota | ((prev: Quota) => Quota)) => {
+    if (options.deferUpdates) {
+      queued.push(typeof next === 'function' ? next : () => next);
+      return;
+    }
     quota.current = typeof next === 'function' ? next(quota.current) : next;
   });
+  const flush = () => { while (queued.length) quota.current = queued.shift()!(quota.current); };
   const profiles = holdFirstProfileRead
     ? vi.fn().mockImplementationOnce(() => { profilesRequested(); return profilesPending; })
       .mockResolvedValue([profile])
@@ -100,7 +108,7 @@ function fixture(mode: Mode, options: {
     fetchQuota: (protocol: string) => Promise<void>;
     scan: () => Promise<void>;
   };
-  return { runtime, commands, persist, display, quota, profiles, profilesReady, version, connection,
+  return { runtime, commands, persist, display, quota, flush, profiles, profilesReady, version, connection,
     activityLog, notify,
     release: () => release([profile]),
     // A switch or a disconnect changes the connection; both also invalidate
@@ -246,6 +254,16 @@ describe('App used-storage scan display', () => {
     scan.resolve({ ...completeScan, used: 90, file_count: 9 });
     await running;
     expect(f.quota.current).toEqual({ used: 90, total: 100, free: 10, files: 9 });
+  });
+
+  it('ends on the total on screen even when React runs the updates late', async () => {
+    const f = fixture('usable quota', { holdFirstProfileRead: false, deferUpdates: true });
+    f.quota.current = { used: 5, total: 100, free: 95 };
+    await f.runtime.scan();
+    // Nothing was applied while the scan ran; React renders afterwards.
+    expect(f.quota.current).toEqual({ used: 5, total: 100, free: 95 });
+    f.flush();
+    expect(f.quota.current).toEqual({ used: 123, total: 100, free: 0, files: 1 });
   });
 
   it('ends on the total on screen when the scan reports no progress', async () => {

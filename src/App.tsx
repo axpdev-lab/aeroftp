@@ -3724,17 +3724,23 @@ const App: React.FC = () => {
           details: `${t('statusBar.usedScanEmpty', { path: scanRoot })} [${res.method}]`,
         });
       } else {
-        // The kept total, not 0: the scan measured used space only (#958).
-        const eff = resolveEffectiveQuota(res.used, keptTotal(beforeScan ? beforeScan.quota : shownAtStart), manualTotal);
         // Only touch the live display if this session is still active;
         // the persisted card is resolved by profile id so it stays
         // correct regardless.
         if (version === quotaVersionRef.current) {
-          setStorageQuota({
-            used: eff.used,
-            total: eff.total,
-            free: eff.total > eff.used ? eff.total - eff.used : 0,
-            files: res.file_count,
+          // The kept total, not 0: the scan measured used space only (#958).
+          // Read inside an update: React may defer the updates that noted the
+          // figure at the start, but it runs queued updates in order, so they
+          // have run by the time this one does.
+          setStorageQuota(prev => {
+            const before = beforeScan ? beforeScan.quota : (shownAtStart !== undefined ? shownAtStart : prev);
+            const eff = resolveEffectiveQuota(res.used, keptTotal(before), manualTotal);
+            return {
+              used: eff.used,
+              total: eff.total,
+              free: eff.total > eff.used ? eff.total - eff.used : 0,
+              files: res.file_count,
+            };
           });
         }
         // A truncated or cancelled walk is a lower bound, not a total.
