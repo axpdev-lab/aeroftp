@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Filen Desktop S3 preset no longer writes a directory marker. Filen Desktop 3.x serves the bucket with `rclone serve s3`, which stored the empty folder PUT as a zero-byte file and then answered 500 for a folder created inside it (#368).
 - Calculating used storage keeps running totals instead of retaining every file from the recursive walk, reducing peak memory on large trees while preserving progress, limits and incomplete-scan reporting.
 - SFTP listing workers open their first connection before listing, eliminating the false "Not connected to server: reconnecting" warnings at the start of a pooled scan.
 

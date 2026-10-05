@@ -645,6 +645,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: true,
+            skip_dir_markers: false,
         })
         .expect("build the S3 provider");
         provider

@@ -871,6 +871,16 @@ pub struct S3Config {
     /// from the profile, so the CLI, the MCP pool and the schedulers carry it
     /// without a form.
     pub allow_cleartext_endpoint: bool,
+    /// When true, `mkdir` does not PUT a zero-byte `key/` directory marker.
+    ///
+    /// Filen Desktop 3.x serves the bucket with `rclone serve s3`, which stores
+    /// that PUT as a zero-byte file and then answers 500 for anything created
+    /// inside it. A key uploaded under the prefix creates the folders, so the
+    /// preset does not write the marker. An empty folder is not persisted until
+    /// something is uploaded into it. True for `filen-desktop-s3`, and when
+    /// `extra["s3_dir_markers"]` is `false`. An explicit `true` writes markers
+    /// even on that preset.
+    pub skip_dir_markers: bool,
 }
 
 impl S3Config {
@@ -937,6 +947,8 @@ impl S3Config {
             .map(|v| v.trim().eq_ignore_ascii_case("true"))
             .unwrap_or(false);
 
+        let skip_dir_markers = s3_skip_dir_markers(config);
+
         let session_token = config
             .extra
             .get("session_token")
@@ -990,8 +1002,45 @@ impl S3Config {
             sse_kms_key_id,
             verify_cert,
             allow_cleartext_endpoint,
+            skip_dir_markers,
         })
     }
+
+    /// False when this profile must not write a `key/` directory marker.
+    pub(crate) fn needs_dir_marker(&self) -> bool {
+        !self.skip_dir_markers
+    }
+}
+
+/// Preset id as each surface writes it. The GUI and `apply_profile_options`
+/// store `provider_id`. The WebDAV config also accepts `providerId` and
+/// `_aeroftp_provider_id`. S3 preset defaults stamp `_aeroftp_s3_provider_id`.
+fn s3_provider_id(config: &ProviderConfig) -> Option<&str> {
+    config
+        .extra
+        .get("provider_id")
+        .or_else(|| config.extra.get("providerId"))
+        .or_else(|| config.extra.get(super::mega_df::PROVIDER_ID_META_KEY))
+        .or_else(|| config.extra.get("_aeroftp_s3_provider_id"))
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+}
+
+/// Whether `mkdir` should skip the zero-byte `key/` directory marker.
+///
+/// An explicit `s3_dir_markers` wins: `false` skips the marker on any preset
+/// (a profile pointed at `rclone serve s3`), `true` writes it even on Filen
+/// Desktop. Otherwise only the `filen-desktop-s3` preset skips it.
+fn s3_skip_dir_markers(config: &ProviderConfig) -> bool {
+    if let Some(raw) = config.extra.get("s3_dir_markers") {
+        let raw = raw.trim().to_ascii_lowercase();
+        match raw.as_str() {
+            "false" | "0" | "no" => return true,
+            "true" | "1" | "yes" => return false,
+            _ => {}
+        }
+    }
+    s3_provider_id(config) == Some("filen-desktop-s3")
 }
 
 /// The endpoint URL an S3 connection uses (`None` = AWS) and whether it
@@ -2865,6 +2914,59 @@ mod s3_config_assume_role_tests {
         let cfg = s3_cfg(extra);
         assert!(cfg.role_mfa_serial.is_none());
         assert!(cfg.role_mfa_token_code.is_none());
+    }
+
+    #[test]
+    fn filen_desktop_s3_skips_directory_markers() {
+        // Every spelling a surface actually writes: the GUI and
+        // apply_profile_options use provider_id, the WebDAV reader also accepts
+        // providerId and _aeroftp_provider_id, and S3 preset defaults stamp
+        // _aeroftp_s3_provider_id.
+        for key in [
+            "provider_id",
+            "providerId",
+            "_aeroftp_provider_id",
+            "_aeroftp_s3_provider_id",
+        ] {
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("bucket".to_string(), "filen".to_string());
+            extra.insert(key.to_string(), "filen-desktop-s3".to_string());
+            let cfg = s3_cfg(extra);
+            assert!(
+                cfg.skip_dir_markers,
+                "{key} must skip directory markers on filen-desktop-s3"
+            );
+            assert!(!cfg.needs_dir_marker());
+        }
+    }
+
+    #[test]
+    fn other_s3_presets_keep_directory_markers() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        extra.insert("provider_id".to_string(), "amazon-s3".to_string());
+        let cfg = s3_cfg(extra);
+        assert!(!cfg.skip_dir_markers);
+        assert!(cfg.needs_dir_marker());
+    }
+
+    #[test]
+    fn s3_dir_markers_false_skips_and_true_restores_them() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "data".to_string());
+        extra.insert("s3_dir_markers".to_string(), "false".to_string());
+        assert!(
+            s3_cfg(extra.clone()).skip_dir_markers,
+            "an explicit false skips markers on any preset"
+        );
+        extra.insert("provider_id".to_string(), "filen-desktop-s3".to_string());
+        extra.insert("s3_dir_markers".to_string(), "true".to_string());
+        let cfg = s3_cfg(extra);
+        assert!(
+            !cfg.skip_dir_markers,
+            "an explicit true writes markers even on filen-desktop-s3"
+        );
+        assert!(cfg.needs_dir_marker());
     }
 
     #[test]

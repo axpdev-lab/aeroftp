@@ -784,6 +784,7 @@ fn s3_config(secret: String) -> S3Config {
         sse_kms_key_id: None,
         verify_cert: false,
         allow_cleartext_endpoint: false,
+        skip_dir_markers: false,
     }
 }
 

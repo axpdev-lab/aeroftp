@@ -4018,6 +4018,36 @@ impl S3Provider {
         }
     }
 
+    /// A file already stored at the folder's slashless name blocks the prefix
+    /// on a server that does not keep directory markers. The file is left
+    /// where it is. Absent, and a zero-byte directory marker, do not block.
+    async fn reject_file_blocking_folder(&self, key: &str) -> Result<(), ProviderError> {
+        let response = self.s3_request(Method::HEAD, key, None, None).await?;
+        match response.status() {
+            StatusCode::NOT_FOUND => Ok(()),
+            StatusCode::OK => {
+                let content_type = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or("");
+                let length = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_LENGTH)
+                    .and_then(|value| value.to_str().ok());
+                if is_s3_directory_content_type(content_type) && length == Some("0") {
+                    return Ok(());
+                }
+                Err(ProviderError::InvalidPath(format!(
+                    "'{key}' is already a file, so it cannot be a folder. Delete that file and retry. Nothing was deleted."
+                )))
+            }
+            status => Err(ProviderError::ServerError(format!(
+                "mkdir could not check '{key}' (HEAD {status})"
+            ))),
+        }
+    }
+
     /// Whether `key` is an object, or a folder with at least one object under
     /// `key/`, in at most two listings of one key each. The rename check used
     /// to page through every key that merely starts with `key`: in a large
@@ -5152,6 +5182,18 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::InvalidPath(
                 "Refusing to create a folder marker at the bucket root".into(),
             ));
+        }
+        if !self.config.needs_dir_marker() {
+            // Filen Desktop 3.x runs `rclone serve s3`. That server stores
+            // `PUT <name>/` as a zero-byte file, and the next mkdir inside it
+            // answers 500. A key uploaded under the prefix creates the
+            // folders, so the marker is not written. An empty folder is not
+            // persisted until something is uploaded into it: the GUI lists
+            // again after mkdir and will not show it yet, and a sync of an
+            // empty directory does not leave one. A file that already occupies
+            // the name (the stale zero-byte `aeroftp-bench` from before this
+            // fix) is reported and left in place.
+            return self.reject_file_blocking_folder(trimmed).await;
         }
         // Tag the marker with the `application/x-directory` content-type (the
         // de-facto S3 directory-marker convention, also used by s3fs / the AWS
@@ -8224,6 +8266,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8480,6 +8523,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8675,6 +8719,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8723,6 +8768,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8754,6 +8800,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8882,6 +8929,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8927,6 +8975,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("provider");
 
@@ -8981,8 +9030,83 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider")
+    }
+
+    /// #368: Filen Desktop's `rclone serve s3` stores `PUT key/` as a zero-byte
+    /// file. With `skip_dir_markers`, mkdir must not PUT. A name that is already
+    /// a file is refused and left in place. Every other preset still PUTs the
+    /// marker.
+    #[tokio::test]
+    async fn mkdir_on_a_markerless_preset_sends_no_put() {
+        use std::sync::{Arc, Mutex};
+
+        // (skip markers, HEAD status, expect the "already a file" error)
+        for (skip, head_status, expect_file_error) in
+            [(true, 404, false), (false, 404, false), (true, 200, true)]
+        {
+            let methods = Arc::new(Mutex::new(Vec::new()));
+            let recorded = Arc::clone(&methods);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let recorded = Arc::clone(&recorded);
+                    let head_status = head_status;
+                    async move {
+                        let method = req.method().clone();
+                        recorded.lock().unwrap().push(method.to_string());
+                        let status = if method == Method::HEAD {
+                            head_status
+                        } else {
+                            200
+                        };
+                        let mut builder = axum::http::Response::builder().status(status);
+                        if method == Method::HEAD && head_status == 200 {
+                            builder = builder
+                                .header("content-type", "application/octet-stream")
+                                .header("content-length", "0");
+                        }
+                        builder.body(axum::body::Body::empty()).unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.config.skip_dir_markers = skip;
+            provider.connected = true;
+            let result = provider.mkdir("/probe-folder").await;
+            server.abort();
+            let seen = methods.lock().unwrap().clone();
+            if skip {
+                assert!(
+                    !seen.iter().any(|method| method == "PUT"),
+                    "skip={skip} head={head_status} still PUT a marker: {seen:?}"
+                );
+            } else {
+                assert!(
+                    seen.iter().any(|method| method == "PUT"),
+                    "a preset that writes markers sent no PUT: {seen:?}"
+                );
+            }
+            if expect_file_error {
+                let message = result.expect_err("a file occupying the name").to_string();
+                assert!(
+                    message.contains("already a file"),
+                    "the refusal must say the name is a file: {message}"
+                );
+                assert!(
+                    message.contains("Nothing was deleted"),
+                    "the refusal must say the file was left in place: {message}"
+                );
+            } else {
+                result.expect("mkdir");
+            }
+        }
     }
 
     /// The cap that bounds memory must not pass for the end of the bucket: a
@@ -9830,6 +9954,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -10147,6 +10272,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("create provider");
         let result = StorageProvider::connect(&mut provider).await;
@@ -10206,6 +10332,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: false,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("provider");
         assert!(provider.is_filen_s3_endpoint());
@@ -10341,6 +10468,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("provider");
         assert!(!provider.is_filen_s3_endpoint());
@@ -11821,6 +11949,7 @@ mod tests {
             // A lab MinIO is plain HTTP on a private address; the gate stays
             // on for everything else.
             allow_cleartext_endpoint: true,
+            skip_dir_markers: false,
         })
         .expect("live provider");
         provider.connected = true;
@@ -12640,6 +12769,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("provider");
 
@@ -13083,6 +13213,7 @@ mod documented_limits_tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("S3Provider")
     }
@@ -13144,6 +13275,7 @@ mod recorded_list_fixture {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("provider");
         let xml = include_str!("fixtures/quickxml/s3-list-objects-v2.xml");

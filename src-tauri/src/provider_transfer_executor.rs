@@ -2644,6 +2644,7 @@ mod tests {
             sse_kms_key_id: None,
             verify_cert: true,
             allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
         })
         .expect("s3 provider");
 
@@ -2701,6 +2702,7 @@ mod tests {
                     sse_kms_key_id: None,
                     verify_cert: true,
                     allow_cleartext_endpoint: false,
+                    skip_dir_markers: false,
                 })
                 .expect("s3 provider"),
             ) as Box<dyn StorageProvider>

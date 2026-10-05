@@ -76419,6 +76419,7 @@ mod tests {
                     sse_kms_key_id: None,
                     verify_cert: true,
                     allow_cleartext_endpoint: false,
+                    skip_dir_markers: false,
                 })
                 .expect("test S3 provider"),
             );
@@ -85971,6 +85972,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 sse_kms_key_id: None,
                 verify_cert: true,
                 allow_cleartext_endpoint: false,
+                skip_dir_markers: false,
             })
             .expect("s3 provider");
             provider.set_multi_thread_download(streams, cutoff);

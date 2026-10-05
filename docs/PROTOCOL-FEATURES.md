@@ -163,6 +163,15 @@ tagged `application/x-directory`. This follows the
 Markers remain when a folder gains children, preserving the explicitly created
 folder if its children are later removed.
 
+The Filen Desktop S3 preset (`filen-desktop-s3`) does not write this marker.
+Filen Desktop 3.x serves the bucket with `rclone serve s3`, which stores the
+empty `PUT key/` as a zero-byte file and then answers 500 for a folder created
+inside it. Uploading a file under the prefix creates the folders. An empty
+folder made with mkdir on that preset is not kept until a file is uploaded
+into it. A file that already has the folder's name is left in place and the
+mkdir says so. `s3_dir_markers=false` on any other S3 profile skips the marker
+the same way, and `s3_dir_markers=true` writes it even on the Filen preset.
+
 S3 profiles exported to rclone enable `directory_markers = true`. For older
 exports or independently configured remotes, enable that setting in the S3
 backend section or pass `--s3-directory-markers`:
