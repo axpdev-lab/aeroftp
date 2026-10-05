@@ -79683,6 +79683,22 @@ mod tests {
     }
 
     #[test]
+    fn benchmark_overrides_apply_at_a_preset_level() {
+        // The MCP tool describes `sizes`, `runs` and `operations` as applying at
+        // any level; this is the behaviour that description rests on (#368).
+        let cfg = resolve_benchmark_config(
+            BenchmarkLevel::Quick,
+            Some("1M,4M"),
+            Some(2),
+            Some("upload"),
+        )
+        .unwrap();
+        assert_eq!(cfg.sizes_bytes, vec![1024 * 1024, 4 * 1024 * 1024]);
+        assert_eq!(cfg.runs_per_size, 2);
+        assert_eq!(cfg.operations, vec!["upload"]);
+    }
+
+    #[test]
     fn benchmark_resolve_config_standard_defaults() {
         let cfg = resolve_benchmark_config(BenchmarkLevel::Standard, None, None, None).unwrap();
         assert_eq!(cfg.sizes_bytes.len(), 3);

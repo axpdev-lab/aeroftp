@@ -235,9 +235,9 @@ pub fn tool_definitions() -> Vec<McpToolDef> {
                     "enum": ["quick", "standard", "deep", "custom"],
                     "description": "Preset level. Default: 'quick'. 'deep' may take 30+ minutes."
                 },
-                "sizes": { "type": "string", "description": "Override file sizes as comma-separated list. A BARE NUMBER MEANS MEBIBYTES ('1,100,1024'); K/M/G suffixes are explicit ('1M,100M,1G'). Only effective with level=custom." },
-                "runs": { "type": "integer", "description": "Override timed runs per (operation, size) tuple. Only effective with level=custom." },
-                "operations": { "type": "string", "description": "Comma-separated operations subset: upload,download,list,stat,delete. Only effective with level=custom." },
+                "sizes": { "type": "string", "description": "Override file sizes as comma-separated list. A BARE NUMBER MEANS MEBIBYTES ('1,100,1024'); K/M/G suffixes are explicit ('1M,100M,1G'). Replaces the sizes of the chosen level, at any level." },
+                "runs": { "type": "integer", "description": "Override timed runs per (operation, size) tuple. Replaces the runs of the chosen level, at any level." },
+                "operations": { "type": "string", "description": "Comma-separated operations subset: upload,download,list,stat,delete. Replaces the operations of the chosen level, at any level." },
                 "file_count": { "type": "integer", "description": "Many-small-files workload: number of files to exercise (e.g. 100, 1000). This is the workload where per-file overhead dominates. On its own it REPLACES the single-file size sweep; pass 'sizes' as well to run both axes." },
                 "file_size": { "type": "string", "description": "Size of each file in the many-small-files workload. A BARE NUMBER MEANS MEBIBYTES (1 = 1 MiB); K/M/G suffixes are explicit ('64K', '4M'). Default: 64K. Total payload (file_count x file_size) is capped at 5 GiB." },
                 "all_protocols": { "type": "boolean", "description": "Benchmark the profile once per transport mode of its provider instead of once overall: a Koofr account is measured over both its REST API and its WebDAV surface. Changes the RESULT SHAPE to {reports: [...], skipped: [...]}, where each report carries a 'mode' field ('api', 'webdav', 's3', 'ftp') and 'skipped' explains every mode that could not be measured (modes needing their own credentials, or an S3 surface needing a bucket of its own). Without this flag the result stays a single report object. Multi-mode providers: Koofr, OpenDrive, FileLu, Filen. Default: false." },
@@ -3082,6 +3082,17 @@ mod tests {
             "file_size description must state the bare-number unit: {}",
             file_size_doc
         );
+        // The CLI applies `--sizes`, `--runs` and `--operations` at every level
+        // (`resolve_benchmark_config`), so an agent told they need
+        // level=custom would switch to custom's 100 MiB x 3 runs of all five
+        // operations to change one of them (#368).
+        for key in ["sizes", "runs", "operations"] {
+            let doc = props[key]["description"].as_str().unwrap_or("");
+            assert!(
+                !doc.contains("level=custom"),
+                "{key} applies at every level, its description says otherwise: {doc}"
+            );
+        }
     }
 
     #[test]
