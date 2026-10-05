@@ -8,14 +8,24 @@
 # appended to mv.log next to the link it was invoked through (not resolved).
 # The rubbish bin (`mega-ls -l //bin`) lists the lines of bin.txt next to the
 # link, and every mega-rm is appended to rm.log. With --show-handles the bin
-# lists bin-handles.txt and any other folder lists folder-handles.txt.
+# lists bin-handles.txt and any other path lists folder-handles.txt, the path
+# asked for is appended to ls.log, and a file ls-fails makes it fail.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
         if [ "$1" = "-l" ] && [ "$2" = "--show-handles" ]; then
+            if [ "$3" = "//bin" ]; then
+                listing=bin-handles.txt
+            else
+                echo "$3" >> "$here/ls.log"
+                if [ -f "$here/ls-fails" ]; then
+                    echo "Invalid argument --show-handles" >&2
+                    exit 2
+                fi
+                listing=folder-handles.txt
+            fi
             echo "$3: "
             echo 'FLAGS VERS SIZE DATE HANDLE NAME'
-            if [ "$3" = "//bin" ]; then listing=bin-handles.txt; else listing=folder-handles.txt; fi
             [ -f "$here/$listing" ] && cat "$here/$listing"
             exit 0
         fi
