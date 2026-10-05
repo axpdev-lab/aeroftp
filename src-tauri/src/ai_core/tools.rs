@@ -1705,7 +1705,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                     "size_mb": {"type": "integer", "description": "Test payload size in MiB (default 4, cap 64)"},
                     "iterations": {"type": "integer", "description": "Number of upload/download cycles (default 1, cap 3)"},
                     "verify_integrity": {"type": "boolean", "description": "Compare SHA-256 of upload vs download (default: true)"},
-                    "remote_path": {"type": "string", "description": "Optional explicit remote test path (default: '/.aeroftp-speedtest-<uuid>.bin'). Caller is responsible for choosing a writable location. The path must not already exist: an existing file is refused, never overwritten."}
+                    "remote_path": {"type": "string", "description": "Optional explicit remote test path (default: '/.aeroftp-speedtest-<uuid>.dat'). Caller is responsible for choosing a writable location. The path must not already exist: an existing file is refused, never overwritten."}
                 },
                 "required": ["server"],
             }),

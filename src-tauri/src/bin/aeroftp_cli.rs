@@ -44082,9 +44082,12 @@ async fn cmd_speed(
         }
     }
 
-    let remote_test_path = remote_path
-        .map(|path| path.to_string())
-        .unwrap_or_else(|| format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4()));
+    let remote_test_path = remote_path.map(|path| path.to_string()).unwrap_or_else(|| {
+        ftp_client_gui_lib::speed_payload::name(&format!(
+            "/.aeroftp-speedtest-{}",
+            uuid::Uuid::new_v4()
+        ))
+    });
 
     let outcome = run_single_speed_test(
         url,
@@ -44445,7 +44448,10 @@ async fn cmd_speed_compare(
     let test_futures = urls.iter().map(|url| async move {
         let raw_url = url.clone();
         let display_url = redact_url_for_display(&raw_url);
-        let remote_test_path = format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4());
+        let remote_test_path = ftp_client_gui_lib::speed_payload::name(&format!(
+            "/.aeroftp-speedtest-{}",
+            uuid::Uuid::new_v4()
+        ));
         let result = run_single_speed_test(
             &raw_url,
             size,
@@ -44873,7 +44879,8 @@ async fn run_many_files_workload(
     }
 
     let size = mf.file_size_bytes;
-    let remote_name = |i: u32| format!("{}/f{:06}.bin", many_dir, i);
+    let remote_name =
+        |i: u32| ftp_client_gui_lib::speed_payload::name(&format!("{}/f{:06}", many_dir, i));
 
     if !cli.quiet && matches!(format, OutputFormat::Text) {
         eprintln!(
@@ -45860,7 +45867,8 @@ async fn cmd_benchmark(
             }
         };
 
-        let remote_path = format!("{}/payload-{}.bin", test_root, size);
+        let remote_path =
+            ftp_client_gui_lib::speed_payload::name(&format!("{}/payload-{}", test_root, size));
 
         if !cli.quiet && matches!(format, OutputFormat::Text) {
             eprintln!("running benchmark with payload {}", format_size(size));
@@ -74270,7 +74278,7 @@ mod tests {
             // The auto-generated scratch path is exempt: it cannot be user data,
             // so a provider with a flaky or unsupported stat still gets to run.
             assert!(
-                ensure_speed_path_is_free(Err(&opaque), "/.aeroftp-speedtest-x.bin", false).is_ok(),
+                ensure_speed_path_is_free(Err(&opaque), "/.aeroftp-speedtest-x.dat", false).is_ok(),
                 "the scratch path must not be blocked by {opaque}"
             );
         }

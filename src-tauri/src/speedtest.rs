@@ -390,7 +390,8 @@ async fn run_speedtest_inner(
     // sibling of live data. Everything goes into a dedicated scratch
     // subdirectory that the test creates and removes.
     let scratch_dir = join_remote_path(&request.remote_dir, SCRATCH_DIR_NAME);
-    let temp_file_name = format!(".aeroftp-speedtest-{}.bin", Uuid::new_v4());
+    let temp_file_name =
+        crate::speed_payload::name(&format!(".aeroftp-speedtest-{}", Uuid::new_v4()));
     let remote_path = join_remote_path(&scratch_dir, &temp_file_name);
 
     // Pre-existing scratch dir is fine (a previous run, or a provider that
@@ -970,7 +971,7 @@ mod tests {
                 "allowed dir rejected: {dir}"
             );
             let scratch = join_remote_path(dir, SCRATCH_DIR_NAME);
-            let path = join_remote_path(&scratch, ".aeroftp-speedtest-x.bin");
+            let path = join_remote_path(&scratch, ".aeroftp-speedtest-x.dat");
             assert!(
                 path.starts_with(&scratch),
                 "payload {path} escaped scratch {scratch}"
@@ -979,9 +980,9 @@ mod tests {
                 path.contains(SCRATCH_DIR_NAME),
                 "payload {path} is not under a scratch dir"
             );
-            assert_ne!(path, "/.aeroftp-speedtest-x.bin", "payload landed in root");
+            assert_ne!(path, "/.aeroftp-speedtest-x.dat", "payload landed in root");
             // Payload is under scratch, not a direct child of the live dir.
-            let live = join_remote_path(dir, ".aeroftp-speedtest-x.bin");
+            let live = join_remote_path(dir, ".aeroftp-speedtest-x.dat");
             assert_ne!(path, live, "payload was not nested under the scratch dir");
         }
     }
@@ -1124,8 +1125,8 @@ mod tests {
     #[test]
     fn join_remote_path_handles_root() {
         assert_eq!(
-            join_remote_path("/", ".aeroftp-speedtest-x.bin"),
-            "/.aeroftp-speedtest-x.bin"
+            join_remote_path("/", ".aeroftp-speedtest-x.dat"),
+            "/.aeroftp-speedtest-x.dat"
         );
     }
 
@@ -1175,9 +1176,9 @@ mod tests {
 
     #[test]
     fn temp_filename_contract() {
-        let name = format!(".aeroftp-speedtest-{}.bin", Uuid::new_v4());
+        let name = crate::speed_payload::name(&format!(".aeroftp-speedtest-{}", Uuid::new_v4()));
         assert!(name.starts_with(".aeroftp-speedtest-"));
-        assert!(name.ends_with(".bin"));
+        assert!(name.ends_with(".dat"));
     }
 
     #[test]

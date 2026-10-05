@@ -2687,8 +2687,9 @@ async fn speed(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     // user data, a caller-named one can be anything.
     let caller_named_path = get_str_opt(args, "remote_path");
     let path_is_caller_named = caller_named_path.is_some();
-    let remote_path = caller_named_path
-        .unwrap_or_else(|| format!("/.aeroftp-speedtest-{}.bin", uuid::Uuid::new_v4()));
+    let remote_path = caller_named_path.unwrap_or_else(|| {
+        crate::speed_payload::name(&format!("/.aeroftp-speedtest-{}", uuid::Uuid::new_v4()))
+    });
     validate_remote_path(&remote_path, "remote_path")?;
 
     let size_bytes = size_mb * 1024 * 1024;

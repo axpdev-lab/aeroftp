@@ -579,6 +579,26 @@ const INFINITY_TIMEOUT_MEMORY: std::time::Duration = std::time::Duration::from_s
 /// never a wall clock. Past the cap the used-storage scan walks Depth:1.
 const INFINITY_HEADERS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// The download body stopped with an error. reqwest's own message for it is
+/// "error decoding response body" whatever happened; the cause sits in its
+/// source chain. Koofr, for one, answers a file type it refuses to serve with
+/// a 200 that announces the size and then ends with no data (#368), which the
+/// bare message left unexplained: say how much came, and why it stopped.
+fn body_cut_short(error: &reqwest::Error, received: u64, announced: u64) -> String {
+    let mut cause = error.to_string();
+    let mut source = std::error::Error::source(error);
+    while let Some(inner) = source {
+        cause.push_str(": ");
+        cause.push_str(&inner.to_string());
+        source = inner.source();
+    }
+    if announced > 0 {
+        format!("the server ended the download after {received} of {announced} bytes ({cause})")
+    } else {
+        format!("the server ended the download after {received} bytes ({cause})")
+    }
+}
+
 /// #958: the Filen Desktop bridge never answers `Depth: infinity`, so asking
 /// it cost every used-storage scan the whole header cap.
 fn infinity_refused_from_the_start(provider_id: Option<&str>) -> bool {
@@ -3660,7 +3680,9 @@ impl StorageProvider for WebDavProvider {
                                 );
                                 break;
                             }
-                            return Err(ProviderError::TransferFailed(e.to_string()));
+                            return Err(ProviderError::TransferFailed(body_cut_short(
+                                &e, downloaded, total_size,
+                            )));
                         }
                         None => break,
                     }
@@ -7940,5 +7962,53 @@ mod infinity_refusal_tests {
         assert!(provider.list_recursive("/").await.is_err());
         server.abort();
         assert_eq!(asked.load(Ordering::SeqCst), 0);
+    }
+}
+
+/// #368: a body that stops short says how much came and why.
+#[cfg(test)]
+mod body_cut_short_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn a_download_cut_short_says_how_much_came() {
+        // Announces 100 bytes and closes with none, as Koofr does for a file
+        // type it refuses to serve.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            loop {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut buf = [0u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let _ = socket
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n",
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            }
+        });
+        let mut provider = WebDavProvider::new(WebDavConfig {
+            url: base,
+            username: "user".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+            provider_id: None,
+            verify_cert: true,
+            anonymous: false,
+        })
+        .unwrap();
+        provider.connected = true;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("probe.bin");
+        let outcome = provider
+            .download("/probe.bin", local.to_str().unwrap(), None)
+            .await;
+        server.abort();
+        let message = format!("{outcome:?}");
+        assert!(message.contains("after 0 of 100 bytes"), "{message}");
+        assert!(!local.exists(), "a cut-short download is not committed");
     }
 }

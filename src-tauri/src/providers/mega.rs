@@ -801,30 +801,47 @@ impl StorageProvider for MegaCmdProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        // MEGA `delete()` calls `mega-mv <abs_path> //bin/`, which preserves
-        // the original folder hierarchy under //bin (so a file at
-        // /aeroftp-bench-v377/test.bin lands at //bin/aeroftp-bench-v377/
-        // test.bin, NOT //bin/test.bin). The inherent
-        // `permanent_delete_from_trash` strips to basename only, which is
-        // correct for trash items already at top level (e.g. set up via
-        // the GUI) but not for items we just trashed via `delete()`. So
-        // we build the //bin path ourselves from the resolved absolute
-        // path and use mega-rm -r -f for a recursive idempotent purge.
+        // `delete()` runs `mega-mv <abs_path> //bin/`, which puts the item
+        // straight under the rubbish bin by its own name: /a/b/run lands at
+        // //bin/run, not //bin/a/b/run (MEGAcmd 2.6.0, measured 2026-10-05).
+        // This used to purge //bin/a/b/run, find nothing, answer "already
+        // purged", and leave every benchmark run in the bin (#368). The name
+        // alone can also match an item trashed earlier, so the purge runs only
+        // when exactly one item in the bin carries it; with several it refuses
+        // rather than delete the wrong one for good.
         let resolved = self.resolve_path(path);
-        let relative = resolved.trim_start_matches('/');
-        if relative.is_empty() {
+        let Some(name) = resolved
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+        else {
             return Ok(false);
-        }
-        let rubbish_path = format!("//bin/{}", relative);
-        match self
-            .run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &rubbish_path])
-            .await
-        {
-            Ok(_) => Ok(true),
-            // Item already purged (e.g. cleared by another client) is not
-            // an error: report Ok(false) so the caller can continue.
-            Err(ProviderError::NotFound(_)) => Ok(false),
-            Err(e) => Err(e),
+        };
+        let in_bin = match self.list_trash().await {
+            Ok(entries) => entries.iter().filter(|entry| entry.name == name).count(),
+            Err(ProviderError::NotFound(_)) => 0,
+            Err(e) => return Err(e),
+        };
+        match in_bin {
+            0 => Ok(false),
+            1 => {
+                let rubbish_path = format!("//bin/{}", name);
+                match self
+                    .run_mega_cmd_with_reauth("mega-rm", &["-r", "-f", &rubbish_path])
+                    .await
+                {
+                    Ok(_) => Ok(true),
+                    // Purged meanwhile by another client: nothing left to do.
+                    Err(ProviderError::NotFound(_)) => Ok(false),
+                    Err(e) => Err(e),
+                }
+            }
+            several => Err(ProviderError::Other(format!(
+                "{several} items named '{name}' are in the MEGA rubbish bin, so AeroFTP \
+                 cannot tell which one to delete for good; empty it from MEGA"
+            ))),
         }
     }
 
@@ -1386,7 +1403,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let shim =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
-        for name in ["mega-ls", "mega-mv"] {
+        for name in ["mega-ls", "mega-mv", "mega-rm"] {
             std::os::unix::fs::symlink(&shim, dir.path().join(name)).unwrap();
         }
         let mut provider = test_provider();
@@ -1440,6 +1457,45 @@ mod tests {
         assert!(moves(&log).is_empty(), "{:?}", moves(&log));
         provider.replace("/a.txt", "/b.txt").await.expect("replace");
         assert_eq!(moves(&log), ["/a.txt /b.txt"]);
+    }
+
+    /// #368: `mega-mv` to //bin puts an item under its own name, so the purge
+    /// that follows a benchmark's delete looks there, and only when the name is
+    /// unique in the bin.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_purge_after_a_delete_finds_the_item_by_its_own_name() {
+        let (mut provider, _log, dir) = provider_on_stand_in_megacmd();
+        let removals = || std::fs::read_to_string(dir.path().join("rm.log")).unwrap_or_default();
+        let bin = |lines: &[&str]| {
+            std::fs::write(dir.path().join("bin.txt"), lines.join("\n") + "\n").unwrap()
+        };
+
+        // Nothing of that name in the bin: nothing to purge, nothing removed.
+        bin(&["d---  -  -  13Jul2026  14:07:26  older-run"]);
+        assert!(!provider.delete_permanent("/demo/1bd68585").await.unwrap());
+        assert_eq!(removals(), "");
+
+        // The run just trashed, alone under its name: purged at //bin/<name>.
+        bin(&[
+            "d---  -  -  05Oct2026  08:42:55  1bd68585",
+            "d---  -  -  13Jul2026  14:07:26  older-run",
+        ]);
+        assert!(provider.delete_permanent("/demo/1bd68585").await.unwrap());
+        assert_eq!(removals(), "-r -f //bin/1bd68585\n");
+
+        // Two items share the name: refused, nothing removed.
+        std::fs::remove_file(dir.path().join("rm.log")).unwrap();
+        bin(&[
+            "d---  -  -  05Oct2026  08:42:55  report",
+            "d---  -  -  13Jul2026  14:07:26  report",
+        ]);
+        let outcome = provider.delete_permanent("/docs/report").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Other(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(removals(), "");
     }
 
     fn test_provider() -> MegaCmdProvider {

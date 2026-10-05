@@ -138,6 +138,7 @@ pub mod putty_import;
 pub mod readable_vault;
 pub mod s3cmd_import;
 pub mod sftp_download_tuning;
+pub mod speed_payload;
 pub mod vault_mount;
 pub mod vault_storage_provider;
 pub mod vault_telemetry;

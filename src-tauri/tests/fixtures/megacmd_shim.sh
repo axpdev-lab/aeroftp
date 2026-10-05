@@ -6,6 +6,8 @@
 #
 # The root holds the files a.txt and b.txt and the folder d. Every mega-mv is
 # appended to mv.log next to the link it was invoked through (not resolved).
+# The rubbish bin (`mega-ls -l //bin`) lists the lines of bin.txt next to the
+# link, and every mega-rm is appended to rm.log.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
@@ -16,8 +18,16 @@ case "$(basename "$0")" in
             echo 'd---  -  -  15Jan2026  14:30  d'
             exit 0
         fi
+        if [ "$1" = "-l" ] && [ "$2" = "//bin" ]; then
+            echo 'FLAGS VERS SIZE DATE TIME NAME'
+            [ -f "$here/bin.txt" ] && cat "$here/bin.txt"
+            exit 0
+        fi
         echo "Couldn't find $2" >&2
         exit 53
+        ;;
+    mega-rm)
+        echo "$*" >> "$here/rm.log"
         ;;
     mega-mv)
         echo "$1 $2" >> "$here/mv.log"
