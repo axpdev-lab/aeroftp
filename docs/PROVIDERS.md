@@ -103,8 +103,8 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 - **Koofr (`.bin` files):** Koofr refuses to serve any file whose name ends in
   `.bin`, whatever it holds. The API answers `403 FileBlocked` ("File download
   restricted due to possible dangerous content"); WebDAV answers 200 with the
-  size, then ends the body with no data, which AeroFTP reports as "the server
-  ended the download after 0 of N bytes". Uploads, listings and renames are not
+  size, then ends the body with no data, which AeroFTP reports as "the
+  download stopped after 0 of N bytes". Uploads, listings and renames are not
   affected, so renaming such a file (for example to `.dat`) makes it
   downloadable. The speed test and the benchmark name their payloads `.dat` for
   this reason (#368).
