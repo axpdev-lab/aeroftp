@@ -1016,14 +1016,23 @@ impl S3Config {
 /// store `provider_id`. The WebDAV config also accepts `providerId` and
 /// `_aeroftp_provider_id`. S3 preset defaults stamp `_aeroftp_s3_provider_id`.
 fn s3_provider_id(config: &ProviderConfig) -> Option<&str> {
-    config
-        .extra
-        .get("provider_id")
-        .or_else(|| config.extra.get("providerId"))
-        .or_else(|| config.extra.get(super::mega_df::PROVIDER_ID_META_KEY))
-        .or_else(|| config.extra.get("_aeroftp_s3_provider_id"))
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
+    // Trim each key before falling through. A blank `provider_id` used to win
+    // the `or_else` chain and hide a later `filen-desktop-s3`, so mkdir wrote
+    // the marker this preset must not write.
+    [
+        "provider_id",
+        "providerId",
+        super::mega_df::PROVIDER_ID_META_KEY,
+        "_aeroftp_s3_provider_id",
+    ]
+    .into_iter()
+    .find_map(|key| {
+        config
+            .extra
+            .get(key)
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+    })
 }
 
 /// Whether `mkdir` should skip the zero-byte `key/` directory marker.
@@ -2938,6 +2947,23 @@ mod s3_config_assume_role_tests {
             );
             assert!(!cfg.needs_dir_marker());
         }
+    }
+
+    #[test]
+    fn blank_provider_id_does_not_hide_the_filen_preset() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "filen".to_string());
+        extra.insert("provider_id".to_string(), "   ".to_string());
+        extra.insert(
+            "_aeroftp_s3_provider_id".to_string(),
+            "filen-desktop-s3".to_string(),
+        );
+        let cfg = s3_cfg(extra);
+        assert!(
+            cfg.skip_dir_markers,
+            "a blank provider_id must not hide filen-desktop-s3"
+        );
+        assert!(!cfg.needs_dir_marker());
     }
 
     #[test]

@@ -154,6 +154,19 @@ fn is_s3_directory_content_type(content_type: &str) -> bool {
     ct == "application/x-directory" || ct == "httpd/unix-directory"
 }
 
+/// A HEAD that names a directory placeholder and carries no bytes. Callers
+/// still decide what a missing key or another status means.
+fn response_is_zero_byte_directory_marker(headers: &reqwest::header::HeaderMap) -> bool {
+    let content_type = headers
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    let length = headers
+        .get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok());
+    is_s3_directory_content_type(content_type) && length == Some("0")
+}
+
 /// Owns the abort of a multipart upload the server has already opened.
 ///
 /// Every early exit used to carry its own `abort_multipart_upload_internal`
@@ -3993,19 +4006,7 @@ impl S3Provider {
     async fn slashless_key_is_directory_marker(&self, key: &str) -> Result<bool, ProviderError> {
         let response = self.s3_request(Method::HEAD, key, None, None).await?;
         match response.status() {
-            StatusCode::OK => {
-                let content_type = response
-                    .headers()
-                    .get(reqwest::header::CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok())
-                    .unwrap_or("");
-                Ok(is_s3_directory_content_type(content_type)
-                    && response
-                        .headers()
-                        .get(reqwest::header::CONTENT_LENGTH)
-                        .and_then(|v| v.to_str().ok())
-                        == Some("0"))
-            }
+            StatusCode::OK => Ok(response_is_zero_byte_directory_marker(response.headers())),
             StatusCode::NOT_FOUND => Ok(false),
             status => {
                 tracing::warn!(
@@ -4026,16 +4027,7 @@ impl S3Provider {
         match response.status() {
             StatusCode::NOT_FOUND => Ok(()),
             StatusCode::OK => {
-                let content_type = response
-                    .headers()
-                    .get(reqwest::header::CONTENT_TYPE)
-                    .and_then(|value| value.to_str().ok())
-                    .unwrap_or("");
-                let length = response
-                    .headers()
-                    .get(reqwest::header::CONTENT_LENGTH)
-                    .and_then(|value| value.to_str().ok());
-                if is_s3_directory_content_type(content_type) && length == Some("0") {
+                if response_is_zero_byte_directory_marker(response.headers()) {
                     return Ok(());
                 }
                 Err(ProviderError::InvalidPath(format!(
