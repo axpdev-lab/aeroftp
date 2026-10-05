@@ -4046,9 +4046,12 @@ impl S3Provider {
     }
 
     /// How long a GET may wait for an object this session just uploaded.
-    /// Filen Desktop runs `rclone serve s3 --vfs-write-back 5s`, so the object
-    /// is not visible for about five seconds. Ten seconds covers that copy.
-    const MARKERLESS_WRITE_BACK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+    /// Filen Desktop runs `rclone serve s3 --vfs-write-back 5s`, then copies
+    /// the file onto Filen. Giving up at 10 seconds landed while that copy
+    /// was still running, and the benchmark then deleted the cache file.
+    /// Thirty seconds covers the delay and the copy. A GET that succeeds
+    /// returns immediately.
+    const MARKERLESS_WRITE_BACK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
     fn note_markerless_upload(&self, key: &str) {
         if !self.config.skip_dir_markers {

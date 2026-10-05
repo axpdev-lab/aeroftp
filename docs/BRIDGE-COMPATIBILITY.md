@@ -160,8 +160,9 @@ way: an importer reads whatever connection types it recognizes in the file.)
   kept until a file is uploaded into it, so it does not appear in a listing
   made straight after mkdir. A file that already has that name is left in
   place and mkdir says so. A download of a file just uploaded on this preset
-  waits up to 10 seconds if the first GET answers 404, which is how long
-  `rclone serve s3 --vfs-write-back 5s` can hide the object. A zero-byte file
+  waits up to 30 seconds if the first GET answers 404, and returns as soon
+  as the object is visible. `rclone serve s3 --vfs-write-back 5s` hides it
+  for about 5 seconds and then copies it onto Filen. A zero-byte file
   that is already gone from the account but still in Filen Desktop's cache
   is invisible to that check: HEAD answers 404 and the upload PUT answers 500.
   Delete the file in Filen and clear the desktop cache before a retest.
