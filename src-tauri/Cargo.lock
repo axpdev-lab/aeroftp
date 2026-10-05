@@ -5483,9 +5483,9 @@ dependencies = [
 
 [[package]]
 name = "libunftp"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9f8ff371890db2cf65a0758dba9a79f9cd965de369f6dbdc6581a22780af45e"
+checksum = "3dc54288ecbf8beefa5cab3a9921ab03bf1f18a3a0872cbcdb5313fc0baebaeb"
 dependencies = [
  "async-trait",
  "bitflags 2.13.2",
@@ -5494,7 +5494,7 @@ dependencies = [
  "dashmap",
  "derive_more",
  "futures-util",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "lazy_static",
  "moka",
  "nix 0.30.1",
