@@ -219,3 +219,51 @@ describe('App used-storage scan lifecycle', () => {
       expect.objectContaining({ status: 'success', message: 'transfer.cancelled' }));
   });
 });
+
+// #958: a scan keeps the denominator on screen, reports its running figure as
+// it goes, and does not reset the quota to zero when it starts.
+describe('App used-storage scan display', () => {
+  type Progress = (event: { payload: { used: number; file_count: number; scanning: boolean } }) => void;
+  const withProgress = () => {
+    let emit!: Progress;
+    const listen = async (_event: string, handler: Progress) => { emit = handler; return vi.fn(); };
+    return { listen: listen as unknown as () => Promise<() => void>, emit: (...a: Parameters<Progress>) => emit(...a) };
+  };
+
+  it('keeps the total on screen while the scan grows and after it ends', async () => {
+    const scan = deferred<ScanResult>();
+    const progress = withProgress();
+    const f = fixture('usable quota', { holdFirstProfileRead: false, scan: () => scan.promise, listen: progress.listen });
+    f.quota.current = { used: 5, total: 100, free: 95 };
+    const running = f.runtime.scan();
+    await vi.waitFor(() => expect(f.commands.map(c => c.command)).toContain('provider_scan_used'));
+    // Started, nothing reported yet: the figure on screen is not reset.
+    expect(f.quota.current).toEqual({ used: 5, total: 100, free: 95 });
+    progress.emit({ payload: { used: 40, file_count: 3, scanning: true } });
+    expect(f.quota.current).toEqual({ used: 40, total: 100, free: 60, files: 3 });
+    progress.emit({ payload: { used: 80, file_count: 7, scanning: true } });
+    expect(f.quota.current).toEqual({ used: 80, total: 100, free: 20, files: 7 });
+    scan.resolve({ ...completeScan, used: 90, file_count: 9 });
+    await running;
+    expect(f.quota.current).toEqual({ used: 90, total: 100, free: 10, files: 9 });
+  });
+
+  it('ends on the total on screen when the scan reports no progress', async () => {
+    const f = fixture('usable quota', { holdFirstProfileRead: false });
+    f.quota.current = { used: 5, total: 100, free: 95 };
+    await f.runtime.scan();
+    expect(f.quota.current).toEqual({ used: 123, total: 100, free: 0, files: 1 });
+  });
+
+  it('shows the running figure with no total too', async () => {
+    const scan = deferred<ScanResult>();
+    const progress = withProgress();
+    const f = fixture('no quota API', { holdFirstProfileRead: false, scan: () => scan.promise, listen: progress.listen });
+    const running = f.runtime.scan();
+    await vi.waitFor(() => expect(f.commands.map(c => c.command)).toContain('provider_scan_used'));
+    progress.emit({ payload: { used: 40, file_count: 3, scanning: true } });
+    expect(f.quota.current).toEqual({ used: 40, total: 0, free: 0, files: 3 });
+    scan.resolve(completeScan);
+    await running;
+  });
+});

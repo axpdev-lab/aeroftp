@@ -555,6 +555,11 @@ pub struct WebDavProvider {
     /// How long `list_recursive` waits for the `Depth: infinity` response
     /// headers (#958). [`INFINITY_HEADERS_TIMEOUT`] outside tests.
     infinity_headers_timeout: std::time::Duration,
+    /// This server refused `PROPFIND Depth: infinity` (or never answered it)
+    /// earlier in this session, so `list_recursive` does not ask again: each
+    /// used-storage scan paid the whole header cap before walking (#958). Set
+    /// from the start for the Filen Desktop bridge, which never answers it.
+    infinity_refused: bool,
 }
 
 /// Wait for the response headers of a `PROPFIND Depth: infinity` (#958). A
@@ -613,6 +618,9 @@ impl WebDavProvider {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
 
+        // #958: the Filen Desktop bridge never answers Depth: infinity, so
+        // asking it cost every used-storage scan the whole header cap.
+        let infinity_refused = config.provider_id.as_deref() == Some("filen-desktop-webdav");
         Ok(Self {
             config,
             client,
@@ -624,6 +632,7 @@ impl WebDavProvider {
             multi_thread_cutoff: 8 * 1024 * 1024,
             single_file_mode: None,
             infinity_headers_timeout: INFINITY_HEADERS_TIMEOUT,
+            infinity_refused,
         })
     }
 
@@ -2207,6 +2216,12 @@ impl WebDavProvider {
             path.to_string()
         };
 
+        if self.infinity_refused {
+            return Err(ProviderError::NotSupported(
+                "Depth:infinity, refused by this server earlier in the session".to_string(),
+            ));
+        }
+
         let headers_cap = self.infinity_headers_timeout;
         let response = tokio::time::timeout(
             headers_cap,
@@ -2228,6 +2243,7 @@ impl WebDavProvider {
         )
         .await
         .map_err(|_| {
+            self.infinity_refused = true;
             ProviderError::ServerError(format!(
                 "Depth:infinity sent no response headers within {headers_cap:?}"
             ))
@@ -2248,10 +2264,26 @@ impl WebDavProvider {
                 let xml = String::from_utf8_lossy(&body);
                 self.parse_propfind_response(&xml, &list_path)
             }
-            other => Err(ProviderError::ServerError(format!(
-                "Depth:infinity not available (HTTP {})",
-                other
-            ))),
+            other => {
+                // A refusal, not a passing failure: the server will answer the
+                // same next time. Credentials (401) and throttling (408, 429)
+                // say nothing about Depth: infinity, and neither does a 5xx
+                // other than 501 Not Implemented.
+                let passing = matches!(
+                    other,
+                    StatusCode::UNAUTHORIZED
+                        | StatusCode::REQUEST_TIMEOUT
+                        | StatusCode::TOO_MANY_REQUESTS
+                ) || (other.is_server_error()
+                    && other != StatusCode::NOT_IMPLEMENTED);
+                if !passing {
+                    self.infinity_refused = true;
+                }
+                Err(ProviderError::ServerError(format!(
+                    "Depth:infinity not available (HTTP {})",
+                    other
+                )))
+            }
         }
     }
 
@@ -7600,5 +7632,102 @@ mod collection_redirect_tests {
         assert!(!refused("https://h/a", "http://h/b/").is_to_collection_form());
         assert!(!refused("https://h/a", "http://h/a").is_to_collection_form());
         assert!(!refused("https://h/a?x=1", "http://h/a/").is_to_collection_form());
+    }
+}
+
+/// #958: a server that refused `PROPFIND Depth: infinity` is not asked again
+/// in the same session; a passing failure does not count as a refusal.
+#[cfg(test)]
+mod infinity_refusal_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// A connected provider against a server that answers every
+    /// `Depth: infinity` with `answer` (`None`: never answers), and counts them.
+    async fn provider_against(
+        answer: Option<StatusCode>,
+        provider_id: Option<&str>,
+    ) -> (
+        WebDavProvider,
+        Arc<AtomicUsize>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let asked = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&asked);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |request: axum::extract::Request| {
+                let counter = Arc::clone(&counter);
+                async move {
+                    if request
+                        .headers()
+                        .get("depth")
+                        .is_some_and(|v| v == "infinity")
+                    {
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        match answer {
+                            Some(status) => return status,
+                            None => return std::future::pending().await,
+                        }
+                    }
+                    StatusCode::NOT_FOUND
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = WebDavProvider::new(WebDavConfig {
+            url: base,
+            username: "user".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+            provider_id: provider_id.map(str::to_string),
+            verify_cert: true,
+            anonymous: false,
+        })
+        .unwrap();
+        provider.connected = true;
+        provider.set_infinity_headers_timeout(std::time::Duration::from_millis(200));
+        (provider, asked, server)
+    }
+
+    #[tokio::test]
+    async fn a_server_that_never_answers_is_asked_once_per_session() {
+        let (mut provider, asked, server) = provider_against(None, None).await;
+        assert!(provider.list_recursive("/").await.is_err());
+        let started = std::time::Instant::now();
+        assert!(provider.list_recursive("/").await.is_err());
+        server.abort();
+        assert_eq!(asked.load(Ordering::SeqCst), 1);
+        // The second scan goes straight to the walk, without the header cap.
+        assert!(started.elapsed() < std::time::Duration::from_millis(100));
+    }
+
+    #[tokio::test]
+    async fn a_refusing_status_is_remembered_and_a_passing_one_is_not() {
+        for (status, asked_twice) in [
+            (StatusCode::FORBIDDEN, false),
+            (StatusCode::NOT_IMPLEMENTED, false),
+            (StatusCode::UNAUTHORIZED, true),
+            (StatusCode::TOO_MANY_REQUESTS, true),
+            (StatusCode::SERVICE_UNAVAILABLE, true),
+        ] {
+            let (mut provider, asked, server) = provider_against(Some(status), None).await;
+            assert!(provider.list_recursive("/").await.is_err());
+            assert!(provider.list_recursive("/").await.is_err());
+            server.abort();
+            let expected = if asked_twice { 2 } else { 1 };
+            assert_eq!(asked.load(Ordering::SeqCst), expected, "{status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_filen_desktop_bridge_is_never_asked() {
+        let (mut provider, asked, server) =
+            provider_against(None, Some("filen-desktop-webdav")).await;
+        assert!(provider.list_recursive("/").await.is_err());
+        server.abort();
+        assert_eq!(asked.load(Ordering::SeqCst), 0);
     }
 }

@@ -3582,18 +3582,23 @@ const App: React.FC = () => {
     // that moment and not what this render closure saw: an automatic scan
     // starts right after fetchStorageQuota has set a fresher value.
     let beforeScan: { quota: typeof storageQuota } | undefined;
-    const provisional = (used: number) => {
-      // Show the cap live while scanning so the StatusBar/card are not
-      // blank: the bar fills against the manual total as `used` grows.
-      // Drop the update once a newer refresh owns the display.
+    // The denominator a scan keeps: the manual total when there is one, else
+    // the total that was on screen when the scan began (an API quota). A scan
+    // measures used space only; it has no total of its own to replace it with,
+    // and dropping it to zero lost the bar mid-scan and after it (#958).
+    const keptTotal = (shown: typeof storageQuota | undefined) =>
+      (manualTotal && manualTotal > 0) ? manualTotal : (shown && shown.total > 0 ? shown.total : 0);
+    const provisional = (used: number, files: number) => {
+      // The running figure, live, against the kept total: the StatusBar chip
+      // grows as the scan goes, with or without a cap (#958). It used to move
+      // only with a manual cap, and then from zero. Drop the update once a
+      // newer refresh owns the display.
       if (version !== quotaVersionRef.current) return;
-      const total = manualTotal;
-      if (total && total > 0) {
-        setStorageQuota(prev => {
-          if (!beforeScan) beforeScan = { quota: prev };
-          return { used, total, free: total > used ? total - used : 0 };
-        });
-      }
+      setStorageQuota(prev => {
+        if (!beforeScan) beforeScan = { quota: prev };
+        const total = keptTotal(beforeScan.quota);
+        return { used, total, free: total > used ? total - used : 0, files };
+      });
     };
     // A cancelled or failed scan has no figure of its own: put back what it
     // replaced, and leave the display alone when it replaced nothing.
@@ -3605,8 +3610,13 @@ const App: React.FC = () => {
       scanInFlightRef.current = false;
       return;
     }
+    // The figure on screen stays until the scan reports one: starting at
+    // zero read as a reset of the quota (#958). Its total is noted now, read
+    // in a functional update (the render closure may be older), so a scan that
+    // reports no progress still ends on the right denominator.
+    let shownAtStart: typeof storageQuota | undefined;
+    setStorageQuota(prev => { shownAtStart = prev; return prev; });
     setUsedScanStatus({ running: true, files: 0, bytes: 0 });
-    provisional(0);
     if (scanOptions?.automatic) {
       notify.info(t('statusBar.usedScanRunning'), t('connection.autoScanUsedOnConnectHint'));
     }
@@ -3667,7 +3677,7 @@ const App: React.FC = () => {
           if (connectionChanged()) return;
           const p = event.payload;
           setUsedScanStatus({ running: p.scanning, files: p.file_count, bytes: p.used });
-          provisional(p.used);
+          provisional(p.used, p.file_count);
         },
       );
       if (connectionChanged()) {
@@ -3711,7 +3721,8 @@ const App: React.FC = () => {
           details: `${t('statusBar.usedScanEmpty', { path: scanRoot })} [${res.method}]`,
         });
       } else {
-        const eff = resolveEffectiveQuota(res.used, 0, manualTotal);
+        // The kept total, not 0: the scan measured used space only (#958).
+        const eff = resolveEffectiveQuota(res.used, keptTotal(beforeScan ? beforeScan.quota : shownAtStart), manualTotal);
         // Only touch the live display if this session is still active;
         // the persisted card is resolved by profile id so it stays
         // correct regardless.

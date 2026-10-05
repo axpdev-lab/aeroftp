@@ -8,6 +8,7 @@ import { useTranslation, useI18n } from '../i18n';
 import { AVAILABLE_LANGUAGES } from '../i18n/types';
 import { AeroShareStatusButton } from './AeroShareStatusButton';
 import { formatBytes } from '../utils/formatters';
+import { quotaChipLabel } from '../utils/quotaChipLabel';
 import {
     getStorageTone,
     TONE_BG_CLASS,
@@ -255,80 +256,73 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 {/* Storage Quota: shares thresholds + tone palette with the
                     MyServers card storage bar so the dual panel and the intro
                     hub stay visually consistent (emerald → amber → red). */}
-                {isConnected && storageQuota && storageQuota.total > 0 && (() => {
-                    const { tone } = getStorageTone(storageQuota.used, storageQuota.total, quotaThresholds);
-                    const pct = Math.min(100, (storageQuota.used / storageQuota.total) * 100);
-                    // The whole quota chip is a click target to FORCE a fresh
-                    // recursive scan (item 4b). Without this a stale cached
-                    // figure stayed stuck because the standalone scan action
-                    // only appeared when no value was shown at all.
-                    const canScan = !!onScanUsed && !usedScanStatus?.running;
-                    const baseTitle = `${formatBytes(storageQuota.used)} / ${formatBytes(storageQuota.total)}${storageQuota.files != null ? ` · ${storageQuota.files} ${t('browser.files')}` : ''}`;
+                {isConnected && (() => {
+                    // One chip for the figure and for the scan that refreshes
+                    // it: while a scan runs the same chip shows the running
+                    // used / total, a spinner and Cancel (#958). It used to
+                    // freeze the old figure and add a second chip, "files ·
+                    // bytes", that read as a fraction.
+                    const running = !!usedScanStatus?.running;
+                    const q = storageQuota;
+                    const hasFigure = !!q && (q.total > 0 || q.used > 0);
+                    if (!hasFigure && !running) return null;
+                    const shown = hasFigure
+                        ? q!
+                        : { used: usedScanStatus?.bytes ?? 0, total: 0, files: usedScanStatus?.files ?? null };
+                    const label = quotaChipLabel(shown, t('browser.files'), formatBytes);
+                    const canScan = !!onScanUsed && !running;
+                    const title = running
+                        ? `${t('statusBar.usedScanRunning')} ${label}`
+                        : shown.total > 0
+                            ? label
+                            : `${label} ${t('statusBar.usedNoCap')}`;
+                    // The chip is a click target to force a fresh recursive
+                    // scan (item 4b): a stale cached figure stayed stuck when
+                    // the scan action only appeared with no value shown.
+                    let bar: React.ReactNode;
+                    let icon: React.ReactNode;
+                    if (shown.total > 0) {
+                        // Same thresholds and tones as the MyServers card bar
+                        // (emerald, amber, red).
+                        const { tone } = getStorageTone(shown.used, shown.total, quotaThresholds);
+                        const pct = Math.min(100, (shown.used / shown.total) * 100);
+                        bar = <div className={`h-full rounded-full transition-all ${TONE_BG_CLASS[tone]}`} style={{ width: `${pct}%` }} />;
+                        icon = running
+                            ? <Loader2 size={12} className="text-blue-500 animate-spin" />
+                            : <HardDrive size={12} className={TONE_TEXT_CLASS[tone]} />;
+                    } else {
+                        bar = <div className="h-full w-full rounded-full bg-emerald-500/60" />;
+                        icon = running
+                            ? <Loader2 size={12} className="text-blue-500 animate-spin" />
+                            : <HardDrive size={12} className="text-emerald-500" />;
+                    }
                     return (
-                        <button
-                            type="button"
-                            onClick={canScan ? onScanUsed : undefined}
-                            className={`flex items-center gap-1.5 ${canScan ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-                            title={canScan ? `${baseTitle} · ${t('statusBar.usedScanHint')}` : baseTitle}
-                        >
-                            <HardDrive size={12} className={TONE_TEXT_CLASS[tone]} />
-                            <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
-                                <div
-                                    className={`h-full rounded-full transition-all ${TONE_BG_CLASS[tone]}`}
-                                    style={{ width: `${pct}%` }}
-                                />
-                            </div>
-                            <span className="text-[10px]">
-                                {formatBytes(storageQuota.used)} / {formatBytes(storageQuota.total)}
-                                {storageQuota.files != null && <span className="text-gray-400 dark:text-gray-500"> · {storageQuota.files} {t('browser.files')}</span>}
-                            </span>
-                        </button>
-                    );
-                })()}
-
-                {isConnected && storageQuota && storageQuota.total === 0 && storageQuota.used > 0 && (() => {
-                    const canScan = !!onScanUsed && !usedScanStatus?.running;
-                    const baseTitle = `${formatBytes(storageQuota.used)} ${t('statusBar.usedNoCap')}${storageQuota.files != null ? ` · ${storageQuota.files} ${t('browser.files')}` : ''}`;
-                    return (
-                        <button
-                            type="button"
-                            onClick={canScan ? onScanUsed : undefined}
-                            className={`flex items-center gap-1.5 ${canScan ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-                            title={canScan ? `${baseTitle} · ${t('statusBar.usedScanHint')}` : baseTitle}
-                        >
-                            <HardDrive size={12} className="text-emerald-500" />
-                            <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
-                                <div className="h-full w-full rounded-full bg-emerald-500/60" />
-                            </div>
-                            <span className="text-[10px]">
-                                {formatBytes(storageQuota.used)}
-                                {storageQuota.files != null && <span className="text-gray-400 dark:text-gray-500"> · {storageQuota.files} {t('browser.files')}</span>}
-                            </span>
-                        </button>
-                    );
-                })()}
-
-                {/* Item 4b: explicit "used storage" scan trigger. Shown when
-                    connected to a backend with no usable quota bar yet
-                    (no-quota S3/WebDAV/FTP, or B2 before a manual cap). */}
-                {isConnected && onScanUsed && usedScanStatus?.running && (
-                    <div className="flex items-center gap-1.5" title={t('statusBar.usedScanRunning')}>
-                        <Loader2 size={12} className="text-blue-500 animate-spin" />
-                        <span className="text-[10px] tabular-nums">
-                            {usedScanStatus.files} · {formatBytes(usedScanStatus.bytes)}
-                        </span>
-                        {onCancelUsedScan && (
+                        <div className="flex items-center gap-1.5" data-storage-chip={running ? 'scanning' : 'idle'}>
                             <button
                                 type="button"
-                                onClick={onCancelUsedScan}
-                                className="text-gray-400 hover:text-red-500"
-                                title={t('common.cancel')}
+                                onClick={canScan ? onScanUsed : undefined}
+                                className={`flex items-center gap-1.5 ${canScan ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                                title={canScan ? `${title}. ${t('statusBar.usedScanHint')}` : title}
                             >
-                                <X size={11} />
+                                {icon}
+                                <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
+                                    {bar}
+                                </div>
+                                <span className="text-[10px] tabular-nums">{label}</span>
                             </button>
-                        )}
-                    </div>
-                )}
+                            {running && onCancelUsedScan && (
+                                <button
+                                    type="button"
+                                    onClick={onCancelUsedScan}
+                                    className="text-gray-400 hover:text-red-500"
+                                    title={t('common.cancel')}
+                                >
+                                    <X size={11} />
+                                </button>
+                            )}
+                        </div>
+                    );
+                })()}
                 {isConnected && onScanUsed && !usedScanStatus?.running
                     && (!storageQuota || (storageQuota.total <= 0 && storageQuota.used <= 0)) && (
                     <button
