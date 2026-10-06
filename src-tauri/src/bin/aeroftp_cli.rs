@@ -44373,6 +44373,7 @@ async fn run_single_speed_test(
             }
         });
 
+        wait_until_upload_readable(&mut provider, remote_test_path, cli, format).await;
         let download_start = Instant::now();
         if let Err(e) = provider
             .download(
@@ -45119,6 +45120,7 @@ async fn run_many_files_workload(
                     .push("many-files: hit profile-timeout during download-all".into());
                 break;
             }
+            wait_until_upload_readable(provider, &remote_name(i), cli, format).await;
             let start = Instant::now();
             match provider
                 .download(&remote_name(i), &local_dn_path, None)
@@ -45501,6 +45503,31 @@ fn note_trash_purge(
             "trash purge of {} failed, check the provider's trash: {}",
             path, e
         )),
+    }
+}
+
+/// Wait, before a timed download, until the file this run just uploaded can
+/// be read back. A server that writes uploads back after a delay (Filen
+/// Desktop's `rclone serve s3`) would otherwise put that delay into the
+/// download time: 10 MB measured at 5 Mbps that was 15 s of waiting and well
+/// under a second of transfer. The wait is told apart on the terminal and is
+/// not counted. An error is left to the download, which reports it.
+async fn wait_until_upload_readable(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) {
+    if let Ok(Some(waited)) = provider.wait_until_readable(remote_path).await {
+        if waited >= std::time::Duration::from_millis(100)
+            && !cli.quiet
+            && matches!(format, OutputFormat::Text)
+        {
+            eprintln!(
+                "  waited {:.1} s for the server to make the upload readable (not counted as download time)",
+                waited.as_secs_f64()
+            );
+        }
     }
 }
 
@@ -46111,6 +46138,7 @@ async fn cmd_benchmark(
                         if is_warmup { " (warmup)" } else { "" }
                     );
                 }
+                wait_until_upload_readable(&mut provider, &remote_path, cli, format).await;
                 let start = Instant::now();
                 let local_download_path = local_download.path().to_string_lossy().to_string();
                 let dl_result = if !cli.partial {

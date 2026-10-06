@@ -1047,6 +1047,21 @@ pub trait StorageProvider: Send + Sync {
         Ok(true)
     }
 
+    /// Wait until a file this session just uploaded can be read back, and
+    /// return how long that took, or `None` when there was nothing to wait
+    /// for. A server that writes uploads back to its own storage after a
+    /// delay (Filen Desktop's `rclone serve s3`) answers 404 for a few
+    /// seconds; a benchmark calls this before it starts the download clock,
+    /// so the wait is reported apart and not counted as download time. The
+    /// download itself still waits on its own, so skipping this call loses
+    /// only the split, never the file.
+    async fn wait_until_readable(
+        &mut self,
+        _path: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        Ok(None)
+    }
+
     /// Whether [`replace`] puts a file over an existing one by setting the
     /// previous item aside first: it is renamed to [`set_aside_name`], the
     /// new one moves into its place, and only then is the old one deleted.
