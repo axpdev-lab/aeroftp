@@ -11,6 +11,10 @@ use tokio::sync::oneshot;
 
 const MAX_PENDING: usize = 32;
 const MAX_REPLY_BYTES: usize = 256 * 1024;
+const MAX_SETTINGS_KEYS: usize = 40;
+const MAX_SETTINGS_PROVIDERS: usize = 32;
+const MAX_SETTINGS_MODELS: usize = 64;
+const MAX_SETTINGS_STRING: usize = 256;
 const INTENTS: &[&str] = &[
     "state",
     "wait",
@@ -21,6 +25,10 @@ const INTENTS: &[&str] = &[
     "connect",
     "disconnect",
     "stop",
+    "settings_open",
+    "settings_read",
+    "settings_update",
+    "settings_close",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -97,6 +105,91 @@ struct Queue {
     pending: usize,
     failed: usize,
 }
+/// Safe Settings projection: allowlisted public values only. The frontend
+/// builds it field-by-field; this validator re-checks shape, bounds and
+/// scalar-only values, and the locked check below requires it to be absent
+/// whenever the app is locked.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SettingsAiProvider {
+    id: String,
+    name: String,
+    #[serde(rename = "type")]
+    provider_type: String,
+    enabled: bool,
+}
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SettingsAiModel {
+    id: String,
+    provider_id: String,
+    name: String,
+    enabled: bool,
+    is_default: bool,
+}
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SettingsAi {
+    providers: Vec<SettingsAiProvider>,
+    models: Vec<SettingsAiModel>,
+    default_model_id: Option<String>,
+    advanced: serde_json::Map<String, Value>,
+}
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct SettingsView {
+    open: Option<String>,
+    general: Option<serde_json::Map<String, Value>>,
+    ai: Option<SettingsAi>,
+}
+fn scalar_settings_map(map: &serde_json::Map<String, Value>) -> bool {
+    map.len() <= MAX_SETTINGS_KEYS
+        && map.iter().all(|(key, value)| {
+            key.len() <= 64
+                && (value.is_boolean()
+                    || value.is_number()
+                    || value
+                        .as_str()
+                        .is_some_and(|s| s.len() <= MAX_SETTINGS_STRING))
+        })
+}
+fn valid_settings_view(settings: &SettingsView) -> bool {
+    if settings
+        .open
+        .as_deref()
+        .is_some_and(|area| !matches!(area, "general" | "ai"))
+    {
+        return false;
+    }
+    if let Some(general) = &settings.general {
+        if !scalar_settings_map(general) {
+            return false;
+        }
+    }
+    if let Some(ai) = &settings.ai {
+        if ai.providers.len() > MAX_SETTINGS_PROVIDERS
+            || ai.models.len() > MAX_SETTINGS_MODELS
+            || !scalar_settings_map(&ai.advanced)
+            || ai.providers.iter().any(|p| {
+                p.id.len() > MAX_SETTINGS_STRING
+                    || p.name.len() > MAX_SETTINGS_STRING
+                    || p.provider_type.len() > 64
+            })
+            || ai.models.iter().any(|m| {
+                m.id.len() > MAX_SETTINGS_STRING
+                    || m.provider_id.len() > MAX_SETTINGS_STRING
+                    || m.name.len() > MAX_SETTINGS_STRING
+            })
+            || ai
+                .default_model_id
+                .as_deref()
+                .is_some_and(|id| id.len() > MAX_SETTINGS_STRING)
+        {
+            return false;
+        }
+    }
+    true
+}
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Snapshot {
@@ -111,6 +204,8 @@ struct Snapshot {
     sessions: Vec<Session>,
     panels: Panels,
     queue: Queue,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    settings: Option<SettingsView>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -168,6 +263,11 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
             return Err("gui_invalid_reply".into());
         }
     }
+    if let Some(settings) = &s.settings {
+        if !valid_settings_view(settings) {
+            return Err("gui_invalid_reply".into());
+        }
+    }
     if (!unlocked || s.locked)
         && (!s.locked
             || s.connected
@@ -176,6 +276,7 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
             || s.panels.remote.is_some()
             || s.panels.local.is_some()
             || s.panels.local2.is_some()
+            || s.settings.is_some()
             || s.queue.active != 0
             || s.queue.pending != 0
             || s.queue.failed != 0)
@@ -374,6 +475,47 @@ mod tests {
         );
         value["snapshot"]["sessions"][0]["password"] = json!("SECRET");
         assert!(parse_reply(value, true).is_err());
+    }
+    fn unlocked_reply_with_settings() -> Value {
+        json!({ "ok": true, "error": null, "snapshot": { "schema_version": 1, "state_revision": 2,
+            "version": "test", "locked": false, "blocked": false, "view": "other", "connected": false,
+            "active_session_id": null, "sessions": [], "panels": {}, "queue": { "active": 0, "pending": 0, "failed": 0 },
+            "settings": {
+                "open": "general",
+                "general": { "showHiddenFiles": true, "fontSize": 16, "dateFormat": "iso" },
+                "ai": {
+                    "providers": [{ "id": "p1", "name": "Fixture", "type": "openai", "enabled": true }],
+                    "models": [{ "id": "m1", "provider_id": "p1", "name": "fixture-1", "enabled": true, "is_default": true }],
+                    "default_model_id": null,
+                    "advanced": { "temperature": 0.7, "max_tokens": 4096 }
+                }
+            } } })
+    }
+    #[test]
+    fn gui_controller_settings_projection_is_bounded_and_locked_redacted() {
+        // A well-formed unlocked reply with the safe projection parses.
+        assert!(parse_reply(unlocked_reply_with_settings(), true).is_ok());
+        // The projection must be absent from a locked reply.
+        let mut locked = locked_reply();
+        locked["snapshot"]["settings"] = json!({ "open": null, "general": null, "ai": null });
+        assert!(parse_reply(locked, false).is_err());
+        // Unknown areas, nested objects, oversized lists and secret-shaped
+        // values are all rejected before the reply can leave the broker.
+        let mut bad = unlocked_reply_with_settings();
+        bad["snapshot"]["settings"]["open"] = json!("vault");
+        assert!(parse_reply(bad, true).is_err());
+        let mut bad = unlocked_reply_with_settings();
+        bad["snapshot"]["settings"]["general"]["nested"] = json!({ "apiKey": "x" });
+        assert!(parse_reply(bad, true).is_err());
+        let mut bad = unlocked_reply_with_settings();
+        bad["snapshot"]["settings"]["ai"]["providers"] = json!(vec![
+            json!({ "id": "p", "name": "n", "type": "t", "enabled": true });
+            33
+        ]);
+        assert!(parse_reply(bad, true).is_err());
+        let mut bad = unlocked_reply_with_settings();
+        bad["snapshot"]["settings"]["ai"]["providers"][0]["apiKey"] = json!("SECRET");
+        assert!(parse_reply(bad, true).is_err());
     }
     #[test]
     fn gui_controller_window_and_expiry_are_bound() {

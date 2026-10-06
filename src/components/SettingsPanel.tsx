@@ -110,21 +110,7 @@ const FOCUSABLE_SELECTOR = [
     '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
-const FONT_PRESETS = [
-    { label: 'Inter (Default)', value: DEFAULT_APP_FONT_FAMILY, bundled: true },
-    {
-        label: 'System Default',
-        value: 'system-ui, -apple-system, sans-serif',
-        bundled: true,
-    },
-    { label: 'FiraGO', value: "'FiraGO', sans-serif", bundled: false },
-    { label: 'Noto Sans', value: "'Noto Sans', sans-serif", bundled: false },
-    {
-        label: 'JetBrains Mono',
-        value: "'JetBrains Mono', monospace",
-        bundled: false,
-    },
-];
+import { FONT_PRESETS } from '../utils/fontPresets';
 
 const getSelectedFontPreset = (fontFamily: string) => {
     return FONT_PRESETS.find((preset) => preset.value === fontFamily);
@@ -1067,6 +1053,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="settings-panel-title"
+                    data-gui-owned="settings"
                     tabIndex={-1}
                     onKeyDown={handlePanelKeyDown}
                     className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col"

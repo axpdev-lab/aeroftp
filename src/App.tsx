@@ -3,6 +3,12 @@
 
 import { ConnectScope, type ProfileConnector, type RegisterProfileConnector } from './gui/connectScope';
 import { runOwnedConnectionCleanup } from './gui/connectionCleanup';
+import { buildAiProjection, buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
+import { createSettingsHandlers } from './gui/settingsHandlers';
+import {
+    AI_SETTINGS_EVENT, AI_SETTINGS_OPEN_EVENT, readAiPublicProjection,
+} from './utils/aiSettingsStore';
+import type { AISettings } from './types/ai';
 import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
@@ -16038,11 +16044,47 @@ const App: React.FC = () => {
     profileConnector.current = connector;
     return () => { if (profileConnector.current === connector) profileConnector.current = null; };
   }, []);
+
+  // === Safe Settings surface for the GUI controller ===
+  // aiPublicSettings is the field-by-field projection of the public AI
+  // settings blob (no API keys are ever hydrated here). aiSettingsModalOpen is
+  // the REAL mounted visibility reported by AISettingsPanel, so a lazy first
+  // mount of the DevTools chain cannot falsely claim the AI panel is open.
+  const [aiPublicSettings, setAiPublicSettings] = useState<AiSettingsProjection | null>(null);
+  const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
+  const [aiSettingsOpenRequest, setAiSettingsOpenRequest] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    readAiPublicProjection().then(projection => { if (!cancelled) setAiPublicSettings(projection); }).catch(() => { });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      const detail = (e as CustomEvent).detail as AISettings | undefined;
+      if (!detail || !Array.isArray(detail.providers)) return;
+      setAiPublicSettings(buildAiProjection(detail));
+    };
+    window.addEventListener(AI_SETTINGS_EVENT, onChanged);
+    return () => window.removeEventListener(AI_SETTINGS_EVENT, onChanged);
+  }, []);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const open = !!(e as CustomEvent).detail?.open;
+      setAiSettingsModalOpen(open);
+      if (!open) setAiSettingsOpenRequest(false);
+    };
+    window.addEventListener(AI_SETTINGS_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(AI_SETTINGS_OPEN_EVENT, onOpen);
+  }, []);
+
   const guiController = useGuiController({
     version: appVersion,
     locked: isAppLocked || !vaultBootComplete || accountLockState !== 'ready',
+    // The owned Settings dialogs are exempt: the controller itself opens and
+    // drives them. Everything else (confirm/input/host-key/2FA/overwrite/
+    // vault/locked overlay) still blocks agent control.
     blocked: !!confirmDialog || !!inputDialog || hostKeyDialog.visible || !!twoFactorPrompt?.open ||
-      overwriteDialog.isOpen || showSettingsPanel || !!showVaultPanel || !!lockedOverlayProfile,
+      overwriteDialog.isOpen || !!showVaultPanel || !!lockedOverlayProfile,
     view: showSettingsPanel || showVaultPanel ? 'other' : showConnectionScreen ? 'servers' : 'files',
     connected: isConnected,
     activeSessionId,
@@ -16060,6 +16102,14 @@ const App: React.FC = () => {
       active: transferQueue.items.filter(item => item.status === 'transferring').length,
       pending: transferQueue.items.filter(item => item.status === 'pending').length,
       failed: transferQueue.items.filter(item => item.status === 'error').length,
+    },
+    // Safe Settings projection: live general preferences from useSettings
+    // (allowlisted keys only) and the public AI blob projection. The locked
+    // redaction in buildGuiSnapshot drops the whole block.
+    settings: {
+      open: showSettingsPanel ? 'general' as const : aiSettingsModalOpen ? 'ai' as const : null,
+      general: buildGeneralProjection(settings as unknown as Record<string, unknown>),
+      ai: aiPublicSettings,
     },
   }, {
     showView: view => setShowConnectionScreen(view === 'servers'),
@@ -16085,6 +16135,33 @@ const App: React.FC = () => {
     },
     disconnect: async () => { if (isConnected) await disconnectFromFtp('button'); },
     stop: async () => { await cancelActiveConnect(); if (remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
+    // Settings surface: typed open/close/read/update over the SAME public
+    // persistence the UI uses. The general update merges allowlisted keys
+    // through updateAppSettings (never SettingsPanel.handleSave, which also
+    // rewrites server profiles, OAuth secrets and OS startup state). The AI
+    // update writes only the stripped public blob; keyring records are never
+    // enqueued, overwritten or cleared here.
+    ...createSettingsHandlers({
+      openGeneral: () => {
+        setAiSettingsOpenRequest(false);
+        setSettingsInitialTab('general');
+        setSettingsInitialAppearanceSubTab(undefined);
+        setShowSettingsPanel(true);
+      },
+      openAi: () => {
+        setShowSettingsPanel(false);
+        setDevToolsOpen(true);
+        window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' }));
+        setAiSettingsOpenRequest(true);
+      },
+      closeAll: () => {
+        setShowSettingsPanel(false);
+        setSettingsInitialTab(undefined);
+        setSettingsInitialAppearanceSubTab(undefined);
+        setAiSettingsOpenRequest(false);
+      },
+      onAiProjection: setAiPublicSettings,
+    }),
   }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
     `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
     ok ? 'success' : 'error'));
@@ -19729,6 +19806,7 @@ const App: React.FC = () => {
         <DevToolsV2
           isOpen={devToolsOpen}
           previewFile={devToolsPreviewFile}
+          aiSettingsOpenRequest={aiSettingsOpenRequest}
           // Z.3.10: terminal cwd follows the focused panel. For an
           // unmounted remote panel we forward '~' so SSHTerminal opens
           // in the user's home dir instead of pretending the remote

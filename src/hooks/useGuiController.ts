@@ -39,7 +39,9 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
             setCommitTicket(ticket);
         });
         const service = new GuiController(() => ({ ...current.current.source,
-            blocked: current.current.source.blocked || !!document.querySelector('[aria-modal="true"]') }), () => ({ ...current.current.handlers,
+            // The owned Settings dialog is a first-class controller surface, so
+            // it does not self-block; any OTHER modal still interrupts control.
+            blocked: current.current.source.blocked || !!document.querySelector('[aria-modal="true"]:not([data-gui-owned="settings"])') }), () => ({ ...current.current.handlers,
                 connect: async (id, scope) => {
                     if (!current.current.handlers.connect) throw new GuiError('blocked');
                     const result = await current.current.handlers.connect(id, scope);
@@ -50,6 +52,22 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
                     await committed(); return result;
                 },
                 refresh: async panel => { await current.current.handlers.refresh(panel); await committed(); },
+                settingsOpen: async area => {
+                    if (!current.current.handlers.settingsOpen) throw new GuiError('blocked');
+                    await current.current.handlers.settingsOpen(area); await committed();
+                },
+                settingsClose: async () => {
+                    if (!current.current.handlers.settingsClose) throw new GuiError('blocked');
+                    await current.current.handlers.settingsClose(); await committed();
+                },
+                settingsRead: async area => {
+                    if (!current.current.handlers.settingsRead) throw new GuiError('blocked');
+                    await current.current.handlers.settingsRead(area); await committed();
+                },
+                settingsUpdate: async (area, set) => {
+                    if (!current.current.handlers.settingsUpdate) throw new GuiError('blocked');
+                    await current.current.handlers.settingsUpdate(area, set); await committed();
+                },
             }),
             value => { if (mounted) setLease(value); }, (intent, ok, owner) => current.current.audit(intent, ok, owner));
         controller.current = service;

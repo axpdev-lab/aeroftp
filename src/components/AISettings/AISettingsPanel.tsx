@@ -14,7 +14,7 @@ import { GeminiIcon, OpenAIIcon, AnthropicIcon, XAIIcon, OpenRouterIcon, OllamaI
 import { AIProvider, AIModel, AISettings, AIProviderType, PROVIDER_PRESETS, DEFAULT_MODELS, generateId, getDefaultAISettings } from '../../types/ai';
 import { logger } from '../../utils/logger';
 import './AISettingsPanel.css';
-import { secureGetWithFallback, secureStoreAndClean } from '../../utils/secureStorage';
+import { secureGetWithFallback } from '../../utils/secureStorage';
 import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
 import { McpServersPanel } from './McpServersPanel';
@@ -24,6 +24,7 @@ import { useTranslation } from '../../i18n';
 import { AEROAGENT_VERSION } from '../../utils/aeroagentVersion';
 import { createTauriListener } from '../../hooks/useTauriListener';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { AI_SETTINGS_EVENT, AI_SETTINGS_KEY, AI_SETTINGS_OPEN_EVENT, updateAiSettingsBlob } from '../../utils/aiSettingsStore';
 
 interface AISettingsPanelProps {
     isOpen: boolean;
@@ -90,8 +91,8 @@ const getProviderIcon = (type: AIProviderType): React.ReactNode => {
     }
 };
 
-// Local storage key
-const AI_SETTINGS_KEY = 'aeroftp_ai_settings';
+// Local storage key: shared with the controller-facing store module
+// (utils/aiSettingsStore) so panel and agent writes serialize on one queue.
 
 // Model Edit Modal Component
 interface ModelEditModalProps {
@@ -244,6 +245,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const [settingsLoaded, setSettingsLoaded] = useState(false);
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
+    // Deliberate human API-key edits not yet flushed to the keyring. Only
+    // providers in this set are written to `ai_apikey_*` on save: a plain
+    // preference change (or a controller update) never re-writes a stored
+    // key, and a later preference save cannot discard a pending key edit.
+    const dirtyApiKeysRef = useRef<Set<string>>(new Set());
     const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'advanced' | 'prompt' | 'plugins' | 'macros' | 'mcp'>('providers');
     const [showMarketplace, setShowMarketplace] = useState(false);
     const [showPluginBrowser, setShowPluginBrowser] = useState(false);
@@ -413,24 +419,64 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         loadSettings();
     }, []);
 
+    // Report the panel's REAL mounted visibility: the GUI controller's
+    // settings_open(ai) committed check trusts this, so a lazy first mount of
+    // the DevTools chain cannot claim the modal open before it renders.
+    useEffect(() => {
+        window.dispatchEvent(new CustomEvent(AI_SETTINGS_OPEN_EVENT, { detail: { open: isOpen } }));
+        return () => {
+            if (isOpen) window.dispatchEvent(new CustomEvent(AI_SETTINGS_OPEN_EVENT, { detail: { open: false } }));
+        };
+    }, [isOpen]);
+
+    // Merge public-blob changes written outside this panel (a bounded
+    // controller update, or this panel's own flushed save). Pending human
+    // API-key edits survive: the incoming blob carries no keys, so each
+    // provider keeps the key this panel currently holds, and the dirty set
+    // is left alone for the next flush.
+    useEffect(() => {
+        const onExternal = (e: Event) => {
+            const detail = (e as CustomEvent).detail as AISettings | undefined;
+            if (!detail || !Array.isArray(detail.providers)) return;
+            setSettings(prev => ({
+                ...detail,
+                providers: detail.providers.map(p => ({
+                    ...p,
+                    createdAt: new Date(p.createdAt),
+                    updatedAt: new Date(p.updatedAt),
+                    apiKey: prev.providers.find(current => current.id === p.id)?.apiKey,
+                })),
+            }));
+        };
+        window.addEventListener(AI_SETTINGS_EVENT, onExternal);
+        return () => window.removeEventListener(AI_SETTINGS_EVENT, onExternal);
+    }, []);
+
     // Save settings: API keys go to OS Keyring, rest to localStorage + vault (debounced)
-    // B14: async persistence with error logging instead of fire-and-forget
+    // B14: async persistence with error logging instead of fire-and-forget.
+    // Only providers with a DELIBERATE human key edit since the last flush
+    // (dirtyApiKeysRef) touch the keyring: hydrated keys are not re-written on
+    // every debounce, so an unrelated preference save performs zero secret
+    // writes and cannot clobber a key edit still being typed.
     const saveSettings = useCallback((newSettings: AISettings) => {
         settingsRef.current = newSettings;
         setSettings(newSettings);
 
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = setTimeout(async () => {
-            // Store API keys in OS Keyring
+            // Store only deliberately edited API keys in OS Keyring
+            const dirty = dirtyApiKeysRef.current;
             const keyringErrors: string[] = [];
             for (const provider of newSettings.providers) {
-                if (provider.apiKey) {
+                if (provider.apiKey && dirty.has(provider.id)) {
                     try {
                         await invoke('store_credential', {
                             account: `ai_apikey_${provider.id}`,
                             password: provider.apiKey,
                         });
+                        dirty.delete(provider.id);
                     } catch (e) {
+                        // Kept dirty so the next save retries the same edit.
                         keyringErrors.push(`${provider.name}: ${e}`);
                     }
                 }
@@ -439,20 +485,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 console.error('[AISettings] Failed to persist API keys:', keyringErrors);
             }
 
-            // Strip API keys from localStorage copy
-            const stripped = {
-                ...newSettings,
-                providers: newSettings.providers.map((p) => ({
-                    ...p,
-                    apiKey: undefined,
-                })),
-            };
-            localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped));
-
-            // Persist stripped settings to encrypted vault, then clear localStorage copy
+            // Persist the public blob through the shared serialized queue;
+            // updateAiSettingsBlob strips apiKey fields defensively and keeps
+            // the localStorage fallback until the vault write resolves.
             try {
-                await secureStoreAndClean('ai_settings', AI_SETTINGS_KEY, stripped);
-                localStorage.removeItem(AI_SETTINGS_KEY);
+                await updateAiSettingsBlob(() => newSettings);
             } catch (e) {
                 console.error('[AISettings] Vault persist failed, localStorage retained as fallback:', e);
             }
@@ -786,7 +823,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-4">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-4" data-gui-owned="settings">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
             <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-lg shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
@@ -929,6 +966,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     value={provider.type === 'ollama' ? 'ollama' : provider.apiKey || ''}
                                                                     onChange={(e) => {
                                                                         if (provider.type !== 'ollama') {
+                                                                            dirtyApiKeysRef.current.add(provider.id);
                                                                             updateProvider({
                                                                                 ...provider,
                                                                                 apiKey: e.target.value,

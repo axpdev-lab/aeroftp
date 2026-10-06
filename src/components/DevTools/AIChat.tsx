@@ -559,7 +559,7 @@ const TransferPlanReview: React.FC<{
     );
 };
 
-export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, activeFilePanel, isCloudConnection, onFileMutation, editorFileName, editorFilePath }) => {
+export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, activeFilePanel, isCloudConnection, onFileMutation, editorFileName, editorFilePath, aiSettingsOpenRequest }) => {
     const t = useTranslation();
 
     // Conversation management (hook)
@@ -733,6 +733,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [showModelSelector, setShowModelSelector] = useState(false);
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    // GUI controller request channel: the typed settings_open/settings_close
+    // intents drive the same AI Settings modal the header button opens. A
+    // human close is honored (the request resets via the panel's open report
+    // in App), so the effect only reacts to actual request transitions.
+    useEffect(() => {
+        if (typeof aiSettingsOpenRequest === 'boolean') setShowSettings(aiSettingsOpenRequest);
+    }, [aiSettingsOpenRequest]);
     const [isLoading, setIsLoading] = useState(false);
     const [delegateLocal, setDelegateLocal] = useState(false);
     const [delegationView, setDelegationView] = useState<DelegationView | null>(null);
