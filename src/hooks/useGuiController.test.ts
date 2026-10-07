@@ -50,6 +50,15 @@ async function until(predicate: () => boolean) {
     }
 }
 
+async function runCommittedRefresh() {
+    let result: unknown;
+    await act(async () => {
+        void window.__aeroftpController!.run({ name: 'refresh', args: { panel: 'local' }, pace: 'fast' }).then(reply => { result = reply; });
+    });
+    await until(() => result !== undefined);
+    return result;
+}
+
 it('claims backend requests before executing and replies only with the structured result', async () => {
     await mount();
     await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
@@ -93,7 +102,7 @@ it('cancels the active watch pause on broker cancellation and account changes', 
 
 it('preserves Stop through the trusted pointer capture and reaches the original Stop handler', async () => {
     const listen = vi.spyOn(window, 'addEventListener'); await mount();
-    await act(async () => { await window.__aeroftpController!.run({ name: 'refresh', args: { panel: 'local' }, pace: 'fast' }); });
+    await runCommittedRefresh();
     const stop = host.querySelector('[data-gui-controller-stop]')!;
     const capture = listen.mock.calls.filter(([name]) => name === 'pointerdown').slice(-1)[0][1] as EventListener;
     await act(async () => capture({ isTrusted: true, target: stop } as unknown as Event));
@@ -105,7 +114,7 @@ it('preserves Stop through the trusted pointer capture and reaches the original 
 it('human trusted input wins; synthetic programmatic events cannot masquerade as a person', async () => {
     const listen = vi.spyOn(window, 'addEventListener'); await mount();
     const capture = listen.mock.calls.filter(([name]) => name === 'pointerdown').slice(-1)[0][1] as EventListener;
-    await act(async () => { await window.__aeroftpController!.run({ name: 'refresh', args: { panel: 'local' }, pace: 'fast' }); });
+    await runCommittedRefresh();
     await act(async () => capture({ isTrusted: false, target: host } as unknown as Event));
     expect(host.querySelector('[role="status"]')).not.toBeNull();
     await act(async () => capture({ isTrusted: true, target: host } as unknown as Event));
@@ -146,6 +155,22 @@ it('accepts a satisfied minimum-timeout wait without rewriting it to invalid arg
     await until(() => bridge.invoke.mock.calls.some(([name]) => name === 'gui_intent_result'));
     expect(bridge.invoke.mock.calls.find(([name]) => name === 'gui_intent_result')![1].payload)
         .toMatchObject({ ok: true, error: null, snapshot: { connected: true } });
+});
+
+it('waits for a fresh React commit when same-path refresh settles before its setters render', async () => {
+    await mount();
+    handlers.refresh = vi.fn(async () => {
+        // Model React's pending state update: the previously committed source
+        // remains idle at the same path until Harness renders the new object.
+        source = { ...source, panels: { local: { ...source.panels.local!, entriesCount: 7 } } };
+    });
+    await act(async () => root.render(h(StrictMode, {}, h(Harness))));
+    let reply;
+    await act(async () => {
+        reply = window.__aeroftpController!.run({ name: 'refresh', args: { panel: 'local' }, pace: 'fast' });
+        await new Promise(resolve => setTimeout(resolve, 60));
+    });
+    expect(await reply).toMatchObject({ ok: true, snapshot: { panels: { local: { path: '/local', loading: false, entries_count: 7 } } } });
 });
 
 it('does not act after a delayed claim outlives the absolute broker expiry', async () => {

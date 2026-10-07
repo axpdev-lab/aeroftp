@@ -222,7 +222,10 @@ export class GuiController {
             // React setters may commit after their callback Promise resolves.
             // Report view/selection/disconnect only when the committed projection agrees.
             const committed = (state: GuiSnapshot): boolean => {
-                if (intent === 'navigate' && typeof navigationPath === 'string') return state.panels[panelArg(args)]?.path === boundedText(navigationPath);
+                if (intent === 'navigate' || intent === 'refresh') {
+                    const p = state.panels[panelArg(args)];
+                    return !!p && !p.loading && (typeof navigationPath !== 'string' || p.path === boundedText(navigationPath));
+                }
                 if (intent === 'show_view') return state.view === args.view;
                 if (intent === 'disconnect') return !state.connected;
                 if (intent === 'select') {

@@ -16,13 +16,36 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
     const current = useRef({ source, handlers, audit });
     const controller = useRef<GuiController | null>(null);
     const mutationId = useRef<string | null>(null);
+    const commitSequence = useRef(0);
+    const commitWaiters = useRef(new Map<number, () => void>());
+    const [commitTicket, setCommitTicket] = useState(0);
     const [lease, setLease] = useState<GuiLease | null>(null);
     // Event callbacks and asynchronous waits must read the latest committed UI state.
     useEffect(() => { current.current = { source, handlers, audit }; controller.current?.state(); });
+    // A same-path refresh can settle before React commits its setters. A fresh
+    // render receipt makes the source above authoritative even when its path,
+    // count and loading fields happen to equal the previous snapshot.
+    useEffect(() => {
+        for (const [ticket, resolve] of commitWaiters.current) {
+            if (ticket <= commitTicket) { commitWaiters.current.delete(ticket); resolve(); }
+        }
+    }, [commitTicket]);
     useEffect(() => {
         let mounted = true;
+        const committed = () => new Promise<void>(resolve => {
+            if (!mounted) { resolve(); return; }
+            const ticket = ++commitSequence.current;
+            commitWaiters.current.set(ticket, resolve);
+            setCommitTicket(ticket);
+        });
         const service = new GuiController(() => ({ ...current.current.source,
-            blocked: current.current.source.blocked || !!document.querySelector('[aria-modal="true"]') }), () => current.current.handlers,
+            blocked: current.current.source.blocked || !!document.querySelector('[aria-modal="true"]') }), () => ({ ...current.current.handlers,
+                navigate: async (panel, path) => {
+                    const result = await current.current.handlers.navigate(panel, path);
+                    await committed(); return result;
+                },
+                refresh: async panel => { await current.current.handlers.refresh(panel); await committed(); },
+            }),
             value => { if (mounted) setLease(value); }, (intent, ok, owner) => current.current.audit(intent, ok, owner));
         controller.current = service;
         const interrupt = (event: Event) => {
@@ -38,6 +61,8 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         };
         return () => {
             mounted = false; service.dispose(); controller.current = null;
+            for (const resolve of commitWaiters.current.values()) resolve();
+            commitWaiters.current.clear();
             window.removeEventListener('pointerdown', interrupt, true);
             window.removeEventListener('keydown', interrupt, true);
             window.removeEventListener(PROFILES_CHANGED_EVENT, partitionChanged);

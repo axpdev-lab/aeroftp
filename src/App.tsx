@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { LatestListing } from './utils/latestListing';
 import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
-import { TID } from './utils/testIds';
+import { TID, type GuiPanelId } from './utils/testIds';
+import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
+import { LatestListing } from './utils/latestListing';
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -2650,6 +2651,14 @@ const App: React.FC = () => {
     };
   };
 
+  // The same selection action serves menus, keyboard shortcuts and GUI intents.
+  const setPanelSelection = (panel: GuiPanelId, names: readonly string[] = [], mode: PanelSelectionMode = 'names') => {
+    const target = panel === 'remote' ? { files: remoteFiles, setSelection: setSelectedRemoteFiles }
+      : panel === 'local2' ? { files: localFiles2, setSelection: setSelectedLocalFiles2 }
+        : { files: localFiles, setSelection: setSelectedLocalFiles };
+    return applyPanelSelection(target, names, mode);
+  };
+
   // Keyboard Shortcuts
   useKeyboardShortcuts({
     'F1': () => setShowShortcutsDialog(v => !v),
@@ -2769,12 +2778,7 @@ const App: React.FC = () => {
 
     // Ctrl+A: select all files
     'Ctrl+A': () => {
-      if (activePanel === 'remote') {
-        setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name)));
-      } else {
-        const panel = getActiveLocalState();
-        panel.setSelection(new Set(panel.files.map(f => f.name)));
-      }
+      setPanelSelection(activePanel === 'remote' ? 'remote' : activeLocalPanelId, [], 'all');
     },
 
     // Ctrl+U: upload selected local files
@@ -5458,9 +5462,6 @@ const App: React.FC = () => {
     }
   }, [showHiddenFiles, notify, t, setLocalFiles2, setCurrentLocalPath2, setSelectedLocalFiles2]);
 
-  // Reload every local panel whose current path equals `dir` (panel 1 and/or
-  // dual panel 2). Paste / cut destinations must not hardcode panel 1: dual
-  // local mode and PLACES gvfs paths often target panel 2.
   const refreshLocalPanelForPath = useCallback(async (dir: string | null | undefined) => {
     if (!dir) return;
     const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '') || '/';
@@ -15867,7 +15868,7 @@ const App: React.FC = () => {
       }] : []),
       {
         label: t('contextMenu.selectAll') || 'Select All', icon: <CheckCircle2 size={14} />,
-        action: () => setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name))),
+        action: () => { setPanelSelection('remote', [], 'all'); },
         disabled: remoteFiles.length === 0,
       },
     ];
@@ -15946,7 +15947,7 @@ const App: React.FC = () => {
       },
       {
         label: t('contextMenu.selectAll') || 'Select All', icon: <CheckCircle2 size={14} />,
-        action: () => ctxPanel.setSelection(new Set(ctxPanel.files.map(f => f.name))),
+        action: () => { setPanelSelection(ctxPanel.id, [], 'all'); },
         disabled: ctxPanel.files.length === 0,
         divider: true,
       },
@@ -16036,13 +16037,7 @@ const App: React.FC = () => {
       else if (!await loadLocalFiles(currentLocalPath)) throw new GuiError('action_failed');
     },
     select: (panel, names, mode) => {
-      const files = panel === 'remote' ? remoteFiles : panel === 'local2' ? localFiles2 : localFiles;
-      const available = new Set(files.map(file => file.name));
-      if (mode === 'names' && names.some(name => !available.has(name))) throw new GuiError('invalid_args');
-      const selection = new Set(mode === 'all' ? available : mode === 'none' ? [] : names);
-      if (panel === 'remote') setSelectedRemoteFiles(selection);
-      else if (panel === 'local2') setSelectedLocalFiles2(selection);
-      else setSelectedLocalFiles(selection);
+      if (!setPanelSelection(panel, names, mode)) throw new GuiError('invalid_args');
       setActivePanel(panel === 'remote' ? 'remote' : 'local');
       if (panel !== 'remote') setActiveLocalPanelId(panel);
     },
@@ -16176,11 +16171,7 @@ const App: React.FC = () => {
             }
           }}
           onSelectAll={() => {
-            if (activePanel === 'remote') {
-              setSelectedRemoteFiles(new Set(remoteFiles.map(f => f.name)));
-            } else {
-              setSelectedLocalFiles(new Set(localFiles.map(f => f.name)));
-            }
+            setPanelSelection(activePanel === 'remote' ? 'remote' : activeLocalPanelId, [], 'all');
           }}
           onCut={() => {
             if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
@@ -19415,7 +19406,7 @@ const App: React.FC = () => {
                     isSyncPathMismatch={false}
                     isSyncNavigation={false}
                     syncBasePaths={null}
-                    isLoading={false}
+                    isLoading={localListLoading2}
                     localFiles={localFiles2}
                     sortedFiles={sortedLocalFiles2}
                     selectedFiles={selectedLocalFiles2}

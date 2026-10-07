@@ -22,6 +22,21 @@ beforeEach(() => {
     changed = vi.fn(); audit = vi.fn(); controller = new GuiController(() => source, () => handlers, changed, audit);
 });
 afterEach(() => controller.dispose());
+
+it('waits for same-path navigation and refresh to commit an idle panel', async () => {
+    for (const name of ['navigate', 'refresh'] as const) {
+        const handler = async () => { source.panels.local!.loading = true; return '/local'; };
+        if (name === 'navigate') handlers.navigate = handler;
+        else handlers.refresh = async () => { await handler(); };
+        let settled = false;
+        const request = controller.run({ name, args: name === 'navigate' ? { panel: 'local', path: '/local' } : { panel: 'local' }, pace: 'fast' })
+            .finally(() => { settled = true; });
+        await new Promise(resolve => setTimeout(resolve, 60));
+        expect(settled).toBe(false);
+        source.panels.local!.loading = false;
+        expect(await request).toMatchObject({ ok: true, snapshot: { panels: { local: { loading: false } } } });
+    }
+});
 const run = (name: string, args = {}, extra: Partial<GuiRequest> = {}) => controller.run({ name, args, pace: 'fast', ...extra });
 
 it('projects snapshots without spreading secrets or unknown future fields', () => {
