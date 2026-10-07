@@ -41,6 +41,8 @@ export const TID = {
     overwriteRename: 'dialog.overwrite.rename',
     menuItem: 'menu.item',
     settingsTab: 'settings.tab',
+    toolsWorkspace: 'tools.workspace',
+    toolsPanel: 'tools.panel',
 } as const;
 
 export type GuiPanelId = 'remote' | 'local' | 'local2';

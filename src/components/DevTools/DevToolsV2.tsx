@@ -14,9 +14,15 @@ import { CyberToolsPanel } from '../CyberToolsPanel';
 import type { EffectiveTheme } from '../../hooks/useTheme';
 import { usePointerDrag } from '../../hooks/usePointerDrag';
 import { isSafeLocalOpenPath, shellQuoteLocalPath } from '../../utils/openWithDefault';
+import { panelsWithAgentTool, toolsPanelCapacity, type RegisterToolsControl } from '../../gui/toolsWorkspace';
+import type { GuiToolsProjection } from '../../gui/toolsSchema';
+import { GuiError } from '../../gui/errors';
+import { TID } from '../../utils/testIds';
 
 interface DevToolsV2Props {
     isOpen: boolean;
+    registerGuiTools?: RegisterToolsControl;
+    onGuiToolsState?: (state: GuiToolsProjection) => void;
     previewFile: PreviewFile | null;
     localPath?: string;
     remotePath?: string;
@@ -55,19 +61,10 @@ interface DevToolsV2Props {
     onCheckHostKey?: (host: string, port: number) => Promise<boolean>;
 }
 
-// Breakpoints for responsive layout (based on DevTools panel width)
-const BREAKPOINTS = {
-    // Show 4 columns above 1000px. The main window cannot be narrower than
-    // 1024px, so there every active panel gets a column (250px or more each,
-    // widened with the resize handles) instead of a lit toggle with nothing
-    // on screen.
-    FOUR_COLS: 1000,
-    THREE_COLS: 900,   // Show 3 columns above 900px
-    TWO_COLS: 600,     // Show 2 columns above 600px
-};
-
 export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     isOpen,
+    registerGuiTools,
+    onGuiToolsState,
     previewFile,
     localPath,
     remotePath,
@@ -427,14 +424,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         const width = containerWidth || window.innerWidth;
 
         // Limit based on responsive breakpoints
-        let maxPanels = 4;
-        if (width < BREAKPOINTS.TWO_COLS) {
-            maxPanels = 1;
-        } else if (width < BREAKPOINTS.THREE_COLS) {
-            maxPanels = 2;
-        } else if (width < BREAKPOINTS.FOUR_COLS) {
-            maxPanels = 3;
-        }
+        const maxPanels = toolsPanelCapacity(width);
 
         // Return priority-based visible panels
         return activePanels.slice(0, maxPanels);
@@ -442,6 +432,20 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
     const visiblePanels = getVisiblePanels();
     const visiblePanelsKey = visiblePanels.join(',');
+    useEffect(() => registerGuiTools?.({
+        ensure: tool => {
+            const next = panelsWithAgentTool(panels, tool, containerWidth || window.innerWidth);
+            setPanels(next);
+        },
+        close: () => {
+            if (panels.security) throw new GuiError('blocked');
+            onClose();
+        },
+    }), [registerGuiTools, panels, containerWidth, onClose]);
+    useEffect(() => {
+        onGuiToolsState?.({ open: isOpen, protected: panels.security,
+            visible_panels: isOpen ? visiblePanels.map(panel => panel === 'chat' ? 'agent' : panel) : [] });
+    }, [isOpen, panels.security, visiblePanelsKey, onGuiToolsState]);
 
     // Reset panel width ratios when visible panels change
     useEffect(() => {
@@ -566,6 +570,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
     return (
         <div
             ref={containerRef}
+            data-testid={TID.toolsWorkspace}
             className={`${theme.panel} border-t ${theme.border} flex flex-col flex-shrink-0 ${!isOpen ? 'hidden' : ''}`}
             style={{
                 height: isMaximized ? maxHeight : height,
@@ -701,6 +706,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                     <>
                         {visiblePanels.includes('editor') && (
                             <div
+                                data-testid={TID.toolsPanel} data-tool="editor"
                                 className="flex flex-col overflow-hidden"
                                 style={{ width: getPanelWidth('editor') }}
                                 onDragEnter={(e) => {
@@ -765,6 +771,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
                         {visiblePanels.includes('terminal') && (
                             <div
+                                data-testid={TID.toolsPanel} data-tool="terminal"
                                 className="flex flex-col overflow-hidden"
                                 style={{ width: getPanelWidth('terminal') }}
                                 onDragEnter={(e) => {
@@ -803,6 +810,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
 
                         {/* Chat panel: always mounted to preserve AIChat state */}
                         <div
+                            data-testid={TID.toolsPanel} data-tool="agent"
                             className={`flex flex-col overflow-hidden ${visiblePanels.includes('chat') ? '' : 'hidden'}`}
                             style={{ width: visiblePanels.includes('chat') ? getPanelWidth('chat') : undefined }}
                         >
@@ -830,6 +838,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                             dropped file go away on close, as they did with the window */}
                         {isOpen && visiblePanels.includes('security') && (
                             <div
+                                data-testid={TID.toolsPanel} data-tool="security" data-agent="deny"
                                 className="flex flex-col overflow-hidden"
                                 style={{ width: getPanelWidth('security') }}
                             >

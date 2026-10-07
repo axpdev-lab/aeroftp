@@ -30,6 +30,9 @@ const INTENTS: &[&str] = &[
     "settings_read",
     "settings_update",
     "settings_close",
+    "tools_open",
+    "tools_read",
+    "tools_close",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -248,6 +251,22 @@ fn valid_settings_view(settings: &SettingsView) -> bool {
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct ToolsView {
+    open: bool,
+    visible_panels: Vec<String>,
+    protected: bool,
+}
+fn valid_tools_view(tools: &ToolsView) -> bool {
+    tools.visible_panels.len() <= 4
+        && (tools.open || tools.visible_panels.is_empty())
+        && tools.visible_panels.iter().enumerate().all(|(i, panel)| {
+            ["editor", "terminal", "agent", "security"].contains(&panel.as_str())
+                && !tools.visible_panels[..i].contains(panel)
+                && (panel != "security" || tools.protected)
+        })
+}
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct Snapshot {
     schema_version: u8,
     state_revision: u64,
@@ -262,6 +281,8 @@ struct Snapshot {
     queue: Queue,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     settings: Option<SettingsView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tools: Option<ToolsView>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -324,6 +345,12 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
             return Err("gui_invalid_reply".into());
         }
     }
+    if s.tools
+        .as_ref()
+        .is_some_and(|tools| !valid_tools_view(tools))
+    {
+        return Err("gui_invalid_reply".into());
+    }
     if (!unlocked || s.locked)
         && (!s.locked
             || s.connected
@@ -333,6 +360,7 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
             || s.panels.local.is_some()
             || s.panels.local2.is_some()
             || s.settings.is_some()
+            || s.tools.is_some()
             || s.queue.active != 0
             || s.queue.pending != 0
             || s.queue.failed != 0)
@@ -628,6 +656,27 @@ mod tests {
         value["error"] = json!("SENTINEL_PASSWORD");
         value["ok"] = json!(false);
         assert!(parse_reply(value, true).is_err());
+    }
+    #[test]
+    fn gui_controller_tools_metadata_is_closed_bounded_and_locked_redacted() {
+        let mut value = locked_reply();
+        value["snapshot"]["locked"] = json!(false);
+        value["snapshot"]["tools"] =
+            json!({"open":true,"visible_panels":["editor","terminal","agent"],"protected":false});
+        assert!(parse_reply(value.clone(), true).is_ok());
+        for tools in [
+            json!({"open":true,"visible_panels":["shell"],"protected":false}),
+            json!({"open":true,"visible_panels":["editor","editor"],"protected":false}),
+            json!({"open":false,"visible_panels":["editor"],"protected":false}),
+            json!({"open":true,"visible_panels":["security"],"protected":false}),
+            json!({"open":true,"visible_panels":[],"protected":false,"content":"SECRET"}),
+        ] {
+            value["snapshot"]["tools"] = tools;
+            assert!(parse_reply(value.clone(), true).is_err());
+        }
+        let mut locked = locked_reply();
+        locked["snapshot"]["tools"] = json!({"open":false,"visible_panels":[],"protected":false});
+        assert_eq!(parse_reply(locked, false).unwrap_err(), "gui_locked_reply");
     }
     #[test]
     fn gui_controller_connect_metadata_and_human_handoff_are_closed() {

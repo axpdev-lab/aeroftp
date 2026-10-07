@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { ConnectScope, type ProfileConnectOutcome } from './connectScope';
+import { TOOLS_INTENTS, TOOL_PANELS, buildToolsProjection, type ToolPanel, type GuiToolsProjection } from './toolsSchema';
 import { GuiError, type GuiErrorCode } from './errors';
 import {
     SETTINGS_INTENTS, buildSettingsProjection, settingsUpdateCommitted, validateSettingsSet,
@@ -10,7 +11,7 @@ import {
 
 export { GuiError, type GuiErrorCode };
 
-export const GUI_INTENTS = ['state', 'wait', 'show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', ...SETTINGS_INTENTS] as const;
+export const GUI_INTENTS = ['state', 'wait', 'show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', ...SETTINGS_INTENTS, ...TOOLS_INTENTS] as const;
 export type GuiIntent = typeof GUI_INTENTS[number];
 export type GuiPanel = 'remote' | 'local' | 'local2';
 export type GuiView = 'servers' | 'files' | 'other';
@@ -26,6 +27,7 @@ export interface GuiSource {
     queue: { active: number; pending: number; failed: number };
     /** Safe Settings projection: allowlisted public values only, never secrets. */
     settings?: GuiSettingsProjection;
+    tools?: GuiToolsProjection;
 }
 export interface GuiSnapshot {
     schema_version: 1; state_revision: number; version: string; locked: boolean; blocked: boolean;
@@ -35,6 +37,7 @@ export interface GuiSnapshot {
         selection_count: number; entries_count: number }>>;
     queue: { active: number; pending: number; failed: number };
     settings?: GuiSettingsProjection;
+    tools?: GuiToolsProjection;
 }
 const boundedText = (value: string) => value.slice(0, 4096);
 /** Explicit projection: never spread a session, credential form or provider options. */
@@ -64,6 +67,7 @@ export function buildGuiSnapshot(source: GuiSource, revision = 0): GuiSnapshot {
     }
     result.queue = { active: source.queue.active, pending: source.queue.pending, failed: source.queue.failed };
     if (source.settings) result.settings = buildSettingsProjection(source.settings);
+    if (source.tools) result.tools = buildToolsProjection(source.tools);
     return result;
 }
 
@@ -79,6 +83,9 @@ export interface GuiHandlers {
     settingsClose?(scope: ConnectScope): Promise<void>;
     settingsRead?(area: SettingsArea, scope: ConnectScope): Promise<void>;
     settingsUpdate?(area: SettingsArea, set: Record<string, unknown>, scope: ConnectScope): Promise<void>;
+    toolsOpen?(tool: ToolPanel | undefined, scope: ConnectScope): Promise<void>;
+    toolsRead?(scope: ConnectScope): Promise<void>;
+    toolsClose?(scope: ConnectScope): Promise<void>;
 }
 export interface GuiRequest {
     name: string; args?: Record<string, unknown>; timeout_ms?: number;
@@ -128,6 +135,11 @@ export function validateGuiRequest(request: GuiRequest): GuiIntent {
         case 'settings_open': case 'settings_read':
             keys(args, ['area']); settingsAreaArg(args); break;
         case 'settings_close': keys(args, []); break;
+        case 'tools_read': case 'tools_close': keys(args, []); break;
+        case 'tools_open':
+            keys(args, ['tool']);
+            if (args.tool !== undefined && !(TOOL_PANELS as readonly unknown[]).includes(args.tool)) throw new GuiError('invalid_args');
+            break;
         case 'settings_update':
             keys(args, ['area', 'set']); settingsAreaArg(args);
             // Deep field/value validation against the closed per-area schema;
@@ -235,6 +247,7 @@ export class GuiController {
             // The owned Settings surface is exclusive: while it is open, only its
             // own typed operations run; every other mutation stays blocked.
             if (snapshot.settings?.open && !(SETTINGS_INTENTS as readonly string[]).includes(intent)) throw new GuiError('blocked');
+            if (intent !== 'tools_read' && (TOOLS_INTENTS as readonly string[]).includes(intent) && snapshot.tools?.protected) throw new GuiError('blocked');
             if (this.busy || (this.lease && this.lease.owner !== owner)) throw new GuiError('busy');
             if ((intent === 'navigate' || intent === 'refresh' || intent === 'select') &&
                 (!snapshot.panels[panelArg(args)] || snapshot.panels[panelArg(args)]?.loading)) throw new GuiError('blocked');
@@ -249,7 +262,7 @@ export class GuiController {
             let handlerError: unknown;
             let connectOutcome: ProfileConnectOutcome | undefined;
             let navigationPath: void | string = undefined;
-            if ((SETTINGS_INTENTS as readonly string[]).includes(intent)) {
+            if ([...SETTINGS_INTENTS, ...TOOLS_INTENTS].includes(intent as typeof SETTINGS_INTENTS[number] | typeof TOOLS_INTENTS[number])) {
                 settingsScope = new ConnectScope(() => {
                     this.guard(epoch, deadline);
                     if (this.source().locked) throw new GuiError('locked');
@@ -287,6 +300,15 @@ export class GuiController {
                     case 'settings_update':
                         if (!h.settingsUpdate) throw new GuiError('blocked');
                         await h.settingsUpdate(settingsAreaArg(args), args.set as Record<string, unknown>, settingsScope!); break;
+                    case 'tools_open':
+                        if (!h.toolsOpen) throw new GuiError('blocked');
+                        await h.toolsOpen(args.tool as ToolPanel | undefined, settingsScope!); break;
+                    case 'tools_read':
+                        if (!h.toolsRead) throw new GuiError('blocked');
+                        await h.toolsRead(settingsScope!); break;
+                    case 'tools_close':
+                        if (!h.toolsClose) throw new GuiError('blocked');
+                        await h.toolsClose(settingsScope!); break;
                 }
             };
             void operation().catch(error => { handlerError = error; }).finally(() => {
@@ -313,6 +335,9 @@ export class GuiController {
                 if (intent === 'show_view') return state.view === args.view;
                 if (intent === 'disconnect') return !state.connected;
                 if (intent === 'settings_open') return state.settings?.open === args.area;
+                if (intent === 'tools_open') return !!state.tools?.open && (args.tool === undefined || state.tools.visible_panels.includes(args.tool as ToolPanel));
+                if (intent === 'tools_read') return !!state.tools;
+                if (intent === 'tools_close') return !!state.tools && !state.tools.open;
                 if (intent === 'settings_close') return !state.settings?.open;
                 if (intent === 'settings_read') {
                     // The handler already re-read the persisted public config; the
