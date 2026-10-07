@@ -1,6 +1,6 @@
 # Contributing to AeroFTP
 
-> _Last updated: 2026-09-04_
+> _Last updated: 2026-10-07_
 
 First off, thank you for considering contributing to AeroFTP!
 
@@ -23,7 +23,15 @@ Be respectful, inclusive, and professional. We're here to build great software t
 - Describe the use case clearly
 - Explain why this would be useful
 
+### UI and Design Changes
+
+Changes to how AeroFTP looks or behaves in the interface (layouts, themes, new settings, visual polish) start as a thread in the [Design Threads](https://github.com/axpdev-lab/aeroftp/discussions/categories/design-threads) category, not as a pull request. Describe what bothers you and what you propose, with before/after screenshots or a mockup.
+
+Once the design is agreed in the thread, the maintainers implement it, so it goes through the same theme and translation checks as the rest of the interface (every theme, 47 languages). The person who proposed it is credited as co-author on the commit. A pull request for a UI change opened without an agreed Design Thread is closed with a link to a thread where the design can be discussed.
+
 ### Pull Requests
+
+For UI and design changes, start from [UI and Design Changes](#ui-and-design-changes) instead.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
