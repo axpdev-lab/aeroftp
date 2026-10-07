@@ -456,7 +456,6 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     apiKey: prev.providers.find(current => current.id === p.id)?.apiKey,
                 })),
                 };
-                settingsRef.current = next;
                 return next;
             });
         };
@@ -484,7 +483,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             // Store only deliberately edited API keys in OS Keyring
             const dirty = dirtyApiKeysRef.current;
             const keyringErrors: string[] = [];
-            const keyEdits = newSettings.providers.map(provider => ({ provider, generation: dirty.capture(provider.id) }));
+            const keyEdits = draft.edited.providers.map(provider => ({ provider, generation: dirty.capture(provider.id) }));
             for (const { provider, generation } of keyEdits) {
                 if (provider.apiKey && generation !== undefined) {
                     try {

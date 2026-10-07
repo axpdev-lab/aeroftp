@@ -832,10 +832,10 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             // Remove legacy OAuth settings from localStorage
             localStorage.removeItem(OAUTH_SETTINGS_KEY);
             // Apply system menu setting immediately
-            invoke('toggle_menu_bar', { visible: settings.showSystemMenu });
+            invoke('toggle_menu_bar', { visible: captured.showSystemMenu });
             // Apply autostart setting (idempotent: no pre-check needed)
             try {
-                if (settings.launchOnStartup) {
+                if (captured.launchOnStartup) {
                     await enableAutostart();
                 } else {
                     await disableAutostart();

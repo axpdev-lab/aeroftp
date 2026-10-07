@@ -120,6 +120,22 @@ it('a human Settings modal is blocked even when marked safe; a controller-owned 
     modal.remove();
 });
 
+it('refuses settings_close before dispatch for a locally opened unowned AI modal', async () => {
+    source.settings = { open: 'ai', general: null, ai: null };
+    handlers.settingsClose = vi.fn(async () => {});
+    await mount();
+    const modal = document.createElement('div');
+    modal.setAttribute('aria-modal', 'true'); modal.setAttribute('data-gui-owned', 'settings');
+    modal.setAttribute('data-gui-area', 'ai'); modal.setAttribute('data-gui-safe', 'true');
+    document.body.append(modal);
+    try {
+        let reply;
+        await act(async () => { reply = await window.__aeroftpController!.run({ name: 'settings_close', pace: 'fast', timeout_ms: 1000 }); });
+        expect(reply).toMatchObject({ ok: false, error: 'blocked' });
+        expect(handlers.settingsClose).not.toHaveBeenCalled();
+    } finally { modal.remove(); }
+});
+
 it('cancels the active watch pause on broker cancellation and account changes', async () => {
     await mount();
     await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
