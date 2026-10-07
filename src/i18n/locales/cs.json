@@ -6111,7 +6111,11 @@
                 "refresh": "Obnovit seznam souborů",
                 "select": "Vybrat soubory",
                 "disconnect": "Odpojit relaci",
-                "stop": "Zastavit přenosy"
+                "stop": "Zastavit přenosy",
+                "settings_open": "Otevřít nastavení",
+                "settings_read": "Prozkoumat nastavení",
+                "settings_update": "Aktualizovat nastavení",
+                "settings_close": "Zavřít nastavení"
             }
         }
     }

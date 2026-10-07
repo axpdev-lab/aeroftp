@@ -2,11 +2,9 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useEffect, useRef, useState } from 'react';
-import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { updateAppSettings } from '../utils/appSettings';
 import { clampAppFontSize, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE } from './useSettings';
 
-const SETTINGS_KEY = 'aeroftp_settings';
-const SETTINGS_VAULT_KEY = 'app_settings';
 
 interface Indicator {
     size: number;
@@ -25,15 +23,7 @@ export const useFontSizeShortcuts = (
     useEffect(() => {
         const persist = async (newSize: number) => {
             try {
-                const existing = await secureGetWithFallback<Record<string, unknown>>(
-                    SETTINGS_VAULT_KEY,
-                    SETTINGS_KEY,
-                );
-                const updated = { ...(existing || {}), fontSize: newSize };
-                await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, updated);
-                window.dispatchEvent(
-                    new CustomEvent('aeroftp-settings-changed', { detail: updated }),
-                );
+                await updateAppSettings(existing => ({ ...(existing || {}), fontSize: newSize }));
             } catch {
                 /* ignore */
             }

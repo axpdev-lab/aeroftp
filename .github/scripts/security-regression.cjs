@@ -169,7 +169,8 @@ function checkSettingsVaultMigration() {
   );
 
   assert(
-    settingsPanel.includes('await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);'),
+    settingsPanel.includes('await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,') &&
+    read('src/utils/appSettings.ts').includes("await scope.step(() => secureStore('app_settings', updated))"),
     `settings vault migration regression: missing vault-backed settings save in ${settingsPanelFile}`
   );
 
@@ -180,12 +181,12 @@ function checkSettingsVaultMigration() {
 
   assert(
     useSettings.includes("secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY)") &&
-      useSettings.includes('secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, parsed).catch(() => {});'),
+      useSettings.includes('updateAppSettings(existing => existing ?? parsed).catch(() => {});'),
     `settings vault migration regression: missing vault-first load/migration in ${useSettingsFile}`
   );
 
   assert(
-    app.includes("secureStoreAndClean('app_settings', SETTINGS_KEY, { ...(existing || {}), lastLocalPath: path })"),
+    app.includes("updateAppSettings(existing => ({ ...(existing || {}), lastLocalPath: path }))"),
     `settings vault migration regression: missing lastLocalPath vault write in ${appFile}`
   );
 }

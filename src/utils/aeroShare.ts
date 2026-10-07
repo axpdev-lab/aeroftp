@@ -20,7 +20,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ProviderOptions, ServerProfile } from '../types';
 import { loadSavedServerProfilesStrict, storeSavedServerProfiles } from './serverProfileStore';
-import { secureGetWithFallback, secureStoreAndClean } from './secureStorage';
+import { updateAppSettings } from './appSettings';
+import { secureGetWithFallback } from './secureStorage';
 
 // ---------------------------------------------------------------------------
 // Backend command result shapes (snake_case keys, repo convention)
@@ -432,18 +433,7 @@ export const AERO_SHARE_ACTIVATED_EVENT = 'aeroftp-aeroshare-activated';
 export const patchAeroShareSettings = async (
   patch: Record<string, unknown>,
 ): Promise<void> => {
-  let current: Record<string, unknown> = {};
-  try {
-    const parsed = await secureGetWithFallback<Record<string, unknown>>(
-      SETTINGS_VAULT_KEY,
-      SETTINGS_LOCAL_KEY,
-    );
-    if (parsed) current = parsed;
-  } catch {
-    /* fall back to empty; we still persist the patch */
-  }
-  await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_LOCAL_KEY, { ...current, ...patch });
-  window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: patch }));
+  await updateAppSettings(current => ({ ...(current || {}), ...patch }));
 };
 
 /** Ensure AeroShare is enabled. Idempotent: a no-op when already on. On the

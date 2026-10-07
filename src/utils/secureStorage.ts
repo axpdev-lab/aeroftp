@@ -17,6 +17,22 @@ export async function secureStore(key: string, value: unknown): Promise<void> {
   await invoke('store_credential', { account: VAULT_PREFIX + key, password: json });
 }
 
+/** Public config reads for controller writes: unavailable/corrupt is never absent. */
+export async function secureGetConfigStrict<T>(key: 'app_settings' | 'ai_settings'): Promise<T | null> {
+  let json: string;
+  try {
+    json = await invoke<string>('get_credential', { account: VAULT_PREFIX + key });
+  } catch (error) {
+    if (String(error).endsWith(`Credential not found: ${VAULT_PREFIX + key}`)) return null;
+    throw new Error('CONFIG_UNAVAILABLE');
+  }
+  try {
+    const value: unknown = JSON.parse(json);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid');
+    return value as T;
+  } catch { throw new Error('CONFIG_INVALID'); }
+}
+
 /**
  * Retrieve data from the encrypted vault
  */

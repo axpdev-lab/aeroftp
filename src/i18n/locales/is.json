@@ -6130,7 +6130,11 @@
                 "refresh": "Uppfæra skráalistann",
                 "select": "Velja skrár",
                 "disconnect": "Aftengja setuna",
-                "stop": "Stöðva flutninga"
+                "stop": "Stöðva flutninga",
+                "settings_open": "Opna stillingar",
+                "settings_read": "Skoða stillingar",
+                "settings_update": "Uppfæra stillingar",
+                "settings_close": "Loka stillingum"
             }
         }
     }

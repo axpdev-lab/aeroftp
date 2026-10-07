@@ -6111,7 +6111,11 @@
                 "refresh": "Atualizar a lista de ficheiros",
                 "select": "Selecionar ficheiros",
                 "disconnect": "Desconectar a sessão",
-                "stop": "Parar transferências"
+                "stop": "Parar transferências",
+                "settings_open": "Abrir configurações",
+                "settings_read": "Inspecionar configurações",
+                "settings_update": "Atualizar configurações",
+                "settings_close": "Fechar configurações"
             }
         }
     }

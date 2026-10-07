@@ -6111,7 +6111,11 @@
                 "refresh": "Atsvaidzināt failu sarakstu",
                 "select": "Izvēlēties failus",
                 "disconnect": "Atvienot sesiju",
-                "stop": "Apturēt pārsūtīšanu"
+                "stop": "Apturēt pārsūtīšanu",
+                "settings_open": "Atvērt iestatījumus",
+                "settings_read": "Pārbaudīt iestatījumus",
+                "settings_update": "Atjaunināt iestatījumus",
+                "settings_close": "Aizvērt iestatījumus"
             }
         }
     }

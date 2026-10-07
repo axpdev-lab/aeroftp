@@ -6111,7 +6111,11 @@
                 "refresh": "Onyesha upya orodha ya faili",
                 "select": "Chagua faili",
                 "disconnect": "Tenganisha kipindi",
-                "stop": "Simamisha uhamishaji"
+                "stop": "Simamisha uhamishaji",
+                "settings_open": "Fungua mipangilio",
+                "settings_read": "Kagua mipangilio",
+                "settings_update": "Sasisha mipangilio",
+                "settings_close": "Funga mipangilio"
             }
         }
     }

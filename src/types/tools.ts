@@ -15,7 +15,7 @@ export interface AITool {
 
 export interface AIToolParameter {
     name: string;
-    type: 'string' | 'number' | 'integer' | 'boolean' | 'array';
+    type: 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
     description: string;
     required: boolean;
     enum?: (string | number | boolean)[];
@@ -657,15 +657,17 @@ export const AGENT_TOOLS: AITool[] = [
     },
     {
         name: 'gui_run',
-        description: 'Run a visible GUI intent through the same navigation, selection, refresh, disconnect or Stop handlers as the buttons. The human can interrupt. Saved profiles connect by exact profile_id with vault credentials kept internal. No click, script, unlock, credential read/write or file-write action is supported.',
+        description: 'Run a visible GUI intent through the same navigation, selection, refresh, disconnect, Stop or bounded Settings handlers as the buttons. The human can interrupt. Saved profiles connect by exact profile_id with vault credentials kept internal. Settings intents cover only the owned safe surface (allowlisted general preferences; AI provider/model enabled flags, per-provider default model, bounded generation parameters). No click, script, unlock, credential or API-key read/write, or file-write action is supported.',
         parameters: [
-            { name: 'intent', type: 'string', description: 'GUI action', required: true, enum: ['show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop'] },
+            { name: 'intent', type: 'string', description: 'GUI action', required: true, enum: ['show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', 'settings_open', 'settings_read', 'settings_update', 'settings_close'] },
             { name: 'profile_id', type: 'string', description: 'Exact saved profile ID for connect', required: false, maxLength: 256 },
             { name: 'panel', type: 'string', description: 'Panel for navigate, refresh or select', required: false, enum: ['remote', 'local', 'local2'] },
             { name: 'view', type: 'string', description: 'View for show_view', required: false, enum: ['servers', 'files'] },
             { name: 'path', type: 'string', description: 'Path for navigate', required: false, maxLength: 4096 },
             { name: 'names', type: 'array', description: 'Visible file names for select', required: false },
             { name: 'mode', type: 'string', description: 'Selection mode', required: false, enum: ['names', 'all', 'none'] },
+            { name: 'area', type: 'string', description: 'Settings area for settings_open/read/update', required: false, enum: ['general', 'ai'] },
+            { name: 'set', type: 'object', description: 'Allowlisted changes for settings_update', required: false },
             { name: 'if_revision', type: 'integer', description: 'Expected state_revision from gui_state', required: false, minimum: 0 },
             { name: 'timeout_ms', type: 'integer', description: 'Timeout in milliseconds', required: false, minimum: 100, maximum: 30000 },
         ], dangerLevel: 'medium', additionalProperties: false,

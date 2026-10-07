@@ -6111,7 +6111,11 @@
                 "refresh": "Reîmprospătează lista de fișiere",
                 "select": "Selectează fișiere",
                 "disconnect": "Deconectează sesiunea",
-                "stop": "Oprește transferurile"
+                "stop": "Oprește transferurile",
+                "settings_open": "Deschide setările",
+                "settings_read": "Inspectează setările",
+                "settings_update": "Actualizează setările",
+                "settings_close": "Închide setările"
             }
         }
     }

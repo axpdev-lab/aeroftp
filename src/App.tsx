@@ -3,6 +3,12 @@
 
 import { ConnectScope, type ProfileConnector, type RegisterProfileConnector } from './gui/connectScope';
 import { runOwnedConnectionCleanup } from './gui/connectionCleanup';
+import { buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
+import { createSettingsHandlers } from './gui/settingsHandlers';
+import { bindSettingsScope } from './gui/settingsScope';
+import {
+    AI_SETTINGS_EVENT, AI_SETTINGS_OPEN_EVENT, readAiPublicProjection,
+} from './utils/aiSettingsStore';
 import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
@@ -458,7 +464,8 @@ import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
-import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
+import { updateAppSettings } from './utils/appSettings';
+import { secureGetWithFallback } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
   mergeSavedServerProfile,
@@ -728,10 +735,7 @@ const App: React.FC = () => {
     const next = !swapPanels;
     setSwapPanels(next);
     try {
-      const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
-      const updated = { ...(existing || {}), swapPanels: next };
-      await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
-      window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+      await updateAppSettings(existing => ({ ...(existing || {}), swapPanels: next }));
     } catch { /* ignore */ }
   }, [swapPanels, setSwapPanels, SETTINGS_KEY]);
 
@@ -744,10 +748,7 @@ const App: React.FC = () => {
     const next: 'compact' | 'detailed' = cardLayout === 'detailed' ? 'compact' : 'detailed';
     setCardLayout(next);
     try {
-      const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
-      const updated = { ...(existing || {}), cardLayout: next };
-      await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
-      window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+      await updateAppSettings(existing => ({ ...(existing || {}), cardLayout: next }));
     } catch { /* ignore */ }
   }, [cardLayout, setCardLayout, SETTINGS_KEY]);
 
@@ -6807,10 +6808,7 @@ const App: React.FC = () => {
       setIsSftpPresetSaving(true);
       setSftpDownloadPreset(next);
       try {
-        const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
-        const updated = { ...(existing || {}), sftpDownloadPreset: next };
-        await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
-        window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+        await updateAppSettings(existing => ({ ...(existing || {}), sftpDownloadPreset: next }));
       } catch {
         setSftpDownloadPreset(sftpDownloadPreset);
       } finally {
@@ -9498,8 +9496,7 @@ const App: React.FC = () => {
 
     // Save last local path if remember folder is enabled
     if (rememberLastFolder) {
-      secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY)
-        .then(existing => secureStoreAndClean('app_settings', SETTINGS_KEY, { ...(existing || {}), lastLocalPath: path }))
+      updateAppSettings(existing => ({ ...(existing || {}), lastLocalPath: path }))
         .catch((e) => {
           console.error('Failed to save last local path:', e);
         });
@@ -16038,11 +16035,58 @@ const App: React.FC = () => {
     profileConnector.current = connector;
     return () => { if (profileConnector.current === connector) profileConnector.current = null; };
   }, []);
+
+  // === Safe Settings surface for the GUI controller ===
+  // aiPublicSettings is the field-by-field projection of the public AI
+  // settings blob (no API keys are ever hydrated here). aiSettingsModalOpen is
+  // the REAL mounted visibility reported by AISettingsPanel, so a lazy first
+  // mount of the DevTools chain cannot falsely claim the AI panel is open.
+  const [aiPublicSettings, setAiPublicSettings] = useState<AiSettingsProjection | null>(null);
+  const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
+  const [aiSettingsOpenRequest, setAiSettingsOpenRequest] = useState(false);
+  const aiSettingsWasOpen = useRef(false);
+  useEffect(() => {
+    let sequence = 0;
+    let currentScope: ConnectScope | undefined;
+    const reload = () => {
+      const ticket = ++sequence;
+      currentScope?.cancel(new GuiError('lease_interrupted'));
+      setAiPublicSettings(null);
+      if (!vaultBootComplete || isAppLocked || accountLockState !== 'ready') return;
+      const parent = new ConnectScope(() => { if (ticket !== sequence) throw new GuiError('lease_interrupted'); });
+      currentScope = parent;
+      void bindSettingsScope(parent).then(scope => readAiPublicProjection(scope))
+        .then(projection => { parent.assert(); setAiPublicSettings(projection); }).catch(() => {});
+    };
+    reload();
+    window.addEventListener(AI_SETTINGS_EVENT, reload);
+    window.addEventListener(PROFILES_CHANGED_EVENT, reload);
+    return () => {
+      ++sequence; currentScope?.cancel(new GuiError('lease_interrupted'));
+      window.removeEventListener(AI_SETTINGS_EVENT, reload);
+      window.removeEventListener(PROFILES_CHANGED_EVENT, reload);
+    };
+  }, [vaultBootComplete, isAppLocked, accountLockState]);
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const open = !!(e as CustomEvent).detail?.open;
+      setAiSettingsModalOpen(open);
+      // The lazy panel's initial closed effect must not cancel an outstanding open.
+      if (!open && aiSettingsWasOpen.current) setAiSettingsOpenRequest(false);
+      aiSettingsWasOpen.current = open;
+    };
+    window.addEventListener(AI_SETTINGS_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(AI_SETTINGS_OPEN_EVENT, onOpen);
+  }, []);
+
   const guiController = useGuiController({
     version: appVersion,
     locked: isAppLocked || !vaultBootComplete || accountLockState !== 'ready',
+    // The owned Settings dialogs are exempt: the controller itself opens and
+    // drives them. Everything else (confirm/input/host-key/2FA/overwrite/
+    // vault/locked overlay) still blocks agent control.
     blocked: !!confirmDialog || !!inputDialog || hostKeyDialog.visible || !!twoFactorPrompt?.open ||
-      overwriteDialog.isOpen || showSettingsPanel || !!showVaultPanel || !!lockedOverlayProfile,
+      overwriteDialog.isOpen || !!showVaultPanel || !!lockedOverlayProfile,
     view: showSettingsPanel || showVaultPanel ? 'other' : showConnectionScreen ? 'servers' : 'files',
     connected: isConnected,
     activeSessionId,
@@ -16060,6 +16104,14 @@ const App: React.FC = () => {
       active: transferQueue.items.filter(item => item.status === 'transferring').length,
       pending: transferQueue.items.filter(item => item.status === 'pending').length,
       failed: transferQueue.items.filter(item => item.status === 'error').length,
+    },
+    // Safe Settings projection: live general preferences from useSettings
+    // (allowlisted keys only) and the public AI blob projection. The locked
+    // redaction in buildGuiSnapshot drops the whole block.
+    settings: {
+      open: showSettingsPanel ? 'general' as const : aiSettingsModalOpen ? 'ai' as const : null,
+      general: buildGeneralProjection(settings as unknown as Record<string, unknown>),
+      ai: aiPublicSettings,
     },
   }, {
     showView: view => setShowConnectionScreen(view === 'servers'),
@@ -16085,6 +16137,33 @@ const App: React.FC = () => {
     },
     disconnect: async () => { if (isConnected) await disconnectFromFtp('button'); },
     stop: async () => { await cancelActiveConnect(); if (remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
+    // Settings surface: typed open/close/read/update over the SAME public
+    // persistence the UI uses. The general update merges allowlisted keys
+    // through the approved broker and shared queue (never SettingsPanel.handleSave, which also
+    // rewrites server profiles, OAuth secrets and OS startup state). The AI
+    // update writes only the stripped public blob; keyring records are never
+    // enqueued, overwritten or cleared here.
+    ...createSettingsHandlers({
+      openGeneral: () => {
+        setAiSettingsOpenRequest(false);
+        setSettingsInitialTab('general');
+        setSettingsInitialAppearanceSubTab(undefined);
+        setShowSettingsPanel(true);
+      },
+      openAi: () => {
+        setShowSettingsPanel(false);
+        setDevToolsOpen(true);
+        window.dispatchEvent(new CustomEvent('devtools-panel-solo', { detail: 'agent' }));
+        setAiSettingsOpenRequest(true);
+      },
+      closeAll: () => {
+        setShowSettingsPanel(false);
+        setSettingsInitialTab(undefined);
+        setSettingsInitialAppearanceSubTab(undefined);
+        setAiSettingsOpenRequest(false);
+      },
+      onAiProjection: setAiPublicSettings,
+    }),
   }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
     `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
     ok ? 'success' : 'error'));
@@ -19729,6 +19808,7 @@ const App: React.FC = () => {
         <DevToolsV2
           isOpen={devToolsOpen}
           previewFile={devToolsPreviewFile}
+          aiSettingsOpenRequest={aiSettingsOpenRequest}
           // Z.3.10: terminal cwd follows the focused panel. For an
           // unmounted remote panel we forward '~' so SSHTerminal opens
           // in the user's home dir instead of pretending the remote

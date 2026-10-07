@@ -6111,7 +6111,11 @@
                 "refresh": "Osveži seznam datotek",
                 "select": "Izberi datoteke",
                 "disconnect": "Prekini povezavo seje",
-                "stop": "Ustavi prenose"
+                "stop": "Ustavi prenose",
+                "settings_open": "Odpri nastavitve",
+                "settings_read": "Preglej nastavitve",
+                "settings_update": "Posodobi nastavitve",
+                "settings_close": "Zapri nastavitve"
             }
         }
     }

@@ -6111,7 +6111,11 @@
                 "refresh": "Osvježi popis datoteka",
                 "select": "Odaberi datoteke",
                 "disconnect": "Odspoji sesiju",
-                "stop": "Zaustavi prijenose"
+                "stop": "Zaustavi prijenose",
+                "settings_open": "Otvori postavke",
+                "settings_read": "Pregledaj postavke",
+                "settings_update": "Ažuriraj postavke",
+                "settings_close": "Zatvori postavke"
             }
         }
     }

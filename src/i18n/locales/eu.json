@@ -6130,7 +6130,11 @@
                 "refresh": "Freskatu fitxategien zerrenda",
                 "select": "Hautatu fitxategiak",
                 "disconnect": "Deskonektatu saioa",
-                "stop": "Gelditu transferentziak"
+                "stop": "Gelditu transferentziak",
+                "settings_open": "Ireki ezarpenak",
+                "settings_read": "Ikuskatu ezarpenak",
+                "settings_update": "Eguneratu ezarpenak",
+                "settings_close": "Itxi ezarpenak"
             }
         }
     }

@@ -6130,7 +6130,11 @@
                 "refresh": "Actualitzar la llista de fitxers",
                 "select": "Seleccionar fitxers",
                 "disconnect": "Desconnectar la sessió",
-                "stop": "Aturar les transferències"
+                "stop": "Aturar les transferències",
+                "settings_open": "Obrir la configuració",
+                "settings_read": "Inspeccionar la configuració",
+                "settings_update": "Actualitzar la configuració",
+                "settings_close": "Tancar la configuració"
             }
         }
     }

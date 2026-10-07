@@ -6111,7 +6111,11 @@
                 "refresh": "Värskenda faililoendit",
                 "select": "Vali failid",
                 "disconnect": "Katkesta seansi ühendus",
-                "stop": "Peata edastused"
+                "stop": "Peata edastused",
+                "settings_open": "Ava seaded",
+                "settings_read": "Uuri seadeid",
+                "settings_update": "Uuenda seadeid",
+                "settings_close": "Sulge seaded"
             }
         }
     }

@@ -32,6 +32,7 @@ use zeroize::{Zeroize, Zeroizing};
 // swap (default on macOS, optional on Linux with LUKS), this risk is mitigated.
 // TODO: Consider wrapping in a custom MlockedBox<[u8; 32]> if threat model requires it.
 static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
+static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 // Serializes all vault write operations to prevent concurrent read-modify-write races
 static VAULT_WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -836,6 +837,7 @@ impl CredentialStore {
         // Cache in static
         if let Ok(mut cache) = VAULT_CACHE.lock() {
             *cache = Some((vault_path, vault_key));
+            VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
         vault_key.zeroize();
         info!("Credential vault opened and cached");
@@ -854,6 +856,62 @@ impl CredentialStore {
         })
     }
 
+    pub(crate) fn cache_generation() -> u64 {
+        VAULT_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Narrow GUI public-config transaction; cache/lock and vault write share a lifetime.
+    /// The caller holds the claimed broker request and account transaction throughout.
+    pub(crate) fn update_gui_config(
+        generation: u64,
+        account: &str,
+        check: impl Fn() -> Result<(), String>,
+        mutate: impl FnOnce(Option<serde_json::Value>) -> Result<serde_json::Value, String>,
+    ) -> Result<serde_json::Value, String> {
+        if !matches!(account, "config_app_settings" | "config_ai_settings") {
+            return Err("invalid_args".into());
+        }
+        let cache = VAULT_CACHE.lock().map_err(|_| "locked")?;
+        let (path, key) = cache.as_ref().ok_or("locked")?;
+        if Self::cache_generation() != generation {
+            return Err("gui_scope_changed".into());
+        }
+        Self::update_gui_config_with_key(path, key, account, check, mutate)
+    }
+
+    fn update_gui_config_with_key(
+        path: &Path,
+        key: &[u8; 32],
+        account: &str,
+        check: impl Fn() -> Result<(), String>,
+        mutate: impl FnOnce(Option<serde_json::Value>) -> Result<serde_json::Value, String>,
+    ) -> Result<serde_json::Value, String> {
+        let _write = VAULT_WRITE_LOCK.lock().map_err(|_| "action_failed")?;
+        check()?;
+        let mut vault = Self::read_vault(path).map_err(|_| "action_failed")?;
+        let existing = match vault.entries.get(account) {
+            Some(entry) => {
+                let plaintext = Zeroizing::new(
+                    crate::crypto::decrypt_aes_gcm(key, &entry.nonce, &entry.data)
+                        .map_err(|_| "action_failed")?,
+                );
+                Some(serde_json::from_slice(&plaintext).map_err(|_| "action_failed")?)
+            }
+            None => None,
+        };
+        let updated = mutate(existing)?;
+        let plaintext = Zeroizing::new(serde_json::to_vec(&updated).map_err(|_| "action_failed")?);
+        let nonce = crate::crypto::random_bytes(12);
+        let data =
+            crate::crypto::encrypt_aes_gcm(key, &nonce, &plaintext).map_err(|_| "action_failed")?;
+        vault
+            .entries
+            .insert(account.to_owned(), VaultEntry { nonce, data });
+        check()?;
+        Self::write_vault(path, &vault).map_err(|_| "action_failed")?;
+        Ok(updated)
+    }
+
     pub(crate) fn from_verified_key(vault_path: &Path, vault_key: &[u8; 32]) -> Self {
         Self {
             vault_path: vault_path.to_path_buf(),
@@ -869,6 +927,7 @@ impl CredentialStore {
                 key.zeroize();
             }
             *cache = None;
+            VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
         crate::mcp_client_oauth::lifecycle::shared().invalidate_all();
         crate::mcp_client_install::invalidate_all();
@@ -941,6 +1000,7 @@ impl CredentialStore {
     pub(crate) fn cache_vault(vault_path: PathBuf, mut vault_key: [u8; 32]) {
         if let Ok(mut cache) = VAULT_CACHE.lock() {
             *cache = Some((vault_path, vault_key));
+            VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
         vault_key.zeroize();
         info!("Credential vault opened and cached");
@@ -1594,6 +1654,79 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
 #[cfg(test)]
 mod tests {
     use super::{keyring_account_for, CredentialStore};
+
+    #[test]
+    fn gui_config_transaction_preserves_concurrent_deltas_and_saved_secret() {
+        use serde_json::json;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fixture-vault.json");
+        std::fs::write(
+            &path,
+            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
+        )
+        .unwrap();
+        let store = CredentialStore::from_verified_key(&path, &[24; 32]);
+        store
+            .store("ai_apikey_fixture", "ARTIFICIAL-TEST-KEY")
+            .unwrap();
+        store
+            .store("config_app_settings", "{\"confirmBeforeDelete\":true}")
+            .unwrap();
+        std::thread::scope(|scope| {
+            for (key, value) in [("fontSize", json!(16)), ("dateFormat", json!("iso"))] {
+                let path = &path;
+                scope.spawn(move || {
+                    CredentialStore::update_gui_config_with_key(
+                        path,
+                        &[24; 32],
+                        "config_app_settings",
+                        || Ok(()),
+                        |existing| {
+                            let mut value_map = existing.unwrap();
+                            value_map[key] = value;
+                            Ok(value_map)
+                        },
+                    )
+                    .unwrap();
+                });
+            }
+        });
+        let stored: serde_json::Value =
+            serde_json::from_str(&store.get("config_app_settings").unwrap()).unwrap();
+        assert_eq!(
+            stored,
+            json!({"confirmBeforeDelete":true,"fontSize":16,"dateFormat":"iso"})
+        );
+        assert_eq!(
+            store.get("ai_apikey_fixture").unwrap(),
+            "ARTIFICIAL-TEST-KEY"
+        );
+        let before = std::fs::read(&path).unwrap();
+        let calls = std::cell::Cell::new(0);
+        assert!(CredentialStore::update_gui_config_with_key(
+            &path,
+            &[24; 32],
+            "config_app_settings",
+            || {
+                calls.set(calls.get() + 1);
+                if calls.get() == 2 {
+                    Err("gui_timeout".into())
+                } else {
+                    Ok(())
+                }
+            },
+            |_| Ok(json!({"fontSize":18}))
+        )
+        .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(CredentialStore::update_gui_config(
+            0,
+            "ai_apikey_fixture",
+            || Ok(()),
+            |_| Ok(json!({}))
+        )
+        .is_err());
+    }
 
     #[test]
     fn reserved_account_guard_covers_system_keys_and_prefix() {

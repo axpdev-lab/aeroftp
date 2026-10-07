@@ -230,6 +230,7 @@ mod ftp;
 mod ftp_session_pool;
 mod ftp_transfer_executor;
 pub mod gui_controller;
+pub(crate) mod gui_settings;
 mod health_check;
 mod host_key_check;
 mod infinicloud;
@@ -19511,6 +19512,9 @@ pub fn run() {
             ai_approval_window::ai_approval_decide,
             gui_controller::gui_intent_claim,
             gui_controller::gui_intent_result,
+            gui_controller::gui_intent_check,
+            gui_controller::gui_intent_cancel,
+            gui_controller::gui_settings_commit,
             ai_tools::execute_ai_tool,
             ai_tools::ai_cancel_tool_turn,
             ai_tools::clipboard_read_image,

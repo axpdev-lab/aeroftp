@@ -433,6 +433,8 @@ export interface AIChatProps {
     isCloudConnection?: boolean;
     /** Callback to refresh file panels after AI tool mutations */
     onFileMutation?: (target: 'remote' | 'local' | 'both') => void;
+    /** GUI controller request to open/close the AI Settings modal. */
+    aiSettingsOpenRequest?: boolean;
     /** Currently open file name in the code editor */
     editorFileName?: string;
     /** Currently open file path in the code editor */

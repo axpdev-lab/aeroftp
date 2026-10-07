@@ -16,7 +16,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { secureGetWithFallback } from '../utils/secureStorage';
+import { updateAppSettings } from '../utils/appSettings';
 import {
   DEFAULT_SFTP_DOWNLOAD_PRESET,
   normalizeSftpDownloadPreset,
@@ -274,7 +275,7 @@ export const useSettings = () => {
           invoke('toggle_menu_bar', { visible: showMenu });
 
           // One-way idempotent migration to vault (no-op if already in vault)
-          secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, parsed).catch(() => {});
+          updateAppSettings(existing => existing ?? parsed).catch(() => {});
         } else {
           // No settings saved, apply defaults for system menu
           invoke('toggle_menu_bar', { visible: false });

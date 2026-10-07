@@ -6111,7 +6111,11 @@
                 "refresh": "Päivitä tiedostoluettelo",
                 "select": "Valitse tiedostot",
                 "disconnect": "Katkaise istunnon yhteys",
-                "stop": "Pysäytä siirrot"
+                "stop": "Pysäytä siirrot",
+                "settings_open": "Avaa asetukset",
+                "settings_read": "Tutki asetuksia",
+                "settings_update": "Päivitä asetukset",
+                "settings_close": "Sulje asetukset"
             }
         }
     }

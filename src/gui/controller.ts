@@ -2,16 +2,18 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { ConnectScope, type ProfileConnectOutcome } from './connectScope';
+import { GuiError, type GuiErrorCode } from './errors';
+import {
+    SETTINGS_INTENTS, buildSettingsProjection, settingsUpdateCommitted, validateSettingsSet,
+    type GuiSettingsProjection, type SettingsArea,
+} from './settingsSchema';
 
-export const GUI_INTENTS = ['state', 'wait', 'show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop'] as const;
+export { GuiError, type GuiErrorCode };
+
+export const GUI_INTENTS = ['state', 'wait', 'show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', ...SETTINGS_INTENTS] as const;
 export type GuiIntent = typeof GUI_INTENTS[number];
 export type GuiPanel = 'remote' | 'local' | 'local2';
 export type GuiView = 'servers' | 'files' | 'other';
-export type GuiErrorCode = 'unsupported_intent' | 'invalid_args' | 'locked' | 'busy' |
-    'blocked' | 'stale_state' | 'lease_interrupted' | 'gui_timeout' | 'action_failed' | 'not_connected' | 'pending_human';
-export class GuiError extends Error {
-    constructor(public readonly code: GuiErrorCode) { super(code); }
-}
 
 interface PanelSource {
     path: string; loading: boolean; selection: Iterable<string>; entriesCount: number;
@@ -22,6 +24,8 @@ export interface GuiSource {
     sessions: readonly { id: string; name: string; protocol: string; status: string; savedProfileId?: string }[];
     panels: Partial<Record<GuiPanel, PanelSource>>;
     queue: { active: number; pending: number; failed: number };
+    /** Safe Settings projection: allowlisted public values only, never secrets. */
+    settings?: GuiSettingsProjection;
 }
 export interface GuiSnapshot {
     schema_version: 1; state_revision: number; version: string; locked: boolean; blocked: boolean;
@@ -30,6 +34,7 @@ export interface GuiSnapshot {
     panels: Partial<Record<GuiPanel, { path: string; loading: boolean; selection: string[];
         selection_count: number; entries_count: number }>>;
     queue: { active: number; pending: number; failed: number };
+    settings?: GuiSettingsProjection;
 }
 const boundedText = (value: string) => value.slice(0, 4096);
 /** Explicit projection: never spread a session, credential form or provider options. */
@@ -58,6 +63,7 @@ export function buildGuiSnapshot(source: GuiSource, revision = 0): GuiSnapshot {
             selection: selection.slice(0, 100).map(boundedText), selection_count: selection.length, entries_count: p.entriesCount };
     }
     result.queue = { active: source.queue.active, pending: source.queue.pending, failed: source.queue.failed };
+    if (source.settings) result.settings = buildSettingsProjection(source.settings);
     return result;
 }
 
@@ -69,6 +75,10 @@ export interface GuiHandlers {
     connect?(profileId: string, scope: ConnectScope): Promise<ProfileConnectOutcome>;
     disconnect(): Promise<void>;
     stop(): Promise<void>;
+    settingsOpen?(area: SettingsArea, scope: ConnectScope): Promise<void>;
+    settingsClose?(scope: ConnectScope): Promise<void>;
+    settingsRead?(area: SettingsArea, scope: ConnectScope): Promise<void>;
+    settingsUpdate?(area: SettingsArea, set: Record<string, unknown>, scope: ConnectScope): Promise<void>;
 }
 export interface GuiRequest {
     name: string; args?: Record<string, unknown>; timeout_ms?: number;
@@ -114,8 +124,22 @@ export function validateGuiRequest(request: GuiRequest): GuiIntent {
                 if (args.names !== undefined) throw new GuiError('invalid_args');
             } else if (!Array.isArray(args.names) || args.names.length > 100 ||
                 args.names.some(n => typeof n !== 'string' || !n || n.length > 4096 || /[\x00-\x1f/\\]/.test(n))) throw new GuiError('invalid_args');
+            break;
+        case 'settings_open': case 'settings_read':
+            keys(args, ['area']); settingsAreaArg(args); break;
+        case 'settings_close': keys(args, []); break;
+        case 'settings_update':
+            keys(args, ['area', 'set']); settingsAreaArg(args);
+            // Deep field/value validation against the closed per-area schema;
+            // unknown or secret-adjacent keys are refused here, before dispatch.
+            validateSettingsSet(args.area as SettingsArea, args.set);
+            break;
     }
     return request.name as GuiIntent;
+}
+function settingsAreaArg(args: Record<string, unknown>): SettingsArea {
+    if (args.area !== 'general' && args.area !== 'ai') throw new GuiError('invalid_args');
+    return args.area;
 }
 
 /** In-app semantic controller. No DOM click/eval, secret or filesystem-write intent. */
@@ -128,6 +152,7 @@ export class GuiController {
     private pending = 0;
     private lease: GuiLease | null = null;
     private connectScope: ConnectScope | null = null;
+    private settingsScope: ConnectScope | null = null;
     private expiry: ReturnType<typeof setTimeout> | undefined;
     constructor(private readonly source: () => GuiSource, private readonly handlers: () => GuiHandlers,
         private readonly changed: (lease: GuiLease | null) => void,
@@ -142,6 +167,7 @@ export class GuiController {
     }
     interrupt(): void {
         this.connectScope?.cancel(new GuiError('lease_interrupted'));
+        this.settingsScope?.cancel(new GuiError('lease_interrupted'));
         this.epoch++; this.lease = null; clearTimeout(this.expiry); this.changed(null);
     }
     dispose(): void { this.disposed = true; this.interrupt(); }
@@ -157,7 +183,7 @@ export class GuiController {
         }
         this.guard(epoch, deadline, checkEpoch);
     }
-    async run(input: GuiRequest, owner = 'AeroAgent', brokerDeadline = Infinity): Promise<GuiReply> {
+    async run(input: GuiRequest, owner = 'AeroAgent', brokerDeadline = Infinity, brokerId?: string): Promise<GuiReply> {
         let intent: GuiIntent | undefined;
         let ownsLane = false;
         let laneEpoch: number | undefined;
@@ -165,6 +191,7 @@ export class GuiController {
         let succeeded = false;
         let returned = false;
         let connectScope: ConnectScope | undefined;
+        let settingsScope: ConnectScope | undefined;
         if (this.pending >= 16) return { ok: false, error: 'busy', snapshot: this.state() };
         this.pending++;
         try {
@@ -205,6 +232,9 @@ export class GuiController {
                 }
             }
             if (snapshot.blocked || (['navigate', 'refresh', 'select'].includes(intent) && snapshot.view !== 'files')) throw new GuiError('blocked');
+            // The owned Settings surface is exclusive: while it is open, only its
+            // own typed operations run; every other mutation stays blocked.
+            if (snapshot.settings?.open && !(SETTINGS_INTENTS as readonly string[]).includes(intent)) throw new GuiError('blocked');
             if (this.busy || (this.lease && this.lease.owner !== owner)) throw new GuiError('busy');
             if ((intent === 'navigate' || intent === 'refresh' || intent === 'select') &&
                 (!snapshot.panels[panelArg(args)] || snapshot.panels[panelArg(args)]?.loading)) throw new GuiError('blocked');
@@ -219,6 +249,14 @@ export class GuiController {
             let handlerError: unknown;
             let connectOutcome: ProfileConnectOutcome | undefined;
             let navigationPath: void | string = undefined;
+            if ((SETTINGS_INTENTS as readonly string[]).includes(intent)) {
+                settingsScope = new ConnectScope(() => {
+                    this.guard(epoch, deadline);
+                    if (this.source().locked) throw new GuiError('locked');
+                    if (this.source().blocked) throw new GuiError('blocked');
+                }, undefined, brokerId);
+                this.settingsScope = settingsScope;
+            }
             const operation = async () => {
                 switch (intent) {
                     case 'connect':
@@ -237,6 +275,18 @@ export class GuiController {
                     case 'refresh': await h.refresh(panelArg(args)); break;
                     case 'select': h.select(panelArg(args), (args.names ?? []) as string[], (args.mode ?? 'names') as 'names' | 'all' | 'none'); break;
                     case 'disconnect': await h.disconnect(); break;
+                    case 'settings_open':
+                        if (!h.settingsOpen) throw new GuiError('blocked');
+                        await h.settingsOpen(settingsAreaArg(args), settingsScope!); break;
+                    case 'settings_close':
+                        if (!h.settingsClose) throw new GuiError('blocked');
+                        await h.settingsClose(settingsScope!); break;
+                    case 'settings_read':
+                        if (!h.settingsRead) throw new GuiError('blocked');
+                        await h.settingsRead(settingsAreaArg(args), settingsScope!); break;
+                    case 'settings_update':
+                        if (!h.settingsUpdate) throw new GuiError('blocked');
+                        await h.settingsUpdate(settingsAreaArg(args), args.set as Record<string, unknown>, settingsScope!); break;
                 }
             };
             void operation().catch(error => { handlerError = error; }).finally(() => {
@@ -263,6 +313,16 @@ export class GuiController {
                 }
                 if (intent === 'show_view') return state.view === args.view;
                 if (intent === 'disconnect') return !state.connected;
+                if (intent === 'settings_open') return state.settings?.open === args.area;
+                if (intent === 'settings_close') return !state.settings?.open;
+                if (intent === 'settings_read') {
+                    // The handler already re-read the persisted public config; the
+                    // projection must carry that area's values in the reply.
+                    return args.area === 'general' ? !!state.settings?.general : !!state.settings?.ai;
+                }
+                if (intent === 'settings_update') {
+                    return !!state.settings && settingsUpdateCommitted(args.area as SettingsArea, args.set, state.settings);
+                }
                 if (intent === 'select') {
                     const p = state.panels[panelArg(args)];
                     if (!p) return false;
@@ -291,6 +351,7 @@ export class GuiController {
             succeeded = true;
             return { ok: true, error: null, snapshot: this.state() };
         } catch (error) {
+            settingsScope?.cancel(error instanceof GuiError ? error : new GuiError('action_failed'));
             // A failed/pending-human connect leaves the human dialog intact.
             if (connectScope && (!handlerSettled || (error instanceof GuiError && ['lease_interrupted', 'gui_timeout', 'locked'].includes(error.code)))) {
                 connectScope.cancel(error instanceof GuiError ? error : new GuiError('action_failed'));
@@ -299,6 +360,7 @@ export class GuiController {
             if (ownsLane && laneEpoch === this.epoch) this.interrupt();
             return { ok: false, error: error instanceof GuiError ? error.code : 'action_failed', snapshot: this.state() };
         } finally {
+            if (this.settingsScope === settingsScope) this.settingsScope = null;
             returned = true;
             if (this.connectScope === connectScope) this.connectScope = null;
             this.pending--;

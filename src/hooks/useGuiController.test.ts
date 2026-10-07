@@ -86,6 +86,56 @@ it('never acts when a request expired, its claim was refused, or a modal is open
     expect(result).toMatchObject({ ok: false, error: 'blocked' }); modal.remove();
 });
 
+it('a human Settings modal is blocked even when marked safe; a controller-owned one admits only its safe tabs', async () => {
+    source.settings = { open: null, general: { fontSize: 14 }, ai: null };
+    const modal = document.createElement('div');
+    modal.setAttribute('aria-modal', 'true'); modal.setAttribute('data-gui-owned', 'settings');
+    modal.setAttribute('data-gui-area', 'general'); modal.setAttribute('data-gui-safe', 'true');
+    const open = vi.fn(async () => { document.body.append(modal); });
+    handlers.settingsOpen = open;
+    handlers.settingsRead = vi.fn(async () => {});
+    await mount();
+    document.body.append(modal);
+    let blocked;
+    await act(async () => { blocked = await window.__aeroftpController!.run({ name: 'settings_read', args: { area: 'general' }, pace: 'fast' }); });
+    expect(blocked).toMatchObject({ ok: false, error: 'blocked' });
+    expect(handlers.settingsRead).not.toHaveBeenCalled();
+    modal.remove();
+    let opened: unknown;
+    await act(async () => {
+        void window.__aeroftpController!.run({ name: 'settings_open', args: { area: 'general' }, pace: 'fast', timeout_ms: 1000 })
+            .then(reply => { opened = reply; });
+    });
+    await until(() => open.mock.calls.length > 0);
+    source.settings.open = 'general';
+    await act(async () => root.render(h(StrictMode, {}, h(Harness))));
+    await until(() => opened !== undefined);
+    expect(opened).toMatchObject({ ok: true });
+    expect(window.__aeroftpController!.state().blocked).toBe(false);
+    modal.setAttribute('data-gui-safe', 'false');
+    expect(window.__aeroftpController!.state().blocked).toBe(true);
+    modal.setAttribute('data-gui-safe', 'true');
+    const child = document.createElement('div'); child.setAttribute('aria-modal', 'true'); modal.append(child);
+    expect(window.__aeroftpController!.state().blocked).toBe(true);
+    modal.remove();
+});
+
+it('refuses settings_close before dispatch for a locally opened unowned AI modal', async () => {
+    source.settings = { open: 'ai', general: null, ai: null };
+    handlers.settingsClose = vi.fn(async () => {});
+    await mount();
+    const modal = document.createElement('div');
+    modal.setAttribute('aria-modal', 'true'); modal.setAttribute('data-gui-owned', 'settings');
+    modal.setAttribute('data-gui-area', 'ai'); modal.setAttribute('data-gui-safe', 'true');
+    document.body.append(modal);
+    try {
+        let reply;
+        await act(async () => { reply = await window.__aeroftpController!.run({ name: 'settings_close', pace: 'fast', timeout_ms: 1000 }); });
+        expect(reply).toMatchObject({ ok: false, error: 'blocked' });
+        expect(handlers.settingsClose).not.toHaveBeenCalled();
+    } finally { modal.remove(); }
+});
+
 it('cancels the active watch pause on broker cancellation and account changes', async () => {
     await mount();
     await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
