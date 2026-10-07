@@ -69,7 +69,7 @@ it('uses a separate state revision and pins the schema version', () => {
 });
 
 it('rejects reveal, unlock, script, settings and file-write requests structurally', async () => {
-    for (const name of ['reveal_password', 'unlock', 'eval', 'click', 'delete', 'rename', 'mkdir', 'transfer', 'connect', '__proto__']) {
+    for (const name of ['reveal_password', 'unlock', 'eval', 'click', 'delete', 'rename', 'mkdir', 'transfer', '__proto__']) {
         expect((await run(name)).error).toBe('unsupported_intent');
     }
     expect((await run('show_view', { view: 'settings-security' })).error).toBe('invalid_args');
@@ -200,4 +200,91 @@ it('uses the canonical navigation result and waits for its committed path', asyn
     expect(r.ok).toBe(true); expect(r.snapshot.panels.local?.path).toBe('/canonical');
     handlers.navigate = vi.fn(async () => { throw new GuiError('action_failed'); });
     expect((await run('navigate', { panel: 'local', path: '/canonical' })).error).toBe('action_failed');
+});
+
+it('connect accepts only an exact bounded profile ID and never inline credentials', async () => {
+    for (const args of [{}, { profile_id: 'one', password: 'PRIVATE' }, { profile_id: 'one', host: 'host' },
+        { profile_id: '../one' }, { profile_id: 'one two' }, { profile_id: 'x'.repeat(257) }, { profile_id: ['one'] }]) {
+        expect((await run('connect', args)).error).toBe('invalid_args');
+    }
+});
+it('connect waits for the requested active profile and a committed idle remote panel', async () => {
+    source.sessions = [{ ...source.sessions[0], savedProfileId: 'other' }];
+    handlers.connect = vi.fn(async id => {
+        source.panels.remote!.loading = true;
+        setTimeout(() => {
+            source.sessions = [{ ...source.sessions[0], savedProfileId: id }];
+            source.panels.remote!.loading = false;
+        }, 70);
+        return 'connected' as const;
+    });
+    let settled = false; const pending = run('connect', { profile_id: 'requested' }).finally(() => { settled = true; });
+    await new Promise(resolve => setTimeout(resolve, 35)); expect(settled).toBe(false);
+    expect(await pending).toMatchObject({ ok: true, snapshot: { sessions: [{ saved_profile_id: 'requested' }] } });
+});
+it('another already connected profile cannot satisfy a failed or pending-human connect', async () => {
+    source.sessions = [{ ...source.sessions[0], savedProfileId: 'other' }];
+    handlers.connect = vi.fn(async () => 'failed' as const);
+    expect((await run('connect', { profile_id: 'requested' })).error).toBe('action_failed');
+    handlers.connect = vi.fn(async () => 'pending_human' as const);
+    expect((await run('connect', { profile_id: 'requested' })).error).toBe('pending_human');
+    expect((await run('state')).snapshot.sessions[0].saved_profile_id).toBe('other');
+});
+it('keeps an active tab beyond the snapshot cap and requires an actual remote panel', async () => {
+    source.sessions = Array.from({ length: 33 }, (_, i) => ({ id: `s${i}`, name: 'Tab', protocol: 'ftp', status: 'connected', savedProfileId: `p${i}` }));
+    source.activeSessionId = 's32';
+    handlers.connect = vi.fn(async () => 'connected' as const);
+    const reply = await run('connect', { profile_id: 'p32' });
+    expect(reply.ok).toBe(true); expect(reply.snapshot.sessions).toHaveLength(32);
+    expect(reply.snapshot.sessions.some(s => s.id === 's32')).toBe(true);
+    delete source.panels.remote;
+    expect((await run('connect', { profile_id: 'p32' }, { timeout_ms: 100 })).error).toBe('gui_timeout');
+});
+it('does not report success when a locked overlay blocks an otherwise connected idle session', async () => {
+    handlers.connect = async id => {
+        source.sessions = [{ ...source.sessions[0], savedProfileId: id }];
+        source.blocked = true; return 'connected';
+    };
+    expect((await run('connect', { profile_id: 'requested' })).error).toBe('pending_human');
+    expect(changed).toHaveBeenLastCalledWith(null);
+});
+it('yields to a human dialog without letting its late answer resume the agent connect', async () => {
+    let answer!: () => void; const dispatch = vi.fn();
+    handlers.connect = async (_id, scope) => {
+        await scope.step(() => new Promise<void>(resolve => {
+            answer = resolve; source.blocked = true;
+            scope.onCancel(() => resolve());
+        }));
+        dispatch(); return 'connected';
+    };
+    expect((await run('connect', { profile_id: 'requested' })).error).toBe('pending_human');
+    expect(source.blocked).toBe(true); answer();
+    await new Promise(resolve => setTimeout(resolve, 35));
+    expect(dispatch).not.toHaveBeenCalled(); source.blocked = false;
+    expect((await run('refresh', { panel: 'local' })).ok).toBe(true);
+});
+it('Stop before a delayed credential result prevents dispatch and keeps the lane until it settles', async () => {
+    let release!: () => void; const dispatch = vi.fn(); let began = false;
+    handlers.connect = async (_id, scope) => {
+        await scope.step(() => { began = true; return new Promise<void>(resolve => { release = resolve; }); });
+        await scope.step(dispatch); return 'connected' as const;
+    };
+    const connect = run('connect', { profile_id: 'one' });
+    while (!began) await new Promise(resolve => setTimeout(resolve, 5));
+    expect((await run('stop')).ok).toBe(true); expect((await connect).error).toBe('lease_interrupted');
+    expect((await run('refresh', { panel: 'local' })).error).toBe('busy');
+    release(); await new Promise(resolve => setTimeout(resolve, 35)); expect(dispatch).not.toHaveBeenCalled();
+    expect((await run('refresh', { panel: 'local' })).ok).toBe(true);
+});
+it('expiry cancels the bound connect and never reveals backend errors or secret sentinels', async () => {
+    let release!: () => void; let began = false; const cancel = vi.fn();
+    handlers.connect = async (_id, scope) => {
+        await scope.cancellable(cancel, () => { began = true; return new Promise<void>(resolve => { release = resolve; }); });
+        throw new Error('PRIVATE_CREDENTIAL_SENTINEL');
+    };
+    const pending = run('connect', { profile_id: 'one' }, { timeout_ms: 100 });
+    while (!began) await new Promise(resolve => setTimeout(resolve, 5));
+    const reply = await pending; expect(reply.error).toBe('gui_timeout'); expect(cancel).toHaveBeenCalledOnce();
+    expect(JSON.stringify(reply)).not.toContain('PRIVATE');
+    release(); await new Promise(resolve => setTimeout(resolve, 35));
 });

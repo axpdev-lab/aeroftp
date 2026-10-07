@@ -110,6 +110,21 @@ it('preserves Stop through the trusted pointer capture and reaches the original 
     await act(async () => (stop as HTMLButtonElement).click());
     expect(handlers.stop).toHaveBeenCalledOnce(); expect(host.querySelector('[role="status"]')).toBeNull();
 });
+it('ignores its own connection metadata but still interrupts an account/profile edit', async () => {
+    let began = false; let resolve!: () => void;
+    handlers.connect = async (_id, scope) => {
+        await scope.step(() => new Promise<void>(yes => { began = true; resolve = yes; }));
+        return 'connected';
+    };
+    await mount(); let pending!: ReturnType<NonNullable<typeof window.__aeroftpController>['run']>;
+    await act(async () => { pending = window.__aeroftpController!.run({ name: 'connect', args: { profile_id: 'fixture' }, pace: 'fast' }); });
+    await until(() => began);
+    await act(async () => window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { connectionMetadata: true } })));
+    expect(host.querySelector('[role="status"]')).not.toBeNull();
+    await act(async () => window.dispatchEvent(new Event(PROFILES_CHANGED_EVENT)));
+    await expect(pending).resolves.toMatchObject({ error: 'lease_interrupted' });
+    await act(async () => resolve());
+});
 
 it('human trusted input wins; synthetic programmatic events cannot masquerade as a person', async () => {
     const listen = vi.spyOn(window, 'addEventListener'); await mount();

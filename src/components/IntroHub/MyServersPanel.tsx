@@ -21,6 +21,8 @@ import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
 import { deriveProviderId, getServerSearchText, filterServersByQuery } from '../../utils/serverListFilter';
 import { logger } from '../../utils/logger';
+import { ConnectScope, type ProfileConnectOutcome, type RegisterProfileConnector } from '../../gui/connectScope';
+import { createProfileConnector } from '../../gui/profileConnector';
 import { isConnectCancelledError } from '../../utils/connectCancel';
 import { ServerHealthCheck } from '../ServerHealthCheck';
 import { SpeedTestDialog } from '../SpeedTestDialog';
@@ -95,8 +97,9 @@ const MENU_ICON_KIT          = <FileKey size={14} className="text-emerald-500" /
 const MENU_ICON_EXPORT       = <Download size={14} />;
 
 /** Load credential from vault with retry if store not ready */
-const getCredentialWithRetry = async (account: string, maxRetries = 3): Promise<string> => {
+const getCredentialWithRetry = async (account: string, maxRetries = 3, scope?: ConnectScope): Promise<string> => {
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+        scope?.assert();
         try {
             return await invoke<string>('get_credential', { account });
         } catch (err) {
@@ -198,7 +201,8 @@ function wait(ms: number) {
 }
 
 interface MyServersPanelProps {
-    onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => void | Promise<void>;
+    registerProfileConnector?: RegisterProfileConnector;
+    onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string, scope?: ConnectScope) => void | Promise<void | ProfileConnectOutcome>;
     /** Run a connect phase under a cancel token so Esc / "still connecting"
      *  Cancel aborts it. The OAuth / 4shared connects below dispatch their
      *  backend invokes through this so Esc cancels them like the credential
@@ -227,7 +231,7 @@ interface MyServersPanelProps {
      *  card's connect button flip its action (connect vs go-to session) so a
      *  still-connected account is not re-logged-in / re-prompted for 2FA.
      *  Returns true when a session was found and activated. Issue #128-C. */
-    onActivateSession?: (savedServerId: string) => boolean;
+    onActivateSession?: (savedServerId: string, scope?: ConnectScope) => boolean | Promise<boolean>;
     /** Saved-server profile id whose connect is in flight (incl. the post-2FA
      *  retry), so its card connect button keeps spinning. Issue #128-C. */
     connectingProfileId?: string | null;
@@ -235,7 +239,7 @@ interface MyServersPanelProps {
      *  Disconnect context-menu entry, gated on `activeProfileIds`. #222. */
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
     /** APPENDIX-DEVICE-PROFILES Phase 3: open attached MTP device for a saved profile. */
-    onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile) => void | Promise<void>;
+    onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile, scope?: ConnectScope) => void | Promise<void>;
 }
 
 const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
@@ -249,6 +253,7 @@ const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: R
 
 export function MyServersPanel({
     onConnect,
+    registerProfileConnector,
     cancellableConnect,
     onEdit,
     onQuickConnect,
@@ -273,6 +278,7 @@ export function MyServersPanel({
     // cache because it would leak the previous user's profiles across an
     // account switch.
     const [servers, setServers] = useState<ServerProfile[]>([]);
+    const connectInFlight = useRef(false);
     const [connectingId, setConnectingId] = useState<string | null>(null);
     const [oauthConnecting, setOauthConnecting] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -1006,8 +1012,12 @@ export function MyServersPanel({
 
     // Connection handler - full logic from original SavedServers.tsx
     // Handles OAuth2, 4shared OAuth1, MTP device profiles, and credential connections
-    const handleConnect = useCallback(async (server: ServerProfile) => {
-        if (connectingId) return;
+    const performConnect = useCallback(async (server: ServerProfile, connectScope: ConnectScope): Promise<ProfileConnectOutcome> => {
+        connectScope.assert();
+        if (connectingId || connectingProfileId) return 'failed';
+        const scopedCancellable = cancellableConnect ? <T,>(run: (token: string) => Promise<T>) =>
+            cancellableConnect(token => connectScope.cancellable(
+                () => invoke<void>('cancel_connection', { token }), () => run(token))) : undefined;
 
         // AeroShare friend (design §2 "what happens after you click"): if a
         // drive is already bound, fall through to the standard credential-based
@@ -1016,7 +1026,7 @@ export function MyServersPanel({
         // instead of attempting a connection.
         if (server.protocol === 'peer' && !friendCanConnect(server)) {
             setAeroShareDialog({ mode: 'receive', prefillAfid: server.host, prefillAlias: server.username });
-            return;
+            return 'pending_human';
         }
 
         // #128-C: dual-action connect button. When this card already owns an
@@ -1024,8 +1034,8 @@ export function MyServersPanel({
         // tab instead of starting a parallel connection, so a still-connected
         // account is never re-logged-in or re-prompted for 2FA. Falls through
         // to a normal connect when no open session is found.
-        if (activeProfileIds?.has(server.id) && onActivateSession?.(server.id)) {
-            return;
+        if (activeProfileIds?.has(server.id) && await connectScope.step(() => onActivateSession?.(server.id, connectScope))) {
+            return 'connected';
         }
 
         // APPENDIX-DEVICE-PROFILES Phase 3: MTP device profile.
@@ -1044,10 +1054,10 @@ export function MyServersPanel({
                             important: true,
                         },
                     }));
-                    return;
+                    return 'failed';
                 }
                 // Fresh list on click: bus:dev ids change across re-plug.
-                const devices = await refreshMtpDevices();
+                const devices = await connectScope.step(() => refreshMtpDevices());
                 const live = matchLiveDevice(server.deviceFingerprint?.canonical, devices);
                 if (!live) {
                     window.dispatchEvent(new CustomEvent('aeroftp-toast', {
@@ -1059,23 +1069,24 @@ export function MyServersPanel({
                             important: true,
                         },
                     }));
-                    return;
+                    return 'failed';
                 }
-                await onOpenMtpDeviceProfile(live, server);
+                await connectScope.step(() => onOpenMtpDeviceProfile(live, server, connectScope));
                 const connectedAt = new Date().toISOString();
                 setServers(current => current.map(s => (
                     s.id === server.id ? { ...s, lastConnected: connectedAt } : s
                 )));
-                await mergeSavedServerProfile(server.id, latest => ({
+                await connectScope.step(() => mergeSavedServerProfile(server.id, latest => ({
                     ...latest,
                     lastConnected: connectedAt,
-                }));
-            } catch (e) {
+                }), true));
+                return 'connected';
+            } catch (e) { connectScope.assert();
                 if (!isConnectCancelledError(e)) logger.error('MTP device connection failed', e);
             } finally {
                 setConnectingId(null);
             }
-            return;
+            return 'failed';
         }
 
         setConnectingId(server.id);
@@ -1085,15 +1096,15 @@ export function MyServersPanel({
             let credentials: { clientId: string; clientSecret: string } | null = null;
             let keyReadError: unknown = null;
             try {
-                const clientId = await getCredentialWithRetry(`oauth_${server.protocol}_client_id`);
-                const clientSecret = await getCredentialWithRetry(`oauth_${server.protocol}_client_secret`);
+                const clientId = await connectScope.step(() => getCredentialWithRetry(`oauth_${server.protocol}_client_id`, 3, connectScope));
+                const clientSecret = await connectScope.step(() => getCredentialWithRetry(`oauth_${server.protocol}_client_secret`, 3, connectScope));
                 if (clientId && clientSecret) credentials = { clientId, clientSecret };
-            } catch (e) { keyReadError = keyReadFailure(e); }
+            } catch (e) { connectScope.assert(); keyReadError = keyReadFailure(e); }
 
             if (!credentials) {
                 notifyOAuthKeysUnavailable(t, server.protocol, keyReadError);
                 setConnectingId(null);
-                return;
+                return 'failed';
             }
 
             setOauthConnecting(server.id);
@@ -1103,34 +1114,34 @@ export function MyServersPanel({
                 if (server.protocol === 'zohoworkdrive') {
                     region = server.options?.region;
                     if (!region) {
-                        try { region = await invoke<string>('get_credential', { account: `oauth_${server.protocol}_region` }); } catch { /* default */ }
+                        try { region = await connectScope.step(() => invoke<string>('get_credential', { account: `oauth_${server.protocol}_region` })); } catch { connectScope.assert(); /* default */ }
                     }
                 }
                 const baseParams = { provider: oauthProvider, client_id: credentials.clientId, client_secret: credentials.clientSecret, profile_id: server.id, ...(region && { region }) };
 
-                const hasTokens = await invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profileId: server.id });
+                const hasTokens = await connectScope.step(() => invoke<boolean>('oauth2_has_tokens', { provider: oauthProvider, profileId: server.id }));
 
                 // #360: dispatch the OAuth auth + connect under a connect token
                 // (when available) so Esc / "still connecting" Cancel aborts the
                 // in-flight backend call, matching the credential providers.
                 const doOAuthConnect = async (connectToken?: string) => {
                     const params = connectToken ? { ...baseParams, connect_token: connectToken } : baseParams;
-                    if (!hasTokens) await invoke('oauth2_full_auth', { params });
+                    if (!hasTokens) await connectScope.step(() => invoke('oauth2_full_auth', { params }));
                     try {
-                        return await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
-                    } catch (connectErr) {
+                        return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params }));
+                    } catch (connectErr) { connectScope.assert();
                         const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
                         const lower = errMsg.toLowerCase();
                         if (lower.includes('token expired') || (lower.includes('token') && lower.includes('refresh')) || lower.includes('authentication failed') || (lower.includes('invalid') && lower.includes('access_token'))) {
-                            await invoke('oauth2_full_auth', { params });
-                            return await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+                            await connectScope.step(() => invoke('oauth2_full_auth', { params }));
+                            return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params }));
                         }
                         throw connectErr;
                     }
                 };
-                const result = cancellableConnect
-                    ? await cancellableConnect(doOAuthConnect)
-                    : await doOAuthConnect();
+                const result = scopedCancellable
+                    ? await connectScope.step(() => scopedCancellable(doOAuthConnect))
+                    : await connectScope.step(() => doOAuthConnect());
 
                 // Yandex Disk doesn't expose account_email() from the backend
                 // (the username field is OAuth-config, not a profile email):
@@ -1140,14 +1151,15 @@ export function MyServersPanel({
                 const connectedAt = new Date().toISOString();
                 const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: connectedAt, username: updatedUsername || s.username } : s);
                 setServers(updated);
-                await mergeSavedServerProfile(server.id, latest => ({
+                await connectScope.step(() => mergeSavedServerProfile(server.id, latest => ({
                     ...latest,
                     lastConnected: connectedAt,
                     username: updatedUsername || latest.username,
-                }));
+                }), true));
 
-                await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
-            } catch (e) {
+                const outcome = await connectScope.step(() => onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath, connectScope));
+                return outcome ?? 'connected';
+            } catch (e) { connectScope.assert();
                 // #360: a user cancel is not a failure (cancellableConnect already
                 // surfaced the calm toast); just clear the spinner below.
                 if (!isConnectCancelledError(e)) logger.error('OAuth connection failed', e);
@@ -1155,7 +1167,7 @@ export function MyServersPanel({
                 setOauthConnecting(null);
                 setConnectingId(null);
             }
-            return;
+            return 'failed';
         }
 
         // 4shared OAuth 1.0
@@ -1163,18 +1175,18 @@ export function MyServersPanel({
             let consumerKey = '', consumerSecret = '';
             let keyReadError: unknown = null;
             try {
-                consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
-                consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
-            } catch (e) { keyReadError = keyReadFailure(e); }
+                consumerKey = await connectScope.step(() => getCredentialWithRetry('oauth_fourshared_client_id', 3, connectScope));
+                consumerSecret = await connectScope.step(() => getCredentialWithRetry('oauth_fourshared_client_secret', 3, connectScope));
+            } catch (e) { connectScope.assert(); keyReadError = keyReadFailure(e); }
             if (!consumerKey || !consumerSecret) {
                 notifyOAuthKeysUnavailable(t, server.protocol, keyReadError);
                 setConnectingId(null);
-                return;
+                return 'failed';
             }
 
             setOauthConnecting(server.id);
             try {
-                const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: server.id });
+                const hasTokens = await connectScope.step(() => invoke<boolean>('fourshared_has_tokens', { profileId: server.id }));
 
                 // #360: run the 4shared auth + connect under a connect token so
                 // Esc / "still connecting" Cancel can abort the in-flight call.
@@ -1182,37 +1194,40 @@ export function MyServersPanel({
                     const params = connectToken
                         ? { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id, connect_token: connectToken }
                         : { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id };
-                    if (!hasTokens) await invoke('fourshared_full_auth', { params });
+                    if (!hasTokens) await connectScope.step(() => invoke('fourshared_full_auth', { params }));
                     try {
-                        return await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
-                    } catch {
-                        await invoke('fourshared_full_auth', { params });
-                        return await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params });
+                        return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params }));
+                    } catch (error) { connectScope.assert();
+                        connectScope.assert();
+                        if (isConnectCancelledError(error)) throw error;
+                        await connectScope.step(() => invoke('fourshared_full_auth', { params }));
+                        return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params }));
                     }
                 };
-                const result = cancellableConnect
-                    ? await cancellableConnect(doFourSharedConnect)
-                    : await doFourSharedConnect();
+                const result = scopedCancellable
+                    ? await connectScope.step(() => scopedCancellable(doFourSharedConnect))
+                    : await connectScope.step(() => doFourSharedConnect());
 
                 const updatedUsername = result.account_email || server.username;
                 const connectedAt = new Date().toISOString();
                 const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: connectedAt, username: updatedUsername || s.username } : s);
                 setServers(updated);
-                await mergeSavedServerProfile(server.id, latest => ({
+                await connectScope.step(() => mergeSavedServerProfile(server.id, latest => ({
                     ...latest,
                     lastConnected: connectedAt,
                     username: updatedUsername || latest.username,
-                }));
+                }), true));
 
-                await onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath);
-            } catch (e) {
+                const outcome = await connectScope.step(() => onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath, connectScope));
+                return outcome ?? 'connected';
+            } catch (e) { connectScope.assert();
                 // #360: a user cancel is not a failure (calm toast already shown).
                 if (!isConnectCancelledError(e)) logger.error('4shared connection failed', e);
             } finally {
                 setOauthConnecting(null);
                 setConnectingId(null);
             }
-            return;
+            return 'failed';
         }
 
         // Non-OAuth: standard credential-based connection
@@ -1220,16 +1235,16 @@ export function MyServersPanel({
             const connectedAt = new Date().toISOString();
             const updated = servers.map(s => s.id === server.id ? { ...s, lastConnected: connectedAt } : s);
             setServers(updated);
-            await mergeSavedServerProfile(server.id, latest => ({
+            await connectScope.step(() => mergeSavedServerProfile(server.id, latest => ({
                 ...latest,
                 lastConnected: connectedAt,
-            }));
+            }), true));
 
             // Load password from credential vault with retry
             let password = '';
             try {
-                password = await getCredentialWithRetry(`server_${server.id}`);
-            } catch { /* not found */ }
+                password = await connectScope.step(() => getCredentialWithRetry(`server_${server.id}`, 3, connectScope));
+            } catch { connectScope.assert(); /* not found */ }
 
             // Build connection params - for provider protocols, use host only (no port append)
             // Legacy-profile migration: when the registry preset for
@@ -1248,7 +1263,7 @@ export function MyServersPanel({
             }
             const serverString = server.host;
 
-            await onConnect({
+            const outcome = await connectScope.step(() => onConnect({
                 server: serverString,
                 username: server.username,
                 password,
@@ -1258,7 +1273,7 @@ export function MyServersPanel({
                 options: server.options,
                 providerId: server.providerId,
                 savedServerId: server.id,
-            }, server.initialPath, server.localInitialPath);
+            }, server.initialPath, server.localInitialPath, connectScope));
 
             // Best-effort Filen auth-version badge enrichment, detached on purpose.
             // filen_get_auth_version takes the provider lock, so it queues behind the
@@ -1269,15 +1284,15 @@ export function MyServersPanel({
             if (proto === 'filen') {
                 void (async () => {
                     try {
-                        const authVersion = await invoke<number | null>('filen_get_auth_version');
+                        const authVersion = await connectScope.step(() => invoke<number | null>('filen_get_auth_version'));
                         if (typeof authVersion === 'number') {
-                            const updatedWithAuth = await mergeSavedServerProfile(server.id, latest => ({
+                            const updatedWithAuth = await connectScope.step(() => mergeSavedServerProfile(server.id, latest => ({
                                 ...latest,
                                 options: {
                                     ...(latest.options || {}),
                                     filen_auth_version: authVersion,
                                 },
-                            }));
+                            }), true));
                             setServers(updatedWithAuth);
                         }
                     } catch {
@@ -1285,14 +1300,17 @@ export function MyServersPanel({
                     }
                 })();
             }
-        } catch (e) {
-            logger.error('Connection failed', e);
+            return outcome ?? 'connected';
+        } catch (e) { connectScope.assert();
+            if (!isConnectCancelledError(e)) logger.error('Connection failed', e);
+            return 'failed';
         } finally {
             setConnectingId(null);
         }
     }, [
         servers,
         connectingId,
+        connectingProfileId,
         onConnect,
         cancellableConnect,
         t,
@@ -1301,6 +1319,23 @@ export function MyServersPanel({
         onOpenMtpDeviceProfile,
         refreshMtpDevices,
     ]);
+
+    // Buttons and the controller share the same lifetime-protected handler.
+    const handleConnect = useCallback(async (server: ServerProfile, scope = new ConnectScope()) => {
+        if (connectInFlight.current) return 'failed' as const;
+        connectInFlight.current = true;
+        try { return await performConnect(server, scope); }
+        finally { connectInFlight.current = false; setConnectingId(null); setOauthConnecting(null); }
+    }, [performConnect]);
+    const latestConnect = useRef(handleConnect);
+    useEffect(() => { latestConnect.current = handleConnect; });
+    useEffect(() => {
+        if (!registerProfileConnector) return;
+        let mounted = true;
+        const unregister = registerProfileConnector(createProfileConnector(
+            (profile, scope) => latestConnect.current(profile, scope), () => mounted));
+        return () => { mounted = false; unregister(); };
+    }, [registerProfileConnector]);
 
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         try {

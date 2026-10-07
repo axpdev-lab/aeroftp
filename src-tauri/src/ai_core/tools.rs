@@ -1949,9 +1949,10 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "gui_run",
-            description: "Run a visible GUI navigation, selection, refresh, view, disconnect or Stop action. Human input interrupts control. No click, script, unlock, credential, connect or file-write action is supported.",
+            description: "Run a visible GUI navigation, selection, refresh, view, disconnect or Stop action. Human input interrupts control. Saved profiles connect by exact profile_id with vault credentials kept internal. No click, script, unlock, credential read/write or file-write action is supported.",
             input_schema: json!({ "type": "object", "properties": {
-                "intent": { "type": "string", "enum": ["show_view", "navigate", "refresh", "select", "disconnect", "stop"] },
+                "intent": { "type": "string", "enum": ["show_view", "navigate", "refresh", "select", "connect", "disconnect", "stop"] },
+                "profile_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,256}$", "maxLength": 256 },
                 "panel": { "type": "string", "enum": ["remote", "local", "local2"] },
                 "view": { "type": "string", "enum": ["servers", "files"] },
                 "path": { "type": "string", "maxLength": 4096 },

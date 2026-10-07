@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { GuiController, type GuiHandlers, type GuiIntent, type GuiLease, type GuiRequest, type GuiSource } from '../gui/controller';
+import { GuiController, GuiError, type GuiHandlers, type GuiIntent, type GuiLease, type GuiRequest, type GuiSource } from '../gui/controller';
 import { useTauriListener } from './useTauriListener';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
 import { TID } from '../utils/testIds';
@@ -40,6 +40,11 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         });
         const service = new GuiController(() => ({ ...current.current.source,
             blocked: current.current.source.blocked || !!document.querySelector('[aria-modal="true"]') }), () => ({ ...current.current.handlers,
+                connect: async (id, scope) => {
+                    if (!current.current.handlers.connect) throw new GuiError('blocked');
+                    const result = await current.current.handlers.connect(id, scope);
+                    await committed(); return result;
+                },
                 navigate: async (panel, path) => {
                     const result = await current.current.handlers.navigate(panel, path);
                     await committed(); return result;
@@ -51,7 +56,12 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         const interrupt = (event: Event) => {
             if (event.isTrusted && !(event.target instanceof Element && event.target.closest('[data-gui-controller-stop]'))) service.interrupt();
         };
-        const partitionChanged = () => service.interrupt();
+        const partitionChanged = (event: Event) => {
+            // The connect flow writes timestamps and failure markers itself.
+            // Account/profile edits still emit the ordinary interrupting event.
+            if (service.connecting && (event as CustomEvent).detail?.connectionMetadata === true) return;
+            service.interrupt();
+        };
         window.addEventListener('pointerdown', interrupt, true);
         window.addEventListener('keydown', interrupt, true);
         window.addEventListener(PROFILES_CHANGED_EVENT, partitionChanged);

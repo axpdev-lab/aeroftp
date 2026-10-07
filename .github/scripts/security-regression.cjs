@@ -134,8 +134,8 @@ function checkOauthSettingsLeakGuard() {
   );
 
   assert(
-    myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_id`)') &&
-      myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_secret`)'),
+    myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_id`, 3, connectScope)') &&
+      myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_secret`, 3, connectScope)'),
     `oauth leak guard regression: expected vault/keyring OAuth credential loading path in ${myServersFile}`
   );
 

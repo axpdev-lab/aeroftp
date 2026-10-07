@@ -18,6 +18,7 @@ const INTENTS: &[&str] = &[
     "navigate",
     "refresh",
     "select",
+    "connect",
     "disconnect",
     "stop",
 ];
@@ -67,6 +68,8 @@ struct Session {
     name: String,
     protocol: String,
     status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    saved_profile_id: Option<String>,
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -146,6 +149,7 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
                 "gui_timeout",
                 "action_failed",
                 "not_connected",
+                "pending_human",
             ]
             .contains(&e)
         })
@@ -351,6 +355,24 @@ mod tests {
         let mut value = locked_reply();
         value["error"] = json!("SENTINEL_PASSWORD");
         value["ok"] = json!(false);
+        assert!(parse_reply(value, true).is_err());
+    }
+    #[test]
+    fn gui_controller_connect_metadata_and_human_handoff_are_closed() {
+        let mut value = locked_reply();
+        value["ok"] = json!(false);
+        value["error"] = json!("pending_human");
+        value["snapshot"]["locked"] = json!(false);
+        value["snapshot"]["sessions"] = json!([{
+            "id": "session", "name": "Fixture", "protocol": "ftp",
+            "status": "connected", "saved_profile_id": "profile"
+        }]);
+        let reply = parse_reply(value.clone(), true).unwrap();
+        assert_eq!(
+            reply.snapshot.sessions[0].saved_profile_id.as_deref(),
+            Some("profile")
+        );
+        value["snapshot"]["sessions"][0]["password"] = json!("SECRET");
         assert!(parse_reply(value, true).is_err());
     }
     #[test]

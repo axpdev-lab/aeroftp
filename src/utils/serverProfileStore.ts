@@ -131,7 +131,7 @@ export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> 
 // the `transfer-toast-update` / `editor-reload` pattern used elsewhere.
 export const PROFILES_CHANGED_EVENT = 'aeroftp-profiles-changed';
 
-export const storeSavedServerProfiles = async (profiles: ServerProfile[]): Promise<void> => {
+export const storeSavedServerProfiles = async (profiles: ServerProfile[], connectionMetadata = false): Promise<void> => {
     try {
         await saveActiveServerProfiles(profiles);
     } catch (error) {
@@ -144,7 +144,7 @@ export const storeSavedServerProfiles = async (profiles: ServerProfile[]): Promi
         // best-effort cleanup
     }
     try {
-        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { connectionMetadata } }));
     } catch {
         // SSR / non-DOM environment: dispatch is a best-effort notification.
     }
@@ -153,6 +153,7 @@ export const storeSavedServerProfiles = async (profiles: ServerProfile[]): Promi
 export const mergeSavedServerProfile = async (
     profileId: string,
     updater: (profile: ServerProfile) => ServerProfile,
+    connectionMetadata = false,
 ): Promise<ServerProfile[]> => {
     let result: ServerProfile[] = [];
     const run = async () => {
@@ -164,7 +165,7 @@ export const mergeSavedServerProfile = async (
             return updater(profile);
         });
         result = found ? next : profiles;
-        if (found) await storeSavedServerProfiles(result);
+        if (found) await storeSavedServerProfiles(result, connectionMetadata);
     };
 
     const queued = profileWriteQueue.then(run, run);
@@ -198,7 +199,7 @@ export const recordProfileConnectFailure = async (
             timestamp: new Date().toISOString(),
             message,
         },
-    }));
+    }), true);
 };
 
 export const clearProfileConnectFailure = async (
@@ -209,5 +210,5 @@ export const clearProfileConnectFailure = async (
         if (!profile.lastConnectionError) return profile;
         const { lastConnectionError: _omit, ...rest } = profile;
         return rest as ServerProfile;
-    });
+    }, true);
 };

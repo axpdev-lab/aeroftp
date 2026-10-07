@@ -657,9 +657,10 @@ export const AGENT_TOOLS: AITool[] = [
     },
     {
         name: 'gui_run',
-        description: 'Run a visible GUI intent through the same navigation, selection, refresh, disconnect or Stop handlers as the buttons. The human can interrupt. No click, script, unlock, credential, connect or file-write action is supported.',
+        description: 'Run a visible GUI intent through the same navigation, selection, refresh, disconnect or Stop handlers as the buttons. The human can interrupt. Saved profiles connect by exact profile_id with vault credentials kept internal. No click, script, unlock, credential read/write or file-write action is supported.',
         parameters: [
-            { name: 'intent', type: 'string', description: 'GUI action', required: true, enum: ['show_view', 'navigate', 'refresh', 'select', 'disconnect', 'stop'] },
+            { name: 'intent', type: 'string', description: 'GUI action', required: true, enum: ['show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop'] },
+            { name: 'profile_id', type: 'string', description: 'Exact saved profile ID for connect', required: false, maxLength: 256 },
             { name: 'panel', type: 'string', description: 'Panel for navigate, refresh or select', required: false, enum: ['remote', 'local', 'local2'] },
             { name: 'view', type: 'string', description: 'View for show_view', required: false, enum: ['servers', 'files'] },
             { name: 'path', type: 'string', description: 'Path for navigate', required: false, maxLength: 4096 },

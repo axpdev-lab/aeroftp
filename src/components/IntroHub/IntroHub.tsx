@@ -1,3 +1,4 @@
+import { ConnectScope, type ProfileConnectOutcome, type RegisterProfileConnector } from '../../gui/connectScope';
 import * as React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ConnectionParams, ServerProfile } from '../../types';
@@ -36,13 +37,14 @@ interface FormTabState extends FormTab {
 }
 
 export interface IntroHubProps {
+    registerProfileConnector?: RegisterProfileConnector;
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
     loading: boolean;
     onConnectionParamsChange: (params: ConnectionParams) => void;
     onQuickConnectDirsChange: (dirs: QuickConnectDirs) => void;
     onConnect: (overrideParams?: ConnectionParams) => void;
-    onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string) => Promise<void>;
+    onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string, scope?: ConnectScope) => Promise<void | ProfileConnectOutcome>;
     /** Run a connect phase under a cancel token so Esc / "still connecting"
      *  Cancel aborts it. Threaded down to the My Servers OAuth connect path,
      *  which dispatches OAuth full-auth + connect itself (#360). */
@@ -70,7 +72,7 @@ export interface IntroHubProps {
      *  parallel connection, when its card shows the pulsing "active session"
      *  dot. Lets the card's connect button switch action (connect vs go-to
      *  session) and avoids a needless re-login / 2FA. Issue #128-C. */
-    onActivateSession?: (savedServerId: string) => boolean;
+    onActivateSession?: (savedServerId: string, scope?: ConnectScope) => boolean | Promise<boolean>;
     /** Saved-server profile id whose connect is in flight (incl. the post-2FA
      *  retry), so the card connect button keeps its spinner up. Issue #128-C. */
     connectingProfileId?: string | null;
@@ -80,7 +82,7 @@ export interface IntroHubProps {
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
     /** APPENDIX-DEVICE-PROFILES Phase 3: open an attached MTP device for a
      *  saved device profile (fingerprint match already done in MyServersPanel). */
-    onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile) => void | Promise<void>;
+    onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile, scope?: ConnectScope) => void | Promise<void>;
 }
 
 function generateTabId(): string {
@@ -450,6 +452,7 @@ export function IntroHub(props: IntroHubProps) {
                 <div className={activeTab === 'my-servers' ? 'h-full' : 'hidden'}>
                     <MyServersPanel
                         onConnect={onSavedServerConnect}
+                        registerProfileConnector={props.registerProfileConnector}
                         cancellableConnect={cancellableConnect}
                         onEdit={handleEdit}
                         onQuickConnect={handleNewConnection}
