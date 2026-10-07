@@ -374,6 +374,8 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
     let mut details = vec![format!("tool: {}", tool_name)];
 
     for key in [
+        "intent",
+        "tool",
         "server",
         "operation",
         "command",
@@ -2705,6 +2707,21 @@ mod approval_tests {
         assert!(!details.contains("AeroAgent wants to"));
         // The old native-dialog line is gone: the window explains itself.
         assert!(!message.contains("desktop process"));
+    }
+
+    #[test]
+    fn gui_workspace_approval_names_action_and_panel() {
+        for panel in ["editor", "terminal", "agent"] {
+            let details = build_ai_tool_approval_details(
+                "gui_run",
+                &json!({"intent":"tools_open","tool":panel,"password":"SECRET"}),
+            );
+            assert!(details.iter().any(|line| line == "intent: tools_open"));
+            assert!(details.iter().any(|line| line == &format!("tool: {panel}")));
+            assert!(!details.join("\n").contains("SECRET"));
+        }
+        let details = build_ai_tool_approval_details("gui_run", &json!({"intent":"tools_close"}));
+        assert!(details.iter().any(|line| line == "intent: tools_close"));
     }
 
     #[test]
