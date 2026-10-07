@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { TID } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -1097,6 +1098,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             {tabs.map((tab, index) => (
                                 <button
                                     key={tab.id}
+                                    data-testid={['security', 'backup', 'cloudproviders'].includes(tab.id) ? undefined : TID.settingsTab}
+                                    data-tab={tab.id}
+                                    data-agent={['security', 'backup', 'cloudproviders'].includes(tab.id) ? 'deny' : undefined}
                                     ref={(node) => { sidebarButtonRefs.current[index] = node; }}
                                     id={`settings-tab-${tab.id}`}
                                     role="tab"
@@ -1656,7 +1660,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">{t('settings.cloudProviderSettings')}</h3>
                                     <div className="flex items-center justify-between">
                                         <p className="text-sm text-gray-500">{t('settings.cloudProviderDesc')}</p>
-                                        <button type="button" onClick={() => setShowOAuthSecrets(!showOAuthSecrets)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
+                                        <button data-agent="deny" type="button" onClick={() => setShowOAuthSecrets(!showOAuthSecrets)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex-shrink-0">
                                             {showOAuthSecrets ? <EyeOff size={14} /> : <Eye size={14} />}
                                             {showOAuthSecrets ? t('settings.hideSecrets') : t('settings.showSecrets')}
                                         </button>
@@ -2768,7 +2772,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('settings.currentPassword')}</label>
                                                     <div className="relative">
                                                         <input type={showMasterPassword ? 'text' : 'password'} value={currentMasterPassword} onChange={(e) => setCurrentMasterPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" placeholder={t('settings.passwordPlaceholder')} />
-                                                        <button type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                                        <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                             {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                         </button>
                                                     </div>
@@ -2779,7 +2783,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{masterPasswordStatus?.is_set ? t('settings.newPassword') : t('settings.setPassword')}</label>
                                                 <div className="relative">
                                                     <input type={showMasterPassword ? 'text' : 'password'} value={newMasterPassword} onChange={(e) => setNewMasterPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" placeholder={t('settings.passwordPlaceholder')} />
-                                                    <button type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                                    <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                         {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                     </button>
                                                 </div>
@@ -2793,7 +2797,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('settings.confirmPassword')}</label>
                                                 <div className="relative">
                                                     <input type={showMasterPassword ? 'text' : 'password'} value={confirmMasterPassword} onChange={(e) => setConfirmMasterPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" placeholder={t('settings.confirmPasswordPlaceholder')} />
-                                                    <button type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                                    <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowMasterPassword(!showMasterPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                         {showMasterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                     </button>
                                                 </div>
@@ -3313,7 +3317,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 <div className="flex gap-2">
                                                     <div className="relative flex-1">
                                                         <input type={showKeystoreExportPassword ? 'text' : 'password'} placeholder={t('settings.keystorePassword')} value={keystoreExportPassword} onChange={(e) => setKeystoreExportPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" />
-                                                        <button type="button" tabIndex={-1} onClick={() => setShowKeystoreExportPassword(!showKeystoreExportPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                                        <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowKeystoreExportPassword(!showKeystoreExportPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                             {showKeystoreExportPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                         </button>
                                                     </div>
@@ -3533,7 +3537,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         {/* Password input */}
                                                         <div className="relative">
                                                             <input type={showKeystoreImportPassword ? 'text' : 'password'} placeholder={t('settings.keystorePassword')} value={keystoreImportPassword} onChange={(e) => setKeystoreImportPassword(e.target.value)} className="w-full px-3 py-2 pr-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm" />
-                                                            <button type="button" tabIndex={-1} onClick={() => setShowKeystoreImportPassword(!showKeystoreImportPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                                            <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowKeystoreImportPassword(!showKeystoreImportPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                                                 {showKeystoreImportPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                                                             </button>
                                                         </div>

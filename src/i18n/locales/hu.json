@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Megjegyzések",
             "empty": "Még nincsenek megjegyzések"
+        },
+        "guiController": {
+            "banner": "{agent} vezérli az AeroFTP-t",
+            "stopped": "Az ügynök vezérlése leállítva",
+            "actions": {
+                "state": "Alkalmazás vizsgálata",
+                "wait": "Várakozás az alkalmazásra",
+                "show_view": "Nézet megnyitása",
+                "navigate": "Navigálás egy mappába",
+                "refresh": "Fájllista frissítése",
+                "select": "Fájlok kiválasztása",
+                "disconnect": "Munkamenet leválasztása",
+                "stop": "Átvitelek leállítása"
+            }
         }
     }
 }

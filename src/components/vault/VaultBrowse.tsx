@@ -326,7 +326,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <div className="relative">
                             <input type={state.showPassword ? 'text' : 'password'} value={state.newPassword} onChange={e => state.setNewPassword(e.target.value)}
                                 className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs pr-7" />
-                            <button type="button" tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                            <button data-agent="deny" type="button" tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                                 {state.showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
                             </button>
                         </div>
@@ -336,7 +336,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                         <div className="relative">
                             <input type={state.showPassword ? 'text' : 'password'} value={state.confirmNewPassword} onChange={e => state.setConfirmNewPassword(e.target.value)}
                                 className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-xs pr-7" />
-                            <button type="button" tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
+                            <button data-agent="deny" type="button" tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300">
                                 {state.showPassword ? <EyeOff size={12} /> : <Eye size={12} />}
                             </button>
                         </div>

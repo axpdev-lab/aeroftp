@@ -6118,6 +6118,20 @@
         "fileComments": {
             "title": "Iruzkinak",
             "empty": "Oraindik ez dago iruzkinik"
+        },
+        "guiController": {
+            "banner": "{agent} AeroFTP kontrolatzen ari da",
+            "stopped": "Agentearen kontrola gelditu da",
+            "actions": {
+                "state": "Ikuskatu aplikazioa",
+                "wait": "Itxaron aplikazioari",
+                "show_view": "Ireki ikuspegi bat",
+                "navigate": "Joan karpeta batera",
+                "refresh": "Freskatu fitxategien zerrenda",
+                "select": "Hautatu fitxategiak",
+                "disconnect": "Deskonektatu saioa",
+                "stop": "Gelditu transferentziak"
+            }
         }
     }
 }

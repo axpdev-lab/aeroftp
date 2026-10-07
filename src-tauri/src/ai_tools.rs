@@ -88,6 +88,9 @@ const ALLOWED_TOOLS: &[&str] = &[
     "clipboard_read",
     "clipboard_write",
     // App control tools
+    "gui_state",
+    "gui_wait",
+    "gui_run",
     "set_theme",
     "app_info",
     "sync_control",
@@ -128,6 +131,7 @@ fn sync_control_requires_approval(args: &Value) -> bool {
 
 fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
     match tool_name {
+        "gui_run" => true,
         "sync_control" => sync_control_requires_approval(args),
         "server_exec" | "cross_profile_transfer" => true,
         _ => matches!(
@@ -350,9 +354,14 @@ fn truncate_display(value: &str, max_len: usize) -> String {
     format!("{}...", truncated)
 }
 
+fn approval_display_text(value: &str, max_chars: usize) -> String {
+    let escaped: String = value.chars().flat_map(char::escape_debug).collect();
+    truncate_display(&escaped, max_chars)
+}
+
 fn format_approval_value(value: &Value) -> String {
     match value {
-        Value::String(string_value) => truncate_display(string_value, 160),
+        Value::String(string_value) => approval_display_text(string_value, 160),
         Value::Array(items) => format!("{} item(s)", items.len()),
         Value::Bool(boolean_value) => boolean_value.to_string(),
         Value::Number(number_value) => number_value.to_string(),
@@ -365,6 +374,11 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
     let mut details = vec![format!("tool: {}", tool_name)];
 
     for key in [
+        "intent",
+        "tool",
+        "panel",
+        "view",
+        "mode",
         "server",
         "operation",
         "command",
@@ -398,13 +412,25 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         }
     }
 
+    if tool_name == "gui_run" {
+        if let Some(names) = args.get("names").and_then(Value::as_array) {
+            details.push(format!("selection: {} item(s)", names.len()));
+            for name in names.iter().take(3).filter_map(Value::as_str) {
+                details.push(format!(
+                    "selected name: {}",
+                    approval_display_text(name, 120)
+                ));
+            }
+        }
+    }
+
     // coding_verify takes an ordered `checks` array; surface each entry so the
     // approver sees the full command list, not just the workspace.
     if let Some(checks) = args.get("checks").and_then(|value| value.as_array()) {
         let preview: Vec<String> = checks
             .iter()
             .filter_map(|value| value.as_str())
-            .map(|c| truncate_display(c, 60))
+            .map(|c| approval_display_text(c, 60))
             .collect();
         details.push(format!("checks: {}", preview.join(", ")));
     }
@@ -414,7 +440,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
             .iter()
             .take(3)
             .filter_map(|value| value.as_str())
-            .map(|path| truncate_display(path, 120))
+            .map(|path| approval_display_text(path, 120))
             .collect();
 
         if preview.is_empty() {
@@ -2628,9 +2654,45 @@ mod session_grant_tests {
 mod approval_tests {
     use super::{
         build_ai_tool_approval_details, build_ai_tool_approval_message,
-        requires_backend_write_approval, split_approval_message,
+        requires_backend_write_approval, split_approval_message, ALLOWED_TOOLS,
     };
     use serde_json::json;
+
+    #[test]
+    fn gui_controller_tools_are_reachable_and_control_requires_approval() {
+        use crate::ai_core::tools::{find_tool, DangerLevel, Surfaces};
+        for (name, danger) in [
+            ("gui_state", DangerLevel::ReadOnly),
+            ("gui_wait", DangerLevel::ReadOnly),
+            ("gui_run", DangerLevel::Medium),
+        ] {
+            assert!(
+                ALLOWED_TOOLS.contains(&name),
+                "{name} cannot reach the broker"
+            );
+            let definition = find_tool(name).expect("GUI controller tool must exist");
+            assert_eq!(definition.danger, danger);
+            assert_eq!(definition.surfaces, Surfaces::GUI);
+        }
+        assert!(!requires_backend_write_approval("gui_state", &json!({})));
+        assert!(!requires_backend_write_approval(
+            "gui_wait",
+            &json!({"condition":"idle"})
+        ));
+        for intent in [
+            "show_view",
+            "navigate",
+            "refresh",
+            "select",
+            "disconnect",
+            "stop",
+        ] {
+            assert!(requires_backend_write_approval(
+                "gui_run",
+                &json!({"intent":intent})
+            ));
+        }
+    }
 
     #[test]
     fn the_approval_window_gets_the_action_and_the_details_apart() {
@@ -2645,6 +2707,55 @@ mod approval_tests {
         assert!(!details.contains("AeroAgent wants to"));
         // The old native-dialog line is gone: the window explains itself.
         assert!(!message.contains("desktop process"));
+    }
+
+    #[test]
+    fn gui_approval_names_action_target_and_bounded_selection() {
+        let details = build_ai_tool_approval_details(
+            "gui_run",
+            &json!({
+                "intent":"select", "panel":"local2", "view":"files", "mode":"names",
+                "names":["first.txt","second.txt","third.txt","fourth.txt"], "password":"SECRET"
+            }),
+        );
+        for expected in [
+            "intent: select",
+            "panel: local2",
+            "view: files",
+            "mode: names",
+            "selection: 4 item(s)",
+            "selected name: first.txt",
+            "selected name: third.txt",
+        ] {
+            assert!(details.iter().any(|line| line == expected));
+        }
+        let message = details.join("\n");
+        assert!(!message.contains("fourth.txt"));
+        assert!(!message.contains("SECRET"));
+    }
+
+    #[test]
+    fn approval_text_cannot_forge_details_and_keeps_unicode_names() {
+        let details = build_ai_tool_approval_details(
+            "gui_run",
+            &json!({
+                "intent":"select", "panel":"local", "names":["file\nintent: stop\r\t\u{001b}日本語.txt", "x".repeat(500)],
+                "path":"/folder\nintent: stop", "command":"echo ok\nrm file"
+            }),
+        );
+        assert!(details
+            .iter()
+            .all(|line| !line.chars().any(char::is_control)));
+        assert!(details
+            .iter()
+            .any(|line| line.contains("file\\nintent: stop\\r\\t\\u{1b}日本語.txt")));
+        assert!(details
+            .iter()
+            .any(|line| line == "path: /folder\\nintent: stop"));
+        assert!(details
+            .iter()
+            .filter(|line| line.starts_with("selected name: "))
+            .all(|line| line.chars().count() <= "selected name: ".len() + 123));
     }
 
     #[test]

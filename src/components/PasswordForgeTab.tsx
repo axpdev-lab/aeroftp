@@ -224,7 +224,7 @@ export const PasswordForgeTab: React.FC = () => {
                                     autoComplete="off"
                                 />
                             </div>
-                            <button
+                            <button data-agent="deny"
                                 type="button"
                                 onClick={() => setRevealed(prev => ({ ...prev, [index]: !prev[index] }))}
                                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600 dark:hover:text-gray-100"

@@ -1931,6 +1931,39 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             surfaces: local_surfaces,
         },
         ToolDef {
+            name: "gui_state",
+            description: "Inspect the running GUI with a redacted snapshot. Use only when the user asks to watch work in the app. No credentials or file contents.",
+            input_schema: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "gui_wait",
+            description: "Wait for a bounded condition in the running GUI. No headless fallback.",
+            input_schema: json!({ "type": "object", "properties": {
+                "condition": { "type": "string", "enum": ["connected", "disconnected", "idle", "unlocked"] },
+                "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 30000 }
+            }, "required": ["condition"], "additionalProperties": false }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "gui_run",
+            description: "Run a visible GUI navigation, selection, refresh, view, disconnect or Stop action. Human input interrupts control. No click, script, unlock, credential, connect or file-write action is supported.",
+            input_schema: json!({ "type": "object", "properties": {
+                "intent": { "type": "string", "enum": ["show_view", "navigate", "refresh", "select", "disconnect", "stop"] },
+                "panel": { "type": "string", "enum": ["remote", "local", "local2"] },
+                "view": { "type": "string", "enum": ["servers", "files"] },
+                "path": { "type": "string", "maxLength": 4096 },
+                "names": { "type": "array", "items": { "type": "string" }, "maxItems": 100 },
+                "mode": { "type": "string", "enum": ["names", "all", "none"] },
+                "if_revision": { "type": "integer", "minimum": 0 },
+                "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 30000 }
+            }, "required": ["intent"], "additionalProperties": false }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
             name: "set_theme",
             description: "Change the application theme.",
             input_schema: json!({ "type": "object", "properties": { "theme": {"type": "string"} }, "required": ["theme"] }),
@@ -2226,7 +2259,10 @@ pub async fn dispatch_tool(
         // Local digest: no GUI handle required on either surface.
         "hash_file" => local_tools::hash_file(ctx, args).await,
         // GUI-specific legacy tools
-        "set_theme"
+        "gui_state"
+        | "gui_wait"
+        | "gui_run"
+        | "set_theme"
         | "sync_control"
         | "vault_peek"
         | "cross_profile_transfer"

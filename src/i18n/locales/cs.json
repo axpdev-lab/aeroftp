@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Komentáře",
             "empty": "Zatím žádné komentáře"
+        },
+        "guiController": {
+            "banner": "{agent} ovládá AeroFTP",
+            "stopped": "Ovládání agentem zastaveno",
+            "actions": {
+                "state": "Prozkoumat aplikaci",
+                "wait": "Počkat na aplikaci",
+                "show_view": "Otevřít zobrazení",
+                "navigate": "Přejít do složky",
+                "refresh": "Obnovit seznam souborů",
+                "select": "Vybrat soubory",
+                "disconnect": "Odpojit relaci",
+                "stop": "Zastavit přenosy"
+            }
         }
     }
 }

@@ -365,7 +365,7 @@ export const VaultCreate: React.FC<VaultCreateProps> = ({ state }) => {
                                 onGenerated={password => { state.setPassword(password); state.setConfirmPassword(password); }}
                                 className="absolute right-8 top-1/2 -translate-y-1/2"
                             />
-                            <button tabIndex={-1} type="button" onClick={() => state.setShowPassword(!state.showPassword)}
+                            <button data-agent="deny" tabIndex={-1} type="button" onClick={() => state.setShowPassword(!state.showPassword)}
                                 className="absolute right-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--compress-text-muted)' }}>
                                 {state.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                             </button>

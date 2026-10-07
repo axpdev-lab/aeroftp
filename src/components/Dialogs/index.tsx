@@ -6,6 +6,7 @@
  * i18n integrated
  */
 
+import { TID } from '../../utils/testIds';
 import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../../i18n';
@@ -129,12 +130,13 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         // `MODAL_Z.globalConfirm`, not a bare `z-50`: this dialog is mounted before
         // every modal in App.tsx, so on an equal z-index the modal that asked the
         // question paints over it and its backdrop eats the clicks (#537).
-        <div className={`fixed inset-0 bg-black/50 flex items-center justify-center ${MODAL_Z.globalConfirm}`} role="dialog" aria-modal="true" aria-label={message}>
+        <div data-testid={TID.confirmDialog} className={`fixed inset-0 bg-black/50 flex items-center justify-center ${MODAL_Z.globalConfirm}`} role="dialog" aria-modal="true" aria-label={message}>
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl max-w-sm animate-scale-in">
                 <p className="text-gray-900 dark:text-gray-100 mb-4">{message}</p>
                 <div className="flex justify-end gap-2">
                     {!informational && (
                         <button
+                            data-testid={TID.confirmCancel}
                             onClick={onCancel}
                             className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                         >
@@ -150,6 +152,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                         </button>
                     )}
                     <button
+                        data-testid={TID.confirmOk}
                         onClick={onConfirm}
                         className={`px-4 py-2 text-white rounded-lg ${colorMap[confirmColor]}`}
                     >
@@ -186,7 +189,7 @@ export const InputDialog: React.FC<InputDialogProps> = ({
     const [showPassword, setShowPassword] = useState(false);
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={title}>
+        <div data-testid={isPassword ? undefined : TID.inputDialog} data-agent={isPassword ? 'deny' : undefined} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={title}>
             <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-2xl w-96 animate-scale-in">
                 <h3 className={`text-lg font-semibold ${description ? 'mb-2' : 'mb-4'} text-gray-900 dark:text-gray-100`}>{title}</h3>
                 {description && (
@@ -194,6 +197,8 @@ export const InputDialog: React.FC<InputDialogProps> = ({
                 )}
                 <div className="relative mb-4">
                     <input
+                        data-testid={isPassword ? undefined : TID.inputField}
+                        data-agent={isPassword ? 'deny' : undefined}
                         type={isPassword && !showPassword ? 'password' : 'text'}
                         value={value}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
@@ -205,6 +210,7 @@ export const InputDialog: React.FC<InputDialogProps> = ({
                     {isPassword && (
                         <button
                             type="button"
+                            data-agent="deny"
                             onClick={() => setShowPassword(!showPassword)}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                             tabIndex={-1}
@@ -215,12 +221,14 @@ export const InputDialog: React.FC<InputDialogProps> = ({
                 </div>
                 <div className="flex justify-end gap-2">
                     <button
+                        data-testid={isPassword ? undefined : TID.inputCancel}
                         onClick={onCancel}
                         className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                     >
                         {t('common.cancel')}
                     </button>
                     <button
+                        data-testid={isPassword ? undefined : TID.inputOk}
                         onClick={() => onConfirm(value)}
                         className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
                     >
@@ -324,7 +332,7 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
                             className={`w-full px-3 py-2 pr-9 text-sm rounded-md border bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 ${error ? 'border-red-500 dark:border-red-500 focus:ring-red-500' : 'border-gray-300 dark:border-gray-600 focus:ring-sky-500'}`}
                             aria-invalid={error ? true : undefined}
                         />
-                        <button type="button" onClick={() => setShowPassword((v) => !v)} tabIndex={-1} aria-label={showPassword ? t('extractWindow.hidePassword') : t('extractWindow.showPassword')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        <button data-agent="deny" type="button" onClick={() => setShowPassword((v) => !v)} tabIndex={-1} aria-label={showPassword ? t('extractWindow.hidePassword') : t('extractWindow.showPassword')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                     </div>
@@ -1731,7 +1739,8 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                             />
                             <button
                                 type="button"
-                                onClick={() => setShowPassword(!showPassword)}
+                                data-agent="deny"
+                            onClick={() => setShowPassword(!showPassword)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                                 tabIndex={-1}
                             >
@@ -1760,7 +1769,8 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                             />
                             <button
                                 type="button"
-                                onClick={() => setShowPassword(!showPassword)}
+                                data-agent="deny"
+                            onClick={() => setShowPassword(!showPassword)}
                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                                 tabIndex={-1}
                             >

@@ -1,3 +1,4 @@
+import { TID } from '../../utils/testIds';
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle, Users, RefreshCw, Wifi, Smartphone } from 'lucide-react';
 import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
@@ -698,6 +699,8 @@ export const ServerCard = React.memo(function ServerCard({
     return (
         <div
             data-my-server-card
+            data-testid={TID.serverCard}
+            data-profile-id={server.id}
             draggable={isDraggable}
             onDragStart={onDragStart ? handleCardDragStart : undefined}
             onDragEnter={onDragEnter ? handleCardDragEnter : undefined}
@@ -730,6 +733,8 @@ export const ServerCard = React.memo(function ServerCard({
                 {/* Icon = connect button (with reachability dot overlay in compact layout) */}
                 <div className="relative shrink-0">
                     <button
+                        data-testid={TID.serverCardConnect}
+                        data-profile-id={server.id}
                         onClick={(e) => { e.stopPropagation(); onConnect(server); }}
                         disabled={isConnecting}
                         className={`rounded-lg flex items-center justify-center transition-all cursor-pointer disabled:cursor-wait ${
@@ -739,6 +744,7 @@ export const ServerCard = React.memo(function ServerCard({
                         }`}
                         style={{ width: connectButtonSize, height: connectButtonSize }}
                         title={hasActiveSession ? t('common.goToActiveSession') : t('common.connect')}
+                        aria-label={hasActiveSession ? t('common.goToActiveSession') : t('common.connect')}
                     >
                         {isConnecting ? <Loader2 size={connectSpinnerSize} className="animate-spin text-blue-500" /> : getServerIcon(server, connectIconSize)}
                     </button>

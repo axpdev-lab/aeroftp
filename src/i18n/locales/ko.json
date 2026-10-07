@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "댓글",
             "empty": "아직 댓글이 없습니다"
+        },
+        "guiController": {
+            "banner": "{agent}이(가) AeroFTP를 제어하고 있습니다",
+            "stopped": "에이전트 제어가 중지되었습니다",
+            "actions": {
+                "state": "앱 살펴보기",
+                "wait": "앱 기다리기",
+                "show_view": "뷰 열기",
+                "navigate": "폴더로 이동",
+                "refresh": "파일 목록 새로고침",
+                "select": "파일 선택",
+                "disconnect": "세션 연결 끊기",
+                "stop": "전송 중지"
+            }
         }
     }
 }

@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Opmerkingen",
             "empty": "Nog geen opmerkingen"
+        },
+        "guiController": {
+            "banner": "{agent} bestuurt AeroFTP",
+            "stopped": "Agentbesturing gestopt",
+            "actions": {
+                "state": "De app inspecteren",
+                "wait": "Op de app wachten",
+                "show_view": "Een weergave openen",
+                "navigate": "Naar een map navigeren",
+                "refresh": "De bestandenlijst vernieuwen",
+                "select": "Bestanden selecteren",
+                "disconnect": "De sessie verbreken",
+                "stop": "Overdrachten stoppen"
+            }
         }
     }
 }

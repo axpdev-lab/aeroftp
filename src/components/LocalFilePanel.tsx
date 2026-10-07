@@ -11,6 +11,7 @@
  * a pure rendering extraction for maintainability.
  */
 
+import { TID } from '../utils/testIds';
 import React, { useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -531,6 +532,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
     : '';
   return (
     <div
+      data-testid={TID.panel}
+      data-panel={panelKey}
       role="region"
       aria-label={panelKey === 'local2' ? 'Local files (right panel)' : 'Local files'}
       className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} min-h-0 flex flex-col ${crossPanelRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
@@ -614,6 +617,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
           <div className="flex-1 flex items-center gap-1.5 min-w-0">
             <div className="flex-1 min-w-0">
               <BreadcrumbBar
+                panel={panelKey}
                 currentPath={currentPath}
                 onNavigate={onNavigate}
                 isCoherent={isPathCoherent}
@@ -626,6 +630,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               const upDisabled = !currentPath || currentPath === '/' || /^[A-Za-z]:[\\/]?$/.test(currentPath);
               return (
                 <button
+                  data-testid={TID.breadcrumbUp}
+                  data-panel={panelKey}
                   onClick={() => !upDisabled && navigateUp()}
                   disabled={upDisabled}
                   className={`flex-shrink-0 p-1.5 rounded transition-colors ${upDisabled ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
@@ -637,6 +643,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               );
             })()}
             <button
+              data-testid={TID.panelRefresh}
+              data-panel={panelKey}
               onClick={handleRefreshClick}
               className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               title={t('common.refresh')}
@@ -662,6 +670,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 navigation boundary via `minPath`. */}
             <div className="flex-1 min-w-0">
               <BreadcrumbBar
+                panel={panelKey}
                 currentPath={currentPath}
                 onNavigate={onNavigate}
                 isCoherent={isPathCoherent && !isSyncPathMismatch}
@@ -674,6 +683,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               const upDisabled = !currentPath || currentPath === '/' || /^[A-Za-z]:[\\/]?$/.test(currentPath);
               return (
                 <button
+                  data-testid={TID.breadcrumbUp}
+                  data-panel={panelKey}
                   onClick={() => !upDisabled && navigateUp()}
                   disabled={upDisabled}
                   className={`flex-shrink-0 p-1.5 rounded transition-colors ${upDisabled ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
@@ -685,6 +696,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               );
             })()}
             <button
+              data-testid={TID.panelRefresh}
+              data-panel={panelKey}
               onClick={handleRefreshClick}
               className="flex-shrink-0 p-1.5 rounded text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
               title={t('common.refresh')}
@@ -998,6 +1011,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                 <tr
                   key={`${file.name}-${i}`}
                   data-file-row
+                  data-testid={TID.fileRow}
+                  data-panel={panelKey}
                   data-file-name={file.name}
                   data-file-index={i}
                   role="row"
@@ -1074,6 +1089,8 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
               <div
                 key={`${file.name}-${i}`}
                 data-file-card
+                data-testid={TID.fileRow}
+                data-panel={panelKey}
                 data-file-name={file.name}
                 data-file-index={i}
                 role="row"
@@ -1148,6 +1165,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
         ) : (
           /* ===================== LARGE ICONS VIEW ===================== */
           <LargeIconsGrid
+            panelKey={panelKey}
             files={sortedFiles}
             selectedFiles={selectedFiles}
             currentPath={currentPath}

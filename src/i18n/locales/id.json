@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Komentar",
             "empty": "Belum ada komentar"
+        },
+        "guiController": {
+            "banner": "{agent} sedang mengendalikan AeroFTP",
+            "stopped": "Kendali agen dihentikan",
+            "actions": {
+                "state": "Periksa aplikasi",
+                "wait": "Tunggu aplikasi",
+                "show_view": "Buka tampilan",
+                "navigate": "Buka folder",
+                "refresh": "Segarkan daftar berkas",
+                "select": "Pilih berkas",
+                "disconnect": "Putuskan sesi",
+                "stop": "Hentikan transfer"
+            }
         }
     }
 }

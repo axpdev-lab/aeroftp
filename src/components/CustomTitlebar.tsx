@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { TID } from '../utils/testIds';
 import * as React from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getVersion } from '@tauri-apps/api/app';
@@ -480,6 +481,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     )}
                     {isConnected ? (
                         <button
+                            data-testid={TID.titlebarDisconnect}
                             onClick={onDisconnect}
                             className="h-6 px-2 flex items-center gap-1.5 text-xs rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
                             title={t('common.disconnect')}
@@ -536,6 +538,8 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     </button>
                     <UserDropdown onUsersChanged={onUsersChanged} />
                     <button
+                        data-testid={masterPasswordSet ? TID.titlebarLock : undefined}
+                        data-agent={masterPasswordSet ? undefined : 'deny'}
                         onClick={masterPasswordSet ? onLockApp : onSetupMasterPassword}
                         className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                         title={masterPasswordSet ? t('masterPassword.lockTooltip') : t('masterPassword.setupTooltip')}

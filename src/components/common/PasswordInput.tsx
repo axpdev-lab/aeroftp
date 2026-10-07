@@ -53,6 +53,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
     return (
         <div className="relative">
             <input
+                data-agent="deny"
                 type={visible ? 'text' : 'password'}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
@@ -66,6 +67,7 @@ export const PasswordInput: React.FC<PasswordInputProps> = ({
                 aria-label={ariaLabel}
             />
             <button
+                data-agent="deny"
                 type="button"
                 tabIndex={-1}
                 onClick={() => setVisible((v) => !v)}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { TID } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useRef, useCallback } from 'react';
 import { X, Plus, Loader2, Wifi, WifiOff, Cloud, CloudOff, Server, Lock, ShieldCheck, Folder, Flame } from 'lucide-react';
@@ -372,6 +373,11 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                 return (
                     <div
                         key={session.id}
+                        data-testid={TID.sessionTab}
+                        data-session-id={session.id}
+                        data-active={isActive}
+                        data-status={session.status}
+                        aria-disabled={isLocked || undefined}
                         draggable={!!onReorder && !isLocked}
                         onDragStart={(e) => { if (isLocked) { e.preventDefault(); return; } handleTabDragStart(e, idx); }}
                         onDragOver={(e) => handleTabDragOver(e, idx)}
@@ -422,6 +428,8 @@ export const SessionTabs: React.FC<SessionTabsProps> = ({
                         {/* Close button: hidden during transfer lock */}
                         {!isLocked && (
                             <button
+                                data-testid={TID.sessionTabClose}
+                                data-session-id={session.id}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     onTabClose(session.id);

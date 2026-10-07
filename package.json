@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "postinstall": "patch-package",
-    "build": "tsc && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
+    "build": "tsc && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build && node scripts/check-gui-controller-bundle.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "cd src-tauri && cargo test",

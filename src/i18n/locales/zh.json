@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "评论",
             "empty": "暂无评论"
+        },
+        "guiController": {
+            "banner": "{agent}正在控制AeroFTP",
+            "stopped": "已停止代理控制",
+            "actions": {
+                "state": "检查应用",
+                "wait": "等待应用",
+                "show_view": "打开视图",
+                "navigate": "转到文件夹",
+                "refresh": "刷新文件列表",
+                "select": "选择文件",
+                "disconnect": "断开会话",
+                "stop": "停止传输"
+            }
         }
     }
 }

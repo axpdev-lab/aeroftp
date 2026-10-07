@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Kommentit",
             "empty": "Ei vielä kommentteja"
+        },
+        "guiController": {
+            "banner": "{agent} ohjaa AeroFTP:tä",
+            "stopped": "Agentin ohjaus pysäytetty",
+            "actions": {
+                "state": "Tutki sovellusta",
+                "wait": "Odota sovellusta",
+                "show_view": "Avaa näkymä",
+                "navigate": "Siirry kansioon",
+                "refresh": "Päivitä tiedostoluettelo",
+                "select": "Valitse tiedostot",
+                "disconnect": "Katkaise istunnon yhteys",
+                "stop": "Pysäytä siirrot"
+            }
         }
     }
 }

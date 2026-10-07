@@ -6118,6 +6118,20 @@
         "fileComments": {
             "title": "Sylwadau",
             "empty": "Dim sylwadau eto"
+        },
+        "guiController": {
+            "banner": "Mae {agent} yn rheoli AeroFTP",
+            "stopped": "Mae rheolaeth yr asiant wedi stopio",
+            "actions": {
+                "state": "Archwilio’r ap",
+                "wait": "Aros am yr ap",
+                "show_view": "Agor golwg",
+                "navigate": "Mynd i ffolder",
+                "refresh": "Adnewyddu’r rhestr ffeiliau",
+                "select": "Dewis ffeiliau",
+                "disconnect": "Datgysylltu’r sesiwn",
+                "stop": "Stopio trosglwyddiadau"
+            }
         }
     }
 }

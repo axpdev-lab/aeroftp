@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { LatestListing } from './utils/latestListing';
+import { useGuiController } from './hooks/useGuiController';
+import { GuiControllerBanner } from './components/GuiControllerBanner';
+import { GuiError } from './gui/controller';
+import { TID } from './utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -913,6 +918,7 @@ const App: React.FC = () => {
   // spinner, so a stall on a slow provider is legible instead of mysterious.
   const [remoteListReason, setRemoteListReason] = useState<string | null>(null);
   const [localListLoading, setLocalListLoading] = useState(false);
+  const [localListLoading2, setLocalListLoading2] = useState(false);
   // Transfer progress: ref holds data (no re-renders), boolean state only changes on start/complete
   const activeTransferRef = useRef<TransferProgress | null>(null);
   const [hasActiveTransfer, setHasActiveTransfer] = useState(false);
@@ -1698,6 +1704,7 @@ const App: React.FC = () => {
   // Race condition guard for loadLocalFiles: increments on each call,
   // stale responses are discarded when callId !== current counter value.
   const loadLocalCallIdRef = React.useRef(0);
+  const latestLocalListing2 = useRef(new LatestListing());
 
   // File clipboard for Cut/Copy/Paste
   const fileClipboardRef = React.useRef<{
@@ -5424,29 +5431,28 @@ const App: React.FC = () => {
   const loadLocalFiles2 = useCallback(async (path: string): Promise<boolean> => {
     if (!path) return false; // defence in depth: see loadLocalFiles above
     try {
-      const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
-      setLocalFiles2(files);
-      setCurrentLocalPath2(path);
-      setSelectedLocalFiles2(new Set());
-      return true;
-    } catch (error) {
-      if (isGvfsMtpPath(path)) {
-        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+      return await latestLocalListing2.current.run(async isCurrent => {
         try {
-          const home = await homeDir().catch(() => '/');
-          if (home === path) return false;
-          const homeFiles: LocalFile[] = await invoke('get_local_files', {
-            path: home,
-            showHidden: showHiddenFiles,
-          });
-          setLocalFiles2(homeFiles);
-          setCurrentLocalPath2(home);
-          setSelectedLocalFiles2(new Set());
-          return true;
-        } catch {
-          return false;
+          const files = await invoke<LocalFile[]>('get_local_files', { path, showHidden: showHiddenFiles });
+          return { files, path };
+        } catch (error) {
+          if (!isCurrent() || !isGvfsMtpPath(path)) throw error;
+          notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+          try {
+            const home = await homeDir().catch(() => '/');
+            if (home === path || !isCurrent()) return null;
+            const files = await invoke<LocalFile[]>('get_local_files', { path: home, showHidden: showHiddenFiles });
+            return { files, path: home };
+          } catch {
+            return null;
+          }
         }
-      }
+      }, result => {
+        setLocalFiles2(result.files);
+        setCurrentLocalPath2(result.path);
+        setSelectedLocalFiles2(new Set());
+      }, setLocalListLoading2);
+    } catch (error) {
       notify.error(t('common.error'), `Failed to list local files: ${error}`);
       return false;
     }
@@ -5470,7 +5476,7 @@ const App: React.FC = () => {
   }, [currentLocalPath, currentLocalPath2, loadLocalFiles, loadLocalFiles2]);
 
   const changeLocalDirectory2 = useCallback(async (path: string) => {
-    await loadLocalFiles2(path);
+    return await loadLocalFiles2(path) ? path : null;
   }, [loadLocalFiles2]);
 
   const createLocalTab2 = useCallback(async () => {
@@ -9187,13 +9193,13 @@ const App: React.FC = () => {
     // Sync navigation guard: prevent navigating above the sync base path
     if (isSyncNavigation && syncBasePaths && path === '..') {
       const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
-      if (norm(currentRemotePath) === norm(syncBasePaths.remote)) return;
+      if (norm(currentRemotePath) === norm(syncBasePaths.remote)) return null;
     }
     // #401: ignore a re-entrant navigation while one is already in flight, so a
     // second double-click cannot stack a second cd and overshoot (relative ".."
     // on FTP would go up twice). A ref, not the async loading state, so two
     // clicks in the same tick are both caught.
-    if (remoteNavInFlightRef.current) return;
+    if (remoteNavInFlightRef.current) return null;
     // Bump the shared remote-listing generation: used to discard stale async
     // responses. loadRemoteFiles shares this counter, so any newer listing (a
     // navigation, a connect, or a manual refresh) supersedes an older one and the
@@ -9257,7 +9263,7 @@ const App: React.FC = () => {
         response = await invoke('change_directory', { path });
       }
       // Discard response if a newer navigation was initiated while we awaited
-      if (navId !== remoteNavCounter.current) return;
+      if (navId !== remoteNavCounter.current) return null;
       applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
       setRemoteSearchResults(null);
       humanLog.logNavigate(response.current_path, true);
@@ -9273,22 +9279,23 @@ const App: React.FC = () => {
         const newLocalPath = (relativePath ? basePath + relPath : basePath) || '/';
         // Check if local path exists
         try {
-          if (navId !== remoteNavCounter.current) return;
+          if (navId !== remoteNavCounter.current) return null;
           const files: LocalFile[] = await invoke('get_local_files', { path: newLocalPath, showHidden: showHiddenFiles });
-          if (navId !== remoteNavCounter.current) return;
+          if (navId !== remoteNavCounter.current) return null;
           setLocalFiles(files);
           setCurrentLocalPath(newLocalPath);
           setSelectedLocalFiles(new Set());
         } catch {
           // Local directory doesn't exist - show dialog
-          if (navId !== remoteNavCounter.current) return;
+          if (navId !== remoteNavCounter.current) return null;
           setSyncNavDialog({ missingPath: newLocalPath, isRemote: false, targetPath: newLocalPath });
         }
       }
+      return (response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path;
     } catch (error) {
-      if (navId !== remoteNavCounter.current) return;
+      if (navId !== remoteNavCounter.current) return null;
       // A listing the user aborted is not a failed navigation: stay silent.
-      if (isListingCancelled(error)) return;
+      if (isListingCancelled(error)) return null;
       if (String(error).toLowerCase().includes('overlay session')) {
         setAeroVaultOverlaySession(null);
         if (activeSessionId) {
@@ -9300,6 +9307,7 @@ const App: React.FC = () => {
         }
       }
       notify.error(t('common.error'), t('toast.changeDirFailed', { error: String(error) }));
+      return null;
     } finally {
       // Release OUR latch only if we still own it (token === our navId): a Cancel
       // or a superseding refresh may have already handed the latch to someone else
@@ -9436,10 +9444,10 @@ const App: React.FC = () => {
       const normBase = norm(syncBasePaths.local);
       const normTarget = norm(path);
       // Block if target is a proper ancestor of the base path
-      if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return;
+      if (normTarget !== normBase && (normTarget === '/' || normBase.startsWith(normTarget + '/'))) return null;
     }
     // #401: block a re-entrant local navigation the same way as remote.
-    if (localNavInFlightRef.current) return;
+    if (localNavInFlightRef.current) return null;
     localNavInFlightRef.current = true;
     setLocalListLoading(true);
     let success = false;
@@ -9449,7 +9457,7 @@ const App: React.FC = () => {
       setLocalListLoading(false);
       localNavInFlightRef.current = false;
     }
-    if (!success) return; // Don't record failed navigations
+    if (!success) return null; // Don't record failed navigations
     humanLog.logNavigate(path, false);
     addRecentPath(path);
     // Exit trash view when navigating to a regular path
@@ -9489,19 +9497,20 @@ const App: React.FC = () => {
         const response: FileListResponse = isProvider
           ? await invoke('provider_change_dir', { path: newRemotePath })
           : await invoke('change_directory', { path: newRemotePath });
-        if (navId !== remoteNavCounter.current) return;
+        if (navId !== remoteNavCounter.current) return null;
         setRemoteFiles(response.files);
         setCurrentRemotePath(response.current_path);
         setSelectedRemoteFiles(new Set());
         setRemoteSearchResults(null);
       } catch {
         // Remote directory doesn't exist - show dialog
-        if (navId !== remoteNavCounter.current) return;
+        if (navId !== remoteNavCounter.current) return null;
         setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
       } finally {
         if (navId === remoteNavCounter.current) setRemoteListLoading(false);
       }
     }
+    return path;
   };
 
   const chooseEndpointLocalFolder = useCallback(async (panelId: 'local' | 'local2') => {
@@ -13936,12 +13945,12 @@ const App: React.FC = () => {
     };
 
     const items: ContextMenuItem[] = [
-      { label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
+      { actionId: 'download', label: downloadLabel, icon: <Download size={14} />, action: () => downloadMultipleFiles(filesToUse) },
       // Media files (images, audio, video, pdf) use Universal Preview modal
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true, sortedRemoteFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true, file.is_dir), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
+      { actionId: 'rename', label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true, file.is_dir), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
       ...(count > 1 && currentProtocol !== 'immich' ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
@@ -13959,7 +13968,7 @@ const App: React.FC = () => {
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => openRemoteProperties('general')
       },
-      { label: ['zohoworkdrive', 'opendrive', 'jottacloud'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
+      { actionId: 'delete', label: ['zohoworkdrive', 'opendrive', 'jottacloud'].includes(currentProtocol || '') ? t('contextMenu.moveToTrash') : (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.deleteCommit') : t('contextMenu.delete'), icon: currentProtocol === 'github' ? <Github size={14} className="text-red-500" /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Trash2 size={14} />, action: () => deleteMultipleRemoteFiles(filesToUse), danger: true, divider: !['jottacloud', 'mega', 'googledrive', 'box', 'dropbox', 'onedrive', 'zohoworkdrive', 'opendrive'].includes(currentProtocol || '') },
       // Jottacloud: Delete now does soft-delete (Trash mountpoint) via the trait,
       // so the separate "Move to Trash" item was a second button doing exactly
       // the same call; the entry above carries the honest label instead (#397).
@@ -15054,7 +15063,7 @@ const App: React.FC = () => {
     const isAeroFileDualActive = (!isConnected || !showRemotePanel) && showDualLocalPanel;
     const items: ContextMenuItem[] = [
       {
-        label: uploadLabel,
+        actionId: 'upload', label: uploadLabel,
         icon: _activeProto === 'github' ? <Github size={14} /> : _activeProto === 'gitlab' ? <GitLabLogo size={14} /> : <Cloud size={14} />,
         action: () => uploadMultipleFiles(filesToUpload),
         disabled: !isConnected
@@ -15251,7 +15260,7 @@ const App: React.FC = () => {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, false, sortedLocalFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, false), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1, shortcut: 'F2' },
+      { actionId: 'rename', label: t('common.rename'), icon: <Pencil size={14} />, action: () => renameFile(file.path, file.name, false), disabled: count > 1, shortcut: 'F2' },
       ...(count > 1 ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
@@ -15332,7 +15341,7 @@ const App: React.FC = () => {
           }
         }
       },
-      { label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
+      { actionId: 'delete', label: t('contextMenu.delete'), icon: <Trash2 size={14} />, action: () => deleteMultipleLocalFiles(filesToUpload), danger: true, divider: true },
       {
         label: t('contextMenu.cut') || 'Cut', icon: <Scissors size={14} />, action: () => {
           const selectedFiles = localFiles.filter(f => selection.has(f.name)).map(f => ({ name: f.name, path: f.path, is_dir: f.is_dir }));
@@ -15755,7 +15764,7 @@ const App: React.FC = () => {
         disabled: !hasClipboard,
       },
       {
-        label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
+        actionId: 'mkdir', label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
         action: () => createFolder(true),
         divider: currentProtocol !== 'zohoworkdrive',
         disabled: currentProtocol === 'immich' && currentRemotePath !== '/',
@@ -15927,7 +15936,7 @@ const App: React.FC = () => {
         disabled: !hasClipboard,
       },
       {
-        label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
+        actionId: 'mkdir', label: t('contextMenu.newFolder'), icon: <FolderPlus size={14} />,
         action: () => createFolder(false, localPanelId),
         divider: true,
       },
@@ -15991,8 +16000,61 @@ const App: React.FC = () => {
 
   const openInFileManager = async (path: string) => { try { await invoke('open_in_file_manager', { path }); } catch { } };
 
+  const guiController = useGuiController({
+    version: appVersion,
+    locked: isAppLocked || !vaultBootComplete || accountLockState !== 'ready',
+    blocked: !!confirmDialog || !!inputDialog || hostKeyDialog.visible || !!twoFactorPrompt?.open ||
+      overwriteDialog.isOpen || showSettingsPanel || !!showVaultPanel,
+    view: showSettingsPanel || showVaultPanel ? 'other' : showConnectionScreen ? 'servers' : 'files',
+    connected: isConnected,
+    activeSessionId,
+    sessions: sessions.map(session => ({ id: session.id, name: session.serverName,
+      protocol: session.connectionParams.protocol || 'ftp', status: session.status })),
+    panels: {
+      ...(isConnected && showRemotePanel ? { remote: { path: (rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath,
+        loading: remoteListLoading, selection: selectedRemoteFiles, entriesCount: remoteFiles.length } } : {}),
+      local: { path: currentLocalPath, loading: localListLoading, selection: selectedLocalFiles, entriesCount: localFiles.length },
+      ...(showDualLocalPanel && (!isConnected || !showRemotePanel) ? { local2: { path: currentLocalPath2, loading: localListLoading2,
+        selection: selectedLocalFiles2, entriesCount: localFiles2.length } } : {}),
+    },
+    queue: {
+      active: transferQueue.items.filter(item => item.status === 'transferring').length,
+      pending: transferQueue.items.filter(item => item.status === 'pending').length,
+      failed: transferQueue.items.filter(item => item.status === 'error').length,
+    },
+  }, {
+    showView: view => setShowConnectionScreen(view === 'servers'),
+    navigate: async (panel, path) => {
+      const target = panel === 'remote' ? await changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))
+        : panel === 'local2' ? await changeLocalDirectory2(path) : await changeLocalDirectory(path);
+      if (target === null || target === undefined) throw new GuiError('action_failed');
+      return target;
+    },
+    refresh: async panel => {
+      if (panel === 'remote') { if (!await loadRemoteFiles()) throw new GuiError('action_failed'); }
+      else if (panel === 'local2') { if (!await loadLocalFiles2(currentLocalPath2)) throw new GuiError('action_failed'); }
+      else if (!await loadLocalFiles(currentLocalPath)) throw new GuiError('action_failed');
+    },
+    select: (panel, names, mode) => {
+      const files = panel === 'remote' ? remoteFiles : panel === 'local2' ? localFiles2 : localFiles;
+      const available = new Set(files.map(file => file.name));
+      if (mode === 'names' && names.some(name => !available.has(name))) throw new GuiError('invalid_args');
+      const selection = new Set(mode === 'all' ? available : mode === 'none' ? [] : names);
+      if (panel === 'remote') setSelectedRemoteFiles(selection);
+      else if (panel === 'local2') setSelectedLocalFiles2(selection);
+      else setSelectedLocalFiles(selection);
+      setActivePanel(panel === 'remote' ? 'remote' : 'local');
+      if (panel !== 'remote') setActiveLocalPanelId(panel);
+    },
+    disconnect: async () => { if (isConnected) await disconnectFromFtp('button'); },
+    stop: async () => { if (remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
+  }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
+    `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(`guiController.actions.${intent}`)}`,
+    ok ? 'success' : 'error'));
+
   return (
     <>
+      <GuiControllerBanner lease={guiController.lease} onStop={() => { void guiController.stop(); }} />
       {/* Lock Screen - shown when app is locked with master password */}
       {isAppLocked && (masterPasswordSet || autoKeyringTotpRequired) && (
         <LockScreen
@@ -18045,10 +18107,10 @@ const App: React.FC = () => {
                       path bar above and LocalFilePanel) so the affordance is bound to
                       the panel it operates on (issue #178 #3). The legacy global Up
                       button has been removed to avoid redundancy. */}
-                  <button onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.refresh')}>
+                  <button data-testid={TID.toolbarRefresh} data-panel={activePanel} onClick={() => activePanel === 'remote' ? loadRemoteFiles() : loadLocalFiles(currentLocalPath)} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.refresh')}>
                     <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" /> {t('common.refresh')}
                   </button>
-                  <button onClick={() => createFolder(activePanel === 'remote')} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.new')}>
+                  <button data-testid={TID.toolbarMkdir} data-panel={activePanel} onClick={() => createFolder(activePanel === 'remote')} className="group px-3 py-1.5 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg text-sm flex items-center gap-1.5 transition-all hover:scale-105 hover:shadow-md" aria-label={t('common.new')}>
                     <FolderPlus size={16} className="group-hover:scale-110 transition-transform" /> {t('common.new')}
                   </button>
                   {activePanel === 'local' && (
@@ -18087,6 +18149,8 @@ const App: React.FC = () => {
                   {/* Upload / Download dynamic button */}
                   {isConnected && showRemotePanel && (
                     <button
+                      data-testid={TID.toolbarTransfer}
+                      data-direction={activePanel === 'local' ? 'upload' : 'download'}
                       onClick={() => activePanel === 'local' ? uploadMultipleFiles() : downloadMultipleFiles()}
                       disabled={(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) === 0 || scanningState.active}
                       className={`relative px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${(activePanel === 'local' ? selectedLocalFiles.size : selectedRemoteFiles.size) > 0 && !scanningState.active
@@ -18108,7 +18172,7 @@ const App: React.FC = () => {
                     </button>
                   )}
                   {/* Delete button */}
-                  <button
+                  <button data-testid={TID.toolbarDelete} data-panel={activePanel}
                     onClick={() => {
                       if (activePanel === 'remote' && selectedRemoteFiles.size > 0) {
                         deleteMultipleRemoteFiles(Array.from(selectedRemoteFiles));
@@ -18180,6 +18244,7 @@ const App: React.FC = () => {
                           toolbar buttons were removed to avoid a duplicated overlay
                           icon: the lit badge is the single, type-coloured control. */}
                       <button
+                        data-testid={TID.toolbarCancelAll}
                         onClick={cancelTransfer}
                         disabled={!syncCancelling && !isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
                         className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${syncCancelling
@@ -18334,6 +18399,7 @@ const App: React.FC = () => {
                         not-connected fallback is needed. */}
                     <div className="flex-1 min-w-0">
                       <BreadcrumbBar
+                        panel="remote"
                         currentPath={(rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath}
                         onNavigate={(path) => changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))}
                         isCoherent={!isSyncPathMismatch}
@@ -18369,6 +18435,8 @@ const App: React.FC = () => {
                       const upDisabled = !isConnected || currentRemotePath === '/' || !!atSyncRoot;
                       return (
                         <button
+                          data-testid={TID.breadcrumbUp}
+                          data-panel="remote"
                           onClick={() => !upDisabled && changeRemoteDirectory('..')}
                           disabled={upDisabled}
                           className={`flex-shrink-0 p-1.5 rounded transition-colors ${upDisabled ? 'text-gray-300 dark:text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
@@ -18380,6 +18448,8 @@ const App: React.FC = () => {
                       );
                     })()}
                     <button
+                      data-testid={TID.panelRefresh}
+                      data-panel="remote"
                       onClick={(e) => {
                         const btn = e.currentTarget;
                         btn.querySelector('svg')?.classList.add('animate-spin');
@@ -18673,6 +18743,8 @@ const App: React.FC = () => {
                   )}
                   <div
                     ref={remoteFileScrollRef}
+                    data-testid={TID.panel}
+                    data-panel="remote"
                     className="relative flex-1 overflow-auto"
                     onMouseDown={remoteMarquee.onMouseDown}
                     onContextMenu={(e) => {
@@ -18775,6 +18847,8 @@ const App: React.FC = () => {
                             <tr
                               key={`${file.name}-${i}`}
                               data-file-row
+                              data-testid={TID.fileRow}
+                              data-panel="remote"
                               data-file-name={file.name}
                               data-file-index={i}
                               role="row"
@@ -18938,6 +19012,7 @@ const App: React.FC = () => {
                     ) : viewMode === 'large' ? (
                       /* Large Icons View */
                       <LargeIconsGrid
+                        panelKey="remote"
                         // This grid renders the REMOTE panel here. Without the
                         // flag every thumbnail asked the local filesystem for a
                         // remote path and fell back to a generic icon (#347).
@@ -19029,6 +19104,8 @@ const App: React.FC = () => {
                           <div
                             key={`${file.name}-${i}`}
                             data-file-card
+                            data-testid={TID.fileRow}
+                            data-panel="remote"
                             data-file-name={file.name}
                             data-file-index={i}
                             draggable={file.name !== '..' && inlineRename?.path !== file.path}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { TID, type GuiPanelId } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -12,6 +13,7 @@ interface SubDirectory {
 }
 
 interface BreadcrumbBarProps {
+  panel?: GuiPanelId;
   currentPath: string;
   onNavigate: (path: string) => void;
   isCoherent?: boolean;
@@ -84,6 +86,7 @@ function splitPath(path: string): PathSegment[] {
 }
 
 export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
+  panel,
   currentPath,
   onNavigate,
   isCoherent = true,
@@ -293,10 +296,14 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     return (
       <div
         ref={containerRef}
+        data-testid={panel ? TID.breadcrumbPath : undefined}
+        data-panel={panel}
         className="flex items-center h-8 bg-white border-blue-500 dark:bg-gray-800/50 rounded-lg border px-1 gap-1 w-full"
       >
         <input
           ref={inputRef}
+          data-testid={panel ? TID.breadcrumbInput : undefined}
+          data-panel={panel}
           type="text"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
@@ -309,12 +316,14 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
           spellCheck={false}
         />
         <button
+          data-testid={panel ? TID.breadcrumbConfirm : undefined}
+          data-panel={panel}
           onMouseDown={(e) => {
             // Prevent blur from firing before click
             e.preventDefault();
-            confirmEdit();
           }}
           className="flex-shrink-0 p-1 rounded hover:bg-green-50 text-green-600 hover:text-green-500 dark:hover:bg-gray-700/50 dark:text-green-400 dark:hover:text-green-300 transition-colors"
+          onClick={confirmEdit}
           title={t('breadcrumb.confirm') || 'Confirm'}
         >
           <Check size={14} />
@@ -327,6 +336,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   return (
     <nav
       ref={containerRef}
+        data-testid={panel ? TID.breadcrumbPath : undefined}
+        data-panel={panel}
       className="flex items-center h-8 bg-white border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 rounded-lg border px-2 gap-0.5 overflow-hidden w-full relative"
       role="navigation"
       aria-label="Breadcrumb"
@@ -562,6 +573,8 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
 
       {/* Edit button */}
       <button
+        data-testid={panel ? TID.breadcrumbEdit : undefined}
+        data-panel={panel}
         onClick={enterEditMode}
         className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700/50 transition-colors ml-1"
         title={t('breadcrumb.editPath') || 'Edit path'}

@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Maoni",
             "empty": "Bado hakuna maoni"
+        },
+        "guiController": {
+            "banner": "{agent} anadhibiti AeroFTP",
+            "stopped": "Udhibiti wa wakala umesimamishwa",
+            "actions": {
+                "state": "Kagua programu",
+                "wait": "Subiri programu",
+                "show_view": "Fungua mwonekano",
+                "navigate": "Nenda kwenye folda",
+                "refresh": "Onyesha upya orodha ya faili",
+                "select": "Chagua faili",
+                "disconnect": "Tenganisha kipindi",
+                "stop": "Simamisha uhamishaji"
+            }
         }
     }
 }

@@ -668,7 +668,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                     autoFocus={!!initialSelectedServerIds}
                                     className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                                 />
-                                <button
+                                <button data-agent="deny"
                                     type="button"
                                     tabIndex={-1}
                                     onClick={() => setShowPassword(!showPassword)}
@@ -770,7 +770,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                             autoFocus
                                             className="w-full px-3 py-2 pr-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-sm"
                                         />
-                                        <button
+                                        <button data-agent="deny"
                                             type="button"
                                             tabIndex={-1}
                                             onClick={() => setShowPassword(!showPassword)}

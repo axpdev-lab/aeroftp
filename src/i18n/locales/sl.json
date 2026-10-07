@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Komentarji",
             "empty": "Še ni komentarjev"
+        },
+        "guiController": {
+            "banner": "{agent} upravlja AeroFTP",
+            "stopped": "Upravljanje agenta ustavljeno",
+            "actions": {
+                "state": "Preglej aplikacijo",
+                "wait": "Počakaj na aplikacijo",
+                "show_view": "Odpri pogled",
+                "navigate": "Pojdi v mapo",
+                "refresh": "Osveži seznam datotek",
+                "select": "Izberi datoteke",
+                "disconnect": "Prekini povezavo seje",
+                "stop": "Ustavi prenose"
+            }
         }
     }
 }

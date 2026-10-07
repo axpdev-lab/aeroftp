@@ -11,6 +11,7 @@
  * Layout: div-based flex rows matching the original table column alignment.
  */
 
+import { TID, type GuiPanelId } from '../utils/testIds';
 import React, { useRef, useState, useEffect, CSSProperties, ReactElement } from 'react';
 import { List, RowComponentProps } from 'react-window';
 
@@ -28,6 +29,7 @@ export interface VirtualFileItem {
 }
 
 export interface VirtualFileListProps {
+    panel?: GuiPanelId;
     /** Sorted files to display (without the "go up" row) */
     files: VirtualFileItem[];
     /** Selected file names */
@@ -139,6 +141,10 @@ function VirtualRow({ index, style, files, listProps }: RowComponentProps<RowExt
         <div
             style={style}
             data-file-row
+            data-testid={listProps.panel ? TID.fileRow : undefined}
+            data-panel={listProps.panel}
+            data-file-name={file.name}
+            data-file-index={fileIndex}
             role="row"
             aria-selected={isSelected}
             draggable={file.name !== '..' && listProps.renamingPath !== file.path}

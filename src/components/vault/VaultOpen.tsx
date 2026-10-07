@@ -63,7 +63,7 @@ export const VaultOpen: React.FC<VaultOpenProps> = ({ state }) => {
                             onChange={e => state.setPassword(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && state.handleUnlock()}
                             className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm pr-8" />
-                        <button tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                        <button data-agent="deny" tabIndex={-1} onClick={() => state.setShowPassword(!state.showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
                             {state.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                         </button>
                     </div>

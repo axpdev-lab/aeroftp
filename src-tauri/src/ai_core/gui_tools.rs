@@ -125,6 +125,29 @@ pub async fn dispatch_gui_tool(
 
     let result: Result<Value, String> = async {
         match tool_name {
+        "gui_state" | "gui_wait" | "gui_run" => {
+            let object = args.as_object().ok_or("invalid_args")?;
+            let allowed: &[&str] = match tool_name {
+                "gui_state" => &[],
+                "gui_wait" => &["condition", "timeout_ms"],
+                _ => &["intent", "panel", "view", "path", "names", "mode", "if_revision", "timeout_ms"],
+            };
+            if object.keys().any(|key| !allowed.contains(&key.as_str())) { return Err("invalid_args".into()); }
+            let timeout_ms = match args.get("timeout_ms") {
+                Some(value) => value.as_u64().ok_or("invalid_args")?, None => 10000,
+            };
+            let if_revision = args.get("if_revision").map(|value| value.as_u64().ok_or("invalid_args")).transpose()?;
+            let name = match tool_name {
+                "gui_state" => "state", "gui_wait" => "wait", _ => args.get("intent").and_then(Value::as_str).ok_or("invalid_args")?,
+            };
+            if tool_name == "gui_run" && !["show_view", "navigate", "refresh", "select", "disconnect", "stop"].contains(&name) {
+                return Err("unsupported_intent".into());
+            }
+            let parameters: serde_json::Map<String, Value> = object.iter()
+                .filter(|(key, _)| !["intent", "timeout_ms", "if_revision"].contains(&key.as_str()))
+                .map(|(key, value)| (key.clone(), value.clone())).collect();
+            crate::gui_controller::request_intent(&app, name, Value::Object(parameters), timeout_ms, if_revision).await
+        }
         "set_theme" => {
 
             let theme = get_str_s(args, "theme")?;

@@ -261,7 +261,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master
                         )}
 
                         {/* Password form */}
-                        <form onSubmit={handleUnlock} className="space-y-4">
+                        <form data-agent="deny" onSubmit={handleUnlock} className="space-y-4">
                             {!totpOnly && (
                             <div>
                                 <label htmlFor="lock-password-input" className="block text-sm font-medium text-gray-300 mb-2">
@@ -280,6 +280,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master
                                     />
                                     <button
                                         type="button"
+                                        data-agent="deny"
                                         onClick={() => setShowPassword(!showPassword)}
                                         className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300 transition-colors"
                                         tabIndex={-1}

@@ -1007,7 +1007,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                 className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm font-mono"
                                 placeholder={t('protocol.s3SessionTokenPlaceholder')}
                             />
-                            <button
+                            <button data-agent="deny"
                                 type="button"
                                 tabIndex={-1}
                                 onClick={() => setShowS3SessionToken(v => !v)}

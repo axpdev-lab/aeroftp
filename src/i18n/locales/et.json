@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Kommentaarid",
             "empty": "Kommentaare veel pole"
+        },
+        "guiController": {
+            "banner": "{agent} juhib AeroFTP-d",
+            "stopped": "Agendi juhtimine peatatud",
+            "actions": {
+                "state": "Uuri rakendust",
+                "wait": "Oota rakendust",
+                "show_view": "Ava vaade",
+                "navigate": "Liigu kausta",
+                "refresh": "Värskenda faililoendit",
+                "select": "Vali failid",
+                "disconnect": "Katkesta seansi ühendus",
+                "stop": "Peata edastused"
+            }
         }
     }
 }

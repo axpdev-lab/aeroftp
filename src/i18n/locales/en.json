@@ -6099,6 +6099,20 @@
             "scopeSession": "Approves this tool for the rest of this chat session.",
             "approve": "Approve",
             "rememberForChat": "Allow this tool for the rest of this chat"
+        },
+        "guiController": {
+            "banner": "{agent} is controlling AeroFTP",
+            "stopped": "Agent control stopped",
+            "actions": {
+                "state": "Inspect the app",
+                "wait": "Wait for the app",
+                "show_view": "Open a view",
+                "navigate": "Navigate to a folder",
+                "refresh": "Refresh the file list",
+                "select": "Select files",
+                "disconnect": "Disconnect the session",
+                "stop": "Stop transfers"
+            }
         }
     }
 }

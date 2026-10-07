@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Kommentarer",
             "empty": "Ingen kommentarer endnu"
+        },
+        "guiController": {
+            "banner": "{agent} styrer AeroFTP",
+            "stopped": "Agentstyring stoppet",
+            "actions": {
+                "state": "Undersøg appen",
+                "wait": "Vent på appen",
+                "show_view": "Åbn en visning",
+                "navigate": "Gå til en mappe",
+                "refresh": "Opdatér fillisten",
+                "select": "Vælg filer",
+                "disconnect": "Afbryd sessionen",
+                "stop": "Stop overførsler"
+            }
         }
     }
 }

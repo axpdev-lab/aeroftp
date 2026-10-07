@@ -6118,6 +6118,20 @@
         "fileComments": {
             "title": "Mga komento",
             "empty": "Wala pang komento"
+        },
+        "guiController": {
+            "banner": "Kinokontrol ni {agent} ang AeroFTP",
+            "stopped": "Itinigil ang kontrol ng ahente",
+            "actions": {
+                "state": "Suriin ang app",
+                "wait": "Hintayin ang app",
+                "show_view": "Buksan ang isang view",
+                "navigate": "Pumunta sa isang folder",
+                "refresh": "I-refresh ang listahan ng mga file",
+                "select": "Pumili ng mga file",
+                "disconnect": "Idiskonekta ang session",
+                "stop": "Itigil ang mga paglilipat"
+            }
         }
     }
 }

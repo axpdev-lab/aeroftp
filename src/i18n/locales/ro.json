@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Comentarii",
             "empty": "Încă nu există comentarii"
+        },
+        "guiController": {
+            "banner": "{agent} controlează AeroFTP",
+            "stopped": "Controlul agentului a fost oprit",
+            "actions": {
+                "state": "Inspectează aplicația",
+                "wait": "Așteaptă aplicația",
+                "show_view": "Deschide o vizualizare",
+                "navigate": "Navighează la un dosar",
+                "refresh": "Reîmprospătează lista de fișiere",
+                "select": "Selectează fișiere",
+                "disconnect": "Deconectează sesiunea",
+                "stop": "Oprește transferurile"
+            }
         }
     }
 }

@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Komentarai",
             "empty": "Komentarų dar nėra"
+        },
+        "guiController": {
+            "banner": "{agent} valdo AeroFTP",
+            "stopped": "Agento valdymas sustabdytas",
+            "actions": {
+                "state": "Patikrinti programą",
+                "wait": "Palaukti programos",
+                "show_view": "Atidaryti rodinį",
+                "navigate": "Pereiti į aplanką",
+                "refresh": "Atnaujinti failų sąrašą",
+                "select": "Pasirinkti failus",
+                "disconnect": "Atjungti seansą",
+                "stop": "Sustabdyti perdavimus"
+            }
         }
     }
 }

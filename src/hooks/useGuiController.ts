@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+import { useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { GuiController, type GuiHandlers, type GuiIntent, type GuiLease, type GuiRequest, type GuiSource } from '../gui/controller';
+import { useTauriListener } from './useTauriListener';
+import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
+import { TID } from '../utils/testIds';
+
+declare global {
+    interface Window { __aeroftpController?: Pick<GuiController, 'run' | 'state' | 'interrupt'>; }
+}
+interface IntentEvent { id: string; expires_at: number; request: GuiRequest; }
+export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit: (intent: GuiIntent, ok: boolean, owner: string) => void) {
+    const current = useRef({ source, handlers, audit });
+    const controller = useRef<GuiController | null>(null);
+    const mutationId = useRef<string | null>(null);
+    const [lease, setLease] = useState<GuiLease | null>(null);
+    // Event callbacks and asynchronous waits must read the latest committed UI state.
+    useEffect(() => { current.current = { source, handlers, audit }; controller.current?.state(); });
+    useEffect(() => {
+        let mounted = true;
+        const service = new GuiController(() => ({ ...current.current.source,
+            blocked: current.current.source.blocked || !!document.querySelector('[aria-modal="true"]') }), () => current.current.handlers,
+            value => { if (mounted) setLease(value); }, (intent, ok, owner) => current.current.audit(intent, ok, owner));
+        controller.current = service;
+        const interrupt = (event: Event) => {
+            if (event.isTrusted && !(event.target instanceof Element && event.target.closest('[data-gui-controller-stop]'))) service.interrupt();
+        };
+        const partitionChanged = () => service.interrupt();
+        window.addEventListener('pointerdown', interrupt, true);
+        window.addEventListener('keydown', interrupt, true);
+        window.addEventListener(PROFILES_CHANGED_EVENT, partitionChanged);
+        // This symbol and its API are removed by Vite's production branch elimination.
+        if (import.meta.env.DEV) window.__aeroftpController = {
+            run: request => service.run(request, 'Dev harness'), state: () => service.state(), interrupt: () => service.interrupt(),
+        };
+        return () => {
+            mounted = false; service.dispose(); controller.current = null;
+            window.removeEventListener('pointerdown', interrupt, true);
+            window.removeEventListener('keydown', interrupt, true);
+            window.removeEventListener(PROFILES_CHANGED_EVENT, partitionChanged);
+            if (import.meta.env.DEV) delete window.__aeroftpController;
+        };
+    }, []);
+    useEffect(() => { if (source.locked) controller.current?.interrupt(); }, [source.locked]);
+    useEffect(() => {
+        if (!lease?.panel || !lease.intent) return;
+        const target = Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="${TID.panel}"]`))
+            .find(element => element.dataset.panel === lease.panel);
+        target?.classList.add('ring-2', 'ring-amber-400', 'ring-inset');
+        return () => target?.classList.remove('ring-2', 'ring-amber-400', 'ring-inset');
+    }, [lease]);
+    useTauriListener<IntentEvent>('gui-intent', event => {
+        const { id, expires_at, request } = event.payload;
+        const service = controller.current;
+        if (!service || typeof id !== 'string' || !Number.isFinite(expires_at) || Date.now() >= expires_at) return;
+        void (async () => {
+            try {
+                const remaining = await invoke<number>('gui_intent_claim', { id });
+                if (remaining <= 25 || controller.current !== service) return;
+                const mutating = !['state', 'wait'].includes(request.name);
+                // Busy requests must not overwrite the identity of an in-flight mutation.
+                const ownsId = mutating && mutationId.current === null;
+                if (ownsId) mutationId.current = id;
+                try {
+                    const reply = await service.run(request, 'AeroAgent', Math.min(Date.now() + remaining - 25, expires_at - 25));
+                    await invoke('gui_intent_result', { id, payload: reply });
+                } finally { if (ownsId && mutationId.current === id) mutationId.current = null; }
+            } catch { /* Broker expiry/window/account refusal has no raw error to expose. */ }
+        })();
+    });
+    useTauriListener<{ id: string }>('gui-intent-cancel', event => {
+        if (mutationId.current === event.payload.id) controller.current?.interrupt();
+    });
+    return { lease, stop: () => controller.current?.run({ name: 'stop' }) };
+}

@@ -9,6 +9,7 @@
  */
 
 import React, { useCallback, useRef } from 'react';
+import { TID, type GuiPanelId } from '../utils/testIds';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { Lock, LockOpen } from 'lucide-react';
 import { ImageThumbnail } from './ImageThumbnail';
@@ -28,6 +29,7 @@ interface LargeIconsGridProps {
   files: LocalFile[];
   selectedFiles: Set<string>;
   currentPath: string;
+  panelKey: GuiPanelId;
   /**
    * True when these entries live on the connected remote. The grid is used for
    * both panels, and it used to pass `isRemote={false}` to every thumbnail
@@ -83,6 +85,7 @@ interface LargeIconCardProps {
   isSelected: boolean;
   isDragOver: boolean;
   currentPath: string;
+  panelKey: GuiPanelId;
   isRemote?: boolean;
   thumbnailScope?: string;
   getFileIcon: LargeIconsGridProps['getFileIcon'];
@@ -115,6 +118,7 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
   isSelected,
   isDragOver,
   currentPath,
+  panelKey,
   isRemote,
   thumbnailScope,
   getFileIcon,
@@ -226,6 +230,8 @@ const LargeIconCard = React.memo<LargeIconCardProps>(({
 
   return (
     <div
+      data-testid={TID.fileRow}
+      data-panel={panelKey}
       data-file-card
       data-file-name={file.name}
       data-file-index={cardIndex}
@@ -312,6 +318,7 @@ export function LargeIconsGrid({
   files,
   selectedFiles,
   currentPath,
+  panelKey,
   isRemote,
   thumbnailScope,
   onFileClick,
@@ -371,6 +378,7 @@ export function LargeIconsGrid({
         isSelected={selectedFiles.has(file.name)}
         isDragOver={dragOverTarget === file.path}
         currentPath={currentPath}
+        panelKey={panelKey}
         isRemote={isRemote}
         thumbnailScope={thumbnailScope}
         getFileIcon={getFileIcon}
@@ -398,7 +406,7 @@ export function LargeIconsGrid({
         sameNameLeakTooltip={sameNameLeakTooltip}
       />
     );
-  }, [files, selectedFiles, dragOverTarget, currentPath, isRemote, thumbnailScope, getFileIcon, onFileClick,
+  }, [files, selectedFiles, dragOverTarget, currentPath, panelKey, isRemote, thumbnailScope, getFileIcon, onFileClick,
     onFileDoubleClick, onContextMenu, onDragStart, onDragOver, onDrop, onDragLeave,
     onDragEnd, inlineRename, onInlineRenameChange, onInlineRenameCommit,
     onInlineRenameCancel, formatBytes, showFileExtensions, decrypting,

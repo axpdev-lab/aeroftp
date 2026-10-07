@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Yorumlar",
             "empty": "Henüz yorum yok"
+        },
+        "guiController": {
+            "banner": "{agent} AeroFTP’yi kontrol ediyor",
+            "stopped": "Ajan kontrolü durduruldu",
+            "actions": {
+                "state": "Uygulamayı incele",
+                "wait": "Uygulamayı bekle",
+                "show_view": "Bir görünüm aç",
+                "navigate": "Bir klasöre git",
+                "refresh": "Dosya listesini yenile",
+                "select": "Dosyaları seç",
+                "disconnect": "Oturum bağlantısını kes",
+                "stop": "Aktarımları durdur"
+            }
         }
     }
 }

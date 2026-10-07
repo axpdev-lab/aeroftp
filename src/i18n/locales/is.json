@@ -6118,6 +6118,20 @@
         "fileComments": {
             "title": "Athugasemdir",
             "empty": "Engar athugasemdir enn"
+        },
+        "guiController": {
+            "banner": "{agent} stjórnar AeroFTP",
+            "stopped": "Stjórnun aðstoðarmanns stöðvuð",
+            "actions": {
+                "state": "Skoða forritið",
+                "wait": "Bíða eftir forritinu",
+                "show_view": "Opna sýn",
+                "navigate": "Fara í möppu",
+                "refresh": "Uppfæra skráalistann",
+                "select": "Velja skrár",
+                "disconnect": "Aftengja setuna",
+                "stop": "Stöðva flutninga"
+            }
         }
     }
 }

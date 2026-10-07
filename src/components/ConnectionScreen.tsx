@@ -436,7 +436,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
                                 placeholder={t('connection.fourshared.enterConsumerSecret')}
                                 className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
                             />
-                            <button tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                            <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                 {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
                         </div>
@@ -3411,7 +3411,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 className="absolute right-9 top-1/2 -translate-y-1/2"
                                             />
                                         )}
-                                        <button
+                                        <button data-agent="deny"
                                             type="button"
                                             tabIndex={-1}
                                             onClick={() => {
@@ -3456,7 +3456,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 placeholder={t('password.confirmPlaceholder')}
                                                 className="w-full px-4 py-2.5 pr-10 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
                                             />
-                                            <button
+                                            <button data-agent="deny"
                                                 type="button"
                                                 tabIndex={-1}
                                                 onClick={() => setShowAeroCryptPassword((v) => !v)}
@@ -3655,7 +3655,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         className="absolute right-9 top-1/2 -translate-y-1/2"
                                                     />
                                                 )}
-                                                <button
+                                                <button data-agent="deny"
                                                     type="button"
                                                     tabIndex={-1}
                                                     onClick={() => {
@@ -4438,7 +4438,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                         placeholder="secret_..."
                                                     />
-                                                    <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -4500,7 +4500,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                         placeholder="private_..."
                                                     />
-                                                    <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -4578,7 +4578,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                                         placeholder="API secret"
                                                     />
-                                                    <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -4615,7 +4615,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('ai.settings.enterApiKey')}
                                                         autoFocus
                                                     />
-                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -4677,7 +4677,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.jottacloudTokenPlaceholder')}
                                                         autoFocus
                                                     />
-                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -4713,7 +4713,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         placeholder={t('connection.drimeTokenPlaceholder')}
                                                         autoFocus
                                                     />
-                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -4764,7 +4764,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                                     placeholder={t('connection.koofrAppPasswordPlaceholder')}
                                                 />
-                                                <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -4812,7 +4812,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
                                                     placeholder={t('settings.passwordPlaceholder')}
                                                 />
-                                                <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -4938,7 +4938,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-gray-500 focus:border-gray-500"
                                                             placeholder="github_pat_xxxxxxxxxxxx"
                                                         />
-                                                        <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                        <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                         </button>
                                                     </div>
@@ -5210,7 +5210,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     placeholder={t('connection.kdriveTokenPlaceholder')}
                                                 />
-                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5304,7 +5304,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     placeholder={t('connection.internxtPasswordPlaceholder')}
                                                 />
-                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5360,7 +5360,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                                                     placeholder={t('connection.filenPasswordPlaceholder')}
                                                 />
-                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5399,7 +5399,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     autoComplete="off"
                                                     spellCheck={false}
                                                 />
-                                                <button type="button" tabIndex={-1} onClick={() => setShowFilenApiKey(!showFilenApiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowFilenApiKey(!showFilenApiKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showFilenApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5449,7 +5449,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         onChange={(e) => onConnectionParamsChange({ ...connectionParams, password: e.target.value })}
                                                         className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                     />
-                                                    <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                    <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                     </button>
                                                 </div>
@@ -5614,7 +5614,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                                                     placeholder={t('connection.immichApiKeyPlaceholder')}
                                                 />
-                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5665,7 +5665,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
                                                     placeholder={t('connection.megaPasswordPlaceholder')}
                                                 />
-                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5848,7 +5848,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                                                     placeholder="glpat-xxxxxxxxxxxx"
                                                 />
-                                                <button type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" type="button" tabIndex={-1} onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -5977,7 +5977,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     className="w-full px-4 py-2.5 pr-12 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                                                     placeholder={t('connection.password')}
                                                 />
-                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
@@ -6352,7 +6352,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         className="absolute right-9 top-1/2 -translate-y-1/2"
                                                     />
                                                 )}
-                                                <button tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>

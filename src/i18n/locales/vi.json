@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Bình luận",
             "empty": "Chưa có bình luận nào"
+        },
+        "guiController": {
+            "banner": "{agent} đang điều khiển AeroFTP",
+            "stopped": "Đã dừng quyền điều khiển của tác nhân",
+            "actions": {
+                "state": "Kiểm tra ứng dụng",
+                "wait": "Chờ ứng dụng",
+                "show_view": "Mở chế độ xem",
+                "navigate": "Đi đến thư mục",
+                "refresh": "Làm mới danh sách tệp",
+                "select": "Chọn tệp",
+                "disconnect": "Ngắt kết nối phiên",
+                "stop": "Dừng truyền tệp"
+            }
         }
     }
 }

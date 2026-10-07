@@ -27,6 +27,7 @@ export const CopySecretButton: React.FC<CopySecretButtonProps> = ({ value, size 
 
     return (
         <button
+            data-agent="deny"
             type="button"
             tabIndex={-1}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); void copy(value); }}

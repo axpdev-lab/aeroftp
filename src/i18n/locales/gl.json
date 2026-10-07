@@ -6118,6 +6118,20 @@
         "fileComments": {
             "title": "Comentarios",
             "empty": "Aínda non hai comentarios"
+        },
+        "guiController": {
+            "banner": "{agent} está controlando AeroFTP",
+            "stopped": "Control do axente detido",
+            "actions": {
+                "state": "Inspeccionar a aplicación",
+                "wait": "Agardar pola aplicación",
+                "show_view": "Abrir unha vista",
+                "navigate": "Ir a un cartafol",
+                "refresh": "Actualizar a lista de ficheiros",
+                "select": "Seleccionar ficheiros",
+                "disconnect": "Desconectar a sesión",
+                "stop": "Deter as transferencias"
+            }
         }
     }
 }

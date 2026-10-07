@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "Komentāri",
             "empty": "Vēl nav komentāru"
+        },
+        "guiController": {
+            "banner": "{agent} kontrolē AeroFTP",
+            "stopped": "Aģenta vadība apturēta",
+            "actions": {
+                "state": "Pārbaudīt lietotni",
+                "wait": "Gaidīt lietotni",
+                "show_view": "Atvērt skatu",
+                "navigate": "Pāriet uz mapi",
+                "refresh": "Atsvaidzināt failu sarakstu",
+                "select": "Izvēlēties failus",
+                "disconnect": "Atvienot sesiju",
+                "stop": "Apturēt pārsūtīšanu"
+            }
         }
     }
 }

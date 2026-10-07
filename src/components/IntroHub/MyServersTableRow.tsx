@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
+import { TID } from '../../utils/testIds';
 import * as React from 'react';
 import { AlertTriangle, ArrowDownLeft, ArrowUpRight, Clock, Copy, Edit2, Folder, GripVertical, HardDrive, Heart, Loader2, Star, Trash2 } from 'lucide-react';
 import { ServerProfile, profileHasQuota, resolveEffectiveQuota, effectiveManualCap } from '../../types';
@@ -347,6 +348,8 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                     <td key="icon" className={`${cellClass} text-center`}>
                         <div className="relative inline-block">
                             <button
+                                data-testid={TID.serverRowConnect}
+                                data-profile-id={server.id}
                                 onClick={(e) => { e.stopPropagation(); onConnect(server); }}
                                 className={`${iconBoxSize} mx-auto shrink-0 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
                                     hasActiveSession
@@ -354,6 +357,7 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
                                         : 'bg-gray-100 dark:bg-gray-700 border border-gray-200/70 dark:border-gray-600 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:ring-2 hover:ring-blue-400/50 hover:border-blue-300 dark:hover:border-blue-500'
                                 }`}
                                 title={hasActiveSession ? t('common.goToActiveSession') : t('common.connect')}
+                                aria-label={hasActiveSession ? t('common.goToActiveSession') : t('common.connect')}
                             >
                                 {isConnecting ? <Loader2 size={iconSize} className="animate-spin text-blue-500" /> : getServerIcon(server, iconSize + 2)}
                             </button>
@@ -538,6 +542,8 @@ export const MyServersTableRow = React.memo(function MyServersTableRow({
 
     return (
         <tr
+            data-testid={TID.serverRow}
+            data-profile-id={server.id}
             // NOTE: `draggable`/`onDragStart` live on the explicit grip handle
             // in the index cell (WebKitGTK doesn't reliably fire dragstart on
             // <tr>). The row keeps the drop-side handlers so users can drop

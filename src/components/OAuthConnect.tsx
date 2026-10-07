@@ -268,7 +268,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
             <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
             <div className="relative">
               <input type={showSecret ? 'text' : 'password'} value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} placeholder={t('connection.oauth.enterClientSecret')} className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
-              <button tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>

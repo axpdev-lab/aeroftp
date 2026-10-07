@@ -7,6 +7,7 @@
  * Supports: Overwrite, Skip, Rename, with "Apply to all" option
  */
 
+import { TID } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3, PlayCircle } from 'lucide-react';
@@ -122,7 +123,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Overwrite Confirmation">
+        <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid={TID.overwriteDialog} role="dialog" aria-modal="true" aria-label="Overwrite Confirmation">
             {/* Backdrop */}
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCancel} />
 
@@ -268,6 +269,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
                 {/* Actions */}
                 <div className="px-4 pb-4 flex gap-2">
                     <button
+                        data-testid={TID.overwriteConfirm}
                         onClick={handleOverwrite}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium transition-colors"
                     >
@@ -285,6 +287,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
                         </button>
                     )}
                     <button
+                        data-testid={TID.overwriteSkip}
                         onClick={handleSkip}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors"
                     >
@@ -292,6 +295,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
                         {t('overwrite.skip') || 'Skip'}
                     </button>
                     <button
+                        data-testid={TID.overwriteRename}
                         onClick={() => setShowRename(!showRename)}
                         className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-colors ${
                             showRename

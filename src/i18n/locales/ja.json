@@ -6099,6 +6099,20 @@
         "fileComments": {
             "title": "コメント",
             "empty": "コメントはまだありません"
+        },
+        "guiController": {
+            "banner": "{agent}がAeroFTPを操作しています",
+            "stopped": "エージェントの操作を停止しました",
+            "actions": {
+                "state": "アプリを調べる",
+                "wait": "アプリを待つ",
+                "show_view": "ビューを開く",
+                "navigate": "フォルダーに移動",
+                "refresh": "ファイル一覧を更新",
+                "select": "ファイルを選択",
+                "disconnect": "セッションを切断",
+                "stop": "転送を停止"
+            }
         }
     }
 }

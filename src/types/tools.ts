@@ -643,6 +643,33 @@ export const AGENT_TOOLS: AITool[] = [
 
     // App control tools
     {
+        name: 'gui_state',
+        description: 'Inspect the running GUI through a redacted structured snapshot. No credentials or file contents. Use GUI tools only when the user asks to watch actions in the app.',
+        parameters: [], dangerLevel: 'safe', additionalProperties: false,
+    },
+    {
+        name: 'gui_wait',
+        description: 'Wait for a bounded condition in the running GUI. No headless fallback.',
+        parameters: [
+            { name: 'condition', type: 'string', description: 'State to wait for', required: true, enum: ['connected', 'disconnected', 'idle', 'unlocked'] },
+            { name: 'timeout_ms', type: 'integer', description: 'Timeout in milliseconds', required: false, minimum: 100, maximum: 30000 },
+        ], dangerLevel: 'safe', additionalProperties: false,
+    },
+    {
+        name: 'gui_run',
+        description: 'Run a visible GUI intent through the same navigation, selection, refresh, disconnect or Stop handlers as the buttons. The human can interrupt. No click, script, unlock, credential, connect or file-write action is supported.',
+        parameters: [
+            { name: 'intent', type: 'string', description: 'GUI action', required: true, enum: ['show_view', 'navigate', 'refresh', 'select', 'disconnect', 'stop'] },
+            { name: 'panel', type: 'string', description: 'Panel for navigate, refresh or select', required: false, enum: ['remote', 'local', 'local2'] },
+            { name: 'view', type: 'string', description: 'View for show_view', required: false, enum: ['servers', 'files'] },
+            { name: 'path', type: 'string', description: 'Path for navigate', required: false, maxLength: 4096 },
+            { name: 'names', type: 'array', description: 'Visible file names for select', required: false },
+            { name: 'mode', type: 'string', description: 'Selection mode', required: false, enum: ['names', 'all', 'none'] },
+            { name: 'if_revision', type: 'integer', description: 'Expected state_revision from gui_state', required: false, minimum: 0 },
+            { name: 'timeout_ms', type: 'integer', description: 'Timeout in milliseconds', required: false, minimum: 100, maximum: 30000 },
+        ], dangerLevel: 'medium', additionalProperties: false,
+    },
+    {
         name: 'set_theme',
         description: 'Change the application theme. Available themes: light, dark, tokyo (Tokyo Night), cyber (Cyber)',
         parameters: [

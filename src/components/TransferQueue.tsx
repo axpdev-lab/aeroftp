@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { TID } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap, AlertTriangle, Play, Minus, Plus } from 'lucide-react';
@@ -281,6 +282,10 @@ const QueueItemRow = React.memo<QueueItemRowProps>(({
 }) => {
     return (
         <div
+            data-testid={TID.queueItem}
+            data-transfer-id={item.id}
+            data-direction={item.type}
+            data-status={item.status}
             className={`group flex items-center gap-2 px-2 py-1 rounded transition-all duration-300 ${item.status === 'transferring'
                 ? 'bg-cyan-900/20 border-l-2 border-cyan-400'
                 : item.status === 'error'
@@ -606,6 +611,7 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
                             )}
                             {onStopAll && (
                                 <button
+                                    data-testid={TID.queueStopAll}
                                     onClick={(e) => { e.stopPropagation(); onStopAll(); }}
                                     disabled={!forceStopMode && transferringCount === 0 && pendingCount === 0}
                                     className={`p-1 rounded transition-colors ${

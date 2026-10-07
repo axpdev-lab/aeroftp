@@ -428,7 +428,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                                         placeholder={t('accountLock.unlockPlaceholder')}
                                         disabled={isLoading || lockedUntilMs !== null}
                                     />
-                                    <button
+                                    <button data-agent="deny"
                                         type="button"
                                         onClick={() => setShowPassphrase((value) => !value)}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 opacity-60 hover:bg-white/[0.06] hover:opacity-100"

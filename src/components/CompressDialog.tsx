@@ -679,7 +679,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                     disabled={compressing}
                                     className="absolute right-8 top-1/2 -translate-y-1/2"
                                 />
-                                <button
+                                <button data-agent="deny"
                                     type="button"
                                     tabIndex={-1}
                                     onClick={() => setShowPassword(!showPassword)}
@@ -704,7 +704,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                                         onFocus={e => (e.currentTarget.style.borderColor = 'var(--compress-accent)')}
                                         onBlur={e => (e.currentTarget.style.borderColor = 'var(--compress-input-border)')}
                                     />
-                                    <button
+                                    <button data-agent="deny"
                                         type="button"
                                         tabIndex={-1}
                                         onClick={() => setShowPassword(!showPassword)}

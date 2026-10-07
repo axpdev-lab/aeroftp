@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { TID } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight } from 'lucide-react';
 
 export interface ContextMenuItem {
+    /** Stable action identity, independent of the displayed label. */
+    actionId?: string;
     label: string;
     icon: React.ReactNode;
     action: () => void;
@@ -162,6 +165,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                             <div className="h-px bg-gray-200/80 dark:bg-gray-700/80 my-1 mx-2" />
                         )}
                         <button
+                            data-testid={item.actionId ? TID.menuItem : undefined}
+                            data-action={item.actionId}
                             onMouseEnter={(e) => handleItemMouseEnter(index, e)}
                             onClick={() => {
                                 if (!item.disabled && !item.children) {
@@ -216,6 +221,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, items, onClose }
                                 <div className="h-px bg-gray-200/80 dark:bg-gray-700/80 my-1 mx-2" />
                             )}
                             <button
+                                data-testid={item.actionId ? TID.menuItem : undefined}
+                                data-action={item.actionId}
                                 onClick={() => {
                                     if (!item.disabled) {
                                         item.action();
