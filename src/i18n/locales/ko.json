@@ -6111,7 +6111,11 @@
                 "refresh": "파일 목록 새로고침",
                 "select": "파일 선택",
                 "disconnect": "세션 연결 끊기",
-                "stop": "전송 중지"
+                "stop": "전송 중지",
+                "settings_open": "설정 열기",
+                "settings_read": "설정 살펴보기",
+                "settings_update": "설정 업데이트",
+                "settings_close": "설정 닫기"
             }
         }
     }

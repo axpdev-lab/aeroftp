@@ -5,7 +5,7 @@
 export class ConnectScope {
     private cancellation: Error | undefined;
     private readonly callbacks = new Set<() => void>();
-    constructor(private readonly guard: () => void = () => {}, private readonly check?: () => Promise<void>) {}
+    constructor(private readonly guard: () => void = () => {}, private readonly check?: () => Promise<void>, readonly brokerId?: string) {}
     assert(): void {
         if (this.cancellation) throw this.cancellation;
         this.guard();
@@ -42,7 +42,7 @@ export class ConnectScope {
     }
     /** Share cancellation with the controller while adding an account check. */
     checked(check: () => Promise<void>): ConnectScope {
-        const child = new ConnectScope(() => this.assert(), check);
+        const child = new ConnectScope(() => this.assert(), check, this.brokerId);
         const remove = this.onCancel(() => child.cancel(new Error('CONNECT_CANCELLED')));
         // The parent owns this child's lifetime; no credential data is retained.
         child.onCancel(remove);

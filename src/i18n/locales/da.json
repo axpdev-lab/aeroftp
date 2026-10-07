@@ -6111,7 +6111,11 @@
                 "refresh": "Opdatér fillisten",
                 "select": "Vælg filer",
                 "disconnect": "Afbryd sessionen",
-                "stop": "Stop overførsler"
+                "stop": "Stop overførsler",
+                "settings_open": "Åbn indstillinger",
+                "settings_read": "Undersøg indstillinger",
+                "settings_update": "Opdatér indstillinger",
+                "settings_close": "Luk indstillinger"
             }
         }
     }

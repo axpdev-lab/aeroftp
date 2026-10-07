@@ -5,20 +5,23 @@
 // real UI state setters; tests wire them to fixtures. The update paths are
 // deliberately NOT the panels' whole-Save handlers:
 //
-// - general merges allowlisted keys through updateAppSettings, the same
-//   public-preference writer the UI hooks use. SettingsPanel.handleSave also
+// - general commits the original approved delta through the backend broker,
+//   serialized with the public-preference writer the UI hooks use. SettingsPanel.handleSave also
 //   rewrites saved server profiles, hydrated OAuth client secrets and native
 //   menu/autostart state, so it is never called from here.
-// - ai merges a validated bounded update through the serialized public-blob
+// - ai commits its original approved delta through the backend and serialized public-blob
 //   queue, which strips apiKey fields defensively and never enqueues,
 //   overwrites or clears an `ai_apikey_*` keyring record.
 
+import { invoke } from '@tauri-apps/api/core';
+import type { AISettings } from '../types/ai';
+import { GuiError } from './errors';
 import type { GuiHandlers } from './controller';
 import {
-    validateSettingsSet, type AiSettingsProjection, type AiSettingsUpdate,
+    validateSettingsSet, type AiSettingsProjection,
 } from './settingsSchema';
-import { updateAppSettings } from '../utils/appSettings';
-import { applyAgentAiSettingsUpdate, readAiPublicProjection } from '../utils/aiSettingsStore';
+import { commitAppSettings } from '../utils/appSettings';
+import { commitAiSettingsBlob, readAiPublicProjection } from '../utils/aiSettingsStore';
 import { bindSettingsScope } from './settingsScope';
 
 export interface SettingsHandlerDeps {
@@ -55,14 +58,27 @@ export function createSettingsHandlers(
             }
         },
         settingsUpdate: async (area, set, parent) => {
-            const validated = validateSettingsSet(area, set);
-            const scope = await bindSettingsScope(parent);
-            if (area === 'general') {
-                const applied = validated as Record<string, unknown>;
-                await updateAppSettings(existing => ({ ...(existing || {}), ...applied }), scope);
-            } else {
-                await applyAgentAiSettingsUpdate(validated as AiSettingsUpdate, scope);
-            }
+            validateSettingsSet(area, set);
+            // A harness or arbitrary caller cannot turn a frontend handler into write authority.
+            if (!parent.brokerId) throw new GuiError('blocked');
+            const remove = parent.onCancel(() => { void invoke('gui_intent_cancel', { id: parent.brokerId }).catch(() => {}); });
+            try {
+                const scope = await bindSettingsScope(parent);
+                const commit = async () => {
+                    let result: { area: string; value: Record<string, unknown> };
+                    try { result = await invoke('gui_settings_commit', { id: parent.brokerId }); }
+                    catch (error) {
+                        const code = String(error);
+                        if (['invalid_args', 'locked', 'busy', 'gui_timeout'].includes(code)) throw new GuiError(code as 'invalid_args' | 'locked' | 'busy' | 'gui_timeout');
+                        if (['gui_scope_changed', 'gui_cancelled', 'gui_unknown_request'].includes(code)) throw new GuiError('lease_interrupted');
+                        throw new GuiError('action_failed');
+                    }
+                    if (result.area !== area || !result.value || typeof result.value !== 'object' || Array.isArray(result.value)) throw new GuiError('action_failed');
+                    return result.value;
+                };
+                if (area === 'general') await commitAppSettings(commit, scope);
+                else await commitAiSettingsBlob(async () => await commit() as unknown as AISettings, scope);
+            } finally { remove(); }
         },
     };
 }

@@ -253,6 +253,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const dirtyApiKeysRef = useRef(new DirtyApiKeyEdits());
     const pendingDraftRef = useRef<{ base: AISettings; edited: AISettings } | null>(null);
     const inFlightDraftsRef = useRef<{ base: AISettings; edited: AISettings }[]>([]);
+    const failedDraftsRef = useRef<{ base: AISettings; edited: AISettings }[]>([]);
     const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'advanced' | 'prompt' | 'plugins' | 'macros' | 'mcp'>('providers');
     const [showMarketplace, setShowMarketplace] = useState(false);
     const [showPluginBrowser, setShowPluginBrowser] = useState(false);
@@ -443,7 +444,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             if (!detail || !Array.isArray(detail.providers)) return;
             setSettings(prev => {
                 let publicSettings = detail;
-                for (const draft of [...inFlightDraftsRef.current, ...(pendingDraftRef.current ? [pendingDraftRef.current] : [])]) {
+                for (const draft of [...failedDraftsRef.current, ...inFlightDraftsRef.current, ...(pendingDraftRef.current ? [pendingDraftRef.current] : [])]) {
                     publicSettings = mergeAiSettingsDraft(draft.base, draft.edited, publicSettings);
                 }
                 const next = {
@@ -506,8 +507,15 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             // updateAiSettingsBlob strips apiKey fields defensively and keeps
             // the localStorage fallback until the vault write resolves.
             try {
-                await updateAiSettingsBlob(existing => mergeAiSettingsDraft(draft.base, draft.edited, existing ?? draft.base));
+                const retries = [...failedDraftsRef.current];
+                await updateAiSettingsBlob(existing => {
+                    const latest = retries.reduce((current, failed) => mergeAiSettingsDraft(failed.base, failed.edited, current), existing ?? draft.base);
+                    return mergeAiSettingsDraft(draft.base, draft.edited, latest);
+                });
+                failedDraftsRef.current = failedDraftsRef.current.filter(failed => !retries.includes(failed));
             } catch (e) {
+                // Keep this deliberate delta for the next save; a newer publication must not erase it.
+                failedDraftsRef.current.push(draft);
                 console.error('[AISettings] Vault persist failed, localStorage retained as fallback:', e);
             } finally {
                 inFlightDraftsRef.current = inFlightDraftsRef.current.filter(current => current !== draft);

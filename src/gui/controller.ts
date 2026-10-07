@@ -183,7 +183,7 @@ export class GuiController {
         }
         this.guard(epoch, deadline, checkEpoch);
     }
-    async run(input: GuiRequest, owner = 'AeroAgent', brokerDeadline = Infinity): Promise<GuiReply> {
+    async run(input: GuiRequest, owner = 'AeroAgent', brokerDeadline = Infinity, brokerId?: string): Promise<GuiReply> {
         let intent: GuiIntent | undefined;
         let ownsLane = false;
         let laneEpoch: number | undefined;
@@ -254,7 +254,7 @@ export class GuiController {
                     this.guard(epoch, deadline);
                     if (this.source().locked) throw new GuiError('locked');
                     if (this.source().blocked) throw new GuiError('blocked');
-                });
+                }, undefined, brokerId);
                 this.settingsScope = settingsScope;
             }
             const operation = async () => {

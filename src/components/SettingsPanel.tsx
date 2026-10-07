@@ -37,7 +37,7 @@ import { Checkbox } from './ui/Checkbox';
 import { CustomIconsManager } from './CustomIconsManager';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
-import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { secureGetWithFallback } from '../utils/secureStorage';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
 import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
@@ -69,6 +69,12 @@ import { openUrl } from '../utils/openUrl';
 import { KeystoreImportPreview } from './KeystoreImportPreview';
 import { decisionsPayload, defaultDecisions, type ProfileDecision, type ProfilePreview } from '../utils/keystoreImportPreview';
 import { keystoreImportSummary } from '../utils/keystoreImportSummary';
+
+import { updateAppSettings } from '../utils/appSettings';
+import { ConnectScope } from '../gui/connectScope';
+import { bindSettingsScope } from '../gui/settingsScope';
+import { GuiError } from '../gui/errors';
+import { mergeAppSettingsDraft } from '../utils/appSettingsDraft';
 
 // Operation types for activity log - must match useActivityLog.ts
 type ActivityLogOperation = 'CONNECT' | 'DISCONNECT' | 'UPLOAD' | 'DOWNLOAD' | 'DELETE' | 'RENAME' | 'MOVE' | 'MKDIR' | 'NAVIGATE' | 'UPDATE' | 'ERROR' | 'INFO' | 'SUCCESS';
@@ -372,6 +378,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         }
     }, [isOpen, initialTab, initialAppearanceSubTab]);
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
+    const settingsBase = useRef<AppSettings>(defaultSettings);
+    const settingsDraft = useRef<AppSettings>(defaultSettings);
+    settingsDraft.current = settings;
+    const panelOpen = useRef(isOpen);
+    panelOpen.current = isOpen;
+    const settingsLoadRevision = useRef(0);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
     const [servers, setServers] = useState<ServerProfile[]>([]);
     const [showExportImport, setShowExportImport] = useState(false);
@@ -636,10 +648,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     // Load settings on open
     useEffect(() => {
         if (isOpen) {
+            let disposed = false;
+            const revision = ++settingsLoadRevision.current;
             (async () => {
                 try {
-                    const saved = await secureGetWithFallback<AppSettings>(SETTINGS_VAULT_KEY, SETTINGS_KEY);
-                    if (saved) {
+                    const scope = await bindSettingsScope(new ConnectScope(() => { if (disposed || !panelOpen.current) throw new GuiError('lease_interrupted'); }));
+                    const saved = await scope.step(() => secureGetWithFallback<AppSettings>(SETTINGS_VAULT_KEY, SETTINGS_KEY));
+                    if (saved && settingsLoadRevision.current === revision) {
                         const normalizedSettings = {
                             ...defaultSettings,
                             ...saved,
@@ -648,9 +663,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                             introHubIconSize: clampIntroHubIconSize(saved.introHubIconSize ?? defaultSettings.introHubIconSize),
                             sftpDownloadPreset: normalizeSftpDownloadPreset(saved.sftpDownloadPreset),
                         };
+                        settingsBase.current = normalizedSettings;
                         setSettings(normalizedSettings);
-                        // One-way idempotent migration to vault with plaintext cleanup
-                        secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, normalizedSettings).catch(() => {});
+                        // Opening the dialog reads preferences; migration must not rewrite a stale snapshot.
                     }
 
                     // Load servers from the active user's vault partition.
@@ -725,6 +740,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         .catch(() => setTotpEnabled(false));
                 } catch {}
             })();
+            return () => { disposed = true; };
         }
     }, [isOpen]);
 
@@ -746,16 +762,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         const onSettingsChanged = (e: Event) => {
             const detail = (e as CustomEvent<Partial<AppSettings>>).detail;
             if (!detail || typeof detail !== 'object') return;
+            ++settingsLoadRevision.current;
+            const base = settingsBase.current;
+            const latest: AppSettings = { ...base, ...detail };
+            settingsBase.current = latest;
             setSettings(prev => {
-                const merged: AppSettings = { ...prev, ...detail };
-                if (typeof detail.fontSize === 'number') {
-                    merged.fontSize = clampAppFontSize(detail.fontSize);
+                const merged = mergeAppSettingsDraft(base, prev, latest);
+                if (typeof merged.fontSize === 'number') {
+                    merged.fontSize = clampAppFontSize(merged.fontSize);
                 }
-                if (typeof detail.fontFamily === 'string') {
-                    merged.fontFamily = normalizeAppFontFamily(detail.fontFamily);
+                if (typeof merged.fontFamily === 'string') {
+                    merged.fontFamily = normalizeAppFontFamily(merged.fontFamily);
                 }
-                if (detail.introHubIconSize !== undefined) {
-                    merged.introHubIconSize = clampIntroHubIconSize(detail.introHubIconSize);
+                if (merged.introHubIconSize !== undefined) {
+                    merged.introHubIconSize = clampIntroHubIconSize(merged.introHubIconSize);
                 }
                 return merged;
             });
@@ -779,16 +799,18 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const handleSave = async () => {
         if (saveState === 'saving') return; // prevent double-click
         setSaveState('saving');
+        const base = settingsBase.current;
+        const captured = { ...settings, fontSize: clampAppFontSize(settings.fontSize),
+            fontFamily: normalizeAppFontFamily(settings.fontFamily), introHubIconSize: clampIntroHubIconSize(settings.introHubIconSize) };
         try {
+            const scope = await bindSettingsScope(new ConnectScope(() => { if (!panelOpen.current) throw new GuiError('lease_interrupted'); }));
             // General settings must not replace a newer/unavailable partition
             // with the list captured when this dialog was opened.
             const currentServers = await loadSavedServerProfilesStrict();
-            // Normalize font values before saving to vault
-            settings.fontSize = clampAppFontSize(settings.fontSize);
-            settings.fontFamily = normalizeAppFontFamily(settings.fontFamily);
-            settings.introHubIconSize = clampIntroHubIconSize(settings.introHubIconSize);
-
-            await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, settings);
+            const committed = await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,
+                { ...base, ...(existing || {}) }) as unknown as Record<string, unknown>, scope, true) as unknown as AppSettings;
+            settingsBase.current = committed;
+            setSettings(current => mergeAppSettingsDraft(captured, current, committed));
             await storeSavedServerProfiles(currentServers);
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
@@ -824,15 +846,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                 const actual = await isAutostartEnabled().catch(() => false);
                 setSettings((prev) => ({ ...prev, launchOnStartup: actual }));
             }
-            setSettings(settings);
-            // Notify App.tsx of settings change with inline payload for immediate sync
-            window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: settings }));
-            setHasChanges(false);
+            // Keep edits made while saving; only the captured draft has been persisted.
+            const stillEdited = JSON.stringify(settingsDraft.current) !== JSON.stringify(committed);
+            setHasChanges(stillEdited);
             setSaveState('saved');
             // Brief "saved" feedback then close
             setTimeout(() => {
                 setSaveState('idle');
-                onClose();
+                if (!stillEdited) onClose();
             }, 600);
         } catch (e) {
             logger.warn('Settings save failed:', e);
@@ -844,6 +865,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     };
 
     const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+        ++settingsLoadRevision.current;
         setSettings((prev) => ({ ...prev, [key]: value }));
         setHasChanges(true);
     };

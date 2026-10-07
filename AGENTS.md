@@ -50,6 +50,10 @@ The current closed action catalog is:
 | `select` | `panel`, `mode`: `all` or `none` (omit `names`) | Selection matches the requested mode |
 | `disconnect` | No action fields | Shared disconnect handler has completed |
 | `stop` | No action fields | Interrupts agent control and calls the real application Stop handler |
+| `settings_open` | `area`: `general` or `ai` | Requested Settings surface is mounted |
+| `settings_read` | `area`: `general` or `ai` | Safe public projection is refreshed |
+| `settings_update` | `area`, `set`: closed public delta below | Approved delta is persisted and reflected in the live projection |
+| `settings_close` | No action fields | Owned Settings surfaces are closed |
 
 `panel` is `remote`, `local` or `local2`. Unknown intents and fields are refused. Use a saved profile's **ID**, not its name, host or credentials: duplicate names are allowed. Discover IDs through saved-profile discovery (`server_list_saved` inside AeroAgent or `aeroftp-cli profiles --json`). The connect operation resolves secrets internally and can reuse an existing tab belonging to that profile.
 
@@ -65,7 +69,7 @@ Example tool calls, in order:
 {"tool":"gui_run","args":{"intent":"stop"}}
 ```
 
-The `tool`/`args` envelope above illustrates tool calls; it is not a CLI or new IPC protocol. `gui_run` requires backend approval (medium tier). `gui_state` and `gui_wait` are observations. This does not grant arbitrary DOM clicks, script execution, shell access, file writes or weaker approval settings.
+The `tool`/`args` envelope above illustrates tool calls; it is not a CLI or new IPC protocol. `gui_run` mutations require backend approval (medium tier); `settings_read` is a safe observation. `gui_state` and `gui_wait` are observations. This does not grant arbitrary DOM clicks, script execution, shell access, file writes or weaker approval settings.
 
 Replies contain `ok`, a bounded `error` code and `snapshot`. The snapshot includes `schema_version`, `state_revision`, view/connection state, sessions and panel paths/counts/loading/selection. Session projection may include `saved_profile_id`; it never includes connection parameters, passwords or API keys. A locked app returns a redacted snapshot. Lists are bounded; the active session is retained. `timeout_ms` defaults to 10000 and must be between 100 and 30000. Use an observed `state_revision` as `if_revision` when an action must reject intervening changes.
 
@@ -78,7 +82,20 @@ Handle outcomes explicitly:
 
 The control banner identifies agent activity and exposes Stop. Trusted human input, account/profile changes and lock interrupt control. Stop remains available while locked or busy. Transfers retain the app's existing soft-first/hard-second Stop behavior; per-queue-item stopping is not part of this catalog.
 
-General Settings, AI Settings (models/providers/marketplace), AeroTools and other tool panels do **not yet** have controller operations in this catalog. Do not infer support from a visible button or a stable `data-testid`. As these operations are implemented, this guide must document their exact allowed fields, approval, completion and secret exclusions. Saved passwords and AI keys must never be read, revealed, copied, replaced or cleared. Fresh-profile password insertion requires a separate authorized write-only creation draft and is not currently supported.
+General Settings accepts only booleans `showHiddenFiles`, `showStatusBar`, `showTransferProgress`, `compactMode`, `swapPanels`, `sortFoldersFirst`, `showFileExtensions`, `showToastNotifications`, `discoverHealthCheck`; integers `fontSize` (10–22), `introHubIconSize` (18–32); choices `dateFormat` (`localized`, `iso`, `dmy`, `mdy`), `cardLayout` (`compact`, `detailed`), `favoriteMarker` (`star`, `heart`), and `fontFamily` (`'Inter', system-ui, sans-serif`, `system-ui, -apple-system, sans-serif`, `'FiraGO', sans-serif`, `'Noto Sans', sans-serif`, `'JetBrains Mono', monospace`). Deletion confirmation, security, backup, cloud credentials, transfer policy, paths, sharing and startup settings are excluded. An owned general panel must remain on its safe tab; a human-opened or sensitive dialog blocks agent control.
+
+AI Settings accepts `provider_enabled: {id, enabled}`, `model_enabled: {id, enabled}`, `model_default: {id}` and `advanced: {...}`. IDs must identify one existing record and fit 128 UTF-8 bytes. Advanced keys are `temperature` (0–2), `max_tokens` (integer 256–32768), `top_p` (0–1), `top_k` (integer 1–100), `conversation_style` (`precise`, `balanced`, `creative`) and `response_style` (`default`, `concise`, `explanatory`, `learning`). Default selection follows the human panel's one-default-per-provider rule. Snapshots expose only bounded public identities and these preferences (at most 32 providers and 64 models); endpoints, prompts and credentials are omitted. Updates preserve unrequested fields and refuse ambiguous IDs, malformed config or unmigrated embedded API keys.
+
+Settings updates use a claimed, single-use backend request bound to its original account, unlock generation and deadline. The backend applies its stored approved delta; callers cannot substitute a config blob or destination. Stop prevents pending writes, while a write already accepted before Stop remains committed. Saved passwords and AI keys must never be read, revealed, copied, replaced or cleared. Fresh-profile password insertion requires a separate authorized write-only creation draft and is not currently supported. Marketplace, provider creation, model discovery/install, AeroTools and other tool panels remain outside this catalog; do not infer support from a visible tab or a stable `data-testid`.
+
+```json
+{"tool":"gui_run","args":{"intent":"settings_open","area":"general"}}
+{"tool":"gui_run","args":{"intent":"settings_read","area":"general"}}
+{"tool":"gui_run","args":{"intent":"settings_update","area":"general","set":{"fontSize":16,"dateFormat":"iso"}}}
+{"tool":"gui_run","args":{"intent":"settings_open","area":"ai"}}
+{"tool":"gui_run","args":{"intent":"settings_update","area":"ai","set":{"advanced":{"temperature":0.7}}}}
+{"tool":"gui_run","args":{"intent":"settings_close"}}
+```
 
 ## How Credentials Work
 

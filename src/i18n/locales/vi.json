@@ -6111,7 +6111,11 @@
                 "refresh": "Làm mới danh sách tệp",
                 "select": "Chọn tệp",
                 "disconnect": "Ngắt kết nối phiên",
-                "stop": "Dừng truyền tệp"
+                "stop": "Dừng truyền tệp",
+                "settings_open": "Mở cài đặt",
+                "settings_read": "Kiểm tra cài đặt",
+                "settings_update": "Cập nhật cài đặt",
+                "settings_close": "Đóng cài đặt"
             }
         }
     }

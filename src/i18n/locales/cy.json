@@ -6130,7 +6130,11 @@
                 "refresh": "Adnewyddu’r rhestr ffeiliau",
                 "select": "Dewis ffeiliau",
                 "disconnect": "Datgysylltu’r sesiwn",
-                "stop": "Stopio trosglwyddiadau"
+                "stop": "Stopio trosglwyddiadau",
+                "settings_open": "Agor gosodiadau",
+                "settings_read": "Archwilio gosodiadau",
+                "settings_update": "Diweddaru gosodiadau",
+                "settings_close": "Cau gosodiadau"
             }
         }
     }

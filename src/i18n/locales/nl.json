@@ -6111,7 +6111,11 @@
                 "refresh": "De bestandenlijst vernieuwen",
                 "select": "Bestanden selecteren",
                 "disconnect": "De sessie verbreken",
-                "stop": "Overdrachten stoppen"
+                "stop": "Overdrachten stoppen",
+                "settings_open": "Instellingen openen",
+                "settings_read": "Instellingen inspecteren",
+                "settings_update": "Instellingen bijwerken",
+                "settings_close": "Instellingen sluiten"
             }
         }
     }

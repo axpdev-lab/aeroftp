@@ -6111,7 +6111,11 @@
                 "refresh": "ファイル一覧を更新",
                 "select": "ファイルを選択",
                 "disconnect": "セッションを切断",
-                "stop": "転送を停止"
+                "stop": "転送を停止",
+                "settings_open": "設定を開く",
+                "settings_read": "設定を確認",
+                "settings_update": "設定を更新",
+                "settings_close": "設定を閉じる"
             }
         }
     }

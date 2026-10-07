@@ -4,9 +4,9 @@
 
 // Controller-level integration of the safe Settings surface: the REAL
 // createSettingsHandlers (the same factory App.tsx wires) run against a real
-// GuiController, with invoke backed by an in-memory credential store that
-// records every account written. The central assertion is not "no
-// store_credential calls" but "the ONLY accounts written are the public
+// GuiController, with invoke backed by a simulated claimed broker and credential store that
+// records every account written. Rust tests separately cover native authority and transaction guards.
+// These integration tests assert "the ONLY accounts written are the public
 // config blobs, and their payloads carry no secret field".
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -23,11 +23,47 @@ const store = vi.hoisted(() => ({
     readGate: undefined as (() => Promise<void>) | undefined,
     readError: undefined as Error | undefined,
     user: 1,
+    requests: new Map<string, { user: number; area?: string; set?: Record<string, unknown>; cancelled: boolean; deadline: number }>(),
 }));
 vi.mock('@tauri-apps/api/core', () => ({
     invoke: vi.fn(async (name: string, args?: Record<string, unknown>) => {
         const account = String(args?.account ?? '');
         if (name === 'user_partitions_unlock_status') return { activeUserId: store.user, unlockedUserId: store.user, isUnlocked: true };
+        if (name === 'gui_intent_cancel') { const entry = store.requests.get(String(args?.id)); if (entry) entry.cancelled = true; return; }
+        if (name === 'gui_intent_check' || name === 'gui_settings_commit') {
+            const entry = store.requests.get(String(args?.id));
+            const check = () => { if (!entry || entry.user !== store.user) throw 'gui_scope_changed';
+                if (entry.cancelled) throw 'gui_cancelled'; if (Date.now() >= entry.deadline) throw 'gui_timeout'; };
+            check();
+            if (name === 'gui_intent_check') return;
+            await store.readGate?.();
+            check();
+            if (store.readError) throw 'action_failed';
+            const account = entry!.area === 'general' ? 'config_app_settings' : 'config_ai_settings';
+            const raw = store.credentials.get(account);
+            const blob = raw ? JSON.parse(raw) : {};
+            const set = entry!.set!;
+            if (entry!.area === 'general') Object.assign(blob, set);
+            else {
+                if (!Array.isArray(blob.providers) || !Array.isArray(blob.models)) throw 'action_failed';
+                for (const [key, collection] of [['provider_enabled', 'providers'], ['model_enabled', 'models'], ['model_default', 'models']]) {
+                    if (!set[key]) continue;
+                    const change = set[key] as { id: string; enabled?: boolean };
+                    const records = blob[collection];
+                    const target = records.find((r: { id: string }) => r.id === change.id);
+                    if (!target) throw 'invalid_args';
+                    if (key === 'model_default') for (const model of records) {
+                        if (model.providerId === target.providerId) model.isDefault = model.id === target.id;
+                    }
+                    else target.isEnabled = change.enabled;
+                }
+                const mapping: Record<string, string> = { max_tokens: 'maxTokens', top_p: 'topP', top_k: 'topK', conversation_style: 'conversationStyle', response_style: 'responseStyle', temperature: 'temperature' };
+                for (const [key, value] of Object.entries(set.advanced || {})) blob.advancedSettings[mapping[key]] = value;
+            }
+            const password = JSON.stringify(blob);
+            store.writes.push({ account, password }); store.credentials.set(account, password);
+            return { area: entry!.area, value: blob };
+        }
         if (name === 'store_credential') {
             store.writes.push({ account, password: String(args?.password ?? '') });
             store.credentials.set(account, String(args?.password ?? ''));
@@ -78,6 +114,7 @@ const AI_BLOB: AISettings = {
 };
 
 beforeEach(() => {
+    store.requests.clear();
     store.credentials.clear();
     store.writes.length = 0;
     store.readGate = undefined;
@@ -126,8 +163,13 @@ beforeEach(() => {
     };
 });
 
-const run = (name: string, args?: Record<string, unknown>, extra?: Record<string, unknown>) =>
-    controller.run({ name, args, pace: 'fast', ...extra });
+let nextId = 0;
+const run = (name: string, args?: Record<string, unknown>, extra?: Record<string, unknown>) => {
+    const id = `approved-${++nextId}`;
+    store.requests.set(id, { user: store.user, area: args?.area as string, set: args?.set as Record<string, unknown>,
+        cancelled: false, deadline: Date.now() + Number(extra?.timeout_ms ?? 10000) });
+    return controller.run({ name, args, pace: 'fast', ...extra }, 'AeroAgent', Infinity, id);
+};
 
 const SECRET_ACCOUNTS = /^(?!config_(app|ai)_settings$)/;
 

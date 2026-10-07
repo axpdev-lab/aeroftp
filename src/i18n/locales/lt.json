@@ -6111,7 +6111,11 @@
                 "refresh": "Atnaujinti failų sąrašą",
                 "select": "Pasirinkti failus",
                 "disconnect": "Atjungti seansą",
-                "stop": "Sustabdyti perdavimus"
+                "stop": "Sustabdyti perdavimus",
+                "settings_open": "Atidaryti nustatymus",
+                "settings_read": "Patikrinti nustatymus",
+                "settings_update": "Atnaujinti nustatymus",
+                "settings_close": "Uždaryti nustatymus"
             }
         }
     }

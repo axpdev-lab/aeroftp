@@ -41,7 +41,16 @@ export const MAX_SETTINGS_MODELS = 64;
 const MAX_SETTINGS_STRING = 256;
 const MAX_GENERAL_KEYS = 40;
 
-const boundedString = (value: string) => value.slice(0, MAX_SETTINGS_STRING);
+const encoder = new TextEncoder();
+const boundedString = (value: string, limit = MAX_SETTINGS_STRING): string => {
+    let result = ''; let bytes = 0;
+    for (const character of value) {
+        bytes += encoder.encode(character).length;
+        if (bytes > limit) break;
+        result += character;
+    }
+    return result;
+};
 const hasOwn = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 
 const boolField = (value: unknown): boolean => {
@@ -108,7 +117,7 @@ export interface AiSettingsUpdate {
 }
 
 const recordId = (value: unknown): string => {
-    if (typeof value !== 'string' || !value || value.length > 128 || /[\x00-\x1f]/.test(value)) throw new GuiError('invalid_args');
+    if (typeof value !== 'string' || !value || encoder.encode(value).length > 128 || /[\x00-\x1f\x7f-\x9f]/.test(value)) throw new GuiError('invalid_args');
     return value;
 };
 
@@ -181,7 +190,7 @@ export function buildGeneralProjection(raw: Record<string, unknown>): Record<str
 /** Field-by-field safe AI projection: identity, enabled/default flags, bounded parameters. Never includes apiKey or endpoint URLs. */
 export function buildAiProjection(settings: AISettings): AiSettingsProjection {
     const providers = (settings.providers || []).slice(0, MAX_SETTINGS_PROVIDERS).map(p => ({
-        id: boundedString(String(p.id)), name: boundedString(String(p.name)), type: boundedString(String(p.type)), enabled: p.isEnabled === true,
+        id: boundedString(String(p.id)), name: boundedString(String(p.name)), type: boundedString(String(p.type), 64), enabled: p.isEnabled === true,
     }));
     const models = (settings.models || []).slice(0, MAX_SETTINGS_MODELS).map(m => ({
         id: boundedString(String(m.id)), provider_id: boundedString(String(m.providerId)), name: boundedString(String(m.name)),

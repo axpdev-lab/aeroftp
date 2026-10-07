@@ -6130,7 +6130,11 @@
                 "refresh": "Oppdater fillisten",
                 "select": "Velg filer",
                 "disconnect": "Koble fra økten",
-                "stop": "Stopp overføringer"
+                "stop": "Stopp overføringer",
+                "settings_open": "Åpne innstillinger",
+                "settings_read": "Undersøk innstillinger",
+                "settings_update": "Oppdater innstillinger",
+                "settings_close": "Lukk innstillinger"
             }
         }
     }

@@ -6111,7 +6111,11 @@
                 "refresh": "Refresh the file list",
                 "select": "Select files",
                 "disconnect": "Disconnect the session",
-                "stop": "Stop transfers"
+                "stop": "Stop transfers",
+                "settings_open": "Open settings",
+                "settings_read": "Inspect settings",
+                "settings_update": "Update settings",
+                "settings_close": "Close settings"
             }
         }
     }

@@ -6111,7 +6111,11 @@
                 "refresh": "Dateiliste aktualisieren",
                 "select": "Dateien auswählen",
                 "disconnect": "Sitzung trennen",
-                "stop": "Übertragungen stoppen"
+                "stop": "Übertragungen stoppen",
+                "settings_open": "Einstellungen öffnen",
+                "settings_read": "Einstellungen prüfen",
+                "settings_update": "Einstellungen aktualisieren",
+                "settings_close": "Einstellungen schließen"
             }
         }
     }

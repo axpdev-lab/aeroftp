@@ -2,7 +2,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { secureGetWithFallback, secureStoreAndClean } from '../utils/secureStorage';
+import { updateAppSettings } from '../utils/appSettings';
+import { secureGetWithFallback } from '../utils/secureStorage';
 
 const SETTINGS_KEY = 'aeroftp_settings';
 const SETTINGS_VAULT_KEY = 'app_settings';
@@ -53,10 +54,7 @@ export function useDiscoverHealthCheck(): [boolean, (value: boolean) => void] {
         setEnabledState(value);
         (async () => {
             try {
-                const existing = (await secureGetWithFallback<Record<string, unknown>>(SETTINGS_VAULT_KEY, SETTINGS_KEY)) || {};
-                const updated = { ...existing, discoverHealthCheck: value };
-                await secureStoreAndClean(SETTINGS_VAULT_KEY, SETTINGS_KEY, updated);
-                window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+                await updateAppSettings(existing => ({ ...(existing || {}), discoverHealthCheck: value }));
             } catch {
                 /* best-effort: local state already reflects the choice */
             }

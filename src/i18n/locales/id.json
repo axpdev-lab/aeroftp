@@ -6111,7 +6111,11 @@
                 "refresh": "Segarkan daftar berkas",
                 "select": "Pilih berkas",
                 "disconnect": "Putuskan sesi",
-                "stop": "Hentikan transfer"
+                "stop": "Hentikan transfer",
+                "settings_open": "Buka pengaturan",
+                "settings_read": "Periksa pengaturan",
+                "settings_update": "Perbarui pengaturan",
+                "settings_close": "Tutup pengaturan"
             }
         }
     }

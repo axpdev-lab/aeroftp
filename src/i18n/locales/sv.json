@@ -6111,7 +6111,11 @@
                 "refresh": "Uppdatera fillistan",
                 "select": "Välj filer",
                 "disconnect": "Koppla från sessionen",
-                "stop": "Stoppa överföringar"
+                "stop": "Stoppa överföringar",
+                "settings_open": "Öppna inställningar",
+                "settings_read": "Granska inställningar",
+                "settings_update": "Uppdatera inställningar",
+                "settings_close": "Stäng inställningar"
             }
         }
     }

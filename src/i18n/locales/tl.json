@@ -6130,7 +6130,11 @@
                 "refresh": "I-refresh ang listahan ng mga file",
                 "select": "Pumili ng mga file",
                 "disconnect": "Idiskonekta ang session",
-                "stop": "Itigil ang mga paglilipat"
+                "stop": "Itigil ang mga paglilipat",
+                "settings_open": "Buksan ang mga setting",
+                "settings_read": "Suriin ang mga setting",
+                "settings_update": "I-update ang mga setting",
+                "settings_close": "Isara ang mga setting"
             }
         }
     }

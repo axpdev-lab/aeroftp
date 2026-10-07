@@ -6111,7 +6111,11 @@
                 "refresh": "Muat semula senarai fail",
                 "select": "Pilih fail",
                 "disconnect": "Putuskan sesi",
-                "stop": "Hentikan pemindahan"
+                "stop": "Hentikan pemindahan",
+                "settings_open": "Buka tetapan",
+                "settings_read": "Periksa tetapan",
+                "settings_update": "Kemas kini tetapan",
+                "settings_close": "Tutup tetapan"
             }
         }
     }

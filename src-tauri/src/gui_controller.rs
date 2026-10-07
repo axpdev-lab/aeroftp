@@ -1,5 +1,6 @@
 //! Bounded AeroAgent requests to the main window's semantic GUI controller.
-//! This broker grants no approval, exposes no IPC listener and accepts no writes.
+//! This broker grants no approval or external listener. Claimed approved Settings
+//! requests may commit only their original, validated public preference delta.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -35,6 +36,8 @@ const INTENTS: &[&str] = &[
 struct Scope {
     user: Option<i64>,
     unlocked: bool,
+    vault_generation: u64,
+    partition_generation: u64,
 }
 
 async fn scope(app: &tauri::AppHandle) -> Result<Scope, String> {
@@ -44,6 +47,8 @@ async fn scope(app: &tauri::AppHandle) -> Result<Scope, String> {
             return Ok(Scope {
                 user: None,
                 unlocked: false,
+                vault_generation: crate::credential_store::CredentialStore::cache_generation(),
+                partition_generation: crate::user_partitions::session_generation(),
             });
         }
         let conn = crate::user_partitions::open_or_init(&app)?;
@@ -51,6 +56,8 @@ async fn scope(app: &tauri::AppHandle) -> Result<Scope, String> {
         Ok(Scope {
             user: status.active_user_id,
             unlocked: status.is_unlocked,
+            vault_generation: crate::credential_store::CredentialStore::cache_generation(),
+            partition_generation: crate::user_partitions::session_generation(),
         })
     })
     .await
@@ -62,6 +69,9 @@ struct Pending {
     scope: Scope,
     claimed: bool,
     sender: oneshot::Sender<Reply>,
+    settings_delta: Option<crate::gui_settings::SettingsDelta>,
+    settings_committed: bool,
+    cancelled: bool,
 }
 static PENDING: LazyLock<Mutex<HashMap<String, Pending>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -155,7 +165,7 @@ fn settings_number(value: &Value, min: f64, max: f64) -> bool {
 fn settings_choice(value: &Value, choices: &[&str]) -> bool {
     value.as_str().is_some_and(|s| choices.contains(&s))
 }
-fn general_settings_map(map: &serde_json::Map<String, Value>) -> bool {
+pub(crate) fn general_settings_map(map: &serde_json::Map<String, Value>) -> bool {
     map.len() <= MAX_SETTINGS_KEYS
         && map.iter().all(|(key, value)| match key.as_str() {
             "showHiddenFiles"
@@ -185,7 +195,7 @@ fn general_settings_map(map: &serde_json::Map<String, Value>) -> bool {
             _ => false,
         })
 }
-fn advanced_settings_map(map: &serde_json::Map<String, Value>) -> bool {
+pub(crate) fn advanced_settings_map(map: &serde_json::Map<String, Value>) -> bool {
     map.len() <= MAX_SETTINGS_KEYS
         && map.iter().all(|(key, value)| match key.as_str() {
             "temperature" => settings_number(value, 0.0, 2.0),
@@ -350,6 +360,9 @@ fn check_pending(entry: &Pending, current: Scope) -> Result<(), String> {
 }
 fn claim_entry(entry: &mut Pending, current: Scope) -> Result<u64, String> {
     check_pending(entry, current)?;
+    if entry.cancelled {
+        return Err("gui_cancelled".into());
+    }
     if entry.claimed {
         return Err("gui_already_claimed".into());
     }
@@ -412,6 +425,11 @@ pub(crate) async fn request_intent(
         return Err("locked".into());
     }
     let id = uuid::Uuid::new_v4().to_string();
+    let settings_delta = if name == "settings_update" {
+        Some(crate::gui_settings::SettingsDelta::from_args(&args)?)
+    } else {
+        None
+    };
     let (sender, receiver) = oneshot::channel();
     {
         let mut map = pending();
@@ -425,6 +443,9 @@ pub(crate) async fn request_intent(
                 scope: current,
                 claimed: false,
                 sender,
+                settings_delta,
+                settings_committed: false,
+                cancelled: false,
             },
         );
     }
@@ -467,6 +488,99 @@ pub async fn gui_intent_claim(
     claim_entry(map.get_mut(&id).ok_or("gui_unknown_request")?, current)
 }
 
+/// Recheck the original claimed request before each awaited frontend Settings step.
+#[tauri::command]
+pub async fn gui_intent_check(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    id: String,
+) -> Result<(), String> {
+    check_window(window.label())?;
+    let current = scope(&app).await?;
+    let map = pending();
+    let entry = map.get(&id).ok_or("gui_unknown_request")?;
+    check_pending(entry, current)?;
+    if !entry.claimed {
+        return Err("gui_not_claimed".into());
+    }
+    if entry.cancelled {
+        return Err("gui_cancelled".into());
+    }
+    Ok(())
+}
+
+/// Stop invalidates future writes; the request remains available for its failure receipt.
+#[tauri::command]
+pub async fn gui_intent_cancel(window: tauri::WebviewWindow, id: String) -> Result<(), String> {
+    check_window(window.label())?;
+    let mut map = pending();
+    let entry = map.get_mut(&id).ok_or("gui_unknown_request")?;
+    if !entry.claimed {
+        return Err("gui_not_claimed".into());
+    }
+    entry.cancelled = true;
+    Ok(())
+}
+
+fn check_settings_commit(entry: &Pending) -> Result<(), String> {
+    if Instant::now() >= entry.deadline {
+        return Err("gui_timeout".into());
+    }
+    if !entry.claimed {
+        return Err("gui_not_claimed".into());
+    }
+    if entry.cancelled {
+        return Err("gui_cancelled".into());
+    }
+    if !entry.scope.unlocked {
+        return Err("locked".into());
+    }
+    if entry.settings_committed {
+        return Err("gui_already_committed".into());
+    }
+    if entry.settings_delta.is_none() {
+        return Err("invalid_args".into());
+    }
+    Ok(())
+}
+
+/// Commit only the original approved public delta. No destination, blob or new delta is accepted.
+#[tauri::command]
+pub async fn gui_settings_commit(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    id: String,
+) -> Result<Value, String> {
+    check_window(window.label())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        // Stop/removal, SQLite account switches, user locks, master locks and vault writers
+        // cannot cross this critical section. A write accepted before Stop remains committed.
+        let mut map = pending();
+        let entry = map.get_mut(&id).ok_or("gui_unknown_request")?;
+        check_settings_commit(entry)?;
+        let delta = entry.settings_delta.as_ref().ok_or("invalid_args")?;
+        let mut conn = crate::user_partitions::open_or_init(&app)?;
+        let value = crate::user_partitions::with_gui_account(
+            &mut conn,
+            entry.scope.user,
+            entry.scope.partition_generation,
+            || {
+                crate::credential_store::CredentialStore::update_gui_config(
+                    entry.scope.vault_generation,
+                    delta.account(),
+                    || check_settings_commit(entry),
+                    |existing| delta.apply(existing),
+                )
+            },
+        )?;
+        let area = delta.area.clone();
+        entry.settings_committed = true;
+        Ok(json!({ "area": area, "value": value }))
+    })
+    .await
+    .map_err(|_| "action_failed".to_string())?
+}
+
 /// Only the main window can answer a request it claimed. This cannot grant approval.
 #[tauri::command]
 pub async fn gui_intent_result(
@@ -478,7 +592,18 @@ pub async fn gui_intent_result(
     check_window(window.label())?;
     let current = scope(&app).await?;
     let reply = parse_reply(payload, current.unlocked)?;
-    let entry = consume_entry(&mut pending(), &id, current)?;
+    let mut map = pending();
+    if map.get(&id).is_some_and(|entry| entry.cancelled) && reply.ok {
+        return Err("gui_cancelled".into());
+    }
+    if reply.ok
+        && map
+            .get(&id)
+            .is_some_and(|entry| entry.settings_delta.is_some() && !entry.settings_committed)
+    {
+        return Err("gui_not_committed".into());
+    }
+    let entry = consume_entry(&mut map, &id, current)?;
     entry.sender.send(reply).map_err(|_| "gui_cancelled".into())
 }
 
@@ -608,24 +733,79 @@ mod tests {
         let original = Scope {
             user: Some(1),
             unlocked: true,
+            vault_generation: 1,
+            partition_generation: 1,
         };
         let mut entry = Pending {
             deadline: Instant::now() + Duration::from_secs(1),
             scope: original,
             claimed: false,
             sender,
+            settings_delta: None,
+            settings_committed: false,
+            cancelled: false,
         };
         assert!(check_pending(&entry, original).is_ok());
         assert!(check_pending(
             &entry,
             Scope {
                 user: Some(2),
-                unlocked: true
+                unlocked: true,
+                ..original
             }
         )
         .is_err());
         entry.deadline = Instant::now();
         assert!(check_pending(&entry, original).is_err());
+    }
+    #[test]
+    fn settings_commit_refuses_foreign_unclaimed_expired_cancelled_and_replayed_requests() {
+        let (sender, _) = oneshot::channel();
+        let original = Scope {
+            user: Some(1),
+            unlocked: true,
+            vault_generation: 1,
+            partition_generation: 1,
+        };
+        let mut entry = Pending {
+            deadline: Instant::now() + Duration::from_secs(2),
+            scope: original,
+            claimed: false,
+            sender,
+            settings_delta: None,
+            settings_committed: false,
+            cancelled: false,
+        };
+        assert!(check_settings_commit(&entry).is_err());
+        entry.claimed = true;
+        assert!(check_settings_commit(&entry).is_err());
+        entry.settings_delta = Some(
+            crate::gui_settings::SettingsDelta::from_args(
+                &json!({"area":"general","set":{"fontSize":16}}),
+            )
+            .unwrap(),
+        );
+        assert!(check_settings_commit(&entry).is_ok());
+        for changed in [
+            Scope {
+                vault_generation: 2,
+                ..original
+            },
+            Scope {
+                partition_generation: 2,
+                ..original
+            },
+        ] {
+            assert!(check_pending(&entry, changed).is_err()); // lock/unlock and account ABA invalidate the original request.
+        }
+        entry.cancelled = true;
+        assert!(check_settings_commit(&entry).is_err());
+        entry.cancelled = false;
+        entry.settings_committed = true;
+        assert!(check_settings_commit(&entry).is_err());
+        entry.settings_committed = false;
+        entry.deadline = Instant::now();
+        assert!(check_settings_commit(&entry).is_err());
     }
     #[tokio::test]
     async fn gui_controller_claims_and_replies_are_single_use() {
@@ -634,6 +814,8 @@ mod tests {
         let original = Scope {
             user: Some(1),
             unlocked: true,
+            vault_generation: 1,
+            partition_generation: 1,
         };
         map.insert(
             "issued".into(),
@@ -642,6 +824,9 @@ mod tests {
                 scope: original,
                 claimed: false,
                 sender,
+                settings_delta: None,
+                settings_committed: false,
+                cancelled: false,
             },
         );
         assert!(consume_entry(&mut map, "issued", original).is_err());
@@ -652,7 +837,8 @@ mod tests {
             "issued",
             Scope {
                 user: Some(2),
-                unlocked: true
+                unlocked: true,
+                ..original
             }
         )
         .is_err());

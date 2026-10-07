@@ -6111,7 +6111,11 @@
                 "refresh": "Dosya listesini yenile",
                 "select": "Dosyaları seç",
                 "disconnect": "Oturum bağlantısını kes",
-                "stop": "Aktarımları durdur"
+                "stop": "Aktarımları durdur",
+                "settings_open": "Ayarları aç",
+                "settings_read": "Ayarları incele",
+                "settings_update": "Ayarları güncelle",
+                "settings_close": "Ayarları kapat"
             }
         }
     }

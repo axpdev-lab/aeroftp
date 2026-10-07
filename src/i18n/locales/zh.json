@@ -6111,7 +6111,11 @@
                 "refresh": "刷新文件列表",
                 "select": "选择文件",
                 "disconnect": "断开会话",
-                "stop": "停止传输"
+                "stop": "停止传输",
+                "settings_open": "打开设置",
+                "settings_read": "检查设置",
+                "settings_update": "更新设置",
+                "settings_close": "关闭设置"
             }
         }
     }

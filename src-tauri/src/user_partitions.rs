@@ -19,6 +19,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
+static SESSION_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 use tauri::AppHandle;
 
 pub(crate) const DB_FILENAME: &str = "user_partitions.db";
@@ -388,6 +389,7 @@ fn default_kdf_params() -> user_crypto::Argon2Params {
 fn clear_user_session() {
     if let Ok(mut session) = USER_SESSION.lock() {
         *session = None;
+        SESSION_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
     // Partition lock and user switch keep the vault cache, so MCP OAuth freshness
     // checks alone would not see them: cancel every pending and in-flight attempt.
@@ -400,7 +402,40 @@ fn set_user_session(user_id: i64, dek: SecretKey) -> Result<(), String> {
         .lock()
         .map_err(|_| "USER_SESSION_LOCK_POISONED".to_string())?;
     *session = Some(UserSession { user_id, dek });
+    SESSION_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     Ok(())
+}
+
+pub(crate) fn session_generation() -> u64 {
+    SESSION_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Keep account selection and session unlock stable through a GUI config commit.
+/// SQLite serializes account switches across processes; the session mutex serializes lock/unlock.
+pub(crate) fn with_gui_account<R>(
+    conn: &mut Connection,
+    expected_user: Option<i64>,
+    generation: u64,
+    run: impl FnOnce() -> Result<R, String>,
+) -> Result<R, String> {
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|_| "gui_scope_unavailable")?;
+    // Existing partition writers may hold the session while taking SQLite locks.
+    // Never wait for that session while our IMMEDIATE transaction owns SQLite.
+    let session = USER_SESSION.try_lock().map_err(|_| "busy")?;
+    let user = active_user_id(&tx)?;
+    if user.is_none() || user != expected_user || session_generation() != generation {
+        return Err("gui_scope_changed".into());
+    }
+    let requires_password = read_user_key_row(&tx, user.unwrap())?.has_passphrase;
+    if requires_password && session.as_ref().map(|s| s.user_id) != user {
+        return Err("locked".into());
+    }
+    let result = run()?;
+    // A read-only transaction holds the account lock; no partition state is changed.
+    drop(tx);
+    Ok(result)
 }
 
 pub fn user_unlock_status(conn: &Connection) -> Result<UserUnlockStatus, String> {
@@ -5423,6 +5458,39 @@ mod tests {
 
     /// #736: the legacy blob follows the active list, and a list that is
     /// already there (same values, different key order) is not rewritten.
+    #[test]
+    fn gui_account_guard_refuses_foreign_locked_and_aba_sessions() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate_legacy_payloads(&mut conn, None, None, &test_root()).unwrap();
+        let original = active_user_id(&conn).unwrap();
+        let generation = session_generation();
+        let writes = std::cell::Cell::new(0);
+        let run = || {
+            writes.set(writes.get() + 1);
+            Ok(())
+        };
+        with_gui_account(&mut conn, original, generation, run).unwrap();
+        assert!(with_gui_account(&mut conn, Some(999), generation, run).is_err());
+        clear_user_session(); // Same identity after a lock/unlock or switch round trip is still stale.
+        assert!(with_gui_account(&mut conn, original, generation, run).is_err());
+        let protected = create_user(
+            &mut conn,
+            &test_root(),
+            "Protected fixture",
+            None,
+            None,
+            Some("fixture-password"),
+        )
+        .unwrap();
+        set_active_user(&conn, protected.id).unwrap();
+        assert!(
+            with_gui_account(&mut conn, Some(protected.id), session_generation(), run).is_err()
+        );
+        assert_eq!(writes.get(), 1);
+    }
+
     #[test]
     fn legacy_blob_mirror_writes_only_a_different_list() {
         let dir = tempfile::tempdir().unwrap();

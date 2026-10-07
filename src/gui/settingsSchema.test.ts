@@ -149,3 +149,12 @@ describe('settingsUpdateCommitted', () => {
         expect(settingsUpdateCommitted('ai', { advanced: { temperature: 1.1 } }, projection)).toBe(false);
     });
 });
+
+it('bounds multilingual AI strings by UTF-8 bytes and refuses oversized identities', () => {
+    const raw = getDefaultAISettings();
+    raw.providers = [{ id: 'p', name: '漢'.repeat(200), type: 'custom', isEnabled: true } as never];
+    const projection = buildAiProjection(raw);
+    expect(new TextEncoder().encode(projection.providers[0].name).length).toBeLessThanOrEqual(256);
+    expect(projection.providers[0].name).not.toContain('�');
+    expect(() => validateSettingsSet('ai', { model_default: { id: '漢'.repeat(43) } })).toThrow('invalid_args');
+});

@@ -464,7 +464,8 @@ import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
-import { secureGetWithFallback, secureStoreAndClean } from './utils/secureStorage';
+import { updateAppSettings } from './utils/appSettings';
+import { secureGetWithFallback } from './utils/secureStorage';
 import {
   loadSavedServerProfiles,
   mergeSavedServerProfile,
@@ -734,10 +735,7 @@ const App: React.FC = () => {
     const next = !swapPanels;
     setSwapPanels(next);
     try {
-      const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
-      const updated = { ...(existing || {}), swapPanels: next };
-      await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
-      window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+      await updateAppSettings(existing => ({ ...(existing || {}), swapPanels: next }));
     } catch { /* ignore */ }
   }, [swapPanels, setSwapPanels, SETTINGS_KEY]);
 
@@ -750,10 +748,7 @@ const App: React.FC = () => {
     const next: 'compact' | 'detailed' = cardLayout === 'detailed' ? 'compact' : 'detailed';
     setCardLayout(next);
     try {
-      const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
-      const updated = { ...(existing || {}), cardLayout: next };
-      await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
-      window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+      await updateAppSettings(existing => ({ ...(existing || {}), cardLayout: next }));
     } catch { /* ignore */ }
   }, [cardLayout, setCardLayout, SETTINGS_KEY]);
 
@@ -6813,10 +6808,7 @@ const App: React.FC = () => {
       setIsSftpPresetSaving(true);
       setSftpDownloadPreset(next);
       try {
-        const existing = await secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY);
-        const updated = { ...(existing || {}), sftpDownloadPreset: next };
-        await secureStoreAndClean('app_settings', SETTINGS_KEY, updated);
-        window.dispatchEvent(new CustomEvent('aeroftp-settings-changed', { detail: updated }));
+        await updateAppSettings(existing => ({ ...(existing || {}), sftpDownloadPreset: next }));
       } catch {
         setSftpDownloadPreset(sftpDownloadPreset);
       } finally {
@@ -9504,8 +9496,7 @@ const App: React.FC = () => {
 
     // Save last local path if remember folder is enabled
     if (rememberLastFolder) {
-      secureGetWithFallback<Record<string, unknown>>('app_settings', SETTINGS_KEY)
-        .then(existing => secureStoreAndClean('app_settings', SETTINGS_KEY, { ...(existing || {}), lastLocalPath: path }))
+      updateAppSettings(existing => ({ ...(existing || {}), lastLocalPath: path }))
         .catch((e) => {
           console.error('Failed to save last local path:', e);
         });
@@ -16148,7 +16139,7 @@ const App: React.FC = () => {
     stop: async () => { await cancelActiveConnect(); if (remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
     // Settings surface: typed open/close/read/update over the SAME public
     // persistence the UI uses. The general update merges allowlisted keys
-    // through updateAppSettings (never SettingsPanel.handleSave, which also
+    // through the approved broker and shared queue (never SettingsPanel.handleSave, which also
     // rewrites server profiles, OAuth secrets and OS startup state). The AI
     // update writes only the stripped public blob; keyring records are never
     // enqueued, overwritten or cleared here.
