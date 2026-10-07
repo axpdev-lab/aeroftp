@@ -22,7 +22,7 @@ beforeEach(() => {
         tools: { open: false, visible_panels: [], protected: false } };
     open = vi.fn((tool?: ToolPanel) => { source.tools = { open: true, visible_panels: tool ? [tool] : ['editor'], protected: false }; });
     close = vi.fn(() => { source.tools = { open: false, visible_panels: [], protected: false }; });
-    controller = new GuiController(() => source, () => ({ showView: () => {}, navigate: async () => {}, refresh: async () => {},
+    controller = new GuiController(() => source, () => ({ showView: () => {}, navigate: async (_panel, path) => path, refresh: async () => {},
         select: () => {}, disconnect: async () => {}, stop: async () => {}, ...createToolsHandlers({ open, close }) }), () => {});
 });
 afterEach(() => controller.dispose());

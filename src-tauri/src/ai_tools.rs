@@ -376,6 +376,9 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
     for key in [
         "intent",
         "tool",
+        "panel",
+        "view",
+        "mode",
         "server",
         "operation",
         "command",
@@ -406,6 +409,15 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
     ] {
         if let Some(value) = args.get(key) {
             details.push(format!("{}: {}", key, format_approval_value(value)));
+        }
+    }
+
+    if tool_name == "gui_run" {
+        if let Some(names) = args.get("names").and_then(Value::as_array) {
+            details.push(format!("selection: {} item(s)", names.len()));
+            for name in names.iter().take(3).filter_map(Value::as_str) {
+                details.push(format!("selected name: {}", truncate_display(name, 120)));
+            }
         }
     }
 
@@ -2722,6 +2734,31 @@ mod approval_tests {
         }
         let details = build_ai_tool_approval_details("gui_run", &json!({"intent":"tools_close"}));
         assert!(details.iter().any(|line| line == "intent: tools_close"));
+    }
+
+    #[test]
+    fn gui_approval_names_action_target_and_bounded_selection() {
+        let details = build_ai_tool_approval_details(
+            "gui_run",
+            &json!({
+                "intent":"select", "panel":"local2", "view":"files", "mode":"names",
+                "names":["first.txt","second.txt","third.txt","fourth.txt"], "password":"SECRET"
+            }),
+        );
+        for expected in [
+            "intent: select",
+            "panel: local2",
+            "view: files",
+            "mode: names",
+            "selection: 4 item(s)",
+            "selected name: first.txt",
+            "selected name: third.txt",
+        ] {
+            assert!(details.iter().any(|line| line == expected));
+        }
+        let message = details.join("\n");
+        assert!(!message.contains("fourth.txt"));
+        assert!(!message.contains("SECRET"));
     }
 
     #[test]
