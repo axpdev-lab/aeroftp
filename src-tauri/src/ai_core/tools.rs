@@ -1949,15 +1949,16 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
         },
         ToolDef {
             name: "gui_run",
-            description: "Run a visible GUI navigation, selection, refresh, view, disconnect, Stop or bounded Settings action. Human input interrupts control. Saved profiles connect by exact profile_id with vault credentials kept internal. Settings actions cover only the owned safe surface: open/read/update/close for allowlisted general preferences and AI provider/model enabled flags, per-provider default model and bounded generation parameters. No click, script, unlock, credential or API-key read/write, or file-write action is supported.",
+            description: "Run a visible GUI navigation, selection, refresh, view, disconnect, Stop or bounded Settings action. AeroTools actions open/read/close workspace metadata or ensure editor/terminal/agent visibility without hiding existing panels. They never create terminal tabs, start shells, send chat or read/save editor contents. Security Tools blocks workspace changes. Human input interrupts control. Saved profiles connect by exact profile_id with vault credentials kept internal. Settings actions cover only the owned safe surface: open/read/update/close for allowlisted general preferences and AI provider/model enabled flags, per-provider default model and bounded generation parameters. No click, script, unlock, credential or API-key read/write, or file-write action is supported.",
             input_schema: json!({ "type": "object", "properties": {
-                "intent": { "type": "string", "enum": ["show_view", "navigate", "refresh", "select", "connect", "disconnect", "stop", "settings_open", "settings_read", "settings_update", "settings_close"] },
+                "intent": { "type": "string", "enum": ["show_view", "navigate", "refresh", "select", "connect", "disconnect", "stop", "settings_open", "settings_read", "settings_update", "settings_close", "tools_open", "tools_read", "tools_close"] },
                 "profile_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{1,256}$", "maxLength": 256 },
                 "panel": { "type": "string", "enum": ["remote", "local", "local2"] },
                 "view": { "type": "string", "enum": ["servers", "files"] },
                 "path": { "type": "string", "maxLength": 4096 },
                 "names": { "type": "array", "items": { "type": "string" }, "maxItems": 100 },
                 "mode": { "type": "string", "enum": ["names", "all", "none"] },
+                "tool": { "type": "string", "enum": ["editor", "terminal", "agent"], "description": "Optional tools_open panel to ensure visible without hiding other panels; blocked if responsive capacity is full." },
                 "area": { "type": "string", "enum": ["general", "ai"] },
                 "set": { "type": "object", "description": "settings_update changes. general: allowlisted keys (showHiddenFiles, showStatusBar, showTransferProgress, compactMode, swapPanels, sortFoldersFirst, showFileExtensions, showToastNotifications, discoverHealthCheck, dateFormat, cardLayout, favoriteMarker, fontSize 10-22, introHubIconSize 18-32, known fontFamily). ai: provider_enabled {id, enabled}, model_enabled {id, enabled}, model_default {id}, advanced {temperature 0-2, max_tokens 256-32768, top_p 0-1, top_k 1-100, conversation_style, response_style}." },
                 "if_revision": { "type": "integer", "minimum": 0 },

@@ -143,6 +143,8 @@ run-clean.sh
 !/scripts/check-appstream.mjs
 # Production build boundary: development GUI harness must never ship.
 !/scripts/check-gui-controller-bundle.mjs
+# Linux inspector adapter for autonomous isolated GUI development tests.
+!/scripts/gui-controller-dev.mjs
 # Exception: regenerates the providers table from the GUI SSOT (#270 17104681)
 !/scripts/gen-providers-table.ts
 # Exception: derives every published provider/preset/protocol figure into

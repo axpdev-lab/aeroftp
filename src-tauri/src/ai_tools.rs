@@ -131,10 +131,12 @@ fn sync_control_requires_approval(args: &Value) -> bool {
 
 fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
     match tool_name {
-        // gui_run is an approved mutation lane, except settings_read: it only
-        // re-reads the allowlisted public config into the redacted snapshot,
-        // so it stays on the safe read path like gui_state.
-        "gui_run" => args.get("intent").and_then(Value::as_str) != Some("settings_read"),
+        // Public Settings and fixed AeroTools metadata reads expose no contents.
+        // Every visible workspace mutation still needs native approval.
+        "gui_run" => !matches!(
+            args.get("intent").and_then(Value::as_str),
+            Some("settings_read" | "tools_read")
+        ),
         "sync_control" => sync_control_requires_approval(args),
         "server_exec" | "cross_profile_transfer" => true,
         _ => matches!(
@@ -2682,6 +2684,10 @@ mod approval_tests {
             "gui_wait",
             &json!({"condition":"idle"})
         ));
+        assert!(!requires_backend_write_approval(
+            "gui_run",
+            &json!({"intent":"tools_read"})
+        ));
         // The Settings read path is safe (redacted public projection only);
         // every other intent, settings writes included, stays approved.
         assert!(!requires_backend_write_approval(
@@ -2698,6 +2704,8 @@ mod approval_tests {
             "settings_open",
             "settings_update",
             "settings_close",
+            "tools_open",
+            "tools_close",
         ] {
             assert!(requires_backend_write_approval(
                 "gui_run",
@@ -2719,6 +2727,21 @@ mod approval_tests {
         assert!(!details.contains("AeroAgent wants to"));
         // The old native-dialog line is gone: the window explains itself.
         assert!(!message.contains("desktop process"));
+    }
+
+    #[test]
+    fn gui_workspace_approval_names_action_and_panel() {
+        for panel in ["editor", "terminal", "agent"] {
+            let details = build_ai_tool_approval_details(
+                "gui_run",
+                &json!({"intent":"tools_open","tool":panel,"password":"SECRET"}),
+            );
+            assert!(details.iter().any(|line| line == "intent: tools_open"));
+            assert!(details.iter().any(|line| line == &format!("tool: {panel}")));
+            assert!(!details.join("\n").contains("SECRET"));
+        }
+        let details = build_ai_tool_approval_details("gui_run", &json!({"intent":"tools_close"}));
+        assert!(details.iter().any(|line| line == "intent: tools_close"));
     }
 
     #[test]

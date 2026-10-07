@@ -5,6 +5,9 @@ import { ConnectScope, type ProfileConnector, type RegisterProfileConnector } fr
 import { runOwnedConnectionCleanup } from './gui/connectionCleanup';
 import { buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
 import { createSettingsHandlers } from './gui/settingsHandlers';
+import { createToolsHandlers } from './gui/toolsHandlers';
+import type { ToolsControl, RegisterToolsControl } from './gui/toolsWorkspace';
+import type { GuiToolsProjection } from './gui/toolsSchema';
 import { bindSettingsScope } from './gui/settingsScope';
 import {
     AI_SETTINGS_EVENT, AI_SETTINGS_OPEN_EVENT, readAiPublicProjection,
@@ -16079,6 +16082,12 @@ const App: React.FC = () => {
     return () => window.removeEventListener(AI_SETTINGS_OPEN_EVENT, onOpen);
   }, []);
 
+  const [guiToolsState, setGuiToolsState] = useState<GuiToolsProjection>({ open: false, visible_panels: [], protected: false });
+  const guiToolsControl = useRef<ToolsControl | null>(null);
+  const registerGuiTools = useCallback<RegisterToolsControl>(control => {
+    guiToolsControl.current = control;
+    return () => { if (guiToolsControl.current === control) guiToolsControl.current = null; };
+  }, []);
   const guiController = useGuiController({
     version: appVersion,
     locked: isAppLocked || !vaultBootComplete || accountLockState !== 'ready',
@@ -16086,7 +16095,7 @@ const App: React.FC = () => {
     // drives them. Everything else (confirm/input/host-key/2FA/overwrite/
     // vault/locked overlay) still blocks agent control.
     blocked: !!confirmDialog || !!inputDialog || hostKeyDialog.visible || !!twoFactorPrompt?.open ||
-      overwriteDialog.isOpen || !!showVaultPanel || !!lockedOverlayProfile,
+      overwriteDialog.isOpen || !!showVaultPanel || !!lockedOverlayProfile || showCyberTools,
     view: showSettingsPanel || showVaultPanel ? 'other' : showConnectionScreen ? 'servers' : 'files',
     connected: isConnected,
     activeSessionId,
@@ -16113,6 +16122,7 @@ const App: React.FC = () => {
       general: buildGeneralProjection(settings as unknown as Record<string, unknown>),
       ai: aiPublicSettings,
     },
+    tools: guiToolsState,
   }, {
     showView: view => setShowConnectionScreen(view === 'servers'),
     navigate: async (panel, path) => {
@@ -16164,8 +16174,19 @@ const App: React.FC = () => {
       },
       onAiProjection: setAiPublicSettings,
     }),
+    ...createToolsHandlers({
+      open: tool => {
+        if (!guiToolsControl.current) throw new GuiError('blocked');
+        guiToolsControl.current.ensure(tool);
+        setDevToolsOpen(true);
+      },
+      close: () => {
+        if (!guiToolsControl.current) throw new GuiError('blocked');
+        guiToolsControl.current.close();
+      },
+    }),
   }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
-    `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
+    `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'tools_open' ? 'common.open' : intent === 'tools_close' ? 'common.close' : intent === 'tools_read' ? 'guiController.actions.state' : intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
     ok ? 'success' : 'error'));
 
   return (
@@ -19807,6 +19828,8 @@ const App: React.FC = () => {
         {/* DevTools V2 - Responsive Column Layout (at bottom, below ActivityLog) */}
         <DevToolsV2
           isOpen={devToolsOpen}
+          registerGuiTools={registerGuiTools}
+          onGuiToolsState={setGuiToolsState}
           previewFile={devToolsPreviewFile}
           aiSettingsOpenRequest={aiSettingsOpenRequest}
           // Z.3.10: terminal cwd follows the focused panel. For an
