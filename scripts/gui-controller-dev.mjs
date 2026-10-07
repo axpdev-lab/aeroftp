@@ -15,8 +15,14 @@ if (!['--request', '--js', '--unlock'].includes(mode) || (mode !== '--unlock' &&
 try {
     const fixture = resolve(process.env.AEROFTP_GUI_TEST_ROOT || '/tmp/aeroftp-gui-native-01a110c5');
     if (!fixture.startsWith('/tmp/aeroftp-gui-')) throw Error('Expected an isolated /tmp/aeroftp-gui-* fixture');
-    const listener = execFileSync('ss', ['-ltnp', 'sport = :9222'], { encoding: 'utf8' });
-    const pid = listener.match(/"aeroftp",pid=(\d+)/)?.[1];
+    let listener, pid;
+    const deadline = Date.now() + 10000;
+    do {
+        listener = execFileSync('ss', ['-ltnp', 'sport = :9222'], { encoding: 'utf8' });
+        pid = listener.match(/"aeroftp",pid=(\d+)/)?.[1];
+        if (pid) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+    } while (Date.now() < deadline);
     if (!pid || !listener.includes('127.0.0.1:9222')) throw Error('Owned loopback dev inspector unavailable');
     const env = Object.fromEntries(readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0')
         .filter(item => item.includes('=')).map(item => [item.slice(0, item.indexOf('=')), item.slice(item.indexOf('=') + 1)]));

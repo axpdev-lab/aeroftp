@@ -5,7 +5,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const assets = new URL('../dist/assets/', import.meta.url);
-const forbidden = ['__aeroftpController', 'Dev harness', 'GUI target denied'];
+const forbidden = ['__aeroftpController', 'Dev harness', 'GUI target denied', 'AEROFTP_GUI_TEST_MASTER', 'gui-dev-driver'];
 const files = (await readdir(assets)).filter(name => name.endsWith('.js'));
 if (!files.length) throw new Error('Production JavaScript assets are missing');
 for (const name of files) {
