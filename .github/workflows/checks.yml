@@ -59,6 +59,9 @@ jobs:
       - name: Release binary selection excludes test helpers
         run: python3 -m unittest discover -s .github/scripts -p test_release_binary_gate.py -v
 
+      - name: Linux packaging helpers reject unverified downloads and caches
+        run: node --test .github/scripts/test-linuxdeploy-pins.cjs
+
       # The snap gate's lint pass, with stub snapcraft and unsquashfs: a gpu:
       # finding fails it, and a linter that never ran is UNVERIFIED, never OK.
       - name: Snap GPU gate reads the snapcraft lint report
