@@ -35,7 +35,7 @@ beforeEach(() => {
     source = { version: 'test', locked: false, blocked: false, view: 'files', connected: true,
         activeSessionId: 's1', sessions: [], panels: { local: { path: '/local', loading: false, selection: [], entriesCount: 0 } },
         queue: { active: 0, pending: 0, failed: 0 } };
-    handlers = { showView: vi.fn(), navigate: vi.fn(async () => {}), refresh: vi.fn(async () => {}),
+    handlers = { showView: vi.fn(), navigate: vi.fn(async (_panel, path: string) => path), refresh: vi.fn(async () => {}),
         select: vi.fn(), disconnect: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
     bridge.invoke.mockReset().mockImplementation(async name => name === 'gui_intent_claim' ? 2000 : undefined);
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -186,4 +186,20 @@ it('waits for a fresh React commit when same-path refresh settles before its set
         await new Promise(resolve => setTimeout(resolve, 60));
     });
     expect(await reply).toMatchObject({ ok: true, snapshot: { panels: { local: { path: '/local', loading: false, entries_count: 7 } } } });
+});
+
+it('does not act after a delayed claim outlives the absolute broker expiry', async () => {
+    await mount();
+    let claim!: (remaining: number) => void;
+    bridge.invoke.mockImplementationOnce(() => new Promise<number>(resolve => { claim = resolve; }));
+    const expiresAt = Date.now() + 80;
+    await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
+        id: 'delayed-expired', expires_at: expiresAt, request: { name: 'disconnect', pace: 'fast' },
+    } }));
+    await until(() => Date.now() > expiresAt);
+    await act(async () => claim(2000));
+    await until(() => bridge.invoke.mock.calls.some(([name]) => name === 'gui_intent_result'));
+    expect(handlers.disconnect).not.toHaveBeenCalled();
+    const result = bridge.invoke.mock.calls.find(([name]) => name === 'gui_intent_result')![1];
+    expect(result.payload).toMatchObject({ ok: false, error: 'gui_timeout' });
 });

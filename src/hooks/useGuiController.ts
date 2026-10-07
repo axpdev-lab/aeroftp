@@ -100,7 +100,7 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
                 const ownsId = mutating && mutationId.current === null;
                 if (ownsId) mutationId.current = id;
                 try {
-                    const reply = await service.run(request, 'AeroAgent', Date.now() + remaining - 25);
+                    const reply = await service.run(request, 'AeroAgent', Math.min(Date.now() + remaining - 25, expires_at - 25));
                     await invoke('gui_intent_result', { id, payload: reply });
                 } finally { if (ownsId && mutationId.current === id) mutationId.current = null; }
             } catch { /* Broker expiry/window/account refusal has no raw error to expose. */ }
