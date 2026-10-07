@@ -357,9 +357,14 @@ fn truncate_display(value: &str, max_len: usize) -> String {
     format!("{}...", truncated)
 }
 
+fn approval_display_text(value: &str, max_chars: usize) -> String {
+    let escaped: String = value.chars().flat_map(char::escape_debug).collect();
+    truncate_display(&escaped, max_chars)
+}
+
 fn format_approval_value(value: &Value) -> String {
     match value {
-        Value::String(string_value) => truncate_display(string_value, 160),
+        Value::String(string_value) => approval_display_text(string_value, 160),
         Value::Array(items) => format!("{} item(s)", items.len()),
         Value::Bool(boolean_value) => boolean_value.to_string(),
         Value::Number(number_value) => number_value.to_string(),
@@ -414,7 +419,10 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         if let Some(names) = args.get("names").and_then(Value::as_array) {
             details.push(format!("selection: {} item(s)", names.len()));
             for name in names.iter().take(3).filter_map(Value::as_str) {
-                details.push(format!("selected name: {}", truncate_display(name, 120)));
+                details.push(format!(
+                    "selected name: {}",
+                    approval_display_text(name, 120)
+                ));
             }
         }
     }
@@ -425,7 +433,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         let preview: Vec<String> = checks
             .iter()
             .filter_map(|value| value.as_str())
-            .map(|c| truncate_display(c, 60))
+            .map(|c| approval_display_text(c, 60))
             .collect();
         details.push(format!("checks: {}", preview.join(", ")));
     }
@@ -435,7 +443,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
             .iter()
             .take(3)
             .filter_map(|value| value.as_str())
-            .map(|path| truncate_display(path, 120))
+            .map(|path| approval_display_text(path, 120))
             .collect();
 
         if preview.is_empty() {
@@ -2736,6 +2744,30 @@ mod approval_tests {
         let message = details.join("\n");
         assert!(!message.contains("fourth.txt"));
         assert!(!message.contains("SECRET"));
+    }
+
+    #[test]
+    fn approval_text_cannot_forge_details_and_keeps_unicode_names() {
+        let details = build_ai_tool_approval_details(
+            "gui_run",
+            &json!({
+                "intent":"select", "panel":"local", "names":["file\nintent: stop\r\t\u{001b}日本語.txt", "x".repeat(500)],
+                "path":"/folder\nintent: stop", "command":"echo ok\nrm file"
+            }),
+        );
+        assert!(details
+            .iter()
+            .all(|line| !line.chars().any(char::is_control)));
+        assert!(details
+            .iter()
+            .any(|line| line.contains("file\\nintent: stop\\r\\t\\u{1b}日本語.txt")));
+        assert!(details
+            .iter()
+            .any(|line| line == "path: /folder\\nintent: stop"));
+        assert!(details
+            .iter()
+            .filter(|line| line.starts_with("selected name: "))
+            .all(|line| line.chars().count() <= "selected name: ".len() + 123));
     }
 
     #[test]
