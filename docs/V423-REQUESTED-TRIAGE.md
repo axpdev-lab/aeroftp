@@ -7,8 +7,8 @@
 | 31 | Initial code inspection suggested GUI visibility/sort already worked. Subsequent live testing reproduced a wrong vault-key read and a Saved % id mismatch, in addition to missing persistent CLI choices and the GUI breakdown checkbox. See [the row 31 verification](V423-PROFILE-PREFERENCES.md). | Profile preferences |
 | 30 | Reproduced: `clone_for_list` mints an unconnected SFTP worker, `list` calls `get_sftp` without dialing. v4.2.2 live scan emits eight cold-worker reconnect warnings. | **Storage walker, selected** |
 | 29 | Reproduced: `walk_used_bytes` sums the vector the walker retains. v4.2.2 lab WebDAV: 60,800 files, 875 folders, 4,704,965,753 bytes, 102,672 KiB peak RSS. | **Storage walker, selected** |
-| 28 | Open: build pins appimagetool/runtime, but Tauri obtains linuxdeploy helpers outside those pins. Needs bundler override/cache controls and verified digests. | Linux packaging |
-| 27 | Upstream dependent: runtime pin is `20251108`. GitHub release API checked today lists only continuous, 20251108, old; no newer dated release. | Linux packaging |
+| 28 | 2026-10-07 implementation in progress: CLI 2.11.2 checked against official code; local helper cache, release/commit pins and SHA-256 rejection tests added. Packaging/PR verification tracked in [the helper report](V423-LINUXDEPLOY-PINS.md). Not merged. | Linux packaging |
+| 27 | Upstream dependent, rechecked 2026-10-07: release API still lists only continuous, 20251108, old. The 0700 fix is in continuous only; retain dated runtime pin and digest, keep requested 27 open. | Linux packaging |
 | 26 | Open: #1038 explicitly deferred Fetch/Git STDIO presets and pinned artifact installation; current presets supply remote DeepWiki. | MCP supply chain |
 | 25 | Platform dependent: #1051 deliberately retained CRLF handling until Windows clones refresh. LICENSE LF requires an actual NSIS page check. | Windows checkout / installer |
 | 24 | Fixes shipped, live checks open: #981 implements FTPS final-reply handling, OneDrive stale-id resolution, ambiguous-trash refusal, Twake retry progress and Proton argument handling. Its live list was deferred. | Provider live contracts |

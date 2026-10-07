@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calculating used storage keeps running totals instead of retaining every file from the recursive walk, reducing peak memory on large trees while preserving progress, limits and incomplete-scan reporting.
 - SFTP listing workers open their first connection before listing, eliminating the false "Not connected to server: reconnecting" warnings at the start of a pooled scan.
 
+### Security
+
+- Linux AppImage packaging pins the appimage, GTK and GStreamer linuxdeploy plugins to a dated release or source commit and verifies their SHA-256 before use, along with AppRun and linuxdeploy. A corrupt cache, missing verified helper or external unverified plugin stops packaging.
+
 ## [4.2.2] - 2026-10-05
 
 ### MCP Servers for AeroAgent, Faster SFTP, and Parallel Selections

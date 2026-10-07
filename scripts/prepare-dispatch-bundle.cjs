@@ -54,3 +54,7 @@ for (const name of ["aeroftp-cli", "aeroftp-dispatch"]) {
 }
 
 console.log(`prepare-dispatch-bundle: staged payloads in ${stageDir}`);
+
+// Verify/download immediately before returning to the bundler. Both `tauri
+// build` and `tauri bundle` run this hook; Linux selects target/.tauri.
+run(process.execPath, [path.join(repoRoot, "scripts/prepare-linuxdeploy.cjs")]);
