@@ -56,7 +56,7 @@ export function buildGuiSnapshot(source: GuiSource, revision = 0): GuiSnapshot {
 
 export interface GuiHandlers {
     showView(view: 'servers' | 'files'): void | Promise<void>;
-    navigate(panel: GuiPanel, path: string): Promise<void | string>;
+    navigate(panel: GuiPanel, path: string): Promise<string>;
     refresh(panel: GuiPanel): Promise<void>;
     select(panel: GuiPanel, names: string[], mode: 'names' | 'all' | 'none'): void;
     disconnect(): Promise<void>;
@@ -218,6 +218,7 @@ export class GuiController {
             });
             while (!handlerSettled) await this.delay(25, epoch, deadline);
             if (handlerError) throw handlerError;
+            if (intent === 'navigate' && typeof navigationPath !== 'string') throw new GuiError('action_failed');
             // React setters may commit after their callback Promise resolves.
             // Report view/selection/disconnect only when the committed projection agrees.
             const committed = (state: GuiSnapshot): boolean => {
