@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { LatestListing } from './utils/latestListing';
 import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
@@ -917,6 +918,7 @@ const App: React.FC = () => {
   // spinner, so a stall on a slow provider is legible instead of mysterious.
   const [remoteListReason, setRemoteListReason] = useState<string | null>(null);
   const [localListLoading, setLocalListLoading] = useState(false);
+  const [localListLoading2, setLocalListLoading2] = useState(false);
   // Transfer progress: ref holds data (no re-renders), boolean state only changes on start/complete
   const activeTransferRef = useRef<TransferProgress | null>(null);
   const [hasActiveTransfer, setHasActiveTransfer] = useState(false);
@@ -1702,6 +1704,7 @@ const App: React.FC = () => {
   // Race condition guard for loadLocalFiles: increments on each call,
   // stale responses are discarded when callId !== current counter value.
   const loadLocalCallIdRef = React.useRef(0);
+  const latestLocalListing2 = useRef(new LatestListing());
 
   // File clipboard for Cut/Copy/Paste
   const fileClipboardRef = React.useRef<{
@@ -5428,29 +5431,28 @@ const App: React.FC = () => {
   const loadLocalFiles2 = useCallback(async (path: string): Promise<boolean> => {
     if (!path) return false; // defence in depth: see loadLocalFiles above
     try {
-      const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
-      setLocalFiles2(files);
-      setCurrentLocalPath2(path);
-      setSelectedLocalFiles2(new Set());
-      return true;
-    } catch (error) {
-      if (isGvfsMtpPath(path)) {
-        notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+      return await latestLocalListing2.current.run(async isCurrent => {
         try {
-          const home = await homeDir().catch(() => '/');
-          if (home === path) return false;
-          const homeFiles: LocalFile[] = await invoke('get_local_files', {
-            path: home,
-            showHidden: showHiddenFiles,
-          });
-          setLocalFiles2(homeFiles);
-          setCurrentLocalPath2(home);
-          setSelectedLocalFiles2(new Set());
-          return true;
-        } catch {
-          return false;
+          const files = await invoke<LocalFile[]>('get_local_files', { path, showHidden: showHiddenFiles });
+          return { files, path };
+        } catch (error) {
+          if (!isCurrent() || !isGvfsMtpPath(path)) throw error;
+          notify.error(t('common.error'), t('sidebar.portable_unplugged'));
+          try {
+            const home = await homeDir().catch(() => '/');
+            if (home === path || !isCurrent()) return null;
+            const files = await invoke<LocalFile[]>('get_local_files', { path: home, showHidden: showHiddenFiles });
+            return { files, path: home };
+          } catch {
+            return null;
+          }
         }
-      }
+      }, result => {
+        setLocalFiles2(result.files);
+        setCurrentLocalPath2(result.path);
+        setSelectedLocalFiles2(new Set());
+      }, setLocalListLoading2);
+    } catch (error) {
       notify.error(t('common.error'), `Failed to list local files: ${error}`);
       return false;
     }
@@ -16012,7 +16014,7 @@ const App: React.FC = () => {
       ...(isConnected && showRemotePanel ? { remote: { path: (rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath,
         loading: remoteListLoading, selection: selectedRemoteFiles, entriesCount: remoteFiles.length } } : {}),
       local: { path: currentLocalPath, loading: localListLoading, selection: selectedLocalFiles, entriesCount: localFiles.length },
-      ...(showDualLocalPanel && (!isConnected || !showRemotePanel) ? { local2: { path: currentLocalPath2, loading: false,
+      ...(showDualLocalPanel && (!isConnected || !showRemotePanel) ? { local2: { path: currentLocalPath2, loading: localListLoading2,
         selection: selectedLocalFiles2, entriesCount: localFiles2.length } } : {}),
     },
     queue: {

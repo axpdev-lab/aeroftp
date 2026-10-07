@@ -16,7 +16,7 @@ beforeEach(() => {
             remote: { path: '/remote', loading: false, selection: new Set(), entriesCount: 1 } },
         queue: { active: 0, pending: 0, failed: 0 } };
     handlers = { showView: vi.fn(view => { source.view = view; }),
-        navigate: vi.fn(async (panel: GuiPanel, path: string) => { source.panels[panel]!.path = path; }),
+        navigate: vi.fn(async (panel: GuiPanel, path: string) => { source.panels[panel]!.path = path; return path; }),
         refresh: vi.fn(async () => {}), select: vi.fn(),
         disconnect: vi.fn(async () => { source.connected = false; }), stop: vi.fn(async () => {}) };
     changed = vi.fn(); audit = vi.fn(); controller = new GuiController(() => source, () => handlers, changed, audit);
@@ -126,7 +126,7 @@ it('keeps the mutation lane owned until a timed-out underlying handler settles',
 });
 
 it('does not silently call successful navigation when a swallowed failure kept the same path', async () => {
-    handlers.navigate = vi.fn(async () => {});
+    handlers.navigate = vi.fn(async () => undefined as unknown as string);
     expect((await run('navigate', { panel: 'remote', path: '/different' })).error).toBe('action_failed');
 });
 
