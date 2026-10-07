@@ -16,6 +16,8 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
     const current = useRef({ source, handlers, audit });
     const controller = useRef<GuiController | null>(null);
     const mutationId = useRef<string | null>(null);
+    const ownedSettingsArea = useRef<string | null>(null);
+    const requestedSettingsArea = useRef<string | null>(null);
     const commitSequence = useRef(0);
     const commitWaiters = useRef(new Map<number, () => void>());
     const [commitTicket, setCommitTicket] = useState(0);
@@ -41,7 +43,10 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         const service = new GuiController(() => ({ ...current.current.source,
             // The owned Settings dialog is a first-class controller surface, so
             // it does not self-block; any OTHER modal still interrupts control.
-            blocked: current.current.source.blocked || !!document.querySelector('[aria-modal="true"]:not([data-gui-owned="settings"])') }), () => ({ ...current.current.handlers,
+            blocked: current.current.source.blocked || Array.from(document.querySelectorAll('[aria-modal="true"]')).some(modal =>
+                modal.getAttribute('data-gui-owned') !== 'settings' || modal.getAttribute('data-gui-safe') !== 'true' ||
+                ![ownedSettingsArea.current, requestedSettingsArea.current].some(area => area && modal.getAttribute('data-gui-area') === area)) }), () => ({ ...current.current.handlers,
+                stop: async () => { ownedSettingsArea.current = null; requestedSettingsArea.current = null; await current.current.handlers.stop(); },
                 connect: async (id, scope) => {
                     if (!current.current.handlers.connect) throw new GuiError('blocked');
                     const result = await current.current.handlers.connect(id, scope);
@@ -52,32 +57,40 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
                     await committed(); return result;
                 },
                 refresh: async panel => { await current.current.handlers.refresh(panel); await committed(); },
-                settingsOpen: async area => {
+                settingsOpen: async (area, scope) => {
                     if (!current.current.handlers.settingsOpen) throw new GuiError('blocked');
-                    await current.current.handlers.settingsOpen(area); await committed();
+                    requestedSettingsArea.current = area;
+                    try { await current.current.handlers.settingsOpen(area, scope); await committed(); ownedSettingsArea.current = area; }
+                    catch (error) { ownedSettingsArea.current = null; throw error; }
+                    finally { requestedSettingsArea.current = null; }
                 },
-                settingsClose: async () => {
+                settingsClose: async scope => {
                     if (!current.current.handlers.settingsClose) throw new GuiError('blocked');
-                    await current.current.handlers.settingsClose(); await committed();
+                    await current.current.handlers.settingsClose(scope); await committed();
+                    ownedSettingsArea.current = null;
                 },
-                settingsRead: async area => {
+                settingsRead: async (area, scope) => {
                     if (!current.current.handlers.settingsRead) throw new GuiError('blocked');
-                    await current.current.handlers.settingsRead(area); await committed();
+                    await current.current.handlers.settingsRead(area, scope); await committed();
                 },
-                settingsUpdate: async (area, set) => {
+                settingsUpdate: async (area, set, scope) => {
                     if (!current.current.handlers.settingsUpdate) throw new GuiError('blocked');
-                    await current.current.handlers.settingsUpdate(area, set); await committed();
+                    await current.current.handlers.settingsUpdate(area, set, scope); await committed();
                 },
             }),
             value => { if (mounted) setLease(value); }, (intent, ok, owner) => current.current.audit(intent, ok, owner));
         controller.current = service;
         const interrupt = (event: Event) => {
-            if (event.isTrusted && !(event.target instanceof Element && event.target.closest('[data-gui-controller-stop]'))) service.interrupt();
+            if (event.isTrusted && !(event.target instanceof Element && event.target.closest('[data-gui-controller-stop]'))) {
+                ownedSettingsArea.current = null; requestedSettingsArea.current = null; service.interrupt();
+            }
         };
         const partitionChanged = (event: Event) => {
             // The connect flow writes timestamps and failure markers itself.
             // Account/profile edits still emit the ordinary interrupting event.
             if (service.connecting && (event as CustomEvent).detail?.connectionMetadata === true) return;
+            ownedSettingsArea.current = null;
+            requestedSettingsArea.current = null;
             service.interrupt();
         };
         window.addEventListener('pointerdown', interrupt, true);
@@ -97,7 +110,7 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
             if (import.meta.env.DEV) delete window.__aeroftpController;
         };
     }, []);
-    useEffect(() => { if (source.locked) controller.current?.interrupt(); }, [source.locked]);
+    useEffect(() => { if (source.locked) { ownedSettingsArea.current = null; requestedSettingsArea.current = null; controller.current?.interrupt(); } }, [source.locked]);
     useEffect(() => {
         if (!lease?.panel || !lease.intent) return;
         const target = Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="${TID.panel}"]`))

@@ -4,7 +4,7 @@
 import { ConnectScope, type ProfileConnectOutcome } from './connectScope';
 import { GuiError, type GuiErrorCode } from './errors';
 import {
-    SETTINGS_INTENTS, settingsUpdateCommitted, validateSettingsSet,
+    SETTINGS_INTENTS, buildSettingsProjection, settingsUpdateCommitted, validateSettingsSet,
     type GuiSettingsProjection, type SettingsArea,
 } from './settingsSchema';
 
@@ -63,7 +63,7 @@ export function buildGuiSnapshot(source: GuiSource, revision = 0): GuiSnapshot {
             selection: selection.slice(0, 100).map(boundedText), selection_count: selection.length, entries_count: p.entriesCount };
     }
     result.queue = { active: source.queue.active, pending: source.queue.pending, failed: source.queue.failed };
-    if (source.settings) result.settings = source.settings;
+    if (source.settings) result.settings = buildSettingsProjection(source.settings);
     return result;
 }
 
@@ -75,10 +75,10 @@ export interface GuiHandlers {
     connect?(profileId: string, scope: ConnectScope): Promise<ProfileConnectOutcome>;
     disconnect(): Promise<void>;
     stop(): Promise<void>;
-    settingsOpen?(area: SettingsArea): Promise<void>;
-    settingsClose?(): Promise<void>;
-    settingsRead?(area: SettingsArea): Promise<void>;
-    settingsUpdate?(area: SettingsArea, set: Record<string, unknown>): Promise<void>;
+    settingsOpen?(area: SettingsArea, scope: ConnectScope): Promise<void>;
+    settingsClose?(scope: ConnectScope): Promise<void>;
+    settingsRead?(area: SettingsArea, scope: ConnectScope): Promise<void>;
+    settingsUpdate?(area: SettingsArea, set: Record<string, unknown>, scope: ConnectScope): Promise<void>;
 }
 export interface GuiRequest {
     name: string; args?: Record<string, unknown>; timeout_ms?: number;
@@ -152,6 +152,7 @@ export class GuiController {
     private pending = 0;
     private lease: GuiLease | null = null;
     private connectScope: ConnectScope | null = null;
+    private settingsScope: ConnectScope | null = null;
     private expiry: ReturnType<typeof setTimeout> | undefined;
     constructor(private readonly source: () => GuiSource, private readonly handlers: () => GuiHandlers,
         private readonly changed: (lease: GuiLease | null) => void,
@@ -166,6 +167,7 @@ export class GuiController {
     }
     interrupt(): void {
         this.connectScope?.cancel(new GuiError('lease_interrupted'));
+        this.settingsScope?.cancel(new GuiError('lease_interrupted'));
         this.epoch++; this.lease = null; clearTimeout(this.expiry); this.changed(null);
     }
     dispose(): void { this.disposed = true; this.interrupt(); }
@@ -189,6 +191,7 @@ export class GuiController {
         let succeeded = false;
         let returned = false;
         let connectScope: ConnectScope | undefined;
+        let settingsScope: ConnectScope | undefined;
         if (this.pending >= 16) return { ok: false, error: 'busy', snapshot: this.state() };
         this.pending++;
         try {
@@ -246,6 +249,14 @@ export class GuiController {
             let handlerError: unknown;
             let connectOutcome: ProfileConnectOutcome | undefined;
             let navigationPath: void | string = undefined;
+            if ((SETTINGS_INTENTS as readonly string[]).includes(intent)) {
+                settingsScope = new ConnectScope(() => {
+                    this.guard(epoch, deadline);
+                    if (this.source().locked) throw new GuiError('locked');
+                    if (this.source().blocked) throw new GuiError('blocked');
+                });
+                this.settingsScope = settingsScope;
+            }
             const operation = async () => {
                 switch (intent) {
                     case 'connect':
@@ -266,16 +277,16 @@ export class GuiController {
                     case 'disconnect': await h.disconnect(); break;
                     case 'settings_open':
                         if (!h.settingsOpen) throw new GuiError('blocked');
-                        await h.settingsOpen(settingsAreaArg(args)); break;
+                        await h.settingsOpen(settingsAreaArg(args), settingsScope!); break;
                     case 'settings_close':
                         if (!h.settingsClose) throw new GuiError('blocked');
-                        await h.settingsClose(); break;
+                        await h.settingsClose(settingsScope!); break;
                     case 'settings_read':
                         if (!h.settingsRead) throw new GuiError('blocked');
-                        await h.settingsRead(settingsAreaArg(args)); break;
+                        await h.settingsRead(settingsAreaArg(args), settingsScope!); break;
                     case 'settings_update':
                         if (!h.settingsUpdate) throw new GuiError('blocked');
-                        await h.settingsUpdate(settingsAreaArg(args), args.set as Record<string, unknown>); break;
+                        await h.settingsUpdate(settingsAreaArg(args), args.set as Record<string, unknown>, settingsScope!); break;
                 }
             };
             void operation().catch(error => { handlerError = error; }).finally(() => {
@@ -339,6 +350,7 @@ export class GuiController {
             succeeded = true;
             return { ok: true, error: null, snapshot: this.state() };
         } catch (error) {
+            settingsScope?.cancel(error instanceof GuiError ? error : new GuiError('action_failed'));
             // A failed/pending-human connect leaves the human dialog intact.
             if (connectScope && (!handlerSettled || (error instanceof GuiError && ['lease_interrupted', 'gui_timeout', 'locked'].includes(error.code)))) {
                 connectScope.cancel(error instanceof GuiError ? error : new GuiError('action_failed'));
@@ -347,6 +359,7 @@ export class GuiController {
             if (ownsLane && laneEpoch === this.epoch) this.interrupt();
             return { ok: false, error: error instanceof GuiError ? error.code : 'action_failed', snapshot: this.state() };
         } finally {
+            if (this.settingsScope === settingsScope) this.settingsScope = null;
             returned = true;
             if (this.connectScope === connectScope) this.connectScope = null;
             this.pending--;

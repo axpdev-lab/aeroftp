@@ -19,6 +19,7 @@ import {
 } from './settingsSchema';
 import { updateAppSettings } from '../utils/appSettings';
 import { applyAgentAiSettingsUpdate, readAiPublicProjection } from '../utils/aiSettingsStore';
+import { bindSettingsScope } from './settingsScope';
 
 export interface SettingsHandlerDeps {
     /** Open the general Settings panel (its safe surface) and close the AI one. */
@@ -35,26 +36,32 @@ export function createSettingsHandlers(
     deps: SettingsHandlerDeps,
 ): Required<Pick<GuiHandlers, 'settingsOpen' | 'settingsClose' | 'settingsRead' | 'settingsUpdate'>> {
     return {
-        settingsOpen: async area => {
-            if (area === 'general') deps.openGeneral();
-            else deps.openAi();
+        settingsOpen: async (area, parent) => {
+            const scope = await bindSettingsScope(parent);
+            await scope.step(() => { if (area === 'general') deps.openGeneral(); else deps.openAi(); });
         },
-        settingsClose: async () => {
-            deps.closeAll();
+        settingsClose: async parent => {
+            const scope = await bindSettingsScope(parent);
+            await scope.step(deps.closeAll);
         },
-        settingsRead: async area => {
+        settingsRead: async (area, parent) => {
+            const scope = await bindSettingsScope(parent);
             // The general projection is the live useSettings state, already
             // authoritative; the AI projection is re-read from the persisted
             // public blob on demand (no key hydration anywhere on this path).
-            if (area === 'ai') deps.onAiProjection(await readAiPublicProjection());
+            if (area === 'ai') {
+                const projection = await readAiPublicProjection(scope);
+                scope.assert(); deps.onAiProjection(projection);
+            }
         },
-        settingsUpdate: async (area, set) => {
+        settingsUpdate: async (area, set, parent) => {
             const validated = validateSettingsSet(area, set);
+            const scope = await bindSettingsScope(parent);
             if (area === 'general') {
                 const applied = validated as Record<string, unknown>;
-                await updateAppSettings(existing => ({ ...(existing || {}), ...applied }));
+                await updateAppSettings(existing => ({ ...(existing || {}), ...applied }), scope);
             } else {
-                await applyAgentAiSettingsUpdate(validated as AiSettingsUpdate);
+                await applyAgentAiSettingsUpdate(validated as AiSettingsUpdate, scope);
             }
         },
     };

@@ -21,6 +21,13 @@ const expectInvalid = (fn: () => unknown) => {
 };
 
 describe('validateSettingsSet: general', () => {
+    it('refuses JSON prototype names at both preference boundaries', () => {
+        for (const key of ['constructor', 'toString', '__proto__']) {
+            const set = JSON.parse(`{"${key}":true}`);
+            expectInvalid(() => validateSettingsSet('general', set));
+            expectInvalid(() => validateSettingsSet('ai', { advanced: set }));
+        }
+    });
     it('accepts allowlisted values inside their UI bounds', () => {
         expect(validateSettingsSet('general', {
             showHiddenFiles: false, dateFormat: 'iso', fontSize: 18, fontFamily: "'FiraGO', sans-serif",

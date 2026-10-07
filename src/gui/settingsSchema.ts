@@ -42,6 +42,7 @@ const MAX_SETTINGS_STRING = 256;
 const MAX_GENERAL_KEYS = 40;
 
 const boundedString = (value: string) => value.slice(0, MAX_SETTINGS_STRING);
+const hasOwn = (object: object, key: string) => Object.prototype.hasOwnProperty.call(object, key);
 
 const boolField = (value: unknown): boolean => {
     if (typeof value !== 'boolean') throw new GuiError('invalid_args');
@@ -139,7 +140,7 @@ function validateAiSet(raw: unknown): AiSettingsUpdate {
         const advanced: Record<string, SettingsScalar> = {};
         for (const [key, value] of Object.entries(v)) {
             const validator = AI_ADVANCED_FIELDS[key];
-            if (!validator) throw new GuiError('invalid_args');
+            if (!hasOwn(AI_ADVANCED_FIELDS, key)) throw new GuiError('invalid_args');
             advanced[key] = validator(value);
         }
         if (Object.keys(advanced).length === 0) throw new GuiError('invalid_args');
@@ -154,7 +155,7 @@ function validateGeneralSet(raw: unknown): Record<string, SettingsScalar> {
     const out: Record<string, SettingsScalar> = {};
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
         const validator = GENERAL_SETTINGS_FIELDS[key];
-        if (!validator) throw new GuiError('invalid_args');
+        if (!hasOwn(GENERAL_SETTINGS_FIELDS, key)) throw new GuiError('invalid_args');
         out[key] = validator(value);
     }
     if (Object.keys(out).length === 0) throw new GuiError('invalid_args');
@@ -170,7 +171,7 @@ export function validateSettingsSet(area: SettingsArea, raw: unknown): Record<st
 export function buildGeneralProjection(raw: Record<string, unknown>): Record<string, SettingsScalar> {
     const out: Record<string, SettingsScalar> = {};
     for (const [key, validator] of Object.entries(GENERAL_SETTINGS_FIELDS)) {
-        if (!(key in raw)) continue;
+        if (!hasOwn(raw, key)) continue;
         try { out[key] = validator(raw[key]); } catch { /* a stored value outside bounds is omitted, not echoed */ }
         if (Object.keys(out).length >= MAX_GENERAL_KEYS) break;
     }
@@ -194,6 +195,34 @@ export function buildAiProjection(settings: AISettings): AiSettingsProjection {
     }
     const defaultModelId = typeof settings.defaultModelId === 'string' ? boundedString(settings.defaultModelId) : null;
     return { providers, models, default_model_id: defaultModelId, advanced };
+}
+
+/** Re-project even an already projected source: never trust extra runtime fields. */
+export function buildSettingsProjection(source: GuiSettingsProjection): GuiSettingsProjection {
+    const ai = source.ai;
+    const advanced: Record<string, SettingsScalar> = {};
+    if (ai) {
+        for (const [key, validator] of Object.entries(AI_ADVANCED_FIELDS)) {
+            if (!ai.advanced || !hasOwn(ai.advanced, key)) continue;
+            try { advanced[key] = validator(ai.advanced[key]); } catch { /* omit invalid values */ }
+        }
+    }
+    return {
+        open: source.open === 'general' || source.open === 'ai' ? source.open : null,
+        general: source.general ? buildGeneralProjection(source.general) : null,
+        ai: ai ? {
+            providers: Array.isArray(ai.providers) ? ai.providers.slice(0, MAX_SETTINGS_PROVIDERS).map(p => ({
+                id: boundedString(String(p.id)), name: boundedString(String(p.name)),
+                type: String(p.type).slice(0, 64), enabled: p.enabled === true,
+            })) : [],
+            models: Array.isArray(ai.models) ? ai.models.slice(0, MAX_SETTINGS_MODELS).map(m => ({
+                id: boundedString(String(m.id)), provider_id: boundedString(String(m.provider_id)),
+                name: boundedString(String(m.name)), enabled: m.enabled === true, is_default: m.is_default === true,
+            })) : [],
+            default_model_id: typeof ai.default_model_id === 'string' ? boundedString(ai.default_model_id) : null,
+            advanced,
+        } : null,
+    };
 }
 
 /** Whether the committed projection reflects every requested change of an update. */

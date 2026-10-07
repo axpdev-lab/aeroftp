@@ -11,7 +11,8 @@
 // Both the human panel save and the GUI controller's bounded AI update run
 // through the same queue, so the two never interleave a read-modify-write.
 
-import { secureGetWithFallback, secureStore } from './secureStorage';
+import { secureGetConfigStrict, secureGetWithFallback, secureStore } from './secureStorage';
+import type { ConnectScope } from '../gui/connectScope';
 import { GuiError } from '../gui/errors';
 import {
     AI_ADVANCED_KEY_MAP, buildAiProjection,
@@ -33,14 +34,19 @@ const stripApiKeys = (settings: AISettings): AISettings => ({
 let pending: Promise<void> = Promise.resolve();
 
 /** Serialize public-blob mutations, reading the latest blob inside the queue. */
-export function updateAiSettingsBlob(mutate: (existing: AISettings | null) => AISettings): Promise<AISettings> {
+export function updateAiSettingsBlob(mutate: (existing: AISettings | null) => AISettings, scope?: ConnectScope): Promise<AISettings> {
     const operation = pending.then(async () => {
-        const existing = await secureGetWithFallback<AISettings>(AI_SETTINGS_VAULT_KEY, AI_SETTINGS_KEY);
+        const existing = scope ? await scope.step(() => secureGetConfigStrict<AISettings>('ai_settings')) :
+            await secureGetWithFallback<AISettings>(AI_SETTINGS_VAULT_KEY, AI_SETTINGS_KEY);
         const stripped = stripApiKeys(mutate(existing));
         // localStorage stays the write-through fallback; the vault write is
         // awaited, and only a successful one clears the fallback copy.
-        try { localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped)); } catch { /* cache unavailable */ }
-        await secureStore(AI_SETTINGS_VAULT_KEY, stripped);
+        if (!scope) {
+            try { localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify(stripped)); } catch { /* cache unavailable */ }
+        }
+        if (scope) await scope.step(() => secureStore(AI_SETTINGS_VAULT_KEY, stripped));
+        else await secureStore(AI_SETTINGS_VAULT_KEY, stripped);
+        scope?.assert();
         try { localStorage.removeItem(AI_SETTINGS_KEY); } catch { /* best effort */ }
         window.dispatchEvent(new CustomEvent(AI_SETTINGS_EVENT, { detail: stripped }));
         return stripped;
@@ -51,13 +57,14 @@ export function updateAiSettingsBlob(mutate: (existing: AISettings | null) => AI
 }
 
 /** Read the persisted public blob; absent config resolves to the empty defaults. */
-export async function readAiSettingsBlob(): Promise<AISettings> {
-    const existing = await secureGetWithFallback<AISettings>(AI_SETTINGS_VAULT_KEY, AI_SETTINGS_KEY);
+export async function readAiSettingsBlob(scope?: ConnectScope): Promise<AISettings> {
+    const existing = scope ? await scope.step(() => secureGetConfigStrict<AISettings>('ai_settings')) :
+        await secureGetWithFallback<AISettings>(AI_SETTINGS_VAULT_KEY, AI_SETTINGS_KEY);
     return existing ?? getDefaultAISettings();
 }
 
-export async function readAiPublicProjection(): Promise<AiSettingsProjection> {
-    return buildAiProjection(await readAiSettingsBlob());
+export async function readAiPublicProjection(scope?: ConnectScope): Promise<AiSettingsProjection> {
+    return buildAiProjection(await readAiSettingsBlob(scope));
 }
 
 /**
@@ -67,7 +74,7 @@ export async function readAiPublicProjection(): Promise<AiSettingsProjection> {
  * cleared. Unknown provider/model ids are invalid_args; an update against an
  * account that has no AI settings yet is action_failed.
  */
-export function applyAgentAiSettingsUpdate(update: AiSettingsUpdate): Promise<AISettings> {
+export function applyAgentAiSettingsUpdate(update: AiSettingsUpdate, scope?: ConnectScope): Promise<AISettings> {
     return updateAiSettingsBlob(existing => {
         if (!existing || !Array.isArray(existing.providers)) throw new GuiError('action_failed');
         const next: AISettings = {
@@ -104,5 +111,5 @@ export function applyAgentAiSettingsUpdate(update: AiSettingsUpdate): Promise<AI
             }
         }
         return next;
-    });
+    }, scope);
 }

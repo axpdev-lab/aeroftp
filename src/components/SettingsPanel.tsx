@@ -1054,6 +1054,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     aria-modal="true"
                     aria-labelledby="settings-panel-title"
                     data-gui-owned="settings"
+                    data-gui-area="general"
+                    data-gui-safe={activeTab === 'general' || activeTab === 'ui'}
                     tabIndex={-1}
                     onKeyDown={handlePanelKeyDown}
                     className="relative bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden animate-scale-in flex flex-col"

@@ -3,12 +3,12 @@
 
 import { ConnectScope, type ProfileConnector, type RegisterProfileConnector } from './gui/connectScope';
 import { runOwnedConnectionCleanup } from './gui/connectionCleanup';
-import { buildAiProjection, buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
+import { buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
 import { createSettingsHandlers } from './gui/settingsHandlers';
+import { bindSettingsScope } from './gui/settingsScope';
 import {
     AI_SETTINGS_EVENT, AI_SETTINGS_OPEN_EVENT, readAiPublicProjection,
 } from './utils/aiSettingsStore';
-import type { AISettings } from './types/ai';
 import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
@@ -16053,25 +16053,36 @@ const App: React.FC = () => {
   const [aiPublicSettings, setAiPublicSettings] = useState<AiSettingsProjection | null>(null);
   const [aiSettingsModalOpen, setAiSettingsModalOpen] = useState(false);
   const [aiSettingsOpenRequest, setAiSettingsOpenRequest] = useState(false);
+  const aiSettingsWasOpen = useRef(false);
   useEffect(() => {
-    let cancelled = false;
-    readAiPublicProjection().then(projection => { if (!cancelled) setAiPublicSettings(projection); }).catch(() => { });
-    return () => { cancelled = true; };
-  }, []);
-  useEffect(() => {
-    const onChanged = (e: Event) => {
-      const detail = (e as CustomEvent).detail as AISettings | undefined;
-      if (!detail || !Array.isArray(detail.providers)) return;
-      setAiPublicSettings(buildAiProjection(detail));
+    let sequence = 0;
+    let currentScope: ConnectScope | undefined;
+    const reload = () => {
+      const ticket = ++sequence;
+      currentScope?.cancel(new GuiError('lease_interrupted'));
+      setAiPublicSettings(null);
+      if (!vaultBootComplete || isAppLocked || accountLockState !== 'ready') return;
+      const parent = new ConnectScope(() => { if (ticket !== sequence) throw new GuiError('lease_interrupted'); });
+      currentScope = parent;
+      void bindSettingsScope(parent).then(scope => readAiPublicProjection(scope))
+        .then(projection => { parent.assert(); setAiPublicSettings(projection); }).catch(() => {});
     };
-    window.addEventListener(AI_SETTINGS_EVENT, onChanged);
-    return () => window.removeEventListener(AI_SETTINGS_EVENT, onChanged);
-  }, []);
+    reload();
+    window.addEventListener(AI_SETTINGS_EVENT, reload);
+    window.addEventListener(PROFILES_CHANGED_EVENT, reload);
+    return () => {
+      ++sequence; currentScope?.cancel(new GuiError('lease_interrupted'));
+      window.removeEventListener(AI_SETTINGS_EVENT, reload);
+      window.removeEventListener(PROFILES_CHANGED_EVENT, reload);
+    };
+  }, [vaultBootComplete, isAppLocked, accountLockState]);
   useEffect(() => {
     const onOpen = (e: Event) => {
       const open = !!(e as CustomEvent).detail?.open;
       setAiSettingsModalOpen(open);
-      if (!open) setAiSettingsOpenRequest(false);
+      // The lazy panel's initial closed effect must not cancel an outstanding open.
+      if (!open && aiSettingsWasOpen.current) setAiSettingsOpenRequest(false);
+      aiSettingsWasOpen.current = open;
     };
     window.addEventListener(AI_SETTINGS_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(AI_SETTINGS_OPEN_EVENT, onOpen);

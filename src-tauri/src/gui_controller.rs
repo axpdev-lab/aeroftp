@@ -107,7 +107,7 @@ struct Queue {
 }
 /// Safe Settings projection: allowlisted public values only. The frontend
 /// builds it field-by-field; this validator re-checks shape, bounds and
-/// scalar-only values, and the locked check below requires it to be absent
+/// exact allowlisted values, and the locked check below requires it to be absent
 /// whenever the app is locked.
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -142,15 +142,61 @@ struct SettingsView {
     general: Option<serde_json::Map<String, Value>>,
     ai: Option<SettingsAi>,
 }
-fn scalar_settings_map(map: &serde_json::Map<String, Value>) -> bool {
+fn settings_integer(value: &Value, min: i64, max: i64) -> bool {
+    value
+        .as_f64()
+        .is_some_and(|n| n.fract() == 0.0 && n >= min as f64 && n <= max as f64)
+}
+fn settings_number(value: &Value, min: f64, max: f64) -> bool {
+    value
+        .as_f64()
+        .is_some_and(|n| n.is_finite() && n >= min && n <= max)
+}
+fn settings_choice(value: &Value, choices: &[&str]) -> bool {
+    value.as_str().is_some_and(|s| choices.contains(&s))
+}
+fn general_settings_map(map: &serde_json::Map<String, Value>) -> bool {
     map.len() <= MAX_SETTINGS_KEYS
-        && map.iter().all(|(key, value)| {
-            key.len() <= 64
-                && (value.is_boolean()
-                    || value.is_number()
-                    || value
-                        .as_str()
-                        .is_some_and(|s| s.len() <= MAX_SETTINGS_STRING))
+        && map.iter().all(|(key, value)| match key.as_str() {
+            "showHiddenFiles"
+            | "showStatusBar"
+            | "showTransferProgress"
+            | "compactMode"
+            | "swapPanels"
+            | "sortFoldersFirst"
+            | "showFileExtensions"
+            | "showToastNotifications"
+            | "discoverHealthCheck" => value.is_boolean(),
+            "fontSize" => settings_integer(value, 10, 22),
+            "introHubIconSize" => settings_integer(value, 18, 32),
+            "dateFormat" => settings_choice(value, &["localized", "iso", "dmy", "mdy"]),
+            "cardLayout" => settings_choice(value, &["compact", "detailed"]),
+            "favoriteMarker" => settings_choice(value, &["star", "heart"]),
+            "fontFamily" => settings_choice(
+                value,
+                &[
+                    "'Inter', system-ui, sans-serif",
+                    "system-ui, -apple-system, sans-serif",
+                    "'FiraGO', sans-serif",
+                    "'Noto Sans', sans-serif",
+                    "'JetBrains Mono', monospace",
+                ],
+            ),
+            _ => false,
+        })
+}
+fn advanced_settings_map(map: &serde_json::Map<String, Value>) -> bool {
+    map.len() <= MAX_SETTINGS_KEYS
+        && map.iter().all(|(key, value)| match key.as_str() {
+            "temperature" => settings_number(value, 0.0, 2.0),
+            "max_tokens" => settings_integer(value, 256, 32768),
+            "top_p" => settings_number(value, 0.0, 1.0),
+            "top_k" => settings_integer(value, 1, 100),
+            "conversation_style" => settings_choice(value, &["precise", "balanced", "creative"]),
+            "response_style" => {
+                settings_choice(value, &["default", "concise", "explanatory", "learning"])
+            }
+            _ => false,
         })
 }
 fn valid_settings_view(settings: &SettingsView) -> bool {
@@ -162,14 +208,14 @@ fn valid_settings_view(settings: &SettingsView) -> bool {
         return false;
     }
     if let Some(general) = &settings.general {
-        if !scalar_settings_map(general) {
+        if !general_settings_map(general) {
             return false;
         }
     }
     if let Some(ai) = &settings.ai {
         if ai.providers.len() > MAX_SETTINGS_PROVIDERS
             || ai.models.len() > MAX_SETTINGS_MODELS
-            || !scalar_settings_map(&ai.advanced)
+            || !advanced_settings_map(&ai.advanced)
             || ai.providers.iter().any(|p| {
                 p.id.len() > MAX_SETTINGS_STRING
                     || p.name.len() > MAX_SETTINGS_STRING
@@ -516,6 +562,41 @@ mod tests {
         let mut bad = unlocked_reply_with_settings();
         bad["snapshot"]["settings"]["ai"]["providers"][0]["apiKey"] = json!("SECRET");
         assert!(parse_reply(bad, true).is_err());
+    }
+    #[test]
+    fn gui_controller_settings_reject_scalar_secrets_and_invalid_values() {
+        for area in ["general", "ai"] {
+            for key in ["apiKey", "password", "constructor", "unknown"] {
+                let mut bad = unlocked_reply_with_settings();
+                let map = if area == "general" {
+                    &mut bad["snapshot"]["settings"]["general"]
+                } else {
+                    &mut bad["snapshot"]["settings"]["ai"]["advanced"]
+                };
+                map[key] = json!("SECRET");
+                assert!(parse_reply(bad, true).is_err(), "{area}.{key}");
+            }
+        }
+        for (key, value) in [
+            ("fontSize", json!(99)),
+            ("fontSize", json!(14.5)),
+            ("showHiddenFiles", json!("true")),
+            ("dateFormat", json!("SECRET")),
+        ] {
+            let mut bad = unlocked_reply_with_settings();
+            bad["snapshot"]["settings"]["general"][key] = value;
+            assert!(parse_reply(bad, true).is_err(), "{key}");
+        }
+        for (key, value) in [
+            ("temperature", json!(2.1)),
+            ("max_tokens", json!(100)),
+            ("top_p", json!(-1)),
+            ("response_style", json!("SECRET")),
+        ] {
+            let mut bad = unlocked_reply_with_settings();
+            bad["snapshot"]["settings"]["ai"]["advanced"][key] = value;
+            assert!(parse_reply(bad, true).is_err(), "{key}");
+        }
     }
     #[test]
     fn gui_controller_window_and_expiry_are_bound() {

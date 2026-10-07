@@ -14,23 +14,30 @@ import { GuiController, type GuiSource } from './controller';
 import { createSettingsHandlers } from './settingsHandlers';
 import { buildAiProjection, buildGeneralProjection } from './settingsSchema';
 import { AI_SETTINGS_EVENT } from '../utils/aiSettingsStore';
+import { updateAiSettingsBlob } from '../utils/aiSettingsStore';
 import { getDefaultAISettings, type AISettings } from '../types/ai';
 
 const store = vi.hoisted(() => ({
     credentials: new Map<string, string>(),
     writes: [] as { account: string; password: string }[],
+    readGate: undefined as (() => Promise<void>) | undefined,
+    readError: undefined as Error | undefined,
+    user: 1,
 }));
 vi.mock('@tauri-apps/api/core', () => ({
     invoke: vi.fn(async (name: string, args?: Record<string, unknown>) => {
         const account = String(args?.account ?? '');
+        if (name === 'user_partitions_unlock_status') return { activeUserId: store.user, unlockedUserId: store.user, isUnlocked: true };
         if (name === 'store_credential') {
             store.writes.push({ account, password: String(args?.password ?? '') });
             store.credentials.set(account, String(args?.password ?? ''));
             return undefined;
         }
         if (name === 'get_credential') {
+            await store.readGate?.();
+            if (store.readError) throw store.readError;
             const value = store.credentials.get(account);
-            if (value === undefined) throw new Error('not found');
+            if (value === undefined) throw new Error(`Credential not found: ${account}`);
             return value;
         }
         if (name === 'delete_credential') {
@@ -73,6 +80,9 @@ const AI_BLOB: AISettings = {
 beforeEach(() => {
     store.credentials.clear();
     store.writes.length = 0;
+    store.readGate = undefined;
+    store.readError = undefined;
+    store.user = 1;
     localStorage.clear();
     source = {
         version: 'test', locked: false, blocked: false, view: 'servers', connected: false,
@@ -122,6 +132,43 @@ const run = (name: string, args?: Record<string, unknown>, extra?: Record<string
 const SECRET_ACCOUNTS = /^(?!config_(app|ai)_settings$)/;
 
 describe('general settings through the real handlers', () => {
+    it('omits added scalar and nested secret fields even from a polluted source projection', async () => {
+        source.settings = {
+            open: 'general', general: { fontSize: 16, password: 'PROJECTION-SECRET' },
+            ai: { providers: [{ id: 'p', name: 'Fixture', type: 'openai', enabled: true, apiKey: 'PROJECTION-SECRET' } as never],
+                models: [], default_model_id: null, advanced: { temperature: 0.7, password: 'PROJECTION-SECRET' } },
+            secret: 'PROJECTION-SECRET',
+        } as never;
+        const snapshot = (await run('state')).snapshot;
+        expect(JSON.stringify(snapshot)).not.toContain('PROJECTION-SECRET');
+        expect(snapshot.settings?.general).toEqual({ fontSize: 16 });
+    });
+
+    it('does not write unreadable stored preferences or use an old fallback', async () => {
+        store.readError = new Error('STORE_NOT_READY');
+        localStorage.setItem('aeroftp_settings', JSON.stringify({ fontSize: 14 }));
+        expect(await run('settings_update', { area: 'general', set: { fontSize: 18 } }))
+            .toMatchObject({ ok: false, error: 'action_failed' });
+        expect(store.writes).toEqual([]);
+    });
+
+    it('Stop during a deferred config read prevents dispatch and retains the mutation lane until settlement', async () => {
+        let release!: () => void;
+        let reading!: () => void;
+        const entered = new Promise<void>(resolve => { reading = resolve; });
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        store.readGate = async () => { reading(); await gate; };
+        store.credentials.set('config_app_settings', JSON.stringify({ fontSize: 14 }));
+        const pending = run('settings_update', { area: 'general', set: { fontSize: 18 } });
+        await entered;
+        controller.interrupt();
+        expect(await pending).toMatchObject({ ok: false, error: 'lease_interrupted' });
+        expect(await run('settings_open', { area: 'general' })).toMatchObject({ ok: false, error: 'busy' });
+        release();
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect(store.writes).toEqual([]);
+        expect(JSON.parse(store.credentials.get('config_app_settings')!).fontSize).toBe(14);
+    });
     it('opens, reads, updates and closes with only the public config blob written', async () => {
         store.credentials.set('config_app_settings', JSON.stringify({ showHiddenFiles: true, timeoutSeconds: 30, confirmBeforeDelete: true }));
         source.settings!.general = buildGeneralProjection({ showHiddenFiles: true });
@@ -170,6 +217,48 @@ describe('general settings through the real handlers', () => {
 
 describe('ai settings through the real handlers', () => {
     const seedAiBlob = () => store.credentials.set('config_ai_settings', JSON.stringify(AI_BLOB));
+
+    it.each(['stop', 'account', 'timeout'])('prevents an AI write after %s during a deferred config read', async reason => {
+        seedAiBlob();
+        let release!: () => void;
+        let reading!: () => void;
+        const entered = new Promise<void>(resolve => { reading = resolve; });
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        store.readGate = async () => { reading(); await gate; };
+        const pending = run('settings_update', { area: 'ai', set: { advanced: { temperature: 0.3 } } },
+            reason === 'timeout' ? { timeout_ms: 100 } : undefined);
+        await entered;
+        if (reason === 'stop') controller.interrupt();
+        if (reason === 'account') store.user = 2;
+        if (reason === 'timeout') {
+            expect(await pending).toMatchObject({ ok: false, error: 'gui_timeout' });
+        }
+        release();
+        if (reason !== 'timeout') expect(await pending).toMatchObject({ ok: false, error: 'lease_interrupted' });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect(store.writes).toEqual([]);
+        expect(localStorage.getItem('aeroftp_ai_settings')).toBeNull();
+    });
+
+    it('a queued AI update rechecks Stop after an earlier human save settles', async () => {
+        seedAiBlob();
+        let release!: () => void;
+        let reading!: () => void;
+        const entered = new Promise<void>(resolve => { reading = resolve; });
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        store.readGate = async () => { reading(); await gate; };
+        const human = updateAiSettingsBlob(existing => existing!);
+        await entered;
+        const pending = run('settings_update', { area: 'ai', set: { advanced: { temperature: 0.3 } } });
+        await new Promise(resolve => setTimeout(resolve, 30));
+        controller.interrupt();
+        expect(await pending).toMatchObject({ ok: false, error: 'lease_interrupted' });
+        release();
+        await human;
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect(store.writes).toHaveLength(1);
+        expect(JSON.parse(store.writes[0].password).advancedSettings.temperature).toBe(0.7);
+    });
 
     it('updates provider/model identity and bounded parameters with zero secret writes', async () => {
         seedAiBlob();

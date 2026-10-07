@@ -25,6 +25,7 @@ import { AEROAGENT_VERSION } from '../../utils/aeroagentVersion';
 import { createTauriListener } from '../../hooks/useTauriListener';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { AI_SETTINGS_EVENT, AI_SETTINGS_KEY, AI_SETTINGS_OPEN_EVENT, updateAiSettingsBlob } from '../../utils/aiSettingsStore';
+import { DirtyApiKeyEdits, mergeAiSettingsDraft } from '../../utils/aiSettingsDraft';
 
 interface AISettingsPanelProps {
     isOpen: boolean;
@@ -246,10 +247,12 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const settingsRef = useRef(settings);
     settingsRef.current = settings;
     // Deliberate human API-key edits not yet flushed to the keyring. Only
-    // providers in this set are written to `ai_apikey_*` on save: a plain
+    // providers with a pending generation are written to `ai_apikey_*`: a plain
     // preference change (or a controller update) never re-writes a stored
     // key, and a later preference save cannot discard a pending key edit.
-    const dirtyApiKeysRef = useRef<Set<string>>(new Set());
+    const dirtyApiKeysRef = useRef(new DirtyApiKeyEdits());
+    const pendingDraftRef = useRef<{ base: AISettings; edited: AISettings } | null>(null);
+    const inFlightDraftsRef = useRef<{ base: AISettings; edited: AISettings }[]>([]);
     const [activeTab, setActiveTab] = useState<'providers' | 'models' | 'advanced' | 'prompt' | 'plugins' | 'macros' | 'mcp'>('providers');
     const [showMarketplace, setShowMarketplace] = useState(false);
     const [showPluginBrowser, setShowPluginBrowser] = useState(false);
@@ -432,21 +435,29 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     // Merge public-blob changes written outside this panel (a bounded
     // controller update, or this panel's own flushed save). Pending human
     // API-key edits survive: the incoming blob carries no keys, so each
-    // provider keeps the key this panel currently holds, and the dirty set
+    // provider keeps the key this panel currently holds, and its edit generation
     // is left alone for the next flush.
     useEffect(() => {
         const onExternal = (e: Event) => {
             const detail = (e as CustomEvent).detail as AISettings | undefined;
             if (!detail || !Array.isArray(detail.providers)) return;
-            setSettings(prev => ({
-                ...detail,
-                providers: detail.providers.map(p => ({
+            setSettings(prev => {
+                let publicSettings = detail;
+                for (const draft of [...inFlightDraftsRef.current, ...(pendingDraftRef.current ? [pendingDraftRef.current] : [])]) {
+                    publicSettings = mergeAiSettingsDraft(draft.base, draft.edited, publicSettings);
+                }
+                const next = {
+                ...publicSettings,
+                providers: publicSettings.providers.map(p => ({
                     ...p,
                     createdAt: new Date(p.createdAt),
                     updatedAt: new Date(p.updatedAt),
                     apiKey: prev.providers.find(current => current.id === p.id)?.apiKey,
                 })),
-            }));
+                };
+                settingsRef.current = next;
+                return next;
+            });
         };
         window.addEventListener(AI_SETTINGS_EVENT, onExternal);
         return () => window.removeEventListener(AI_SETTINGS_EVENT, onExternal);
@@ -459,22 +470,28 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     // every debounce, so an unrelated preference save performs zero secret
     // writes and cannot clobber a key edit still being typed.
     const saveSettings = useCallback((newSettings: AISettings) => {
+        pendingDraftRef.current = { base: pendingDraftRef.current?.base ?? settingsRef.current, edited: newSettings };
         settingsRef.current = newSettings;
         setSettings(newSettings);
 
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = setTimeout(async () => {
+            const draft = pendingDraftRef.current;
+            pendingDraftRef.current = null;
+            if (!draft) return;
+            inFlightDraftsRef.current.push(draft);
             // Store only deliberately edited API keys in OS Keyring
             const dirty = dirtyApiKeysRef.current;
             const keyringErrors: string[] = [];
-            for (const provider of newSettings.providers) {
-                if (provider.apiKey && dirty.has(provider.id)) {
+            const keyEdits = newSettings.providers.map(provider => ({ provider, generation: dirty.capture(provider.id) }));
+            for (const { provider, generation } of keyEdits) {
+                if (provider.apiKey && generation !== undefined) {
                     try {
                         await invoke('store_credential', {
                             account: `ai_apikey_${provider.id}`,
                             password: provider.apiKey,
                         });
-                        dirty.delete(provider.id);
+                        dirty.complete(provider.id, generation);
                     } catch (e) {
                         // Kept dirty so the next save retries the same edit.
                         keyringErrors.push(`${provider.name}: ${e}`);
@@ -489,9 +506,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
             // updateAiSettingsBlob strips apiKey fields defensively and keeps
             // the localStorage fallback until the vault write resolves.
             try {
-                await updateAiSettingsBlob(() => newSettings);
+                await updateAiSettingsBlob(existing => mergeAiSettingsDraft(draft.base, draft.edited, existing ?? draft.base));
             } catch (e) {
                 console.error('[AISettings] Vault persist failed, localStorage retained as fallback:', e);
+            } finally {
+                inFlightDraftsRef.current = inFlightDraftsRef.current.filter(current => current !== draft);
             }
         }, 300);
     }, []);
@@ -823,7 +842,8 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-4" data-gui-owned="settings">
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-4" role="dialog" aria-modal="true"
+            data-gui-owned="settings" data-gui-area="ai" data-gui-safe={['providers', 'models', 'advanced'].includes(activeTab)}>
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
 
             <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-lg shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
@@ -966,7 +986,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                                     value={provider.type === 'ollama' ? 'ollama' : provider.apiKey || ''}
                                                                     onChange={(e) => {
                                                                         if (provider.type !== 'ollama') {
-                                                                            dirtyApiKeysRef.current.add(provider.id);
+                                                                            dirtyApiKeysRef.current.mark(provider.id);
                                                                             updateProvider({
                                                                                 ...provider,
                                                                                 apiKey: e.target.value,
