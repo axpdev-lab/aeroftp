@@ -9,6 +9,8 @@ import settingsSource from '../components/SettingsPanel.tsx?raw';
 import app from '../App.tsx?raw';
 import { reorderVisibleInFull } from './reorderByIndex';
 import { createProfileCredentialJournal } from './profileCredentialJournal';
+import { mergeAppSettingsDraft } from './appSettingsDraft';
+import { ConnectScope } from '../gui/connectScope';
 
 // Run the production closures, with their captured IPC and React state cells
 // supplied by the fixture. No save handler implementation is duplicated here.
@@ -138,6 +140,9 @@ describe('saved profile write rejection in production handlers', () => {
         const f = fixture(fail);
         Object.assign(f.context, {
             saveState: 'idle', settings: { fontSize: 14, fontFamily: 'system', introHubIconSize: 32 },
+            settingsBase: { current: { fontSize: 12, fontFamily: 'system', introHubIconSize: 32 } },
+            panelOpen: { current: true }, ConnectScope, bindSettingsScope: async (scope: ConnectScope) => scope,
+            mergeAppSettingsDraft, updateAppSettings: vi.fn(async mutate => mutate({ fontSize: 12 })),
             clampAppFontSize: (v: unknown) => v, normalizeAppFontFamily: (v: unknown) => v, clampIntroHubIconSize: (v: unknown) => v,
             secureStoreAndClean: vi.fn(), SETTINGS_VAULT_KEY: 'settings', SETTINGS_KEY: 'settings', OAUTH_SETTINGS_KEY: 'oauth',
             oauthSettings: Object.fromEntries(['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'].map(p => [p, {}])),
@@ -152,6 +157,8 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setTimeout).not.toHaveBeenCalled();
         expect(f.context.invoke).not.toHaveBeenCalled();
         expect(f.events.filter(e => e.type === 'aeroftp-settings-changed')).toEqual([]);
+        if (fail === 'read') expect(f.context.updateAppSettings).not.toHaveBeenCalled();
+        else expect(f.store).toHaveBeenCalledWith(f.servers);
     });
 
     it.each(['handleDuplicate', 'handleRenameSubmit', 'confirmDelete', 'handleDrop'] as const)('IntroHub %s never publishes unpersisted state', async name => {
