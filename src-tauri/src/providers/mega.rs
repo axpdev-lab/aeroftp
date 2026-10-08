@@ -23,6 +23,13 @@ use super::{
 
 /// Timeout for all MEGAcmd commands (seconds).
 const MEGA_CMD_TIMEOUT_SECS: u64 = 60;
+/// A transfer (`mega-put`, `mega-get`) is cut only after this long with no
+/// output at all. Its own progress lines arrive about ten times a second, so
+/// silence this long means a stall. A fixed limit on the whole command, as
+/// every other command has, failed every transfer that took longer than a
+/// minute while the MEGAcmd server went on sending the file in the
+/// background.
+const MEGA_TRANSFER_IDLE_SECS: u64 = 60;
 
 /// Maximum number of automatic retries for transient errors.
 const MAX_RETRIES: usize = 2;
@@ -153,15 +160,29 @@ impl MegaCmdProvider {
 
     /// Helper to run mega-* commands with timeout, error classification, and retry (ARCH-04, ERR-01, ERR-02).
     async fn run_mega_cmd(&self, cmd: &str, args: &[&str]) -> Result<String, ProviderError> {
+        self.run_mega_cmd_observed(cmd, args, None).await
+    }
+
+    /// [`Self::run_mega_cmd`] for a transfer: with `on_percent`, the
+    /// command's output is read as it comes, every progress line is handed
+    /// over as its percentage, and the command is cut only after
+    /// [`MEGA_TRANSFER_IDLE_SECS`] of silence instead of after a fixed total.
+    async fn run_mega_cmd_observed(
+        &self,
+        cmd: &str,
+        args: &[&str],
+        on_percent: Option<&(dyn Fn(f64) + Sync)>,
+    ) -> Result<String, ProviderError> {
         self.log_debug(&format!("[CMD] {} {:?}", cmd, args));
         #[cfg(test)]
         if let Some(dir) = &self.cmd_dir {
             return self
-                .run_resolved_mega_cmd(cmd, &dir.join(cmd).to_string_lossy(), args)
+                .run_resolved_mega_cmd(cmd, &dir.join(cmd).to_string_lossy(), args, on_percent)
                 .await;
         }
         let resolved_cmd = Self::resolve_mega_cmd(cmd);
-        self.run_resolved_mega_cmd(cmd, &resolved_cmd, args).await
+        self.run_resolved_mega_cmd(cmd, &resolved_cmd, args, on_percent)
+            .await
     }
 
     /// [`run_mega_cmd`] with the executable already resolved.
@@ -170,6 +191,7 @@ impl MegaCmdProvider {
         cmd: &str,
         resolved_cmd: &str,
         args: &[&str],
+        on_percent: Option<&(dyn Fn(f64) + Sync)>,
     ) -> Result<String, ProviderError> {
         let mut last_err = ProviderError::Unknown("No attempts made".to_string());
 
@@ -186,16 +208,24 @@ impl MegaCmdProvider {
             {
                 cmd_builder.creation_flags(CREATE_NO_WINDOW);
             }
-            let output_future = cmd_builder.output();
+            let executed = match on_percent {
+                None => match tokio::time::timeout(
+                    std::time::Duration::from_secs(MEGA_CMD_TIMEOUT_SECS),
+                    cmd_builder.output(),
+                )
+                .await
+                {
+                    Ok(result) => result.map_err(Some),
+                    Err(_) => Err(None),
+                },
+                Some(on_percent) => {
+                    Self::run_transfer_once(cmd_builder, MEGA_TRANSFER_IDLE_SECS, on_percent).await
+                }
+            };
 
-            let output = match tokio::time::timeout(
-                std::time::Duration::from_secs(MEGA_CMD_TIMEOUT_SECS),
-                output_future,
-            )
-            .await
-            {
-                Ok(Ok(output)) => output,
-                Ok(Err(e)) => {
+            let output = match executed {
+                Ok(output) => output,
+                Err(Some(e)) => {
                     let err = format!(
                         "Failed to execute {} (resolved: {}): {}",
                         cmd, resolved_cmd, e
@@ -203,10 +233,20 @@ impl MegaCmdProvider {
                     self.log_debug(&format!("[CMD ERROR] {}", err));
                     return Err(ProviderError::ServerError(err));
                 }
-                Err(_) => {
+                Err(None) => {
                     self.log_debug(&format!(
-                        "[CMD TIMEOUT] {} exceeded {}s",
-                        cmd, MEGA_CMD_TIMEOUT_SECS
+                        "[CMD TIMEOUT] {} exceeded {}s{}",
+                        cmd,
+                        if on_percent.is_some() {
+                            MEGA_TRANSFER_IDLE_SECS
+                        } else {
+                            MEGA_CMD_TIMEOUT_SECS
+                        },
+                        if on_percent.is_some() {
+                            " without output"
+                        } else {
+                            ""
+                        }
                     ));
                     return Err(ProviderError::Timeout);
                 }
@@ -246,6 +286,88 @@ impl MegaCmdProvider {
         Err(last_err)
     }
 
+    /// Run a transfer command once, reading stdout and stderr as they come.
+    /// Every progress line (`TRANSFERRING ||##..||(x/y MB: P %)`, ended by
+    /// `\r` or `\n`) is handed to `on_percent`. MEGAcmd 2.6 writes them on
+    /// stderr; both streams are read, so a version that moves them to stdout
+    /// is followed too. The command is cut
+    /// when neither stream has said anything for `idle_secs`: `Err(None)` is
+    /// that timeout, `Err(Some(_))` a failure to run the command at all.
+    async fn run_transfer_once(
+        mut command: Command,
+        idle_secs: u64,
+        on_percent: &(dyn Fn(f64) + Sync),
+    ) -> Result<std::process::Output, Option<std::io::Error>> {
+        use tokio::io::AsyncReadExt;
+        let idle = std::time::Duration::from_secs(idle_secs);
+        command
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let mut child = command.spawn().map_err(Some)?;
+        let (Some(mut out), Some(mut err)) = (child.stdout.take(), child.stderr.take()) else {
+            return Err(Some(std::io::Error::other("no pipes to the command")));
+        };
+        let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+        let (mut out_line, mut err_line) = (Vec::new(), Vec::new());
+        let (mut out_open, mut err_open) = (true, true);
+        let (mut out_buf, mut err_buf) = ([0u8; 4096], [0u8; 4096]);
+        while out_open || err_open {
+            let read = tokio::time::timeout(idle, async {
+                tokio::select! {
+                    n = out.read(&mut out_buf), if out_open => (true, n),
+                    n = err.read(&mut err_buf), if err_open => (false, n),
+                }
+            })
+            .await
+            .map_err(|_| None)?;
+            match read {
+                (true, Ok(0)) | (true, Err(_)) => out_open = false,
+                (false, Ok(0)) | (false, Err(_)) => err_open = false,
+                (true, Ok(n)) => {
+                    stdout.extend_from_slice(&out_buf[..n]);
+                    Self::feed_progress(&mut out_line, &out_buf[..n], on_percent);
+                }
+                (false, Ok(n)) => {
+                    stderr.extend_from_slice(&err_buf[..n]);
+                    Self::feed_progress(&mut err_line, &err_buf[..n], on_percent);
+                }
+            }
+        }
+        let status = tokio::time::timeout(idle, child.wait())
+            .await
+            .map_err(|_| None)?
+            .map_err(Some)?;
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr,
+        })
+    }
+
+    /// Split `bytes` into lines on `\r` and `\n`, carrying a partial line
+    /// in `line`, and hand every progress line's percentage to `on_percent`.
+    fn feed_progress(line: &mut Vec<u8>, bytes: &[u8], on_percent: &(dyn Fn(f64) + Sync)) {
+        for &byte in bytes {
+            if byte == b'\r' || byte == b'\n' {
+                if let Some(percent) = Self::transfer_percent(line) {
+                    on_percent(percent);
+                }
+                line.clear();
+            } else {
+                line.push(byte);
+            }
+        }
+    }
+
+    /// The percentage of a MEGAcmd progress line, `...(x/y MB: P %)`.
+    fn transfer_percent(line: &[u8]) -> Option<f64> {
+        let line = String::from_utf8_lossy(line);
+        let after = &line[line.rfind("MB:")? + 3..];
+        let percent: f64 = after[..after.find('%')?].trim().parse().ok()?;
+        (0.0..=100.0).contains(&percent).then_some(percent)
+    }
+
     /// Run a mega command with automatic re-auth on session expiry (ERR-04).
     /// Use this for operational commands (not for login/logout themselves).
     /// Re-auth is attempted exactly once; if the retry also fails, the error propagates.
@@ -254,13 +376,24 @@ impl MegaCmdProvider {
         cmd: &str,
         args: &[&str],
     ) -> Result<String, ProviderError> {
-        match self.run_mega_cmd(cmd, args).await {
+        self.run_mega_transfer_with_reauth(cmd, args, None).await
+    }
+
+    /// [`Self::run_mega_cmd_with_reauth`] for a transfer, see
+    /// [`Self::run_mega_cmd_observed`].
+    async fn run_mega_transfer_with_reauth(
+        &mut self,
+        cmd: &str,
+        args: &[&str],
+        on_percent: Option<&(dyn Fn(f64) + Sync)>,
+    ) -> Result<String, ProviderError> {
+        match self.run_mega_cmd_observed(cmd, args, on_percent).await {
             Ok(out) => Ok(out),
             Err(ProviderError::AuthenticationFailed(ref msg)) => {
                 tracing::info!(target: "mega", "[REAUTH] Session expired ({}), re-authenticating...", msg);
                 self.do_login().await?;
-                // Single retry after re-auth (no recursion - calls run_mega_cmd, not self)
-                self.run_mega_cmd(cmd, args).await
+                // Single retry after re-auth (no recursion - calls run_mega_cmd_observed, not self)
+                self.run_mega_cmd_observed(cmd, args, on_percent).await
             }
             Err(e) => Err(e),
         }
@@ -686,7 +819,7 @@ impl StorageProvider for MegaCmdProvider {
         // resolution inside MEGAcmd does not produce `\\?\C:/...` (invalid).
         let local_arg = Self::normalize_local_path_for_cli(l);
         match self
-            .run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &local_arg])
+            .run_mega_transfer_with_reauth("mega-get", &[&abs_remote, &local_arg], Some(&|_| {}))
             .await
         {
             Ok(out) => {
@@ -732,7 +865,7 @@ impl StorageProvider for MegaCmdProvider {
         ));
         let temp_str = temp_path.to_string_lossy().to_string();
 
-        self.run_mega_cmd_with_reauth("mega-get", &[&abs_remote, &temp_str])
+        self.run_mega_transfer_with_reauth("mega-get", &[&abs_remote, &temp_str], Some(&|_| {}))
             .await
             .map_err(|e| {
                 ProviderError::TransferFailed(format!("Download to bytes failed: {}", e))
@@ -773,26 +906,26 @@ impl StorageProvider for MegaCmdProvider {
         // XFER-04/CQ-09: Resolve remote path
         let abs_remote = self.resolve_path(r);
 
-        // XFER-02: Signal start
-        if let Some(ref cb) = progress {
-            cb(0, 0);
-        }
+        // XFER-02: the bar follows mega-put's own progress lines; 100 percent
+        // waits until mega-put has returned (see `UploadProgress`). It used to
+        // open with `(0, 0)`, which reads as an empty upload already done.
+        let size = std::fs::metadata(l).map_err(ProviderError::IoError)?.len();
+        let progress = super::upload_progress::UploadProgress::new(progress, size);
+        progress.start();
 
         // Issue #263: normalize `/` → `\` on Windows so the verbatim-path
         // resolution inside MEGAcmd does not produce `\\?\C:/...` (invalid).
         let local_arg = Self::normalize_local_path_for_cli(l);
-        self.run_mega_cmd_with_reauth("mega-put", &[&local_arg, &abs_remote])
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
+        let on_percent = |percent: f64| progress.report((size as f64 * percent / 100.0) as u64);
+        self.run_mega_transfer_with_reauth(
+            "mega-put",
+            &[&local_arg, &abs_remote],
+            Some(&on_percent),
+        )
+        .await
+        .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
 
-        // XFER-02: Signal completion with local file size
-        if let Some(ref cb) = progress {
-            match std::fs::metadata(l) {
-                Ok(meta) => cb(meta.len(), meta.len()),
-                Err(_) => cb(1, 1),
-            }
-        }
-
+        progress.complete();
         Ok(())
     }
 
@@ -1537,6 +1670,113 @@ mod tests {
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
         (provider, dir.path().join("mv.log"), dir)
+    }
+
+    /// A provider whose `mega-put` is a link to the stand-in, plus the
+    /// folder that keeps the link (`put-fails`, `put-slow`, `put-stalls`
+    /// switch its behaviour).
+    #[cfg(unix)]
+    fn provider_with_stand_in_put() -> (MegaCmdProvider, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let shim =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
+        std::os::unix::fs::symlink(&shim, dir.path().join("mega-put")).unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        (provider, dir)
+    }
+
+    /// Upload a 1000-byte file through the stand-in `mega-put`.
+    #[cfg(unix)]
+    async fn put_through_stand_in(
+        provider: &mut MegaCmdProvider,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        let file = crate::providers::upload_progress::fixture::temp_file(1000);
+        let (callback, updates) = crate::providers::upload_progress::fixture::recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: `mega-put` reported `(0, 0)`, which reads as an empty upload
+    /// already done, then the total after the command returned. The bar now
+    /// follows mega-put's own progress lines and reaches 100 only once
+    /// mega-put has returned successfully.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn upload_follows_mega_put_progress_lines() {
+        let (mut provider, dir) = provider_with_stand_in_put();
+        let (outcome, updates) = put_through_stand_in(&mut provider).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates,
+            [
+                (0, 1000),
+                (100, 1000),
+                (500, 1000),
+                (900, 1000),
+                (1000, 1000)
+            ]
+        );
+
+        std::fs::write(dir.path().join("put-fails"), b"").unwrap();
+        let (outcome, updates) = put_through_stand_in(&mut provider).await;
+        assert!(outcome.is_err());
+        assert!(
+            updates.iter().all(|&(sent, total)| sent < total),
+            "{updates:?}"
+        );
+    }
+
+    /// A transfer is cut after a silence, not after a fixed total: a put
+    /// that keeps talking for longer than the limit finishes, one that goes
+    /// quiet for longer than the limit is cut. With the fixed 60 s limit a
+    /// 3 GB put failed with Timeout while MEGAcmd went on uploading.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_transfer_is_cut_by_silence_not_by_its_length() {
+        let (_provider, dir) = provider_with_stand_in_put();
+        let put = dir.path().join("mega-put");
+        let percents = std::sync::Mutex::new(Vec::new());
+        let on_percent = |p: f64| percents.lock().unwrap().push(p);
+
+        std::fs::write(dir.path().join("put-slow"), b"").unwrap();
+        let mut command = Command::new(&put);
+        command.args(["/l", "/r"]).kill_on_drop(true);
+        let output = MegaCmdProvider::run_transfer_once(command, 1, &on_percent)
+            .await
+            .expect("2 s of steady output under a 1 s silence limit");
+        assert!(output.status.success());
+        assert_eq!(
+            *percents.lock().unwrap(),
+            [10.0, 30.0, 50.0, 70.0, 90.0, 100.0]
+        );
+
+        std::fs::remove_file(dir.path().join("put-slow")).unwrap();
+        std::fs::write(dir.path().join("put-stalls"), b"").unwrap();
+        let started = std::time::Instant::now();
+        let mut command = Command::new(&put);
+        command.args(["/l", "/r"]).kill_on_drop(true);
+        let outcome = MegaCmdProvider::run_transfer_once(command, 1, &on_percent).await;
+        assert!(matches!(outcome, Err(None)), "a 3 s silence is cut at 1 s");
+        assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    }
+
+    /// The percentage of a progress line exactly as MEGAcmd 2.6 writes it
+    /// through a pipe (a NUL before the carriage return); other lines give
+    /// nothing.
+    #[test]
+    fn transfer_percent_reads_a_live_progress_line() {
+        let line =
+            b"TRANSFERRING ||#..........................................||(0/30 MB:   0.21 %) \x00";
+        assert_eq!(MegaCmdProvider::transfer_percent(line), Some(0.21));
+        assert_eq!(
+            MegaCmdProvider::transfer_percent(b"Upload finished: /a/p30.dat"),
+            None
+        );
+        assert_eq!(MegaCmdProvider::transfer_percent(b"(1/2 MB: 140 %)"), None);
     }
 
     #[cfg(unix)]
