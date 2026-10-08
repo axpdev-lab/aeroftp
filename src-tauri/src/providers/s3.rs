@@ -4861,6 +4861,12 @@ impl StorageProvider for S3Provider {
         self.wait_for_own_markerless_upload(key).await
     }
 
+    fn measurement_note(&self) -> Option<&'static str> {
+        self.config
+            .filen_desktop_bridge
+            .then_some(super::FILEN_DESKTOP_BRIDGE_NOTE)
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -8371,6 +8377,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8628,6 +8635,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8824,6 +8832,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8873,6 +8882,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8905,6 +8915,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -9034,6 +9045,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -9080,6 +9092,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
 
@@ -9135,6 +9148,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -9269,6 +9283,32 @@ mod tests {
         assert_eq!(gets.load(Ordering::SeqCst), 3, "two 404s, then the object");
         let _ = std::fs::remove_file(&src);
         let _ = std::fs::remove_file(&dst);
+    }
+
+    /// #368: a benchmark on the Filen Desktop preset says it measured the
+    /// local bridge; any other S3 profile prints no note.
+    #[test]
+    fn measurement_note_names_the_filen_desktop_bridge_only() {
+        let mut config = S3Config::from_provider_config(&super::super::ProviderConfig {
+            name: "filen".to_string(),
+            provider_type: ProviderType::S3,
+            host: "https://127.0.0.1:1800".to_string(),
+            port: None,
+            username: Some("key".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra: std::collections::HashMap::from([
+                ("bucket".to_string(), "filen".to_string()),
+                ("provider_id".to_string(), "filen-desktop-s3".to_string()),
+            ]),
+        })
+        .unwrap();
+        assert_eq!(
+            S3Provider::new(config.clone()).unwrap().measurement_note(),
+            Some(super::super::FILEN_DESKTOP_BRIDGE_NOTE)
+        );
+        config.filen_desktop_bridge = false;
+        assert_eq!(S3Provider::new(config).unwrap().measurement_note(), None);
     }
 
     /// A benchmark waits for the write-back BEFORE it starts the download
@@ -10272,6 +10312,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -10590,6 +10631,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("create provider");
         let result = StorageProvider::connect(&mut provider).await;
@@ -10650,6 +10692,7 @@ mod tests {
             verify_cert: false,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         assert!(provider.is_filen_s3_endpoint());
@@ -10786,6 +10829,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         assert!(!provider.is_filen_s3_endpoint());
@@ -12267,6 +12311,7 @@ mod tests {
             // on for everything else.
             allow_cleartext_endpoint: true,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("live provider");
         provider.connected = true;
@@ -13087,6 +13132,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
 
@@ -13531,6 +13577,7 @@ mod documented_limits_tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("S3Provider")
     }
@@ -13593,6 +13640,7 @@ mod recorded_list_fixture {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         let xml = include_str!("fixtures/quickxml/s3-list-objects-v2.xml");

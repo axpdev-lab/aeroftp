@@ -797,6 +797,10 @@ pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Dur
     }
 }
 
+/// The measurement note of the Filen Desktop presets (S3 and WebDAV): both are
+/// `rclone serve` bridges on this machine with a local cache in front of Filen.
+pub const FILEN_DESKTOP_BRIDGE_NOTE: &str = "Filen Desktop preset: these figures measure the local Filen Desktop bridge and its cache, not the Filen servers. The bridge answers an upload from its cache and sends it on to Filen afterwards; a write-back wait printed apart is that send.";
+
 /// Unified storage provider trait
 ///
 /// All storage backends must implement this trait to be used with AeroFTP.
@@ -1060,6 +1064,13 @@ pub trait StorageProvider: Send + Sync {
         _path: &str,
     ) -> Result<Option<std::time::Duration>, ProviderError> {
         Ok(None)
+    }
+
+    /// A caveat a benchmark or speed test prints next to its figures, once
+    /// per run, when they do not measure what the profile's name suggests.
+    /// `None` for an ordinary server.
+    fn measurement_note(&self) -> Option<&'static str> {
+        None
     }
 
     /// Whether [`replace`] puts a file over an existing one by setting the
