@@ -1194,7 +1194,17 @@
             "selectShown": "Selectează cele {count} afișate",
             "deselectShown": "Deselectează cele {count} afișate",
             "filterShownCount": "{shown} afișate",
-            "selectedHiddenByFilter": "{count} selectate, dar ascunse de filtru, încă incluse"
+            "selectedHiddenByFilter": "{count} selectate, dar ascunse de filtru, încă incluse",
+            "appearanceMode": "Mod de aspect",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Programare",
+            "scheduleLocalTime": "Schimbați temele în funcție de ora locală. Alegerea manuală a unei teme oprește programarea.",
+            "scheduleNightStart": "Începutul nopții",
+            "scheduleNightEnd": "Sfârșitul nopții",
+            "scheduleDayTheme": "Temă de zi",
+            "scheduleNightTheme": "Temă de noapte",
+            "scheduleInvalidTime": "Alegeți două ore valide diferite. Ultima programare validă rămâne activă.",
+            "scheduleRestoreMode": "Restabilește modul de aspect anterior"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,17 @@
             "selectShown": "Chagua {count} zinazoonyeshwa",
             "deselectShown": "Acha kuchagua {count} zinazoonyeshwa",
             "filterShownCount": "{shown} zinaonyeshwa",
-            "selectedHiddenByFilter": "{count} zimechaguliwa lakini zimefichwa na kichujio, bado zimejumuishwa"
+            "selectedHiddenByFilter": "{count} zimechaguliwa lakini zimefichwa na kichujio, bado zimejumuishwa",
+            "appearanceMode": "Hali ya mwonekano",
+            "appearanceManual": "Kwa mkono",
+            "appearanceSchedule": "Ratiba",
+            "scheduleLocalTime": "Badilisha mandhari kulingana na saa za eneo lako. Kuchagua mandhari kwa mkono husimamisha ratiba.",
+            "scheduleNightStart": "Usiku unaanza",
+            "scheduleNightEnd": "Usiku unaisha",
+            "scheduleDayTheme": "Mandhari ya mchana",
+            "scheduleNightTheme": "Mandhari ya usiku",
+            "scheduleInvalidTime": "Chagua nyakati mbili tofauti zilizo halali. Ratiba ya mwisho iliyo halali itaendelea kutumika.",
+            "scheduleRestoreMode": "Rejesha hali ya mwonekano ya awali"
         },
         "devtools": {
             "title": "AeroTools",

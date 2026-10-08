@@ -13,7 +13,7 @@ const autostart = vi.hoisted(() => ({
 }));
 vi.mock('@tauri-apps/plugin-autostart', () => autostart);
 
-import { applyLocalStorage } from './keystoreLocalStorage';
+import { applyLocalStorage, collectLocalStorage } from './keystoreLocalStorage';
 
 /** A `localStorage` that holds `capacity` keys and then throws, as a full quota does. */
 const storageWithCapacity = (capacity: number) => {
@@ -71,4 +71,21 @@ describe('applyLocalStorage', () => {
 
         expect(result).toEqual({ applied: 1, error: expect.stringContaining('autostart entry not writable') });
     });
+    it('round-trips the scheduled appearance with its previous system preference', async () => {
+        const storage = storageWithCapacity(10);
+        vi.stubGlobal('localStorage', storage);
+        const schedule = JSON.stringify({ enabled: true, start: '19:00', end: '07:00', dayTheme: 'ice', nightTheme: 'green' });
+        storage.setItem('aeroftp-theme', 'auto'); storage.setItem('aeroftp-theme-schedule', schedule);
+        const exported = await collectLocalStorage(); storage.items.clear();
+        await applyLocalStorage(exported);
+        expect(storage.items.get('aeroftp-theme')).toBe('auto');
+        expect(storage.items.get('aeroftp-theme-schedule')).toBe(schedule);
+    });
+    it('restores a legacy theme without retaining a newer schedule', async () => {
+        const storage = storageWithCapacity(10); vi.stubGlobal('localStorage', storage);
+        storage.setItem('aeroftp-theme-schedule', '{"enabled":true}');
+        await applyLocalStorage({ 'aeroftp-theme': 'green' });
+        expect(storage.items.has('aeroftp-theme-schedule')).toBe(false);
+    });
+
 });

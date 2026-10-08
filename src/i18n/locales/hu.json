@@ -1194,7 +1194,17 @@
             "selectShown": "A megjelenített {count} kijelölése",
             "deselectShown": "A megjelenített {count} kijelölésének törlése",
             "filterShownCount": "{shown} megjelenítve",
-            "selectedHiddenByFilter": "{count} kijelölve, de a szűrő elrejti, továbbra is szerepel"
+            "selectedHiddenByFilter": "{count} kijelölve, de a szűrő elrejti, továbbra is szerepel",
+            "appearanceMode": "Megjelenítési mód",
+            "appearanceManual": "Kézi",
+            "appearanceSchedule": "Ütemezés",
+            "scheduleLocalTime": "Váltson témákat a helyi idő szerint. A téma kézi kiválasztása leállítja az ütemezést.",
+            "scheduleNightStart": "Éjszaka kezdete",
+            "scheduleNightEnd": "Éjszaka vége",
+            "scheduleDayTheme": "Nappali téma",
+            "scheduleNightTheme": "Éjszakai téma",
+            "scheduleInvalidTime": "Válasszon két különböző érvényes időpontot. Az utolsó érvényes ütemezés aktív marad.",
+            "scheduleRestoreMode": "Előző megjelenítési mód visszaállítása"
         },
         "devtools": {
             "title": "AeroTools",

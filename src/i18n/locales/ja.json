@@ -1194,7 +1194,17 @@
             "selectShown": "表示中の{count}件を選択",
             "deselectShown": "表示中の{count}件の選択を解除",
             "filterShownCount": "{shown}件表示",
-            "selectedHiddenByFilter": "{count}件は選択済みですが、フィルターで非表示になっています。引き続き含まれます"
+            "selectedHiddenByFilter": "{count}件は選択済みですが、フィルターで非表示になっています。引き続き含まれます",
+            "appearanceMode": "外観モード",
+            "appearanceManual": "手動",
+            "appearanceSchedule": "スケジュール",
+            "scheduleLocalTime": "現地時間に合わせてテーマを切り替えます。テーマを手動で選択すると、スケジュールが停止します。",
+            "scheduleNightStart": "夜の開始",
+            "scheduleNightEnd": "夜の終了",
+            "scheduleDayTheme": "昼のテーマ",
+            "scheduleNightTheme": "夜のテーマ",
+            "scheduleInvalidTime": "異なる有効な時刻を2つ選択してください。最後の有効なスケジュールは引き続き有効です。",
+            "scheduleRestoreMode": "前の外観モードを復元"
         },
         "devtools": {
             "title": "AeroTools",

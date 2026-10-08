@@ -1194,7 +1194,17 @@
             "selectShown": "Vælg de {count} viste",
             "deselectShown": "Fravælg de {count} viste",
             "filterShownCount": "{shown} vist",
-            "selectedHiddenByFilter": "{count} valgt, men skjult af filteret, stadig inkluderet"
+            "selectedHiddenByFilter": "{count} valgt, men skjult af filteret, stadig inkluderet",
+            "appearanceMode": "Udseendetilstand",
+            "appearanceManual": "Manuel",
+            "appearanceSchedule": "Tidsplan",
+            "scheduleLocalTime": "Skift temaer efter din lokale tid. Hvis du vælger et tema manuelt, stopper tidsplanen.",
+            "scheduleNightStart": "Natten starter",
+            "scheduleNightEnd": "Natten slutter",
+            "scheduleDayTheme": "Dagtema",
+            "scheduleNightTheme": "Nattema",
+            "scheduleInvalidTime": "Vælg to forskellige gyldige tidspunkter. Den seneste gyldige tidsplan forbliver aktiv.",
+            "scheduleRestoreMode": "Gendan den forrige udseendetilstand"
         },
         "devtools": {
             "title": "AeroTools",

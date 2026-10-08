@@ -1194,7 +1194,17 @@
             "selectShown": "Velja þessa {count} sem eru sýnd",
             "deselectShown": "Afvelja þessa {count} sem eru sýnd",
             "filterShownCount": "{shown} sýnd",
-            "selectedHiddenByFilter": "{count} valin en falin af síunni, eru samt með"
+            "selectedHiddenByFilter": "{count} valin en falin af síunni, eru samt með",
+            "appearanceMode": "Útlitsstilling",
+            "appearanceManual": "Handvirkt",
+            "appearanceSchedule": "Tímaáætlun",
+            "scheduleLocalTime": "Skiptu um þemu eftir staðartíma þínum. Handvirkt val á þema stöðvar tímaáætlunina.",
+            "scheduleNightStart": "Nótt hefst",
+            "scheduleNightEnd": "Nótt lýkur",
+            "scheduleDayTheme": "Dagþema",
+            "scheduleNightTheme": "Næturþema",
+            "scheduleInvalidTime": "Veldu tvo mismunandi gilda tíma. Síðasta gilda tímaáætlunin helst virk.",
+            "scheduleRestoreMode": "Endurheimta fyrri útlitsstillingu"
         },
         "devtools": {
             "title": "AeroTools",

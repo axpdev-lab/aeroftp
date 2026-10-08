@@ -1617,7 +1617,17 @@
             "selectShown": "Seleziona i {count} mostrati",
             "deselectShown": "Deseleziona i {count} mostrati",
             "filterShownCount": "{shown} mostrati",
-            "selectedHiddenByFilter": "{count} selezionati ma nascosti dal filtro, ancora inclusi"
+            "selectedHiddenByFilter": "{count} selezionati ma nascosti dal filtro, ancora inclusi",
+            "appearanceMode": "Modalità aspetto",
+            "appearanceManual": "Manuale",
+            "appearanceSchedule": "Programmazione",
+            "scheduleLocalTime": "Cambia tema in base all’ora locale. La scelta manuale di un tema interrompe la programmazione.",
+            "scheduleNightStart": "Inizio della notte",
+            "scheduleNightEnd": "Fine della notte",
+            "scheduleDayTheme": "Tema diurno",
+            "scheduleNightTheme": "Tema notturno",
+            "scheduleInvalidTime": "Scegli due orari validi e diversi. L’ultima programmazione valida resta attiva.",
+            "scheduleRestoreMode": "Ripristina la modalità aspetto precedente"
         },
         "appearance": {
             "patternCross": "Croce",

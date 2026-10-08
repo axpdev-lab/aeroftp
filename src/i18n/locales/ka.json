@@ -1194,7 +1194,17 @@
             "selectShown": "ნაჩვენები {count}-ის არჩევა",
             "deselectShown": "ნაჩვენები {count}-ის არჩევის მოხსნა",
             "filterShownCount": "ნაჩვენებია {shown}",
-            "selectedHiddenByFilter": "არჩეულია {count}, მაგრამ ფილტრით დამალულია, მაინც შედის"
+            "selectedHiddenByFilter": "არჩეულია {count}, მაგრამ ფილტრით დამალულია, მაინც შედის",
+            "appearanceMode": "გარეგნობის რეჟიმი",
+            "appearanceManual": "ხელით",
+            "appearanceSchedule": "განრიგი",
+            "scheduleLocalTime": "შეცვალეთ თემები თქვენი ადგილობრივი დროის მიხედვით. თემის ხელით არჩევა აჩერებს განრიგს.",
+            "scheduleNightStart": "ღამის დასაწყისი",
+            "scheduleNightEnd": "ღამის დასასრული",
+            "scheduleDayTheme": "დღის თემა",
+            "scheduleNightTheme": "ღამის თემა",
+            "scheduleInvalidTime": "აირჩიეთ ორი განსხვავებული სწორი დრო. ბოლო სწორი განრიგი აქტიური რჩება.",
+            "scheduleRestoreMode": "გარეგნობის წინა რეჟიმის აღდგენა"
         },
         "devtools": {
             "title": "AeroTools",

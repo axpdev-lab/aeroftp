@@ -1194,7 +1194,17 @@
             "selectShown": "Vybrat zobrazených {count}",
             "deselectShown": "Zrušit výběr zobrazených {count}",
             "filterShownCount": "zobrazeno: {shown}",
-            "selectedHiddenByFilter": "{count} vybráno, ale skryto filtrem, stále zahrnuto"
+            "selectedHiddenByFilter": "{count} vybráno, ale skryto filtrem, stále zahrnuto",
+            "appearanceMode": "Režim vzhledu",
+            "appearanceManual": "Ručně",
+            "appearanceSchedule": "Plán",
+            "scheduleLocalTime": "Přepínejte motivy podle místního času. Ruční výběr motivu zastaví plán.",
+            "scheduleNightStart": "Začátek noci",
+            "scheduleNightEnd": "Konec noci",
+            "scheduleDayTheme": "Denní motiv",
+            "scheduleNightTheme": "Noční motiv",
+            "scheduleInvalidTime": "Vyberte dva různé platné časy. Poslední platný plán zůstane aktivní.",
+            "scheduleRestoreMode": "Obnovit předchozí režim vzhledu"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,17 @@
             "selectShown": "Vali kuvatud {count}",
             "deselectShown": "Tühista kuvatud {count} valik",
             "filterShownCount": "{shown} kuvatud",
-            "selectedHiddenByFilter": "{count} valitud, kuid filtri poolt peidetud, kaasatud endiselt"
+            "selectedHiddenByFilter": "{count} valitud, kuid filtri poolt peidetud, kaasatud endiselt",
+            "appearanceMode": "Välimuse režiim",
+            "appearanceManual": "Käsitsi",
+            "appearanceSchedule": "Ajakava",
+            "scheduleLocalTime": "Vaheta teemasid kohaliku aja järgi. Teema käsitsi valimine peatab ajakava.",
+            "scheduleNightStart": "Öö algab",
+            "scheduleNightEnd": "Öö lõpeb",
+            "scheduleDayTheme": "Päevane teema",
+            "scheduleNightTheme": "Öine teema",
+            "scheduleInvalidTime": "Vali kaks erinevat kehtivat kellaaega. Viimane kehtiv ajakava jääb aktiivseks.",
+            "scheduleRestoreMode": "Taasta eelmine välimuse režiim"
         },
         "devtools": {
             "title": "AeroTools",

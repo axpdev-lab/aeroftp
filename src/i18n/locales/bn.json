@@ -1194,7 +1194,17 @@
             "selectShown": "দেখানো {count}টি নির্বাচন করুন",
             "deselectShown": "দেখানো {count}টি অনির্বাচিত করুন",
             "filterShownCount": "{shown}টি দেখানো হচ্ছে",
-            "selectedHiddenByFilter": "{count}টি নির্বাচিত কিন্তু ফিল্টারে লুকানো, তবুও অন্তর্ভুক্ত"
+            "selectedHiddenByFilter": "{count}টি নির্বাচিত কিন্তু ফিল্টারে লুকানো, তবুও অন্তর্ভুক্ত",
+            "appearanceMode": "চেহারার মোড",
+            "appearanceManual": "ম্যানুয়াল",
+            "appearanceSchedule": "সময়সূচি",
+            "scheduleLocalTime": "আপনার স্থানীয় সময় অনুযায়ী থিম বদলান। ম্যানুয়ালি থিম বেছে নিলে সময়সূচি বন্ধ হয়ে যায়।",
+            "scheduleNightStart": "রাত শুরু",
+            "scheduleNightEnd": "রাত শেষ",
+            "scheduleDayTheme": "দিনের থিম",
+            "scheduleNightTheme": "রাতের থিম",
+            "scheduleInvalidTime": "দুটি ভিন্ন বৈধ সময় বেছে নিন। সর্বশেষ বৈধ সময়সূচি সক্রিয় থাকবে।",
+            "scheduleRestoreMode": "আগের চেহারার মোড পুনরুদ্ধার করুন"
         },
         "devtools": {
             "title": "AeroTools",

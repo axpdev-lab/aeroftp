@@ -1194,7 +1194,17 @@
             "selectShown": "Gösterilen {count} öğeyi seç",
             "deselectShown": "Gösterilen {count} öğenin seçimini kaldır",
             "filterShownCount": "{shown} gösteriliyor",
-            "selectedHiddenByFilter": "{count} seçili ancak filtre tarafından gizlendi, yine de dahil"
+            "selectedHiddenByFilter": "{count} seçili ancak filtre tarafından gizlendi, yine de dahil",
+            "appearanceMode": "Görünüm modu",
+            "appearanceManual": "Manuel",
+            "appearanceSchedule": "Zamanlama",
+            "scheduleLocalTime": "Temaları yerel saatinize göre değiştirin. Manuel olarak tema seçmek zamanlamayı durdurur.",
+            "scheduleNightStart": "Gece başlangıcı",
+            "scheduleNightEnd": "Gece bitişi",
+            "scheduleDayTheme": "Gündüz teması",
+            "scheduleNightTheme": "Gece teması",
+            "scheduleInvalidTime": "Birbirinden farklı iki geçerli saat seçin. Son geçerli zamanlama etkin kalır.",
+            "scheduleRestoreMode": "Önceki görünüm modunu geri yükle"
         },
         "devtools": {
             "title": "AeroTools",

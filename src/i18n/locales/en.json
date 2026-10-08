@@ -3793,7 +3793,17 @@
             "resumeColumnDestination": "Destination",
             "resumeColumnRecords": "Records",
             "resumeForget": "Forget this destination",
-            "resumeForgetConfirm": "Forget"
+            "resumeForgetConfirm": "Forget",
+            "appearanceMode": "Appearance mode",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Schedule",
+            "scheduleLocalTime": "Switch themes using your local time. Choosing a theme manually stops the schedule.",
+            "scheduleNightStart": "Night starts",
+            "scheduleNightEnd": "Night ends",
+            "scheduleDayTheme": "Day theme",
+            "scheduleNightTheme": "Night theme",
+            "scheduleInvalidTime": "Choose two different valid times. The last valid schedule stays active.",
+            "scheduleRestoreMode": "Restore previous appearance mode"
         },
         "sharing": {
             "add": "Add",

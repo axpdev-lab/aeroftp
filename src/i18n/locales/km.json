@@ -1194,7 +1194,17 @@
             "selectShown": "ជ្រើសរើស {count} ដែលបង្ហាញ",
             "deselectShown": "ឈប់ជ្រើសរើស {count} ដែលបង្ហាញ",
             "filterShownCount": "បង្ហាញ {shown}",
-            "selectedHiddenByFilter": "{count} ត្រូវបានជ្រើសរើស ប៉ុន្តែត្រូវបានលាក់ដោយតម្រង នៅតែរួមបញ្ចូល"
+            "selectedHiddenByFilter": "{count} ត្រូវបានជ្រើសរើស ប៉ុន្តែត្រូវបានលាក់ដោយតម្រង នៅតែរួមបញ្ចូល",
+            "appearanceMode": "របៀបរូបរាង",
+            "appearanceManual": "ដោយដៃ",
+            "appearanceSchedule": "កាលវិភាគ",
+            "scheduleLocalTime": "ប្ដូររូបរាងតាមម៉ោងក្នុងតំបន់របស់អ្នក។ ការជ្រើសរើសរូបរាងដោយដៃនឹងបញ្ឈប់កាលវិភាគ។",
+            "scheduleNightStart": "យប់ចាប់ផ្ដើម",
+            "scheduleNightEnd": "យប់បញ្ចប់",
+            "scheduleDayTheme": "រូបរាងពេលថ្ងៃ",
+            "scheduleNightTheme": "រូបរាងពេលយប់",
+            "scheduleInvalidTime": "ជ្រើសរើសម៉ោងត្រឹមត្រូវពីរដែលខុសគ្នា។ កាលវិភាគត្រឹមត្រូវចុងក្រោយនៅតែដំណើរការ។",
+            "scheduleRestoreMode": "ស្ដាររបៀបរូបរាងមុន"
         },
         "devtools": {
             "title": "AeroTools",

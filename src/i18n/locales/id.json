@@ -1194,7 +1194,17 @@
             "selectShown": "Pilih {count} yang ditampilkan",
             "deselectShown": "Batalkan pilihan {count} yang ditampilkan",
             "filterShownCount": "{shown} ditampilkan",
-            "selectedHiddenByFilter": "{count} dipilih tetapi disembunyikan oleh filter, tetap disertakan"
+            "selectedHiddenByFilter": "{count} dipilih tetapi disembunyikan oleh filter, tetap disertakan",
+            "appearanceMode": "Mode tampilan",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Jadwal",
+            "scheduleLocalTime": "Ganti tema berdasarkan waktu lokal Anda. Memilih tema secara manual menghentikan jadwal.",
+            "scheduleNightStart": "Malam dimulai",
+            "scheduleNightEnd": "Malam berakhir",
+            "scheduleDayTheme": "Tema siang",
+            "scheduleNightTheme": "Tema malam",
+            "scheduleInvalidTime": "Pilih dua waktu valid yang berbeda. Jadwal valid terakhir tetap aktif.",
+            "scheduleRestoreMode": "Pulihkan mode tampilan sebelumnya"
         },
         "devtools": {
             "title": "AeroTools",

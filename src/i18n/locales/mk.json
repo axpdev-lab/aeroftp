@@ -1194,7 +1194,17 @@
             "selectShown": "Избери ги прикажаните {count}",
             "deselectShown": "Одизбери ги прикажаните {count}",
             "filterShownCount": "прикажани: {shown}",
-            "selectedHiddenByFilter": "{count} избрани, но скриени од филтерот, сè уште вклучени"
+            "selectedHiddenByFilter": "{count} избрани, но скриени од филтерот, сè уште вклучени",
+            "appearanceMode": "Режим на изглед",
+            "appearanceManual": "Рачно",
+            "appearanceSchedule": "Распоред",
+            "scheduleLocalTime": "Менувајте ги темите според локалното време. Рачното избирање тема го запира распоредот.",
+            "scheduleNightStart": "Почеток на ноќта",
+            "scheduleNightEnd": "Крај на ноќта",
+            "scheduleDayTheme": "Дневна тема",
+            "scheduleNightTheme": "Ноќна тема",
+            "scheduleInvalidTime": "Изберете две различни важечки времиња. Последниот важечки распоред останува активен.",
+            "scheduleRestoreMode": "Врати го претходниот режим на изглед"
         },
         "devtools": {
             "title": "AeroTools",

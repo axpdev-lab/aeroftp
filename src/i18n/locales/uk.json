@@ -1194,7 +1194,17 @@
             "selectShown": "Вибрати показані ({count})",
             "deselectShown": "Зняти вибір із показаних ({count})",
             "filterShownCount": "показано: {shown}",
-            "selectedHiddenByFilter": "{count} вибрано, але приховано фільтром, усе ще включено"
+            "selectedHiddenByFilter": "{count} вибрано, але приховано фільтром, усе ще включено",
+            "appearanceMode": "Режим оформлення",
+            "appearanceManual": "Вручну",
+            "appearanceSchedule": "Розклад",
+            "scheduleLocalTime": "Перемикайте теми за місцевим часом. Ручний вибір теми зупиняє розклад.",
+            "scheduleNightStart": "Початок ночі",
+            "scheduleNightEnd": "Кінець ночі",
+            "scheduleDayTheme": "Денна тема",
+            "scheduleNightTheme": "Нічна тема",
+            "scheduleInvalidTime": "Виберіть два різні коректні часи. Останній коректний розклад залишається активним.",
+            "scheduleRestoreMode": "Відновити попередній режим оформлення"
         },
         "devtools": {
             "title": "AeroTools",

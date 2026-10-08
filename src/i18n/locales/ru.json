@@ -1194,7 +1194,17 @@
             "selectShown": "Выбрать показанные ({count})",
             "deselectShown": "Снять выбор с показанных ({count})",
             "filterShownCount": "показано: {shown}",
-            "selectedHiddenByFilter": "{count} выбрано, но скрыто фильтром, по-прежнему включено"
+            "selectedHiddenByFilter": "{count} выбрано, но скрыто фильтром, по-прежнему включено",
+            "appearanceMode": "Режим оформления",
+            "appearanceManual": "Вручную",
+            "appearanceSchedule": "Расписание",
+            "scheduleLocalTime": "Переключайте темы по местному времени. Ручной выбор темы останавливает расписание.",
+            "scheduleNightStart": "Начало ночи",
+            "scheduleNightEnd": "Конец ночи",
+            "scheduleDayTheme": "Дневная тема",
+            "scheduleNightTheme": "Ночная тема",
+            "scheduleInvalidTime": "Выберите два разных корректных времени. Последнее корректное расписание останется активным.",
+            "scheduleRestoreMode": "Восстановить предыдущий режим оформления"
         },
         "devtools": {
             "title": "AeroTools",

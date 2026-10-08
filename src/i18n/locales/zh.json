@@ -1194,7 +1194,17 @@
             "selectShown": "选择显示的 {count} 项",
             "deselectShown": "取消选择显示的 {count} 项",
             "filterShownCount": "显示 {shown} 项",
-            "selectedHiddenByFilter": "{count} 项已选中但被筛选器隐藏，仍会包含"
+            "selectedHiddenByFilter": "{count} 项已选中但被筛选器隐藏，仍会包含",
+            "appearanceMode": "外观模式",
+            "appearanceManual": "手动",
+            "appearanceSchedule": "定时",
+            "scheduleLocalTime": "根据本地时间切换主题。手动选择主题会停止定时切换。",
+            "scheduleNightStart": "夜间开始",
+            "scheduleNightEnd": "夜间结束",
+            "scheduleDayTheme": "日间主题",
+            "scheduleNightTheme": "夜间主题",
+            "scheduleInvalidTime": "请选择两个不同的有效时间。上一次有效的定时设置将继续生效。",
+            "scheduleRestoreMode": "恢复之前的外观模式"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,17 @@
             "selectShown": "표시된 {count}개 선택",
             "deselectShown": "표시된 {count}개 선택 해제",
             "filterShownCount": "{shown}개 표시됨",
-            "selectedHiddenByFilter": "{count}개가 선택되었지만 필터에 의해 숨겨져 있으며 계속 포함됩니다"
+            "selectedHiddenByFilter": "{count}개가 선택되었지만 필터에 의해 숨겨져 있으며 계속 포함됩니다",
+            "appearanceMode": "외관 모드",
+            "appearanceManual": "수동",
+            "appearanceSchedule": "일정",
+            "scheduleLocalTime": "현지 시간에 따라 테마를 전환합니다. 테마를 수동으로 선택하면 일정이 중지됩니다.",
+            "scheduleNightStart": "밤 시작",
+            "scheduleNightEnd": "밤 종료",
+            "scheduleDayTheme": "낮 테마",
+            "scheduleNightTheme": "밤 테마",
+            "scheduleInvalidTime": "서로 다른 유효한 시간 두 개를 선택하세요. 마지막으로 유효했던 일정은 계속 활성화됩니다.",
+            "scheduleRestoreMode": "이전 외관 모드 복원"
         },
         "devtools": {
             "title": "AeroTools",

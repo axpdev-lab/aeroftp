@@ -1194,7 +1194,17 @@
             "selectShown": "เลือก {count} รายการที่แสดง",
             "deselectShown": "ยกเลิกการเลือก {count} รายการที่แสดง",
             "filterShownCount": "แสดง {shown} รายการ",
-            "selectedHiddenByFilter": "เลือกไว้ {count} รายการแต่ถูกซ่อนโดยตัวกรอง ยังคงรวมอยู่"
+            "selectedHiddenByFilter": "เลือกไว้ {count} รายการแต่ถูกซ่อนโดยตัวกรอง ยังคงรวมอยู่",
+            "appearanceMode": "โหมดรูปลักษณ์",
+            "appearanceManual": "ด้วยตนเอง",
+            "appearanceSchedule": "กำหนดเวลา",
+            "scheduleLocalTime": "สลับธีมตามเวลาท้องถิ่นของคุณ การเลือกธีมด้วยตนเองจะหยุดกำหนดเวลา",
+            "scheduleNightStart": "เริ่มกลางคืน",
+            "scheduleNightEnd": "สิ้นสุดกลางคืน",
+            "scheduleDayTheme": "ธีมกลางวัน",
+            "scheduleNightTheme": "ธีมกลางคืน",
+            "scheduleInvalidTime": "เลือกเวลาที่ถูกต้องสองเวลาที่แตกต่างกัน กำหนดเวลาที่ถูกต้องล่าสุดจะยังคงทำงานอยู่",
+            "scheduleRestoreMode": "คืนค่าโหมดรูปลักษณ์ก่อนหน้า"
         },
         "devtools": {
             "title": "AeroTools",
