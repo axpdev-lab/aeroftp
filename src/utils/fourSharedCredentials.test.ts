@@ -13,7 +13,7 @@ beforeEach(() => {
     invoke.mockReset();
     invoke.mockImplementation(async (command: string, { account }: { account: string }) => {
         expect(command).toBe('get_credential');
-        if (!(account in vault)) throw new Error('Credential not found');
+        if (!(account in vault)) throw new Error(`Failed to get credential: Credential not found: ${account}`);
         return vault[account];
     });
 });

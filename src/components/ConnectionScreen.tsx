@@ -133,6 +133,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
     const [error, setError] = useState<string | null>(null);
     const [consumerKey, setConsumerKey] = useState('');
     const [consumerSecret, setConsumerSecret] = useState('');
+    const credentialEdits = useRef({ key: false, secret: false });
     const [wantsNewAccount, setWantsNewAccount] = useState(false);
     const [showSecret, setShowSecret] = useState(false);
     const ProviderLogo = PROVIDER_LOGOS.fourshared;
@@ -142,15 +143,20 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
     useEffect(() => {
         let cancelled = false;
         void (async () => {
-            const [credentials, tokens] = await Promise.all([
-                loadFourSharedCredentials(),
-                invoke<boolean>('fourshared_has_tokens').catch(() => false),
-            ]);
-            if (cancelled) return;
-            setConsumerKey(credentials.consumerKey);
-            setConsumerSecret(credentials.consumerSecret);
-            setHasExistingTokens(!!tokens);
-            setIsChecking(false);
+            try {
+                const [credentials, tokens] = await Promise.all([
+                    loadFourSharedCredentials(),
+                    invoke<boolean>('fourshared_has_tokens').catch(() => false),
+                ]);
+                if (cancelled) return;
+                if (!credentialEdits.current.key) setConsumerKey(credentials.consumerKey);
+                if (!credentialEdits.current.secret) setConsumerSecret(credentials.consumerSecret);
+                setHasExistingTokens(!!tokens);
+            } catch (err) {
+                if (!cancelled) setError(t('connection.oauthKeysReadFailed', { provider: '4shared', error: String(err) }));
+            } finally {
+                if (!cancelled) setIsChecking(false);
+            }
         })();
         return () => { cancelled = true; };
     }, []);
@@ -218,12 +224,12 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
                 <p className="text-xs text-gray-500 dark:text-gray-400">{t('connection.fourshared.createAppInstructions')}</p>
                 <div>
                     <label className="block text-xs font-medium mb-1">{t('settings.consumerKey')}</label>
-                    <input type="text" value={consumerKey} onChange={event => setConsumerKey(event.target.value)} placeholder={t('connection.fourshared.enterConsumerKey')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
+                    <input type="text" value={consumerKey} onChange={event => { credentialEdits.current.key = true; setConsumerKey(event.target.value); }} placeholder={t('connection.fourshared.enterConsumerKey')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                 </div>
                 <div>
                     <label className="block text-xs font-medium mb-1">{t('settings.consumerSecret')}</label>
                     <div className="relative">
-                        <input type={showSecret ? 'text' : 'password'} value={consumerSecret} onChange={event => setConsumerSecret(event.target.value)} placeholder={t('connection.fourshared.enterConsumerSecret')} className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
+                        <input type={showSecret ? 'text' : 'password'} value={consumerSecret} onChange={event => { credentialEdits.current.secret = true; setConsumerSecret(event.target.value); }} placeholder={t('connection.fourshared.enterConsumerSecret')} className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
                         <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                             {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>

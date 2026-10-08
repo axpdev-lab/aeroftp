@@ -9,6 +9,7 @@ import { ConnectScope } from '../gui/connectScope';
 import { loadFourSharedCredentials } from './fourSharedCredentials';
 import { getCredentialWithRetry } from './profileVaultSecrets';
 import { keyReadFailure } from './oauthKeysMissing';
+import { loadOAuthClientCredentials, oauthCredentialProvider } from './oauthClientCredentials';
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -37,7 +38,7 @@ async function run(surface: typeof surfaces[number], scope = new ConnectScope())
     if (start < 0 || end < 0) throw new Error(`Missing credential block: ${surface.name}`);
     const notify = vi.fn();
     const context = {
-        invoke, getCredentialWithRetry, loadFourSharedCredentials, keyReadFailure,
+        invoke, getCredentialWithRetry, loadFourSharedCredentials, loadOAuthClientCredentials, oauthCredentialProvider, keyReadFailure,
         connectScope: scope, secureGetWithFallback: async () => null,
         protocol: 'fourshared', server: { protocol: 'fourshared' },
         isFourSharedProvider: (protocol: string) => protocol === 'fourshared',

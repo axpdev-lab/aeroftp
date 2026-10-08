@@ -263,7 +263,7 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         mocks.invoke.mockImplementation(async (command: string, args?: any) => {
             if (command === 'fourshared_has_tokens') return true;
             if (command === 'get_credential' && args.account !== 'server_edited') {
-                if (args.account !== account) throw new Error('Credential not found');
+                if (args.account !== account) throw new Error(`Failed to get credential: Credential not found: ${args.account}`);
                 return JSON.stringify(account === 'fourshared_oauth_settings'
                     ? { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret' }
                     : { fourshared: { clientId: 'legacy-key', clientSecret: 'legacy-secret' } });

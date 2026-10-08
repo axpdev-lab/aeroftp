@@ -43,6 +43,7 @@ import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 import { matchLiveDevice } from '../../utils/mtpFingerprint';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../../utils/oauthKeysMissing';
 import { loadFourSharedCredentials } from '../../utils/fourSharedCredentials';
+import { loadOAuthClientCredentials, oauthCredentialProvider } from '../../utils/oauthClientCredentials';
 import type { MtpDeviceInfo } from '../../types/aerofile';
 import { loadFavoriteServers, saveFavoriteServers } from '../../utils/favoriteServers';
 import {
@@ -1096,11 +1097,22 @@ export function MyServersPanel({
         if (server.protocol && isOAuthProvider(server.protocol)) {
             let credentials: { clientId: string; clientSecret: string } | null = null;
             let keyReadError: unknown = null;
+            const credentialProvider = oauthCredentialProvider(server.protocol);
             try {
-                const clientId = await connectScope.step(() => getCredentialWithRetry(`oauth_${server.protocol}_client_id`, 3, connectScope));
-                const clientSecret = await connectScope.step(() => getCredentialWithRetry(`oauth_${server.protocol}_client_secret`, 3, connectScope));
+                const clientId = await connectScope.step(() => getCredentialWithRetry(`oauth_${credentialProvider}_client_id`, 3, connectScope));
+                const clientSecret = await connectScope.step(() => getCredentialWithRetry(`oauth_${credentialProvider}_client_secret`, 3, connectScope));
                 if (clientId && clientSecret) credentials = { clientId, clientSecret };
             } catch (e) { connectScope.assert(); keyReadError = keyReadFailure(e); }
+
+            if (!credentials) {
+                try {
+                    const fallback = await connectScope.step(() => loadOAuthClientCredentials(server.protocol!, account => getCredentialWithRetry(account, 3, connectScope)));
+                    if (fallback.clientId && fallback.clientSecret) {
+                        credentials = fallback;
+                        keyReadError = null;
+                    }
+                } catch (e) { connectScope.assert(); keyReadError ??= keyReadFailure(e); }
+            }
 
             if (!credentials) {
                 notifyOAuthKeysUnavailable(t, server.protocol, keyReadError);
@@ -1180,12 +1192,14 @@ export function MyServersPanel({
                 consumerSecret = await connectScope.step(() => getCredentialWithRetry('oauth_fourshared_client_secret', 3, connectScope));
             } catch (e) { connectScope.assert(); keyReadError = keyReadFailure(e); }
             if (!consumerKey || !consumerSecret) {
-                const fallback = await connectScope.step(() => loadFourSharedCredentials());
-                if (fallback.consumerKey && fallback.consumerSecret) {
-                    consumerKey = fallback.consumerKey;
-                    consumerSecret = fallback.consumerSecret;
-                    keyReadError = null;
-                }
+                try {
+                    const fallback = await connectScope.step(() => loadFourSharedCredentials());
+                    if (fallback.consumerKey && fallback.consumerSecret) {
+                        consumerKey = fallback.consumerKey;
+                        consumerSecret = fallback.consumerSecret;
+                        keyReadError = null;
+                    }
+                } catch (e) { connectScope.assert(); keyReadError ??= keyReadFailure(e); }
             }
             if (!consumerKey || !consumerSecret) {
                 notifyOAuthKeysUnavailable(t, server.protocol, keyReadError);
