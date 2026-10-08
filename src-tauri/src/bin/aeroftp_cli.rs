@@ -12366,10 +12366,17 @@ fn resolve_password(
 /// stays a URL error: it is more often a profile typed without `--profile`
 /// than a folder, and reading it as a folder would serve the wrong thing
 /// without a word.
+///
+/// The argument is taken as written, spaces included: a trimmed `/srv/a `
+/// would name the folder `/srv/a`, and a destructive command would then act
+/// on another folder than the one the user typed.
 fn local_path_target(arg: &str) -> Option<Result<std::path::PathBuf, String>> {
-    let trimmed = arg.trim();
-    if trimmed.len() >= 7 && trimmed[..7].eq_ignore_ascii_case("file://") {
-        let parsed = url::Url::parse(trimmed).map_err(|e| format!("Invalid file URL '{arg}': {e}"));
+    // `get`, not `[..7]`: byte 7 can fall inside a character of a path.
+    if arg
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("file://"))
+    {
+        let parsed = url::Url::parse(arg).map_err(|e| format!("Invalid file URL '{arg}': {e}"));
         return Some(parsed.and_then(|u| {
             match u.host_str() {
                 None | Some("") | Some("localhost") => {}
@@ -12383,15 +12390,15 @@ fn local_path_target(arg: &str) -> Option<Result<std::path::PathBuf, String>> {
                 .map_err(|()| format!("file URL '{arg}' is not an absolute local path"))
         }));
     }
-    if trimmed.contains("://") || trimmed.is_empty() || trimmed == "_" {
+    if arg.contains("://") || arg.is_empty() || arg == "_" {
         return None;
     }
-    let path = std::path::Path::new(trimmed);
-    let from_here = trimmed == "."
-        || trimmed == ".."
-        || trimmed.starts_with("./")
-        || trimmed.starts_with("../")
-        || (cfg!(windows) && (trimmed.starts_with(".\\") || trimmed.starts_with("..\\")));
+    let path = std::path::Path::new(arg);
+    let from_here = arg == "."
+        || arg == ".."
+        || arg.starts_with("./")
+        || arg.starts_with("../")
+        || (cfg!(windows) && (arg.starts_with(".\\") || arg.starts_with("..\\")));
     if path.is_absolute() || from_here {
         return Some(Ok(path.to_path_buf()));
     }
@@ -77713,13 +77720,23 @@ mod tests {
     /// a local path.
     #[test]
     fn a_local_folder_is_named_by_a_path_or_a_file_url_only() {
-        for local in [".", "..", "./site", "../site", "/srv/share"] {
+        #[cfg(unix)]
+        let absolute = ["/srv/share", "/srv/share ", "/ab/\u{e9}\u{e9}\u{e9}"];
+        #[cfg(windows)]
+        let absolute = [
+            r"C:\srv\share",
+            r"C:\srv\share ",
+            "C:/ab/\u{e9}\u{e9}\u{e9}",
+        ];
+        for local in [".", "..", "./site", "../site"].into_iter().chain(absolute) {
             assert_eq!(
                 local_path_target(local).map(|r| r.unwrap()),
                 Some(std::path::PathBuf::from(local)),
-                "{local}"
+                "{local:?} is taken as written"
             );
         }
+        // A leading space makes no absolute path: it is not trimmed into one.
+        assert!(local_path_target(" ./site").is_none());
         for not_local in ["share", "My Server", "_", "", "sftp://h/srv", "s3://bucket"] {
             assert!(local_path_target(not_local).is_none(), "{not_local}");
         }
@@ -77791,8 +77808,12 @@ mod tests {
 
     #[test]
     fn batch_connect_takes_a_local_folder() {
-        let lines = read_batch_script("CONNECT /srv/share\nCONNECT ./site\n").unwrap();
-        assert_eq!(lines[0].target, Some(BatchTarget::Url("/srv/share".into())));
+        #[cfg(unix)]
+        let absolute = "/srv/share";
+        #[cfg(windows)]
+        let absolute = "C:/srv/share";
+        let lines = read_batch_script(&format!("CONNECT {absolute}\nCONNECT ./site\n")).unwrap();
+        assert_eq!(lines[0].target, Some(BatchTarget::Url(absolute.into())));
         assert_eq!(lines[1].target, Some(BatchTarget::Url("./site".into())));
         assert!(read_batch_script("CONNECT share\n").is_err());
     }

@@ -1133,7 +1133,8 @@ aeroftp-cli --profile "server" serve webdav _ / --addr 127.0.0.1:8080
 
 ```bash
 aeroftp-cli --profile "server" serve ftp _ / --addr 0.0.0.0:2121 --allow-remote-bind --passive-ports 49152-49200
-# Connect with any FTP client: curl ftp://localhost:2121/
+# A login is required on a non-loopback address: user aeroftp, password printed at start
+# Connect with any FTP client: curl -u aeroftp:PASSWORD ftp://this-host:2121/
 ```
 
 #### serve sftp (read-write)
