@@ -258,6 +258,30 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         expect(container.textContent).not.toContain('connection.saveThisConnection');
     });
 
+    it.each(['config_oauth_clients', 'config_aeroftp_oauth_settings', 'fourshared_oauth_settings'])('4shared hydrates %s and reconnects with the matching app pair', async account => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'fourshared_has_tokens') return true;
+            if (command === 'get_credential' && args.account !== 'server_edited') {
+                if (args.account !== account) throw new Error('Credential not found');
+                return JSON.stringify(account === 'fourshared_oauth_settings'
+                    ? { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret' }
+                    : { fourshared: { clientId: 'legacy-key', clientSecret: 'legacy-secret' } });
+            }
+            return previous(command, args);
+        });
+        await openEditor('fourshared');
+        const key = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerKey"]')!;
+        const secret = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerSecret"]')!;
+        expect(key.value).toBe('legacy-key');
+        expect(secret.value).toBe('legacy-secret');
+        expect(secret.type).toBe('password');
+        const connect = button('connection.fourshared.connectTo4shared');
+        expect(connect.disabled).toBe(false);
+        await act(async () => connect.click());
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret' } });
+    });
+
     it('4shared saves profile metadata without authenticating again', async () => {
         await openEditor('fourshared');
         const name = [...container.querySelectorAll('input')].find(input => input.value === 'Account')!;

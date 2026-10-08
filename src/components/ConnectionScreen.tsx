@@ -42,6 +42,7 @@ import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { CopySecretButton } from './common/CopySecretButton';
 import { CopyableFormFields } from './common/CopyableFormFields';
+import { loadFourSharedCredentials } from '../utils/fourSharedCredentials';
 import { OAuthConnect } from './OAuthConnect';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
@@ -141,14 +142,13 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
     useEffect(() => {
         let cancelled = false;
         void (async () => {
-            const [key, secret, tokens] = await Promise.all([
-                invoke<string>('get_credential', { account: 'oauth_fourshared_client_id' }).catch(() => ''),
-                invoke<string>('get_credential', { account: 'oauth_fourshared_client_secret' }).catch(() => ''),
+            const [credentials, tokens] = await Promise.all([
+                loadFourSharedCredentials(),
                 invoke<boolean>('fourshared_has_tokens').catch(() => false),
             ]);
             if (cancelled) return;
-            setConsumerKey(key || '');
-            setConsumerSecret(secret || '');
+            setConsumerKey(credentials.consumerKey);
+            setConsumerSecret(credentials.consumerSecret);
             setHasExistingTokens(!!tokens);
             setIsChecking(false);
         })();
