@@ -62,6 +62,15 @@ fn planned_steps(
     sweep.saturating_add(many).max(1)
 }
 
+/// Whether step `current` of `total` is reported. A many-small-files run has
+/// thousands of steps a few milliseconds apart, and one event each flooded
+/// the webview (843 events in 1.5 s, measured on a loopback WebDAV); about a
+/// hundred per run move the bar just as well. The last step is always sent.
+fn reports_step(current: u32, total: u32) -> bool {
+    let stride = (total / 100).max(1);
+    current == total || current.is_multiple_of(stride)
+}
+
 /// AeroAgent's progress line for a run: the chat shows the step and the
 /// phase, through the `ai-tool-progress` event every tool uses.
 struct ToolProgressObserver {
@@ -73,7 +82,9 @@ struct ToolProgressObserver {
 impl ToolProgressObserver {
     fn step(&self, item: &str) {
         let current = (self.done.fetch_add(1, Ordering::Relaxed) + 1).min(self.total);
-        crate::ai_tools::emit_tool_progress(&self.app, TOOL, current, self.total, item);
+        if reports_step(current, self.total) {
+            crate::ai_tools::emit_tool_progress(&self.app, TOOL, current, self.total, item);
+        }
     }
 }
 
@@ -181,6 +192,15 @@ pub async fn aeroftp_benchmark(ctx: &dyn ToolCtx, args: &Value) -> Result<Value,
 mod tests {
     use super::*;
     use crate::community_benchmark::{resolve_benchmark_plan, BenchmarkLevel};
+
+    #[test]
+    fn a_long_run_reports_about_a_hundred_steps_and_always_the_last() {
+        let sent = |total: u32| (1..=total).filter(|c| reports_step(*c, total)).count();
+        assert_eq!(sent(6000), 100);
+        assert_eq!(sent(24), 24);
+        assert!(reports_step(6001, 6001));
+        assert!(sent(6001) <= 101);
+    }
 
     #[test]
     fn the_progress_total_counts_every_transfer_the_plan_makes() {
