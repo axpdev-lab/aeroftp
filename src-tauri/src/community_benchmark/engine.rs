@@ -25,7 +25,7 @@ use super::{
 use crate::providers::{ProviderError, StorageProvider};
 use crate::transfer_dag::TransferDirection;
 use crate::transfer_dag_single_file::{
-    pick_single_file_route, run_single_file_on_route, ProgressCallback,
+    pick_single_file_route, run_single_file_on_route, MultipartFailure, ProgressCallback,
 };
 use crate::util::size::format_size;
 
@@ -217,6 +217,9 @@ async fn timed_transfer(
         local,
         progress,
         opts.cancel.clone(),
+        // The payload is a temp file: a failed multipart upload will never be
+        // resumed, so its provider session is aborted rather than left open.
+        MultipartFailure::Abort,
     )
     .await;
     observer.transfer_finished();

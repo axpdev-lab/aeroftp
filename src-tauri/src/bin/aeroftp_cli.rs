@@ -10704,6 +10704,8 @@ async fn cli_run_single_file_dag(
         local,
         progress_cb,
         cancel_token.as_ref().map(|(token, _)| token.clone()),
+        // A user transfer keeps a failed multipart session for `--resume`.
+        ftp_client_gui_lib::transfer_dag_single_file::MultipartFailure::KeepForResume,
     )
     .await;
     if let Some((_, watcher)) = cancel_token {
