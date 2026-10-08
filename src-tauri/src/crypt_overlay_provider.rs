@@ -1943,11 +1943,10 @@ pub async fn reopen_default_salt_vault(
         Err(ProviderError::NotFound(_)) => return Err(DefaultSaltReopenError::NothingToVerify),
         Err(e) => return Err(DefaultSaltReopenError::ListingFailed(e)),
     };
-    // A marker the listing shows, or one a download either returns or cannot
-    // answer about (no connection, timeout, permission), may be a real one:
-    // refuse. Only an answer that the file is not there lets the rebuild go
-    // on. SFTP reports a missing file as `TransferFailed`, so that counts as
-    // an answer too.
+    // A marker the listing shows, or one a download either returns or fails
+    // on for any reason other than "not found" (no connection, timeout,
+    // permission, a read error), may be a real one: refuse. Only `NotFound`,
+    // the server saying the file is not there, lets the rebuild go on.
     let mut marker_may_exist = entries
         .iter()
         .any(|e| e.name == AEROCRYPT_CONFIG_NAME || e.name == overlay::CRYPT_CONFIG_LEGACY_NAME);
@@ -1957,9 +1956,7 @@ pub async fn reopen_default_salt_vault(
         }
         marker_may_exist = !matches!(
             provider.download_to_bytes(&format!("{scope}/{name}")).await,
-            Err(ProviderError::NotFound(_)
-                | ProviderError::TransferFailed(_)
-                | ProviderError::InvalidPath(_))
+            Err(ProviderError::NotFound(_))
         );
     }
     if marker_may_exist {
@@ -3750,8 +3747,9 @@ mod tests {
         /// Behave like an FTP server without MLSD whose `LIST -a` failed:
         /// `exists()` and `list()` miss dotfiles, a download still finds them.
         hide_dotfiles: bool,
-        /// Downloads of dotfiles time out, as on a remote that stopped answering.
-        dotfile_downloads_time_out: bool,
+        /// Downloads of dotfiles fail with this error, as on a remote that stopped
+        /// answering or a marker the server will not let us read.
+        dotfile_download_error: Option<fn() -> ProviderError>,
     }
 
     impl MemProvider {
@@ -3761,7 +3759,7 @@ mod tests {
                 dirs: Mutex::new(Vec::new()),
                 cwd: Mutex::new("/".to_string()),
                 hide_dotfiles: false,
-                dotfile_downloads_time_out: false,
+                dotfile_download_error: None,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -3906,13 +3904,14 @@ mod tests {
         }
         async fn download_to_bytes(&mut self, remote: &str) -> Result<Vec<u8>, ProviderError> {
             let remote = self.resolve(remote);
-            if self.dotfile_downloads_time_out
-                && remote
+            if let Some(error) = self.dotfile_download_error {
+                if remote
                     .rsplit('/')
                     .next()
                     .is_some_and(|n| n.starts_with('.'))
-            {
-                return Err(ProviderError::Timeout);
+                {
+                    return Err(error());
+                }
             }
             self.files
                 .lock()
@@ -5151,21 +5150,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn default_salt_rebuild_refuses_when_the_marker_probe_gets_no_answer() {
-        // Marker gone, names decrypt, but the remote does not answer the
-        // download probe: its absence is unconfirmed, so nothing is rebuilt.
+    async fn default_salt_rebuild_refuses_unless_the_marker_is_answered_missing() {
+        // Marker gone, names decrypt, but the download probe does not say "not
+        // found": a timeout, or a read error on a marker that may exist (SFTP
+        // used to report both a missing file and an unreadable one as
+        // TransferFailed). Its absence is unconfirmed, so nothing is rebuilt.
+        let unconfirmed: [fn() -> ProviderError; 3] = [
+            || ProviderError::Timeout,
+            || ProviderError::TransferFailed("Failed to read file: Permission denied".into()),
+            || ProviderError::InvalidPath("550 Permission denied".into()),
+        ];
         let mut mem = MemProvider::new();
         default_salt_vault_without_marker(&mut mem, "/Vault").await;
-        mem.dotfile_downloads_time_out = true;
-        match reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None).await {
-            Err(DefaultSaltReopenError::Refused(e)) => {
-                assert!(e.contains("could not be confirmed"), "{e}")
+        for error in unconfirmed {
+            mem.dotfile_download_error = Some(error);
+            match reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None).await {
+                Err(DefaultSaltReopenError::Refused(e)) => {
+                    assert!(e.contains("could not be confirmed"), "{e}")
+                }
+                Err(_) => panic!("refused for the wrong reason"),
+                Ok(_) => panic!("{} must not count as an absent marker", error()),
             }
-            Err(_) => panic!("refused for the wrong reason"),
-            Ok(_) => panic!("an unanswered probe must not count as an absent marker"),
         }
-        // The same vault with a remote that answers reopens normally.
-        mem.dotfile_downloads_time_out = false;
+        // The same vault on a remote that answers "not found" reopens.
+        mem.dotfile_download_error = None;
         assert!(
             reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None)
                 .await

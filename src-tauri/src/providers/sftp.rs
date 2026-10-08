@@ -463,6 +463,23 @@ fn is_request_timeout(message: &str) -> bool {
     message.trim() == "Timeout"
 }
 
+/// Map a failed whole-file read. `SSH_FX_NO_SUCH_FILE` is the server saying
+/// the file is not there, so it is `NotFound`, the answer every other provider
+/// gives for a missing file; a caller that has to know a file is absent (the
+/// AeroCrypt marker probe before a default-salt rebuild) cannot read that out
+/// of a `TransferFailed`, which also covers a file that exists and could not be
+/// read. Everything else is classified as [`classify_russh_err`] does.
+fn classify_sftp_read_err(e: russh_sftp::client::error::Error) -> ProviderError {
+    if let russh_sftp::client::error::Error::Status(status) = &e {
+        if status.status_code == russh_sftp::protocol::StatusCode::NoSuchFile {
+            return ProviderError::NotFound(format!("Failed to read file: {e}"));
+        }
+    }
+    classify_russh_err(e, |s| {
+        ProviderError::TransferFailed(format!("Failed to read file: {}", s))
+    })
+}
+
 /// Map `SftpSession::try_exists` onto [`StorageProvider::exists`].
 ///
 /// russh-sftp converts `SSH_FX_NO_SUCH_FILE` into `Ok(false)` and returns
@@ -2759,11 +2776,7 @@ impl StorageProvider for SftpProvider {
 
         let data = until_sftp_ends(&sftp.ended, sftp.read(&full_path))
             .await
-            .map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::TransferFailed(format!("Failed to read file: {}", s))
-                })
-            })?;
+            .map_err(classify_sftp_read_err)?;
 
         if data.len() as u64 > limit {
             return Err(ProviderError::TransferFailed(format!(
@@ -5906,6 +5919,25 @@ mod tests {
             error_message: message.to_string(),
             language_tag: "en".into(),
         })
+    }
+
+    #[test]
+    fn a_read_of_a_missing_file_is_not_found_and_other_failures_are_not() {
+        assert!(matches!(
+            classify_sftp_read_err(sftp_status(
+                russh_sftp::protocol::StatusCode::NoSuchFile,
+                "No such file"
+            )),
+            ProviderError::NotFound(_)
+        ));
+        // A file that exists and could not be read is not an absent one.
+        assert!(matches!(
+            classify_sftp_read_err(sftp_status(
+                russh_sftp::protocol::StatusCode::PermissionDenied,
+                "Permission denied"
+            )),
+            ProviderError::TransferFailed(_)
+        ));
     }
 
     #[test]
