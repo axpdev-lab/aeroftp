@@ -3,7 +3,7 @@
 
 import { AIModel, AIModelNativeCapabilities, AIProviderType } from './ai';
 
-export const MODEL_REGISTRY_REVIEWED_AT = '2026-09-26';
+export const MODEL_REGISTRY_REVIEWED_AT = '2026-10-08';
 export const UNKNOWN_MODEL_CONTEXT_BUDGET = 8192;
 
 export type ModelCapabilitySource = 'registry' | 'provider' | 'user' | 'unknown';
@@ -341,6 +341,29 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             modelCapabilitiesApi: true,
         },
     },
+    'claude-sonnet-5-5': {
+        displayName: 'Claude Sonnet 5.5',
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.002,
+        outputCostPer1k: 0.01,
+        supportsStreaming: true,
+        supportsTools: true,
+        supportsVision: true,
+        supportsThinking: true,
+        supportsParallelTools: true,
+        toolCallQuality: 5,
+        bestFor: ['code', 'reasoning', 'analysis', 'vision', 'agent'],
+        metadataReviewedAt: '2026-10-08',
+        metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            thinkingAlwaysOn: true,
+            forcedToolChoice: false,
+            requiresFullAssistantReplay: true,
+            fixedSamplingParameters: true,
+        },
+    },
     'claude-opus-5': {
         displayName: 'Claude Opus 5',
         maxTokens: 128000,
@@ -360,6 +383,7 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             adaptiveThinking: true,
             contextManagement: true,
             modelCapabilitiesApi: true,
+            fixedSamplingParameters: true,
         },
     },
     'claude-sonnet-5': {
@@ -381,6 +405,7 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             adaptiveThinking: true,
             contextManagement: true,
             modelCapabilitiesApi: true,
+            fixedSamplingParameters: true,
         },
     },
     'claude-opus-4-8': {
@@ -402,14 +427,15 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             adaptiveThinking: true,
             contextManagement: true,
             modelCapabilitiesApi: true,
+            fixedSamplingParameters: true,
         },
     },
     'claude-opus-4-7': {
         displayName: 'Claude Opus 4.7',
-        maxTokens: 8192,
-        maxContextTokens: 200000,
-        inputCostPer1k: 0.015,
-        outputCostPer1k: 0.075,
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.005,
+        outputCostPer1k: 0.025,
         supportsStreaming: true,
         supportsTools: true,
         supportsVision: true,
@@ -417,13 +443,19 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'reasoning', 'analysis'],
+        metadataReviewedAt: '2026-10-08',
+        metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
+        nativeCapabilities: {
+            adaptiveThinking: true,
+            fixedSamplingParameters: true,
+        },
     },
     'claude-opus-4-6': {
         displayName: 'Claude Opus 4.6',
-        maxTokens: 8192,
-        maxContextTokens: 200000,
-        inputCostPer1k: 0.015,
-        outputCostPer1k: 0.075,
+        maxTokens: 128000,
+        maxContextTokens: 1000000,
+        inputCostPer1k: 0.005,
+        outputCostPer1k: 0.025,
         supportsStreaming: true,
         supportsTools: true,
         supportsVision: true,
@@ -431,6 +463,8 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'reasoning', 'analysis'],
+        metadataReviewedAt: '2026-10-08',
+        metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
     },
     'claude-sonnet-4-6': {
         displayName: 'Claude Sonnet 4.6',
@@ -469,31 +503,19 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
     },
     'claude-haiku-4-5-20251001': {
         displayName: 'Claude Haiku 4.5',
-        maxTokens: 8192,
+        maxTokens: 64000,
         maxContextTokens: 200000,
-        inputCostPer1k: 0.0008,
-        outputCostPer1k: 0.004,
+        inputCostPer1k: 0.001,
+        outputCostPer1k: 0.005,
         supportsStreaming: true,
         supportsTools: true,
         supportsVision: true,
-        supportsThinking: false,
+        supportsThinking: true,
         supportsParallelTools: true,
         toolCallQuality: 4,
         bestFor: ['fast', 'code'],
-    },
-    'claude-3-5-sonnet-20241022': {
-        displayName: 'Claude 3.5 Sonnet',
-        maxTokens: 8192,
-        maxContextTokens: 200000,
-        inputCostPer1k: 0.003,
-        outputCostPer1k: 0.015,
-        supportsStreaming: true,
-        supportsTools: true,
-        supportsVision: true,
-        supportsThinking: false,
-        supportsParallelTools: true,
-        toolCallQuality: 5,
-        bestFor: ['code', 'analysis'],
+        metadataReviewedAt: '2026-10-08',
+        metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
     },
 
     // Google

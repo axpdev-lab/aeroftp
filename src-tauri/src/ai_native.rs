@@ -160,12 +160,27 @@ pub(crate) fn validate_history(request: &AIRequest) -> Result<(), AIError> {
     Ok(())
 }
 
+/// The Anthropic models that run on the native contract: adaptive thinking
+/// steered by `output_config.effort`, and no sampling parameters. Their API
+/// returns 400 on `temperature` / `top_p` / `top_k` and on `thinking:
+/// {type: "enabled", budget_tokens}`, which is exactly what the legacy
+/// adapter sends, so on the legacy path every call to them failed. Opus 4.6,
+/// Sonnet 4.6 and the older models still accept both and stay legacy. The
+/// webview keeps the same list (`ANTHROPIC_NATIVE_MODELS` in
+/// `aiChatNativeTurn.ts`); a test holds the two equal.
+pub(crate) const ANTHROPIC_NATIVE_MODELS: &[&str] = &[
+    "claude-fable-5-1",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-opus-5",
+    "claude-sonnet-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+];
+
 pub(crate) fn modern_anthropic(request: &AIRequest) -> bool {
     request.provider_type == AIProviderType::Anthropic
-        && matches!(
-            request.model.as_str(),
-            "claude-opus-5-5" | "claude-fable-5-1"
-        )
+        && ANTHROPIC_NATIVE_MODELS.contains(&request.model.as_str())
 }
 
 fn model_studio(request: &AIRequest) -> bool {
@@ -241,7 +256,7 @@ pub(crate) fn reasoning_efforts(request: &AIRequest) -> &'static [&'static str] 
             &["low", "high", "max"]
         }
         (AIProviderType::Xai, "grok-4.7") => &["low", "medium", "high", "xhigh"],
-        (AIProviderType::Anthropic, "claude-opus-5-5" | "claude-fable-5-1") => {
+        (AIProviderType::Anthropic, model) if ANTHROPIC_NATIVE_MODELS.contains(&model) => {
             &["low", "medium", "high", "xhigh", "max"]
         }
         _ => &[],
@@ -612,12 +627,10 @@ fn post(
     };
     let mut builder = client.post(url);
     if anthropic {
-        builder = builder
-            .header(
-                "x-api-key",
-                request.api_key.as_ref().ok_or(AIError::MissingApiKey)?,
-            )
-            .header("anthropic-version", "2023-06-01");
+        builder = crate::ai::with_anthropic_auth(
+            builder,
+            request.api_key.as_ref().ok_or(AIError::MissingApiKey)?,
+        );
     } else if let Some(key) = &request.api_key {
         builder = builder.bearer_auth(key);
     }

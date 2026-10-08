@@ -16,6 +16,7 @@ import {
     resolveModelContext,
     shouldUseOpenAIResponses,
 } from './aiModelRegistry';
+import { ANTHROPIC_NATIVE_MODELS, requiresNativeTurn } from '../components/DevTools/aiChatNativeTurn';
 
 const baseModel = (overrides: Partial<AIModel> = {}): AIModel => ({
     id: 'model-1',
@@ -33,7 +34,7 @@ const baseModel = (overrides: Partial<AIModel> = {}): AIModel => ({
 
 describe('current provider model profiles', () => {
     it('keeps the registry review date parseable and current for this lane', () => {
-        expect(MODEL_REGISTRY_REVIEWED_AT).toBe('2026-09-26');
+        expect(MODEL_REGISTRY_REVIEWED_AT).toBe('2026-10-08');
         const reviewedAt = Date.parse(`${MODEL_REGISTRY_REVIEWED_AT}T00:00:00Z`);
         expect(Number.isNaN(reviewedAt)).toBe(false);
         // Fixtures validate provenance, not the machine clock or a future expiry.
@@ -303,7 +304,7 @@ describe('provider contracts and implemented adapter support', () => {
         expect(spec.outputCostPer1k).toBeUndefined();
     });
 
-    it.each(['claude-opus-5-5', 'claude-fable-5-1'])('preserves the modern Anthropic constraints for %s', name => {
+    it.each(['claude-opus-5-5', 'claude-fable-5-1', 'claude-sonnet-5-5'])('preserves the modern Anthropic constraints for %s', name => {
         expect(MODEL_REGISTRY[name].nativeCapabilities).toMatchObject({
             adaptiveThinking: true,
             thinkingAlwaysOn: true,
@@ -378,5 +379,22 @@ describe('provider contracts and implemented adapter support', () => {
     ])('does not promote endpoint %s to the first-party adapter', endpoint => {
         const model = applyRegistryDefaults({ name: 'gpt-5.6-sol' });
         expect(shouldUseOpenAIResponses('openai', model, true, endpoint)).toBe(false);
+    });
+});
+
+describe('Anthropic native contract', () => {
+    const anthropic = Object.keys(MODEL_REGISTRY).filter(name => name.startsWith('claude-'));
+
+    it('puts every model that refuses sampling parameters on the native turn, and only those', () => {
+        const fixed = anthropic.filter(name => MODEL_REGISTRY[name].nativeCapabilities?.fixedSamplingParameters);
+        expect([...fixed].sort()).toEqual([...ANTHROPIC_NATIVE_MODELS].sort());
+        for (const name of anthropic) {
+            expect(requiresNativeTurn({ provider_type: 'anthropic', model: name })).toBe(fixed.includes(name));
+        }
+    });
+
+    it('lists the current Sonnet and no retired model', () => {
+        expect(MODEL_REGISTRY['claude-sonnet-5-5']).toBeDefined();
+        expect(MODEL_REGISTRY['claude-3-5-sonnet-20241022']).toBeUndefined();
     });
 });
