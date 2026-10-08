@@ -282,6 +282,31 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret' } });
     });
 
+    it('4shared retains existing tokens after an app credential read fails', async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'fourshared_has_tokens') return true;
+            if (command === 'get_credential' && args.account !== 'server_edited') throw new Error('Vault read failed');
+            return previous(command, args);
+        });
+        await openEditor('fourshared');
+        expect(container.textContent).toContain('connection.oauthKeysReadFailed');
+        expect(container.textContent).toContain('connection.fourshared.previouslyAuthenticated');
+        const key = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerKey"]')!;
+        const secret = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerSecret"]')!;
+        await act(async () => {
+            for (const [input, value] of [[key, 'manual-key'], [secret, 'manual-secret']] as const) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+        const connect = button('connection.fourshared.connectTo4shared');
+        expect(connect.disabled).toBe(false);
+        await act(async () => connect.click());
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'manual-key', consumer_secret: 'manual-secret' } });
+        expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('fourshared_full_auth');
+    });
+
     it('4shared saves profile metadata without authenticating again', async () => {
         await openEditor('fourshared');
         const name = [...container.querySelectorAll('input')].find(input => input.value === 'Account')!;

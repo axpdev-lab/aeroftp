@@ -144,14 +144,18 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         let cancelled = false;
         void (async () => {
             try {
-                const [credentials, tokens] = await Promise.all([
+                const [credentials, tokens] = await Promise.allSettled([
                     loadFourSharedCredentials(),
                     invoke<boolean>('fourshared_has_tokens').catch(() => false),
                 ]);
                 if (cancelled) return;
-                if (!credentialEdits.current.key) setConsumerKey(credentials.consumerKey);
-                if (!credentialEdits.current.secret) setConsumerSecret(credentials.consumerSecret);
-                setHasExistingTokens(!!tokens);
+                setHasExistingTokens(tokens.status === 'fulfilled' && !!tokens.value);
+                if (credentials.status === 'fulfilled') {
+                    if (!credentialEdits.current.key) setConsumerKey(credentials.value.consumerKey);
+                    if (!credentialEdits.current.secret) setConsumerSecret(credentials.value.consumerSecret);
+                } else {
+                    setError(t('connection.oauthKeysReadFailed', { provider: '4shared', error: String(credentials.reason) }));
+                }
             } catch (err) {
                 if (!cancelled) setError(t('connection.oauthKeysReadFailed', { provider: '4shared', error: String(err) }));
             } finally {
