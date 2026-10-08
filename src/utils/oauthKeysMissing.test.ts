@@ -137,16 +137,23 @@ describe('every saved-server connect path signals missing OAuth app keys', () =>
     // under the same `oauth_<provider>_client_id` shape).
     const KEY_READ = /(?:getCredentialWithRetry\(\s*|'get_credential',\s*\{\s*account:\s*)[`'"]oauth_[^`'"]*_client_id[`'"]/g;
 
-    /** The first `if (!...) { ... }` after `from`: the missing-key exit. */
+    /** Find the missing-key exit, skipping credential fallback guards. */
     const missingKeyBlock = (source: string, from: number): string => {
-        const start = source.indexOf('if (!', from);
-        const open = source.indexOf('{', start);
-        let depth = 0;
-        for (let i = open; i < source.length; i++) {
-            if (source[i] === '{') depth++;
-            else if (source[i] === '}' && --depth === 0) return source.slice(start, i + 1);
+        for (let cursor = from; cursor < source.length;) {
+            const start = source.indexOf('if (!', cursor);
+            if (start < 0) break;
+            const open = source.indexOf('{', start);
+            let depth = 0;
+            let end = open;
+            for (; end < source.length; end++) {
+                if (source[end] === '{') depth++;
+                else if (source[end] === '}' && --depth === 0) break;
+            }
+            const block = source.slice(start, end + 1);
+            if (block.includes('notifyOAuthKeysUnavailable(')) return block;
+            cursor = end + 1;
         }
-        throw new Error('unbalanced block');
+        throw new Error('missing signalled credential exit');
     };
 
     const sites = (source: string) => [...source.matchAll(KEY_READ)].map(m => {

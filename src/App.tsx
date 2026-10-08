@@ -219,6 +219,7 @@ import { openUrl } from './utils/openUrl';
 import { openOnGitLab } from './utils/gitlabWeb';
 import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
+import { loadFourSharedCredentials } from './utils/fourSharedCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable, OPEN_OAUTH_SETTINGS_EVENT } from './utils/oauthKeysMissing';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
@@ -8436,6 +8437,15 @@ const App: React.FC = () => {
           }
         }
 
+        if (isFourSharedProvider(protocol) && (!clientId || !clientSecret)) {
+          const fallback = await connectScope.step(() => loadFourSharedCredentials());
+          if (fallback.consumerKey && fallback.consumerSecret) {
+            clientId = fallback.consumerKey;
+            clientSecret = fallback.consumerSecret;
+            keyReadError = null;
+          }
+        }
+
         if (!clientId || !clientSecret) {
           notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           throw new Error(`OAuth credentials not found for ${protocol}`);
@@ -10338,6 +10348,14 @@ const App: React.FC = () => {
           consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
           consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
         } catch (e) { keyReadError = keyReadFailure(e); }
+        if (!consumerKey || !consumerSecret) {
+          const fallback = await loadFourSharedCredentials();
+          if (fallback.consumerKey && fallback.consumerSecret) {
+            consumerKey = fallback.consumerKey;
+            consumerSecret = fallback.consumerSecret;
+            keyReadError = null;
+          }
+        }
         if (!consumerKey || !consumerSecret) {
           notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           return false;

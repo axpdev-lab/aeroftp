@@ -42,6 +42,7 @@ import { PROVIDER_HEALTH_URLS } from './discoverData';
 import { mergeSavedServerProfile } from '../../utils/serverProfileStore';
 import { matchLiveDevice } from '../../utils/mtpFingerprint';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../../utils/oauthKeysMissing';
+import { loadFourSharedCredentials } from '../../utils/fourSharedCredentials';
 import type { MtpDeviceInfo } from '../../types/aerofile';
 import { loadFavoriteServers, saveFavoriteServers } from '../../utils/favoriteServers';
 import {
@@ -1178,6 +1179,14 @@ export function MyServersPanel({
                 consumerKey = await connectScope.step(() => getCredentialWithRetry('oauth_fourshared_client_id', 3, connectScope));
                 consumerSecret = await connectScope.step(() => getCredentialWithRetry('oauth_fourshared_client_secret', 3, connectScope));
             } catch (e) { connectScope.assert(); keyReadError = keyReadFailure(e); }
+            if (!consumerKey || !consumerSecret) {
+                const fallback = await connectScope.step(() => loadFourSharedCredentials());
+                if (fallback.consumerKey && fallback.consumerSecret) {
+                    consumerKey = fallback.consumerKey;
+                    consumerSecret = fallback.consumerSecret;
+                    keyReadError = null;
+                }
+            }
             if (!consumerKey || !consumerSecret) {
                 notifyOAuthKeysUnavailable(t, server.protocol, keyReadError);
                 setConnectingId(null);
