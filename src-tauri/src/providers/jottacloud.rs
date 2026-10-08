@@ -28,6 +28,8 @@ use super::{
 };
 
 const JFS_BASE: &str = "https://jfs.jottacloud.com/jfs";
+/// Direct uploads (rclone-compatible): `{UPLOAD_BASE}/{user}/{device}/{mountpoint}/{path}`.
+const UPLOAD_BASE: &str = "https://up.jottacloud.com/jfs";
 const API_BASE: &str = "https://api.jottacloud.com";
 /// The recycle bin is a mountpoint of the device, alongside Archive and Sync.
 const TRASH_MOUNTPOINT: &str = "Trash";
@@ -161,6 +163,9 @@ pub struct JottacloudProvider {
     /// The JFS base of a local double, in tests.
     #[cfg(test)]
     jfs_base_override: Option<String>,
+    /// The upload base of a local double, in tests.
+    #[cfg(test)]
+    upload_base_override: Option<String>,
 }
 
 impl JottacloudProvider {
@@ -185,7 +190,18 @@ impl JottacloudProvider {
             profile_id: String::new(),
             #[cfg(test)]
             jfs_base_override: None,
+            #[cfg(test)]
+            upload_base_override: None,
         }
+    }
+
+    /// `UPLOAD_BASE`, pointed at a local double in tests.
+    fn upload_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.upload_base_override {
+            return base;
+        }
+        UPLOAD_BASE
     }
 
     /// `JFS_BASE`, pointed at a local double in tests.
@@ -1711,7 +1727,8 @@ impl StorageProvider for JottacloudProvider {
             .collect::<Vec<_>>()
             .join("/");
         let upload_url = format!(
-            "https://up.jottacloud.com/jfs/{}/{}/{}/{}",
+            "{}/{}/{}/{}/{}",
+            self.upload_base(),
             urlencoding::encode(&self.username),
             urlencoding::encode(&self.config.device),
             urlencoding::encode(&self.config.mountpoint),
@@ -1725,11 +1742,18 @@ impl StorageProvider for JottacloudProvider {
 
         self.refresh_if_needed().await?;
 
-        // Upload as multipart/form-data with "file" field (rclone-compatible)
-        let file_part = reqwest::multipart::Part::bytes(data)
-            .file_name(filename)
-            .mime_str("application/octet-stream")
-            .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
+        // Upload as multipart/form-data with "file" field (rclone-compatible).
+        // The file part reports its bytes as they go out; 100 percent waits
+        // for Jottacloud's answer (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(progress, total_size);
+        progress.start();
+        let file_part = reqwest::multipart::Part::stream_with_length(
+            progress.bytes_body(bytes::Bytes::from(data)),
+            total_size,
+        )
+        .file_name(filename)
+        .mime_str("application/octet-stream")
+        .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
         let form = reqwest::multipart::Form::new().part("file", file_part);
 
         let resp = self
@@ -1759,9 +1783,7 @@ impl StorageProvider for JottacloudProvider {
             )));
         }
 
-        if let Some(ref cb) = progress {
-            cb(total_size, total_size);
-        }
+        progress.complete();
 
         jotta_log(&format!("Uploaded {} ({} bytes)", resolved, total_size));
         Ok(())
@@ -3553,6 +3575,52 @@ mod tests {
             posts[0].starts_with("mv=") && posts[0].ends_with("/b.txt"),
             "{posts:?}"
         );
+    }
+
+    /// Upload a 300 KB file through the direct upload to a local fixture
+    /// answering `status`; returns the outcome and the progress updates.
+    async fn direct_upload_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::post(
+            "/user123/Jotta/Archive/f.dat",
+            status,
+            "",
+        )])
+        .await;
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.token_expiry = Instant::now() + std::time::Duration::from_secs(3600);
+        provider.upload_base_override = Some(base);
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the direct upload reported only the total after Jottacloud's
+    /// answer. The bar now follows the bytes going out and reaches 100 only
+    /// on success.
+    #[tokio::test]
+    async fn direct_upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = direct_upload_against_fixture(201).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = direct_upload_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     fn test_provider() -> JottacloudProvider {

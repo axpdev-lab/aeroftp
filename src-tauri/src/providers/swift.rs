@@ -32,7 +32,7 @@ use serde::Deserialize;
 use std::time::{Duration, Instant};
 
 use super::{
-    http_retry::{send_with_retry, HttpRetryConfig},
+    http_retry::{send_with_retry_replayable, HttpRetryConfig},
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
 };
 
@@ -1083,50 +1083,72 @@ impl SwiftProvider {
         body: Option<Vec<u8>>,
         extra_headers: &[(String, String)],
     ) -> Result<reqwest::Response, ProviderError> {
+        // Copied once into refcounted `Bytes`: every attempt clones a pointer.
+        let body = body.map(bytes::Bytes::from);
+        self.swift_send(method, url, extra_headers, &|| {
+            body.clone().map(reqwest::Body::from)
+        })
+        .await
+    }
+
+    /// [`Self::swift_request`] over a body built again for every attempt, so
+    /// a streamed or counted body is retried like a buffer: on a retryable
+    /// status, and once more after re-authenticating on a 401.
+    async fn swift_send(
+        &mut self,
+        method: Method,
+        url: &str,
+        extra_headers: &[(String, String)],
+        make_body: &(dyn Fn() -> Option<reqwest::Body> + Sync),
+    ) -> Result<reqwest::Response, ProviderError> {
         self.ensure_auth().await?;
         self.validate_request_target(url)?;
 
-        let mut req = self
-            .client
-            .request(method.clone(), url)
-            .header("X-Auth-Token", self.token()?);
-        for (k, v) in extra_headers {
-            req = req.header(k.as_str(), v.as_str());
-        }
-        if let Some(ref data) = body {
-            req = req.body(data.clone());
-        }
-
-        let request = req
-            .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {e}")))?;
-        let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {e}")))?;
+        let token = self.token()?;
+        let resp = send_with_retry_replayable(
+            &self.client,
+            || self.build_request(&method, url, token, extra_headers, make_body),
+            &HttpRetryConfig::default(),
+        )
+        .await
+        .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {e}")))?;
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             // Re-auth and retry once
             self.authenticate().await?;
             self.validate_request_target(url)?;
-            let mut req2 = self
-                .client
-                .request(method, url)
-                .header("X-Auth-Token", self.token()?);
-            for (k, v) in extra_headers {
-                req2 = req2.header(k.as_str(), v.as_str());
-            }
-            if let Some(data) = body {
-                req2 = req2.body(data);
-            }
-            let request2 = req2.build().map_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {e}"))
-            })?;
-            send_with_retry(&self.client, request2, &HttpRetryConfig::default())
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Retry failed: {e}")))
+            let token = self.token()?;
+            send_with_retry_replayable(
+                &self.client,
+                || self.build_request(&method, url, token, extra_headers, make_body),
+                &HttpRetryConfig::default(),
+            )
+            .await
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Retry failed: {e}")))
         } else {
             Ok(resp)
         }
+    }
+
+    fn build_request(
+        &self,
+        method: &Method,
+        url: &str,
+        token: &str,
+        extra_headers: &[(String, String)],
+        make_body: &(dyn Fn() -> Option<reqwest::Body> + Sync),
+    ) -> reqwest::RequestBuilder {
+        let mut req = self
+            .client
+            .request(method.clone(), url)
+            .header("X-Auth-Token", token);
+        for (k, v) in extra_headers {
+            req = req.header(k.as_str(), v.as_str());
+        }
+        if let Some(body) = make_body() {
+            req = req.body(body);
+        }
+        req
     }
 
     // ─── SLO upload ────────────────────────────────────────────
@@ -1572,15 +1594,21 @@ impl StorageProvider for SwiftProvider {
             headers.push(("X-Object-Meta-Mtime".to_string(), mt));
         }
 
+        // The body reports the bytes as they go out, paced by the upload
+        // governor, and is built again for every attempt; 100 percent waits
+        // for Swift's answer (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
+        progress.start();
+        let data = bytes::Bytes::from(data);
         let resp = self
-            .swift_request(Method::PUT, &url, Some(data), &headers)
+            .swift_send(Method::PUT, &url, &headers, &|| {
+                Some(progress.bytes_body(data.clone()))
+            })
             .await?;
 
         match resp.status() {
             StatusCode::CREATED => {
-                if let Some(cb) = on_progress {
-                    cb(file_size, file_size);
-                }
+                progress.complete();
                 Ok(())
             }
             StatusCode::UNPROCESSABLE_ENTITY => Err(ProviderError::ServerError(
@@ -2018,6 +2046,71 @@ mod tests {
             verify_cert: true,
             allow_cleartext_storage_endpoint: true,
         })
+    }
+
+    /// Upload a 300 KB file through the object PUT to a local storage double
+    /// answering `status` (503 first when `busy_first`); returns the outcome,
+    /// the progress updates and the body length of every PUT it read.
+    async fn object_put_against_fixture(
+        status: u16,
+        busy_first: bool,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>, Vec<usize>) {
+        use crate::providers::upload_progress::fixture::{
+            recorder, serve_logged, temp_file, Route,
+        };
+        let mut route = Route::put("/v1/AUTH_a/c/f.dat", status, "");
+        if busy_first {
+            route = route.busy_first();
+        }
+        let (base, server, received) = serve_logged(vec![route]).await;
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("{base}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = p
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        let puts = received
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|&(_, len)| len)
+            .collect();
+        (outcome, updates, puts)
+    }
+
+    /// #368: the object PUT, every file up to 5 GiB, reported only the total
+    /// after Swift's answer. The bar now follows the bytes going out and
+    /// reaches 100 only on success. A retried attempt sends the whole file
+    /// again, as the buffered body did, and the bar does not go back.
+    #[tokio::test]
+    async fn object_put_reports_real_progress_and_retries_the_whole_file() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates, puts) = object_put_against_fixture(201, false).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(puts, [300 * 1024]);
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates, _) = object_put_against_fixture(403, false).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
+
+        let (outcome, updates, puts) = object_put_against_fixture(201, true).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(puts, [300 * 1024, 300 * 1024], "the retry resends the file");
+        assert_real_progress(&updates, 300 * 1024, true);
     }
 
     /// Every request the storage double received: method, raw path (as

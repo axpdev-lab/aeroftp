@@ -940,9 +940,10 @@ impl OpenDriveProvider {
         let file_size = metadata.len();
         let file_hash = self.compute_md5(local_path).await?;
 
-        if let Some(ref cb) = on_progress {
-            cb(0, file_size);
-        }
+        // The chunk reports its bytes as they go out; 100 percent waits until
+        // the upload is closed (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
+        progress.start();
 
         let created: CreateFileResponse = self
             .with_reauth(|this| {
@@ -1009,9 +1010,9 @@ impl OpenDriveProvider {
                     &file_id,
                     &temp_location,
                     &file_name,
-                    file_size,
                     local_path,
                     require_compression,
+                    &progress,
                 )
                 .await?;
         }
@@ -1086,9 +1087,7 @@ impl OpenDriveProvider {
             }
         }
 
-        if let Some(ref cb) = on_progress {
-            cb(file_size, file_size);
-        }
+        progress.complete();
 
         self.last_activity = std::time::Instant::now();
         Ok(())
@@ -1376,9 +1375,9 @@ impl OpenDriveProvider {
         file_id: &str,
         temp_location: &str,
         file_name: &str,
-        _file_size: u64,
         local_path: &str,
         require_compression: bool,
+        progress: &super::upload_progress::UploadProgress,
     ) -> Result<bool, ProviderError> {
         let (body_bytes, compressed) = if require_compression {
             let bytes = tokio::fs::read(local_path)
@@ -1400,8 +1399,17 @@ impl OpenDriveProvider {
                 false,
             )
         };
-        let chunk_size = body_bytes.len().to_string();
-        let body_part = multipart::Part::bytes(body_bytes).file_name(file_name.to_string());
+        let chunk_len = body_bytes.len() as u64;
+        let chunk_size = chunk_len.to_string();
+        // A compressed chunk is smaller than the file: its bytes are counted
+        // as their share of the file.
+        let body_part = multipart::Part::stream_with_length(
+            progress
+                .for_wire(chunk_len)
+                .bytes_body(bytes::Bytes::from(body_bytes)),
+            chunk_len,
+        )
+        .file_name(file_name.to_string());
 
         let mut url = reqwest::Url::parse(&self.endpoint(&format!(
             "upload/upload_file_chunk2.json/{}/{}",
@@ -2762,6 +2770,83 @@ mod tests {
         provider.connected = true;
         provider.session_id = "sid".to_string();
         (provider, moves)
+    }
+
+    /// Upload a 300 KB file of incompressible bytes through the OpenDrive
+    /// upload flow to a local double whose chunk upload answers
+    /// `chunk_status`, asking for compression when `compress`; returns the
+    /// outcome and the progress updates.
+    async fn upload_flow_against_fixture(
+        chunk_status: u16,
+        compress: bool,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, Route};
+        let opened = format!(r#"{{"TempLocation":"t","RequireCompression":{compress}}}"#);
+        let (base, server) = serve(vec![
+            Route::post(
+                "/api/v1/upload/create_file.json",
+                200,
+                r#"{"FileId":"N","TempLocation":"t"}"#,
+            ),
+            Route::post("/api/v1/upload/open_file_upload.json", 200, opened),
+            Route::post(
+                "/api/v1/upload/upload_file_chunk2.json/sid/N",
+                chunk_status,
+                "{}",
+            ),
+            Route::post("/api/v1/upload/close_file_upload.json", 200, "{}"),
+        ])
+        .await;
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: base,
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let mut state = 0x2545_f491_u32;
+        let noise: Vec<u8> = (0..300 * 1024)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                state as u8
+            })
+            .collect();
+        std::fs::write(file.path(), noise).unwrap();
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the chunk upload carries the whole file and reported nothing
+    /// until the upload was closed. The bar now follows the bytes going out,
+    /// compressed or not, counted against the file, and reaches 100 only once
+    /// the upload is closed.
+    #[tokio::test]
+    async fn upload_reports_real_progress_compressed_or_not() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        for compress in [false, true] {
+            let (outcome, updates) = upload_flow_against_fixture(200, compress).await;
+            assert!(outcome.is_ok(), "compress={compress}: {outcome:?}");
+            assert_eq!(
+                updates.first(),
+                Some(&(0, 300 * 1024)),
+                "the bar opens at 0"
+            );
+            assert_real_progress(&updates, 300 * 1024, true);
+
+            let (outcome, updates) = upload_flow_against_fixture(500, compress).await;
+            assert!(outcome.is_err(), "compress={compress}");
+            assert_real_progress(&updates, 300 * 1024, false);
+        }
     }
 
     #[tokio::test]

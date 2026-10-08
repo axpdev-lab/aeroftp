@@ -5138,8 +5138,12 @@ impl StorageProvider for S3Provider {
                 .await;
         }
 
-        // Streaming upload for small files (< 5MB)
+        // Streaming upload for files up to the multipart threshold. The body
+        // reports the bytes as they go out; 100 percent waits for the
+        // server's answer (see `UploadProgress`).
         use tokio_util::io::ReaderStream;
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+        progress.start();
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -5166,7 +5170,7 @@ impl StorageProvider for S3Provider {
             source,
             crate::transfer_dag::governor::TransferDirection::Upload,
         );
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(progress.track(stream));
 
         // Build the request manually with streaming body (cannot use s3_request helper for streaming)
         let url = self.build_url(key);
@@ -5209,9 +5213,7 @@ impl StorageProvider for S3Provider {
                 let finished = hasher.lock().unwrap_or_else(|e| e.into_inner()).take();
                 self.save_baseline(key, baseline_store.zip(finished), etag)
                     .await;
-                if let Some(progress) = on_progress {
-                    progress(total_size, total_size);
-                }
+                progress.complete();
                 self.note_markerless_upload(key);
                 Ok(())
             }
@@ -9233,6 +9235,46 @@ mod tests {
         assert_eq!(gets.load(Ordering::SeqCst), 3, "two 404s, then the object");
         let _ = std::fs::remove_file(&src);
         let _ = std::fs::remove_file(&dst);
+    }
+
+    /// Upload a 300 KB file through the single PUT to a local fixture
+    /// answering `status`; returns the outcome and the progress updates.
+    async fn single_put_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::put("/test-bucket/f.dat", status, "")]).await;
+        let mut provider = make_provider(Some(&base));
+        provider.config.skip_dir_markers = true;
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the single PUT, every upload up to the 200 MiB multipart
+    /// threshold, reported nothing until the answer and then the total. The
+    /// bar now follows the bytes going out and reaches 100 only on success.
+    #[tokio::test]
+    async fn single_put_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = single_put_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = single_put_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     /// A missing file this session did not upload, and a preset that still

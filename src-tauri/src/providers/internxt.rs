@@ -31,7 +31,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::types::InternxtConfig;
 use super::{
-    http_retry::{send_with_retry, HttpRetryConfig},
+    http_retry::{send_with_retry, send_with_retry_replayable, HttpRetryConfig},
     ProviderError, ProviderType, RemoteEntry, StorageInfo, StorageProvider,
 };
 
@@ -2013,11 +2013,17 @@ impl StorageProvider for InternxtProvider {
             Self::generate_file_key(self.mnemonic.expose_secret(), &self.bucket, &enc_index)?;
 
         // Encrypt
-        let encrypted = Self::encrypt_file_content(&data, &key, &iv)?;
+        let encrypted = bytes::Bytes::from(Self::encrypt_file_content(&data, &key, &iv)?);
 
-        if let Some(ref progress) = on_progress {
-            progress(0, encrypted.len() as u64);
-        }
+        // The encrypted body reports its bytes as they go out, counted
+        // against the file; 100 percent waits until Internxt has registered
+        // the file (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::encoded(
+            on_progress,
+            data.len() as u64,
+            encrypted.len() as u64,
+        );
+        progress.start();
 
         // Single-shard upload supports files up to ~5GB on current Internxt plans.
         // For larger files, multi-shard upload with multiparts=N would be needed.
@@ -2147,15 +2153,20 @@ impl StorageProvider for InternxtProvider {
             ));
         }
 
-        // Transfer encrypted data
-        let transfer_resp = self
-            .send_retryable(
+        // Transfer encrypted data. The body is built again for every
+        // attempt, from the same `Bytes`.
+        let transfer_resp = send_with_retry_replayable(
+            &self.client,
+            || {
                 self.client
                     .put(&upload_url)
                     .header(CONTENT_TYPE, "application/octet-stream")
-                    .body(encrypted.clone()),
-            )
-            .await?;
+                    .body(progress.bytes_body(encrypted.clone()))
+            },
+            &self.retry_config,
+        )
+        .await
+        .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))?;
 
         if !transfer_resp.status().is_success() {
             let status = transfer_resp.status();
@@ -2165,10 +2176,6 @@ impl StorageProvider for InternxtProvider {
                 status,
                 super::sanitize_api_error(&body)
             )));
-        }
-
-        if let Some(ref progress) = on_progress {
-            progress(encrypted.len() as u64, encrypted.len() as u64);
         }
 
         // RIPEMD-160(SHA-256(encrypted_data)): matches the Internxt web client and rclone adapter.
@@ -2223,6 +2230,7 @@ impl StorageProvider for InternxtProvider {
                 }
             })?;
 
+        progress.complete();
         internxt_log(&format!("Uploaded {} OK", filename));
         Ok(())
     }
