@@ -67,7 +67,7 @@ export interface LocalFilePanelProps {
   isFocused?: boolean;
   /** Fired when the panel root gets pointer/keyboard focus. */
   onPanelFocus?: () => void;
-  /** Inline style applied to the panel root: used by AeroFile dual-panel for resizable flex sizing. */
+  /** Inline style applied to the panel root: used by the connected split and the AeroFile dual-panel for resizable flex sizing. */
   style?: React.CSSProperties;
   endpointSelector?: {
     endpoint: PanelEndpoint;
@@ -536,7 +536,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
       data-panel={panelKey}
       role="region"
       aria-label={panelKey === 'local2' ? 'Local files (right panel)' : 'Local files'}
-      className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : 'w-1/2'} min-h-0 flex flex-col ${crossPanelRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
+      className={`relative ${isDualMode ? 'min-w-0' : isAeroFileMode ? 'flex-1 min-w-0' : style ? 'min-w-0' : 'w-1/2'} min-h-0 flex flex-col ${crossPanelRingClass}${extraClassName ? ` ${extraClassName}` : ''}`}
       style={style}
       onDragOver={(e) => onPanelDragOver(e, panelKey)}
       onDrop={(e) => onPanelDrop(e, panelKey)}
