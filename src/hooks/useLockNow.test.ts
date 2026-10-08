@@ -16,7 +16,7 @@ let root: Root; let host: HTMLDivElement;
 let vault = false; let locked = false;
 const onVaultLocked = vi.fn(); const interrupted = vi.fn(); const unrelated = vi.fn();
 function Harness() {
-    api = useLockNow({ vaultConfigured: vault, locked, onVaultLocked });
+    api = useLockNow({ vaultConfigured: vault, locked, onVaultLocked, interruptController: interrupted });
     useKeyboardShortcuts({ 'Ctrl+K': unrelated });
     return h('div', {}, h('textarea'), api.error ? h(LockNowError, { error: api.error, onClose: api.dismissError }) : null);
 }
@@ -26,11 +26,10 @@ beforeEach(() => {
         if (name === 'user_partitions_list_users') return [{ id: 1, hasPassphrase: true }];
         if (name === 'user_partitions_unlock_status') return { activeUserId: 1, isUnlocked: true };
     });
-    window.__aeroftpController = { interrupt: interrupted } as unknown as NonNullable<Window['__aeroftpController']>;
     vault = false; locked = false;
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); delete window.__aeroftpController; vi.clearAllMocks(); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.clearAllMocks(); });
 const mount = async () => { await act(async () => root.render(h(Harness))); };
 it.each(['ctrl', 'meta'] as const)('locks while typing with %s, Alt/Option, Shift and physical K', async modifier => {
     vault = true; await mount(); const input = host.querySelector('textarea')!; input.focus();

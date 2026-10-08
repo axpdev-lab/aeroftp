@@ -11,6 +11,7 @@ interface LockNowOptions {
     vaultConfigured: boolean;
     locked: boolean;
     onVaultLocked: () => void;
+    interruptController: () => void;
 }
 export function useLockNow(options: LockNowOptions) {
     const current = useRef(options);
@@ -21,7 +22,7 @@ export function useLockNow(options: LockNowOptions) {
     const [busy, setBusy] = useState(false);
     const [action] = useState(() => createLockNow({
         contextVersion: () => version.current,
-        interruptController: () => window.__aeroftpController?.interrupt(),
+        interruptController: () => current.current.interruptController(),
         policy: async scope => {
             if (scope === 'vault') return { account: false, vault: current.current.vaultConfigured };
             // Discover live public metadata; never read credentials or the vault.

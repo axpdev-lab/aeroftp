@@ -2156,7 +2156,8 @@ const App: React.FC = () => {
     };
   }, [masterPasswordSet, isAppLocked]);
 
-  const lockNow = useLockNow({ vaultConfigured: masterPasswordSet, locked: isAppLocked || !vaultBootComplete || accountLockState !== 'ready', onVaultLocked: () => setIsAppLocked(true) });
+  const lockControllerInterrupt = useRef<() => void>(() => {});
+  const lockNow = useLockNow({ interruptController: () => lockControllerInterrupt.current(), vaultConfigured: masterPasswordSet, locked: isAppLocked || !vaultBootComplete || accountLockState !== 'ready', onVaultLocked: () => setIsAppLocked(true) });
 
   // === Core hooks (must be before keyboard shortcuts) ===
   const { theme, setTheme, isDark } = useTheme();
@@ -16192,6 +16193,7 @@ const App: React.FC = () => {
   }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
     `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'tools_open' ? 'common.open' : intent === 'tools_close' ? 'common.close' : intent === 'tools_read' ? 'guiController.actions.state' : intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
     ok ? 'success' : 'error'));
+  lockControllerInterrupt.current = guiController.interrupt;
 
   return (
     <>
