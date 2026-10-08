@@ -100,6 +100,10 @@ pub enum ProviderType {
     /// from PLACES, never a saved server profile. Whole-file object transfer;
     /// no real mount / no drive letter. See APPENDIX-MTP.
     Mtp,
+    /// A directory of this machine used as a remote, behind a path jail
+    /// (`aeroftp-cli serve webdav /srv/share`, `ls file:///srv/share`). No
+    /// network endpoint. See `providers::directory`.
+    Local,
 }
 
 impl fmt::Display for ProviderType {
@@ -143,6 +147,7 @@ impl fmt::Display for ProviderType {
             ProviderType::AeroVaultMount => write!(f, "AeroMount (unlocked vault)"),
             ProviderType::Peer => write!(f, "AeroShare"),
             ProviderType::Mtp => write!(f, "MTP"),
+            ProviderType::Local => write!(f, "Local directory"),
         }
     }
 }
@@ -194,6 +199,7 @@ impl ProviderType {
             "cloudinary" => Some(Self::Cloudinary),
             "peer" | "aeroshare" => Some(Self::Peer),
             "mtp" | "wpd" | "portabledevice" | "portable" => Some(Self::Mtp),
+            "local" | "file" | "localdirectory" => Some(Self::Local),
             _ => None,
         }
     }
@@ -239,7 +245,8 @@ impl ProviderType {
             ProviderType::AeroVaultMount => 0, // local, no network endpoint
             // Transport is iroh (QUIC + relay); there is no host:port to dial.
             ProviderType::Peer => 443,
-            ProviderType::Mtp => 0, // local USB / WPD, no network endpoint
+            ProviderType::Mtp => 0,   // local USB / WPD, no network endpoint
+            ProviderType::Local => 0, // a folder of this machine, no network endpoint
         }
     }
 
@@ -364,6 +371,7 @@ impl ProviderType {
             ProviderType::Peer => "P2P (iroh)",
             ProviderType::Mtp => "MTP",
             ProviderType::AeroVaultMount => "local vault",
+            ProviderType::Local => "local filesystem",
         }
     }
 }

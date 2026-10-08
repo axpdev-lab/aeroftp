@@ -240,6 +240,7 @@ fn protocol_feature_key(pt: ProviderType) -> &'static str {
         ProviderType::AeroVaultMount => "aerovaultmount",
         ProviderType::Peer => "peer",
         ProviderType::Mtp => "mtp",
+        ProviderType::Local => "local",
     }
 }
 

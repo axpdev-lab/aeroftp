@@ -15,15 +15,18 @@ use tauri::State;
 use tracing::warn;
 
 use crate::provider_commands::{drain_in_flight_transfers, ProviderState};
+use crate::providers::directory::DirectoryProvider;
 use crate::providers::mtp::backend::{
     list_mtp_devices as list_mtp_devices_coalesced, MtpDeviceInfo, MtpStorage,
-};
-use crate::providers::mtp::fs_provider::{
-    MtpFsProvider, MTP_BACKEND_GVFS, MTP_EXTRA_BACKEND, MTP_EXTRA_MOUNT_PATH,
 };
 use crate::providers::mtp::provider::MtpProvider;
 use crate::providers::types::{ProviderConfig, ProviderError, ProviderType};
 use crate::providers::StorageProvider;
+
+/// Marker in `ProviderConfig.extra` when the gvfs-mount backend is installed.
+pub const MTP_EXTRA_BACKEND: &str = "mtp_backend";
+pub const MTP_BACKEND_GVFS: &str = "gvfs";
+pub const MTP_EXTRA_MOUNT_PATH: &str = "mtp_mount_path";
 
 /// Discovery row for the frontend.
 #[derive(Debug, Clone, Serialize)]
@@ -268,7 +271,7 @@ pub async fn mtp_open_device(
 /// Open a portable device by riding an existing desktop MTP mount (gvfs FUSE).
 ///
 /// Does **not** call libmtp: the desktop already holds the single MTP session.
-/// Installs [`MtpFsProvider`] into ProviderState so the remote panel and transfer
+/// Installs a [`DirectoryProvider::mtp`] into ProviderState so the remote panel and transfer
 /// fabric see a normal `ProviderType::Mtp` session. Disconnect only drops our
 /// slot; the gvfs mount stays for Nautilus.
 #[tauri::command]
@@ -314,7 +317,8 @@ pub async fn mtp_open_gvfs_mount_inner(
                 .unwrap_or_else(|| "Portable device".to_string())
         });
 
-    let mut provider = MtpFsProvider::new(path.to_path_buf(), device_id.clone(), display.clone());
+    let mut provider =
+        DirectoryProvider::mtp(path.to_path_buf(), device_id.clone(), display.clone());
     provider.connect().await.map_err(err_str)?;
 
     let storages: Vec<MtpStorageDto> = match provider.list_storage_roots().await {

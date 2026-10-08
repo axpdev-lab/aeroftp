@@ -28,6 +28,7 @@ pub mod b2;
 pub mod box_provider;
 pub mod checksum_matrix;
 pub mod cloudinary;
+pub mod directory;
 pub mod drime_cloud;
 pub mod dropbox;
 pub mod filelu;
@@ -528,7 +529,8 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         ProviderType::AeroCloud
         | ProviderType::AeroVaultMount
         | ProviderType::Peer
-        | ProviderType::Mtp => DocumentedFileLimits::default(),
+        | ProviderType::Mtp
+        | ProviderType::Local => DocumentedFileLimits::default(),
     }
 }
 
@@ -791,6 +793,9 @@ pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Dur
         // libmtp reports bare Unix seconds, WPD nothing, gvfs RFC 3339: the
         // backend is chosen at run time and two of the three do not read.
         ProviderType::Mtp => None,
+        // The file's own mtime, read with nanoseconds and listed in RFC 3339
+        // with them; an upload sets it from the source.
+        ProviderType::Local => NANO,
         // `updated_at`, RFC 3339 (Cozy); uploads write the local mtime to
         // the second.
         ProviderType::Twake => SECOND,
@@ -2773,6 +2778,9 @@ impl ProviderFactory {
                 "MTP is opened via mtp_open_device / device profile match, not ProviderFactory host connect"
                     .to_string(),
             )),
+            ProviderType::Local => Ok(Box::new(directory::DirectoryProvider::local(
+                directory::local_root_from_config(config)?,
+            ))),
         }
     }
 
@@ -3054,7 +3062,7 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
         std::fs::write(dir.path().join("b.txt"), b"B").unwrap();
         std::fs::create_dir(dir.path().join("d")).unwrap();
-        let mut provider = mtp::MtpFsProvider::new(
+        let mut provider = directory::DirectoryProvider::mtp(
             dir.path().to_path_buf(),
             "dev".to_string(),
             "Device".to_string(),

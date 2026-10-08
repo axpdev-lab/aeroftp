@@ -206,7 +206,10 @@ impl TransferCapabilities {
             | ProviderType::Peer
             // MTP/WPD portable device: whole-file only; MtpProvider overrides
             // transfer_capabilities() with an explicit honest set.
-            | ProviderType::Mtp => {}
+            | ProviderType::Mtp
+            // Local directory: DirectoryProvider overrides
+            // transfer_capabilities() with the same honest whole-file set.
+            | ProviderType::Local => {}
         }
 
         if !caps.multipart_upload.is_available() {

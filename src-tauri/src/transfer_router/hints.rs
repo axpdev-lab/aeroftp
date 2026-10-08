@@ -91,7 +91,9 @@ pub fn from_provider_type(
         // safe default until a benchmark says otherwise.
         | ProviderType::Peer
         // MTP/WPD: local USB session, not a network route class.
-        | ProviderType::Mtp => ProviderHint::OAuthCloud,
+        | ProviderType::Mtp
+        // A folder of this machine: no network route class either.
+        | ProviderType::Local => ProviderHint::OAuthCloud,
     }
 }
 
