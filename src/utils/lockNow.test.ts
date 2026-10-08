@@ -54,9 +54,33 @@ describe('confirmed Lock Now', () => {
         const h = harness(); h.deps.policy.mockImplementation(async () => { h.change(); return { account: true, vault: true }; });
         expect((await h.action()).stale).toBe(true); expect(h.deps.lockAccount).not.toHaveBeenCalled();
     });
-    it('does not lock a later account/vault or publish stale UI after the context changes', async () => {
+    it('publishes the confirmed account on a stale request without locking the subsequent vault', async () => {
         const h = harness(); h.deps.lockAccount.mockImplementation(async () => { h.change(); });
         expect((await h.action()).stale).toBe(true);
-        expect(h.deps.lockVault).not.toHaveBeenCalled(); expect(h.deps.confirmed).not.toHaveBeenCalled();
+        expect(h.deps.lockVault).not.toHaveBeenCalled();
+        expect(h.deps.confirmed).toHaveBeenCalledWith({ accountLocked: true, vaultLocked: false });
     });
+    it('publishes a vault lock confirmed after a profile refresh while retaining stale status', async () => {
+        const h = harness({ account: false, vault: true });
+        h.deps.lockVault.mockImplementation(async () => { h.change(); });
+        const result = await h.action();
+        expect(result).toEqual({ accountLocked: false, vaultLocked: true, stale: true });
+        expect(h.deps.confirmed).toHaveBeenCalledWith({ accountLocked: false, vaultLocked: true });
+    });
+    it('publishes both confirmed layers if the last backend call finishes on a stale context', async () => {
+        const h = harness(); h.deps.lockVault.mockImplementation(async () => { h.change(); });
+        expect(await h.action()).toEqual({ accountLocked: true, vaultLocked: true, stale: true });
+        expect(h.deps.confirmed).toHaveBeenCalledWith({ accountLocked: true, vaultLocked: true });
+    });
+    it('does not let its own confirmation events turn a successful request stale', async () => {
+        const h = harness(); h.deps.confirmed.mockImplementation(() => { h.change(); });
+        expect(await h.action()).toEqual({ accountLocked: true, vaultLocked: true });
+    });
+    it('retains a confirmed account after a failed vault call and concurrent context change', async () => {
+        const h = harness(); h.deps.lockVault.mockImplementation(async () => { h.change(); throw new Error('failed'); });
+        const result = await h.action();
+        expect(result).toEqual({ accountLocked: true, vaultLocked: false, stale: true, error: expect.any(Error) });
+        expect(h.deps.confirmed).toHaveBeenCalledWith({ accountLocked: true, vaultLocked: false, error: expect.any(Error) });
+    });
+
 });

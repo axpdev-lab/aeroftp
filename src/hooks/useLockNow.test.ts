@@ -73,3 +73,30 @@ it('drops in-flight UI confirmation after a profile/account change and cleans up
     await act(async () => root.unmount());
     expect(removed).toHaveBeenCalledWith('keydown', expect.any(Function), true); root = createRoot(host);
 });
+
+it('updates the vault lock UI when a profile event arrives during an accepted backend lock', async () => {
+    vault = true; await mount();
+    bridge.invoke.mockImplementation(async name => {
+        if (name === 'lock_credential_store') window.dispatchEvent(new Event(PROFILES_CHANGED_EVENT));
+    });
+    await act(async () => { expect(await api.lock('vault')).toBe(false); });
+    expect(onVaultLocked).toHaveBeenCalledTimes(1);
+    expect(api.error).toBe('stale');
+});
+it('returns focus to the connected element after dismissing a lock error', async () => {
+    await mount(); const input = host.querySelector('textarea')!; input.focus();
+    bridge.invoke.mockRejectedValueOnce(new Error('failed'));
+    await act(async () => { await api.lock('vault'); });
+    expect(document.activeElement).toBe(host.querySelector('[role="alertdialog"] button'));
+    await act(async () => api.dismissError());
+    expect(document.activeElement).toBe(input);
+});
+it('does not restore focus to an element removed while the lock error was open', async () => {
+    await mount(); const input = host.querySelector('textarea')!; input.focus();
+    const focus = vi.spyOn(input, 'focus');
+    bridge.invoke.mockRejectedValueOnce(new Error('failed'));
+    await act(async () => { await api.lock('vault'); });
+    input.remove();
+    await act(async () => api.dismissError());
+    expect(focus).not.toHaveBeenCalled();
+});

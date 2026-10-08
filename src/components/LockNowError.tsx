@@ -8,7 +8,11 @@ import { MODAL_Z } from '../utils/modalLayers';
 export function LockNowError({ error, onClose }: { error: 'failed' | 'unavailable' | 'stale'; onClose: () => void }) {
     const t = useTranslation();
     const close = useRef<HTMLButtonElement>(null);
-    useEffect(() => { close.current?.focus(); }, []);
+    useEffect(() => {
+        const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        close.current?.focus();
+        return () => { if (previous?.isConnected) previous.focus(); };
+    }, []);
     return (
         <div className={`fixed inset-0 ${MODAL_Z.elevatedConfirm} flex items-center justify-center bg-black/50`} role="alertdialog" aria-modal="true" data-keyboard-island aria-labelledby="lock-now-error-title" aria-describedby="lock-now-error-message"
             onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') onClose(); if (event.key === 'Tab') { event.preventDefault(); close.current?.focus(); } }}>

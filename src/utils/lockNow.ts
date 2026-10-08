@@ -28,6 +28,7 @@ export function createLockNow(deps: LockDependencies) {
         const current = () => deps.contextVersion() === version;
         const result: LockResult = { accountLocked: false, vaultLocked: false };
         const promise = (async () => {
+            let stale = false;
             try {
                 deps.interruptController();
                 const policy = await deps.policy(scope);
@@ -41,17 +42,18 @@ export function createLockNow(deps: LockDependencies) {
                 if (account) {
                     await deps.lockAccount();
                     result.accountLocked = true;
-                    if (!current()) return { ...result, stale: true };
+                    stale = !current();
                 }
-                if (vault) {
+                if (vault && !stale) {
                     await deps.lockVault();
                     result.vaultLocked = true;
-                    if (!current()) return { ...result, stale: true };
+                    stale = !current();
                 }
             } catch (error) { result.error = error; }
-            if (!current()) return { ...result, stale: true };
+            // Capture staleness before confirmation emits its own context events.
+            stale = stale || !current();
             if (result.accountLocked || result.vaultLocked) deps.confirmed(result);
-            return result;
+            return stale ? { ...result, stale: true } : result;
         })();
         pending = { scope, promise };
         void promise.then(() => { pending = null; }, () => { pending = null; });
