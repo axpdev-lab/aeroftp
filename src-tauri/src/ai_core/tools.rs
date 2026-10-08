@@ -2050,7 +2050,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
             danger: DangerLevel::Safe,
             surfaces: Surfaces::GUI,
         },
-        // ─── Error correction: detached .aerocorrect sidecars (MCP) ──────────
+        // ─── Error correction: detached .aerocorrect sidecars (MCP, AeroAgent) ─
         ToolDef {
             name: "aeroftp_correct_gen",
             description: "Generate a detached .aerocorrect Reed-Solomon recovery sidecar for a local file (par2-style). Writes <file>.aerocorrect by default. Use this to protect a file against bit rot before storing or transferring it.",
@@ -2064,7 +2064,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "required": ["file"],
             }),
             danger: DangerLevel::Medium,
-            surfaces: Surfaces::MCP,
+            surfaces: Surfaces::GUI | Surfaces::MCP,
         },
         ToolDef {
             name: "aeroftp_correct_verify",
@@ -2078,7 +2078,7 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "required": ["file"],
             }),
             danger: DangerLevel::ReadOnly,
-            surfaces: Surfaces::MCP,
+            surfaces: Surfaces::GUI | Surfaces::MCP,
         },
         ToolDef {
             name: "aeroftp_correct_repair",
@@ -2093,7 +2093,38 @@ pub static TOOL_DEFINITIONS: LazyLock<Vec<ToolDef>> = LazyLock::new(|| {
                 "required": ["file"],
             }),
             danger: DangerLevel::Medium,
-            surfaces: Surfaces::MCP,
+            surfaces: Surfaces::GUI | Surfaces::MCP,
+        },
+        // ─── Measurement and engine telemetry (AeroAgent) ───────────────────
+        // The MCP server serves its own definitions of both names (the
+        // benchmark through the CLI binary, which is the MCP process), so the
+        // entries here are for the GUI only.
+        ToolDef {
+            name: "aeroftp_benchmark",
+            description: "Run the AeroFTP community benchmark suite against a saved profile and return the schema-v1 JSON report, the same report `aeroftp-cli benchmark` produces. The report is anonymized (no hostnames, paths, credentials or bucket names). Writes its test files in an `aeroftp-bench` folder under the profile's start path and removes them at the end, also when the turn is stopped. Long-running: 'quick' ~30s, 'standard' ~5min, 'deep' ~30min; progress is shown while it runs.",
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string", "description": "Saved profile name or ID to benchmark (from server_list_saved)"},
+                    "level": {"type": "string", "enum": ["quick", "standard", "deep", "custom"], "description": "Preset level. Default: 'quick'. 'deep' may take 30+ minutes."},
+                    "sizes": {"type": "string", "description": "Override file sizes as comma-separated list. A BARE NUMBER MEANS MEBIBYTES ('1,100,1024'); K/M/G suffixes are explicit ('1M,100M,1G'). Replaces the sizes of the chosen level, at any level."},
+                    "runs": {"type": "integer", "description": "Override timed runs per (operation, size) tuple. Replaces the runs of the chosen level, at any level."},
+                    "operations": {"type": "string", "description": "Comma-separated operations subset: upload,download,list,stat,delete. Replaces the operations of the chosen level, at any level."},
+                    "file_count": {"type": "integer", "description": "Many-small-files workload: number of files to exercise (e.g. 100, 1000). On its own it REPLACES the single-file size sweep; pass 'sizes' as well to run both axes."},
+                    "file_size": {"type": "string", "description": "Size of each file in the many-small-files workload. A BARE NUMBER MEANS MEBIBYTES; K/M/G suffixes are explicit ('64K', '4M'). Default: 64K. Total payload (file_count x file_size) is capped at 5 GiB."},
+                    "anonymize_extra": {"type": "boolean", "description": "Hash the provider hint as well (extra anonymization). Default: false."}
+                },
+                "required": ["profile"],
+            }),
+            danger: DangerLevel::Medium,
+            surfaces: Surfaces::GUI,
+        },
+        ToolDef {
+            name: "aeroftp_transfer_stats",
+            description: "Return the engine-level telemetry of the most recent DAG-engine transfer job in this app: byte triple (logical/wire/local-payload), retries, dispatch wait and runner nanos, concurrency high-water (slot_peak), time-to-first-byte totals, real wall-clock duration, and the process CPU/RSS/FD delta bracketing the job. Read-only, no arguments. Returns {available:false} when no such job has run yet.",
+            input_schema: json!({ "type": "object", "properties": {}, "required": [] }),
+            danger: DangerLevel::ReadOnly,
+            surfaces: Surfaces::GUI,
         },
     ]
 });
@@ -2180,6 +2211,9 @@ pub async fn dispatch_tool(
         "aeroftp_correct_gen" => correct_tools::correct_gen(ctx, args).await,
         "aeroftp_correct_verify" => correct_tools::correct_verify(ctx, args).await,
         "aeroftp_correct_repair" => correct_tools::correct_repair(ctx, args).await,
+        // ─── Measurement and engine telemetry ────────────────────────────────
+        "aeroftp_benchmark" => crate::ai_core::benchmark_tool::aeroftp_benchmark(ctx, args).await,
+        "aeroftp_transfer_stats" => Ok(crate::mcp::tools::build_transfer_stats()),
         // ─── Area C: remote_* + aeroftp_* aliases ───────────────────────────
         "aeroftp_list_servers"
         | "remote_list_servers"

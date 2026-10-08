@@ -7,6 +7,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 pub mod agent_tools;
+pub mod benchmark_tool;
 pub mod cli_impl;
 pub mod coding_tools;
 pub mod correct_tools;

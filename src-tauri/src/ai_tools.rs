@@ -101,6 +101,28 @@ const ALLOWED_TOOLS: &[&str] = &[
     "server_list_saved",
     "server_exec",
     "cross_profile_transfer",
+    // Remote inspection and maintenance, shared with the CLI and MCP surfaces
+    // (`ai_core::remote_tools`): the active connection, or a saved server by name
+    "remote_hashsum",
+    "remote_head",
+    "remote_tail",
+    "remote_tree",
+    "remote_storage_quota",
+    "remote_sync_doctor",
+    "remote_reconcile",
+    "remote_speed",
+    "remote_touch",
+    "remote_cleanup",
+    "remote_dedupe",
+    "remote_versions",
+    "remote_trash",
+    // Error correction: detached .aerocorrect sidecars of local files
+    "aeroftp_correct_gen",
+    "aeroftp_correct_verify",
+    "aeroftp_correct_repair",
+    // Measurement: the community benchmark and the transfer engine telemetry
+    "aeroftp_benchmark",
+    "aeroftp_transfer_stats",
 ];
 
 const AI_APPROVAL_REQUIRED_REASON: &str =
@@ -129,8 +151,32 @@ fn sync_control_requires_approval(args: &Value) -> bool {
     )
 }
 
+/// Whether a remote maintenance call writes or deletes, from its arguments.
+/// Each one defaults to the read-only form (`list`, a dry run), which needs no
+/// approval; anything else does.
+fn remote_maintenance_writes(tool_name: &str, args: &Value) -> bool {
+    let action = args.get("action").and_then(Value::as_str);
+    let dry_run = args.get("dry_run").and_then(Value::as_bool);
+    match tool_name {
+        "remote_versions" | "remote_trash" => !matches!(action, None | Some("list")),
+        // A dedupe deletes only when told to keep one copy and not to dry-run.
+        "remote_dedupe" => {
+            dry_run == Some(false)
+                && !matches!(
+                    args.get("mode").and_then(Value::as_str),
+                    None | Some("list")
+                )
+        }
+        "remote_cleanup" => dry_run == Some(false),
+        _ => false,
+    }
+}
+
 fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
     match tool_name {
+        "remote_versions" | "remote_trash" | "remote_dedupe" | "remote_cleanup" => {
+            remote_maintenance_writes(tool_name, args)
+        }
         // Public Settings and fixed AeroTools metadata reads expose no contents.
         // Every visible workspace mutation still needs native approval.
         "gui_run" => !matches!(
@@ -175,6 +221,12 @@ fn requires_backend_write_approval(tool_name: &str, args: &Value) -> bool {
                 | "coding_diagnostics"
                 | "agent_memory_write"
                 | "shell_execute"
+                // Writes test files on the remote and moves up to gigabytes.
+                | "aeroftp_benchmark"
+                | "remote_speed"
+                | "remote_touch"
+                | "aeroftp_correct_gen"
+                | "aeroftp_correct_repair"
         ),
     }
 }

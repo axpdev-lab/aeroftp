@@ -887,7 +887,7 @@ fn build_mcp_info() -> Value {
 /// store and renders it as a model-facing JSON payload. Split from the pure
 /// [`render_transfer_stats`] renderer so unit tests can exercise the shape
 /// without depending on process-global state ordering.
-fn build_transfer_stats() -> Value {
+pub(crate) fn build_transfer_stats() -> Value {
     render_transfer_stats(crate::transfer_dag::engine_stats::latest().as_ref())
 }
 
