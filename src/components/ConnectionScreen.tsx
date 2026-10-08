@@ -6,7 +6,7 @@
  * Initial connection form with Quick Connect and Saved Servers
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useId } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
@@ -41,6 +41,8 @@ import { overlayEditDiffers } from '../utils/overlayEditDiff';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { CopySecretButton } from './common/CopySecretButton';
+import { CopyableFormFields } from './common/CopyableFormFields';
+import { loadFourSharedCredentials } from '../utils/fourSharedCredentials';
 import { OAuthConnect } from './OAuthConnect';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
@@ -102,6 +104,7 @@ interface QuickConnectDirs {
 }
 
 interface ConnectionScreenProps {
+    active?: boolean; // Inactive IntroHub tabs retain their drafts, with overlays hidden.
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
     loading: boolean;
@@ -117,117 +120,84 @@ interface ConnectionScreenProps {
 
 // --- FourSharedConnect: OAuth 1.0 authentication for 4shared ---
 interface FourSharedConnectProps {
-    initialLocalPath?: string;
-    onLocalPathChange?: (path: string) => void;
-    saveConnection?: boolean;
-    onSaveConnectionChange?: (save: boolean) => void;
-    connectionName?: string;
-    onConnectionNameChange?: (name: string) => void;
-    onConnected: (displayName: string) => void;
+    rightColumn: React.ReactNode;
+    onConnected: (displayName: string) => void | Promise<void>;
 }
 
-const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
-    initialLocalPath = '',
-    onLocalPathChange,
-    saveConnection = false,
-    onSaveConnectionChange,
-    connectionName = '',
-    onConnectionNameChange,
-    onConnected,
-}) => {
+const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onConnected }) => {
     const t = useTranslation();
     const [hasExistingTokens, setHasExistingTokens] = useState(false);
     const [isChecking, setIsChecking] = useState(true);
     const [isAuthenticating, setIsAuthenticating] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [localPath, setLocalPath] = useState(initialLocalPath);
-    const [wantToSave, setWantToSave] = useState(saveConnection);
-    const [saveName, setSaveName] = useState(connectionName);
     const [consumerKey, setConsumerKey] = useState('');
     const [consumerSecret, setConsumerSecret] = useState('');
-    const [showCredentialsForm, setShowCredentialsForm] = useState(false);
+    const credentialEdits = useRef({ key: false, secret: false });
     const [wantsNewAccount, setWantsNewAccount] = useState(false);
     const [showSecret, setShowSecret] = useState(false);
+    const ProviderLogo = PROVIDER_LOGOS.fourshared;
 
-    // Load consumer key/secret from credential store
+    // This component owns authentication only. Profile metadata belongs to the
+    // shared right column, so edit hydration and tab drafts have one source.
     useEffect(() => {
-        const load = async () => {
+        let cancelled = false;
+        void (async () => {
             try {
-                const key = await invoke<string>('get_credential', { account: 'oauth_fourshared_client_id' });
-                if (key) setConsumerKey(key);
-            } catch { /* no stored key */ }
-            try {
-                const secret = await invoke<string>('get_credential', { account: 'oauth_fourshared_client_secret' });
-                if (secret) setConsumerSecret(secret);
-            } catch { /* no stored secret */ }
-        };
-        load();
-    }, []);
-
-    // Check for existing tokens
-    useEffect(() => {
-        const check = async () => {
-            setIsChecking(true);
-            try {
-                const exists = await invoke<boolean>('fourshared_has_tokens');
-                setHasExistingTokens(exists);
-            } catch {
-                setHasExistingTokens(false);
+                const [credentials, tokens] = await Promise.allSettled([
+                    loadFourSharedCredentials(),
+                    invoke<boolean>('fourshared_has_tokens').catch(() => false),
+                ]);
+                if (cancelled) return;
+                setHasExistingTokens(tokens.status === 'fulfilled' && !!tokens.value);
+                if (credentials.status === 'fulfilled') {
+                    if (!credentialEdits.current.key) setConsumerKey(credentials.value.consumerKey);
+                    if (!credentialEdits.current.secret) setConsumerSecret(credentials.value.consumerSecret);
+                } else {
+                    setError(t('connection.oauthKeysReadFailed', { provider: '4shared', error: String(credentials.reason) }));
+                }
+            } catch (err) {
+                if (!cancelled) setError(t('connection.oauthKeysReadFailed', { provider: '4shared', error: String(err) }));
+            } finally {
+                if (!cancelled) setIsChecking(false);
             }
-            setIsChecking(false);
-        };
-        check();
+        })();
+        return () => { cancelled = true; };
     }, []);
-
-    const browseLocalFolder = async () => {
-        try {
-            // Sanitize the starting dir so a stale local path cannot crash the
-            // native folder chooser (Fix G).
-            const selected = await pickFile({ directory: true, multiple: false, defaultPath: await safePickerStartDir(localPath), title: t('connection.fourshared.selectLocalFolder') });
-            if (selected && typeof selected === 'string') {
-                setLocalPath(selected);
-                onLocalPathChange?.(selected);
-            }
-        } catch { /* cancelled */ }
-    };
-
-    const handleSignIn = async () => {
-        if (!consumerKey || !consumerSecret) {
-            setShowCredentialsForm(true);
-            return;
-        }
-        setIsAuthenticating(true);
-        setError(null);
-        // Save credentials to vault
-        invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }).catch(() => { });
-        invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }).catch(() => { });
-        try {
-            await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
-            setHasExistingTokens(true);
-            // Now connect
-            await handleConnect();
-        } catch (e) {
-            setError(String(e));
-        } finally {
-            setIsAuthenticating(false);
-        }
-    };
 
     const handleConnect = async () => {
-        if (!consumerKey || !consumerSecret) {
-            setShowCredentialsForm(true);
-            return;
-        }
+        if (!consumerKey || !consumerSecret) return;
         setIsConnecting(true);
         setError(null);
         try {
-            const result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
-            onConnected(result.display_name || '4shared');
-        } catch (e) {
-            setError(String(e));
+            const result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', {
+                params: { consumer_key: consumerKey, consumer_secret: consumerSecret },
+            });
+            await onConnected(result.display_name || '4shared');
+        } catch (err) {
+            setError(String(err));
         } finally {
             setIsConnecting(false);
+        }
+    };
+
+    const handleSignIn = async () => {
+        if (!consumerKey || !consumerSecret) return;
+        setIsAuthenticating(true);
+        setError(null);
+        try {
+            await Promise.all([
+                invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }),
+                invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }),
+            ]);
+            await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
+            setHasExistingTokens(true);
+            setWantsNewAccount(false);
+            await handleConnect();
+        } catch (err) {
+            setError(String(err));
+        } finally {
+            setIsAuthenticating(false);
         }
     };
 
@@ -236,246 +206,69 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({
             await invoke('fourshared_logout');
             setHasExistingTokens(false);
             setWantsNewAccount(false);
-        } catch (e) {
-            setError(String(e));
+        } catch (err) {
+            setError(String(err));
         }
     };
 
-    if (isChecking) {
-        return (
-            <div className="flex items-center justify-center p-4">
-                <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-        );
-    }
-
-    // Active state: already authenticated
-    if (hasExistingTokens && !wantsNewAccount) {
-        return (
-            <div className="space-y-4">
-                <div className="p-4 rounded-lg border-2 border-blue-500/30 bg-blue-500/5">
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-lg flex items-center justify-center bg-blue-500/20">
-                            <Cloud size={24} className="text-blue-500" />
-                        </div>
-                        <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                                <span className="font-medium">4shared</span>
-                                <span className="px-2 py-0.5 text-xs font-medium bg-green-500/20 text-green-400 rounded-full flex items-center gap-1">
-                                    <Check size={12} />
-                                    {t('connection.active')}
-                                </span>
-                            </div>
-                            <span className="text-sm text-gray-500">{t('connection.fourshared.previouslyAuthenticated')}</span>
-                        </div>
-                    </div>
+    const useExistingAccount = hasExistingTokens && !wantsNewAccount;
+    const busy = isChecking || isAuthenticating || isConnecting;
+    return (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                    <h4 className="font-medium text-sm">{t('connection.fourshared.oauth1Credentials')}</h4>
+                    <span className="inline-flex items-center shrink-0">
+                        <button type="button" onClick={() => openUrl('https://www.4shared.com/developer/docs/app/')} className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1">
+                            {t('settings.getCredentials')} <ExternalLink size={12} />
+                        </button>
+                        <CopyLinkButton url="https://www.4shared.com/developer/docs/app/" size={12} />
+                    </span>
                 </div>
-                {/* Local Folder */}
+                <p className="text-xs text-gray-500 dark:text-gray-400">{t('connection.fourshared.createAppInstructions')}</p>
                 <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('connection.fourshared.localFolderOptional')}</label>
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={localPath}
-                            onChange={(e) => { setLocalPath(e.target.value); onLocalPathChange?.(e.target.value); }}
-                            placeholder="~/Downloads"
-                            className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                        />
-                        <button type="button" onClick={browseLocalFolder} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg" title={t('common.browse')}>
-                            <FolderOpen size={18} />
+                    <label className="block text-xs font-medium mb-1">{t('settings.consumerKey')}</label>
+                    <input type="text" value={consumerKey} onChange={event => { credentialEdits.current.key = true; setConsumerKey(event.target.value); }} placeholder={t('connection.fourshared.enterConsumerKey')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium mb-1">{t('settings.consumerSecret')}</label>
+                    <div className="relative">
+                        <input type={showSecret ? 'text' : 'password'} value={consumerSecret} onChange={event => { credentialEdits.current.secret = true; setConsumerSecret(event.target.value); }} placeholder={t('connection.fourshared.enterConsumerSecret')} className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
+                        <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                            {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                     </div>
                 </div>
-                <button
-                    onClick={handleConnect}
-                    disabled={isConnecting || isAuthenticating}
-                    className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {isConnecting ? (
-                        <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            {t('connection.connecting')}
-                        </>
+                {useExistingAccount && (
+                    <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5"><Check size={14} />{t('connection.fourshared.previouslyAuthenticated')}</p>
+                )}
+                <button type="button" onClick={useExistingAccount ? handleConnect : handleSignIn} disabled={busy || !consumerKey || !consumerSecret} className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {busy ? (
+                        <><Loader2 size={20} className="animate-spin" />{t(isAuthenticating ? 'connection.authenticating' : 'connection.connecting')}</>
                     ) : (
-                        <>
-                            <Cloud size={18} />
-                            {t('connection.fourshared.connectTo4shared')}
-                        </>
+                        <><ProviderLogo size={20} />{t(useExistingAccount ? 'connection.fourshared.connectTo4shared' : 'connection.fourshared.signInWith4shared')}</>
                     )}
                 </button>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setWantsNewAccount(true)}
-                        className="flex-1 py-2 px-3 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                        {t('connection.fourshared.useDifferentAccount')}
-                    </button>
-                    <button
-                        onClick={handleLogout}
-                        className="py-2 px-3 text-sm text-red-500 hover:text-red-600 border border-red-300 dark:border-red-600/50 rounded-lg flex items-center justify-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        title={t('connection.fourshared.disconnectAccount')}
-                    >
-                        <X size={14} />
-                    </button>
-                </div>
-                {error && (
-                    <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
-                        <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    // Sign-in state
-    return (
-        <div className="space-y-4">
-            {/* Local Path */}
-            <div>
-                <label className="block text-sm font-medium mb-1.5">{t('connection.fourshared.localFolderOptional')}</label>
-                <div className="flex gap-2">
-                    <input
-                        type="text"
-                        value={localPath}
-                        onChange={(e) => { setLocalPath(e.target.value); onLocalPathChange?.(e.target.value); }}
-                        placeholder="~/Downloads"
-                        className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                    />
-                    <button type="button" onClick={browseLocalFolder} className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg" title={t('common.browse')}>
-                        <FolderOpen size={18} />
-                    </button>
-                </div>
-            </div>
-
-            {/* Save Connection */}
-            <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                <Checkbox
-                    checked={wantToSave}
-                    onChange={(v) => { setWantToSave(v); onSaveConnectionChange?.(v); }}
-                />
-                <label className="flex-1">
-                    <span className="text-sm font-medium">{t('connection.saveThisConnection')}</span>
-                    <p className="text-xs text-gray-500">{t('connection.fourshared.quickConnectNextTime')}</p>
-                </label>
-                <Save size={16} className="text-gray-400" />
-            </div>
-
-            {wantToSave && (
-                <div>
-                    <label className="block text-sm font-medium mb-1.5">{t('connection.profileName')}</label>
-                    <input
-                        type="text"
-                        value={saveName}
-                        onChange={(e) => { setSaveName(e.target.value); onConnectionNameChange?.(e.target.value); }}
-                        placeholder={t('connection.fourshared.my4shared')}
-                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                    />
-                </div>
-            )}
-
-            {/* Sign In Button */}
-            <button
-                onClick={hasExistingTokens ? handleConnect : handleSignIn}
-                disabled={isAuthenticating || isConnecting}
-                className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                {isAuthenticating || isConnecting ? (
-                    <>
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        {isAuthenticating ? t('connection.authenticating') : t('connection.connecting')}
-                    </>
-                ) : (
-                    <>
-                        <Cloud size={18} />
-                        {t('connection.fourshared.signInWith4shared')}
-                    </>
-                )}
-            </button>
-
-            {error && (
-                <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
-                    <span className="text-sm text-red-700 dark:text-red-300">{error}</span>
-                </div>
-            )}
-
-            {/* Credentials Form */}
-            {showCredentialsForm && (
-                <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
-                    <div className="flex items-center justify-between">
-                        <h4 className="font-medium text-sm">{t('connection.fourshared.oauth1Credentials')}</h4>
-                        <span className="inline-flex items-center shrink-0">
-                            <button
-                                onClick={() => openUrl('https://www.4shared.com/developer/docs/app/')}
-                                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1"
-                            >
-                                {t('settings.getCredentials')} <ExternalLink size={12} />
-                            </button>
-                            <CopyLinkButton url="https://www.4shared.com/developer/docs/app/" size={12} />
-                        </span>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {t('connection.fourshared.createAppInstructions')}
-                    </p>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">{t('settings.consumerKey')}</label>
-                        <input
-                            type="text"
-                            value={consumerKey}
-                            onChange={(e) => setConsumerKey(e.target.value)}
-                            placeholder={t('connection.fourshared.enterConsumerKey')}
-                            className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-medium mb-1">{t('settings.consumerSecret')}</label>
-                        <div className="relative">
-                            <input
-                                type={showSecret ? 'text' : 'password'}
-                                value={consumerSecret}
-                                onChange={(e) => setConsumerSecret(e.target.value)}
-                                placeholder={t('connection.fourshared.enterConsumerSecret')}
-                                className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600"
-                            />
-                            <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                                {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                        </div>
-                    </div>
+                {useExistingAccount && (
                     <div className="flex gap-2">
-                        <button onClick={() => setShowCredentialsForm(false)} className="flex-1 py-2 px-3 text-sm border rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600">
-                            {t('common.cancel')}
+                        <button type="button" onClick={() => setWantsNewAccount(true)} disabled={busy} className="flex-1 py-2 px-3 text-sm text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50">
+                            {t('connection.fourshared.useDifferentAccount')}
                         </button>
-                        <button
-                            onClick={handleSignIn}
-                            disabled={!consumerKey || !consumerSecret}
-                            className="flex-1 py-2 px-3 text-sm text-white rounded-lg bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
-                        >
-                            {t('connection.fourshared.continue')}
-                        </button>
+                        <button type="button" onClick={handleLogout} disabled={busy} title={t('connection.fourshared.disconnectAccount')} className="py-2 px-3 text-sm text-red-500 border border-red-300 dark:border-red-600/50 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"><X size={14} /></button>
                     </div>
-                </div>
-            )}
-
-            {!showCredentialsForm && (
-                <button
-                    onClick={() => setShowCredentialsForm(true)}
-                    className="w-full py-2 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1"
-                >
-                    <Settings size={16} />
-                    {t('connection.fourshared.configureCredentials')}
-                </button>
-            )}
-
-            {wantsNewAccount && hasExistingTokens && (
-                <button onClick={() => setWantsNewAccount(false)} className="w-full py-2 text-sm text-blue-500 hover:text-blue-600 flex items-center justify-center gap-1">
-                    &larr; {t('connection.fourshared.backToExistingAccount')}
-                </button>
-            )}
+                )}
+                {wantsNewAccount && hasExistingTokens && (
+                    <button type="button" onClick={() => setWantsNewAccount(false)} disabled={busy} className="w-full py-2 text-sm text-blue-500 hover:text-blue-600 disabled:opacity-50">&larr; {t('connection.fourshared.backToExistingAccount')}</button>
+                )}
+                {error && <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg"><span className="text-sm text-red-700 dark:text-red-300">{error}</span></div>}
+            </div>
+            {rightColumn}
         </div>
     );
 };
 
 export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
+    active = true,
     connectionParams,
     quickConnectDirs,
     loading,
@@ -491,6 +284,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const t = useTranslation();
     const { log: logActivity } = useActivityLog();
     const protocol = connectionParams.protocol; // Can be undefined
+    const swiftAuthUrlId = useId();
     // AeroShare friend (protocol "peer"): editing one must NOT show the FTP
     // credential layout. The identity (AeroFTP-ID) + drive binding are fixed by
     // the handshake; the only editable attribute is the friend's display name.
@@ -517,6 +311,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     useEffect(() => {
         onTabLabelChangeRef.current?.(connectionName.trim());
     }, [connectionName]);
+    // handleEdit hydrates the current icon. Undefined means the form has no
+    // custom icon, including an explicit removal; never restore the stored icon
+    // as a fallback when saving an edit (#1100).
     const [customIconForSave, setCustomIconForSave] = useState<string | undefined>(undefined);
     const [faviconForSave, setFaviconForSave] = useState<string | undefined>(undefined);
     const [showIconPicker, setShowIconPicker] = useState(false);
@@ -1647,7 +1444,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
                                     : protocol === 'mega' ? 'mega'
                                     : undefined)),
-                        customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
+                        customIconUrl: customIconForSave,
                         ...(protocol === 'mtp' && mtpFingerprint ? { deviceFingerprint: mtpFingerprint } : {}),
                         ...(protocol === 'mtp' ? {} : aeroFieldsEdit),
                     };
@@ -1764,11 +1561,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // OneDrive, ...). The icon picker is shown for every Quick Connect page now,
     // but preset providers are restricted to the custom-icons library so they
     // cannot be assigned a *different* provider's logo (#270).
-    const hasProviderLogoForSave = !!PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
+    const profileIconProviderKey = protocol === 'swift'
+        ? (isBlompAuthUrl(connectionParams.server) ? 'blomp' : 'swift')
+        : (selectedProviderId || protocol || '');
+    const hasProviderLogoForSave = !!PROVIDER_LOGOS[profileIconProviderKey];
 
     const renderIconPicker = () => {
         const proto = connectionParams.protocol || 'ftp';
-        const PresetLogo = PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
+        const PresetLogo = PROVIDER_LOGOS[profileIconProviderKey];
         const hasIcon = !!customIconForSave || !!faviconForSave || !!PresetLogo;
         const letter = (connectionName || connectionParams.server || '?').charAt(0).toUpperCase();
         return (
@@ -1819,7 +1619,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // the two-column forms where the icon sits immediately left of the name.
     const renderProfileIconButton = () => {
         const proto = connectionParams.protocol || 'ftp';
-        const PresetLogo = PROVIDER_LOGOS[selectedProviderId || connectionParams.protocol || ''];
+        const PresetLogo = PROVIDER_LOGOS[profileIconProviderKey];
         const hasIcon = !!customIconForSave || !!faviconForSave || !!PresetLogo;
         const letter = (connectionName || connectionParams.server || '?').charAt(0).toUpperCase();
         return (
@@ -1937,9 +1737,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 ? {
                     ...s,
                     name: saveName || s.name,
-                    initialPath: quickConnectDirs.remoteDir || s.initialPath,
+                    initialPath: quickConnectDirs.remoteDir,
                     localInitialPath: quickConnectDirs.localDir,
-                    customIconUrl: customIconForSave !== undefined ? customIconForSave : s.customIconUrl,
+                    customIconUrl: customIconForSave,
                     ...overlayFields,
                 }
                 : s,
@@ -2013,7 +1813,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             (connectionName || ep.name) !== ep.name ||
             (quickConnectDirs.localDir || '') !== (ep.localInitialPath || '') ||
             (quickConnectDirs.remoteDir || '') !== (ep.initialPath || '') ||
-            (customIconForSave !== undefined && customIconForSave !== ep.customIconUrl) ||
+            customIconForSave !== ep.customIconUrl ||
             overlayEditDiffers(
                 {
                     enabled: aeroCryptEnabled,
@@ -2272,7 +2072,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             localInitialPath: quickConnectDirs.localDir,
             options: optionsToSave,
             providerId: selectedProviderId || undefined,
-            customIconUrl: customIconForSave || originalServer.customIconUrl,
+            customIconUrl: customIconForSave,
             color: originalServer.color,
             faviconUrl: faviconForSave || originalServer.faviconUrl,
             // Carry the cached storage quota: a convert stays on the same
@@ -3854,7 +3654,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'twake', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
         // #215 harmonization: OAuth clouds are now two-column too, so they get the
         // same wide card (max-w-4xl) as the rest instead of the narrow single-column one.
-        'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk',
+        'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk', 'fourshared', 'swift',
         // #369: MEGA API/CMD now uses the two-column layout too, so the wide
         // card gives the MEGA MODES bar room and its S4 tab no longer wraps.
         'mega',
@@ -3865,7 +3665,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     return (
         <>
-        <div className={`w-full mx-auto relative z-10 ${cardMaxW}`}>
+        <CopyableFormFields enabled={active && !!editingProfileId} className={`w-full mx-auto relative z-10 ${cardMaxW}`}>
             <div>
                 {/* Quick Connect */}
                 <div className="min-w-0 w-full overflow-hidden bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700/50 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] p-6">
@@ -4150,35 +3950,66 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </div>
                         ) : isFourSharedProvider(protocol) ? (
                             <FourSharedConnect
-                                initialLocalPath={quickConnectDirs.localDir}
-                                onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
-                                saveConnection={saveConnection}
-                                onSaveConnectionChange={setSaveConnection}
-                                connectionName={connectionName}
-                                onConnectionNameChange={setConnectionName}
+                                rightColumn={renderRightColumn(
+                                    editingProfileId
+                                        ? {
+                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay || oauthOverlaySaveBlocked,
+                                            buttonColorClass: 'bg-green-600 hover:bg-green-700',
+                                            hideSaveButton: false,
+                                            saveOverride: handleOAuthMetadataSave,
+                                            cancelOverride: handleOAuthCancel,
+                                            buttonText: (<><Save size={18} /> {t('common.save')}</>),
+                                        }
+                                        : { disabled: false, buttonColorClass: '', hideSaveButton: true },
+                                )}
                                 onConnected={async (displayName) => {
+                                    if (remotePathEscapesOverlay || oauthOverlaySaveBlocked) return;
+                                    let connectedSavedId: string | undefined = editingProfileId || undefined;
                                     if (saveConnection) {
                                         const existingServers = await readProfilesForSave();
                                         if (!existingServers) return;
+                                        const credentials = createProfileCredentialJournal(invoke);
                                         const saveName = connectionName || displayName;
-                                        const duplicate = existingServers.find(s => s.name === saveName && s.protocol === protocol);
+                                        const editTarget = editingProfileId ? existingServers.find(s => s.id === editingProfileId) : undefined;
+                                        if (editingProfileId && !editTarget) {
+                                            setGitHubAlert({ title: t('toast.saveFailed'), message: t('toast.serverNotFound'), type: 'error' });
+                                            return;
+                                        }
+                                        const duplicate = editTarget || existingServers.find(s => s.name === saveName && s.protocol === protocol);
                                         if (!duplicate) {
+                                            const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+                                            const overlayFields = await aeroCryptOverlayFields(newId, undefined, undefined, undefined, credentials.write);
                                             const newServer: ServerProfile = {
-                                                id: `srv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                                                id: newId,
                                                 name: saveName,
                                                 host: displayName,
                                                 port: 443,
                                                 username: '',
                                                 password: '',
                                                 protocol: protocol as ProviderType,
-                                                initialPath: '/',
+                                                initialPath: quickConnectDirs.remoteDir || '/',
                                                 localInitialPath: quickConnectDirs.localDir,
+                                                customIconUrl: customIconForSave,
+                                                ...overlayFields,
                                             };
                                             const newServers = [...existingServers, newServer];
-                                            if (!(await persistProfilesForSave(newServers))) return;
+                                            if (!(await persistProfilesForSave(newServers, credentials))) return;
+                                            connectedSavedId = newId;
+                                        } else {
+                                            const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt, duplicate.hasStoredAeroCryptKeyfilePath, credentials.write);
+                                            const updated = existingServers.map(s => s.id === duplicate.id ? {
+                                                ...s,
+                                                name: saveName || s.name,
+                                                initialPath: editingProfileId ? quickConnectDirs.remoteDir : (quickConnectDirs.remoteDir || s.initialPath),
+                                                localInitialPath: quickConnectDirs.localDir,
+                                                customIconUrl: editingProfileId ? customIconForSave : (customIconForSave ?? s.customIconUrl),
+                                                ...overlayFields,
+                                            } : s);
+                                            if (!(await persistProfilesForSave(updated, credentials))) return;
+                                            connectedSavedId = duplicate.id;
                                         }
                                     }
-                                    onConnect();
+                                    onConnect(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
                                 }}
                             />
                         ) : isOAuthProvider(protocol) ? (
@@ -4254,9 +4085,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 s.id === duplicate.id ? {
                                                     ...s,
                                                     name: saveName || s.name,
-                                                    initialPath: quickConnectDirs.remoteDir || s.initialPath,
+                                                    initialPath: editingProfileId ? quickConnectDirs.remoteDir : (quickConnectDirs.remoteDir || s.initialPath),
                                                     localInitialPath: quickConnectDirs.localDir,
-                                                    customIconUrl: customIconForSave ?? s.customIconUrl,
+                                                    customIconUrl: editingProfileId ? customIconForSave : (customIconForSave ?? s.customIconUrl),
                                                     ...overlayFields,
                                                     lastConnected: new Date().toISOString(),
                                                     ...(extraOptions?.region && { options: { ...s.options, region: extraOptions.region } }),
@@ -5952,7 +5783,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     </div>
                                 ) : protocol === 'swift' ? (
                                     /* Blomp / OpenStack Swift Form */
-                                    <div className="space-y-4 pt-2">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                                    <div className="space-y-4">
                                         <div>
                                             {renderUsernameLabel(t('connection.emailAccount'))}
                                             <input
@@ -5983,18 +5815,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* Optional Remote/Local Path */}
+                                        {/* Swift authentication endpoint and provider options */}
                                         <div className="pt-2">
-                                            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAdvanced(!showAdvanced)}
+                                                aria-expanded={showAdvanced}
+                                                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-500 dark:text-gray-500 dark:hover:text-gray-400 transition-colors"
+                                            >
+                                                <Settings size={12} />
                                                 {t('connection.optionalSettings')}
-                                            </label>
-                                            <div className="space-y-2">
+                                                <ChevronDown size={12} className={`transition-transform duration-200 ${showAdvanced ? 'rotate-180' : ''}`} />
+                                            </button>
+                                            {showAdvanced && <div className="mt-2 space-y-2">
                                                 {/* Swift is a protocol, not just Blomp. The auth URL is
                                                     editable so a private OpenStack can be reached, and the
                                                     preset identity follows it (see isBlompAuthUrl). */}
+                                                <label className="block text-xs font-medium text-gray-500" htmlFor={swiftAuthUrlId}>
+                                                    {t('connection.swiftAuthUrl')}
+                                                </label>
                                                 <input
+                                                    id={swiftAuthUrlId}
                                                     type="text"
                                                     value={connectionParams.server}
+                                                    disabled={!advancedUnlocked}
                                                     onChange={(e) => onConnectionParamsChange({
                                                         ...connectionParams,
                                                         server: e.target.value,
@@ -6011,9 +5855,29 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                             connectionParams.options,
                                                         ),
                                                     })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
+                                                    className={`w-full px-3 py-2 border rounded-lg text-sm ${advancedUnlocked ? 'bg-gray-50 dark:bg-gray-700 border-gray-300 dark:border-gray-600' : 'bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'}`}
                                                     placeholder={t('connection.swiftAuthUrl')}
                                                 />
+                                                {!advancedUnlocked && (
+                                                    <button type="button" onClick={() => setShowAdvancedWarning(true)} className="inline-flex items-center gap-1 text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300">
+                                                        <Pencil size={10} />{t('common.edit')}
+                                                    </button>
+                                                )}
+                                                {showAdvancedWarning && (
+                                                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-lg">
+                                                        <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
+                                                            <Shield size={12} className="inline mr-1 -mt-0.5" />{t('protocol.advancedWarning')}
+                                                        </p>
+                                                        <div className="flex gap-2">
+                                                            <button type="button" onClick={() => { setAdvancedUnlocked(true); setShowAdvancedWarning(false); }} className="px-3 py-1 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded-md transition-colors">
+                                                                {t('protocol.advancedUnlock')}
+                                                            </button>
+                                                            <button type="button" onClick={() => setShowAdvancedWarning(false)} className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
+                                                                {t('common.cancel')}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 {!isBlompAuthUrl(connectionParams.server) && (
                                                     <label className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
                                                         <input
@@ -6031,66 +5895,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                         <span>{t('connection.swiftAllowCleartextStorage')}</span>
                                                     </label>
                                                 )}
-                                                <input
-                                                    type="text"
-                                                    value={quickConnectDirs.remoteDir}
-                                                    onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, remoteDir: e.target.value })}
-                                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                    placeholder={t('connection.initialRemotePath')}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={quickConnectDirs.localDir}
-                                                        onChange={(e) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: e.target.value })}
-                                                        className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm"
-                                                        placeholder={t('connection.initialLocalPath')}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={handleBrowseLocalDir}
-                                                        className="px-3 py-2 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded-lg transition-colors"
-                                                        title={t('common.browse')}
-                                                    >
-                                                        <FolderOpen size={16} />
-                                                    </button>
-                                                </div>
-                                            </div>
+                                            </div>}
                                         </div>
-
-                                        {/* Save Connection */}
-                                        <div className="pt-3 border-t border-gray-100 dark:border-gray-700/50">
-                                            <div>
-                                                <label className="block text-sm font-medium mb-1.5 flex items-center gap-1.5">
-                                                    <Save size={14} />
-                                                    {t('connection.profileName')}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={connectionName}
-                                                    onChange={(e) => setConnectionName(e.target.value)}
-                                                    placeholder={t('connection.profileName')}
-                                                    className="w-full px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="pt-2">
-                                            <button
-                                                onClick={handleConnectAndSave}
-                                                disabled={loading || !connectionParams.username || !connectionParams.password}
-                                                className={`w-full py-3.5 rounded-lg font-medium text-white cursor-pointer shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-2
-                                                ${loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'}`}
-                                            >
-                                                {loading ? (
-                                                    <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> {t('connection.connecting')}</>
-                                                ) : saveConnection ? (
-                                                    <><Save size={18} /> {t('common.save')}</>
-                                                ) : (
-                                                    <>{ConnectIcon} {t('connection.secureLogin')}</>
-                                                )}
-                                            </button>
-                                        </div>
+                                    </div>
+                                    {renderRightColumn({
+                                        disabled: !connectionParams.username || !connectionParams.password,
+                                        buttonColorClass: 'bg-purple-600 hover:bg-purple-700',
+                                    })}
                                     </div>
                                 ) : protocol === 'webdav' && selectedProviderId === 'megacmd-webdav' ? (
                                     /* MEGAcmd local anonymous WebDAV */
@@ -6559,7 +6370,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 {/* Skip to File Manager: accessible via status bar AeroFile button */}
             </div> {/* Close form wrapper */}
 
-            {gitHubAlert && (
+            {active && gitHubAlert && (
                 <AlertDialog
                     title={gitHubAlert.title}
                     message={gitHubAlert.message}
@@ -6567,7 +6378,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     onClose={() => setGitHubAlert(null)}
                 />
             )}
-            {showIconPicker && (
+            {active && showIconPicker && (
                 <IconPickerDialog
                     onSelect={(dataUrl) => setCustomIconForSave(dataUrl)}
                     onClose={() => setShowIconPicker(false)}
@@ -6599,7 +6410,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     }}
                 />
             )}
-            {gitHubDeviceFlow && (
+            {active && gitHubDeviceFlow && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={t('github.authTitle')}>
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-scale-in">
                         <div className="p-5 border-b border-gray-200 dark:border-gray-700">
@@ -6673,7 +6484,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     </div>
                 </div>
             )}
-        </div>
+        </CopyableFormFields>
         {/* Rebex demo server disclaimer */}
         {connectionParams.server === 'test.rebex.net' && (
             <div className="mt-3">

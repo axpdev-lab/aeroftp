@@ -2823,6 +2823,96 @@ mod tests {
         crate::credential_store::CredentialStore::from_verified_key(&path, &VAULT_KEY_736)
     }
 
+    #[test]
+    fn fourshared_keystore_roundtrip_preserves_app_keys_and_oauth1_tokens() {
+        // Exercise the encrypted file and real vault writes on two disposable
+        // machines, including the legacy shapes older installs can contain.
+        let dir = tempfile::tempdir().unwrap();
+        let source = throwaway_store(dir.path(), "source-vault.db");
+        let entries = [
+            ("oauth_fourshared_client_id", "fixture-consumer-key"),
+            ("oauth_fourshared_client_secret", "fixture-consumer-secret"),
+            ("oauth_fourshared", "legacy-token:legacy-token-secret"),
+            (
+                "oauth_fourshared_srv_4shared",
+                "profile-token:profile-token-secret",
+            ),
+            (
+                "config_oauth_clients",
+                r#"{"fourshared":{"clientId":"older-key","clientSecret":"older-secret"}}"#,
+            ),
+            (
+                "config_aeroftp_oauth_settings",
+                r#"{"fourshared":{"clientId":"oldest-key","clientSecret":"oldest-secret"}}"#,
+            ),
+            (
+                "fourshared_oauth_settings",
+                r#"{"consumer_key":"oauth1-key","consumer_secret":"oauth1-secret"}"#,
+            ),
+            (
+                "config_server_profiles",
+                r#"[{"id":"srv_4shared","name":"My4Shared","protocol":"fourshared","host":"4shared.com"}]"#,
+            ),
+        ];
+        for (account, value) in entries {
+            source.store(account, value).unwrap();
+        }
+        for (mode_index, mode) in [ExportMode::Full, ExportMode::VaultOnly]
+            .into_iter()
+            .enumerate()
+        {
+            let backup = dir
+                .path()
+                .join(format!("fourshared-{mode_index}.aeroftp-keystore"));
+            let metadata = export_keystore_with_store(
+                &source,
+                PASSWORD_736,
+                &backup,
+                mode,
+                KeystoreScope::AllUsers,
+                None,
+                None,
+            )
+            .unwrap();
+            assert_eq!(metadata.entries_count, entries.len() as u32);
+            let payload = open_backup(PASSWORD_736, &backup, None).unwrap();
+            for (account, value) in entries {
+                assert_eq!(
+                    payload.vault_entries.get(account).map(String::as_str),
+                    Some(value)
+                );
+            }
+            for strategy in ["overwrite", "skip_existing"] {
+                let destination = throwaway_store(
+                    dir.path(),
+                    &format!("destination-{mode_index}-{strategy}.db"),
+                );
+                let result = import_keystore_with_store(
+                    &destination,
+                    PASSWORD_736,
+                    &backup,
+                    strategy,
+                    ImportSections::default(),
+                    None,
+                    None,
+                    None,
+                )
+                .unwrap();
+                assert_eq!(result.imported, entries.len() as u32);
+                for (account, value) in entries {
+                    assert_eq!(destination.get(account).unwrap(), value);
+                }
+                assert_eq!(
+                    crate::bridge_commands::resolve_oauth_client_config(&destination, "fourshared"),
+                    (
+                        "fixture-consumer-key".into(),
+                        "fixture-consumer-secret".into()
+                    ),
+                );
+            }
+        }
+    }
+
     fn profile(id: &str, name: &str) -> serde_json::Value {
         serde_json::json!({ "id": id, "name": name, "protocol": "sftp", "host": "example.invalid" })
     }

@@ -2645,6 +2645,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("s3 provider");
 
@@ -2703,6 +2704,7 @@ mod tests {
                     verify_cert: true,
                     allow_cleartext_endpoint: false,
                     skip_dir_markers: false,
+                    filen_desktop_bridge: false,
                 })
                 .expect("s3 provider"),
             ) as Box<dyn StorageProvider>

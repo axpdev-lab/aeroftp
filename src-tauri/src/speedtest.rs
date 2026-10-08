@@ -535,6 +535,16 @@ async fn run_speedtest_inner(
 
     // ---------------------- DOWNLOAD (streaming) ----------------------
     // download_target / download_target_path were pre-allocated before connect.
+    // A server that writes uploads back after a delay (Filen Desktop's
+    // `rclone serve s3`) answers 404 for a few seconds: wait for it before the
+    // clock starts, so the delay is not reported as download speed. An error
+    // or a cancel here is left to the download below, which reports it.
+    let _ = run_cancelable(
+        token.clone(),
+        provider.wait_until_readable(&remote_path),
+        "Test cancelled during download",
+    )
+    .await;
     let download_started_at = Instant::now();
     emit_progress(
         &app,

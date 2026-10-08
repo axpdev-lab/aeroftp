@@ -5968,6 +5968,10 @@ struct CliSpeedResult {
     trash_purge_error: Option<String>,
     elapsed_secs: f64,
     protocol: String,
+    // Caveats about what the figures measure (#368), as in the benchmark
+    // report. Absent when empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    notes: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -6598,6 +6602,11 @@ struct BenchmarkReport {
     consent: BenchmarkConsent,
     results: Vec<BenchmarkResult>,
     summary: BenchmarkSummary,
+    // Caveats about what the figures measure (#368): a Filen Desktop preset
+    // measures the local bridge and its cache, not Filen. A fixed vocabulary,
+    // never user text. Absent when empty. Additive to schema v1.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    notes: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -44248,6 +44257,9 @@ async fn cmd_speed(
                 };
                 println!("  Cleanup:   {}", cleanup_str);
                 println!("  Remote:    {}", result.remote_path);
+                for note in &result.notes {
+                    println!("  Note:      {}", note);
+                }
             }
         }
         OutputFormat::Json => print_json(&result),
@@ -44373,6 +44385,7 @@ async fn run_single_speed_test(
             }
         });
 
+        wait_until_upload_readable(&mut provider, remote_test_path, cli, format).await;
         let download_start = Instant::now();
         if let Err(e) = provider
             .download(
@@ -44450,6 +44463,10 @@ async fn finalize_speed_result(
             },
             Err(e) => (false, Some(e.to_string()), false, None),
         };
+    let notes = provider
+        .measurement_note()
+        .map(|note| vec![note.to_string()])
+        .unwrap_or_default();
     let _ = provider.disconnect().await;
 
     let avg_up = (upload_total / iterations.max(1) as f64) as u64;
@@ -44475,6 +44492,7 @@ async fn finalize_speed_result(
         trash_purge_error,
         elapsed_secs,
         protocol,
+        notes,
     })
 }
 
@@ -45119,6 +45137,7 @@ async fn run_many_files_workload(
                     .push("many-files: hit profile-timeout during download-all".into());
                 break;
             }
+            wait_until_upload_readable(provider, &remote_name(i), cli, format).await;
             let start = Instant::now();
             match provider
                 .download(&remote_name(i), &local_dn_path, None)
@@ -45501,6 +45520,31 @@ fn note_trash_purge(
             "trash purge of {} failed, check the provider's trash: {}",
             path, e
         )),
+    }
+}
+
+/// Wait, before a timed download, until the file this run just uploaded can
+/// be read back. A server that writes uploads back after a delay (Filen
+/// Desktop's `rclone serve s3`) would otherwise put that delay into the
+/// download time: 10 MB measured at 5 Mbps that was 15 s of waiting and well
+/// under a second of transfer. The wait is told apart on the terminal and is
+/// not counted. An error is left to the download, which reports it.
+async fn wait_until_upload_readable(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) {
+    if let Ok(Some(waited)) = provider.wait_until_readable(remote_path).await {
+        if waited >= std::time::Duration::from_millis(100)
+            && !cli.quiet
+            && matches!(format, OutputFormat::Text)
+        {
+            eprintln!(
+                "  waited {:.1} s for the server to make the upload readable (not counted as download time)",
+                waited.as_secs_f64()
+            );
+        }
     }
 }
 
@@ -46111,6 +46155,7 @@ async fn cmd_benchmark(
                         if is_warmup { " (warmup)" } else { "" }
                     );
                 }
+                wait_until_upload_readable(&mut provider, &remote_path, cli, format).await;
                 let start = Instant::now();
                 let local_download_path = local_download.path().to_string_lossy().to_string();
                 let dl_result = if !cli.partial {
@@ -46505,6 +46550,10 @@ async fn cmd_benchmark(
             total_duration_ms,
             errors: errors.clone(),
         },
+        notes: provider
+            .measurement_note()
+            .map(|note| vec![note.to_string()])
+            .unwrap_or_default(),
     };
 
     let serialized = match serde_json::to_string_pretty(&report) {
@@ -46655,6 +46704,9 @@ fn print_benchmark_text_report(report: &BenchmarkReport) {
         format_size(report.summary.total_bytes_transferred),
         report.summary.total_duration_ms
     );
+    for note in &report.notes {
+        println!("Note: {}", note);
+    }
 
     let size_cell = |r: &BenchmarkResult| {
         if r.payload_size_bytes == 0 {
@@ -76494,6 +76546,7 @@ mod tests {
                     verify_cert: true,
                     allow_cleartext_endpoint: false,
                     skip_dir_markers: false,
+                    filen_desktop_bridge: false,
                 })
                 .expect("test S3 provider"),
             );
@@ -80162,8 +80215,13 @@ mod tests {
                 total_duration_ms: 0,
                 errors: vec![],
             },
+            notes: vec![],
         };
         let v: serde_json::Value = serde_json::to_value(&report).unwrap();
+        assert!(
+            v.get("notes").is_none(),
+            "an ordinary run must not carry an empty notes array"
+        );
         assert_eq!(v["schema_version"], 1);
         assert_eq!(v["level"], "quick");
         assert!(v["environment"].get("asn_bucket").is_none());
@@ -86210,6 +86268,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 verify_cert: true,
                 allow_cleartext_endpoint: false,
                 skip_dir_markers: false,
+                filen_desktop_bridge: false,
             })
             .expect("s3 provider");
             provider.set_multi_thread_download(streams, cutoff);

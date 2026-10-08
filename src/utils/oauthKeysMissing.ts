@@ -13,6 +13,7 @@ export const OPEN_OAUTH_SETTINGS_EVENT = 'aeroftp-open-oauth-settings';
 
 const OAUTH_PROVIDER_NAMES: Record<string, string> = {
     googledrive: 'Google Drive',
+    googlephotos: 'Google Photos',
     dropbox: 'Dropbox',
     onedrive: 'OneDrive',
     box: 'Box',
@@ -33,7 +34,7 @@ export const oauthProviderDisplayName = (protocol: string): string =>
  * read, where the keys may well exist.
  */
 export const isCredentialNotFound = (err: unknown): boolean =>
-    /^Failed to get credential: Credential not found: /.test(String(err));
+    /^Failed to get credential: Credential not found: /.test(err instanceof Error ? err.message : String(err));
 
 /**
  * Keep a key-read rejection only when it is a real read failure, so the caller

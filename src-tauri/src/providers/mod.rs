@@ -797,6 +797,10 @@ pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Dur
     }
 }
 
+/// The measurement note of the Filen Desktop presets (S3 and WebDAV): both are
+/// `rclone serve` bridges on this machine with a local cache in front of Filen.
+pub const FILEN_DESKTOP_BRIDGE_NOTE: &str = "Filen Desktop preset: these figures measure the local Filen Desktop bridge and its cache, not the Filen servers. The bridge answers an upload from its cache and sends it on to Filen afterwards; a write-back wait printed apart is that send.";
+
 /// Unified storage provider trait
 ///
 /// All storage backends must implement this trait to be used with AeroFTP.
@@ -1045,6 +1049,28 @@ pub trait StorageProvider: Send + Sync {
     /// [`replace`]: StorageProvider::replace
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
         Ok(true)
+    }
+
+    /// Wait until a file this session just uploaded can be read back, and
+    /// return how long that took, or `None` when there was nothing to wait
+    /// for. A server that writes uploads back to its own storage after a
+    /// delay (Filen Desktop's `rclone serve s3`) answers 404 for a few
+    /// seconds; a benchmark calls this before it starts the download clock,
+    /// so the wait is reported apart and not counted as download time. The
+    /// download itself still waits on its own, so skipping this call loses
+    /// only the split, never the file.
+    async fn wait_until_readable(
+        &mut self,
+        _path: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        Ok(None)
+    }
+
+    /// A caveat a benchmark or speed test prints next to its figures, once
+    /// per run, when they do not measure what the profile's name suggests.
+    /// `None` for an ordinary server.
+    fn measurement_note(&self) -> Option<&'static str> {
+        None
     }
 
     /// Whether [`replace`] puts a file over an existing one by setting the
