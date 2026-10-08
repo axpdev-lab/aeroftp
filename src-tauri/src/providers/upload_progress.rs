@@ -167,6 +167,24 @@ impl UploadProgress {
         reqwest::Body::wrap(SizedBody::new(self.track(paced), len))
     }
 
+    /// Report `sent` bytes of the file, counted by someone else (an external
+    /// tool's own progress output), under the same rules as [`Self::track`]:
+    /// only below the total, which is [`Self::complete`]'s to give, and only
+    /// above anything already reported, so the bar never goes back.
+    pub fn report(&self, sent: u64) {
+        if sent < self.total
+            && self
+                .reported
+                .fetch_max(sent, std::sync::atomic::Ordering::Relaxed)
+                < sent
+        {
+            if let Some(callback) = &self.callback {
+                let callback = callback.lock().unwrap_or_else(|e| e.into_inner());
+                callback(sent, self.total);
+            }
+        }
+    }
+
     /// Report `(0, total)` before the first byte, for a provider whose bar
     /// has always opened at zero. Nothing for an empty file: `(0, 0)` is the
     /// completed report, which only [`Self::complete`] may give.
@@ -592,6 +610,19 @@ mod tests {
         assert!(updates
             .iter()
             .all(|&(sent, total)| total == 1_000_000 && sent < total));
+    }
+
+    /// Counts reported from outside follow the same rules as the stream's:
+    /// in order, never back, never the total before `complete`.
+    #[test]
+    fn an_outside_count_never_goes_back_nor_reaches_the_total() {
+        let (callback, updates) = recorder();
+        let progress = UploadProgress::new(Some(callback), 100);
+        for sent in [10, 40, 30, 40, 100, 120] {
+            progress.report(sent);
+        }
+        progress.complete();
+        assert_eq!(*updates.lock().unwrap(), [(10, 100), (40, 100), (100, 100)]);
     }
 
     /// No callback, no work, no panic.

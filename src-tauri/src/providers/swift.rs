@@ -1175,6 +1175,9 @@ impl SwiftProvider {
             .len();
 
         let chunk_size: usize = 1024 * 1024 * 1024; // 1 GiB
+                                                    // Each stored segment moves the bar; 100 percent waits for the
+                                                    // manifest (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
         let object_name = Self::normalize_path(remote_path);
         let mut segments: Vec<SloSegment> = Vec::new();
         let mut reader = tokio::io::BufReader::new(file);
@@ -1240,9 +1243,7 @@ impl SwiftProvider {
             });
 
             uploaded += segment_size;
-            if let Some(ref cb) = on_progress {
-                cb(uploaded, file_size);
-            }
+            progress.report(uploaded);
             seq += 1;
         }
 
@@ -1262,6 +1263,7 @@ impl SwiftProvider {
             )));
         }
 
+        progress.complete();
         info!(
             "SLO upload complete: {} ({} segments)",
             object_name,

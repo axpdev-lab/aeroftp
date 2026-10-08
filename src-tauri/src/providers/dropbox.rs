@@ -1202,6 +1202,9 @@ impl StorageProvider for DropboxProvider {
         const UPLOAD_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024; // 150MB
 
         if file_size > UPLOAD_SESSION_THRESHOLD {
+            // Each appended chunk moves the bar; 100 percent waits for the
+            // session's finish (see `UploadProgress`).
+            let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
             // Upload session for large files: read chunks from file, not all in memory
             const CHUNK_SIZE: u64 = 128 * 1024 * 1024; // 128MB
             let mut file = tokio::fs::File::open(local_path)
@@ -1248,9 +1251,7 @@ impl StorageProvider for DropboxProvider {
                 .await
                 .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-            if let Some(ref progress) = on_progress {
-                progress(first_chunk_size as u64, file_size);
-            }
+            progress.report(first_chunk_size as u64);
 
             // Step 2: Append remaining chunks (read from file, not memory)
             let mut offset = first_chunk_size as u64;
@@ -1293,9 +1294,7 @@ impl StorageProvider for DropboxProvider {
 
                 offset += chunk_size as u64;
 
-                if let Some(ref progress) = on_progress {
-                    progress(offset, file_size);
-                }
+                progress.report(offset);
             }
 
             // Step 3: Finish session
@@ -1330,6 +1329,7 @@ impl StorageProvider for DropboxProvider {
                     sanitize_api_error(&text)
                 )));
             }
+            progress.complete();
         } else {
             // Simple upload: stream file content without loading into memory.
             // The body reports the bytes as they go out; 100 percent waits

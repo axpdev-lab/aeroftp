@@ -1250,6 +1250,10 @@ impl B2Provider {
             }
         };
 
+        // Each acknowledged part moves the bar; 100 percent waits for
+        // b2_finish_large_file (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(progress, size);
+        let parts_progress = progress.for_wire(size);
         let parts = run_concurrent_part_upload(
             ConcurrentPartUploadConfig {
                 local_path: std::path::PathBuf::from(local_path),
@@ -1260,12 +1264,13 @@ impl B2Provider {
             },
             upload_one_part,
             tokio_util::sync::CancellationToken::new(),
-            progress,
+            Some(Box::new(move |sent, _| parts_progress.report(sent))),
         )
         .await?;
 
         let part_sha1s: Vec<String> = parts.into_iter().map(|(_, sha1)| sha1).collect();
         self.finish_large_file(&file_id, part_sha1s).await?;
+        progress.complete();
         Ok(())
     }
 

@@ -1453,13 +1453,12 @@ impl BoxProvider {
     }
 
     /// Upload data in chunks via a Box upload session, then commit
-    #[allow(clippy::type_complexity)]
     async fn chunked_upload_session(
         &self,
         session_resp: reqwest::Response,
         local_path: &str,
         total_size: u64,
-        on_progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>>,
+        progress: &super::upload_progress::UploadProgress,
     ) -> Result<(), ProviderError> {
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
         use sha1::{Digest, Sha1};
@@ -1563,11 +1562,7 @@ impl BoxProvider {
             }
 
             offset = end;
-            if let Some(ref cb) = on_progress {
-                if let Ok(f) = cb.lock() {
-                    f(offset, total_size);
-                }
-            }
+            progress.report(offset);
         }
 
         // Commit
@@ -1594,6 +1589,7 @@ impl BoxProvider {
             )));
         }
 
+        progress.complete();
         Ok(())
     }
 }
@@ -1938,9 +1934,10 @@ impl StorageProvider for BoxProvider {
         const CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
 
         if total_size > CHUNKED_THRESHOLD {
-            // Chunked upload session for large files: stream from file handle
-            let progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>> =
-                on_progress.map(|cb| std::sync::Arc::new(std::sync::Mutex::new(cb)));
+            // Chunked upload session for large files: stream from file handle.
+            // Each acknowledged part moves the bar; 100 percent waits for the
+            // commit (see `UploadProgress`).
+            let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
             let token = self.get_token().await?;
 
             // Step 1: Create upload session
@@ -1992,7 +1989,7 @@ impl StorageProvider for BoxProvider {
                     }
 
                     return self
-                        .chunked_upload_session(ver_resp, local_path, total_size, progress.clone())
+                        .chunked_upload_session(ver_resp, local_path, total_size, &progress)
                         .await;
                 }
                 return Err(ProviderError::TransferFailed(format!(
@@ -2002,7 +1999,7 @@ impl StorageProvider for BoxProvider {
             }
 
             return self
-                .chunked_upload_session(session_resp, local_path, total_size, progress)
+                .chunked_upload_session(session_resp, local_path, total_size, &progress)
                 .await;
         }
 

@@ -2324,6 +2324,9 @@ impl AzureProvider {
         file_len: u64,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        // Each acknowledged block moves the bar; 100 percent waits for Put
+        // Block List (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(progress, file_len);
         let concurrency = self.effective_upload_concurrency().max(1);
         let mut file = tokio::fs::File::open(local_path)
             .await
@@ -2377,9 +2380,7 @@ impl AzureProvider {
                 let _ = idx; // index is implicit in append order on serial path
                 block_ids.push(id);
                 bytes_uploaded += data_len;
-                if let Some(ref cb) = progress {
-                    cb(bytes_uploaded, file_len);
-                }
+                progress.report(bytes_uploaded);
             } else {
                 let mut joinset = tokio::task::JoinSet::new();
                 for (idx, id, data) in batch.into_iter() {
@@ -2415,9 +2416,7 @@ impl AzureProvider {
                 for (_, id, data_len) in completed.into_iter() {
                     block_ids.push(id);
                     bytes_uploaded += data_len;
-                    if let Some(ref cb) = progress {
-                        cb(bytes_uploaded, file_len);
-                    }
+                    progress.report(bytes_uploaded);
                 }
             }
         }
@@ -2431,10 +2430,8 @@ impl AzureProvider {
         // Commit all blocks
         self.put_block_list(blob_url, &block_ids).await?;
 
-        // AZ-003: Final progress report
-        if let Some(ref cb) = progress {
-            cb(file_len, file_len);
-        }
+        // AZ-003: the blocks are committed
+        progress.complete();
 
         debug!(
             "Block upload complete: {} blocks, {} bytes",

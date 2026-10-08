@@ -126,9 +126,12 @@ impl PartProgress {
     }
 
     fn part_done(&self, len: u64) {
+        // Parts run in parallel: the count is taken under the callback's lock,
+        // so two parts finishing together report in the order they counted
+        // and the bar never goes back.
+        let callback = self.callback.lock().unwrap_or_else(|e| e.into_inner());
         let now = self.acknowledged.fetch_add(len, Ordering::SeqCst) + len;
         if now < self.total {
-            let callback = self.callback.lock().unwrap_or_else(|e| e.into_inner());
             callback(now, self.total);
         }
     }
