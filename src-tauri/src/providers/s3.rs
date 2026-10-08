@@ -3050,6 +3050,9 @@ impl S3Provider {
     ) -> Result<(), ProviderError> {
         use tokio::io::AsyncReadExt;
 
+        // Each acknowledged part moves the bar; 100 percent waits for
+        // CompleteMultipartUpload (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
         let mut baseline = self.begin_baseline(key, total_size).await;
 
         // UPLOAD-01: Detect MIME type from filename for multipart uploads
@@ -3135,9 +3138,7 @@ impl S3Provider {
                     Ok(Ok((pn, etag, data_len))) => {
                         parts.push((pn, etag));
                         uploaded += data_len;
-                        if let Some(ref progress) = on_progress {
-                            progress(uploaded, total_size);
-                        }
+                        progress.report(uploaded);
                     }
                     Ok(Err(e)) => {
                         joinset.abort_all();
@@ -3174,6 +3175,7 @@ impl S3Provider {
         };
         abort_guard.disarm();
         self.save_baseline(key, baseline, etag).await;
+        progress.complete();
         Ok(())
     }
 
@@ -3566,6 +3568,9 @@ impl S3Provider {
             .filter(|p| !p.is_copy())
             .map(crate::providers::s3_delta_plan::DeltaPart::byte_len)
             .sum();
+        // Each acknowledged PUT part moves the bar; 100 percent waits for
+        // CompleteMultipartUpload (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_wire);
 
         let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
 
@@ -3673,9 +3678,7 @@ impl S3Provider {
                     Ok(Ok((pn, etag, wire))) => {
                         parts.push((pn, etag));
                         uploaded_wire += wire;
-                        if let Some(ref progress) = on_progress {
-                            progress(uploaded_wire, total_wire);
-                        }
+                        progress.report(uploaded_wire);
                     }
                     Ok(Err(e)) => {
                         joinset.abort_all();
@@ -3717,6 +3720,7 @@ impl S3Provider {
             }
         };
         abort_guard.disarm();
+        progress.complete();
 
         info!(
             "Delta multipart uploaded {} ({} bytes over the wire, {} parts)",
@@ -5180,8 +5184,12 @@ impl StorageProvider for S3Provider {
                 .await;
         }
 
-        // Streaming upload for small files (< 5MB)
+        // Streaming upload for files up to the multipart threshold. The body
+        // reports the bytes as they go out; 100 percent waits for the
+        // server's answer (see `UploadProgress`).
         use tokio_util::io::ReaderStream;
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+        progress.start();
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -5208,7 +5216,7 @@ impl StorageProvider for S3Provider {
             source,
             crate::transfer_dag::governor::TransferDirection::Upload,
         );
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(progress.track(stream));
 
         // Build the request manually with streaming body (cannot use s3_request helper for streaming)
         let url = self.build_url(key);
@@ -5251,9 +5259,7 @@ impl StorageProvider for S3Provider {
                 let finished = hasher.lock().unwrap_or_else(|e| e.into_inner()).take();
                 self.save_baseline(key, baseline_store.zip(finished), etag)
                     .await;
-                if let Some(progress) = on_progress {
-                    progress(total_size, total_size);
-                }
+                progress.complete();
                 self.note_markerless_upload(key);
                 Ok(())
             }
@@ -9283,6 +9289,132 @@ mod tests {
         assert_eq!(gets.load(Ordering::SeqCst), 3, "two 404s, then the object");
         let _ = std::fs::remove_file(&src);
         let _ = std::fs::remove_file(&dst);
+    }
+
+    /// Upload a 300 KB file through the single PUT to a local fixture
+    /// answering `status`; returns the outcome and the progress updates.
+    async fn single_put_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::put("/test-bucket/f.dat", status, "")]).await;
+        let mut provider = make_provider(Some(&base));
+        provider.config.skip_dir_markers = true;
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the single PUT, every upload up to the 200 MiB multipart
+    /// threshold, reported nothing until the answer and then the total. The
+    /// bar now follows the bytes going out and reaches 100 only on success.
+    #[tokio::test]
+    async fn single_put_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = single_put_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = single_put_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
+    }
+
+    /// Upload 12 MiB in 5 MiB parts through the native multipart path to a
+    /// local double whose CompleteMultipartUpload answers `complete_status`;
+    /// returns the outcome and the progress updates.
+    async fn multipart_against_fixture(
+        complete_status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, temp_file};
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| async move {
+                let query = req.uri().query().unwrap_or("").to_string();
+                let method = req.method().clone();
+                let _ = axum::body::to_bytes(req.into_body(), 64 << 20).await;
+                let reply = axum::response::Response::builder();
+                match method.as_str() {
+                    "POST" if query.starts_with("uploads") => reply
+                        .status(200)
+                        .body(axum::body::Body::from(
+                            "<InitiateMultipartUploadResult><UploadId>U</UploadId>\
+                             </InitiateMultipartUploadResult>",
+                        ))
+                        .unwrap(),
+                    "PUT" => reply
+                        .status(200)
+                        .header("etag", "\"e\"")
+                        .body(axum::body::Body::empty())
+                        .unwrap(),
+                    "POST" => reply
+                        .status(complete_status)
+                        .body(axum::body::Body::from(
+                            "<CompleteMultipartUploadResult><ETag>\"x\"</ETag>\
+                             </CompleteMultipartUploadResult>",
+                        ))
+                        .unwrap(),
+                    _ => reply.status(204).body(axum::body::Body::empty()).unwrap(),
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.upload_chunk_override = Some(5 * 1024 * 1024);
+        let file = temp_file(12 * 1024 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload_multipart_streaming(
+                "f.dat",
+                file.path().to_str().unwrap(),
+                12 * 1024 * 1024,
+                Some(callback),
+            )
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// Review of #1122: the last acknowledged part reported the total before
+    /// CompleteMultipartUpload ran, so a failed commit had shown 100 percent.
+    /// The parts move the bar; the total comes only with the commit.
+    #[tokio::test]
+    async fn multipart_reports_the_total_only_after_the_commit() {
+        const MIB: u64 = 1024 * 1024;
+        // Parts may be acknowledged in any order; what holds is the shape.
+        let (outcome, updates) = multipart_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.len(),
+            3,
+            "two parts below the total, then the commit: {updates:?}"
+        );
+        assert!(updates.windows(2).all(|w| w[0].0 < w[1].0), "{updates:?}");
+        assert!(updates[..2]
+            .iter()
+            .all(|&(sent, t)| t == 12 * MIB && sent < t));
+        assert_eq!(updates.last(), Some(&(12 * MIB, 12 * MIB)));
+
+        let (outcome, updates) = multipart_against_fixture(400).await;
+        assert!(outcome.is_err());
+        assert_eq!(updates.len(), 2, "{updates:?}");
+        assert!(updates.iter().all(|&(sent, t)| sent < t), "{updates:?}");
     }
 
     /// #368: a benchmark on the Filen Desktop preset says it measured the

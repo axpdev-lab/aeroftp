@@ -37,6 +37,10 @@ use crate::transfer_dag::governor::TransferDirection;
 pub struct UploadProgress {
     callback: Option<Arc<Mutex<ProgressCallback>>>,
     total: u64,
+    /// The bytes the request body carries for the file: `total`, unless the
+    /// file goes out encoded (compressed, base64), when the count on the
+    /// wire is scaled to the file's.
+    wire_total: u64,
     /// The highest count reported so far, shared by every attempt: a retry
     /// sends the file again from its first byte, and the bar holds here until
     /// the new attempt passes it, so it never goes back.
@@ -45,10 +49,32 @@ pub struct UploadProgress {
 
 impl UploadProgress {
     pub fn new(callback: Option<ProgressCallback>, total: u64) -> Self {
+        Self::encoded(callback, total, total)
+    }
+
+    /// Progress of a file of `total` bytes sent as a body of `wire_total`
+    /// bytes (compressed, base64 inside JSON): each update is the share of
+    /// the body sent so far, applied to the file, so the bar still counts the
+    /// file the user chose.
+    pub fn encoded(callback: Option<ProgressCallback>, total: u64, wire_total: u64) -> Self {
         Self {
             callback: callback.map(|cb| Arc::new(Mutex::new(cb))),
             total,
+            wire_total,
             reported: Arc::default(),
+        }
+    }
+
+    /// The same progress for a body learned to be `wire_total` bytes once
+    /// the upload has started (a file the server asks to have compressed):
+    /// same callback, same high-water mark, the body's bytes now scaled to
+    /// the file's.
+    pub fn for_wire(&self, wire_total: u64) -> Self {
+        Self {
+            callback: self.callback.clone(),
+            total: self.total,
+            wire_total,
+            reported: Arc::clone(&self.reported),
         }
     }
 
@@ -62,6 +88,7 @@ impl UploadProgress {
     {
         let callback = self.callback.clone();
         let total = self.total;
+        let wire_total = self.wire_total;
         let reported = Arc::clone(&self.reported);
         let mut sent = 0u64;
         stream.inspect(move |chunk| {
@@ -69,11 +96,18 @@ impl UploadProgress {
                 return;
             };
             sent = sent.saturating_add(bytes.len() as u64);
-            if sent < total && reported.fetch_max(sent, std::sync::atomic::Ordering::Relaxed) < sent
+            let shown = if wire_total == total {
+                sent
+            } else {
+                (u128::from(sent) * u128::from(total) / u128::from(wire_total.max(1))) as u64
+            };
+            if sent < wire_total
+                && shown < total
+                && reported.fetch_max(shown, std::sync::atomic::Ordering::Relaxed) < shown
             {
                 if let Some(callback) = &callback {
                     let callback = callback.lock().unwrap_or_else(|e| e.into_inner());
-                    callback(sent, total);
+                    callback(shown, total);
                 }
             }
         })
@@ -110,6 +144,47 @@ impl UploadProgress {
         }
     }
 
+    /// A payload already in memory as a request body: paced by the upload
+    /// governor and counted, one window at a time, like a file body. The
+    /// windows are slices of `data`, so a retry builds the body again from a
+    /// clone of the same `Bytes` for the price of a refcount. The body
+    /// declares its exact length, so the request carries a `Content-Length`
+    /// and is never sent chunked, as the plain buffer it replaces was not.
+    pub fn bytes_body(&self, data: Bytes) -> reqwest::Body {
+        let len = data.len() as u64;
+        let windows = futures_util::stream::iter(
+            (0..data.len())
+                .step_by(crate::transfer_dag::throttle::OWNED_BODY_CHUNK_BYTES)
+                .map(|start| {
+                    let end = (start + crate::transfer_dag::throttle::OWNED_BODY_CHUNK_BYTES)
+                        .min(data.len());
+                    Ok::<_, std::io::Error>(data.slice(start..end))
+                })
+                .collect::<Vec<_>>(),
+        );
+        let paced =
+            crate::transfer_dag::throttle::throttle_stream(windows, TransferDirection::Upload);
+        reqwest::Body::wrap(SizedBody::new(self.track(paced), len))
+    }
+
+    /// Report `sent` bytes of the file, counted by someone else (an external
+    /// tool's own progress output), under the same rules as [`Self::track`]:
+    /// only below the total, which is [`Self::complete`]'s to give, and only
+    /// above anything already reported, so the bar never goes back.
+    pub fn report(&self, sent: u64) {
+        if sent < self.total
+            && self
+                .reported
+                .fetch_max(sent, std::sync::atomic::Ordering::Relaxed)
+                < sent
+        {
+            if let Some(callback) = &self.callback {
+                let callback = callback.lock().unwrap_or_else(|e| e.into_inner());
+                callback(sent, self.total);
+            }
+        }
+    }
+
     /// Report `(0, total)` before the first byte, for a provider whose bar
     /// has always opened at zero. Nothing for an empty file: `(0, 0)` is the
     /// completed report, which only [`Self::complete`] may give.
@@ -129,6 +204,56 @@ impl UploadProgress {
             let callback = callback.lock().unwrap_or_else(|e| e.into_inner());
             callback(self.total, self.total);
         }
+    }
+}
+
+/// A stream of chunks as a body of a known length, so hyper writes a
+/// `Content-Length` instead of chunked encoding. `reqwest::Body::wrap` wants a
+/// `Sync` body and a boxed stream is only `Send`: the stream sits in a mutex
+/// that is never locked, only reached through `&mut`, which is what makes the
+/// wrapper `Sync` at no cost.
+type ChunkStream = std::pin::Pin<Box<dyn Stream<Item = Result<Bytes, std::io::Error>> + Send>>;
+
+struct SizedBody {
+    stream: Mutex<ChunkStream>,
+    remaining: u64,
+}
+
+impl SizedBody {
+    fn new(
+        stream: impl Stream<Item = Result<Bytes, std::io::Error>> + Send + 'static,
+        len: u64,
+    ) -> Self {
+        Self {
+            stream: Mutex::new(Box::pin(stream)),
+            remaining: len,
+        }
+    }
+}
+
+impl http_body::Body for SizedBody {
+    type Data = Bytes;
+    type Error = std::io::Error;
+
+    fn poll_frame(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Bytes>, std::io::Error>>> {
+        let this = self.get_mut();
+        let stream = this.stream.get_mut().unwrap_or_else(|e| e.into_inner());
+        match stream.as_mut().poll_next(cx) {
+            std::task::Poll::Ready(Some(Ok(chunk))) => {
+                this.remaining = this.remaining.saturating_sub(chunk.len() as u64);
+                std::task::Poll::Ready(Some(Ok(http_body::Frame::data(chunk))))
+            }
+            std::task::Poll::Ready(Some(Err(error))) => std::task::Poll::Ready(Some(Err(error))),
+            std::task::Poll::Ready(None) => std::task::Poll::Ready(None),
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        }
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        http_body::SizeHint::with_exact(self.remaining)
     }
 }
 
@@ -169,6 +294,16 @@ pub(crate) mod fixture {
         pub(crate) fn get(path: &'static str, status: u16, body: impl Into<String>) -> Self {
             Self {
                 method: axum::http::Method::GET,
+                path,
+                status,
+                body: body.into(),
+                busy_first: false,
+            }
+        }
+
+        pub(crate) fn put(path: &'static str, status: u16, body: impl Into<String>) -> Self {
+            Self {
+                method: axum::http::Method::PUT,
                 path,
                 status,
                 body: body.into(),
@@ -405,6 +540,89 @@ mod tests {
             .sum();
         assert_eq!(summed, 40, "{updates:?}");
         assert_eq!(*updates, [(10, 40), (20, 40), (30, 40), (40, 40)]);
+    }
+
+    /// A body larger than the file (base64, say) reports the share of the
+    /// body sent, applied to the file: in order, below the file's size, the
+    /// total only on `complete`.
+    #[tokio::test]
+    async fn an_encoded_body_reports_in_file_bytes() {
+        let (callback, updates) = recorder();
+        let progress = UploadProgress::encoded(Some(callback), 30, 40);
+        let chunks = futures_util::stream::iter(
+            [10usize, 10, 10, 10].map(|n| Ok::<_, std::io::Error>(Bytes::from(vec![0u8; n]))),
+        );
+        let _: Vec<_> = progress.track(chunks).collect().await;
+        progress.complete();
+        assert_eq!(
+            *updates.lock().unwrap(),
+            [(7, 30), (15, 30), (22, 30), (30, 30)]
+        );
+    }
+
+    /// An in-memory payload goes out in counted windows under an exact
+    /// `Content-Length`, never chunked, and arrives whole.
+    #[tokio::test]
+    async fn a_bytes_body_is_sized_and_reports_in_steps() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buf = vec![0u8; 64 * 1024];
+            let head_end = loop {
+                let n = socket.read(&mut buf).await.unwrap();
+                request.extend_from_slice(&buf[..n]);
+                if let Some(at) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break at + 4;
+                }
+            };
+            let head = String::from_utf8_lossy(&request[..head_end]).to_lowercase();
+            let mut body = request.len() - head_end;
+            while body < 1_000_000 {
+                let n = socket.read(&mut buf).await.unwrap();
+                assert!(n > 0, "the body stopped short at {body}");
+                body += n;
+            }
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+                .await
+                .unwrap();
+            (head, body)
+        });
+        let (callback, updates) = recorder();
+        let progress = UploadProgress::new(Some(callback), 1_000_000);
+        let response = reqwest::Client::new()
+            .put(format!("http://{addr}/up"))
+            .body(progress.bytes_body(Bytes::from(vec![3u8; 1_000_000])))
+            .send()
+            .await
+            .unwrap();
+        assert!(response.status().is_success());
+        let (head, body) = server.await.unwrap();
+        assert!(head.contains("content-length: 1000000"), "{head}");
+        assert!(!head.contains("transfer-encoding"), "{head}");
+        assert_eq!(body, 1_000_000);
+        let updates = updates.lock().unwrap();
+        assert!(updates.len() > 1, "{updates:?}");
+        assert!(updates.windows(2).all(|w| w[0].0 < w[1].0));
+        assert!(updates
+            .iter()
+            .all(|&(sent, total)| total == 1_000_000 && sent < total));
+    }
+
+    /// Counts reported from outside follow the same rules as the stream's:
+    /// in order, never back, never the total before `complete`.
+    #[test]
+    fn an_outside_count_never_goes_back_nor_reaches_the_total() {
+        let (callback, updates) = recorder();
+        let progress = UploadProgress::new(Some(callback), 100);
+        for sent in [10, 40, 30, 40, 100, 120] {
+            progress.report(sent);
+        }
+        progress.complete();
+        assert_eq!(*updates.lock().unwrap(), [(10, 100), (40, 100), (100, 100)]);
     }
 
     /// No callback, no work, no panic.

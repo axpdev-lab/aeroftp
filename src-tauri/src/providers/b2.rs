@@ -541,7 +541,6 @@ struct UploadFileResponse {
     #[allow(dead_code)]
     file_id: String,
     file_name: String,
-    content_length: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1251,6 +1250,10 @@ impl B2Provider {
             }
         };
 
+        // Each acknowledged part moves the bar; 100 percent waits for
+        // b2_finish_large_file (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(progress, size);
+        let parts_progress = progress.for_wire(size);
         let parts = run_concurrent_part_upload(
             ConcurrentPartUploadConfig {
                 local_path: std::path::PathBuf::from(local_path),
@@ -1261,12 +1264,13 @@ impl B2Provider {
             },
             upload_one_part,
             tokio_util::sync::CancellationToken::new(),
-            progress,
+            Some(Box::new(move |sent, _| parts_progress.report(sent))),
         )
         .await?;
 
         let part_sha1s: Vec<String> = parts.into_iter().map(|(_, sha1)| sha1).collect();
         self.finish_large_file(&file_id, part_sha1s).await?;
+        progress.complete();
         Ok(())
     }
 
@@ -3026,6 +3030,9 @@ impl StorageProvider for B2Provider {
             .await
             .map_err(|e| ProviderError::Other(format!("read local: {}", e)))?;
         let sha1 = sha1_hex(&bytes);
+        // The body reports the bytes as they go out, paced by the upload
+        // governor; 100 percent waits for B2's answer (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(progress, size);
         let mut req = self
             .client
             .post(&upload.upload_url)
@@ -3043,11 +3050,9 @@ impl StorageProvider for B2Provider {
                 millis,
             );
         }
-        if let Some(ref p) = progress {
-            p(0, size);
-        }
+        progress.start();
         let resp = req
-            .body(bytes)
+            .body(progress.bytes_body(bytes::Bytes::from(bytes)))
             .send()
             .await
             .map_err(|e| ProviderError::ConnectionFailed(format!("upload send: {}", e)))?;
@@ -3065,9 +3070,7 @@ impl StorageProvider for B2Provider {
             .json()
             .await
             .map_err(|e| ProviderError::ServerError(format!("upload parse: {}", e)))?;
-        if let Some(ref p) = progress {
-            p(parsed.content_length, size);
-        }
+        progress.complete();
         b2_log(&format!("uploaded: {}", parsed.file_name));
         Ok(())
     }
@@ -4973,6 +4976,68 @@ mod tests {
             bucket: "b".into(),
             initial_path: None,
         })
+    }
+
+    /// Upload a 300 KB file through `b2_upload_file` to a local fixture
+    /// answering `status`; returns the outcome, the progress updates and the
+    /// body length the upload URL read.
+    async fn small_upload_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>, Vec<usize>) {
+        use crate::providers::upload_progress::fixture::{
+            recorder, serve_logged, temp_file, Route,
+        };
+        let (base, server, received) = serve_logged(vec![
+            Route::post(
+                "/b2api/v4/b2_get_upload_url",
+                200,
+                r#"{"uploadUrl":"{base}/up","authorizationToken":"t"}"#,
+            ),
+            Route::post("/up", status, r#"{"fileId":"x","fileName":"f.dat"}"#),
+        ])
+        .await;
+        let mut provider = empty_provider();
+        provider.api_url = base;
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        let uploaded = received
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| *path == "/up")
+            .map(|&(_, len)| len)
+            .collect();
+        (outcome, updates, uploaded)
+    }
+
+    /// #368: `b2_upload_file`, every file up to the large-file threshold,
+    /// reported 0 and then the total after B2's answer. The bar now follows
+    /// the bytes going out, the whole file still arrives, and 100 comes only
+    /// on success.
+    #[tokio::test]
+    async fn small_upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates, uploaded) = small_upload_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(uploaded, [300 * 1024]);
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates, _) = small_upload_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     #[test]
