@@ -744,6 +744,212 @@ export const AGENT_TOOLS: AITool[] = [
         ],
         dangerLevel: 'high',
     },
+    // Remote inspection and maintenance (shared with the CLI and MCP surfaces)
+    {
+        name: 'remote_hashsum',
+        description: 'Compute a hash of a remote file by downloading it and hashing the bytes locally (cap 256 MB per file). Targets the active connection by default, or a saved server when you pass its name in the server parameter.',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Remote file path', required: true },
+            { name: 'algorithm', type: 'string', description: 'Hash algorithm (default: sha256)', required: false, enum: ['sha256', 'sha1', 'sha512', 'md5', 'blake3'] },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'remote_head',
+        description: 'Return the first N lines of a remote UTF-8 text file (default 50, cap 10000; file cap 16 MB). Targets the active connection by default, or a saved server.',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Remote file path', required: true },
+            { name: 'lines', type: 'integer', description: 'Number of lines (default 50, cap 10000)', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'remote_tail',
+        description: 'Return the last N lines of a remote UTF-8 text file, e.g. a log (default 50, cap 10000; file cap 16 MB). One-shot read, not a follow. Targets the active connection by default, or a saved server.',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Remote file path', required: true },
+            { name: 'lines', type: 'integer', description: 'Number of lines (default 50, cap 10000)', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'remote_tree',
+        description: 'Recursively list a remote directory as a flat list of entries with path and depth, bounded by max_depth and max_entries (defaults 3 and 500, caps 20 and 5000). Use instead of many remote_list calls when exploring a layout.',
+        parameters: [
+            { name: 'path', type: 'string', description: "Root directory to walk (default: '/')", required: false },
+            { name: 'max_depth', type: 'integer', description: 'Max recursion depth (default 3, cap 20)', required: false },
+            { name: 'max_entries', type: 'integer', description: 'Stop after this many entries (default 500, cap 5000)', required: false },
+            { name: 'files_only', type: 'boolean', description: 'Drop directories from the output', required: false },
+            { name: 'dirs_only', type: 'boolean', description: 'Drop files from the output', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'remote_storage_quota',
+        description: "Storage usage and quota of a remote server. By default the provider's reported quota (one API call); with scan=true a bounded recursive size sum, for servers with no quota API (FTP, most S3/WebDAV).",
+        parameters: [
+            { name: 'scan', type: 'boolean', description: 'Recursively sum file sizes (default: false)', required: false },
+            { name: 'full', type: 'boolean', description: "With scan=true, scan from the account root '/'", required: false },
+            { name: 'path', type: 'string', description: "With scan=true, the subtree to scan (default '/')", required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'remote_sync_doctor',
+        description: 'Preflight risk summary for a planned sync between a local and a remote directory: file and byte counts on both sides and human-readable risks. No file-level plan.',
+        parameters: [
+            { name: 'local_dir', type: 'string', description: 'Local directory', required: true },
+            { name: 'remote_dir', type: 'string', description: 'Remote directory', required: true },
+            { name: 'direction', type: 'string', description: "Planned sync direction (default: 'both')", required: false, enum: ['upload', 'download', 'both'] },
+            { name: 'delete', type: 'boolean', description: 'Whether the planned sync would delete orphans', required: false },
+            { name: 'track_renames', type: 'boolean', description: 'Whether the planned sync would track renames', required: false },
+            { name: 'checksum', type: 'boolean', description: 'Whether the planned sync would request checksums', required: false },
+            { name: 'exclude', type: 'array', description: 'Glob patterns to exclude', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'remote_reconcile',
+        description: 'Recursive diff of a local directory against a remote one: match, differ, missing_local and missing_remote groups, plus elapsed time and a suggested next command. Optional checksum compares content of equal-size pairs.',
+        parameters: [
+            { name: 'local_dir', type: 'string', description: 'Local directory', required: true },
+            { name: 'remote_dir', type: 'string', description: 'Remote directory', required: true },
+            { name: 'checksum', type: 'boolean', description: 'Hash both sides of each equal-size pair (default: false; reads the remote file, cap 256 MB)', required: false },
+            { name: 'one_way', type: 'boolean', description: 'Skip remote-only entries (default: false)', required: false },
+            { name: 'exclude', type: 'array', description: 'Glob patterns to exclude', required: false },
+            { name: 'summary_only', type: 'boolean', description: 'Counters only, without the per-file groups (default: false)', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'remote_speed',
+        description: 'Quick throughput probe: uploads a random payload, downloads it back, optionally verifies SHA-256, then deletes it. Default 4 MiB, cap 64 MiB, 1..3 iterations. For a full measurement use aeroftp_benchmark.',
+        parameters: [
+            { name: 'size_mb', type: 'integer', description: 'Payload size in MiB (default 4, cap 64)', required: false },
+            { name: 'iterations', type: 'integer', description: 'Upload/download cycles (default 1, cap 3)', required: false },
+            { name: 'verify_integrity', type: 'boolean', description: 'Compare SHA-256 of upload and download (default: true)', required: false },
+            { name: 'remote_path', type: 'string', description: 'Explicit remote test path; must not exist yet', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'remote_touch',
+        description: 'Create an empty remote file if it does not exist; an existing file is reported and left untouched (no mtime bump).',
+        parameters: [
+            { name: 'path', type: 'string', description: 'Remote file path', required: true },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'remote_cleanup',
+        description: 'Find orphan .aerotmp files left by interrupted uploads. Lists them by default (dry_run=true); with dry_run=false deletes them.',
+        parameters: [
+            { name: 'path', type: 'string', description: "Remote root to scan (default: '/')", required: false },
+            { name: 'dry_run', type: 'boolean', description: 'List without deleting (default: true)', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'remote_dedupe',
+        description: "Find duplicate files on a remote. Lists the groups by default (mode='list'); with another mode and dry_run=false keeps one file per group and deletes the others.",
+        parameters: [
+            { name: 'path', type: 'string', description: "Remote root to scan (default: '/')", required: false },
+            { name: 'mode', type: 'string', description: "Which file of a group to keep (default: 'list', deletes nothing)", required: false, enum: ['list', 'newest', 'oldest', 'largest', 'smallest'] },
+            { name: 'dry_run', type: 'boolean', description: 'Skip deletion even with a keep mode (default: true)', required: false },
+            { name: 'similarity', type: 'string', description: "'exact' (default, SHA-256) or 'non-identical' (perceptual)", required: false, enum: ['exact', 'non-identical'] },
+            { name: 'distance', type: 'integer', description: 'Distance threshold for non-identical', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'remote_versions',
+        description: "Version history of a remote file on version-aware providers (S3 family and others). action='list' (default) lists versions; 'restore' copies a version forward; 'purge' permanently deletes one version.",
+        parameters: [
+            { name: 'path', type: 'string', description: 'Remote file path', required: true },
+            { name: 'action', type: 'string', description: "Default: 'list'", required: false, enum: ['list', 'restore', 'purge'] },
+            { name: 'version_id', type: 'string', description: 'Required for restore and purge (from action=list)', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    {
+        name: 'remote_trash',
+        description: "S3-family soft-delete trash under a prefix. action='list' (default) lists entries; 'undelete', 'restore' and 'purge' act on one key and version; 'empty' purges the trash under the prefix (dry run by default).",
+        parameters: [
+            { name: 'prefix', type: 'string', description: 'Key prefix (default: whole bucket)', required: false },
+            { name: 'action', type: 'string', description: "Default: 'list'", required: false, enum: ['list', 'undelete', 'restore', 'purge', 'empty'] },
+            { name: 'key', type: 'string', description: 'Object key from action=list (undelete, restore, purge)', required: false },
+            { name: 'version_id', type: 'string', description: 'Version from action=list (undelete, restore, purge)', required: false },
+            { name: 'include_noncurrent', type: 'boolean', description: 'List older versions too (default: false)', required: false },
+            { name: 'dry_run', type: 'boolean', description: 'For action=empty: preview only (default: true)', required: false },
+            { name: 'confirm_whole_bucket', type: 'boolean', description: 'For action=empty with dry_run=false and no prefix: confirm a whole-bucket purge', required: false },
+            { name: 'server', type: 'string', description: 'Saved server name or ID. Omit to use the currently active connection.', required: false },
+        ],
+        dangerLevel: 'high',
+    },
+    // Error correction: detached .aerocorrect sidecars of local files
+    {
+        name: 'aeroftp_correct_gen',
+        description: 'Generate a .aerocorrect Reed-Solomon recovery sidecar for a local file (par2-style), to protect it against bit rot before storing or transferring it. Writes <file>.aerocorrect by default.',
+        parameters: [
+            { name: 'file', type: 'string', description: 'Local file to protect', required: true },
+            { name: 'level', type: 'integer', description: 'Storage overhead percent (5-50, default 15)', required: false, minimum: 5, maximum: 50 },
+            { name: 'out', type: 'string', description: 'Sidecar output path (default <file>.aerocorrect)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'aeroftp_correct_verify',
+        description: 'Verify a local file against its .aerocorrect sidecar. Read-only: reports verified=true or status=needs_repair.',
+        parameters: [
+            { name: 'file', type: 'string', description: 'Local file to verify', required: true },
+            { name: 'parity', type: 'string', description: 'Sidecar path (default <file>.aerocorrect)', required: false },
+        ],
+        dangerLevel: 'safe',
+    },
+    {
+        name: 'aeroftp_correct_repair',
+        description: 'Repair a corrupted local file in place from its .aerocorrect sidecar. Atomic and re-verified before it replaces the original; an intact file is reported with no write.',
+        parameters: [
+            { name: 'file', type: 'string', description: 'Local file to repair', required: true },
+            { name: 'parity', type: 'string', description: 'Sidecar path (default <file>.aerocorrect)', required: false },
+            { name: 'expect_sha256', type: 'string', description: 'Optional 64-char hex SHA-256 of the known-good content; a sidecar declaring another hash is refused', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    // Measurement
+    {
+        name: 'aeroftp_benchmark',
+        description: "Run the AeroFTP community benchmark on a saved profile and return the anonymized schema-v1 report, the same one `aeroftp-cli benchmark` produces. Uses a dedicated connection, writes test files under an aeroftp-bench folder and removes them at the end, also when stopped. Long-running: 'quick' ~30s, 'standard' ~5min, 'deep' ~30min.",
+        parameters: [
+            { name: 'profile', type: 'string', description: 'Saved profile name or ID (from server_list_saved)', required: true },
+            { name: 'level', type: 'string', description: "Preset level (default: 'quick')", required: false, enum: ['quick', 'standard', 'deep', 'custom'] },
+            { name: 'sizes', type: 'string', description: "Comma-separated sizes; a bare number is MiB ('1,100'), K/M/G explicit ('64K,4M')", required: false },
+            { name: 'runs', type: 'integer', description: 'Timed runs per operation and size', required: false },
+            { name: 'operations', type: 'string', description: 'Subset of upload,download,list,stat,delete', required: false },
+            { name: 'file_count', type: 'integer', description: 'Many-small-files workload: number of files (replaces the size sweep unless sizes is set)', required: false },
+            { name: 'file_size', type: 'string', description: 'Size of each small file (default 64K; bare number is MiB)', required: false },
+            { name: 'anonymize_extra', type: 'boolean', description: 'Hash the provider hint too (default: false)', required: false },
+        ],
+        dangerLevel: 'medium',
+    },
+    {
+        name: 'aeroftp_transfer_stats',
+        description: 'Engine telemetry of the most recent DAG-engine transfer in this app: bytes, retries, concurrency peak, time to first byte, duration and process CPU/RSS delta. Returns available=false when none has run yet.',
+        parameters: [],
+        dangerLevel: 'safe',
+    },
 ];
 
 // Get tool by name (searches built-in AGENT_TOOLS only)
