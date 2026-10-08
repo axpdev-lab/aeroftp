@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /** OAuth2 Quick Connect: credentials, exact callback URI, and sign-in. */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { AlertCircle, Check, Copy, ExternalLink, Eye, EyeOff, Loader2, Save } from 'lucide-react';
 import { Checkbox } from './ui/Checkbox';
@@ -11,6 +11,8 @@ import { useI18n } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { useClipboardCopy } from '../hooks/useClipboardCopy';
+import { loadOAuthClientCredentials, oauthCredentialProvider } from '../utils/oauthClientCredentials';
+import { getCredentialWithRetry } from '../utils/profileVaultSecrets';
 import {
   BoxLogo,
   DropboxLogo,
@@ -47,10 +49,6 @@ const providerMap: Record<OAuthUiProvider, OAuthProvider> = {
   pcloud: 'pcloud',
   zohoworkdrive: 'zoho_workdrive',
   yandexdisk: 'yandexdisk',
-};
-
-const credentialAlias: Partial<Record<OAuthUiProvider, OAuthUiProvider>> = {
-  googlephotos: 'googledrive',
 };
 
 const providerNames: Record<OAuthUiProvider, string> = {
@@ -110,6 +108,8 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const { isAuthenticating, error, startAuth, connect } = useOAuth2();
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const credentialEdits = useRef({ clientId: false, clientSecret: false, region: false });
   const [showSecret, setShowSecret] = useState(false);
   const [zohoRegion, setZohoRegion] = useState('us');
   const [wantToSave, setWantToSave] = useState(saveConnection);
@@ -117,7 +117,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   const { copied: copiedUri, copy: copyRedirectUri } = useClipboardCopy();
 
   const oauthProvider = providerMap[provider];
-  const credentialProvider = credentialAlias[provider] || provider;
+  const credentialProvider = oauthCredentialProvider(provider) as OAuthUiProvider;
   const oauthApp = OAUTH_APPS[providerMap[credentialProvider] as keyof typeof OAUTH_APPS];
   const isZoho = provider === 'zohoworkdrive';
   const ProviderLogo = providerLogos[provider];
@@ -135,22 +135,29 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   }, [isEditing]);
 
   useEffect(() => {
+    let cancelled = false;
+    credentialEdits.current = { clientId: false, clientSecret: false, region: false };
     setClientId('');
     setClientSecret('');
+    setCredentialError(null);
     const load = async () => {
       try {
-        setClientId(await invoke<string>('get_credential', { account: `oauth_${credentialProvider}_client_id` }));
-      } catch { /* No stored credential. */ }
-      try {
-        setClientSecret(await invoke<string>('get_credential', { account: `oauth_${credentialProvider}_client_secret` }));
-      } catch { /* No stored credential. */ }
+        const credentials = await loadOAuthClientCredentials(provider);
+        if (cancelled) return;
+        if (!credentialEdits.current.clientId) setClientId(credentials.clientId);
+        if (!credentialEdits.current.clientSecret) setClientSecret(credentials.clientSecret);
+      } catch (reason) {
+        if (!cancelled) setCredentialError(String(reason));
+      }
       if (isZoho) {
         try {
-          setZohoRegion(await invoke<string>('get_credential', { account: `oauth_${provider}_region` }));
+          const region = await getCredentialWithRetry(`oauth_${provider}_region`);
+          if (!cancelled && !credentialEdits.current.region && region) setZohoRegion(region);
         } catch { /* Keep US default. */ }
       }
     };
     void load();
+    return () => { cancelled = true; };
   }, [credentialProvider, isZoho, provider]);
 
   // The backend owns listener host, port and callback path. Displaying that
@@ -209,11 +216,11 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
   return (
     <div className="grid md:grid-cols-2 gap-6 items-start">
       <div className="space-y-4 min-w-0">
-        {error && (
+        {(error || credentialError) && (
           <div className="p-3 bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg">
             <div className="flex items-start gap-2 text-red-700 dark:text-red-300">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <span className="text-sm">{error}</span>
+              <span className="text-sm">{error || t('connection.oauthKeysReadFailed', { provider: providerNames[provider], error: credentialError || '' })}</span>
             </div>
           </div>
         )}
@@ -252,7 +259,7 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
           {isZoho && (
             <div>
               <label className="block text-xs font-medium mb-1">{t('connection.oauth.zohoRegion')}</label>
-              <select value={zohoRegion} onChange={(event) => setZohoRegion(event.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600">
+              <select value={zohoRegion} onChange={(event) => { credentialEdits.current.region = true; setZohoRegion(event.target.value); }} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600">
                 {ZOHO_REGIONS.map((region) => <option key={region.value} value={region.value}>{region.label}</option>)}
               </select>
               <p className="text-xs text-gray-500 mt-1">{t('connection.oauth.zohoRegionHelp')}</p>
@@ -261,13 +268,13 @@ export const OAuthConnect: React.FC<OAuthConnectProps> = ({
 
           <div>
             <label className="block text-xs font-medium mb-1">{t('settings.clientId')}</label>
-            <input type="text" value={clientId} onChange={(event) => setClientId(event.target.value)} placeholder={t('connection.oauth.enterClientId')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
+            <input type="text" value={clientId} onChange={(event) => { credentialEdits.current.clientId = true; setClientId(event.target.value); }} placeholder={t('connection.oauth.enterClientId')} className="w-full px-3 py-2 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
           </div>
 
           <div>
             <label className="block text-xs font-medium mb-1">{t('settings.clientSecret')}</label>
             <div className="relative">
-              <input type={showSecret ? 'text' : 'password'} value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} placeholder={t('connection.oauth.enterClientSecret')} className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
+              <input type={showSecret ? 'text' : 'password'} value={clientSecret} onChange={(event) => { credentialEdits.current.clientSecret = true; setClientSecret(event.target.value); }} placeholder={t('connection.oauth.enterClientSecret')} className="w-full px-3 py-2 pr-10 text-sm rounded-lg border dark:bg-gray-800 dark:border-gray-600" />
               <button data-agent="deny" tabIndex={-1} type="button" onClick={() => setShowSecret(!showSecret)} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                 {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
