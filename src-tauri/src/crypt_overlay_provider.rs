@@ -1545,6 +1545,10 @@ pub async fn wrap_provider_with_overlay_if_bound(
     // bootstrap an overlay on a folder that has no config. Headed intent comes
     // from the profile binding (`params.with_header`); when set, a missing
     // remote marker is healed from the keystore with a one-shot stderr warning.
+    // A default-salt binding (`params.use_default_salt`) also reopens a vault
+    // whose marker and keystore copy are both gone, from its password, once
+    // its names prove the key; that recovers an existing vault, it never
+    // creates one.
     let outcome = unlock_overlay_keys_encrypting(
         &mut *inner,
         params,
@@ -1553,7 +1557,6 @@ pub async fn wrap_provider_with_overlay_if_bound(
         keyfile_digest,
         false,
         params.with_header,
-        None, // non-interactive factory path: never default-salt opt-in
     )
     .await?;
     if let Some(w) = outcome.warning.as_deref() {
@@ -1873,6 +1876,126 @@ fn local_headerless_config_from_params(
     Ok(Some(config_json))
 }
 
+/// Why a default-salt vault could not be rebuilt from its factors.
+pub enum DefaultSaltReopenError {
+    /// The scope holds nothing the password can be checked against: it is empty
+    /// or does not exist yet. A caller allowed to create a vault may do so; any
+    /// other caller reports that there is no vault.
+    NothingToVerify,
+    /// Refused, with the reason. Nothing was written.
+    Refused(String),
+}
+
+/// Rebuild the public config of a default-salt AeroCrypt v3 vault whose marker
+/// and local keystore copy are both gone, from the password (and keyfile) alone.
+///
+/// The key is never taken on trust. A default-salt vault encrypts every name in
+/// its scope with AES-256-SIV under the master key, so the listing of the scope
+/// is the check: at least one name has to decrypt under the derived key, and a
+/// name that decrypts proves the key, since SIV authenticates it with a 128-bit
+/// tag. Foreign entries (a `desktop.ini`, a provider's own file) do not decrypt
+/// and are ignored. A wrong password, or a vault that never used the default
+/// salt, decrypts none, and the rebuild is refused.
+///
+/// Fail-closed on everything it cannot see: a listing error is a refusal, never
+/// "empty", and a scope that LISTS a marker is refused too, because reaching
+/// here means that marker could not be read, and a rebuild must never be
+/// written over a vault's real marker.
+///
+/// Returns the parsed config, the master key and the config text, which is
+/// [`overlay::default_salt_config_v3`] of the key: the same bytes the create
+/// wrote for every default-salt vault created with a derived vault id.
+pub async fn reopen_default_salt_vault(
+    provider: &mut dyn StorageProvider,
+    scope: &str,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<(OverlayConfig, [u8; KEY_SIZE], String), DefaultSaltReopenError> {
+    let scope = scope.trim_end_matches('/');
+    let list_dir = if scope.is_empty() { "/" } else { scope };
+    let entries = match provider.list(list_dir).await {
+        Ok(entries) => entries,
+        Err(ProviderError::NotFound(_)) => return Err(DefaultSaltReopenError::NothingToVerify),
+        Err(e) => {
+            return Err(DefaultSaltReopenError::Refused(format!(
+                "Cannot rebuild the default-salt AeroCrypt vault at {list_dir}: its contents \
+                 could not be listed ({e})."
+            )))
+        }
+    };
+    if entries
+        .iter()
+        .any(|e| e.name == AEROCRYPT_CONFIG_NAME || e.name == overlay::CRYPT_CONFIG_LEGACY_NAME)
+    {
+        return Err(DefaultSaltReopenError::Refused(format!(
+            "The AeroCrypt marker at {list_dir} is listed but could not be read. Refusing to \
+             rebuild the vault from its password over a marker that exists; retry when the \
+             remote answers normally."
+        )));
+    }
+    if entries.is_empty() {
+        return Err(DefaultSaltReopenError::NothingToVerify);
+    }
+    let master_key =
+        overlay::derive_default_salt_master_key(password, keyfile_digest).map_err(|e| {
+            DefaultSaltReopenError::Refused(format!("AeroCrypt key derivation failed: {e}"))
+        })?;
+    if !entries
+        .iter()
+        .any(|e| names::decrypt_filename(&master_key, &e.name).is_some())
+    {
+        let factors = if keyfile_digest.is_some() {
+            "this password and keyfile"
+        } else {
+            "this password"
+        };
+        return Err(DefaultSaltReopenError::Refused(format!(
+            "None of the {} names at {list_dir} decrypts with {factors} and the AeroCrypt \
+             default salt, so it is not the vault they were written with. Nothing was written.",
+            entries.len()
+        )));
+    }
+    let build = || -> Result<(OverlayConfig, String), String> {
+        let text = overlay::default_salt_config_v3(&master_key, keyfile_digest.is_some())?;
+        let config = overlay::parse_config(&text)?;
+        overlay::verify_config_mac(&config, &master_key)?;
+        Ok((config, text))
+    };
+    let (config, text) = build().map_err(|e| {
+        DefaultSaltReopenError::Refused(format!(
+            "Cannot rebuild the default-salt AeroCrypt config: {e}"
+        ))
+    })?;
+    Ok((config, master_key, text))
+}
+
+/// [`reopen_default_salt_vault`] for the unlock chain: `Ok(None)` when the
+/// binding does not use the default salt or the scope holds nothing to verify
+/// against, so the chain moves on to its create or "no overlay" step.
+async fn reopen_default_salt_if_bound(
+    provider: &mut dyn StorageProvider,
+    params: &OverlayUnlockParams,
+    password: &str,
+    keyfile_digest: Option<&[u8; 32]>,
+) -> Result<Option<(OverlayConfig, [u8; KEY_SIZE], String)>, String> {
+    if !params.use_default_salt {
+        return Ok(None);
+    }
+    match reopen_default_salt_vault(provider, &params.remote_scope, password, keyfile_digest).await
+    {
+        Ok(reopened) => Ok(Some(reopened)),
+        Err(DefaultSaltReopenError::NothingToVerify) => Ok(None),
+        Err(DefaultSaltReopenError::Refused(e)) => Err(e),
+    }
+}
+
+/// One-shot notice after a default-salt vault was rebuilt from its password.
+/// Public, no secrets.
+pub const DEFAULT_SALT_REOPENED_WARNING: &str = "This default-salt AeroCrypt vault had no marker \
+and no local copy of its configuration, so it was rebuilt from the password after names in the \
+folder decrypted with it. A vault created by an AeroFTP release that gave default-salt vaults a \
+random vault ID now has a new one: if kit verification reports a mismatch, save a new Recovery Kit.";
+
 fn derive_aerocrypt_overlay_keys_from_config(
     config_json: &str,
     password: &str,
@@ -2088,6 +2211,18 @@ pub fn overlay_kind(overlay: &serde_json::Value) -> &str {
         .unwrap_or(DEFAULT_OVERLAY_KIND)
 }
 
+/// True when a binding uses the AeroCrypt public default salt (its
+/// `useDefaultSalt`), read as false when absent. The one place the rule lives,
+/// `pub` for the same reason as [`overlay_kind`]: the CLI binary and the MCP
+/// pool read the binding too, and a reader that skipped the field would refuse
+/// to reopen a default-salt vault from its password.
+pub fn overlay_uses_default_salt(overlay: &serde_json::Value) -> bool {
+    overlay
+        .get("useDefaultSalt")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
 /// True when the saved profile carries an enabled crypt overlay binding —
 /// native AeroCrypt OR interop rclone-crypt, at equal grade. Mirrors
 /// `getServerCryptOverlay` in `src/types.ts`.
@@ -2221,6 +2356,9 @@ pub(crate) fn overlay_binding_from_profile(
             .get("withHeader")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        // AeroCrypt default-salt intent: create with the public constant, and
+        // reopen from the password when marker and keystore copy are gone.
+        use_default_salt: overlay_uses_default_salt(overlay),
         // The forms the vault holds the password and salt in; a caller that
         // takes a secret from anywhere else clears the one it replaces.
         password_form,
@@ -2325,7 +2463,11 @@ pub async fn restore_headed_marker_from_config(
 /// remote marker is missing while local keystore config is present, the marker
 /// is rebuilt from the keystore and the outcome carries a safety warning
 /// (tracker #421 item #7). Intentional headerless vaults never auto-heal.
-#[allow(clippy::too_many_arguments)]
+///
+/// When the binding uses the default salt (`params.use_default_salt`) and
+/// neither the marker nor the keystore holds the config, the vault is rebuilt
+/// from the password by [`reopen_default_salt_vault`], which checks the key
+/// against the names in the scope first and refuses when none decrypts.
 async fn unlock_overlay_keys_encrypting(
     provider: &mut dyn StorageProvider,
     params: &OverlayUnlockParams,
@@ -2334,7 +2476,6 @@ async fn unlock_overlay_keys_encrypting(
     keyfile_digest: Option<&[u8; 32]>,
     allow_init: bool,
     with_header: bool,
-    use_default_salt: Option<bool>,
 ) -> Result<OverlayUnlockOutcome, String> {
     match params.kind.as_str() {
         "rclone-crypt" => {
@@ -2483,6 +2624,53 @@ async fn unlock_overlay_keys_encrypting(
                     }
                 }
                 derived
+            } else if let Some((config, master_key, config_text)) =
+                reopen_default_salt_if_bound(provider, params, password, keyfile_digest).await?
+            {
+                // A default-salt vault with neither a marker nor a keystore copy:
+                // its config is a function of the password, verified above against
+                // the names it encrypted. Put the copies back so the next unlock
+                // takes the ordinary path: the remote marker when the binding is
+                // headed (the same choreography as the keystore heal), the
+                // keystore cache when a saved profile owns the vault. Both are
+                // conveniences here, never the vault's only record (the password
+                // rebuilds it again), so a failed write is reported, not fatal.
+                let mut notice = DEFAULT_SALT_REOPENED_WARNING.to_string();
+                if headed_intent {
+                    match restore_headed_marker_from_config(
+                        provider,
+                        &new_path,
+                        &config,
+                        &master_key,
+                    )
+                    .await
+                    {
+                        Ok(path) => {
+                            marker_restored = true;
+                            marker_path = Some(path);
+                        }
+                        Err(e) => notice.push_str(&format!(
+                            " The remote marker could not be written ({e}); the vault stays \
+                             open from its password."
+                        )),
+                    }
+                }
+                if let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) {
+                    if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                        use base64::Engine as _;
+                        let salt_b64 = base64::engine::general_purpose::STANDARD
+                            .encode(crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1);
+                        if let Err(e) =
+                            persist_public_overlay_config(&store, id, &config_text, &salt_b64)
+                        {
+                            eprintln!(
+                                "[aerocrypt] rebuilt default-salt config not cached for {id}: {e}"
+                            );
+                        }
+                    }
+                }
+                warning = Some(notice);
+                (config, master_key)
             } else if allow_init {
                 // Bootstrap a fresh AECR v3 overlay and persist its config so the
                 // empty folder becomes a self-describing crypt store on first
@@ -2542,7 +2730,7 @@ async fn unlock_overlay_keys_encrypting(
                         ));
                     }
                 }
-                let use_default = use_default_salt.unwrap_or(false);
+                let use_default = params.use_default_salt;
                 // Entropy gate at the crypto boundary for a newly bootstrapped
                 // default-salt vault (this branch only runs on create, never on
                 // unlock of an existing vault). A public constant salt is only safe
@@ -2557,32 +2745,30 @@ async fn unlock_overlay_keys_encrypting(
                 } else {
                     overlay::random_salt_v3()
                 };
-                let salt_mode = if use_default {
-                    overlay::SaltMode::DefaultV1
-                } else {
-                    overlay::SaltMode::PerVault
-                };
                 let tmp = OverlayConfig::v3_bootstrap(salt);
                 let master_key =
                     overlay::derive_master_key_with_keyfile(&tmp, password, keyfile_digest)
                         .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
-                // With a keyfile the config records kdf_inputs + a fresh vault_id
-                // and omits keyfile_hint by default (F5), mirroring the CLI
-                // `cmd_crypt_init`.
-                let json = if keyfile_digest.is_some() {
+                // With a keyfile the config records kdf_inputs + a vault_id and
+                // omits keyfile_hint by default (F5), mirroring the CLI
+                // `cmd_crypt_init`. A default-salt vault derives everything from
+                // the key, so its password alone rebuilds this exact config.
+                let json = if use_default {
+                    overlay::default_salt_config_v3(&master_key, keyfile_digest.is_some())
+                } else if keyfile_digest.is_some() {
                     overlay::init_config_v3_with_keyfile(
                         &salt,
                         &master_key,
                         &overlay::random_vault_id(),
                         None,
-                        salt_mode,
+                        overlay::SaltMode::PerVault,
                     )
                 } else {
                     overlay::init_config_v3_with_vault_id(
                         &salt,
                         &master_key,
                         &overlay::random_vault_id(),
-                        salt_mode,
+                        overlay::SaltMode::PerVault,
                     )
                 }
                 .map_err(|e| format!("Cannot build AeroCrypt overlay config: {e}"))?;
@@ -2711,7 +2897,6 @@ pub async fn apply_overlay_in_place(
     salt: &str,
     keyfile_digest: Option<&[u8; 32]>,
     with_header: bool,
-    use_default_salt: Option<bool>,
 ) -> Result<ApplyOverlayResult, String> {
     // Revert any prior overlay so a re-apply (re-anchor / scope change) can never
     // stack a second decorator on top of the first.
@@ -2734,7 +2919,6 @@ pub async fn apply_overlay_in_place(
         keyfile_digest,
         true,
         with_header || binding.with_header,
-        use_default_salt,
     )
     .await?;
     let raw = slot
@@ -3894,6 +4078,7 @@ mod tests {
             local_config_json: Some(config_json),
             local_config_salt: Some(salt_b64),
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -3949,6 +4134,7 @@ mod tests {
             local_config_json: Some(config_json.clone()),
             local_config_salt: Some(salt_b64),
             with_header: true,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -4007,14 +4193,14 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
         let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(MemProvider::new()));
-        let applied =
-            apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true, None)
-                .await
-                .unwrap();
+        let applied = apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true)
+            .await
+            .unwrap();
         assert!(
             applied.warning.is_none(),
             "an empty folder is not a wrong key"
@@ -4031,14 +4217,13 @@ mod tests {
             .unwrap();
         tokio::fs::remove_dir_all(&dir).await.ok();
 
-        let right = apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true, None)
+        let right = apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true)
             .await
             .unwrap();
         assert!(right.warning.is_none(), "{:?}", right.warning);
-        let wrong =
-            apply_overlay_in_place(&mut slot, &binding(()), "other", "salt", None, true, None)
-                .await
-                .unwrap();
+        let wrong = apply_overlay_in_place(&mut slot, &binding(()), "other", "salt", None, true)
+            .await
+            .unwrap();
         let warning = wrong.warning.expect("a wrong key is reported");
         assert!(warning.contains("None of the 1 names"), "{warning}");
     }
@@ -4060,6 +4245,7 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -4071,7 +4257,7 @@ mod tests {
         );
 
         // Apply: the slot now holds a decorator.
-        let applied = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, None)
+        let applied = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
             .await
             .unwrap();
         assert_eq!(applied.scope, "");
@@ -4086,7 +4272,7 @@ mod tests {
         );
 
         // Re-apply (re-anchor): must revert the prior overlay first, never stack.
-        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, None)
+        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
             .await
             .unwrap();
 
@@ -4179,6 +4365,7 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -4206,6 +4393,7 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -4232,23 +4420,15 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
         // Bootstrap a real v3 config under the CORRECT password.
         let mut mem = MemProvider::new();
-        unlock_overlay_keys_encrypting(
-            &mut mem,
-            &binding,
-            "correct-pw",
-            "",
-            None,
-            true,
-            true,
-            None,
-        )
-        .await
-        .expect("bootstrap v3 config");
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "correct-pw", "", None, true, true)
+            .await
+            .expect("bootstrap v3 config");
 
         // Wrapping with the WRONG password must fail closed against that config.
         let inner: Box<dyn StorageProvider> = Box::new(mem);
@@ -4277,11 +4457,12 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
         let mut mem = MemProvider::new();
-        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
             .await
             .expect("bootstrap v3 config");
         let inner: Box<dyn StorageProvider> = Box::new(mem);
@@ -4325,12 +4506,12 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
         let res =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
-                .await;
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true).await;
         assert!(
             res.is_err(),
             "activation must refuse to bootstrap over a non-empty folder (would orphan existing files)"
@@ -4359,13 +4540,13 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
 
         let res =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
-                .await;
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true).await;
         let err = res
             .err()
             .expect("activation must refuse a permission-denied scope listing");
@@ -4405,14 +4586,14 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
 
-        let keys =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
-                .await
-                .expect("an empty existing scope must bootstrap a v3 overlay");
+        let keys = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
+            .await
+            .expect("an empty existing scope must bootstrap a v3 overlay");
         assert!(matches!(keys.keys, OverlayKeys::AeroCrypt { .. }));
         assert!(
             mem.exists("/Vault/.aerocrypt.tsv")
@@ -4440,13 +4621,13 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
         // allow_init=true (interactive), with_header=false (headerless), empty folder.
         let res =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, false, None)
-                .await;
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, false).await;
         assert!(
             res.is_err(),
             "headerless activation without a profile id must fail closed"
@@ -4476,14 +4657,14 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
 
-        let keys =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
-                .await
-                .expect("empty folder must bootstrap a v3 overlay");
+        let keys = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
+            .await
+            .expect("empty folder must bootstrap a v3 overlay");
         assert!(matches!(keys.keys, OverlayKeys::AeroCrypt { .. }));
 
         // The config was persisted to the remote and is v3.
@@ -4494,10 +4675,9 @@ mod tests {
         assert!(content.contains("version\t3"));
 
         // Re-activation reads the existing config (no second bootstrap, no clobber).
-        let keys2 =
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true, None)
-                .await
-                .expect("re-activation must read the existing config");
+        let keys2 = unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, true, true)
+            .await
+            .expect("re-activation must read the existing config");
         assert!(matches!(keys2.keys, OverlayKeys::AeroCrypt { .. }));
         let still: Vec<String> = mem
             .raw_paths()
@@ -4522,12 +4702,12 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
         let res =
-            unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false, true, None)
-                .await;
+            unlock_overlay_keys_encrypting(&mut mem, &other, "pw", "", None, false, true).await;
         assert!(
             res.is_err(),
             "non-interactive empty folder must fail closed"
@@ -4536,6 +4716,367 @@ mod tests {
             mem.raw_bytes("/Empty/.aerocrypt.tsv").is_none(),
             "fail-closed path must not write a config"
         );
+    }
+
+    // ── Default salt: the password alone reopens the vault (#276) ────────────
+
+    /// Clears the default-salt entropy gate (Strong rating, 20+ characters).
+    const DEFAULT_SALT_PW: &str = "Xk7#pQ2$vL9@mN4&wR6!tY8^bH3*zJ5%";
+
+    fn default_salt_binding(scope: &str, with_header: bool) -> OverlayUnlockParams {
+        OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: scope.to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+            with_header,
+            use_default_salt: true,
+            password_form: None,
+            salt_form: None,
+        }
+    }
+
+    fn master_key_of(outcome: &OverlayUnlockOutcome) -> [u8; KEY_SIZE] {
+        match &outcome.keys {
+            OverlayKeys::AeroCrypt { master_key, .. } => *master_key,
+            OverlayKeys::Rclone(_) => panic!("expected AeroCrypt keys"),
+        }
+    }
+
+    /// Seed one file encrypted under `master_key` at `scope`, the way the
+    /// overlay writes it: AES-SIV name, v3 content. Returns its wire path.
+    fn seed_encrypted_file(
+        mem: &mut MemProvider,
+        scope: &str,
+        master_key: &[u8; KEY_SIZE],
+        name: &str,
+    ) -> String {
+        let wire_name = names::encrypt_filename(master_key, name).unwrap();
+        let config = OverlayConfig::v3_bootstrap(crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1);
+        let content = overlay::encrypt_data(&config, master_key, b"payload").unwrap();
+        let path = format!("{scope}/{wire_name}");
+        mem.seed_raw_file(&path, &content);
+        path
+    }
+
+    /// A default-salt vault created through the GUI bootstrap, holding one
+    /// encrypted file, whose marker is then deleted: the state a user is in
+    /// after losing both copies of the config. Returns the marker text the
+    /// create wrote.
+    async fn default_salt_vault_without_marker(mem: &mut MemProvider, scope: &str) -> String {
+        let created = unlock_overlay_keys_encrypting(
+            mem,
+            &default_salt_binding(scope, true),
+            DEFAULT_SALT_PW,
+            "",
+            None,
+            true,
+            true,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("create the default-salt vault: {e}"));
+        let master_key = master_key_of(&created);
+        seed_encrypted_file(mem, scope, &master_key, "report.pdf");
+        let marker_path = format!("{scope}/.aerocrypt.tsv");
+        let marker = String::from_utf8(mem.raw_bytes(&marker_path).unwrap()).unwrap();
+        mem.delete(&marker_path).await.unwrap();
+        marker
+    }
+
+    #[tokio::test]
+    async fn default_salt_create_writes_the_config_the_password_rebuilds() {
+        // The create must already write the deterministic config, or a rebuild
+        // could only ever produce a different vault id than the one on record.
+        let mut mem = MemProvider::new();
+        let marker = default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        let key = overlay::derive_default_salt_master_key(DEFAULT_SALT_PW, None).unwrap();
+        assert_eq!(
+            marker,
+            overlay::default_salt_config_v3(&key, false).unwrap()
+        );
+        assert!(marker.contains("salt_mode\tdefault-v1"));
+    }
+
+    #[tokio::test]
+    async fn default_salt_vault_reopens_from_the_password_and_heals_its_marker() {
+        // Neither the marker nor a keystore copy exists. A headed default-salt
+        // binding must reopen the vault from the password alone, in the
+        // non-interactive factory (allow_init=false: this recovers, it never
+        // creates), and put back the exact marker the create wrote.
+        let mut mem = MemProvider::new();
+        let original = default_salt_vault_without_marker(&mut mem, "/Vault").await;
+
+        let outcome = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &default_salt_binding("/Vault", true),
+            DEFAULT_SALT_PW,
+            "",
+            None,
+            false,
+            false,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("the password alone must reopen a default-salt vault: {e}"));
+
+        let key = overlay::derive_default_salt_master_key(DEFAULT_SALT_PW, None).unwrap();
+        assert_eq!(master_key_of(&outcome), key);
+        assert!(
+            outcome.marker_restored,
+            "a headed binding must get its marker back"
+        );
+        let healed = String::from_utf8(mem.raw_bytes("/Vault/.aerocrypt.tsv").unwrap()).unwrap();
+        assert_eq!(
+            healed, original,
+            "the rebuilt marker must be the one the create wrote"
+        );
+        assert!(outcome
+            .warning
+            .as_deref()
+            .is_some_and(|w| w.contains("rebuilt from the password")));
+        let name = mem
+            .raw_paths()
+            .into_iter()
+            .find(|p| p.starts_with("/Vault/") && !p.ends_with(".aerocrypt.tsv"))
+            .unwrap();
+        assert_eq!(
+            outcome
+                .keys
+                .decode_name(name.trim_start_matches("/Vault/"), false)
+                .as_deref(),
+            Some("report.pdf")
+        );
+    }
+
+    #[tokio::test]
+    async fn default_salt_headerless_reopen_writes_no_marker() {
+        // A headerless binding stays headerless: the rebuild unlocks and leaves
+        // no footprint on the remote. Foreign entries in the folder are fine.
+        let mut mem = MemProvider::new();
+        default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        mem.seed_raw_file("/Vault/desktop.ini", b"[.ShellClassInfo]");
+
+        let outcome = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &default_salt_binding("/Vault", false),
+            DEFAULT_SALT_PW,
+            "",
+            None,
+            true,
+            false,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("headerless default-salt reopen: {e}"));
+        assert!(!outcome.marker_restored);
+        assert!(mem.raw_bytes("/Vault/.aerocrypt.tsv").is_none());
+        assert!(
+            outcome.warning.is_some(),
+            "the rebuild must be reported once"
+        );
+    }
+
+    #[tokio::test]
+    async fn default_salt_reopen_refuses_a_wrong_password_and_writes_nothing() {
+        let mut mem = MemProvider::new();
+        default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        let before = mem.raw_paths().len();
+        // Interactive on purpose: a refused rebuild must not fall through to
+        // the create, which would mint a vault over the existing files.
+        let err = unlock_err(
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &default_salt_binding("/Vault", true),
+                "Another#Strong$Password1234567890",
+                "",
+                None,
+                true,
+                true,
+            )
+            .await,
+            "a wrong password must not reopen a default-salt vault",
+        );
+        assert!(
+            err.contains("None of the 1 names"),
+            "names the check: {err}"
+        );
+        assert_eq!(mem.raw_paths().len(), before, "a refusal writes nothing");
+        assert!(mem.raw_bytes("/Vault/.aerocrypt.tsv").is_none());
+    }
+
+    #[tokio::test]
+    async fn default_salt_binding_refuses_a_per_vault_vault() {
+        // The #276 report: a profile saved with "Default salt" on whose vault
+        // got a random per-vault salt anyway. With its marker gone the right
+        // password still derives the wrong key, and the rebuild must say so
+        // instead of minting a default-salt marker beside its files.
+        let mut mem = MemProvider::new();
+        let per_vault = OverlayUnlockParams {
+            use_default_salt: false,
+            ..default_salt_binding("/Vault", true)
+        };
+        let created = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &per_vault,
+            DEFAULT_SALT_PW,
+            "",
+            None,
+            true,
+            true,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("create a per-vault vault: {e}"));
+        seed_encrypted_file(&mut mem, "/Vault", &master_key_of(&created), "report.pdf");
+        mem.delete("/Vault/.aerocrypt.tsv").await.unwrap();
+
+        let err = unlock_err(
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &default_salt_binding("/Vault", true),
+                DEFAULT_SALT_PW,
+                "",
+                None,
+                false,
+                true,
+            )
+            .await,
+            "a per-vault vault must not reopen as a default-salt one",
+        );
+        assert!(err.contains("default salt"), "explains why: {err}");
+        assert!(mem.raw_bytes("/Vault/.aerocrypt.tsv").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_per_vault_binding_never_rebuilds_from_the_password() {
+        // Without the default-salt intent nothing changes: a marker-less folder
+        // is "no overlay" to the factory and a clobber refusal to the GUI.
+        let mut mem = MemProvider::new();
+        default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        let per_vault = OverlayUnlockParams {
+            use_default_salt: false,
+            ..default_salt_binding("/Vault", true)
+        };
+        let err = unlock_err(
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &per_vault,
+                DEFAULT_SALT_PW,
+                "",
+                None,
+                false,
+                true,
+            )
+            .await,
+            "the factory must stay fail-closed",
+        );
+        assert!(err.contains("no overlay at"), "{err}");
+        let err = unlock_err(
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &per_vault,
+                DEFAULT_SALT_PW,
+                "",
+                None,
+                true,
+                true,
+            )
+            .await,
+            "the GUI must refuse to create over existing files",
+        );
+        assert!(err.contains("already contains files"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn default_salt_reopen_needs_the_keyfile_of_a_keyfile_vault() {
+        let mut mem = MemProvider::new();
+        let digest = crate::aerocrypt::keyfile_digest(b"the keyfile");
+        let created = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &default_salt_binding("/KfVault", true),
+            DEFAULT_SALT_PW,
+            "",
+            Some(&digest),
+            true,
+            true,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("create a default-salt keyfile vault: {e}"));
+        seed_encrypted_file(&mut mem, "/KfVault", &master_key_of(&created), "a.txt");
+        mem.delete("/KfVault/.aerocrypt.tsv").await.unwrap();
+
+        let binding = default_salt_binding("/KfVault", false);
+        let err = unlock_err(
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &binding,
+                DEFAULT_SALT_PW,
+                "",
+                None,
+                false,
+                false,
+            )
+            .await,
+            "the password alone must not open a keyfile vault",
+        );
+        assert!(err.contains("this password and the"), "{err}");
+        let outcome = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &binding,
+            DEFAULT_SALT_PW,
+            "",
+            Some(&digest),
+            false,
+            false,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("password + keyfile reopen: {e}"));
+        match &outcome.keys {
+            OverlayKeys::AeroCrypt { config, .. } => assert!(config.requires_keyfile()),
+            OverlayKeys::Rclone(_) => panic!("expected AeroCrypt keys"),
+        }
+    }
+
+    #[tokio::test]
+    async fn default_salt_reopen_refuses_over_a_listed_marker() {
+        // Reaching the rebuild means the marker probe said "absent". If the
+        // listing still shows one, the probe lied (a transient error reads as
+        // false), and a rebuild must never be written over a real marker.
+        let mut mem = MemProvider::new();
+        let key = overlay::derive_default_salt_master_key(DEFAULT_SALT_PW, None).unwrap();
+        seed_encrypted_file(&mut mem, "/Vault", &key, "a.txt");
+        mem.seed_raw_file("/Vault/.aerocrypt.tsv", b"unreadable");
+        match reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None).await {
+            Err(DefaultSaltReopenError::Refused(e)) => assert!(e.contains("marker"), "{e}"),
+            Err(DefaultSaltReopenError::NothingToVerify) => panic!("a listed marker is not empty"),
+            Ok(_) => panic!("must not rebuild over a listed marker"),
+        }
+    }
+
+    #[tokio::test]
+    async fn default_salt_reopen_has_nothing_to_verify_in_an_empty_scope() {
+        let mut mem = MemProvider::new();
+        assert!(matches!(
+            reopen_default_salt_vault(&mut mem, "/Empty", DEFAULT_SALT_PW, None).await,
+            Err(DefaultSaltReopenError::NothingToVerify)
+        ));
+        // The factory has nothing to open and creates nothing.
+        let err = unlock_err(
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &default_salt_binding("/Empty", true),
+                DEFAULT_SALT_PW,
+                "",
+                None,
+                false,
+                true,
+            )
+            .await,
+            "an empty scope is no vault to the factory",
+        );
+        assert!(err.contains("no overlay at"), "{err}");
+        assert!(mem.raw_paths().is_empty());
     }
 
     /// `expect_err` for unlock results. [`OverlayKeys`] intentionally has no
@@ -4566,6 +5107,7 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -4574,40 +5116,21 @@ mod tests {
         )
         .unwrap();
 
-        unlock_overlay_keys_encrypting(
-            &mut mem,
-            &binding,
-            "pw",
-            "",
-            Some(&digest),
-            true,
-            true,
-            None,
-        )
-        .await
-        .expect("bootstrap a keyfile vault");
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&digest), true, true)
+            .await
+            .expect("bootstrap a keyfile vault");
         let cfg = mem.raw_bytes("/KfVault/.aerocrypt.tsv").unwrap();
         let content = String::from_utf8_lossy(&cfg);
         assert!(content.contains("kdf_inputs\tpassword,keyfile"));
         assert!(content.contains("vault_id\t"));
         assert!(!content.contains("keyfile_hint"));
 
-        unlock_overlay_keys_encrypting(
-            &mut mem,
-            &binding,
-            "pw",
-            "",
-            Some(&digest),
-            false,
-            true,
-            None,
-        )
-        .await
-        .expect("correct password + keyfile must unlock");
+        unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&digest), false, true)
+            .await
+            .expect("correct password + keyfile must unlock");
 
         let err = unlock_err(
-            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, false, true, None)
-                .await,
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", None, false, true).await,
             "password-only on a keyfile vault must fail closed",
         );
         assert!(
@@ -4616,17 +5139,9 @@ mod tests {
         );
 
         let wrong = crate::aerocrypt::keyfile_digest(b"not the keyfile");
-        let res = unlock_overlay_keys_encrypting(
-            &mut mem,
-            &binding,
-            "pw",
-            "",
-            Some(&wrong),
-            false,
-            true,
-            None,
-        )
-        .await;
+        let res =
+            unlock_overlay_keys_encrypting(&mut mem, &binding, "pw", "", Some(&wrong), false, true)
+                .await;
         assert!(res.is_err(), "a wrong keyfile must fail closed");
 
         let pw_only = OverlayUnlockParams {
@@ -4639,10 +5154,11 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
-        unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", None, true, true, None)
+        unlock_overlay_keys_encrypting(&mut mem, &pw_only, "pw", "", None, true, true)
             .await
             .expect("bootstrap a password-only vault");
         let err = unlock_err(
@@ -4654,7 +5170,6 @@ mod tests {
                 Some(&digest),
                 false,
                 true,
-                None,
             )
             .await,
             "a spurious keyfile on a password-only vault must be rejected",
@@ -4680,6 +5195,7 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -4693,7 +5209,6 @@ mod tests {
                 Some(&digest),
                 false,
                 true,
-                None,
             )
             .await,
             "rclone-crypt must reject a keyfile",
@@ -4802,6 +5317,28 @@ mod tests {
         assert_eq!(params.remote_scope, "");
         assert_eq!(params.filename_encryption, "standard");
         assert!(params.directory_name_encryption);
+    }
+
+    #[test]
+    fn binding_carries_the_default_salt_intent() {
+        // Every non-GUI reader builds its params here or through
+        // `overlay_uses_default_salt`: a reader that dropped the field would
+        // leave a default-salt vault unopenable once its marker is gone.
+        let with = overlay_binding_from_profile(&serde_json::json!({
+            "id": "p1",
+            "aeroCryptOverlay": { "enabled": true, "useDefaultSalt": true }
+        }))
+        .unwrap();
+        assert!(with.use_default_salt);
+        let without = overlay_binding_from_profile(&serde_json::json!({
+            "id": "p1",
+            "aeroCryptOverlay": { "enabled": true }
+        }))
+        .unwrap();
+        assert!(!without.use_default_salt);
+        assert!(!overlay_uses_default_salt(
+            &serde_json::json!({ "useDefaultSalt": "yes" })
+        ));
     }
 
     #[test]

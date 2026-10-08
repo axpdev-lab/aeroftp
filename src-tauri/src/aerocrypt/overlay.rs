@@ -800,6 +800,68 @@ pub fn init_config_v3_with_keyfile(
     build_config_v3_tsv(salt, master_key, vault_id, true, keyfile_hint, salt_mode)
 }
 
+/// HKDF label of the vault id a default-salt v3 vault derives from its master
+/// key (see [`default_salt_vault_id`]). FROZEN: a new label would give every
+/// default-salt vault created afterwards a different config for the same
+/// password.
+const DEFAULT_SALT_VAULT_ID_LABEL: &[u8] = b"AeroCrypt default-salt vault id v1";
+
+/// The vault id of a default-salt v3 vault, derived from its master key.
+///
+/// A per-vault vault draws its id at random and keeps it in the marker or the
+/// keystore. A default-salt vault promises that its factors alone bring it back,
+/// so nothing in its public config may be random: with the id derived from the
+/// key, the whole config is a function of the password (and keyfile), and a
+/// rebuild on another device, or two at once, writes the same bytes as the
+/// create did, so a Recovery Kit saved at create keeps matching.
+///
+/// The id is public like every vault id. It adds no password oracle, since the
+/// config MAC and every encrypted name already confirm a guess, and no
+/// linkability the mode does not already carry: two default-salt vaults share
+/// an id exactly when they share a master key, which their identical encrypted
+/// names already show.
+pub fn default_salt_vault_id(master_key: &[u8; KEY_SIZE]) -> Result<[u8; VAULT_ID_SIZE], String> {
+    hkdf_expand::<VAULT_ID_SIZE>(master_key, DEFAULT_SALT_VAULT_ID_LABEL)
+}
+
+/// Derive the master key of a default-salt v3 vault from its factors.
+pub fn derive_default_salt_master_key(
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<[u8; KEY_SIZE], String> {
+    derive_master_key_with_keyfile(
+        &OverlayConfig::v3_bootstrap(AEROCRYPT_DEFAULT_SALT_V1),
+        password,
+        keyfile_digest,
+    )
+}
+
+/// The complete public config of a default-salt v3 vault, built from its master
+/// key alone. Every create path and the password-only rebuild go through here,
+/// so the same factors always give the same bytes.
+pub fn default_salt_config_v3(
+    master_key: &[u8; KEY_SIZE],
+    requires_keyfile: bool,
+) -> Result<String, String> {
+    let vault_id = default_salt_vault_id(master_key)?;
+    if requires_keyfile {
+        init_config_v3_with_keyfile(
+            &AEROCRYPT_DEFAULT_SALT_V1,
+            master_key,
+            &vault_id,
+            None,
+            SaltMode::DefaultV1,
+        )
+    } else {
+        init_config_v3_with_vault_id(
+            &AEROCRYPT_DEFAULT_SALT_V1,
+            master_key,
+            &vault_id,
+            SaltMode::DefaultV1,
+        )
+    }
+}
+
 /// Rebuild a headed v3 marker from parsed local metadata and a verified key.
 /// The salt, keyfile requirement, and vault id are preserved. Older v3
 /// password-only configs without a vault id receive one because current marker
@@ -2789,6 +2851,81 @@ mod tests {
         assert!(!tsv_per.contains("salt_mode"));
         let cfg_per = parse_config(&tsv_per).unwrap();
         verify_config_mac(&cfg_per, &master_per).unwrap();
+    }
+
+    #[test]
+    fn default_salt_config_is_a_function_of_the_factors_alone() {
+        // The promise of default-salt mode: the password (with its keyfile, when
+        // it has one) rebuilds the vault. Two builds from the same factors must
+        // therefore be byte-identical, salt and vault id included, and must
+        // verify under the key they were built from.
+        let pw = "correct-horse-battery-staple-123456789012345678901234567890";
+        let master = derive_default_salt_master_key(pw, None).unwrap();
+        let first = default_salt_config_v3(&master, false).unwrap();
+        let again =
+            default_salt_config_v3(&derive_default_salt_master_key(pw, None).unwrap(), false)
+                .unwrap();
+        assert_eq!(
+            first, again,
+            "a default-salt config must not carry anything random"
+        );
+        let cfg = parse_config(&first).unwrap();
+        match &cfg {
+            OverlayConfig::V3 {
+                salt,
+                vault_id,
+                requires_keyfile,
+                salt_mode,
+                ..
+            } => {
+                assert_eq!(*salt, AEROCRYPT_DEFAULT_SALT_V1);
+                assert_eq!(*vault_id, Some(default_salt_vault_id(&master).unwrap()));
+                assert!(!requires_keyfile);
+                assert_eq!(*salt_mode, SaltMode::DefaultV1);
+            }
+            other => panic!("expected v3, got v{}", other.version()),
+        }
+        verify_config_mac(&cfg, &master).unwrap();
+
+        // Another password gives another key, so another vault id.
+        let other =
+            derive_default_salt_master_key("another-strong-pw-123456789012345", None).unwrap();
+        assert_ne!(
+            default_salt_vault_id(&master).unwrap(),
+            default_salt_vault_id(&other).unwrap()
+        );
+
+        // A keyfile vault records the second factor, binds the derived id into
+        // its MAC, and is just as reproducible.
+        let digest = [9u8; KEY_SIZE];
+        let kf_master = derive_default_salt_master_key(pw, Some(&digest)).unwrap();
+        assert_ne!(kf_master, master, "the keyfile must enter the KDF");
+        let kf = default_salt_config_v3(&kf_master, true).unwrap();
+        assert_eq!(kf, default_salt_config_v3(&kf_master, true).unwrap());
+        let kf_cfg = parse_config(&kf).unwrap();
+        assert!(kf_cfg.requires_keyfile());
+        verify_config_mac(&kf_cfg, &kf_master).unwrap();
+        assert!(
+            verify_config_mac(&kf_cfg, &master).is_err(),
+            "the password alone must not verify a keyfile vault"
+        );
+    }
+
+    #[test]
+    fn default_salt_vault_id_is_domain_separated_from_the_config_mac() {
+        // The id is published in the marker next to the MAC; both are HKDF
+        // outputs of the same key and must never coincide.
+        let master = [3u8; KEY_SIZE];
+        let vid = default_salt_vault_id(&master).unwrap();
+        let mac = compute_config_mac_v3(
+            &master,
+            &AEROCRYPT_DEFAULT_SALT_V1,
+            false,
+            Some(&vid),
+            SaltMode::DefaultV1,
+        )
+        .unwrap();
+        assert_ne!(&mac[..VAULT_ID_SIZE], &vid[..]);
     }
 
     #[test]

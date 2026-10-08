@@ -548,11 +548,6 @@ pub async fn aerocrypt_provider_create_remote(
     } else {
         overlay::random_salt_v3()
     };
-    let salt_mode = if use_default {
-        overlay::SaltMode::DefaultV1
-    } else {
-        overlay::SaltMode::PerVault
-    };
     let tmp_cfg = OverlayConfig::v3_bootstrap(salt);
     let master_key = derive_master_key_async(
         &tmp_cfg,
@@ -560,22 +555,26 @@ pub async fn aerocrypt_provider_create_remote(
         keyfile_digest,
     )
     .await?;
-    // Keyfile vaults record kdf_inputs + a fresh vault_id (no keyfile_hint by
-    // default, F5), so any client knows the second factor is required.
-    let config_json = if keyfile_digest.is_some() {
+    // Keyfile vaults record kdf_inputs + a vault_id (no keyfile_hint by
+    // default, F5), so any client knows the second factor is required. A
+    // default-salt vault derives its whole config from the key, so the
+    // password alone rebuilds it if the marker is ever lost.
+    let config_json = if use_default {
+        overlay::default_salt_config_v3(&master_key, keyfile_digest.is_some())?
+    } else if keyfile_digest.is_some() {
         overlay::init_config_v3_with_keyfile(
             &salt,
             &master_key,
             &overlay::random_vault_id(),
             None,
-            salt_mode,
+            overlay::SaltMode::PerVault,
         )?
     } else {
         overlay::init_config_v3_with_vault_id(
             &salt,
             &master_key,
             &overlay::random_vault_id(),
-            salt_mode,
+            overlay::SaltMode::PerVault,
         )?
     };
     let config = overlay::parse_config(&config_json)?;
@@ -617,6 +616,33 @@ pub async fn aerocrypt_provider_create_remote(
                      Pass force=true to overwrite.",
                     base
                 ));
+            }
+            // Same clobber guard as the connect-time bootstrap: a folder that
+            // already holds files may be a vault whose marker was lost (a
+            // headerless one never had a marker). A new marker there would take
+            // precedence over it, and its files would no longer open through
+            // the overlay. Only an empty or brand-new folder is created into;
+            // a listing error is never taken for "empty".
+            if !force {
+                match provider.list(&base).await {
+                    Ok(entries) => {
+                        if entries.iter().any(|e| e.name != CONFIG_NAME) {
+                            return Err(format!(
+                                "Refusing to create an AeroCrypt vault at {base}: it already \
+                                 contains files. Open the vault there with its password instead; \
+                                 a default-salt vault whose marker is gone reopens from its \
+                                 password through a saved profile with Default salt on."
+                            ));
+                        }
+                    }
+                    Err(crate::providers::ProviderError::NotFound(_)) => {}
+                    Err(e) => {
+                        return Err(format!(
+                            "Refusing to create an AeroCrypt vault at {base}: its contents \
+                             could not be verified ({e})."
+                        ));
+                    }
+                }
             }
             log::debug!(
                 "[aerocrypt][create_remote] after cd: base(pwd)={:?} writing config to {:?}",
