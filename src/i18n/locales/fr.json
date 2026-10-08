@@ -3130,6 +3130,17 @@
                 "presetInstall": "Installer",
                 "presetInstalledDisabled": "Installé et désactivé",
                 "presetReady": "Prêt"
+            },
+            "costEstimates": {
+                "cacheTitle": "Économisé grâce au cache du prompt, estimation : {read} tokens lus, {created} écrits",
+                "description": "Le nombre de tokens provient du fournisseur et est exact. Le coût est une estimation fondée sur la grille tarifaire d'AeroFTP, affichée avec la date de cette grille, et omise lorsque la grille date de plus de {days} jours ou n'a pas de date. Le montant facturé se trouve dans la console de votre fournisseur.",
+                "enable": "Afficher les estimations de coût",
+                "estimateTitle": "Estimation fondée sur la grille tarifaire d'AeroFTP du {date}. Le montant facturé se trouve dans la console de votre fournisseur.",
+                "expiredTitle": "Non estimé : la grille tarifaire d'AeroFTP pour ce modèle date du {date}, soit plus de {days} jours. Le nombre de tokens est exact ; le montant facturé se trouve dans la console de votre fournisseur.",
+                "savedEstimateTitle": "Estimation enregistrée avec ce message. Le montant facturé se trouve dans la console de votre fournisseur.",
+                "sumTitle": "Somme des estimations de chaque réponse. Le montant facturé se trouve dans la console de votre fournisseur.",
+                "title": "Estimations de coût",
+                "undatedTitle": "Non estimé : les prix d'AeroFTP pour ce modèle n'ont pas de date de vérification. Le nombre de tokens est exact ; le montant facturé se trouve dans la console de votre fournisseur."
             }
         },
         "archive": {

@@ -669,6 +669,17 @@
                 "seconds": "seconds",
                 "title": "Streaming Timeout"
             },
+            "costEstimates": {
+                "cacheTitle": "Saved by the prompt cache, estimated: {read} tokens read, {created} written",
+                "description": "Token counts come from the provider and are exact. The cost is an estimate from AeroFTP's price list, shown with the date of that list, and is left out when the list is more than {days} days old or has no date. The amount billed is in your provider's console.",
+                "enable": "Show cost estimates",
+                "estimateTitle": "Estimate from AeroFTP's price list of {date}. The amount billed is in your provider's console.",
+                "expiredTitle": "Not estimated: AeroFTP's price list for this model is from {date}, more than {days} days ago. Token counts are exact; the amount billed is in your provider's console.",
+                "savedEstimateTitle": "Estimate saved with this message. The amount billed is in your provider's console.",
+                "sumTitle": "Sum of the estimates of each reply. The amount billed is in your provider's console.",
+                "title": "Cost estimates",
+                "undatedTitle": "Not estimated: AeroFTP's prices for this model have no review date. Token counts are exact; the amount billed is in your provider's console."
+            },
             "agentMode": {
                 "title": "Agent Mode",
                 "description": "Controls tool approval behavior, step limits, and autonomy level.",

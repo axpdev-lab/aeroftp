@@ -56,6 +56,8 @@ export interface AIModel {
     capabilitiesSourceUrl?: string;            // Public provider documentation, never a secret URL
     nativeCapabilities?: AIModelNativeCapabilities;
     pricing?: AIModelPricing;
+    /** ISO date the prices were checked against the provider's price list; the cost is not estimated without it. */
+    priceReviewedAt?: string;
     lifecycleStatus?: 'active' | 'deprecated' | 'retired';
     isEnabled: boolean;
     isDefault: boolean;
@@ -117,6 +119,7 @@ export interface AISettings {
         chatHistoryRetentionDays?: number; // 0 = unlimited, 30/60/90/180/365 days
         enableAutoRAGIndexing?: boolean;   // B07: opt-in auto-index workspace for RAG context (default: true)
         responseStyle?: 'default' | 'concise' | 'explanatory' | 'learning'; // CC-10 output style persona
+        showCostEstimates?: boolean;   // Show estimated costs next to token counts (default: true)
     };
     defaultModelId: string | null;
 }

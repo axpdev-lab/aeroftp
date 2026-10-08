@@ -3130,6 +3130,17 @@
                 "presetInstall": "Cài đặt",
                 "presetInstalledDisabled": "Đã cài và đang tắt",
                 "presetReady": "Sẵn sàng"
+            },
+            "costEstimates": {
+                "cacheTitle": "Tiết kiệm nhờ bộ nhớ đệm prompt, ước tính: đã đọc {read} token, đã ghi {created}",
+                "description": "Số lượng token đến từ nhà cung cấp và chính xác. Chi phí là ước tính dựa trên bảng giá của AeroFTP, được hiển thị cùng ngày của bảng giá đó và bị bỏ qua khi bảng giá cũ hơn {days} ngày hoặc không có ngày. Số tiền được tính phí nằm trong bảng điều khiển của nhà cung cấp của bạn.",
+                "enable": "Hiển thị ước tính chi phí",
+                "estimateTitle": "Ước tính dựa trên bảng giá của AeroFTP ngày {date}. Số tiền được tính phí nằm trong bảng điều khiển của nhà cung cấp của bạn.",
+                "expiredTitle": "Không ước tính: bảng giá của AeroFTP cho mô hình này là ngày {date}, đã hơn {days} ngày. Số lượng token là chính xác; số tiền được tính phí nằm trong bảng điều khiển của nhà cung cấp của bạn.",
+                "savedEstimateTitle": "Ước tính được lưu cùng tin nhắn này. Số tiền được tính phí nằm trong bảng điều khiển của nhà cung cấp của bạn.",
+                "sumTitle": "Tổng các ước tính của từng phản hồi. Số tiền được tính phí nằm trong bảng điều khiển của nhà cung cấp của bạn.",
+                "title": "Ước tính chi phí",
+                "undatedTitle": "Không ước tính: giá của AeroFTP cho mô hình này không có ngày xem xét. Số lượng token là chính xác; số tiền được tính phí nằm trong bảng điều khiển của nhà cung cấp của bạn."
             }
         },
         "archive": {

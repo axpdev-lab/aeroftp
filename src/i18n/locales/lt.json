@@ -3130,6 +3130,17 @@
                 "presetInstall": "Diegti",
                 "presetInstalledDisabled": "Įdiegta ir išjungta",
                 "presetReady": "Paruošta"
+            },
+            "costEstimates": {
+                "cacheTitle": "Sutaupyta dėl užklausos talpyklos, įvertis: {read} tokenų perskaityta, {created} įrašyta",
+                "description": "Tokenų skaičius gaunamas iš paslaugų teikėjo ir yra tikslus. Kaina yra įvertis pagal AeroFTP kainoraštį, rodomas su to kainoraščio data ir praleidžiamas, kai kainoraštis senesnis nei {days} dienų arba neturi datos. Išrašyta suma yra jūsų paslaugų teikėjo konsolėje.",
+                "enable": "Rodyti išlaidų įverčius",
+                "estimateTitle": "Įvertis pagal AeroFTP kainoraštį, galiojantį {date}. Išrašyta suma yra jūsų paslaugų teikėjo konsolėje.",
+                "expiredTitle": "Neįvertinta: AeroFTP šio modelio kainoraštis yra iš {date}, senesnis nei {days} dienų. Tokenų skaičius tikslus. Išrašyta suma yra jūsų paslaugų teikėjo konsolėje.",
+                "savedEstimateTitle": "Su šiuo pranešimu išsaugotas įvertis. Išrašyta suma yra jūsų paslaugų teikėjo konsolėje.",
+                "sumTitle": "Kiekvieno atsakymo įverčių suma. Išrašyta suma yra jūsų paslaugų teikėjo konsolėje.",
+                "title": "Išlaidų įverčiai",
+                "undatedTitle": "Neįvertinta: AeroFTP šio modelio kainos neturi peržiūros datos. Tokenų skaičius tikslus. Išrašyta suma yra jūsų paslaugų teikėjo konsolėje."
             }
         },
         "archive": {

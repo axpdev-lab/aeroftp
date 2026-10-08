@@ -5,11 +5,27 @@ import { Message } from './aiChatTypes';
 import { determineBudgetMode } from './aiChatSmartContext';
 import { BudgetMode } from '../../types/contextIntelligence';
 import type { AIModelPricing } from '../../types/ai';
+import { PRICE_LIST_MAX_AGE_DAYS } from '../../types/aiModelRegistry';
 
 export interface ModelCostInfo {
     inputCostPer1k?: number;
     outputCostPer1k?: number;
     pricing?: AIModelPricing;
+    priceReviewedAt?: string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether prices checked on `reviewedAt` (an ISO day) can still back an
+ * estimate at `now`: through the 90th day after the review, yes. A missing
+ * or unparseable date is no date; one ahead of the clock counts as current.
+ */
+export function priceListStatus(reviewedAt: string | undefined, now: Date): 'current' | 'expired' | 'undated' {
+    if (!reviewedAt || !/^\d{4}-\d{2}-\d{2}$/.test(reviewedAt)) return 'undated';
+    const reviewed = Date.parse(`${reviewedAt}T00:00:00Z`);
+    if (Number.isNaN(reviewed) || new Date(reviewed).toISOString().slice(0, 10) !== reviewedAt) return 'undated';
+    return Math.floor((now.getTime() - reviewed) / DAY_MS) > PRICE_LIST_MAX_AGE_DAYS ? 'expired' : 'current';
 }
 
 export interface TokenBudgetBreakdown {
@@ -85,6 +101,7 @@ export function computeTokenInfo(
     modelCost: ModelCostInfo | undefined,
     cacheCreationTokens?: number,
     cacheReadTokens?: number,
+    now: Date = new Date(),
 ): Message['tokenInfo'] | undefined {
     if (!inputTokens && !outputTokens && !tokensUsed) return undefined;
 
@@ -131,13 +148,19 @@ export function computeTokenInfo(
         }
     }
 
-    return {
+    const tokens = {
         inputTokens,
         outputTokens,
         totalTokens: tokensUsed ?? (input + output),
-        cost,
         cacheCreationTokens,
         cacheReadTokens,
-        cacheSavings,
     };
+    if (cost === undefined) return tokens;
+    // The tokens are the provider's count; the money is ours, from a price
+    // list that ages. Without a date, or past 90 days, no amount is shown,
+    // summed, saved or exported: the reply says why instead.
+    const status = priceListStatus(modelCost?.priceReviewedAt, now);
+    const priceListDate = status === 'undated' ? undefined : modelCost?.priceReviewedAt;
+    if (status !== 'current') return { ...tokens, priceListDate, costWithheld: status };
+    return { ...tokens, cost, cacheSavings, priceListDate };
 }

@@ -3130,6 +3130,17 @@
                 "presetInstall": "Instalēt",
                 "presetInstalledDisabled": "Instalēts un izslēgts",
                 "presetReady": "Gatavs"
+            },
+            "costEstimates": {
+                "cacheTitle": "Ietaupīts ar uzvednes kešatmiņu, aplēse: {read} tokenu nolasīti, {created} ierakstīti",
+                "description": "Tokenu skaits nāk no pakalpojumu sniedzēja un ir precīzs. Izmaksas ir aplēse pēc AeroFTP cenrāža, tā tiek rādīta kopā ar šī cenrāža datumu un tiek izlaista, ja cenrādis ir vecāks par {days} dienām vai tam nav datuma. Izrakstītā summa ir jūsu pakalpojumu sniedzēja konsolē.",
+                "enable": "Rādīt izmaksu aplēses",
+                "estimateTitle": "Aplēse pēc AeroFTP cenrāža no {date}. Izrakstītā summa ir jūsu pakalpojumu sniedzēja konsolē.",
+                "expiredTitle": "Nav aplēsts: AeroFTP cenrādis šim modelim ir no {date}, vecāks par {days} dienām. Tokenu skaits ir precīzs. Izrakstītā summa ir jūsu pakalpojumu sniedzēja konsolē.",
+                "savedEstimateTitle": "Aplēse, kas saglabāta kopā ar šo ziņojumu. Izrakstītā summa ir jūsu pakalpojumu sniedzēja konsolē.",
+                "sumTitle": "Katras atbildes aplēšu summa. Izrakstītā summa ir jūsu pakalpojumu sniedzēja konsolē.",
+                "title": "Izmaksu aplēses",
+                "undatedTitle": "Nav aplēsts: AeroFTP cenām šim modelim nav pārskatīšanas datuma. Tokenu skaits ir precīzs. Izrakstītā summa ir jūsu pakalpojumu sniedzēja konsolē."
             }
         },
         "archive": {

@@ -42,6 +42,9 @@ describe('current provider model profiles', () => {
             if (spec.metadataReviewedAt) {
                 expect(Date.parse(`${spec.metadataReviewedAt}T00:00:00Z`)).toBeLessThanOrEqual(reviewedAt);
             }
+            if (spec.priceReviewedAt) {
+                expect(Date.parse(`${spec.priceReviewedAt}T00:00:00Z`)).toBeLessThanOrEqual(reviewedAt);
+            }
         }
     });
 
@@ -257,6 +260,42 @@ describe('model capability resolution', () => {
         expect(saved.nativeCapabilities?.adaptiveThinking).toBe(true);
         expect(saved.maxContextTokens).toBeLessThanOrEqual(MODEL_REGISTRY['claude-opus-5'].maxContextTokens);
         expect(saved.capabilitySource).toBe('registry');
+    });
+
+    it('replaces the prices an older registry saved into a profile', () => {
+        // Prices are the provider's, never a user edit (the model editor has no
+        // price field): a corrected price must reach models saved before it.
+        const applied = applyRegistryDefaults({
+            name: 'claude-opus-4-7',
+            inputCostPer1k: 0.015,
+            outputCostPer1k: 0.075,
+            priceReviewedAt: '2025-11-01',
+        });
+        expect(applied.inputCostPer1k).toBe(0.005);
+        expect(applied.outputCostPer1k).toBe(0.025);
+        expect(applied.priceReviewedAt).toBe('2026-10-08');
+    });
+
+    it('dates prices only from a price review, never from the capability review', () => {
+        const applied = applyRegistryDefaults({ name: 'gpt-5.6-sol' });
+        expect(applied.capabilitiesVerifiedAt).toBe('2026-09-02');
+        expect(applied.inputCostPer1k).toBeGreaterThan(0);
+        expect(applied.priceReviewedAt).toBeUndefined();
+    });
+
+    it('drops the prices of a saved model the registry no longer lists', () => {
+        const reconciled = reconcilePersistedModel({
+            name: 'claude-3-5-sonnet-20241022',
+            capabilitySource: 'registry',
+            inputCostPer1k: 0.003,
+            outputCostPer1k: 0.015,
+            pricing: { cacheReadMultiplier: 0.1, cacheWriteMultiplier: 1.25 },
+            priceReviewedAt: '2026-01-15',
+        });
+        expect(reconciled.inputCostPer1k).toBeUndefined();
+        expect(reconciled.outputCostPer1k).toBeUndefined();
+        expect(reconciled.pricing).toBeUndefined();
+        expect(reconciled.priceReviewedAt).toBeUndefined();
     });
 
     it('strips registry labels when renaming a known model to an unknown id', () => {

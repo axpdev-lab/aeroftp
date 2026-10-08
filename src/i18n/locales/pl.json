@@ -3130,6 +3130,17 @@
                 "presetInstall": "Zainstaluj",
                 "presetInstalledDisabled": "Zainstalowano i wyłączono",
                 "presetReady": "Gotowe"
+            },
+            "costEstimates": {
+                "cacheTitle": "Oszczędność dzięki pamięci podręcznej promptu, szacunek: odczytano {read} tokenów, zapisano {created}",
+                "description": "Liczba tokenów pochodzi od dostawcy i jest dokładna. Koszt jest szacunkiem na podstawie cennika AeroFTP, wyświetlanym z datą tego cennika, i jest pomijany, gdy cennik jest starszy niż {days} dni lub nie ma daty. Kwota do zapłaty jest widoczna w konsoli Twojego dostawcy.",
+                "enable": "Pokaż szacunki kosztów",
+                "estimateTitle": "Szacunek na podstawie cennika AeroFTP z dnia {date}. Kwota do zapłaty jest widoczna w konsoli Twojego dostawcy.",
+                "expiredTitle": "Nie oszacowano: cennik AeroFTP dla tego modelu pochodzi z dnia {date}, sprzed ponad {days} dni. Liczba tokenów jest dokładna, a kwota do zapłaty jest widoczna w konsoli Twojego dostawcy.",
+                "savedEstimateTitle": "Szacunek zapisany razem z tą wiadomością. Kwota do zapłaty jest widoczna w konsoli Twojego dostawcy.",
+                "sumTitle": "Suma szacunków dla każdej odpowiedzi. Kwota do zapłaty jest widoczna w konsoli Twojego dostawcy.",
+                "title": "Szacunki kosztów",
+                "undatedTitle": "Nie oszacowano: ceny AeroFTP dla tego modelu nie mają daty weryfikacji. Liczba tokenów jest dokładna, a kwota do zapłaty jest widoczna w konsoli Twojego dostawcy."
             }
         },
         "archive": {

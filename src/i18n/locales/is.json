@@ -3130,6 +3130,17 @@
                 "presetInstall": "Setja upp",
                 "presetInstalledDisabled": "Uppsett og slökkt",
                 "presetReady": "Tilbúið"
+            },
+            "costEstimates": {
+                "cacheTitle": "Sparað með skyndiminni fyrirmæla, áætlað: {read} tóken lesin, {created} skrifuð",
+                "description": "Fjöldi tókena kemur frá þjónustuveitunni og er nákvæmur. Kostnaðurinn er áætlun út frá verðskrá AeroFTP, sýnd með dagsetningu þeirrar skrár, og er sleppt þegar skráin er eldri en {days} daga eða hefur enga dagsetningu. Upphæðin sem er innheimt er í stjórnborði þjónustuveitunnar þinnar.",
+                "enable": "Sýna kostnaðaráætlanir",
+                "estimateTitle": "Áætlun út frá verðskrá AeroFTP frá {date}. Upphæðin sem er innheimt er í stjórnborði þjónustuveitunnar þinnar.",
+                "expiredTitle": "Ekki áætlað: verðskrá AeroFTP fyrir þetta líkan er frá {date}, meira en {days} daga gömul. Fjöldi tókena er nákvæmur. Upphæðin sem er innheimt er í stjórnborði þjónustuveitunnar þinnar.",
+                "savedEstimateTitle": "Áætlun vistuð með þessum skilaboðum. Upphæðin sem er innheimt er í stjórnborði þjónustuveitunnar þinnar.",
+                "sumTitle": "Summa áætlana fyrir hvert svar. Upphæðin sem er innheimt er í stjórnborði þjónustuveitunnar þinnar.",
+                "title": "Kostnaðaráætlanir",
+                "undatedTitle": "Ekki áætlað: verð AeroFTP fyrir þetta líkan hafa enga yfirferðardagsetningu. Fjöldi tókena er nákvæmur. Upphæðin sem er innheimt er í stjórnborði þjónustuveitunnar þinnar."
             }
         },
         "archive": {

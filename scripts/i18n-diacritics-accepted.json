@@ -389,6 +389,13 @@
       "folded": "plan",
       "twin": "plán",
       "reason": "The description is MEGA's English product text (\"Pro plan\"); \"plan\" is the English word, not a stripped Slovak \"plán\"."
+    },
+    "cs\u001fai.mcpClient.tokenValue\u001fHodnota tokenu": {
+      "locale": "cs",
+      "key": "ai.mcpClient.tokenValue",
+      "folded": "tokenu",
+      "twin": "tokenů",
+      "reason": "Hodnota tokenu is the genitive singular (the value of one token); tokenů is the genitive plural used by the cost-estimate strings, so both forms are correct."
     }
   }
 }

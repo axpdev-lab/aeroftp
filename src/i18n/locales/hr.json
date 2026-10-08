@@ -3130,6 +3130,17 @@
                 "presetInstall": "Instaliraj",
                 "presetInstalledDisabled": "Instalirano i isključeno",
                 "presetReady": "Spremno"
+            },
+            "costEstimates": {
+                "cacheTitle": "Ušteđeno predmemorijom prompta, procjena: {read} tokena pročitano, {created} zapisano",
+                "description": "Broj tokena dolazi od pružatelja usluge i točan je. Trošak je procjena prema cjeniku AeroFTP-a, prikazuje se s datumom tog cjenika i izostavlja se kada je cjenik stariji od {days} dana ili nema datum. Naplaćeni iznos nalazi se u konzoli vašeg pružatelja usluge.",
+                "enable": "Prikaži procjene troškova",
+                "estimateTitle": "Procjena prema cjeniku AeroFTP-a od {date}. Naplaćeni iznos nalazi se u konzoli vašeg pružatelja usluge.",
+                "expiredTitle": "Nije procijenjeno: cjenik AeroFTP-a za ovaj model datira od {date}, prije više od {days} dana. Broj tokena je točan; naplaćeni iznos nalazi se u konzoli vašeg pružatelja usluge.",
+                "savedEstimateTitle": "Procjena spremljena uz ovu poruku. Naplaćeni iznos nalazi se u konzoli vašeg pružatelja usluge.",
+                "sumTitle": "Zbroj procjena svakog odgovora. Naplaćeni iznos nalazi se u konzoli vašeg pružatelja usluge.",
+                "title": "Procjene troškova",
+                "undatedTitle": "Nije procijenjeno: cijene AeroFTP-a za ovaj model nemaju datum provjere. Broj tokena je točan; naplaćeni iznos nalazi se u konzoli vašeg pružatelja usluge."
             }
         },
         "archive": {

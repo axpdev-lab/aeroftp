@@ -3130,6 +3130,17 @@
                 "presetInstall": "Instalovat",
                 "presetInstalledDisabled": "Nainstalováno a vypnuto",
                 "presetReady": "Připraveno"
+            },
+            "costEstimates": {
+                "cacheTitle": "Ušetřeno díky mezipaměti promptu, odhad: {read} tokenů přečteno, {created} zapsáno",
+                "description": "Počty tokenů pocházejí od poskytovatele a jsou přesné. Cena je odhad podle ceníku AeroFTP, zobrazuje se s datem tohoto ceníku a vynechává se, pokud je ceník starší než {days} dní nebo nemá datum. Účtovaná částka je v konzoli vašeho poskytovatele.",
+                "enable": "Zobrazovat odhady nákladů",
+                "estimateTitle": "Odhad podle ceníku AeroFTP z {date}. Účtovaná částka je v konzoli vašeho poskytovatele.",
+                "expiredTitle": "Bez odhadu: ceník AeroFTP pro tento model je z {date}, tedy starší než {days} dní. Počty tokenů jsou přesné; účtovaná částka je v konzoli vašeho poskytovatele.",
+                "savedEstimateTitle": "Odhad uložený s touto zprávou. Účtovaná částka je v konzoli vašeho poskytovatele.",
+                "sumTitle": "Součet odhadů jednotlivých odpovědí. Účtovaná částka je v konzoli vašeho poskytovatele.",
+                "title": "Odhady nákladů",
+                "undatedTitle": "Bez odhadu: ceny AeroFTP pro tento model nemají datum kontroly. Počty tokenů jsou přesné; účtovaná částka je v konzoli vašeho poskytovatele."
             }
         },
         "archive": {

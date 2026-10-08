@@ -3130,6 +3130,17 @@
                 "presetInstall": "Namesti",
                 "presetInstalledDisabled": "Nameščeno in izklopljeno",
                 "presetReady": "Pripravljeno"
+            },
+            "costEstimates": {
+                "cacheTitle": "Prihranjeno s predpomnilnikom poziva, ocena: {read} tokenov prebranih, {created} zapisanih",
+                "description": "Število tokenov prihaja od ponudnika in je natančno. Strošek je ocena na podlagi cenika AeroFTP, prikazana z datumom tega cenika, in je izpuščen, če je cenik starejši od {days} dni ali nima datuma. Obračunani znesek je v konzoli vašega ponudnika.",
+                "enable": "Prikaži ocene stroškov",
+                "estimateTitle": "Ocena na podlagi cenika AeroFTP z dne {date}. Obračunani znesek je v konzoli vašega ponudnika.",
+                "expiredTitle": "Ni ocenjeno: cenik AeroFTP za ta model je z dne {date}, starejši od {days} dni. Število tokenov je natančno. Obračunani znesek je v konzoli vašega ponudnika.",
+                "savedEstimateTitle": "Ocena, shranjena s tem sporočilom. Obračunani znesek je v konzoli vašega ponudnika.",
+                "sumTitle": "Vsota ocen vseh odgovorov. Obračunani znesek je v konzoli vašega ponudnika.",
+                "title": "Ocene stroškov",
+                "undatedTitle": "Ni ocenjeno: cene AeroFTP za ta model nimajo datuma pregleda. Število tokenov je natančno. Obračunani znesek je v konzoli vašega ponudnika."
             }
         },
         "archive": {

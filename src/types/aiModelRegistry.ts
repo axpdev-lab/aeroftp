@@ -4,6 +4,8 @@
 import { AIModel, AIModelNativeCapabilities, AIModelPricing, AIProviderType } from './ai';
 
 export const MODEL_REGISTRY_REVIEWED_AT = '2026-10-08';
+/** Past this age a `priceReviewedAt` no longer backs a cost estimate: prices change. */
+export const PRICE_LIST_MAX_AGE_DAYS = 90;
 export const UNKNOWN_MODEL_CONTEXT_BUDGET = 8192;
 
 export type ModelCapabilitySource = 'registry' | 'provider' | 'user' | 'unknown';
@@ -34,6 +36,12 @@ export interface KnownModelSpec {
     metadataSource?: string;
     nativeCapabilities?: AIModelNativeCapabilities;
     pricing?: AIModelPricing;
+    /**
+     * ISO date the prices above were checked against the provider's price
+     * list. Not inferred from `metadataReviewedAt`: a capability review does
+     * not recheck prices, and without this date the cost is not estimated.
+     */
+    priceReviewedAt?: string;
     lifecycleStatus?: 'active' | 'deprecated' | 'retired';
     /** Adapter work required before discovery can enable this profile by default. */
     pendingAdapterRequirements?: Array<'model-aware-reasoning' | 'adaptive-thinking' | 'native-turn-state' | 'fixed-sampling'>;
@@ -44,7 +52,9 @@ export interface KnownModelSpec {
 // registry only supplies cost + capability defaults. Keep it fresh each release
 // and DO NOT guess pricing: an entry with a wrong price shows the user a wrong
 // cost (worse than the "no cost shown" fallback for an unknown model). Verify
-// per-1k pricing against the provider's published rates before adding a model.
+// per-1k pricing against the provider's published rates before adding a model,
+// and record the day in `priceReviewedAt`: the chat estimates a cost only from
+// prices that carry that date and are at most 90 days old.
 // Registry sweep last reviewed: 2026-09-26. Each newly verified provider entry
 // should carry its own metadataReviewedAt + metadataSource; the sweep date does
 // not silently certify older entries whose provider metadata was not rechecked.
@@ -316,12 +326,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             requiresFullAssistantReplay: true,
             fixedSamplingParameters: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.05x.
         pricing: {
             cacheReadMultiplier: 0.05,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-fable-5-1': {
         displayName: 'Claude Fable 5.1',
@@ -347,12 +358,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             contextManagement: true,
             modelCapabilitiesApi: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.025x.
         pricing: {
             cacheReadMultiplier: 0.025,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-sonnet-5-5': {
         displayName: 'Claude Sonnet 5.5',
@@ -376,12 +388,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             requiresFullAssistantReplay: true,
             fixedSamplingParameters: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.05x.
         pricing: {
             cacheReadMultiplier: 0.05,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-haiku-5-5': {
         displayName: 'Claude Haiku 5.5',
@@ -404,7 +417,7 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             requiresFullAssistantReplay: true,
             fixedSamplingParameters: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
@@ -412,6 +425,7 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             // Prompts over 100,000 tokens pay $0.50 / $2.50 per MTok.
             tiers: [{ aboveTokens: 100000, inputCostPer1k: 0.0005, outputCostPer1k: 0.0025 }],
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-opus-5': {
         displayName: 'Claude Opus 5',
@@ -434,12 +448,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             modelCapabilitiesApi: true,
             fixedSamplingParameters: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-sonnet-5': {
         displayName: 'Claude Sonnet 5',
@@ -462,12 +477,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             modelCapabilitiesApi: true,
             fixedSamplingParameters: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-opus-4-8': {
         displayName: 'Claude Opus 4.8',
@@ -490,12 +506,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             modelCapabilitiesApi: true,
             fixedSamplingParameters: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-opus-4-7': {
         displayName: 'Claude Opus 4.7',
@@ -516,12 +533,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             adaptiveThinking: true,
             fixedSamplingParameters: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-opus-4-6': {
         displayName: 'Claude Opus 4.6',
@@ -538,12 +556,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['code', 'reasoning', 'analysis'],
         metadataReviewedAt: '2026-10-08',
         metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-sonnet-4-6': {
         displayName: 'Claude Sonnet 4.6',
@@ -565,12 +584,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
             contextManagement: true,
             modelCapabilitiesApi: true,
         },
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-sonnet-4-5-20250929': {
         displayName: 'Claude Sonnet 4.5',
@@ -585,12 +605,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         supportsParallelTools: true,
         toolCallQuality: 5,
         bestFor: ['code', 'analysis'],
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
     'claude-haiku-4-5-20251001': {
         displayName: 'Claude Haiku 4.5',
@@ -607,12 +628,13 @@ export const MODEL_REGISTRY: Record<string, KnownModelSpec> = {
         bestFor: ['fast', 'code'],
         metadataReviewedAt: '2026-10-08',
         metadataSource: 'https://platform.claude.com/docs/en/about-claude/models/overview',
-        // https://platform.claude.com/docs/en/about-claude/pricing (reviewed 2026-10-08):
+        // https://platform.claude.com/docs/en/about-claude/pricing:
         // 5-minute cache writes 1.25x input, cache reads 0.1x.
         pricing: {
             cacheReadMultiplier: 0.1,
             cacheWriteMultiplier: 1.25,
         },
+        priceReviewedAt: '2026-10-08',
     },
 
     // Google
@@ -1017,6 +1039,11 @@ export function reconcilePersistedModel(
             capabilitiesVerifiedAt: undefined,
             capabilitiesSourceUrl: undefined,
             nativeCapabilities: undefined,
+            // The prices came from the registry too, and it no longer vouches for them.
+            inputCostPer1k: undefined,
+            outputCostPer1k: undefined,
+            pricing: undefined,
+            priceReviewedAt: undefined,
         };
     }
     return model;
@@ -1088,8 +1115,6 @@ export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }
     return {
         displayName: spec.displayName,
         maxTokens: spec.maxTokens,
-        inputCostPer1k: spec.inputCostPer1k,
-        outputCostPer1k: spec.outputCostPer1k,
         supportsStreaming: spec.supportsStreaming,
         supportsTools: spec.supportsTools,
         supportsVision: spec.supportsVision,
@@ -1103,9 +1128,13 @@ export function applyRegistryDefaults(model: Partial<AIModel> & { name: string }
         nativeCapabilities: spec.nativeCapabilities
             ? structuredClone(spec.nativeCapabilities)
             : undefined,
-        // The price list is the provider's, never a user edit: the registry's
-        // replaces whatever an older profile saved.
+        // Prices are the provider's, never a user edit (the model editor has
+        // no price field): the registry's replace whatever an older profile
+        // saved, so a corrected price reaches models saved before it.
+        inputCostPer1k: spec.inputCostPer1k,
+        outputCostPer1k: spec.outputCostPer1k,
         pricing: spec.pricing ? structuredClone(spec.pricing) : undefined,
+        priceReviewedAt: spec.priceReviewedAt,
         lifecycleStatus: spec.lifecycleStatus || 'active',
         maxContextTokens: explicitContext,
         capabilitySource: 'registry',
