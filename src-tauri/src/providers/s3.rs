@@ -396,11 +396,31 @@ fn format_s3_error(
     body: &str,
     retry_header: Option<&str>,
 ) -> String {
-    let mut msg = format!("{} ({}): {}", prefix, status, sanitize_api_error(body));
+    let detail = s3_error_code_and_message(body).unwrap_or_else(|| body.to_string());
+    let mut msg = format!("{} ({}): {}", prefix, status, sanitize_api_error(&detail));
     if let Some(tail) = s3_retry_marker_tail(status.as_u16(), body, retry_header) {
         msg.push_str(&tail);
     }
     msg
+}
+
+/// `Code: Message` of an S3 XML error body, or `None` when it has neither.
+/// The error line used to be the body's first line, and a server that puts
+/// the XML declaration on its own line (`rclone serve s3`, so Filen Desktop)
+/// showed the user `<?xml version="1.0" encoding="UTF-8"?>` and nothing else.
+fn s3_error_code_and_message(body: &str) -> Option<String> {
+    let tag = |name: &str| {
+        body.split(&format!("<{name}>"))
+            .nth(1)
+            .and_then(|rest| rest.split(&format!("</{name}>")).next())
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+    };
+    match (tag("Code"), tag("Message")) {
+        (Some(code), Some(message)) => Some(format!("{code}: {message}")),
+        (Some(only), None) | (None, Some(only)) => Some(only.to_string()),
+        (None, None) => None,
+    }
 }
 
 /// S3 Storage Provider
@@ -12637,6 +12657,28 @@ mod tests {
             s3_retry_marker_tail(503, r#"<Code>ServiceUnavailable</Code>"#, Some("30")),
             None
         );
+    }
+
+    #[test]
+    fn format_s3_error_reads_code_and_message_past_the_xml_declaration() {
+        let body = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error>\n  <Code>SignatureDoesNotMatch</Code>\n  <Message>The request signature we calculated does not match the signature you provided.</Message>\n</Error>";
+        let msg = format_s3_error(
+            "ListBuckets failed",
+            reqwest::StatusCode::FORBIDDEN,
+            body,
+            None,
+        );
+        assert_eq!(
+            msg,
+            "ListBuckets failed (403 Forbidden): SignatureDoesNotMatch: The request signature we calculated does not match the signature you provided."
+        );
+        let plain = format_s3_error(
+            "GET failed",
+            reqwest::StatusCode::BAD_GATEWAY,
+            "upstream down",
+            None,
+        );
+        assert_eq!(plain, "GET failed (502 Bad Gateway): upstream down");
     }
 
     #[test]
