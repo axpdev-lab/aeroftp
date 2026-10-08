@@ -1194,7 +1194,17 @@
             "selectShown": "Zaznacz wyświetlone ({count})",
             "deselectShown": "Odznacz wyświetlone ({count})",
             "filterShownCount": "wyświetlono: {shown}",
-            "selectedHiddenByFilter": "Zaznaczone: {count}, ale ukryte przez filtr, nadal uwzględnione"
+            "selectedHiddenByFilter": "Zaznaczone: {count}, ale ukryte przez filtr, nadal uwzględnione",
+            "appearanceMode": "Tryb wyglądu",
+            "appearanceManual": "Ręczny",
+            "appearanceSchedule": "Harmonogram",
+            "scheduleLocalTime": "Zmieniaj motywy według czasu lokalnego. Ręczny wybór motywu zatrzymuje harmonogram.",
+            "scheduleNightStart": "Początek nocy",
+            "scheduleNightEnd": "Koniec nocy",
+            "scheduleDayTheme": "Motyw dzienny",
+            "scheduleNightTheme": "Motyw nocny",
+            "scheduleInvalidTime": "Wybierz dwie różne prawidłowe godziny. Ostatni prawidłowy harmonogram pozostaje aktywny.",
+            "scheduleRestoreMode": "Przywróć poprzedni tryb wyglądu"
         },
         "devtools": {
             "title": "AeroTools",

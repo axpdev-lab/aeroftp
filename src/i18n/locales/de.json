@@ -1194,7 +1194,17 @@
             "selectShown": "Die {count} angezeigten auswählen",
             "deselectShown": "Auswahl der {count} angezeigten aufheben",
             "filterShownCount": "{shown} angezeigt",
-            "selectedHiddenByFilter": "{count} ausgewählt, aber durch den Filter ausgeblendet, weiterhin enthalten"
+            "selectedHiddenByFilter": "{count} ausgewählt, aber durch den Filter ausgeblendet, weiterhin enthalten",
+            "appearanceMode": "Darstellungsmodus",
+            "appearanceManual": "Manuell",
+            "appearanceSchedule": "Zeitplan",
+            "scheduleLocalTime": "Wechsle die Designs anhand deiner Ortszeit. Wenn du ein Design manuell auswählst, wird der Zeitplan angehalten.",
+            "scheduleNightStart": "Nachtbeginn",
+            "scheduleNightEnd": "Nachtende",
+            "scheduleDayTheme": "Tagdesign",
+            "scheduleNightTheme": "Nachtdesign",
+            "scheduleInvalidTime": "Wähle zwei unterschiedliche gültige Uhrzeiten. Der letzte gültige Zeitplan bleibt aktiv.",
+            "scheduleRestoreMode": "Vorherigen Darstellungsmodus wiederherstellen"
         },
         "devtools": {
             "title": "AeroTools",

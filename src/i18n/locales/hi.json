@@ -1194,7 +1194,17 @@
             "selectShown": "दिखाए गए {count} चुनें",
             "deselectShown": "दिखाए गए {count} का चयन हटाएँ",
             "filterShownCount": "{shown} दिखाए गए",
-            "selectedHiddenByFilter": "{count} चयनित लेकिन फ़िल्टर द्वारा छिपे हैं, फिर भी शामिल हैं"
+            "selectedHiddenByFilter": "{count} चयनित लेकिन फ़िल्टर द्वारा छिपे हैं, फिर भी शामिल हैं",
+            "appearanceMode": "दिखावट मोड",
+            "appearanceManual": "मैन्युअल",
+            "appearanceSchedule": "समय-सारणी",
+            "scheduleLocalTime": "अपने स्थानीय समय के अनुसार थीम बदलें। मैन्युअल रूप से थीम चुनने पर समय-सारणी रुक जाती है।",
+            "scheduleNightStart": "रात शुरू",
+            "scheduleNightEnd": "रात समाप्त",
+            "scheduleDayTheme": "दिन की थीम",
+            "scheduleNightTheme": "रात की थीम",
+            "scheduleInvalidTime": "दो अलग-अलग मान्य समय चुनें। पिछली मान्य समय-सारणी सक्रिय रहेगी।",
+            "scheduleRestoreMode": "पिछला दिखावट मोड बहाल करें"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,17 @@
             "selectShown": "De {count} getoonde selecteren",
             "deselectShown": "Selectie van de {count} getoonde opheffen",
             "filterShownCount": "{shown} getoond",
-            "selectedHiddenByFilter": "{count} geselecteerd maar verborgen door het filter, nog steeds opgenomen"
+            "selectedHiddenByFilter": "{count} geselecteerd maar verborgen door het filter, nog steeds opgenomen",
+            "appearanceMode": "Weergavemodus",
+            "appearanceManual": "Handmatig",
+            "appearanceSchedule": "Schema",
+            "scheduleLocalTime": "Wissel thema’s op basis van je lokale tijd. Als je handmatig een thema kiest, stopt het schema.",
+            "scheduleNightStart": "Nacht begint",
+            "scheduleNightEnd": "Nacht eindigt",
+            "scheduleDayTheme": "Dagthema",
+            "scheduleNightTheme": "Nachtthema",
+            "scheduleInvalidTime": "Kies twee verschillende geldige tijden. Het laatste geldige schema blijft actief.",
+            "scheduleRestoreMode": "Vorige weergavemodus herstellen"
         },
         "devtools": {
             "title": "AeroTools",

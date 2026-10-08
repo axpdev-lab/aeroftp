@@ -1194,7 +1194,17 @@
             "selectShown": "Markera de {count} visade",
             "deselectShown": "Avmarkera de {count} visade",
             "filterShownCount": "{shown} visas",
-            "selectedHiddenByFilter": "{count} markerade men dolda av filtret, ingår fortfarande"
+            "selectedHiddenByFilter": "{count} markerade men dolda av filtret, ingår fortfarande",
+            "appearanceMode": "Utseendeläge",
+            "appearanceManual": "Manuellt",
+            "appearanceSchedule": "Schema",
+            "scheduleLocalTime": "Byt teman efter din lokala tid. Om du väljer ett tema manuellt stoppas schemat.",
+            "scheduleNightStart": "Natten börjar",
+            "scheduleNightEnd": "Natten slutar",
+            "scheduleDayTheme": "Dagtema",
+            "scheduleNightTheme": "Nattema",
+            "scheduleInvalidTime": "Välj två olika giltiga tider. Det senaste giltiga schemat förblir aktivt.",
+            "scheduleRestoreMode": "Återställ föregående utseendeläge"
         },
         "devtools": {
             "title": "AeroTools",

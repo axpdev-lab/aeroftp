@@ -15,6 +15,7 @@
 import React, { useState, useCallback, createContext, useContext, useEffect } from 'react';
 import type { IconTheme } from '../utils/iconThemes';
 import type { EffectiveTheme } from './useTheme';
+import { useAppearance } from './useAppearance';
 
 const ICON_THEME_KEY = 'aeroftp-icon-theme';
 const VALID_ICON_THEMES: IconTheme[] = ['outline', 'filled', 'minimal'];
@@ -39,15 +40,13 @@ const IconThemeContext = createContext<IconThemeContextValue>({
 });
 
 export const IconThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [iconTheme, setIconThemeState] = useState<IconTheme>(() => {
+    const { effectiveTheme } = useAppearance();
+    const [chosenTheme, setIconThemeState] = useState<IconTheme | null>(() => {
         const saved = localStorage.getItem(ICON_THEME_KEY) as IconTheme | null;
         if (saved && VALID_ICON_THEMES.includes(saved)) return saved;
-        // First load: derive from saved app theme
-        const appTheme = localStorage.getItem('aeroftp-theme') || 'auto';
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const effective = appTheme === 'auto' ? (prefersDark ? 'dark' : 'light') : appTheme;
-        return getDefaultIconTheme(effective as EffectiveTheme);
+        return null;
     });
+    const iconTheme = chosenTheme ?? getDefaultIconTheme(effectiveTheme);
 
     const setIconTheme = useCallback((theme: IconTheme) => {
         setIconThemeState(theme);
@@ -61,9 +60,7 @@ export const IconThemeProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     useEffect(() => {
         const reload = () => {
             const saved = localStorage.getItem(ICON_THEME_KEY) as IconTheme | null;
-            if (saved && VALID_ICON_THEMES.includes(saved)) {
-                setIconThemeState(prev => (prev === saved ? prev : saved));
-            }
+            setIconThemeState(saved && VALID_ICON_THEMES.includes(saved) ? saved : null);
         };
         window.addEventListener('aeroftp-localstorage-restored', reload);
         return () => window.removeEventListener('aeroftp-localstorage-restored', reload);

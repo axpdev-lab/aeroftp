@@ -1194,7 +1194,17 @@
             "selectShown": "Pažymėti rodomus {count}",
             "deselectShown": "Panaikinti rodomų {count} žymėjimą",
             "filterShownCount": "rodoma: {shown}",
-            "selectedHiddenByFilter": "{count} pažymėta, bet paslėpta filtro, vis tiek įtraukta"
+            "selectedHiddenByFilter": "{count} pažymėta, bet paslėpta filtro, vis tiek įtraukta",
+            "appearanceMode": "Išvaizdos režimas",
+            "appearanceManual": "Rankinis",
+            "appearanceSchedule": "Tvarkaraštis",
+            "scheduleLocalTime": "Keiskite temas pagal vietos laiką. Pasirinkus temą rankiniu būdu, tvarkaraštis sustabdomas.",
+            "scheduleNightStart": "Nakties pradžia",
+            "scheduleNightEnd": "Nakties pabaiga",
+            "scheduleDayTheme": "Dienos tema",
+            "scheduleNightTheme": "Nakties tema",
+            "scheduleInvalidTime": "Pasirinkite du skirtingus galiojančius laikus. Paskutinis galiojantis tvarkaraštis lieka aktyvus.",
+            "scheduleRestoreMode": "Atkurti ankstesnį išvaizdos režimą"
         },
         "devtools": {
             "title": "AeroTools",

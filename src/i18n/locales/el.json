@@ -1194,7 +1194,17 @@
             "selectShown": "Επιλογή των {count} που εμφανίζονται",
             "deselectShown": "Αποεπιλογή των {count} που εμφανίζονται",
             "filterShownCount": "{shown} εμφανίζονται",
-            "selectedHiddenByFilter": "{count} επιλεγμένα αλλά κρυμμένα από το φίλτρο, εξακολουθούν να συμπεριλαμβάνονται"
+            "selectedHiddenByFilter": "{count} επιλεγμένα αλλά κρυμμένα από το φίλτρο, εξακολουθούν να συμπεριλαμβάνονται",
+            "appearanceMode": "Λειτουργία εμφάνισης",
+            "appearanceManual": "Χειροκίνητα",
+            "appearanceSchedule": "Πρόγραμμα",
+            "scheduleLocalTime": "Αλλάξτε θέματα με βάση την τοπική σας ώρα. Η χειροκίνητη επιλογή θέματος διακόπτει το πρόγραμμα.",
+            "scheduleNightStart": "Έναρξη νύχτας",
+            "scheduleNightEnd": "Λήξη νύχτας",
+            "scheduleDayTheme": "Θέμα ημέρας",
+            "scheduleNightTheme": "Θέμα νύχτας",
+            "scheduleInvalidTime": "Επιλέξτε δύο διαφορετικές έγκυρες ώρες. Το τελευταίο έγκυρο πρόγραμμα παραμένει ενεργό.",
+            "scheduleRestoreMode": "Επαναφορά προηγούμενης λειτουργίας εμφάνισης"
         },
         "devtools": {
             "title": "AeroTools",

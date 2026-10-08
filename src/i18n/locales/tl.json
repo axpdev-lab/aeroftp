@@ -1194,7 +1194,17 @@
             "selectShown": "Piliin ang {count} na ipinapakita",
             "deselectShown": "Huwag piliin ang {count} na ipinapakita",
             "filterShownCount": "{shown} ang ipinapakita",
-            "selectedHiddenByFilter": "{count} ang napili pero nakatago ng filter, kasama pa rin"
+            "selectedHiddenByFilter": "{count} ang napili pero nakatago ng filter, kasama pa rin",
+            "appearanceMode": "Mode ng hitsura",
+            "appearanceManual": "Manwal",
+            "appearanceSchedule": "Iskedyul",
+            "scheduleLocalTime": "Magpalit ng mga tema ayon sa iyong lokal na oras. Ang manwal na pagpili ng tema ay humihinto sa iskedyul.",
+            "scheduleNightStart": "Simula ng gabi",
+            "scheduleNightEnd": "Katapusan ng gabi",
+            "scheduleDayTheme": "Tema sa araw",
+            "scheduleNightTheme": "Tema sa gabi",
+            "scheduleInvalidTime": "Pumili ng dalawang magkaibang wastong oras. Mananatiling aktibo ang huling wastong iskedyul.",
+            "scheduleRestoreMode": "Ibalik ang dating mode ng hitsura"
         },
         "devtools": {
             "title": "AeroTools",

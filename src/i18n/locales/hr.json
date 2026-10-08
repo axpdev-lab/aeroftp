@@ -1194,7 +1194,17 @@
             "selectShown": "Odaberi prikazanih {count}",
             "deselectShown": "Poništi odabir prikazanih {count}",
             "filterShownCount": "prikazano: {shown}",
-            "selectedHiddenByFilter": "{count} odabrano, ali skriveno filtrom, i dalje uključeno"
+            "selectedHiddenByFilter": "{count} odabrano, ali skriveno filtrom, i dalje uključeno",
+            "appearanceMode": "Način izgleda",
+            "appearanceManual": "Ručno",
+            "appearanceSchedule": "Raspored",
+            "scheduleLocalTime": "Mijenjajte teme prema lokalnom vremenu. Ručni odabir teme zaustavlja raspored.",
+            "scheduleNightStart": "Početak noći",
+            "scheduleNightEnd": "Kraj noći",
+            "scheduleDayTheme": "Dnevna tema",
+            "scheduleNightTheme": "Noćna tema",
+            "scheduleInvalidTime": "Odaberite dva različita valjana vremena. Posljednji valjani raspored ostaje aktivan.",
+            "scheduleRestoreMode": "Vrati prethodni način izgleda"
         },
         "devtools": {
             "title": "AeroTools",

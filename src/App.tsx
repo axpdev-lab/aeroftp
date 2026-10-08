@@ -463,7 +463,7 @@ import { formatBytes, formatSpeed, formatETA, formatDate, isWindowsDriveRoot, pa
 
 import { useArchiveMeta } from './hooks/useArchiveMeta';
 import { formatArchiveCipher } from './utils/archiveCipher';
-import { useIconTheme, getDefaultIconTheme } from './hooks/useIconTheme';
+import { useIconTheme } from './hooks/useIconTheme';
 import { getIconThemeProvider } from './utils/iconThemes';
 import { logger } from './utils/logger';
 import { initCspReporter } from './utils/cspReporter';
@@ -2156,18 +2156,9 @@ const App: React.FC = () => {
 
   // === Core hooks (must be before keyboard shortcuts) ===
   const { theme, setTheme, isDark } = useTheme();
-  const { iconTheme, setIconTheme } = useIconTheme();
+  const { iconTheme } = useIconTheme();
   const iconProvider = useMemo(() => getIconThemeProvider(iconTheme, getEffectiveTheme(theme, isDark)), [iconTheme, theme, isDark]);
 
-  // Auto-sync icon theme when app theme changes
-  const prevEffectiveThemeRef = useRef(getEffectiveTheme(theme, isDark));
-  useEffect(() => {
-    const effective = getEffectiveTheme(theme, isDark);
-    if (effective !== prevEffectiveThemeRef.current) {
-      prevEffectiveThemeRef.current = effective;
-      setIconTheme(getDefaultIconTheme(effective));
-    }
-  }, [theme, isDark, setIconTheme]);
   const toast = useToast();
   const contextMenu = useContextMenu();
   // AeroShare flag: gates the folder-context "Share a folder" menu item.
@@ -2621,7 +2612,7 @@ const App: React.FC = () => {
 
   // Theme cycle (shared between Ctrl+T shortcut and titlebar onToggleTheme)
   const cycleTheme = useCallback(() => {
-    const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
+    const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'ice', 'redhorse'];
     setTheme(order[(order.indexOf(theme) + 1) % order.length]);
   }, [theme, setTheme]);
 
@@ -5266,10 +5257,10 @@ const App: React.FC = () => {
           loadLocalFiles(currentLocalPathRef.current);
           break;
         case 'toggle_theme': {
-          const order: Theme[] = ['light', 'dark', 'tokyo', 'cyber', 'auto'];
+          const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'ice', 'redhorse'];
           const nextTheme = order[(order.indexOf(themeRef.current) + 1) % order.length];
           setTheme(nextTheme);
-          // Icon theme auto-syncs via useEffect above
+          // Icon defaults follow the resolved theme; explicit overrides are retained
           break;
         }
         case 'new_folder':
@@ -16239,7 +16230,7 @@ const App: React.FC = () => {
         isOpen={showMigrationWizard}
         onComplete={() => setShowMigrationWizard(false)}
         onSkip={() => setShowMigrationWizard(false)}
-        isLightTheme={theme === 'light'}
+        isLightTheme={getEffectiveTheme(theme, isDark) === 'light'}
       />
 
       <div

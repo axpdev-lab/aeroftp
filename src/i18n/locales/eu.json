@@ -1194,7 +1194,17 @@
             "selectShown": "Hautatu erakutsitako {count}",
             "deselectShown": "Desautatu erakutsitako {count}",
             "filterShownCount": "{shown} erakutsita",
-            "selectedHiddenByFilter": "{count} hautatuta baina iragazkiak ezkutatuta, oraindik barne"
+            "selectedHiddenByFilter": "{count} hautatuta baina iragazkiak ezkutatuta, oraindik barne",
+            "appearanceMode": "Itxura modua",
+            "appearanceManual": "Eskuz",
+            "appearanceSchedule": "Ordutegia",
+            "scheduleLocalTime": "Aldatu gaiak tokiko orduaren arabera. Gai bat eskuz aukeratzeak ordutegia gelditzen du.",
+            "scheduleNightStart": "Gauaren hasiera",
+            "scheduleNightEnd": "Gauaren amaiera",
+            "scheduleDayTheme": "Eguneko gaia",
+            "scheduleNightTheme": "Gaueko gaia",
+            "scheduleInvalidTime": "Aukeratu baliozko bi ordu desberdin. Baliozko azken ordutegiak aktibo jarraituko du.",
+            "scheduleRestoreMode": "Berrezarri aurreko itxura modua"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1194,7 +1194,17 @@
             "selectShown": "Atlasīt attēlotos {count}",
             "deselectShown": "Noņemt atlasi attēlotajiem {count}",
             "filterShownCount": "attēloti: {shown}",
-            "selectedHiddenByFilter": "{count} atlasīti, bet filtrs tos slēpj, tie joprojām tiek iekļauti"
+            "selectedHiddenByFilter": "{count} atlasīti, bet filtrs tos slēpj, tie joprojām tiek iekļauti",
+            "appearanceMode": "Izskata režīms",
+            "appearanceManual": "Manuāli",
+            "appearanceSchedule": "Grafiks",
+            "scheduleLocalTime": "Mainiet tēmas pēc vietējā laika. Manuāla tēmas izvēle aptur grafiku.",
+            "scheduleNightStart": "Nakts sākums",
+            "scheduleNightEnd": "Nakts beigas",
+            "scheduleDayTheme": "Dienas tēma",
+            "scheduleNightTheme": "Nakts tēma",
+            "scheduleInvalidTime": "Izvēlieties divus atšķirīgus derīgus laikus. Pēdējais derīgais grafiks paliek aktīvs.",
+            "scheduleRestoreMode": "Atjaunot iepriekšējo izskata režīmu"
         },
         "devtools": {
             "title": "AeroTools",

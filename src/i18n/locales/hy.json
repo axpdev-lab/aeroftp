@@ -1194,7 +1194,17 @@
             "selectShown": "Ընտրել ցուցադրված {count}-ը",
             "deselectShown": "Հանել ցուցադրված {count}-ի ընտրությունը",
             "filterShownCount": "{shown} ցուցադրված",
-            "selectedHiddenByFilter": "{count} ընտրված է, բայց թաքցված է զտիչով, դեռ ներառված է"
+            "selectedHiddenByFilter": "{count} ընտրված է, բայց թաքցված է զտիչով, դեռ ներառված է",
+            "appearanceMode": "Տեսքի ռեժիմ",
+            "appearanceManual": "Ձեռքով",
+            "appearanceSchedule": "Ժամանակացույց",
+            "scheduleLocalTime": "Փոխեք թեմաները ձեր տեղական ժամանակով։ Թեմայի ձեռքով ընտրությունը դադարեցնում է ժամանակացույցը։",
+            "scheduleNightStart": "Գիշերվա սկիզբ",
+            "scheduleNightEnd": "Գիշերվա ավարտ",
+            "scheduleDayTheme": "Ցերեկային թեմա",
+            "scheduleNightTheme": "Գիշերային թեմա",
+            "scheduleInvalidTime": "Ընտրեք երկու տարբեր վավեր ժամեր։ Վերջին վավեր ժամանակացույցը մնում է ակտիվ։",
+            "scheduleRestoreMode": "Վերականգնել տեսքի նախորդ ռեժիմը"
         },
         "devtools": {
             "title": "AeroTools",

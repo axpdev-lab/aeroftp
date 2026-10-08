@@ -1194,7 +1194,17 @@
             "selectShown": "Selecciona els {count} mostrats",
             "deselectShown": "Desselecciona els {count} mostrats",
             "filterShownCount": "{shown} mostrats",
-            "selectedHiddenByFilter": "{count} seleccionats però amagats pel filtre, encara inclosos"
+            "selectedHiddenByFilter": "{count} seleccionats però amagats pel filtre, encara inclosos",
+            "appearanceMode": "Mode d’aparença",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Programació",
+            "scheduleLocalTime": "Canvia els temes segons l’hora local. Si tries un tema manualment, s’atura la programació.",
+            "scheduleNightStart": "Inici de la nit",
+            "scheduleNightEnd": "Final de la nit",
+            "scheduleDayTheme": "Tema diürn",
+            "scheduleNightTheme": "Tema nocturn",
+            "scheduleInvalidTime": "Tria dues hores vàlides diferents. L’última programació vàlida continua activa.",
+            "scheduleRestoreMode": "Restaura el mode d’aparença anterior"
         },
         "devtools": {
             "title": "AeroTools",
