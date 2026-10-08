@@ -1184,6 +1184,18 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.replace_sets_aside()
     }
 
+    async fn wait_until_readable(
+        &mut self,
+        path: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        let enc = self.map(path, false, AccessKind::Read)?;
+        self.inner.wait_until_readable(&enc).await
+    }
+
+    fn measurement_note(&self) -> Option<&'static str> {
+        self.inner.measurement_note()
+    }
+
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;

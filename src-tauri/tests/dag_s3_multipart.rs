@@ -123,6 +123,7 @@ fn s3_config(secret: String) -> S3Config {
         verify_cert: false,
         allow_cleartext_endpoint: false,
         skip_dir_markers: false,
+        filen_desktop_bridge: false,
     }
 }
 

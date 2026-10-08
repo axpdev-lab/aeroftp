@@ -3520,6 +3520,11 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
+    fn measurement_note(&self) -> Option<&'static str> {
+        (self.config.provider_id.as_deref() == Some("filen-desktop-webdav"))
+            .then_some(super::FILEN_DESKTOP_BRIDGE_NOTE)
+    }
+
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         // Issue #175: prefer the connect-time server_root (auto-detected on
         // Nextcloud / ownCloud) over the user-typed initial_path so cd_up
@@ -5439,6 +5444,24 @@ const MOVE_DEPTH: &str = "infinity";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #368: the Filen Desktop WebDAV bridge has the same local cache as the
+    /// S3 one, so its benchmark carries the same note; a plain server none.
+    #[test]
+    fn measurement_note_names_the_filen_desktop_bridge_only() {
+        let mut config = test_config("http://127.0.0.1:1900");
+        assert_eq!(
+            WebDavProvider::new(config.clone())
+                .unwrap()
+                .measurement_note(),
+            None
+        );
+        config.provider_id = Some("filen-desktop-webdav".to_string());
+        assert_eq!(
+            WebDavProvider::new(config).unwrap().measurement_note(),
+            Some(super::super::FILEN_DESKTOP_BRIDGE_NOTE)
+        );
+    }
 
     fn test_config(url: &str) -> WebDavConfig {
         WebDavConfig {

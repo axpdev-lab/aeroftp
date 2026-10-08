@@ -476,6 +476,17 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.exists(path).await
     }
 
+    async fn wait_until_readable(
+        &mut self,
+        path: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        self.inner.wait_until_readable(path).await
+    }
+
+    fn measurement_note(&self) -> Option<&'static str> {
+        self.inner.measurement_note()
+    }
+
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         self.inner.keep_alive().await
     }

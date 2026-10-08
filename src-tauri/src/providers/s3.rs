@@ -4113,6 +4113,31 @@ impl S3Provider {
         }
     }
 
+    /// HEAD `key` until it answers, when this session just uploaded it on a
+    /// preset that skips directory markers. Returns the time spent, or `None`
+    /// when no wait applied. The record is kept, so the GET that follows
+    /// still waits if the object disappears again.
+    async fn wait_for_own_markerless_upload(
+        &self,
+        key: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        if !self.markerless_upload_is_fresh(key) {
+            return Ok(None);
+        }
+        let started = tokio::time::Instant::now();
+        let deadline = started + Self::MARKERLESS_WRITE_BACK_WAIT;
+        let mut pause = std::time::Duration::from_millis(250);
+        loop {
+            let response = self.s3_request(Method::HEAD, key, None, None).await?;
+            let now = tokio::time::Instant::now();
+            if response.status() != StatusCode::NOT_FOUND || now >= deadline {
+                return Ok(Some(now - started));
+            }
+            tokio::time::sleep(pause.min(deadline.saturating_duration_since(now))).await;
+            pause = (pause * 2).min(std::time::Duration::from_secs(2));
+        }
+    }
+
     /// Whether `key` is an object, or a folder with at least one object under
     /// `key/`, in at most two listings of one key each. The rename check used
     /// to page through every key that merely starts with `key`: in a large
@@ -4823,6 +4848,23 @@ impl StorageProvider for S3Provider {
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         self.cd("..").await
+    }
+
+    async fn wait_until_readable(
+        &mut self,
+        path: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+        self.wait_for_own_markerless_upload(key).await
+    }
+
+    fn measurement_note(&self) -> Option<&'static str> {
+        self.config
+            .filen_desktop_bridge
+            .then_some(super::FILEN_DESKTOP_BRIDGE_NOTE)
     }
 
     async fn download(
@@ -8335,6 +8377,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8592,6 +8635,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8788,6 +8832,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8837,6 +8882,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8869,6 +8915,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8998,6 +9045,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -9044,6 +9092,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
 
@@ -9099,6 +9148,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -9231,6 +9281,114 @@ mod tests {
         server.abort();
         assert_eq!(std::fs::read(&dst).unwrap(), b"ok");
         assert_eq!(gets.load(Ordering::SeqCst), 3, "two 404s, then the object");
+        let _ = std::fs::remove_file(&src);
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    /// #368: a benchmark on the Filen Desktop preset says it measured the
+    /// local bridge; any other S3 profile prints no note.
+    #[test]
+    fn measurement_note_names_the_filen_desktop_bridge_only() {
+        let mut config = S3Config::from_provider_config(&super::super::ProviderConfig {
+            name: "filen".to_string(),
+            provider_type: ProviderType::S3,
+            host: "https://127.0.0.1:1800".to_string(),
+            port: None,
+            username: Some("key".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra: std::collections::HashMap::from([
+                ("bucket".to_string(), "filen".to_string()),
+                ("provider_id".to_string(), "filen-desktop-s3".to_string()),
+            ]),
+        })
+        .unwrap();
+        assert_eq!(
+            S3Provider::new(config.clone()).unwrap().measurement_note(),
+            Some(super::super::FILEN_DESKTOP_BRIDGE_NOTE)
+        );
+        config.filen_desktop_bridge = false;
+        assert_eq!(S3Provider::new(config).unwrap().measurement_note(), None);
+    }
+
+    /// A benchmark waits for the write-back BEFORE it starts the download
+    /// clock (#368: 10 MB at "5 Mbps" was 15 s of waiting). The wait is
+    /// returned, so the caller can report it apart, and the download that
+    /// follows finds the object on its first GET.
+    #[tokio::test]
+    async fn wait_until_readable_waits_out_the_write_back_before_the_download() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let heads = Arc::new(AtomicUsize::new(0));
+        let gets = Arc::new(AtomicUsize::new(0));
+        let (heads_h, gets_h) = (Arc::clone(&heads), Arc::clone(&gets));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (heads, gets) = (Arc::clone(&heads_h), Arc::clone(&gets_h));
+                async move {
+                    let status = if req.method() == Method::HEAD {
+                        if heads.fetch_add(1, Ordering::SeqCst) < 2 {
+                            404
+                        } else {
+                            200
+                        }
+                    } else {
+                        if req.method() == Method::GET {
+                            gets.fetch_add(1, Ordering::SeqCst);
+                        }
+                        200
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .header("content-length", "2")
+                        .body(axum::body::Body::from(if status == 200 {
+                            "ok"
+                        } else {
+                            ""
+                        }))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let src = std::env::temp_dir().join(format!("aero-wr-src-{}", std::process::id()));
+        let dst = std::env::temp_dir().join(format!("aero-wr-dst-{}", std::process::id()));
+        std::fs::write(&src, b"hi").unwrap();
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.config.skip_dir_markers = true;
+        provider.connected = true;
+        provider
+            .upload(src.to_str().unwrap(), "/fresh.dat", None)
+            .await
+            .expect("upload");
+
+        // A key this session did not upload: no wait, no request.
+        assert_eq!(
+            provider.wait_until_readable("/other.dat").await.unwrap(),
+            None
+        );
+        assert_eq!(heads.load(Ordering::SeqCst), 0);
+
+        let waited = provider
+            .wait_until_readable("/fresh.dat")
+            .await
+            .unwrap()
+            .expect("a fresh upload on a markerless preset is waited for");
+        assert!(waited > std::time::Duration::ZERO, "{waited:?}");
+        assert_eq!(heads.load(Ordering::SeqCst), 3, "two 404s, then the object");
+        provider
+            .download("/fresh.dat", dst.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        server.abort();
+        assert_eq!(
+            gets.load(Ordering::SeqCst),
+            1,
+            "the download needs no retry"
+        );
         let _ = std::fs::remove_file(&src);
         let _ = std::fs::remove_file(&dst);
     }
@@ -10154,6 +10312,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -10472,6 +10631,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("create provider");
         let result = StorageProvider::connect(&mut provider).await;
@@ -10532,6 +10692,7 @@ mod tests {
             verify_cert: false,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         assert!(provider.is_filen_s3_endpoint());
@@ -10668,6 +10829,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         assert!(!provider.is_filen_s3_endpoint());
@@ -12149,6 +12311,7 @@ mod tests {
             // on for everything else.
             allow_cleartext_endpoint: true,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("live provider");
         provider.connected = true;
@@ -12969,6 +13132,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
 
@@ -13413,6 +13577,7 @@ mod documented_limits_tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("S3Provider")
     }
@@ -13475,6 +13640,7 @@ mod recorded_list_fixture {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         let xml = include_str!("fixtures/quickxml/s3-list-objects-v2.xml");
