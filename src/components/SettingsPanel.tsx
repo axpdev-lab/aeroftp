@@ -39,6 +39,8 @@ import { CustomIconsManager } from './CustomIconsManager';
 import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { secureGetWithFallback } from '../utils/secureStorage';
+import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
+import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
 import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
@@ -387,6 +389,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     panelOpen.current = isOpen;
     const settingsLoadRevision = useRef(0);
     const [oauthSettings, setOauthSettings] = useState<OAuthSettings>(defaultOAuthSettings);
+    const oauthEdits = useRef<Partial<Record<keyof OAuthSettings, { clientId?: boolean; clientSecret?: boolean }>>>({});
     const [servers, setServers] = useState<ServerProfile[]>([]);
     const [showExportImport, setShowExportImport] = useState(false);
     // #270 Backup table: starting mode handed to ExportImportDialog so a table
@@ -651,6 +654,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     useEffect(() => {
         if (isOpen) {
             let disposed = false;
+            oauthEdits.current = {};
             const revision = ++settingsLoadRevision.current;
             (async () => {
                 try {
@@ -674,25 +678,32 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                     const vaultServers = await loadSavedServerProfiles();
                     setServers(vaultServers);
 
-                    // Load OAuth settings from secure credential store (fallback: localStorage)
+                    // Resolve modern and legacy app pairs inside the vault only.
                     const loadOAuthFromStore = async () => {
                         const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
                         const loaded = { ...defaultOAuthSettings };
+                        let reportedReadFailure = false;
                         for (const p of providers) {
                             try {
-                                const id = await invoke<string>('get_credential', {
-                                    account: `oauth_${p}_client_id`,
-                                });
-                                const secret = await invoke<string>('get_credential', {
-                                    account: `oauth_${p}_client_secret`,
-                                });
-                                loaded[p] = { clientId: id || '', clientSecret: secret || '' };
-                            } catch {
-                                // SEC: No localStorage fallback: credentials must be in vault.
-                                // Migration wizard handles legacy data on first launch.
+                                loaded[p] = await scope.step(() => loadOAuthClientCredentials(p));
+                            } catch (error) {
+                                scope.assert();
+                                if (!reportedReadFailure) {
+                                    notifyOAuthKeysUnavailable(t, p, keyReadFailure(error));
+                                    reportedReadFailure = true;
+                                }
                             }
                         }
-                        setOauthSettings(loaded);
+                        scope.assert();
+                        setOauthSettings(previous => {
+                            const next = { ...loaded };
+                            for (const p of providers) {
+                                for (const field of ['clientId', 'clientSecret'] as const) {
+                                    if (oauthEdits.current[p]?.[field]) next[p] = { ...next[p], [field]: previous[p][field] };
+                                }
+                            }
+                            return next;
+                        });
                     };
                     await loadOAuthFromStore();
 
@@ -1056,6 +1067,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     if (!isOpen) return null;
 
     const updateOAuthSetting = (provider: keyof OAuthSettings, field: 'clientId' | 'clientSecret', value: string) => {
+        oauthEdits.current[provider] = { ...oauthEdits.current[provider], [field]: true };
         setOauthSettings((prev) => ({
             ...prev,
             [provider]: { ...prev[provider], [field]: value },

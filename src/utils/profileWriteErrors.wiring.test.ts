@@ -11,6 +11,7 @@ import { reorderVisibleInFull } from './reorderByIndex';
 import { createProfileCredentialJournal } from './profileCredentialJournal';
 import { mergeAppSettingsDraft } from './appSettingsDraft';
 import { ConnectScope } from '../gui/connectScope';
+import type { ServerProfile } from '../types';
 
 // Run the production closures, with their captured IPC and React state cells
 // supplied by the fixture. No save handler implementation is duplicated here.
@@ -36,7 +37,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
     const original = { id: 'old', name: 'Original', protocol: 'ftp', host: 'example.test', username: 'user' };
     const servers = [original, { ...original, id: 'other', name: 'Other' }];
     const read = vi.fn(async () => { if (fail === 'read') throw new Error('STORE_NOT_READY'); return structuredClone(servers); });
-    const store = vi.fn(async () => { if (fail === 'write') throw new Error('Disk full'); });
+    const store = vi.fn(async (_profiles: ServerProfile[]) => { if (fail === 'write') throw new Error('Disk full'); });
     const events: Array<{ type: string; detail?: any }> = [];
     class Event { constructor(public type: string, public init?: { detail: unknown }) {} get detail() { return this.init?.detail; } }
     const context: Record<string, any> = {
@@ -184,6 +185,19 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.store).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'old', name: 'Edited' })]));
         expect(f.context.onFormSaved).toHaveBeenCalledTimes(1);
         expect(f.context.syncPersistedModeCredentials).toHaveBeenCalledWith('old');
+    });
+
+    it.each(['handleSaveAsNew', 'handleConvertMode'] as const)('%s honors custom icon removal when switching modes', async name => {
+        const f = fixture('none');
+        Object.assign(f.servers[0], { customIconUrl: 'data:image/png;base64,dGVzdA==' });
+        f.context.customIconForSave = undefined;
+        const fn = await execute(connection, [name], f.context);
+        await fn[name]();
+        expect(f.store).toHaveBeenCalledOnce();
+        const saved = f.store.mock.calls[0][0] as ServerProfile[];
+        const converted = saved.find(profile => !['old', 'other'].includes(profile.id));
+        expect(converted).toBeDefined();
+        expect(converted!.customIconUrl).toBeUndefined();
     });
 
     it('does not reset the primary form while persistence is still pending', async () => {
