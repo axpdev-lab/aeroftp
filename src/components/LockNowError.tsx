@@ -10,8 +10,8 @@ export function LockNowError({ error, onClose }: { error: 'failed' | 'unavailabl
     const close = useRef<HTMLButtonElement>(null);
     useEffect(() => { close.current?.focus(); }, []);
     return (
-        <div className={`fixed inset-0 ${MODAL_Z.globalConfirm} flex items-center justify-center bg-black/50`} role="alertdialog" aria-modal="true" aria-labelledby="lock-now-error-title" aria-describedby="lock-now-error-message"
-            onKeyDown={event => { if (event.key === 'Escape') onClose(); if (event.key === 'Tab') { event.preventDefault(); close.current?.focus(); } }}>
+        <div className={`fixed inset-0 ${MODAL_Z.globalConfirm} flex items-center justify-center bg-black/50`} role="alertdialog" aria-modal="true" data-keyboard-island aria-labelledby="lock-now-error-title" aria-describedby="lock-now-error-message"
+            onKeyDown={event => { event.stopPropagation(); if (event.key === 'Escape') onClose(); if (event.key === 'Tab') { event.preventDefault(); close.current?.focus(); } }}>
             <div className="max-w-sm mx-4 p-5 rounded-xl shadow-xl bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] space-y-4">
                 <h2 id="lock-now-error-title" className="font-semibold">{t('shortcuts.lockNow')}</h2>
                 <p id="lock-now-error-message" className="text-sm">{t(error === 'unavailable' ? 'lockScreen.lockNotConfigured' : error === 'stale' ? 'lockScreen.lockContextChanged' : 'lockScreen.lockFailed')}</p>
