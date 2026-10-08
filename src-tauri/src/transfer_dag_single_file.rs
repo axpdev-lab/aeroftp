@@ -1508,6 +1508,136 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
     budget
 }
 
+/// The error a single-file transfer ends with when its cancel token is raised
+/// before the transfer finished.
+pub fn transfer_cancelled_error() -> ProviderError {
+    ProviderError::TransferFailed("Transfer cancelled by user".to_string())
+}
+
+/// Where the router sends one plain single-file transfer on `provider`: the
+/// shaped DAG or the provider's own `upload` / `download`.
+///
+/// The hint is the provider's own `router_hint()` (which inspects its config
+/// URL), so a profile-based connection gets the right classification even
+/// without a URL from the caller. `server_url` survives as a fallback for a
+/// provider built without a URL in its config: when the provider says vanilla
+/// WebDAV and the caller has a URL with extra signal (a CLI `--profile` lookup
+/// that populated it), the URL-allowlist branches get their chance to catch
+/// Tab.digital / Koofr / FeliCloud.
+pub fn pick_single_file_route(
+    provider: &dyn StorageProvider,
+    direction: TransferDirection,
+    local_path: &str,
+    user_override: crate::transfer_router::Override,
+    server_url: Option<&str>,
+) -> crate::transfer_router::Decision {
+    use crate::transfer_router::{hints, Operation, ProviderHint, RouteContext, Router};
+    let hint = {
+        let provider_hint = provider.router_hint();
+        if matches!(provider_hint, ProviderHint::WebDavVanilla) {
+            hints::from_provider_type(provider.provider_type(), server_url, None)
+        } else {
+            provider_hint
+        }
+    };
+    // For Upload the local size is exact. For Download the current hint table
+    // has no size-conditional rule, so the placeholder cannot affect the
+    // decision and avoids an extra remote stat round-trip.
+    let route_size: u64 = match direction {
+        TransferDirection::Upload => std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0),
+        TransferDirection::Download => u64::MAX,
+    };
+    let op = match direction {
+        TransferDirection::Upload => Operation::Upload,
+        TransferDirection::Download => Operation::Download,
+    };
+    let ctx = RouteContext::new(hint, op, route_size).with_override(user_override);
+    Router::new().pick(ctx)
+}
+
+/// Run one plain single-file transfer on the engine `decision` names, and hand
+/// the provider back with the result.
+///
+/// The legacy engine calls the provider directly, without the DAG node graph,
+/// for the cases the router flagged as regressing under the shaped engine. The
+/// DAG engine shapes the graph from the provider's capabilities and the local
+/// size (single `UploadFile` or a multipart fan-out). A raised `cancel` ends
+/// either one: the legacy transfer with [`transfer_cancelled_error`], the DAG
+/// through its transfer node, which closes itself, guards included, before
+/// the graph returns.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_single_file_on_route(
+    provider: Box<dyn StorageProvider>,
+    decision: &crate::transfer_router::Decision,
+    direction: TransferDirection,
+    remote_path: &str,
+    local_path: &str,
+    progress_cb: Option<ProgressCallback>,
+    cancel: Option<CancellationToken>,
+) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
+    if decision.engine == crate::transfer_router::Engine::Legacy {
+        let mut provider = provider;
+        let transfer = async {
+            match direction {
+                TransferDirection::Upload => {
+                    provider.upload(local_path, remote_path, progress_cb).await
+                }
+                TransferDirection::Download => {
+                    provider
+                        .download(remote_path, local_path, progress_cb)
+                        .await
+                }
+            }
+        };
+        let result = match cancel {
+            Some(token) => tokio::select! {
+                biased;
+                out = transfer => out,
+                () = token.cancelled() => Err(transfer_cancelled_error()),
+            },
+            None => transfer.await,
+        };
+        return (provider, result);
+    }
+
+    // Capabilities and the local size are resolved before the provider moves
+    // into the shared Arc: the shaped-graph builder needs both to decide
+    // between the single-`UploadFile` shape and a multipart fan-out on the
+    // upload direction. A download still resolves caps so `rate_limited_api`
+    // and `resume_download` reach the builder; its file size has no shaping
+    // effect today.
+    let caps = provider.transfer_capabilities();
+    let file_size: u64 = match direction {
+        TransferDirection::Upload => std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0),
+        TransferDirection::Download => 0,
+    };
+    let arc = Arc::new(Mutex::new(Some(provider)));
+    let built = TransferDagBuilder::shaped_file(direction, &caps, file_size);
+    let report = Arc::new(AtomicU64::new(0));
+    let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+    let result = execute_single_file_dag(
+        &built,
+        Arc::clone(&arc),
+        remote_path.to_string(),
+        local_path.to_string(),
+        None,
+        progress_cb,
+        observer,
+        report,
+        file_size,
+        cancel,
+        // The real per-user checkpoint store: this is a production transfer.
+        None,
+    )
+    .await;
+    let provider = arc
+        .lock()
+        .await
+        .take()
+        .expect("provider is returned by the single-file DAG");
+    (provider, result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

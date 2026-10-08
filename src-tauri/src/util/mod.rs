@@ -13,6 +13,7 @@ pub mod abort_on_drop;
 pub mod endpoint;
 pub mod provider_guard;
 pub mod shutdown;
+pub mod size;
 
 pub use abort_on_drop::AbortOnDrop;
 pub use endpoint::endpoint_stays_on_this_machine;
