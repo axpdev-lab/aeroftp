@@ -219,6 +219,8 @@ import { openUrl } from './utils/openUrl';
 import { openOnGitLab } from './utils/gitlabWeb';
 import { connectionViaLabel } from './utils/connectionViaLabel';
 import { getCredentialWithRetry } from './utils/profileVaultSecrets';
+import { loadFourSharedCredentials } from './utils/fourSharedCredentials';
+import { loadOAuthClientCredentials, oauthCredentialProvider } from './utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable, OPEN_OAUTH_SETTINGS_EVENT } from './utils/oauthKeysMissing';
 import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
@@ -8377,39 +8379,29 @@ const App: React.FC = () => {
           // Ignore if not connected
         }
 
-        // Get OAuth credentials from vault (with localStorage fallback)
-        // Try new structured format first (aeroftp_oauth_settings)
+        // Get OAuth credentials from vault, with legacy vault-pair fallback.
         let clientId: string | null = null;
         let clientSecret: string | null = null;
-
-        try {
-          const oauthSettings = await connectScope.step(() => secureGetWithFallback<Record<string, { clientId: string; clientSecret: string }>>('oauth_clients', 'aeroftp_oauth_settings'));
-          if (oauthSettings) {
-            const providerKey = protocol === 'googledrive' ? 'googledrive' : protocol;
-            if (oauthSettings[providerKey]) {
-              clientId = oauthSettings[providerKey].clientId;
-              clientSecret = oauthSettings[providerKey].clientSecret;
-            }
-          }
-        } catch (e) { connectScope.assert();
-          console.warn('[switchSession] Failed to parse OAuth settings:', e);
-        }
-
-        // Fall back to OS keyring (Box, pCloud, and others store credentials there)
         let keyReadError: unknown = null;
+        const credentialProvider = oauthCredentialProvider(protocol);
+        try {
+          const kid = await connectScope.step(() => getCredentialWithRetry(`oauth_${credentialProvider}_client_id`));
+          const ksecret = await connectScope.step(() => getCredentialWithRetry(`oauth_${credentialProvider}_client_secret`));
+          if (kid && ksecret) {
+            clientId = kid;
+            clientSecret = ksecret;
+          }
+        } catch (e) { connectScope.assert(); keyReadError = keyReadFailure(e); }
+
         if (!clientId || !clientSecret) {
           try {
-            const keyringProvider = protocol; // Credentials stored with protocol name as-is (e.g., 'googledrive')
-            const kid = await connectScope.step(() => invoke<string>('get_credential', { account: `oauth_${keyringProvider}_client_id` }));
-            const ksecret = await connectScope.step(() => invoke<string>('get_credential', { account: `oauth_${keyringProvider}_client_secret` }));
-            if (kid && ksecret) {
-              clientId = kid;
-              clientSecret = ksecret;
+            const fallback = await connectScope.step(() => loadOAuthClientCredentials(protocol));
+            if (fallback.clientId && fallback.clientSecret) {
+              clientId = fallback.clientId;
+              clientSecret = fallback.clientSecret;
+              keyReadError = null;
             }
-          } catch (e) { connectScope.assert();
-            // Credentials not stored (null), or the vault could not be read.
-            keyReadError = keyReadFailure(e);
-          }
+          } catch (e) { connectScope.assert(); keyReadError ??= keyReadFailure(e); }
         }
 
         if (!clientId || !clientSecret) {
@@ -10247,10 +10239,21 @@ const App: React.FC = () => {
         let clientId = '';
         let clientSecret = '';
         let keyReadError: unknown = null;
+        const credentialProvider = oauthCredentialProvider(protocol);
         try {
-          clientId = await getCredentialWithRetry(`oauth_${protocol}_client_id`);
-          clientSecret = await getCredentialWithRetry(`oauth_${protocol}_client_secret`);
+          clientId = await getCredentialWithRetry(`oauth_${credentialProvider}_client_id`);
+          clientSecret = await getCredentialWithRetry(`oauth_${credentialProvider}_client_secret`);
         } catch (e) { keyReadError = keyReadFailure(e); }
+        if (!clientId || !clientSecret) {
+          try {
+            const fallback = await loadOAuthClientCredentials(protocol);
+            if (fallback.clientId && fallback.clientSecret) {
+              clientId = fallback.clientId;
+              clientSecret = fallback.clientSecret;
+              keyReadError = null;
+            }
+          } catch (e) { keyReadError ??= keyReadFailure(e); }
+        }
         if (!clientId || !clientSecret) {
           notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           return false;
@@ -10314,6 +10317,16 @@ const App: React.FC = () => {
           consumerKey = await getCredentialWithRetry('oauth_fourshared_client_id');
           consumerSecret = await getCredentialWithRetry('oauth_fourshared_client_secret');
         } catch (e) { keyReadError = keyReadFailure(e); }
+        if (!consumerKey || !consumerSecret) {
+          try {
+            const fallback = await loadFourSharedCredentials();
+            if (fallback.consumerKey && fallback.consumerSecret) {
+              consumerKey = fallback.consumerKey;
+              consumerSecret = fallback.consumerSecret;
+              keyReadError = null;
+            }
+          } catch (e) { keyReadError ??= keyReadFailure(e); }
+        }
         if (!consumerKey || !consumerSecret) {
           notifyOAuthKeysUnavailable(t, protocol, keyReadError);
           return false;

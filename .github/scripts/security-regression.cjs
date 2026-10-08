@@ -134,8 +134,10 @@ function checkOauthSettingsLeakGuard() {
   );
 
   assert(
-    myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_id`, 3, connectScope)') &&
-      myServers.includes('getCredentialWithRetry(`oauth_${server.protocol}_client_secret`, 3, connectScope)'),
+    myServers.includes('const credentialProvider = oauthCredentialProvider(server.protocol);') &&
+      myServers.includes('getCredentialWithRetry(`oauth_${credentialProvider}_client_id`, 3, connectScope)') &&
+      myServers.includes('getCredentialWithRetry(`oauth_${credentialProvider}_client_secret`, 3, connectScope)') &&
+      myServers.includes('loadOAuthClientCredentials(server.protocol!, account => getCredentialWithRetry(account, 3, connectScope))'),
     `oauth leak guard regression: expected vault/keyring OAuth credential loading path in ${myServersFile}`
   );
 
@@ -151,6 +153,16 @@ function checkOauthSettingsLeakGuard() {
   assert(
     strayOauthKeys.length === 0,
     `oauth leak guard regression: oauth_ key outside a vault read, or next to browser storage, in ${myServersFile} at line(s) ${strayOauthKeys.map((s) => s.n).join(', ')}`
+  );
+
+  // The shared modern/legacy resolver must remain vault-only too.
+  const resolverFile = 'src/utils/oauthClientCredentials.ts';
+  const resolver = read(resolverFile);
+  assert(
+    resolver.includes("import { getCredentialWithRetry } from './profileVaultSecrets';") &&
+      resolver.includes('readCredential: (account: string) => Promise<string> = getCredentialWithRetry') &&
+      !/\b(localStorage|sessionStorage)\b/.test(resolver),
+    `oauth leak guard regression: shared OAuth resolver must read credentials only from the vault in ${resolverFile}`
   );
 }
 

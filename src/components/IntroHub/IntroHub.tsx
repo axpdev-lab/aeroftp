@@ -323,8 +323,8 @@ export function IntroHub(props: IntroHubProps) {
     }, []);
 
     // Update form tab's connectionParams + derive dynamic tab label from server field.
-    // When protocol changes (FTP↔SFTP switch), also update editingProfile so the
-    // remounted ConnectionScreen initializes with the correct protocol.
+    // When protocol changes (FTP↔SFTP switch), also update the tab's profile
+    // metadata. The form itself stays mounted with its current draft.
     const updateFormTabParams = useCallback((tabId: string, params: ConnectionParams) => {
         setFormTabs(prev => prev.map(ft => {
             if (ft.id !== tabId) return ft;
@@ -408,9 +408,6 @@ export function IntroHub(props: IntroHubProps) {
         return () => window.removeEventListener('keydown', handler);
     }, [handleTabChange, handleCommandPalette, handleNewConnection, formTabs, activeTab, handleCloseFormTab]);
 
-    // Find active form tab (if any)
-    const activeFormTab = formTabs.find(ft => ft.id === activeTab);
-
     return (
         <div className="w-full relative z-10 flex flex-col h-full bg-slate-50/50 dark:bg-gray-800/40 backdrop-blur-md rounded-lg border border-gray-200/50 dark:border-gray-700/50 shadow-2xl overflow-hidden">
             {/* Tab Header */}
@@ -485,41 +482,33 @@ export function IntroHub(props: IntroHubProps) {
                     />
                 )}
 
-                {/* Dynamic Form Tabs: render the active one */}
-                {activeFormTab && (
-                    <div className="flex-1 flex flex-col">
-                        {/* Key must stay stable per form tab. Including the
-                            protocol here remounted ConnectionScreen on every
-                            mode switch (Native API <-> WebDAV/S3/FTP); in edit
-                            mode that remount re-ran handleEdit and reset the
-                            form to the original profile, so the unified mode
-                            tabs disappeared and the switch was lost (#215
-                            follow-up). handleProtocolChange already syncs the
-                            form on protocol change, and opening the protocol
-                            selector no longer clears the form, so no remount
-                            is needed. */}
+                {/* Keep each draft mounted until its tab closes. Switching tabs
+                    must retain local form state (name, icon, Crypt choices and
+                    revealed fields), as well as the params stored above. */}
+                {formTabs.map(formTab => (
+                    <div key={formTab.id} data-form-tab-id={formTab.id} hidden={activeTab !== formTab.id} className={activeTab === formTab.id ? 'flex-1 flex flex-col' : 'hidden'}>
                         <ConnectionScreen
-                            key={activeFormTab.id}
-                            connectionParams={activeFormTab.connectionParams}
-                            quickConnectDirs={activeFormTab.quickConnectDirs}
+                            connectionParams={formTab.connectionParams}
+                            quickConnectDirs={formTab.quickConnectDirs}
                             loading={loading}
-                            onConnectionParamsChange={(params) => updateFormTabParams(activeFormTab.id, params)}
-                            onQuickConnectDirsChange={(dirs) => updateFormTabDirs(activeFormTab.id, dirs)}
-                            onTabLabelChange={(name) => updateFormTabLabel(activeFormTab.id, name)}
-                            editingProfile={activeFormTab.editingProfile}
+                            active={activeTab === formTab.id}
+                            onConnectionParamsChange={(params) => updateFormTabParams(formTab.id, params)}
+                            onQuickConnectDirsChange={(dirs) => updateFormTabDirs(formTab.id, dirs)}
+                            onTabLabelChange={(name) => updateFormTabLabel(formTab.id, name)}
+                            editingProfile={formTab.editingProfile}
                             onConnect={(overrideParams) => {
                                 // Pass params directly to avoid stale React state (#81).
                                 // Forward the override ConnectionScreen hands us (it carries
                                 // savedServerId for a linked OAuth connect) so connectToFtp can
                                 // title the tab and set the local dir from the saved profile
                                 // (profile = source of truth); fall back to the form-tab params.
-                                onConnectionParamsChange(activeFormTab.connectionParams);
-                                onQuickConnectDirsChange(activeFormTab.quickConnectDirs);
-                                onConnect(overrideParams || activeFormTab.connectionParams);
-                                handleCloseFormTab(activeFormTab.id);
+                                onConnectionParamsChange(formTab.connectionParams);
+                                onQuickConnectDirsChange(formTab.quickConnectDirs);
+                                onConnect(overrideParams || formTab.connectionParams);
+                                handleCloseFormTab(formTab.id);
                             }}
                             onFormSaved={() => {
-                                handleCloseFormTab(activeFormTab.id);
+                                handleCloseFormTab(formTab.id);
                                 setActiveTab('my-servers');
                                 onServersChanged?.();
                             }}
@@ -527,7 +516,7 @@ export function IntroHub(props: IntroHubProps) {
                             serversRefreshKey={serversRefreshKey}
                         />
                     </div>
-                )}
+                ))}
             </div>
 
             {/* Export/Import Dialog */}
