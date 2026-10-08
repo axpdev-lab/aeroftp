@@ -33,9 +33,10 @@ use crate::providers::types::{ProviderError, ProviderType, RemoteEntry};
 use crate::providers::StorageProvider;
 use crate::transfer_dag::TransferCapabilities;
 
-/// Cap for `download_to_bytes` materialization (10 MiB). Larger objects stream
-/// to disk via `download`.
-const BYTES_CAP: u64 = 10 * 1024 * 1024;
+/// Cap for `download_to_bytes` materialization on a phone (10 MiB): every
+/// byte crosses USB. Larger objects stream to disk via `download`. A local
+/// folder takes the general cap every other backend has.
+const MTP_BYTES_CAP: u64 = 10 * 1024 * 1024;
 
 /// Which front end a [`DirectoryProvider`] is: it sets the provider identity
 /// and the words its errors use, never the path jail.
@@ -503,7 +504,50 @@ impl StorageProvider for DirectoryProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        self.download_to_bytes_capped(remote_path, BYTES_CAP).await
+        let cap = match self.identity {
+            DirectoryIdentity::Mtp { .. } => MTP_BYTES_CAP,
+            DirectoryIdentity::Local => super::MAX_DOWNLOAD_TO_BYTES,
+        };
+        self.download_to_bytes_capped(remote_path, cap).await
+    }
+
+    /// `len` bytes from `offset`, fewer at the end of the file and none past
+    /// it (a served SFTP READ takes an empty answer as EOF). What `serve sftp`
+    /// and a resumed `serve ftp` RETR read, so a file is served a window at a
+    /// time instead of whole into memory.
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let vpath = self.virtual_path(path)?;
+        let src = self.resolve_existing(&vpath)?;
+        let mut file = tokio::fs::File::open(&src)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let meta = file.metadata().await.map_err(ProviderError::IoError)?;
+        if meta.is_dir() {
+            return Err(ProviderError::InvalidPath(format!(
+                "{vpath} is a directory"
+            )));
+        }
+        let size = meta.len();
+        if offset >= size {
+            return Ok(Vec::new());
+        }
+        let want = len.min(size - offset).min(super::MAX_DOWNLOAD_TO_BYTES);
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut buf = Vec::with_capacity(want as usize);
+        (&mut file)
+            .take(want)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(ProviderError::IoError)?;
+        Ok(buf)
     }
 
     async fn download_to_bytes_capped(
@@ -1275,6 +1319,31 @@ mod tests {
 
         let stat = p.stat("/inside.txt").await.unwrap();
         assert!(stat.is_symlink && stat.size == 12, "{stat:?}");
+    }
+
+    /// A served folder reads a window at a time, and a whole file up to the
+    /// general cap: the 10 MiB phone cap refused an 11 MiB file to every
+    /// `serve` mode. A phone keeps its cap.
+    #[tokio::test]
+    async fn a_local_directory_reads_ranges_and_files_past_the_phone_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let big: Vec<u8> = (0..11 * 1024 * 1024u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(dir.path().join("big.bin"), &big).unwrap();
+        std::fs::write(dir.path().join("small.txt"), b"0123456789").unwrap();
+
+        let mut p = local(dir.path()).await;
+        assert_eq!(
+            p.download_to_bytes("/big.bin").await.unwrap().len(),
+            big.len()
+        );
+        assert_eq!(p.read_range("/small.txt", 2, 3).await.unwrap(), b"234");
+        assert_eq!(p.read_range("/small.txt", 8, 100).await.unwrap(), b"89");
+        assert!(p.read_range("/small.txt", 10, 4).await.unwrap().is_empty());
+        let window = p.read_range("/big.bin", 5_000_000, 4).await.unwrap();
+        assert_eq!(window, big[5_000_000..5_000_004].to_vec());
+
+        let mut phone = connected(dir.path()).await;
+        assert!(phone.download_to_bytes("/big.bin").await.is_err());
     }
 
     /// An upload into a local folder keeps the source's modification time, so
