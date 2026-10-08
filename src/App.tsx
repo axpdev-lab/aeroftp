@@ -314,6 +314,8 @@ import { FolderOverwriteDialog, FolderMergeAction } from './components/FolderOve
 import { BatchRenameDialog, BatchRenameFile } from './components/BatchRenameDialog';
 import { CyberToolsModal } from './components/CyberToolsModal';
 import { nativeDropOwnerAt } from './utils/nativeDropOwner';
+import { useLockNow } from './hooks/useLockNow';
+import { LockNowError } from './components/LockNowError';
 import { LockScreen } from './components/LockScreen';
 import { AccountLockScreen } from './components/AccountLockScreen';
 import {
@@ -2153,6 +2155,8 @@ const App: React.FC = () => {
       events.forEach(event => window.removeEventListener(event, updateActivity));
     };
   }, [masterPasswordSet, isAppLocked]);
+
+  const lockNow = useLockNow({ vaultConfigured: masterPasswordSet, locked: isAppLocked || !vaultBootComplete || accountLockState !== 'ready', onVaultLocked: () => setIsAppLocked(true) });
 
   // === Core hooks (must be before keyboard shortcuts) ===
   const { theme, setTheme, isDark } = useTheme();
@@ -16191,11 +16195,13 @@ const App: React.FC = () => {
 
   return (
     <>
+      {lockNow.error && !isAppLocked && accountLockState !== 'needed' && <LockNowError error={lockNow.error} onClose={lockNow.dismissError} />}
       <GuiControllerBanner lease={guiController.lease} onStop={() => { void guiController.stop(); }} />
       {/* Lock Screen - shown when app is locked with master password */}
       {isAppLocked && (masterPasswordSet || autoKeyringTotpRequired) && (
         <LockScreen
           mode={autoKeyringTotpRequired ? 'totp' : 'master'}
+          lockFeedback={lockNow.error && <LockNowError error={lockNow.error} onClose={lockNow.dismissError} />}
           onUnlock={() => {
             setIsAppLocked(false);
             setAutoKeyringTotpRequired(false);
@@ -16210,6 +16216,7 @@ const App: React.FC = () => {
           renders nothing and lets the main app boot through. */}
       {vaultBootComplete && !isAppLocked && accountLockState === 'needed' && (
         <AccountLockScreen
+          lockFeedback={lockNow.error && <LockNowError error={lockNow.error} onClose={lockNow.dismissError} />}
           onContinue={() => {
             setAccountLockState('ready');
             setServersRefreshKey(k => k + 1);
@@ -16287,7 +16294,9 @@ const App: React.FC = () => {
           onShowMountManager={() => setShowMountManager({})}
           onUsersChanged={() => setServersRefreshKey(k => k + 1)}
           masterPasswordSet={masterPasswordSet}
-          onLockApp={async () => { await invoke('lock_credential_store'); setIsAppLocked(true); }}
+          onLockApp={() => { void lockNow.lock('vault'); }}
+          onLockAccount={() => lockNow.lock('account')}
+          lockBusy={lockNow.busy}
           onSetupMasterPassword={() => setShowMasterPasswordSetup(true)}
           onRefresh={() => { if (isConnected) loadRemoteFiles(); loadLocalFiles(currentLocalPath); }}
           onNewFolder={() => { if (isConnected) createFolder(true); }}

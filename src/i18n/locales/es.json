@@ -2027,7 +2027,8 @@
             "pasteFiles": "Pegar desde el portapapeles",
             "properties": "Propiedades",
             "quickLook": "Vista rápida",
-            "toggleDualPanel": "Activar/desactivar panel doble"
+            "toggleDualPanel": "Activar/desactivar panel doble",
+            "lockNow": "Bloquear ahora"
         },
         "overwrite": {
             "title": "El archivo ya existe",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Burbujas",
             "enter2FACode": "Autenticación de dos factores",
             "enter2FAHint": "Introduzca el código de 6 dígitos de su aplicación de autenticación",
-            "invalid2FACode": "Código 2FA no válido. Por favor, inténtelo de nuevo."
+            "invalid2FACode": "Código 2FA no válido. Por favor, inténtelo de nuevo.",
+            "lockFailed": "El bloqueo ha fallado. Puede que tu cuenta o bóveda ya estén bloqueadas. Comprueba su estado antes de intentarlo de nuevo.",
+            "lockNotConfigured": "No hay ninguna cuenta desbloqueada ni bóveda con contraseña maestra disponible para bloquear.",
+            "lockContextChanged": "La cuenta o los ajustes de bloqueo cambiaron durante la solicitud. Comprueba el estado actual antes de intentarlo de nuevo."
         },
         "folderOverwrite": {
             "title": "La carpeta ya existe",

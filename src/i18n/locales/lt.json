@@ -2027,7 +2027,8 @@
             "pasteFiles": "Įklijuoti iš iškarpinės",
             "properties": "Savybės",
             "quickLook": "Greita peržiūra",
-            "toggleDualPanel": "Įjungti/išjungti dvigubą skydelį"
+            "toggleDualPanel": "Įjungti/išjungti dvigubą skydelį",
+            "lockNow": "Užrakinti dabar"
         },
         "overwrite": {
             "title": "Failas jau egzistuoja",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Burbulai",
             "enter2FACode": "Dviejų veiksnių autentifikacija",
             "enter2FAHint": "Įveskite 6 skaitmenų kodą iš savo autentifikavimo programėlės",
-            "invalid2FACode": "Neteisingas 2FA kodas. Bandykite dar kartą."
+            "invalid2FACode": "Neteisingas 2FA kodas. Bandykite dar kartą.",
+            "lockFailed": "Užrakinti nepavyko. Jūsų paskyra arba saugykla jau gali būti užrakinta. Prieš bandydami dar kartą patikrinkite jų būseną.",
+            "lockNotConfigured": "Nėra atrakintos paskyros ar saugyklos su pagrindiniu slaptažodžiu, kurią būtų galima užrakinti.",
+            "lockContextChanged": "Užklausos metu pasikeitė paskyra arba užrakinimo nustatymai. Prieš bandydami dar kartą patikrinkite dabartinę būseną."
         },
         "folderOverwrite": {
             "title": "Aplankas jau egzistuoja",

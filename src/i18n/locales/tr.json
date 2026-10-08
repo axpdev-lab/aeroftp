@@ -2027,7 +2027,8 @@
             "pasteFiles": "Panodan yapıştır",
             "properties": "Özellikler",
             "quickLook": "Hızlı bakış",
-            "toggleDualPanel": "Çift paneli aç/kapat"
+            "toggleDualPanel": "Çift paneli aç/kapat",
+            "lockNow": "Şimdi kilitle"
         },
         "overwrite": {
             "title": "Dosya zaten mevcut",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Baloncuklar",
             "enter2FACode": "İki faktörlü kimlik doğrulama",
             "enter2FAHint": "Kimlik doğrulama uygulamanızdaki 6 haneli kodu girin",
-            "invalid2FACode": "Geçersiz 2FA kodu. Lütfen tekrar deneyin."
+            "invalid2FACode": "Geçersiz 2FA kodu. Lütfen tekrar deneyin.",
+            "lockFailed": "Kilitleme başarısız oldu. Hesabınız veya kasanız zaten kilitli olabilir. Tekrar denemeden önce durumlarını kontrol edin.",
+            "lockNotConfigured": "Kilitlenecek kilidi açık bir hesap veya ana parolalı kasa yok.",
+            "lockContextChanged": "İstek sırasında hesap veya kilit ayarları değişti. Tekrar denemeden önce mevcut durumu kontrol edin."
         },
         "folderOverwrite": {
             "title": "Klasör Zaten Var",

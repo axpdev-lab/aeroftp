@@ -2027,7 +2027,8 @@
             "pasteFiles": "Lim inn fra utklippstavle",
             "properties": "Egenskaper",
             "quickLook": "Hurtigvisning",
-            "toggleDualPanel": "Slå på/av dobbel panel"
+            "toggleDualPanel": "Slå på/av dobbel panel",
+            "lockNow": "Lås nå"
         },
         "overwrite": {
             "title": "Filen eksisterer allerede",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Bobler",
             "enter2FACode": "Tofaktorautentisering",
             "enter2FAHint": "Skriv inn den 6-sifrede koden fra autentiseringsappen din",
-            "invalid2FACode": "Ugyldig 2FA-kode. Vennligst prøv igjen."
+            "invalid2FACode": "Ugyldig 2FA-kode. Vennligst prøv igjen.",
+            "lockFailed": "Låsing mislyktes. Kontoen eller hvelvet ditt er kanskje allerede låst. Kontroller statusen før du prøver igjen.",
+            "lockNotConfigured": "Ingen ulåst konto eller hvelv med hovedpassord er tilgjengelig for låsing.",
+            "lockContextChanged": "Kontoen eller låseinnstillingene ble endret under forespørselen. Kontroller gjeldende tilstand før du prøver igjen."
         },
         "folderOverwrite": {
             "title": "Mappen finnes allerede",

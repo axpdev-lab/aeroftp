@@ -88,11 +88,12 @@ const LOCK_PATTERN_KEY = 'aeroftp_lock_pattern';
 const DEFAULT_PATTERN = 'isometric';
 
 interface LockScreenProps {
+    lockFeedback?: React.ReactNode;
     onUnlock: () => void;
     mode?: 'master' | 'totp';
 }
 
-export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master' }) => {
+export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master', lockFeedback }) => {
     const t = useTranslation();
     const totpOnly = mode === 'totp';
     const [password, setPassword] = useState('');
@@ -211,6 +212,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ onUnlock, mode = 'master
         // dialog of the z-9999 tier left open when the idle probe fired stayed
         // legible on top of the lock screen.
         <div className={`fixed inset-0 ${MODAL_Z.lock} flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900`}>
+            {lockFeedback}
             {/* Background pattern overlay */}
             {pattern.svg && (
                 <div className="absolute inset-0 opacity-[0.04]">

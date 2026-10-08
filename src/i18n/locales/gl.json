@@ -2027,7 +2027,8 @@
             "pasteFiles": "Pegar dende o portapapeis",
             "properties": "Propiedades",
             "quickLook": "Vista rápida",
-            "toggleDualPanel": "Activar/desactivar panel dobre"
+            "toggleDualPanel": "Activar/desactivar panel dobre",
+            "lockNow": "Bloquear agora"
         },
         "overwrite": {
             "title": "O ficheiro xa existe",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Burbullas",
             "enter2FACode": "Autenticación de dous factores",
             "enter2FAHint": "Introduza o código de 6 díxitos da súa aplicación de autenticación",
-            "invalid2FACode": "Código 2FA non válido. Por favor, ténteo de novo."
+            "invalid2FACode": "Código 2FA non válido. Por favor, ténteo de novo.",
+            "lockFailed": "Fallou o bloqueo. Pode que a túa conta ou bóveda xa estean bloqueadas. Comproba o seu estado antes de tentalo de novo.",
+            "lockNotConfigured": "Non hai ningunha conta desbloqueada nin bóveda con contrasinal mestre dispoñible para bloquear.",
+            "lockContextChanged": "A conta ou a configuración de bloqueo cambiaron durante a solicitude. Comproba o estado actual antes de tentalo de novo."
         },
         "folderOverwrite": {
             "title": "Cartafol xa existe",

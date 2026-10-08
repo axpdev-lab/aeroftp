@@ -2027,7 +2027,8 @@
             "pasteFiles": "Itsatsi arbeletik",
             "properties": "Propietateak",
             "quickLook": "Aurrebista azkarra",
-            "toggleDualPanel": "Aktibatu/desaktibatu panel bikoitza"
+            "toggleDualPanel": "Aktibatu/desaktibatu panel bikoitza",
+            "lockNow": "Blokeatu orain"
         },
         "overwrite": {
             "title": "Fitxategia badago lehendik",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Burbuilak",
             "enter2FACode": "Bi faktoreko autentifikazioa",
             "enter2FAHint": "Sartu zure autentifikazio aplikazioko 6 digituko kodea",
-            "invalid2FACode": "2FA kode baliogabea. Mesedez, saiatu berriro."
+            "invalid2FACode": "2FA kode baliogabea. Mesedez, saiatu berriro.",
+            "lockFailed": "Blokeoak huts egin du. Baliteke zure kontua edo kutxa gotorra dagoeneko blokeatuta egotea. Egiaztatu haien egoera berriro saiatu aurretik.",
+            "lockNotConfigured": "Ez dago blokeatzeko kontu desblokeaturik edo pasahitz nagusidun kutxa gotorrik erabilgarri.",
+            "lockContextChanged": "Kontua edo blokeo-ezarpenak aldatu dira eskaeran zehar. Egiaztatu uneko egoera berriro saiatu aurretik."
         },
         "folderOverwrite": {
             "title": "Karpeta badago lehendik",

@@ -20,11 +20,9 @@ import {
 import { UserAvatar } from './UserAvatar';
 import { UsersManagePanel } from './UsersManagePanel';
 import {
-    dispatchAccountLockScreenRequested,
     getUnlockStatus,
     initUserPartitions,
     listUsers,
-    lockUserSession,
     unlockUser,
     type UserMetadata,
     type UserUnlockStatus,
@@ -33,6 +31,8 @@ import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
 
 interface UserDropdownProps {
     onUsersChanged?: () => void;
+    onLockAccount: () => Promise<boolean>;
+    lockBusy: boolean;
 }
 
 const notifyProfilesChanged = (onUsersChanged?: () => void) => {
@@ -54,7 +54,7 @@ const isUnavailableError = (error: unknown): boolean => {
     );
 };
 
-export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) => {
+export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged, onLockAccount, lockBusy }) => {
     const [users, setUsers] = React.useState<UserMetadata[]>([]);
     const [status, setStatus] = React.useState<UserUnlockStatus | null>(null);
     const [isOpen, setIsOpen] = React.useState(false);
@@ -148,13 +148,11 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
         setIsLoading(true);
         setError('');
         try {
-            await lockUserSession();
-            await refresh();
-            notifyProfilesChanged(onUsersChanged);
-            setIsOpen(false);
-            setPendingUnlockUser(null);
-            setUnlockPassphrase('');
-            dispatchAccountLockScreenRequested();
+            if (await onLockAccount()) {
+                setIsOpen(false);
+                setPendingUnlockUser(null);
+                setUnlockPassphrase('');
+            }
         } catch (err) {
             setError(String(err));
         } finally {
@@ -264,7 +262,7 @@ export const UserDropdown: React.FC<UserDropdownProps> = ({ onUsersChanged }) =>
                                 <button
                                     type="button"
                                     onClick={() => { void handleLock(); }}
-                                    disabled={isLoading}
+                                    disabled={isLoading || lockBusy}
                                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
                                 >
                                     <Lock size={14} className="text-[var(--color-text-secondary)]" />

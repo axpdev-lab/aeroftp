@@ -2027,7 +2027,8 @@
             "pasteFiles": "Tampal dari papan keratan",
             "properties": "Sifat",
             "quickLook": "Pratonton Pantas",
-            "toggleDualPanel": "Togol panel berkembar"
+            "toggleDualPanel": "Togol panel berkembar",
+            "lockNow": "Kunci sekarang"
         },
         "overwrite": {
             "title": "Fail sudah wujud",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Gelembung",
             "enter2FACode": "Pengesahan Dua Faktor",
             "enter2FAHint": "Masukkan kod 6 digit daripada aplikasi pengesah anda",
-            "invalid2FACode": "Kod 2FA tidak sah. Sila cuba lagi."
+            "invalid2FACode": "Kod 2FA tidak sah. Sila cuba lagi.",
+            "lockFailed": "Penguncian gagal. Akaun atau peti simpanan anda mungkin sudah dikunci. Semak statusnya sebelum mencuba lagi.",
+            "lockNotConfigured": "Tiada akaun yang dibuka kuncinya atau peti simpanan dengan kata laluan induk tersedia untuk dikunci.",
+            "lockContextChanged": "Akaun atau tetapan penguncian berubah semasa permintaan. Semak keadaan semasa sebelum mencuba lagi."
         },
         "folderOverwrite": {
             "title": "Folder Sudah Wujud",

@@ -2027,7 +2027,8 @@
             "pasteFiles": "Plakken vanuit klembord",
             "properties": "Eigenschappen",
             "quickLook": "Snel voorbeeld",
-            "toggleDualPanel": "Dubbel paneel in-/uitschakelen"
+            "toggleDualPanel": "Dubbel paneel in-/uitschakelen",
+            "lockNow": "Nu vergrendelen"
         },
         "overwrite": {
             "title": "Bestand bestaat al",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Bubbels",
             "enter2FACode": "Tweefactorauthenticatie",
             "enter2FAHint": "Voer de 6-cijferige code in van uw authenticatie-app",
-            "invalid2FACode": "Ongeldige 2FA-code. Probeer het opnieuw."
+            "invalid2FACode": "Ongeldige 2FA-code. Probeer het opnieuw.",
+            "lockFailed": "Vergrendelen is mislukt. Je account of kluis is mogelijk al vergrendeld. Controleer de status voordat je het opnieuw probeert.",
+            "lockNotConfigured": "Er is geen ontgrendeld account of kluis met hoofdwachtwoord beschikbaar om te vergrendelen.",
+            "lockContextChanged": "Het account of de vergrendelingsinstellingen zijn tijdens het verzoek gewijzigd. Controleer de huidige status voordat je het opnieuw probeert."
         },
         "folderOverwrite": {
             "title": "Map bestaat al",

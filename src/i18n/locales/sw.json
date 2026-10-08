@@ -2027,7 +2027,8 @@
             "pasteFiles": "Bandika kutoka ubao wa kunakili",
             "properties": "Sifa",
             "quickLook": "Hakiki ya haraka",
-            "toggleDualPanel": "Washa/zima paneli mbili"
+            "toggleDualPanel": "Washa/zima paneli mbili",
+            "lockNow": "Funga sasa"
         },
         "overwrite": {
             "title": "Faili tayari ipo",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Viputo",
             "enter2FACode": "Uthibitishaji wa hatua mbili",
             "enter2FAHint": "Ingiza msimbo wa tarakimu 6 kutoka kwenye programu yako ya uthibitishaji",
-            "invalid2FACode": "Msimbo wa 2FA si sahihi. Tafadhali jaribu tena."
+            "invalid2FACode": "Msimbo wa 2FA si sahihi. Tafadhali jaribu tena.",
+            "lockFailed": "Kufunga kumeshindwa. Akaunti au hifadhi yako huenda tayari imefungwa. Angalia hali yake kabla ya kujaribu tena.",
+            "lockNotConfigured": "Hakuna akaunti iliyofunguliwa au hifadhi yenye nenosiri kuu inayopatikana kufungwa.",
+            "lockContextChanged": "Akaunti au mipangilio ya kufunga ilibadilika wakati wa ombi. Angalia hali ya sasa kabla ya kujaribu tena."
         },
         "folderOverwrite": {
             "title": "Folda Tayari Ipo",

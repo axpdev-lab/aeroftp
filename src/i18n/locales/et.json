@@ -2027,7 +2027,8 @@
             "pasteFiles": "Kleebi lõikelaualt",
             "properties": "Atribuudid",
             "quickLook": "Kiireelvaade",
-            "toggleDualPanel": "Lülita topeltpaneel sisse/välja"
+            "toggleDualPanel": "Lülita topeltpaneel sisse/välja",
+            "lockNow": "Lukusta kohe"
         },
         "overwrite": {
             "title": "Fail on juba olemas",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Mullid",
             "enter2FACode": "Kaheastmeline autentimine",
             "enter2FAHint": "Sisestage oma autentimisrakenduse 6-kohaline kood",
-            "invalid2FACode": "Vigane 2FA kood. Palun proovige uuesti."
+            "invalid2FACode": "Vigane 2FA kood. Palun proovige uuesti.",
+            "lockFailed": "Lukustamine ebaõnnestus. Sinu konto või varahoidla võib juba lukustatud olla. Enne uuesti proovimist kontrolli nende olekut.",
+            "lockNotConfigured": "Lukustamiseks pole saadaval ühtegi lukustamata kontot ega põhiparooliga varahoidlat.",
+            "lockContextChanged": "Konto või lukustuse seaded muutusid päringu ajal. Enne uuesti proovimist kontrolli praegust olekut."
         },
         "folderOverwrite": {
             "title": "Kaust on juba olemas",

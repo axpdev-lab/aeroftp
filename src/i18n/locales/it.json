@@ -199,7 +199,10 @@
             "stepLoading": "Caricamento credenziali...",
             "enter2FACode": "Autenticazione a due fattori",
             "enter2FAHint": "Inserisci il codice a 6 cifre dalla tua app di autenticazione",
-            "invalid2FACode": "Codice 2FA non valido. Riprova."
+            "invalid2FACode": "Codice 2FA non valido. Riprova.",
+            "lockFailed": "Blocco non riuscito. Il tuo account o vault potrebbe essere già bloccato. Controllane lo stato prima di riprovare.",
+            "lockNotConfigured": "Non è disponibile alcun account sbloccato o vault con password principale da bloccare.",
+            "lockContextChanged": "L’account o le impostazioni di blocco sono cambiati durante la richiesta. Controlla lo stato attuale prima di riprovare."
         },
         "connection": {
             "activeSessions": "Sessioni Attive",
@@ -1897,7 +1900,8 @@
             "debugPanel": "Debug Panel",
             "detailedCards": "Schede server dettagliate",
             "commandPalette": "Palette comandi",
-            "helpText": "Premi [F1] in qualsiasi momento per mostrare questa finestra"
+            "helpText": "Premi [F1] in qualsiasi momento per mostrare questa finestra",
+            "lockNow": "Blocca ora"
         },
         "dialogs": {
             "confirmTitle": "Conferma",

@@ -2027,7 +2027,8 @@
             "pasteFiles": "Coller depuis le presse-papiers",
             "properties": "Propriétés",
             "quickLook": "Aperçu rapide",
-            "toggleDualPanel": "Activer/désactiver double panneau"
+            "toggleDualPanel": "Activer/désactiver double panneau",
+            "lockNow": "Verrouiller maintenant"
         },
         "overwrite": {
             "title": "Le fichier existe déjà",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Bulles",
             "enter2FACode": "Authentification à deux facteurs",
             "enter2FAHint": "Entrez le code à 6 chiffres de votre application d'authentification",
-            "invalid2FACode": "Code 2FA invalide. Veuillez réessayer."
+            "invalid2FACode": "Code 2FA invalide. Veuillez réessayer.",
+            "lockFailed": "Le verrouillage a échoué. Votre compte ou votre coffre sont peut-être déjà verrouillés. Vérifiez leur état avant de réessayer.",
+            "lockNotConfigured": "Aucun compte déverrouillé ni coffre avec mot de passe principal n’est disponible pour le verrouillage.",
+            "lockContextChanged": "Le compte ou les paramètres de verrouillage ont changé pendant la demande. Vérifiez l’état actuel avant de réessayer."
         },
         "folderOverwrite": {
             "title": "Le dossier existe déjà",

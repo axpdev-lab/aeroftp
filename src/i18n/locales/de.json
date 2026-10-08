@@ -2027,7 +2027,8 @@
             "pasteFiles": "Aus Zwischenablage einfügen",
             "properties": "Eigenschaften",
             "quickLook": "Schnellvorschau",
-            "toggleDualPanel": "Doppelpanel umschalten"
+            "toggleDualPanel": "Doppelpanel umschalten",
+            "lockNow": "Jetzt sperren"
         },
         "overwrite": {
             "title": "Datei existiert bereits",
@@ -3464,7 +3465,10 @@
             "patternBubbles": "Blasen",
             "enter2FACode": "Zwei-Faktor-Authentifizierung",
             "enter2FAHint": "Geben Sie den 6-stelligen Code aus Ihrer Authenticator-App ein",
-            "invalid2FACode": "Ungültiger 2FA-Code. Bitte versuchen Sie es erneut."
+            "invalid2FACode": "Ungültiger 2FA-Code. Bitte versuchen Sie es erneut.",
+            "lockFailed": "Das Sperren ist fehlgeschlagen. Dein Konto oder Tresor ist möglicherweise bereits gesperrt. Prüfe den Status, bevor du es erneut versuchst.",
+            "lockNotConfigured": "Es ist kein entsperrtes Konto oder Tresor mit Master-Passwort zum Sperren verfügbar.",
+            "lockContextChanged": "Das Konto oder die Sperreinstellungen wurden während der Anfrage geändert. Prüfe den aktuellen Zustand, bevor du es erneut versuchst."
         },
         "folderOverwrite": {
             "title": "Ordner existiert bereits",
