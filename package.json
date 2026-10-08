@@ -74,6 +74,7 @@
   },
   "overrides": {
     "picomatch": ">=2.3.2",
-    "dompurify": "$dompurify"
+    "dompurify": "$dompurify",
+    "postcss-selector-parser": "7.1.6"
   }
 }
