@@ -21,6 +21,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
@@ -29,9 +30,9 @@ use crate::providers::mtp::path::{
     join_virtual, leaf_name, normalize_virtual_path, parent_path, split_segments,
 };
 use crate::providers::mtp::provider::MtpProvider;
-use crate::providers::types::{ProviderError, ProviderType, RemoteEntry};
+use crate::providers::types::{ProviderError, ProviderType, RemoteEntry, StorageInfo};
 use crate::providers::StorageProvider;
-use crate::transfer_dag::TransferCapabilities;
+use crate::transfer_dag::{Capability, TransferCapabilities};
 
 /// Cap for `download_to_bytes` materialization on a phone (10 MiB): every
 /// byte crosses USB. Larger objects stream to disk via `download`. A local
@@ -117,6 +118,33 @@ impl DirectoryProvider {
             DirectoryIdentity::Mtp { .. } => "the MTP mount root",
             DirectoryIdentity::Local => "the served directory",
         }
+    }
+
+    fn is_local(&self) -> bool {
+        self.identity == DirectoryIdentity::Local
+    }
+
+    /// The capabilities below read and write files of this machine directly;
+    /// a phone behind a desktop mount keeps the whole-file surface, because
+    /// every byte of a hash or a copy would cross USB.
+    fn local_only(&self, operation: &str) -> Result<(), ProviderError> {
+        if self.is_local() {
+            Ok(())
+        } else {
+            Err(ProviderError::NotSupported(operation.to_string()))
+        }
+    }
+
+    /// Resolve an existing regular file, with the virtual path for errors.
+    fn resolve_file(&self, path: &str) -> Result<(String, PathBuf), ProviderError> {
+        let vpath = self.virtual_path(path)?;
+        let real = self.resolve_existing(&vpath)?;
+        if real.is_dir() {
+            return Err(ProviderError::InvalidPath(format!(
+                "{vpath} is a directory"
+            )));
+        }
+        Ok((vpath, real))
     }
 
     /// How a connect error names the root it could not open.
@@ -882,6 +910,125 @@ impl StorageProvider for DirectoryProvider {
         })
     }
 
+    fn supports_checksum(&self) -> bool {
+        self.is_local()
+    }
+
+    async fn checksum(&mut self, path: &str) -> Result<HashMap<String, String>, ProviderError> {
+        self.checksum_for(path, "sha256").await
+    }
+
+    /// The digest the caller names, computed by reading the file: a folder of
+    /// this machine stores none, but reading it costs what the caller would
+    /// pay to hash a download, without the copy. An algorithm outside the
+    /// list is absent from the map, and the caller falls back as it does for
+    /// any backend that lacks it.
+    async fn checksum_for(
+        &mut self,
+        path: &str,
+        algorithm: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        self.local_only("checksum")?;
+        let (_, real) = self.resolve_file(path)?;
+        let algorithm = algorithm.to_ascii_lowercase();
+        let digest = {
+            let algorithm = algorithm.clone();
+            tokio::task::spawn_blocking(move || file_digest(&real, &algorithm))
+                .await
+                .map_err(|e| ProviderError::Other(format!("hash worker failed: {e}")))?
+                .map_err(ProviderError::IoError)?
+        };
+        Ok(digest.map(|hex| (algorithm, hex)).into_iter().collect())
+    }
+
+    /// The filesystem that holds the folder, as `df` shows it.
+    async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
+        self.local_only("storage_info")?;
+        let root = self.root()?.to_path_buf();
+        let space = tokio::task::spawn_blocking(move || crate::filesystem::filesystem_space(&root))
+            .await
+            .map_err(|e| ProviderError::Other(format!("statvfs worker failed: {e}")))?
+            .map_err(ProviderError::IoError)?;
+        Ok(StorageInfo {
+            used: space.total.saturating_sub(space.free),
+            total: space.total,
+            free: space.available,
+            versioning_bytes: None,
+        })
+    }
+
+    fn supports_server_copy(&self) -> bool {
+        self.is_local()
+    }
+
+    /// Copy a file inside the folder. The copy is written beside the
+    /// destination and renamed onto it, so a reader never sees half a file
+    /// and an interrupted copy leaves the destination as it was. A file at
+    /// the destination is replaced, as `cp` does; a folder there is refused.
+    async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.local_only("server_copy")?;
+        let (_, src) = self.resolve_file(from)?;
+        let to_v = self.virtual_path(to)?;
+        let dest = self.resolve_for_create(&to_v)?;
+        if dest.is_dir() {
+            return Err(ProviderError::AlreadyExists(format!(
+                "{to_v} is a directory"
+            )));
+        }
+        let parent = dest
+            .parent()
+            .ok_or_else(|| ProviderError::InvalidPath(format!("{to_v} has no folder")))?
+            .to_path_buf();
+        tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+            let staged = tempfile::Builder::new()
+                .prefix(".aeroftp-copy-")
+                .tempfile_in(&parent)?;
+            std::fs::copy(&src, staged.path())?;
+            staged.persist(&dest).map_err(|e| e.error)?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| ProviderError::Other(format!("copy worker failed: {e}")))?
+        .map_err(ProviderError::IoError)
+    }
+
+    fn supports_resume(&self) -> bool {
+        self.is_local()
+    }
+
+    fn supports_resume_upload_append(&self) -> bool {
+        self.is_local()
+    }
+
+    /// Append the file from `offset` to the local copy, which must hold
+    /// exactly `offset` bytes: a shorter or longer one is not the beginning
+    /// of this file, and appending to it would build a wrong file silently.
+    async fn resume_download(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.local_only("resume_download")?;
+        let (_, src) = self.resolve_file(remote_path)?;
+        append_from(&src, Path::new(local_path), offset, on_progress).await
+    }
+
+    /// Append the local file from `offset` to the stored one, which must hold
+    /// exactly `offset` bytes, for the same reason.
+    async fn resume_upload(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        self.local_only("resume_upload")?;
+        let (_, dest) = self.resolve_file(remote_path)?;
+        append_from(Path::new(local_path), &dest, offset, on_progress).await
+    }
+
     fn transfer_capabilities(&self) -> TransferCapabilities {
         // Same honest surface as exclusive libmtp: whole-file, single slot.
         // Nothing here ranges, resumes or runs in parallel yet, and a
@@ -890,16 +1037,113 @@ impl StorageProvider for DirectoryProvider {
         caps.preferred_download_segments = Some(
             crate::transfer_settings::download_segments_preference_for(self.provider_type()),
         );
+        if self.is_local() {
+            // What the methods above implement for a local folder.
+            caps.resume_download = Capability::Supported;
+            caps.resume_upload = Capability::Supported;
+            caps.server_side_copy = Capability::Supported;
+            caps.server_checksum = Capability::Supported;
+        }
         caps
     }
 
     fn supports_delta_sync(&self) -> bool {
         false
     }
+}
 
-    fn supports_resume(&self) -> bool {
-        false
+/// The hex digest of a file for one of the algorithms a local folder offers,
+/// `None` for any other.
+fn file_digest(path: &Path, algorithm: &str) -> std::io::Result<Option<String>> {
+    use std::io::Read;
+    fn stream<D: sha2::Digest>(path: &Path) -> std::io::Result<String> {
+        let mut file = std::fs::File::open(path)?;
+        let mut hasher = D::new();
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            let n = file.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buf[..n]);
+        }
+        Ok(hex::encode(hasher.finalize()))
     }
+    Ok(Some(match algorithm {
+        "md5" => stream::<md5::Md5>(path)?,
+        "sha1" => stream::<sha1::Sha1>(path)?,
+        "sha256" => stream::<sha2::Sha256>(path)?,
+        "sha512" => stream::<sha2::Sha512>(path)?,
+        "blake3" => {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update_reader(std::fs::File::open(path)?)?;
+            hasher.finalize().to_hex().to_string()
+        }
+        _ => return Ok(None),
+    }))
+}
+
+/// Append `from[offset..]` to `to`, which must hold exactly `offset` bytes.
+async fn append_from(
+    from: &Path,
+    to: &Path,
+    offset: u64,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError> {
+    use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+    let held = tokio::fs::metadata(to)
+        .await
+        .map_err(ProviderError::IoError)?
+        .len();
+    if held != offset {
+        return Err(ProviderError::TransferFailed(format!(
+            "cannot resume at byte {offset}: {} holds {held} bytes",
+            to.display()
+        )));
+    }
+    let mut reader = tokio::fs::File::open(from)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let total = reader
+        .metadata()
+        .await
+        .map_err(ProviderError::IoError)?
+        .len();
+    if offset > total {
+        return Err(ProviderError::TransferFailed(format!(
+            "cannot resume at byte {offset}: the source holds {total} bytes"
+        )));
+    }
+    reader
+        .seek(std::io::SeekFrom::Start(offset))
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut writer = tokio::fs::OpenOptions::new()
+        .append(true)
+        .open(to)
+        .await
+        .map_err(ProviderError::IoError)?;
+    let mut buf = vec![0u8; 1024 * 1024];
+    let mut done = offset;
+    loop {
+        let n = reader
+            .read(&mut buf)
+            .await
+            .map_err(ProviderError::IoError)?;
+        if n == 0 {
+            break;
+        }
+        writer
+            .write_all(&buf[..n])
+            .await
+            .map_err(ProviderError::IoError)?;
+        done += n as u64;
+        if let Some(ref cb) = on_progress {
+            cb(done, total);
+        }
+    }
+    writer.flush().await.map_err(ProviderError::IoError)?;
+    Ok(())
 }
 
 /// Whether `a` and `b` (with their metadata) are one file: the same inode
@@ -1477,5 +1721,151 @@ mod tests {
             );
         }
         assert_eq!(std::fs::read(&src).unwrap(), b"precious");
+    }
+
+    /// A local folder answers the digest the caller names by reading the
+    /// file; an algorithm it does not compute is absent, and a phone offers
+    /// none (each byte would cross USB).
+    #[tokio::test]
+    async fn a_local_directory_computes_the_digest_it_is_asked_for() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("abc.txt"), b"abc").unwrap();
+        let mut p = local(dir.path()).await;
+        assert!(p.supports_checksum());
+        for (algorithm, hex) in [
+            ("md5", "900150983cd24fb0d6963f7d28e17f72"),
+            ("sha1", "a9993e364706816aba3e25717850c26c9cd0d89d"),
+            ("sha256", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            ("sha512", "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f"),
+            ("blake3", "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85"),
+        ] {
+            let map = p.checksum_for("/abc.txt", algorithm).await.unwrap();
+            assert_eq!(map.get(algorithm).map(String::as_str), Some(hex), "{algorithm}");
+        }
+        assert!(p
+            .checksum_for("/abc.txt", "quickxor")
+            .await
+            .unwrap()
+            .is_empty());
+        assert!(p.checksum("/abc.txt").await.unwrap().contains_key("sha256"));
+        assert_eq!(
+            p.checksum_capability("/abc.txt").algorithms,
+            vec!["md5", "sha1", "sha256", "sha512", "blake3"]
+        );
+
+        let mut phone = connected(dir.path()).await;
+        assert!(!phone.supports_checksum());
+        assert!(matches!(
+            phone.checksum_for("/abc.txt", "sha256").await,
+            Err(ProviderError::NotSupported(_))
+        ));
+    }
+
+    /// `df` on a local folder reports the filesystem that holds it.
+    #[tokio::test]
+    async fn a_local_directory_reports_its_filesystem() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut p = local(dir.path()).await;
+        let info = p.storage_info().await.unwrap();
+        let space = crate::filesystem::filesystem_space(dir.path()).unwrap();
+        assert_eq!(info.total, space.total);
+        assert!(info.total > 0 && info.free <= info.total && info.used <= info.total);
+
+        let mut phone = connected(dir.path()).await;
+        assert!(matches!(
+            phone.storage_info().await,
+            Err(ProviderError::NotSupported(_))
+        ));
+    }
+
+    /// A copy inside the folder: a new name, a file replaced as `cp` does, a
+    /// folder at the destination refused, a link out of the root refused,
+    /// and no staged copy left behind.
+    #[tokio::test]
+    async fn a_local_directory_copies_a_file_inside_itself() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        std::fs::write(dir.path().join("b.txt"), b"old").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let mut p = local(dir.path()).await;
+        assert!(p.supports_server_copy());
+
+        p.server_copy("/a.txt", "/sub/a.txt").await.unwrap();
+        assert_eq!(std::fs::read(dir.path().join("sub/a.txt")).unwrap(), b"A");
+        p.server_copy("/a.txt", "/b.txt").await.unwrap();
+        assert_eq!(std::fs::read(dir.path().join("b.txt")).unwrap(), b"A");
+        let onto_folder = p.server_copy("/a.txt", "/sub").await;
+        assert!(
+            matches!(onto_folder, Err(ProviderError::AlreadyExists(_))),
+            "{onto_folder:?}"
+        );
+        let folder = p.server_copy("/sub", "/sub2").await;
+        assert!(
+            matches!(folder, Err(ProviderError::InvalidPath(_))),
+            "{folder:?}"
+        );
+
+        #[cfg(unix)]
+        {
+            let outside = tempfile::tempdir().expect("outside");
+            std::os::unix::fs::symlink(outside.path(), dir.path().join("out")).unwrap();
+            let escaped = p.server_copy("/a.txt", "/out/a.txt").await;
+            assert!(
+                matches!(escaped, Err(ProviderError::InvalidPath(_))),
+                "{escaped:?}"
+            );
+            assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+        }
+        let staged: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .chain(std::fs::read_dir(dir.path().join("sub")).unwrap())
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.starts_with(".aeroftp-copy-"))
+            .collect();
+        assert!(staged.is_empty(), "{staged:?}");
+    }
+
+    /// A transfer resumes from the byte the partial copy holds, in either
+    /// direction; a partial copy of another length is refused and left as it
+    /// was, since appending to it would build a wrong file without a word.
+    #[tokio::test]
+    async fn a_local_directory_resumes_from_the_bytes_already_held() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let work = tempfile::tempdir().expect("work");
+        std::fs::write(dir.path().join("f.bin"), b"0123456789").unwrap();
+        let mut p = local(dir.path()).await;
+        assert!(p.supports_resume() && p.supports_resume_upload_append());
+
+        let part = work.path().join("f.part");
+        std::fs::write(&part, b"0123").unwrap();
+        p.resume_download("/f.bin", part.to_str().unwrap(), 4, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&part).unwrap(), b"0123456789");
+
+        std::fs::write(&part, b"01").unwrap();
+        let wrong = p
+            .resume_download("/f.bin", part.to_str().unwrap(), 4, None)
+            .await;
+        assert!(
+            matches!(wrong, Err(ProviderError::TransferFailed(_))),
+            "{wrong:?}"
+        );
+        assert_eq!(std::fs::read(&part).unwrap(), b"01");
+
+        std::fs::write(dir.path().join("up.bin"), b"abc").unwrap();
+        let src = work.path().join("up.bin");
+        std::fs::write(&src, b"abcdef").unwrap();
+        p.resume_upload(src.to_str().unwrap(), "/up.bin", 3, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(dir.path().join("up.bin")).unwrap(), b"abcdef");
+
+        let caps = p.transfer_capabilities();
+        assert!(caps.resume_download.is_available() && caps.resume_upload.is_available());
+        assert!(caps.server_side_copy.is_available() && caps.server_checksum.is_available());
+        let phone = connected(dir.path()).await;
+        let caps = phone.transfer_capabilities();
+        assert!(!caps.resume_download.is_available() && !caps.server_checksum.is_available());
     }
 }

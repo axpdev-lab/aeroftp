@@ -202,7 +202,7 @@ aeroftp-cli sync /mnt/archive ./photos /2026 --direction upload
 - A listing shows a symbolic link only when it points to a file inside the folder (with that file's size and date). A link to a folder, a link that leaves the folder and a link that points nowhere are left out, and the command prints a warning naming them.
 - A file uploaded into the folder keeps the modification time of its source, so the next `sync` does not read the copy as newer.
 - A path that names a file opens its folder, with the file as the path, the same as a URL whose path names a remote file.
-- Transfers are whole-file, one at a time: no resume, ranged or parallel transfers and no server-side checksum yet.
+- `hashsum`, `check --checksum` and `sync --checksum` get md5, sha1, sha256, sha512 or blake3 computed by reading the file in place, with no download. `df` reports the filesystem that holds the folder, `cp` copies inside it (staged beside the destination, then renamed onto it), and an interrupted transfer resumes from the bytes the partial copy holds. Transfers are whole-file, one at a time.
 - `sync` with two local folders and no REMOTE keeps using the local-to-local copier (`aeroftp-cli sync /a /b`). Give a REMOTE other than `/` to sync against the first folder as a remote with the full sync engine.
 
 ### Password Handling

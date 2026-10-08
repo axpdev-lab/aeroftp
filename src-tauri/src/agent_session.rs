@@ -288,6 +288,7 @@ pub fn canonicalize_path(path: &str) -> String {
 pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
     match protocol.to_ascii_lowercase().as_str() {
         "ftp" | "ftps" => vec!["resume", "find"],
+        "local" => vec!["resume", "server_copy", "checksum"],
         "sftp" => vec!["resume", "find", "chmod", "symlinks", "permissions"],
         "webdav" => vec!["server_copy", "find"],
         "s3" => vec!["server_copy", "checksum"],

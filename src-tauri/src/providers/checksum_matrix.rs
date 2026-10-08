@@ -157,8 +157,12 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
         | ProviderType::Cloudinary
         | ProviderType::AeroVaultMount
         | ProviderType::Peer
-        | ProviderType::Mtp
-        | ProviderType::Local => ChecksumCapability::default(),
+        | ProviderType::Mtp => ChecksumCapability::default(),
+
+        // ── A folder of this machine ─────────────────────────────────────
+        // No stored digest: computed on request by reading the file, for the
+        // algorithm the caller names (`DirectoryProvider::checksum_for`).
+        ProviderType::Local => cap(&["md5", "sha1", "sha256", "sha512", "blake3"], None),
     }
 }
 
@@ -199,6 +203,7 @@ const DOC_ORDER: &[ProviderType] = &[
     ProviderType::Uploadcare,
     ProviderType::Cloudinary,
     ProviderType::Mtp,
+    ProviderType::Local,
 ];
 
 /// Render the published table. `docs/PROTOCOL-FEATURES.md` carries the output

@@ -27589,6 +27589,51 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
     profile_protocols_seen.sort();
     profile_protocols_seen.dedup();
 
+    // The `protocol_features` block below, built here rather than written out
+    // inside `json!`: one entry per protocol there reached the macro
+    // recursion limit at 30 entries.
+    let protocol_features = [
+        "ftp",
+        "ftps",
+        "sftp",
+        "webdav",
+        "s3",
+        "azure",
+        "googledrive",
+        "googlephotos",
+        "dropbox",
+        "onedrive",
+        "box",
+        "pcloud",
+        "mega",
+        "filen",
+        "internxt",
+        "kdrive",
+        "jottacloud",
+        "zohoworkdrive",
+        "yandexdisk",
+        "koofr",
+        "opendrive",
+        "drime",
+        "filelu",
+        "fourshared",
+        "swift",
+        "immich",
+        "twake",
+        "github",
+        "gitlab",
+        "local",
+    ]
+    .into_iter()
+    .map(|protocol| {
+        (
+            protocol.to_string(),
+            serde_json::json!(
+                ftp_client_gui_lib::agent_session::capabilities_for_protocol(protocol)
+            ),
+        )
+    })
+    .collect::<serde_json::Map<_, _>>();
     let mut info = serde_json::json!({
         "version": env!("CARGO_PKG_VERSION"),
         "description": "AeroFTP CLI - multi-protocol file transfer with encrypted vault profiles",
@@ -27712,37 +27757,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
         // `supports_*` methods. Conservative lower bound: a feature
         // listed here is reliably supported by the protocol family;
         // absence means "ask the provider directly".
-        "protocol_features": {
-            "ftp": ftp_client_gui_lib::agent_session::capabilities_for_protocol("ftp"),
-            "ftps": ftp_client_gui_lib::agent_session::capabilities_for_protocol("ftps"),
-            "sftp": ftp_client_gui_lib::agent_session::capabilities_for_protocol("sftp"),
-            "webdav": ftp_client_gui_lib::agent_session::capabilities_for_protocol("webdav"),
-            "s3": ftp_client_gui_lib::agent_session::capabilities_for_protocol("s3"),
-            "azure": ftp_client_gui_lib::agent_session::capabilities_for_protocol("azure"),
-            "googledrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("googledrive"),
-            "googlephotos": ftp_client_gui_lib::agent_session::capabilities_for_protocol("googlephotos"),
-            "dropbox": ftp_client_gui_lib::agent_session::capabilities_for_protocol("dropbox"),
-            "onedrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("onedrive"),
-            "box": ftp_client_gui_lib::agent_session::capabilities_for_protocol("box"),
-            "pcloud": ftp_client_gui_lib::agent_session::capabilities_for_protocol("pcloud"),
-            "mega": ftp_client_gui_lib::agent_session::capabilities_for_protocol("mega"),
-            "filen": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filen"),
-            "internxt": ftp_client_gui_lib::agent_session::capabilities_for_protocol("internxt"),
-            "kdrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("kdrive"),
-            "jottacloud": ftp_client_gui_lib::agent_session::capabilities_for_protocol("jottacloud"),
-            "zohoworkdrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("zohoworkdrive"),
-            "yandexdisk": ftp_client_gui_lib::agent_session::capabilities_for_protocol("yandexdisk"),
-            "koofr": ftp_client_gui_lib::agent_session::capabilities_for_protocol("koofr"),
-            "opendrive": ftp_client_gui_lib::agent_session::capabilities_for_protocol("opendrive"),
-            "drime": ftp_client_gui_lib::agent_session::capabilities_for_protocol("drime"),
-            "filelu": ftp_client_gui_lib::agent_session::capabilities_for_protocol("filelu"),
-            "fourshared": ftp_client_gui_lib::agent_session::capabilities_for_protocol("fourshared"),
-            "swift": ftp_client_gui_lib::agent_session::capabilities_for_protocol("swift"),
-            "immich": ftp_client_gui_lib::agent_session::capabilities_for_protocol("immich"),
-            "twake": ftp_client_gui_lib::agent_session::capabilities_for_protocol("twake"),
-            "github": ftp_client_gui_lib::agent_session::capabilities_for_protocol("github"),
-            "gitlab": ftp_client_gui_lib::agent_session::capabilities_for_protocol("gitlab")
-        },
+        "protocol_features": protocol_features,
         "protocol_transfer_capabilities": protocol_transfer_capabilities,
         // How to read capability `source` fields without mistaking static
         // registry baselines for a live server probe (DAG-P0-02).
