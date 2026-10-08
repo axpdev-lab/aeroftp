@@ -813,3 +813,26 @@ mod engine_runs {
         assert_eq!(r.dirs, BTreeSet::from(["/data".to_string()]));
     }
 }
+
+#[test]
+fn a_file_count_alone_replaces_the_size_sweep_and_with_sizes_runs_both() {
+    let (config, many) =
+        resolve_benchmark_plan(BenchmarkLevel::Quick, None, None, None, Some(10), "64K").unwrap();
+    assert!(config.sizes_bytes.is_empty());
+    assert_eq!(many.map(|m| m.file_count), Some(10));
+    let (config, many) = resolve_benchmark_plan(
+        BenchmarkLevel::Quick,
+        Some("1M"),
+        None,
+        None,
+        Some(10),
+        "64K",
+    )
+    .unwrap();
+    assert_eq!(config.sizes_bytes, vec![1024 * 1024]);
+    assert!(many.is_some());
+    let (config, many) =
+        resolve_benchmark_plan(BenchmarkLevel::Quick, None, None, None, None, "64K").unwrap();
+    assert_eq!(config.sizes_bytes, vec![10 * 1024 * 1024]);
+    assert!(many.is_none());
+}

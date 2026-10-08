@@ -2955,3 +2955,190 @@ mod extra_options_tests {
         assert!(!extra.contains_key("allow_cleartext_storage"));
     }
 }
+
+/// Parity between what the MCP server offers an external agent and what
+/// AeroAgent can call inside the app.
+///
+/// AeroAgent reaches a tool only through `ALLOWED_TOOLS` (and the schema the
+/// webview sends the model, `AGENT_TOOLS` in `src/types/tools.ts`). A registry
+/// entry marked for the GUI surface is not enough: until 2026-10 the benchmark
+/// and seventeen other MCP tools had handlers that ran on the GUI surface and
+/// no way in. Every MCP tool is therefore in exactly one of three places:
+/// reachable from AeroAgent (under its own name or an alias of it), covered by
+/// another AeroAgent tool, or declined with the reason written next to it.
+#[cfg(test)]
+mod mcp_parity_tests {
+    use super::ALLOWED_TOOLS;
+    use crate::ai_core::remote_tools::alias_name;
+    use crate::ai_core::tools::{find_tool, Surfaces, TOOL_DEFINITIONS};
+    use std::collections::BTreeSet;
+
+    /// MCP tools whose job another AeroAgent tool does: (MCP name, AeroAgent
+    /// tool, why the second covers the first).
+    const COVERED_BY: &[(&str, &str, &str)] = &[
+        (
+            "aeroftp_check_tree",
+            "remote_reconcile",
+            "the same match / differ / missing_local / missing_remote groups; reconcile is the superset (checksum, one_way, excludes, summary_only)",
+        ),
+        (
+            "aeroftp_upload_many",
+            "upload_files",
+            "batch upload of local files into a remote folder, with the GUI's own progress",
+        ),
+        (
+            "aeroftp_transfer",
+            "cross_profile_transfer",
+            "server-to-server copy between two saved profiles",
+        ),
+        (
+            "aeroftp_transfer_tree",
+            "cross_profile_transfer",
+            "the same copy with recursive=true, dry_run and skip_existing",
+        ),
+    ];
+
+    /// MCP tools AeroAgent does not get, and why.
+    const NOT_IN_AEROAGENT: &[(&str, &str)] = &[
+        (
+            "aeroftp_mcp_info",
+            "identity of the MCP server process (pid, uptime, binary); inside the app `app_info` answers it",
+        ),
+        (
+            "aeroftp_close_connection",
+            "closes an entry of the MCP connection pool; AeroAgent holds no pool, a call on a saved server opens a connection that closes with the call",
+        ),
+        (
+            "aeroftp_sync_tree",
+            "in the app a sync runs through AeroSync (`sync_control`) with the user's profile, excludes and delete policy; a second, tool-driven sync with delete_orphans would go around them",
+        ),
+        (
+            "aeroftp_delete_many",
+            "AeroAgent approves every deletion on its own and `remote_delete` is kept out of the chat-wide grant; a batch would put many deletions behind one approval",
+        ),
+        (
+            "aeroftp_agent_connect",
+            "one-call connect probe for a client with no session; AeroAgent reads the live connection from `gui_state` and checks a saved server with `remote_storage_quota` or `server_exec`",
+        ),
+        (
+            "aeroftp_debug_snapshot",
+            "triage for an external client that cannot see the app; in the app the user has the Debug panel, and the log does not need to travel to the AI provider",
+        ),
+        (
+            "aeroftp_debug_run_test",
+            "self-tests for an external client; `vault_roundtrip` writes a temporary entry into the user's vault",
+        ),
+    ];
+
+    /// The names the webview sends the model, read from the TypeScript source.
+    fn agent_tools_names() -> BTreeSet<String> {
+        let source = include_str!("../../src/types/tools.ts");
+        let start = source
+            .find("export const AGENT_TOOLS")
+            .expect("AGENT_TOOLS in tools.ts");
+        let end = source[start..]
+            .find("export const getToolByName")
+            .map(|i| start + i)
+            .expect("end of AGENT_TOOLS");
+        source[start..end]
+            .lines()
+            .filter_map(|line| line.strip_prefix("        name: '"))
+            .filter_map(|rest| rest.split('\'').next())
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn reachable(canonical: &str) -> bool {
+        ALLOWED_TOOLS.iter().any(|t| alias_name(t) == canonical)
+    }
+
+    #[test]
+    fn every_mcp_tool_is_reachable_covered_or_declined_with_a_reason() {
+        let mut names: BTreeSet<&str> = crate::mcp::tools::tool_definitions()
+            .iter()
+            .map(|d| d.name)
+            .collect();
+        // A registry entry for the GUI surface promises the same thing.
+        names.extend(
+            TOOL_DEFINITIONS
+                .iter()
+                .filter(|d| d.surfaces.contains(Surfaces::GUI))
+                .map(|d| d.name),
+        );
+        let mut wrong = Vec::new();
+        for name in names {
+            let canonical = alias_name(name);
+            let is_reachable = reachable(canonical);
+            let covered = COVERED_BY.iter().find(|(n, _, _)| *n == canonical);
+            let declined = NOT_IN_AEROAGENT.iter().any(|(n, _)| *n == canonical);
+            let places = [is_reachable, covered.is_some(), declined]
+                .iter()
+                .filter(|p| **p)
+                .count();
+            if places != 1 {
+                wrong.push(format!(
+                    "{name} (as {canonical}): reachable={is_reachable} covered={} declined={declined}",
+                    covered.is_some()
+                ));
+            }
+            if let Some((_, by, _)) = covered {
+                if !ALLOWED_TOOLS.contains(by) {
+                    wrong.push(format!(
+                        "{name} is covered by {by}, which AeroAgent cannot call"
+                    ));
+                }
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "MCP / AeroAgent parity:\n{}",
+            wrong.join("\n")
+        );
+    }
+
+    #[test]
+    fn the_parity_lists_name_only_tools_the_mcp_serves() {
+        let served: BTreeSet<&str> = crate::mcp::tools::tool_definitions()
+            .iter()
+            .map(|d| alias_name(d.name))
+            .collect();
+        for name in COVERED_BY
+            .iter()
+            .map(|(n, _, _)| *n)
+            .chain(NOT_IN_AEROAGENT.iter().map(|(n, _)| *n))
+        {
+            assert!(
+                served.contains(name),
+                "{name} is listed but the MCP does not serve it"
+            );
+        }
+    }
+
+    #[test]
+    fn the_schema_the_model_sees_is_the_set_the_backend_allows() {
+        let allowed: BTreeSet<String> = ALLOWED_TOOLS.iter().map(|s| s.to_string()).collect();
+        let offered = agent_tools_names();
+        assert!(
+            offered.len() > 60,
+            "AGENT_TOOLS parse found {} names",
+            offered.len()
+        );
+        let only_offered: Vec<_> = offered.difference(&allowed).collect();
+        let only_allowed: Vec<_> = allowed.difference(&offered).collect();
+        assert!(
+            only_offered.is_empty() && only_allowed.is_empty(),
+            "offered to the model but refused by the backend: {only_offered:?}; allowed but never offered: {only_allowed:?}"
+        );
+    }
+
+    #[test]
+    fn every_allowed_tool_runs_on_the_gui_surface() {
+        for name in ALLOWED_TOOLS {
+            let def = find_tool(name).unwrap_or_else(|| panic!("{name} is not in the registry"));
+            assert!(
+                def.surfaces.contains(Surfaces::GUI),
+                "{name} is allowed in AeroAgent but the dispatcher refuses it on the GUI surface"
+            );
+        }
+    }
+}
