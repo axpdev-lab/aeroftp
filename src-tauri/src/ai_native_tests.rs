@@ -991,8 +991,9 @@ async fn anthropic_requests_reach_v1_messages_from_either_base_url_form() {
 /// Every Anthropic model whose API refuses the sampling parameters and
 /// `budget_tokens` is on the native contract, and the models that accept them
 /// stay on the legacy one. The legacy adapter sends `temperature` and, with a
-/// thinking budget, `budget_tokens`: on Opus 4.7, Opus 4.8, Opus 5, Sonnet 5
-/// and Sonnet 5.5 each of those is a 400, so on that path they never answered.
+/// thinking budget, `budget_tokens`: on Opus 4.7, Opus 4.8, Opus 5, Sonnet 5,
+/// Sonnet 5.5 and Haiku 5.5 each of those is a 400, so on that path they never
+/// answered.
 #[test]
 fn anthropic_models_that_refuse_sampling_take_the_native_contract() {
     for model in [
@@ -1001,6 +1002,7 @@ fn anthropic_models_that_refuse_sampling_take_the_native_contract() {
         "claude-opus-5",
         "claude-sonnet-5",
         "claude-sonnet-5-5",
+        "claude-haiku-5-5",
         "claude-opus-5-5",
         "claude-fable-5-1",
     ] {

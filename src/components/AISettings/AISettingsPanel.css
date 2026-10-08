@@ -42,7 +42,23 @@
   border-radius: 0.5rem;
 }
 
+:root:not(.dark) .ai-settings-panel .bg-gray-900\/40 {
+  background-color: rgba(237, 240, 245, 0.6) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-800\/30 {
+  background-color: rgba(249, 250, 251, 0.6) !important;
+}
+
+:root:not(.dark) .ai-settings-panel .bg-gray-700\/60 {
+  background-color: rgba(243, 244, 246, 0.8) !important;
+}
+
 :root:not(.dark) .ai-settings-panel .text-gray-100 {
+  color: #1f2937 !important;
+}
+
+:root:not(.dark) .ai-settings-panel .text-gray-200 {
   color: #1f2937 !important;
 }
 
@@ -60,6 +76,10 @@
 
 :root:not(.dark) .ai-settings-panel .border-gray-700 {
   border-color: #e5e7eb !important;
+}
+
+:root:not(.dark) .ai-settings-panel .border-gray-700\/50 {
+  border-color: rgba(229, 231, 235, 0.8) !important;
 }
 
 :root:not(.dark) .ai-settings-panel .border-gray-600 {

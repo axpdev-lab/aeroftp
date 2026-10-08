@@ -17,6 +17,22 @@ export interface AIProvider {
     updatedAt: Date;
 }
 
+/**
+ * The parts of a provider's price list a flat input/output rate cannot carry,
+ * all relative to the flat rates of the model (or of the tier that applies).
+ */
+export interface AIModelPricing {
+    /** Price of a cache read as a fraction of the input price. */
+    cacheReadMultiplier?: number;
+    /** Price of a cache write as a fraction of the input price. */
+    cacheWriteMultiplier?: number;
+    /**
+     * Rates for a request whose prompt (uncached input plus cache reads and
+     * writes) is above `aboveTokens`; the highest tier that applies wins.
+     */
+    tiers?: Array<{ aboveTokens: number; inputCostPer1k: number; outputCostPer1k: number }>;
+}
+
 export interface AIModel {
     id: string;
     providerId: string;
@@ -39,6 +55,7 @@ export interface AIModel {
     capabilitiesVerifiedAt?: string;           // ISO date for provider-doc verification
     capabilitiesSourceUrl?: string;            // Public provider documentation, never a secret URL
     nativeCapabilities?: AIModelNativeCapabilities;
+    pricing?: AIModelPricing;
     lifecycleStatus?: 'active' | 'deprecated' | 'retired';
     isEnabled: boolean;
     isDefault: boolean;

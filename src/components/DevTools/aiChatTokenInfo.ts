@@ -4,10 +4,12 @@
 import { Message } from './aiChatTypes';
 import { determineBudgetMode } from './aiChatSmartContext';
 import { BudgetMode } from '../../types/contextIntelligence';
+import type { AIModelPricing } from '../../types/ai';
 
 export interface ModelCostInfo {
     inputCostPer1k?: number;
     outputCostPer1k?: number;
+    pricing?: AIModelPricing;
 }
 
 export interface TokenBudgetBreakdown {
@@ -86,26 +88,53 @@ export function computeTokenInfo(
 ): Message['tokenInfo'] | undefined {
     if (!inputTokens && !outputTokens && !tokensUsed) return undefined;
 
-    const cost = modelCost?.inputCostPer1k && modelCost?.outputCostPer1k
-        ? ((inputTokens || 0) / 1000) * modelCost.inputCostPer1k +
-          ((outputTokens || 0) / 1000) * modelCost.outputCostPer1k
-        : undefined;
+    const input = inputTokens || 0;
+    const output = outputTokens || 0;
+    const written = cacheCreationTokens || 0;
+    const read = cacheReadTokens || 0;
+    const pricing = modelCost?.pricing;
 
-    // Anthropic prompt caching savings calculation:
-    // Cache reads are 90% cheaper than normal input tokens.
-    // Cache creation costs 25% more than normal input tokens.
-    // Net savings = read discount - creation surcharge.
+    let cost: number | undefined;
     let cacheSavings: number | undefined;
-    if (modelCost?.inputCostPer1k && (cacheCreationTokens || cacheReadTokens)) {
-        const readDiscount = ((cacheReadTokens || 0) / 1000) * modelCost.inputCostPer1k * 0.9;
-        const creationSurcharge = ((cacheCreationTokens || 0) / 1000) * modelCost.inputCostPer1k * 0.25;
-        cacheSavings = readDiscount - creationSurcharge;
+    if (pricing && modelCost?.inputCostPer1k && modelCost?.outputCostPer1k) {
+        // A model with a published price list (every Anthropic model): the
+        // provider bills cache writes and reads apart from `input_tokens`, so
+        // each is priced at its own multiplier, and the tier is picked from the
+        // whole prompt, cached parts included.
+        const prompt = input + written + read;
+        const tier = [...(pricing.tiers ?? [])]
+            .sort((a, b) => b.aboveTokens - a.aboveTokens)
+            .find(t => prompt > t.aboveTokens);
+        const inRate = tier?.inputCostPer1k ?? modelCost.inputCostPer1k;
+        const outRate = tier?.outputCostPer1k ?? modelCost.outputCostPer1k;
+        const writeMultiplier = pricing.cacheWriteMultiplier ?? 1;
+        const readMultiplier = pricing.cacheReadMultiplier ?? 1;
+        cost = (input / 1000) * inRate
+            + (output / 1000) * outRate
+            + (written / 1000) * inRate * writeMultiplier
+            + (read / 1000) * inRate * readMultiplier;
+        if (written || read) {
+            // Against the same prompt sent uncached.
+            cacheSavings = (read / 1000) * inRate * (1 - readMultiplier)
+                - (written / 1000) * inRate * (writeMultiplier - 1);
+        }
+    } else {
+        cost = modelCost?.inputCostPer1k && modelCost?.outputCostPer1k
+            ? (input / 1000) * modelCost.inputCostPer1k + (output / 1000) * modelCost.outputCostPer1k
+            : undefined;
+        // Without a price list, the generic estimate: reads about 90% cheaper
+        // than input, writes 25% dearer.
+        if (modelCost?.inputCostPer1k && (written || read)) {
+            const readDiscount = (read / 1000) * modelCost.inputCostPer1k * 0.9;
+            const creationSurcharge = (written / 1000) * modelCost.inputCostPer1k * 0.25;
+            cacheSavings = readDiscount - creationSurcharge;
+        }
     }
 
     return {
         inputTokens,
         outputTokens,
-        totalTokens: tokensUsed ?? ((inputTokens || 0) + (outputTokens || 0)),
+        totalTokens: tokensUsed ?? (input + output),
         cost,
         cacheCreationTokens,
         cacheReadTokens,

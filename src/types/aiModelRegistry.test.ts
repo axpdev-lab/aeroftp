@@ -393,8 +393,11 @@ describe('Anthropic native contract', () => {
         }
     });
 
-    it('lists the current Sonnet and no retired model', () => {
+    it('lists the current Sonnet and Haiku and no retired model', () => {
         expect(MODEL_REGISTRY['claude-sonnet-5-5']).toBeDefined();
+        expect(MODEL_REGISTRY['claude-haiku-5-5']).toBeDefined();
+        // Tiered price: the base rates plus the tier above 100,000 prompt tokens.
+        expect(MODEL_REGISTRY['claude-haiku-5-5'].pricing?.tiers).toEqual([{ aboveTokens: 100000, inputCostPer1k: 0.0005, outputCostPer1k: 0.0025 }]);
         expect(MODEL_REGISTRY['claude-3-5-sonnet-20241022']).toBeUndefined();
     });
 });
