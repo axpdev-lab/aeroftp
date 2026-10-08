@@ -442,6 +442,7 @@ import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
 import { LocalFilePanel } from './components/LocalFilePanel';
+import { PanelDivider } from './components/PanelDivider';
 import { AeroFileTableHeader } from './components/AeroFileTableHeader';
 import {
   type AeroFileLocalColId,
@@ -531,6 +532,7 @@ import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from 
 import { useActivityLog } from './hooks/useActivityLog';
 import { useUiTokens } from './hooks/useUiTokens';
 import { useMarqueeSelection } from './hooks/useMarqueeSelection';
+import { usePanelSplit, dualLocalFlexToPercent, percentToDualLocalFlex } from './hooks/usePanelSplit';
 import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
@@ -1493,41 +1495,26 @@ const App: React.FC = () => {
   // and re-firing on every boot-time path change. The user re-enables the
   // dual panel in-session; the toggle still persists within that session.
   const [showDualLocalPanel, setShowDualLocalPanel] = useState(false);
-  // AeroFile dual-panel split ratio (flex-grow of left panel, range 0.2..1.8).
-  // Stored as a number; defaults to 1.0 (equal 50/50 split). Persisted.
-  const [dualPanelLeftFlex, setDualPanelLeftFlex] = useState<number>(() => {
-    const raw = localStorage.getItem('aerofile_dual_panel_split');
-    const n = raw ? parseFloat(raw) : NaN;
-    return Number.isFinite(n) && n >= 0.2 && n <= 1.8 ? n : 1.0;
-  });
+  // Panel split ratios with shared resize logic (usePanelSplit). Each layout
+  // keeps an independent persisted preference: the AeroFile dual-local split
+  // stays in the legacy 0.2..1.8 flex format (mapped to/from percent), the
+  // connected Local/Remote split is stored as a plain percent.
   const dualPanelContainerRef = useRef<HTMLDivElement | null>(null);
+  const dualLocalSplit = usePanelSplit({
+    containerRef: dualPanelContainerRef,
+    storageKey: 'aerofile_dual_panel_split',
+    fromStorage: dualLocalFlexToPercent,
+    toStorage: percentToDualLocalFlex,
+  });
+  const connectedSplit = usePanelSplit({
+    containerRef: dualPanelContainerRef,
+    storageKey: 'aeroftp_connected_panel_split',
+  });
   // Forward ref to transferLocalSelectionAcrossPanels: the function is defined
   // later in this component but the F5/F6 keyboard handlers (declared before
   // it) need a way to call it. Updated each render below.
   const transferLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move') => void | Promise<void>>(() => {});
   const planLocalSelectionAcrossPanelsRef = useRef<(mode: 'copy' | 'move', sourceOverride?: 'local' | 'local2') => void | Promise<void>>(() => {});
-  React.useEffect(() => {
-    localStorage.setItem('aerofile_dual_panel_split', String(dualPanelLeftFlex));
-  }, [dualPanelLeftFlex]);
-  const startDualPanelResize = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const container = dualPanelContainerRef.current;
-    if (!container) return;
-    const onMove = (ev: MouseEvent) => {
-      const rect = container.getBoundingClientRect();
-      if (rect.width <= 0) return;
-      const fraction = Math.max(0.1, Math.min(0.9, (ev.clientX - rect.left) / rect.width));
-      setDualPanelLeftFlex(2 * fraction);
-    };
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      document.body.style.userSelect = '';
-    };
-    document.body.style.userSelect = 'none';
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  }, []);
   const toggleSidebar = useCallback(() => {
     setShowSidebar(prev => {
       const next = !prev;
@@ -11199,8 +11186,9 @@ const App: React.FC = () => {
 
     if (isConnected && showRemotePanel) {
       // Visual panel layout: when `swapPanels=false` (default) Remote
-      // renders with `order-1` (left side) and Local with `order-2`
-      // (right side). The swap toggle inverts those orders, so the
+      // renders with `order-1` (left side) and Local with `order-3`
+      // (right side), with the resize divider at `order-2` between them.
+      // The swap toggle inverts those orders, so the
       // visually-left panel = Local iff swapPanels is true.
       const leftLocal = swapPanels;
       const isProviderConn = usesProviderApi(activeUnifiedRemoteProfile?.protocol);
@@ -18491,7 +18479,8 @@ const App: React.FC = () => {
                 {isConnected && showRemotePanel && <div
                   role="region"
                   aria-label="Remote files"
-                  className={`relative w-1/2 min-h-0 ${swapPanels ? 'border-l order-2' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col transition-all duration-150 ${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  className={`relative min-w-0 min-h-0 ${swapPanels ? 'border-l order-3' : 'border-r order-1'} border-gray-200 dark:border-gray-700 flex flex-col ${connectedSplit.dragging ? '' : 'transition-all duration-150 '}${crossPanelTarget === 'remote' ? 'ring-2 ring-inset ring-blue-400 bg-blue-50/30 dark:bg-blue-900/10' : ''}`}
+                  style={{ flexGrow: swapPanels ? connectedSplit.rightPercent : connectedSplit.leftPercent, flexShrink: 1, flexBasis: 0 }}
                   onDragOver={(e) => handlePanelDragOver(e, 'remote')}
                   onDrop={(e) => handlePanelDrop(e, 'remote')}
                   onDragLeave={handlePanelDragLeave}
@@ -19388,6 +19377,20 @@ const App: React.FC = () => {
                 </div>}
 
 
+                {/* Connected Local/Remote divider: rendered only while both
+                    panels are visible. Shares clamp/keyboard/reset behavior
+                    with the AeroFile dual-local separator via usePanelSplit;
+                    the connected ratio persists under its own key. order-2
+                    keeps it between the panels in both swap states (the
+                    panels use order-1/order-3). */}
+                {isConnected && showRemotePanel && (
+                  <PanelDivider
+                    label={t('aerofile.resizePanels') || 'Resize panels'}
+                    handlers={connectedSplit.dividerHandlers}
+                    className="order-2"
+                  />
+                )}
+
                 {/* Local: full width when remote panel is hidden */}
                 <LocalFilePanel
                   isAeroFileMode={!isConnected || !showRemotePanel}
@@ -19396,7 +19399,11 @@ const App: React.FC = () => {
                   panelKey="local"
                   isFocused={(!isConnected || !showRemotePanel) && showDualLocalPanel && activeLocalPanelId === 'local'}
                   onPanelFocus={() => { setActivePanel('local'); setActiveLocalPanelId('local'); }}
-                  style={(!isConnected || !showRemotePanel) && showDualLocalPanel ? { flexGrow: dualPanelLeftFlex, flexShrink: 1, flexBasis: 0 } : undefined}
+                  style={isConnected && showRemotePanel
+                    ? { flexGrow: swapPanels ? connectedSplit.leftPercent : connectedSplit.rightPercent, flexShrink: 1, flexBasis: 0 }
+                    : showDualLocalPanel
+                      ? { flexGrow: dualLocalSplit.leftPercent, flexShrink: 1, flexBasis: 0 }
+                      : undefined}
                   endpointSelector={localUnifiedPanel ? {
                     endpoint: localUnifiedPanel.endpoint,
                     savedProfiles: endpointSelectorProfiles,
@@ -19408,7 +19415,7 @@ const App: React.FC = () => {
                     onCopyHere: () => { void planLocalSelectionAcrossPanels('copy', 'local2'); },
                     onMoveHere: () => { void planLocalSelectionAcrossPanels('move', 'local2'); },
                   } : null}
-                  className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-2') : undefined}
+                  className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-3') : undefined}
                   currentPath={currentLocalPath}
                   setCurrentPath={setCurrentLocalPath}
                   onNavigate={changeLocalDirectory}
@@ -19498,44 +19505,12 @@ const App: React.FC = () => {
                 {(!isConnected || !showRemotePanel) && showDualLocalPanel && (
                   <>
                     {/* Resize handle between the two AeroFile local panels.
-                        Operable from keyboard as well: tabIndex=0 so it can
-                        take focus, Arrow Left/Right shift the split by 5 %,
-                        Home / End jump to the extremes, Enter resets to 50/50.
-                        Required because the dual-panel feature is targeted
-                        at Linux keyboard-only setups, where mouse-only resize
-                        would silently lock users out of one panel. */}
-                    <div
-                      role="separator"
-                      aria-orientation="vertical"
-                      aria-label={t('aerofile.resizePanels') || 'Resize panels'}
-                      aria-valuemin={20}
-                      aria-valuemax={180}
-                      aria-valuenow={Math.round(dualPanelLeftFlex * 100)}
-                      tabIndex={0}
-                      onMouseDown={startDualPanelResize}
-                      onDoubleClick={() => setDualPanelLeftFlex(1.0)}
-                      onKeyDown={(e) => {
-                        const STEP = 0.1;
-                        const clamp = (v: number) => Math.max(0.2, Math.min(1.8, v));
-                        if (e.key === 'ArrowLeft') {
-                          e.preventDefault();
-                          setDualPanelLeftFlex(prev => clamp(prev - STEP));
-                        } else if (e.key === 'ArrowRight') {
-                          e.preventDefault();
-                          setDualPanelLeftFlex(prev => clamp(prev + STEP));
-                        } else if (e.key === 'Home') {
-                          e.preventDefault();
-                          setDualPanelLeftFlex(0.2);
-                        } else if (e.key === 'End') {
-                          e.preventDefault();
-                          setDualPanelLeftFlex(1.8);
-                        } else if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          setDualPanelLeftFlex(1.0);
-                        }
-                      }}
-                      className="w-1 hover:w-1.5 cursor-col-resize bg-gray-200 dark:bg-gray-700 hover:bg-blue-400 dark:hover:bg-blue-500 focus:bg-blue-500 focus:outline-none transition-colors flex-shrink-0"
-                      style={{ touchAction: 'none' }}
+                        Shares drag/keyboard/reset/ARIA behavior with the
+                        connected divider through usePanelSplit + PanelDivider;
+                        the ratio keeps its legacy persisted flex format. */}
+                    <PanelDivider
+                      label={t('aerofile.resizePanels') || 'Resize panels'}
+                      handlers={dualLocalSplit.dividerHandlers}
                     />
                   <LocalFilePanel
                     isAeroFileMode
@@ -19544,7 +19519,7 @@ const App: React.FC = () => {
                     panelKey="local2"
                     isFocused={activeLocalPanelId === 'local2'}
                     onPanelFocus={() => { setActivePanel('local'); setActiveLocalPanelId('local2'); }}
-                    style={{ flexGrow: 2 - dualPanelLeftFlex, flexShrink: 1, flexBasis: 0 }}
+                    style={{ flexGrow: dualLocalSplit.rightPercent, flexShrink: 1, flexBasis: 0 }}
                     endpointSelector={local2UnifiedPanel ? {
                       endpoint: local2UnifiedPanel.endpoint,
                       savedProfiles: endpointSelectorProfiles,
