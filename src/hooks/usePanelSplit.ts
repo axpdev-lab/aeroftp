@@ -118,8 +118,13 @@ export function dragPercentFromPointer(clientX: number, containerLeft: number, c
 }
 
 export interface UsePanelSplitOptions {
-    /** Outer flex container holding both panels and the separator. */
-    containerRef: React.RefObject<HTMLElement | null>;
+    /**
+     * The outer flex container holding both panels and the separator.
+     * Passed as state (callback ref), not a RefObject: the container mounts
+     * only after the connection screen closes, and a ref-based effect would
+     * run once while the element is still null and never attach.
+     */
+    container: HTMLElement | null;
     /** localStorage key for the persisted desired ratio. */
     storageKey: string;
     defaultPercent?: number;
@@ -153,7 +158,7 @@ export interface UsePanelSplitResult {
 
 export function usePanelSplit(options: UsePanelSplitOptions): UsePanelSplitResult {
     const {
-        containerRef,
+        container,
         storageKey,
         defaultPercent = SPLIT_DEFAULT_PERCENT,
         minPanelPx = SPLIT_MIN_PANEL_PX,
@@ -182,13 +187,14 @@ export function usePanelSplit(options: UsePanelSplitOptions): UsePanelSplitResul
     }, [storageKey, desiredPercent, toStorage]);
 
     // Live container width via ResizeObserver (window resize fallback), so the
-    // rendered ratio re-clamps when the window or sidebar changes size.
+    // rendered ratio re-clamps when the window or sidebar changes size. The
+    // effect re-runs when the container element appears (it mounts only after
+    // the connection screen closes) or is replaced.
     const [containerWidth, setContainerWidth] = useState(0);
     useEffect(() => {
-        const el = containerRef.current;
-        if (!el) return;
+        if (!container) return;
         const update = () => {
-            const w = el.getBoundingClientRect().width;
+            const w = container.getBoundingClientRect().width;
             if (Number.isFinite(w) && w > 0) setContainerWidth(w);
         };
         update();
@@ -197,9 +203,9 @@ export function usePanelSplit(options: UsePanelSplitOptions): UsePanelSplitResul
             return () => window.removeEventListener('resize', update);
         }
         const observer = new ResizeObserver(update);
-        observer.observe(el);
+        observer.observe(container);
         return () => observer.disconnect();
-    }, [containerRef]);
+    }, [container]);
 
     const bounds = computeSplitBounds(containerWidth, separatorWidthPx, minPanelPx);
     const leftPercent = clampSplitPercent(desiredPercent, bounds);
@@ -209,7 +215,6 @@ export function usePanelSplit(options: UsePanelSplitOptions): UsePanelSplitResul
 
     const onMouseDown = useCallback((e: React.MouseEvent) => {
         e.preventDefault();
-        const container = containerRef.current;
         if (!container) return;
         // End any earlier drag before starting a new one (defensive: mouseup
         // normally cleans up, but a lost pointer must not leak listeners).
@@ -236,7 +241,7 @@ export function usePanelSplit(options: UsePanelSplitOptions): UsePanelSplitResul
         window.addEventListener('mousemove', onMove);
         window.addEventListener('mouseup', onUp);
         window.addEventListener('blur', onUp);
-    }, [containerRef, minPanelPx, separatorWidthPx]);
+    }, [container, minPanelPx, separatorWidthPx]);
 
     // No leaked listeners or stale userSelect if the panel unmounts mid-drag.
     useEffect(() => () => {

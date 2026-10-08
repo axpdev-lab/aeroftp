@@ -1498,16 +1498,19 @@ const App: React.FC = () => {
   // Panel split ratios with shared resize logic (usePanelSplit). Each layout
   // keeps an independent persisted preference: the AeroFile dual-local split
   // stays in the legacy 0.2..1.8 flex format (mapped to/from percent), the
-  // connected Local/Remote split is stored as a plain percent.
-  const dualPanelContainerRef = useRef<HTMLDivElement | null>(null);
+  // connected Local/Remote split is stored as a plain percent. The container
+  // is passed as state via a stable callback ref (setState identity), because
+  // the element mounts only after the connection screen closes; a plain
+  // RefObject effect would run once against null and never attach.
+  const [panelContainerEl, setPanelContainerEl] = useState<HTMLDivElement | null>(null);
   const dualLocalSplit = usePanelSplit({
-    containerRef: dualPanelContainerRef,
+    container: panelContainerEl,
     storageKey: 'aerofile_dual_panel_split',
     fromStorage: dualLocalFlexToPercent,
     toStorage: percentToDualLocalFlex,
   });
   const connectedSplit = usePanelSplit({
-    containerRef: dualPanelContainerRef,
+    container: panelContainerEl,
     storageKey: 'aeroftp_connected_panel_split',
   });
   // Forward ref to transferLocalSelectionAcrossPanels: the function is defined
@@ -18474,7 +18477,7 @@ const App: React.FC = () => {
               </div>
 
               {/* Dual Panel (or single panel when not connected) */}
-              <div ref={dualPanelContainerRef} className="flex flex-1 min-h-0">
+              <div ref={setPanelContainerEl} className="flex flex-1 min-h-0">
                 {/* Remote: hidden when not connected or local-only mode */}
                 {isConnected && showRemotePanel && <div
                   role="region"
