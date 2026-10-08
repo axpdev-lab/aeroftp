@@ -2037,7 +2037,8 @@
             "pasteFiles": "Klistra in från urklipp",
             "properties": "Egenskaper",
             "quickLook": "Snabbtitt",
-            "toggleDualPanel": "Växla dubbel panel"
+            "toggleDualPanel": "Växla dubbel panel",
+            "lockNow": "Lås nu"
         },
         "overwrite": {
             "title": "Filen finns redan",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "Bubblor",
             "enter2FACode": "Tvåfaktorsautentisering",
             "enter2FAHint": "Ange den 6-siffriga koden från din autentiseringsapp",
-            "invalid2FACode": "Ogiltig 2FA-kod. Försök igen."
+            "invalid2FACode": "Ogiltig 2FA-kod. Försök igen.",
+            "lockFailed": "Låsningen misslyckades. Ditt konto eller valv kan redan vara låst. Kontrollera statusen innan du försöker igen.",
+            "lockNotConfigured": "Det finns inget upplåst konto eller valv med huvudlösenord att låsa.",
+            "lockContextChanged": "Kontot eller låsinställningarna ändrades under begäran. Kontrollera aktuellt tillstånd innan du försöker igen."
         },
         "folderOverwrite": {
             "title": "Mappen finns redan",

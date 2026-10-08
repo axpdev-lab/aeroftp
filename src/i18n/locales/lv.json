@@ -2037,7 +2037,8 @@
             "pasteFiles": "Ielīmēt no starpliktuves",
             "properties": "Rekvizīti",
             "quickLook": "Ātrais priekšskatījums",
-            "toggleDualPanel": "Ieslēgt/izslēgt dubulto paneli"
+            "toggleDualPanel": "Ieslēgt/izslēgt dubulto paneli",
+            "lockNow": "Bloķēt tagad"
         },
         "overwrite": {
             "title": "Fails jau pastāv",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "Burbuļi",
             "enter2FACode": "Divfaktoru autentifikācija",
             "enter2FAHint": "Ievadiet 6 ciparu kodu no savas autentifikācijas lietotnes",
-            "invalid2FACode": "Nederīgs 2FA kods. Lūdzu, mēģiniet vēlreiz."
+            "invalid2FACode": "Nederīgs 2FA kods. Lūdzu, mēģiniet vēlreiz.",
+            "lockFailed": "Bloķēšana neizdevās. Jūsu konts vai glabātuve, iespējams, jau ir bloķēta. Pirms mēģināt vēlreiz, pārbaudiet to stāvokli.",
+            "lockNotConfigured": "Nav pieejams atbloķēts konts vai glabātuve ar galveno paroli, ko bloķēt.",
+            "lockContextChanged": "Pieprasījuma laikā mainījās konts vai bloķēšanas iestatījumi. Pirms mēģināt vēlreiz, pārbaudiet pašreizējo stāvokli."
         },
         "folderOverwrite": {
             "title": "Mape jau pastāv",

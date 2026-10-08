@@ -30,6 +30,7 @@ const LOCK_PATTERN_KEY = 'aeroftp_lock_pattern';
 const DEFAULT_PATTERN = 'isometric';
 
 interface AccountLockScreenProps {
+    lockFeedback?: React.ReactNode;
     onContinue: () => void;
 }
 
@@ -70,7 +71,7 @@ const sortForDisplay = <T extends { isActive: boolean; sortOrder: number; name: 
         return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name);
     });
 
-export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue }) => {
+export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue, lockFeedback }) => {
     const t = useTranslation();
 
     const cachedUsers = React.useMemo<DisplayUser[]>(() => {
@@ -236,6 +237,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
             // renders over a fully mounted app tree (see MODAL_Z.lock).
             className={`fixed inset-0 ${MODAL_Z.lock} flex flex-col items-center justify-center overflow-auto bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100`}
         >
+            {lockFeedback}
             {/* Background pattern overlay. This screen reuses the lock screen's
                 always-dark backdrop (theme-independent) so the chosen lock
                 pattern stays visible in every theme: a theme-variable gradient

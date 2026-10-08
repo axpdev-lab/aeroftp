@@ -67,6 +67,8 @@ interface TitlebarProps {
     onUsersChanged?: () => void;
     masterPasswordSet: boolean;
     onLockApp: () => void;
+    onLockAccount: () => Promise<boolean>;
+    lockBusy: boolean;
     onSetupMasterPassword: () => void;
     onRefresh: () => void;
     onNewFolder: () => void;
@@ -191,7 +193,7 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         onOpenSettings, onShowExportImport, onShowSupport, onShowCyberTools, onShowVault,
         onShowAbout, onShowMcp, onShowShortcuts, onShowDependencies, onShowProviders,
         onShowMountManager, onUsersChanged,
-        masterPasswordSet, onLockApp, onSetupMasterPassword,
+        masterPasswordSet, onLockApp, onLockAccount, lockBusy, onSetupMasterPassword,
         onRefresh, onNewFolder, onToggleDevTools, onToggleTheme,
         onToggleDebugMode, onRename, onDelete, onSelectAll,
         onCut, onCopy, onPaste, hasSelection, hasClipboard,
@@ -536,11 +538,12 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                             <path d="M10.25 11V9.5a1.75 1.75 0 013.5 0V11" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                     </button>
-                    <UserDropdown onUsersChanged={onUsersChanged} />
+                    <UserDropdown onUsersChanged={onUsersChanged} onLockAccount={onLockAccount} lockBusy={lockBusy} />
                     <button
                         data-testid={masterPasswordSet ? TID.titlebarLock : undefined}
                         data-agent={masterPasswordSet ? undefined : 'deny'}
                         onClick={masterPasswordSet ? onLockApp : onSetupMasterPassword}
+                        disabled={lockBusy}
                         className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-[var(--color-bg-tertiary)] transition-colors cursor-pointer"
                         title={masterPasswordSet ? t('masterPassword.lockTooltip') : t('masterPassword.setupTooltip')}
                     >

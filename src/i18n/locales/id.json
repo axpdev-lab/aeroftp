@@ -2037,7 +2037,8 @@
             "pasteFiles": "Tempel dari clipboard",
             "properties": "Properti",
             "quickLook": "Pratinjau Cepat",
-            "toggleDualPanel": "Aktifkan/nonaktifkan panel ganda"
+            "toggleDualPanel": "Aktifkan/nonaktifkan panel ganda",
+            "lockNow": "Kunci sekarang"
         },
         "overwrite": {
             "title": "File sudah ada",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "Gelembung",
             "enter2FACode": "Autentikasi Dua Faktor",
             "enter2FAHint": "Masukkan kode 6 digit dari aplikasi autentikator Anda",
-            "invalid2FACode": "Kode 2FA tidak valid. Silakan coba lagi."
+            "invalid2FACode": "Kode 2FA tidak valid. Silakan coba lagi.",
+            "lockFailed": "Penguncian gagal. Akun atau brankas Anda mungkin sudah terkunci. Periksa statusnya sebelum mencoba lagi.",
+            "lockNotConfigured": "Tidak ada akun yang terbuka atau brankas dengan kata sandi utama yang tersedia untuk dikunci.",
+            "lockContextChanged": "Akun atau pengaturan penguncian berubah selama permintaan. Periksa keadaan saat ini sebelum mencoba lagi."
         },
         "folderOverwrite": {
             "title": "Folder Sudah Ada",

@@ -2037,7 +2037,8 @@
             "pasteFiles": "Líma af klippiborði",
             "properties": "Eiginleikar",
             "quickLook": "Hrað forskoðun",
-            "toggleDualPanel": "Kveikja/slökkva á tvöföldum glugga"
+            "toggleDualPanel": "Kveikja/slökkva á tvöföldum glugga",
+            "lockNow": "Læsa núna"
         },
         "overwrite": {
             "title": "Skráin er þegar til",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "Bólur",
             "enter2FACode": "Tvofasa auðkenning",
             "enter2FAHint": "Sláðu inn 6 stafa kóðann úr auðkenningarforritinu þínu",
-            "invalid2FACode": "Ógildur 2FA kóði. Vinsamlegast reyndu aftur."
+            "invalid2FACode": "Ógildur 2FA kóði. Vinsamlegast reyndu aftur.",
+            "lockFailed": "Læsing mistókst. Reikningurinn þinn eða hvelfingin gæti þegar verið læst. Athugaðu stöðuna áður en þú reynir aftur.",
+            "lockNotConfigured": "Enginn ólæstur reikningur eða hvelfing með aðallykilorði er tiltæk til að læsa.",
+            "lockContextChanged": "Reikningurinn eða læsingarstillingarnar breyttust meðan á beiðninni stóð. Athugaðu núverandi stöðu áður en þú reynir aftur."
         },
         "folderOverwrite": {
             "title": "Mappa er til",

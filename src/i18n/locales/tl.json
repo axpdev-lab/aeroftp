@@ -2037,7 +2037,8 @@
             "pasteFiles": "I-paste mula sa clipboard",
             "properties": "Mga katangian",
             "quickLook": "Mabilisang tingin",
-            "toggleDualPanel": "I-toggle ang dobleng panel"
+            "toggleDualPanel": "I-toggle ang dobleng panel",
+            "lockNow": "I-lock ngayon"
         },
         "overwrite": {
             "title": "Mayroon nang file",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "Mga Bula",
             "enter2FACode": "Two-Factor Authentication",
             "enter2FAHint": "Ilagay ang 6 na digit na code mula sa iyong authenticator app",
-            "invalid2FACode": "Hindi wastong 2FA code. Pakisubukan muli."
+            "invalid2FACode": "Hindi wastong 2FA code. Pakisubukan muli.",
+            "lockFailed": "Nabigo ang pag-lock. Maaaring naka-lock na ang iyong account o vault. Suriin ang kanilang estado bago subukang muli.",
+            "lockNotConfigured": "Walang naka-unlock na account o vault na may master password na maaaring i-lock.",
+            "lockContextChanged": "Nagbago ang account o mga setting ng pag-lock habang pinoproseso ang kahilingan. Suriin ang kasalukuyang estado bago subukang muli."
         },
         "folderOverwrite": {
             "title": "Umiiral na ang Folder",

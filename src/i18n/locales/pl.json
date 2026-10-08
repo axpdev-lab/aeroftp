@@ -2037,7 +2037,8 @@
             "pasteFiles": "Wklej ze schowka",
             "properties": "Właściwości",
             "quickLook": "Szybki podgląd",
-            "toggleDualPanel": "Włącz/wyłącz podwójny panel"
+            "toggleDualPanel": "Włącz/wyłącz podwójny panel",
+            "lockNow": "Zablokuj teraz"
         },
         "overwrite": {
             "title": "Plik już istnieje",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "Bąbelki",
             "enter2FACode": "Uwierzytelnianie dwuetapowe",
             "enter2FAHint": "Wprowadź 6-cyfrowy kod z aplikacji uwierzytelniającej",
-            "invalid2FACode": "Nieprawidłowy kod 2FA. Spróbuj ponownie."
+            "invalid2FACode": "Nieprawidłowy kod 2FA. Spróbuj ponownie.",
+            "lockFailed": "Blokowanie nie powiodło się. Twoje konto lub sejf mogą być już zablokowane. Sprawdź ich stan przed ponowną próbą.",
+            "lockNotConfigured": "Nie ma odblokowanego konta ani sejfu z hasłem głównym, które można zablokować.",
+            "lockContextChanged": "Konto lub ustawienia blokady zmieniły się podczas żądania. Sprawdź bieżący stan przed ponowną próbą."
         },
         "folderOverwrite": {
             "title": "Folder już istnieje",

@@ -2037,7 +2037,8 @@
             "pasteFiles": "클립보드에서 붙여넣기",
             "properties": "속성",
             "quickLook": "빠른 미리보기",
-            "toggleDualPanel": "이중 패널 전환"
+            "toggleDualPanel": "이중 패널 전환",
+            "lockNow": "지금 잠금"
         },
         "overwrite": {
             "title": "파일이 이미 존재합니다",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "거품",
             "enter2FACode": "이중 인증",
             "enter2FAHint": "인증 앱의 6자리 코드를 입력하세요",
-            "invalid2FACode": "잘못된 2FA 코드입니다. 다시 시도해 주세요."
+            "invalid2FACode": "잘못된 2FA 코드입니다. 다시 시도해 주세요.",
+            "lockFailed": "잠금에 실패했습니다. 계정 또는 보관함이 이미 잠겨 있을 수 있습니다. 다시 시도하기 전에 상태를 확인하세요.",
+            "lockNotConfigured": "잠글 수 있는 잠금 해제된 계정이나 마스터 비밀번호가 설정된 보관함이 없습니다.",
+            "lockContextChanged": "요청 중에 계정 또는 잠금 설정이 변경되었습니다. 다시 시도하기 전에 현재 상태를 확인하세요."
         },
         "folderOverwrite": {
             "title": "폴더가 이미 존재합니다",

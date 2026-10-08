@@ -2037,7 +2037,8 @@
             "pasteFiles": "Beillesztés a vágólapról",
             "properties": "Tulajdonságok",
             "quickLook": "Gyors előnézet",
-            "toggleDualPanel": "Dupla panel be-/kikapcsolása"
+            "toggleDualPanel": "Dupla panel be-/kikapcsolása",
+            "lockNow": "Zárolás most"
         },
         "overwrite": {
             "title": "A fájl már létezik",
@@ -3474,7 +3475,10 @@
             "patternBubbles": "Buborékok",
             "enter2FACode": "Kétfaktoros hitelesítés",
             "enter2FAHint": "Adja meg a 6 jegyű kódot a hitelesítő alkalmazásból",
-            "invalid2FACode": "Érvénytelen 2FA kód. Kérjük, próbálja újra."
+            "invalid2FACode": "Érvénytelen 2FA kód. Kérjük, próbálja újra.",
+            "lockFailed": "A zárolás sikertelen. Lehet, hogy a fiókja vagy a széfje már zárolva van. Újrapróbálkozás előtt ellenőrizze az állapotukat.",
+            "lockNotConfigured": "Nincs zárolható feloldott fiók vagy mesterjelszóval védett széf.",
+            "lockContextChanged": "A kérés során megváltozott a fiók vagy a zárolási beállítások. Újrapróbálkozás előtt ellenőrizze az aktuális állapotot."
         },
         "folderOverwrite": {
             "title": "A mappa már létezik",

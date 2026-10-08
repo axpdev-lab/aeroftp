@@ -140,5 +140,7 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
     useTauriListener<{ id: string }>('gui-intent-cancel', event => {
         if (mutationId.current === event.payload.id) controller.current?.interrupt();
     });
-    return { lease, stop: () => controller.current?.run({ name: 'stop' }) };
+    return { lease,
+        interrupt: () => { ownedSettingsArea.current = null; requestedSettingsArea.current = null; controller.current?.interrupt(); },
+        stop: () => controller.current?.run({ name: 'stop' }) };
 }

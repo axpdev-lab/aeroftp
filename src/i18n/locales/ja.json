@@ -2037,7 +2037,8 @@
             "pasteFiles": "クリップボードから貼り付け",
             "properties": "プロパティ",
             "quickLook": "クイックルックプレビュー",
-            "toggleDualPanel": "デュアルパネルの切り替え"
+            "toggleDualPanel": "デュアルパネルの切り替え",
+            "lockNow": "今すぐロック"
         },
         "overwrite": {
             "title": "ファイルは既に存在します",
@@ -3439,7 +3440,10 @@
             "patternBubbles": "泡",
             "enter2FACode": "二要素認証",
             "enter2FAHint": "認証アプリの6桁のコードを入力してください",
-            "invalid2FACode": "無効な2FAコードです。もう一度お試しください。"
+            "invalid2FACode": "無効な2FAコードです。もう一度お試しください。",
+            "lockFailed": "ロックに失敗しました。アカウントまたは保管庫はすでにロックされている可能性があります。再試行する前に状態を確認してください。",
+            "lockNotConfigured": "ロックできるロック解除済みのアカウントまたはマスターパスワード付きの保管庫がありません。",
+            "lockContextChanged": "リクエスト中にアカウントまたはロック設定が変更されました。再試行する前に現在の状態を確認してください。"
         },
         "folderOverwrite": {
             "title": "フォルダはすでに存在します",
