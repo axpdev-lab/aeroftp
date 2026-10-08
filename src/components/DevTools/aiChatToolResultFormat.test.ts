@@ -37,6 +37,11 @@ describe('formatToolResult on the tools AeroAgent gained from the MCP surface', 
         expect(out).toContain('benchmark cancelled before the end');
     });
 
+    it('carries the report notes, so a bridge is not reported as the service', () => {
+        const out = formatToolResult('aeroftp_benchmark', { ...benchmarkReport, notes: ['these figures measure the local Filen Desktop bridge and its cache, not the Filen servers'] });
+        expect(out).toContain('**Note:** these figures measure the local Filen Desktop bridge');
+    });
+
     it('prints the flat remote_tree by path', () => {
         const out = formatToolResult('remote_tree', {
             root: '/data', count: 2, truncated: false,

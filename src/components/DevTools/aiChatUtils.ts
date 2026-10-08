@@ -405,6 +405,9 @@ function formatBenchmarkReport(r: Record<string, unknown>): string {
             errs.forEach(e => lines.push(`  - ${escapeMarkdown(String(e))}`));
         }
     }
+    // What the figures measure, e.g. a local bridge instead of the service (#368).
+    const notes = Array.isArray(r.notes) ? r.notes as string[] : [];
+    notes.forEach(note => lines.push(`\n**Note:** ${escapeMarkdown(String(note))}`));
     lines.push(`\nReport id \`${String(r.report_id ?? '')}\`, schema v1, anonymized.`);
     return lines.join('\n');
 }
