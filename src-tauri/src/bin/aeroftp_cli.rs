@@ -57551,19 +57551,21 @@ fn is_valid_overlay_scope(scope: &str, remote_path: &str) -> bool {
 
 /// Read a saved profile's `initialPath` (the GUI's remote landing path), used
 /// as the default overlay scope for `crypt bind` when no path is given.
-/// The saved profile's `aeroCryptOverlay` binding, when it has one.
+/// The saved profile's `aeroCryptOverlay` binding, when it has one. A profile
+/// set that cannot be read is an error, never "no binding": a re-bind that took
+/// it for absent would overwrite the intents the binding records.
 fn profile_overlay_binding(
     cli: &Cli,
     store: &CredentialStore,
     profile_id: &str,
-) -> Option<serde_json::Value> {
-    let profiles = load_active_user_profiles(cli, store).ok()?;
-    profiles
+) -> Result<Option<serde_json::Value>, String> {
+    let profiles = load_active_user_profiles(cli, store)?;
+    Ok(profiles
         .iter()
         .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
         .and_then(|p| p.get("aeroCryptOverlay"))
         .filter(|v| v.is_object())
-        .cloned()
+        .cloned())
 }
 
 fn profile_initial_path(cli: &Cli, store: &CredentialStore, profile_id: &str) -> Option<String> {
@@ -58010,7 +58012,18 @@ async fn cmd_crypt_bind(
     // scope is another folder: nothing carries over, or a connect could heal
     // the previous vault's marker into it or create a default-salt vault the
     // user never asked for.
-    let same_scope = profile_overlay_binding(cli, &store, &profile_id).filter(|b| {
+    let existing = match profile_overlay_binding(cli, &store, &profile_id) {
+        Ok(existing) => existing,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("Cannot read the profile's binding: {e}"),
+                5,
+            );
+            return 5;
+        }
+    };
+    let same_scope = existing.filter(|b| {
         b.get("remoteScope")
             .and_then(|v| v.as_str())
             .is_some_and(|prev| prev.trim_end_matches('/') == scope.trim_end_matches('/'))

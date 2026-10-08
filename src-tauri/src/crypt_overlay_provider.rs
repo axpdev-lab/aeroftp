@@ -1925,8 +1925,8 @@ impl DefaultSaltReopenError {
 /// written over a vault's real marker. A listing error is a refusal, never
 /// "empty". Reaching here means the marker probe said "absent", which an
 /// `exists()` error also reports, and a plain listing can hide dotfiles (FTP
-/// `LIST` without MLSD), so a marker that is listed, or that still downloads,
-/// refuses the rebuild.
+/// `LIST` without MLSD), so a marker that is listed, that still downloads, or
+/// whose download fails without saying the file is missing refuses the rebuild.
 ///
 /// Returns the parsed config, the master key and the config text from
 /// [`overlay::default_salt_config_v3`], under a new vault id.
@@ -1943,24 +1943,30 @@ pub async fn reopen_default_salt_vault(
         Err(ProviderError::NotFound(_)) => return Err(DefaultSaltReopenError::NothingToVerify),
         Err(e) => return Err(DefaultSaltReopenError::ListingFailed(e)),
     };
-    let marker_listed = entries
+    // A marker the listing shows, or one a download either returns or cannot
+    // answer about (no connection, timeout, permission), may be a real one:
+    // refuse. Only an answer that the file is not there lets the rebuild go
+    // on. SFTP reports a missing file as `TransferFailed`, so that counts as
+    // an answer too.
+    let mut marker_may_exist = entries
         .iter()
         .any(|e| e.name == AEROCRYPT_CONFIG_NAME || e.name == overlay::CRYPT_CONFIG_LEGACY_NAME);
-    let mut marker_downloads = false;
     for name in [AEROCRYPT_CONFIG_NAME, overlay::CRYPT_CONFIG_LEGACY_NAME] {
-        if marker_listed || marker_downloads {
+        if marker_may_exist {
             break;
         }
-        marker_downloads = provider
-            .download_to_bytes(&format!("{scope}/{name}"))
-            .await
-            .is_ok();
+        marker_may_exist = !matches!(
+            provider.download_to_bytes(&format!("{scope}/{name}")).await,
+            Err(ProviderError::NotFound(_)
+                | ProviderError::TransferFailed(_)
+                | ProviderError::InvalidPath(_))
+        );
     }
-    if marker_listed || marker_downloads {
+    if marker_may_exist {
         return Err(DefaultSaltReopenError::Refused(format!(
-            "An AeroCrypt marker exists at {list_dir} but could not be probed. Refusing to \
-             rebuild the vault from its password over a marker that exists; retry when the \
-             remote answers normally."
+            "An AeroCrypt marker exists at {list_dir}, or its absence could not be confirmed. \
+             Refusing to rebuild the vault from its password over a marker that may exist; \
+             retry when the remote answers normally."
         )));
     }
     if entries.is_empty() {
@@ -3744,6 +3750,8 @@ mod tests {
         /// Behave like an FTP server without MLSD whose `LIST -a` failed:
         /// `exists()` and `list()` miss dotfiles, a download still finds them.
         hide_dotfiles: bool,
+        /// Downloads of dotfiles time out, as on a remote that stopped answering.
+        dotfile_downloads_time_out: bool,
     }
 
     impl MemProvider {
@@ -3753,6 +3761,7 @@ mod tests {
                 dirs: Mutex::new(Vec::new()),
                 cwd: Mutex::new("/".to_string()),
                 hide_dotfiles: false,
+                dotfile_downloads_time_out: false,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -3897,6 +3906,14 @@ mod tests {
         }
         async fn download_to_bytes(&mut self, remote: &str) -> Result<Vec<u8>, ProviderError> {
             let remote = self.resolve(remote);
+            if self.dotfile_downloads_time_out
+                && remote
+                    .rsplit('/')
+                    .next()
+                    .is_some_and(|n| n.starts_with('.'))
+            {
+                return Err(ProviderError::Timeout);
+            }
             self.files
                 .lock()
                 .unwrap()
@@ -5130,6 +5147,29 @@ mod tests {
             mem.raw_bytes("/Vault/.aerocrypt.tsv").unwrap(),
             real.as_bytes(),
             "the real marker must be left as it was"
+        );
+    }
+
+    #[tokio::test]
+    async fn default_salt_rebuild_refuses_when_the_marker_probe_gets_no_answer() {
+        // Marker gone, names decrypt, but the remote does not answer the
+        // download probe: its absence is unconfirmed, so nothing is rebuilt.
+        let mut mem = MemProvider::new();
+        default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        mem.dotfile_downloads_time_out = true;
+        match reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None).await {
+            Err(DefaultSaltReopenError::Refused(e)) => {
+                assert!(e.contains("could not be confirmed"), "{e}")
+            }
+            Err(_) => panic!("refused for the wrong reason"),
+            Ok(_) => panic!("an unanswered probe must not count as an absent marker"),
+        }
+        // The same vault with a remote that answers reopens normally.
+        mem.dotfile_downloads_time_out = false;
+        assert!(
+            reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None)
+                .await
+                .is_ok()
         );
     }
 
