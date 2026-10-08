@@ -1194,7 +1194,17 @@
             "selectShown": "Dewis y {count} a ddangosir",
             "deselectShown": "Dad-ddewis y {count} a ddangosir",
             "filterShownCount": "{shown} wedi'u dangos",
-            "selectedHiddenByFilter": "{count} wedi'u dewis ond wedi'u cuddio gan yr hidlydd, wedi'u cynnwys o hyd"
+            "selectedHiddenByFilter": "{count} wedi'u dewis ond wedi'u cuddio gan yr hidlydd, wedi'u cynnwys o hyd",
+            "appearanceMode": "Modd ymddangosiad",
+            "appearanceManual": "Â llaw",
+            "appearanceSchedule": "Amserlen",
+            "scheduleLocalTime": "Newidiwch themâu yn ôl eich amser lleol. Mae dewis thema â llaw yn atal yr amserlen.",
+            "scheduleNightStart": "Dechrau’r nos",
+            "scheduleNightEnd": "Diwedd y nos",
+            "scheduleDayTheme": "Thema dydd",
+            "scheduleNightTheme": "Thema nos",
+            "scheduleInvalidTime": "Dewiswch ddau amser dilys gwahanol. Bydd yr amserlen ddilys ddiwethaf yn parhau’n weithredol.",
+            "scheduleRestoreMode": "Adfer y modd ymddangosiad blaenorol"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Gludo o'r clipfwrdd",
             "properties": "Priodweddau",
             "quickLook": "Rhagolwg Cyflym",
-            "toggleDualPanel": "Toglo panel deuol"
+            "toggleDualPanel": "Toglo panel deuol",
+            "lockNow": "Cloi nawr"
         },
         "overwrite": {
             "title": "Mae'r ffeil eisoes yn bodoli",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Swigod",
             "enter2FACode": "Dilysu Dau Ffactor",
             "enter2FAHint": "Rhowch y cod 6 digid o'ch ap dilysu",
-            "invalid2FACode": "Cod 2FA annilys. Rhowch gynnig arall arni."
+            "invalid2FACode": "Cod 2FA annilys. Rhowch gynnig arall arni.",
+            "lockFailed": "Methodd y cloi. Efallai bod eich cyfrif neu’ch cromgell eisoes wedi’u cloi. Gwiriwch eu statws cyn rhoi cynnig arall arni.",
+            "lockNotConfigured": "Nid oes cyfrif wedi’i ddatgloi na chromgell â phrif gyfrinair ar gael i’w chloi.",
+            "lockContextChanged": "Newidiodd y cyfrif neu’r gosodiadau cloi yn ystod y cais. Gwiriwch y cyflwr presennol cyn rhoi cynnig arall arni."
         },
         "folderOverwrite": {
             "title": "Mae'r Ffolder Eisoes yn Bodoli",

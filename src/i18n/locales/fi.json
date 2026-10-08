@@ -1194,7 +1194,17 @@
             "selectShown": "Valitse näkyvät {count}",
             "deselectShown": "Poista näkyvien {count} valinta",
             "filterShownCount": "{shown} näkyvissä",
-            "selectedHiddenByFilter": "{count} valittu mutta suodattimen piilottama, sisältyy silti"
+            "selectedHiddenByFilter": "{count} valittu mutta suodattimen piilottama, sisältyy silti",
+            "appearanceMode": "Ulkoasutila",
+            "appearanceManual": "Manuaalinen",
+            "appearanceSchedule": "Ajastus",
+            "scheduleLocalTime": "Vaihda teemoja paikallisen ajan mukaan. Teeman valitseminen käsin pysäyttää ajastuksen.",
+            "scheduleNightStart": "Yö alkaa",
+            "scheduleNightEnd": "Yö päättyy",
+            "scheduleDayTheme": "Päiväteema",
+            "scheduleNightTheme": "Yöteema",
+            "scheduleInvalidTime": "Valitse kaksi eri kelvollista kellonaikaa. Viimeisin kelvollinen ajastus pysyy aktiivisena.",
+            "scheduleRestoreMode": "Palauta edellinen ulkoasutila"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Liitä leikepöydältä",
             "properties": "Ominaisuudet",
             "quickLook": "Pikakatselu",
-            "toggleDualPanel": "Vaihda kaksoispaneeli päälle/pois"
+            "toggleDualPanel": "Vaihda kaksoispaneeli päälle/pois",
+            "lockNow": "Lukitse nyt"
         },
         "overwrite": {
             "title": "Tiedosto on jo olemassa",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Kuplat",
             "enter2FACode": "Kaksivaiheinen todennus",
             "enter2FAHint": "Syötä 6-numeroinen koodi todennussovelluksestasi",
-            "invalid2FACode": "Virheellinen 2FA-koodi. Yritä uudelleen."
+            "invalid2FACode": "Virheellinen 2FA-koodi. Yritä uudelleen.",
+            "lockFailed": "Lukitseminen epäonnistui. Tilisi tai holvisi saattaa jo olla lukittu. Tarkista niiden tila ennen uutta yritystä.",
+            "lockNotConfigured": "Lukittavaksi ei ole saatavilla avattua tiliä tai pääsalasanalla suojattua holvia.",
+            "lockContextChanged": "Tili tai lukitusasetukset muuttuivat pyynnön aikana. Tarkista nykyinen tila ennen uutta yritystä."
         },
         "folderOverwrite": {
             "title": "Kansio on jo olemassa",

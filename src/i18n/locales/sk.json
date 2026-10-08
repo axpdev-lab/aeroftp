@@ -1194,7 +1194,17 @@
             "selectShown": "Vybrať zobrazených {count}",
             "deselectShown": "Zrušiť výber zobrazených {count}",
             "filterShownCount": "zobrazených: {shown}",
-            "selectedHiddenByFilter": "{count} vybraných, ale skrytých filtrom, stále zahrnutých"
+            "selectedHiddenByFilter": "{count} vybraných, ale skrytých filtrom, stále zahrnutých",
+            "appearanceMode": "Režim vzhľadu",
+            "appearanceManual": "Manuálne",
+            "appearanceSchedule": "Plán",
+            "scheduleLocalTime": "Prepínajte témy podľa miestneho času. Manuálny výber témy zastaví plán.",
+            "scheduleNightStart": "Začiatok noci",
+            "scheduleNightEnd": "Koniec noci",
+            "scheduleDayTheme": "Denná téma",
+            "scheduleNightTheme": "Nočná téma",
+            "scheduleInvalidTime": "Vyberte dva rôzne platné časy. Posledný platný plán zostane aktívny.",
+            "scheduleRestoreMode": "Obnoviť predchádzajúci režim vzhľadu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Vložiť zo schránky",
             "properties": "Vlastnosti",
             "quickLook": "Rýchly náhľad",
-            "toggleDualPanel": "Zapnúť/vypnúť dvojitý panel"
+            "toggleDualPanel": "Zapnúť/vypnúť dvojitý panel",
+            "lockNow": "Zamknúť teraz"
         },
         "overwrite": {
             "title": "Súbor už existuje",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Bubliny",
             "enter2FACode": "Dvojfaktorová autentifikácia",
             "enter2FAHint": "Zadajte 6-miestny kód z autentifikačnej aplikácie",
-            "invalid2FACode": "Neplatný kód 2FA. Skúste to znova."
+            "invalid2FACode": "Neplatný kód 2FA. Skúste to znova.",
+            "lockFailed": "Zamknutie zlyhalo. Váš účet alebo trezor už môžu byť zamknuté. Pred ďalším pokusom skontrolujte ich stav.",
+            "lockNotConfigured": "Nie je k dispozícii žiadny odomknutý účet ani trezor s hlavným heslom, ktorý by bolo možné zamknúť.",
+            "lockContextChanged": "Počas požiadavky sa zmenil účet alebo nastavenia zamykania. Pred ďalším pokusom skontrolujte aktuálny stav."
         },
         "folderOverwrite": {
             "title": "Priečinok už existuje",

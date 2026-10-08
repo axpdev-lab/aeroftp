@@ -2455,7 +2455,10 @@
             "unlocking": "Unlocking...",
             "enter2FACode": "Two-Factor Authentication",
             "enter2FAHint": "Enter the 6-digit code from your authenticator app",
-            "invalid2FACode": "Invalid 2FA code. Please try again."
+            "invalid2FACode": "Invalid 2FA code. Please try again.",
+            "lockFailed": "Locking failed. Your account or vault may already be locked. Check their status before trying again.",
+            "lockNotConfigured": "No unlocked account or master-password vault is available to lock.",
+            "lockContextChanged": "The account or lock settings changed during the request. Check the current state before trying again."
         },
         "masterPassword": {
             "autoLockTimeout": "Auto-lock timeout",
@@ -3793,7 +3796,17 @@
             "resumeColumnDestination": "Destination",
             "resumeColumnRecords": "Records",
             "resumeForget": "Forget this destination",
-            "resumeForgetConfirm": "Forget"
+            "resumeForgetConfirm": "Forget",
+            "appearanceMode": "Appearance mode",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Schedule",
+            "scheduleLocalTime": "Switch themes using your local time. Choosing a theme manually stops the schedule.",
+            "scheduleNightStart": "Night starts",
+            "scheduleNightEnd": "Night ends",
+            "scheduleDayTheme": "Day theme",
+            "scheduleNightTheme": "Night theme",
+            "scheduleInvalidTime": "Choose two different valid times. The last valid schedule stays active.",
+            "scheduleRestoreMode": "Restore previous appearance mode"
         },
         "sharing": {
             "add": "Add",
@@ -3849,7 +3862,8 @@
             "toggleTerminal": "Toggle Terminal",
             "toggleTheme": "Toggle theme",
             "uploadSelected": "Upload selected",
-            "view": "View"
+            "view": "View",
+            "lockNow": "Lock Now"
         },
         "sidebar": {
             "add_to_sidebar": "Add to Sidebar",

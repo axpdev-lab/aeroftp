@@ -1194,7 +1194,17 @@
             "selectShown": "Izberi prikazanih {count}",
             "deselectShown": "Prekliči izbiro prikazanih {count}",
             "filterShownCount": "prikazanih: {shown}",
-            "selectedHiddenByFilter": "{count} izbranih, vendar skritih s filtrom, še vedno vključenih"
+            "selectedHiddenByFilter": "{count} izbranih, vendar skritih s filtrom, še vedno vključenih",
+            "appearanceMode": "Način videza",
+            "appearanceManual": "Ročno",
+            "appearanceSchedule": "Urnik",
+            "scheduleLocalTime": "Preklapljajte teme glede na lokalni čas. Ročna izbira teme ustavi urnik.",
+            "scheduleNightStart": "Začetek noči",
+            "scheduleNightEnd": "Konec noči",
+            "scheduleDayTheme": "Dnevna tema",
+            "scheduleNightTheme": "Nočna tema",
+            "scheduleInvalidTime": "Izberite dva različna veljavna časa. Zadnji veljavni urnik ostane aktiven.",
+            "scheduleRestoreMode": "Obnovi prejšnji način videza"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Prilepi iz odložišča",
             "properties": "Lastnosti",
             "quickLook": "Hitri predogled",
-            "toggleDualPanel": "Vklopi/izklopi dvojni pladenj"
+            "toggleDualPanel": "Vklopi/izklopi dvojni pladenj",
+            "lockNow": "Zakleni zdaj"
         },
         "overwrite": {
             "title": "Datoteka že obstaja",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Mehurčki",
             "enter2FACode": "Dvostopenjska avtentikacija",
             "enter2FAHint": "Vnesite 6-mestno kodo iz aplikacije za avtentikacijo",
-            "invalid2FACode": "Neveljavna koda 2FA. Poskusite znova."
+            "invalid2FACode": "Neveljavna koda 2FA. Poskusite znova.",
+            "lockFailed": "Zaklepanje ni uspelo. Vaš račun ali trezor sta morda že zaklenjena. Pred ponovnim poskusom preverite njuno stanje.",
+            "lockNotConfigured": "Za zaklepanje ni na voljo noben odklenjen račun ali trezor z glavnim geslom.",
+            "lockContextChanged": "Račun ali nastavitve zaklepanja so se med zahtevo spremenile. Pred ponovnim poskusom preverite trenutno stanje."
         },
         "folderOverwrite": {
             "title": "Mapa že obstaja",

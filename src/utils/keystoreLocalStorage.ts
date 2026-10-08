@@ -57,6 +57,7 @@ export const KEYSTORE_LS_WHITELIST: string[] = [
 
     // Appearance: theme + background + lock screen
     'aeroftp-theme',
+    'aeroftp-theme-schedule',
     'aeroftp-icon-theme',
     'aeroftp_app_background_pattern',
     'aeroftp_lock_pattern',
@@ -180,6 +181,12 @@ export const applyLocalStorage = async (
     let applied = 0;
     const errors: string[] = [];
     const allowed = new Set(KEYSTORE_LS_WHITELIST);
+    // Legacy backups restore their original manual/system appearance rather
+    // than leaving a newer machine's schedule in control of the imported theme.
+    if ('aeroftp-theme' in map && !('aeroftp-theme-schedule' in map)) {
+        try { localStorage.removeItem('aeroftp-theme-schedule'); }
+        catch (e) { errors.push(describeError(e)); }
+    }
     for (const [key, value] of Object.entries(map)) {
         if (key === AUTOSTART_KEY) {
             try {

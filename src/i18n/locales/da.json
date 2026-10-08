@@ -1194,7 +1194,17 @@
             "selectShown": "Vælg de {count} viste",
             "deselectShown": "Fravælg de {count} viste",
             "filterShownCount": "{shown} vist",
-            "selectedHiddenByFilter": "{count} valgt, men skjult af filteret, stadig inkluderet"
+            "selectedHiddenByFilter": "{count} valgt, men skjult af filteret, stadig inkluderet",
+            "appearanceMode": "Udseendetilstand",
+            "appearanceManual": "Manuel",
+            "appearanceSchedule": "Tidsplan",
+            "scheduleLocalTime": "Skift temaer efter din lokale tid. Hvis du vælger et tema manuelt, stopper tidsplanen.",
+            "scheduleNightStart": "Natten starter",
+            "scheduleNightEnd": "Natten slutter",
+            "scheduleDayTheme": "Dagtema",
+            "scheduleNightTheme": "Nattema",
+            "scheduleInvalidTime": "Vælg to forskellige gyldige tidspunkter. Den seneste gyldige tidsplan forbliver aktiv.",
+            "scheduleRestoreMode": "Gendan den forrige udseendetilstand"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Indsæt fra udklipsholder",
             "properties": "Egenskaber",
             "quickLook": "Hurtig forhåndsvisning",
-            "toggleDualPanel": "Slå dobbelt panel til/fra"
+            "toggleDualPanel": "Slå dobbelt panel til/fra",
+            "lockNow": "Lås nu"
         },
         "overwrite": {
             "title": "Filen eksisterer allerede",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Bobler",
             "enter2FACode": "Tofaktorgodkendelse",
             "enter2FAHint": "Indtast den 6-cifrede kode fra din godkendelsesapp",
-            "invalid2FACode": "Ugyldig 2FA-kode. Prøv venligst igen."
+            "invalid2FACode": "Ugyldig 2FA-kode. Prøv venligst igen.",
+            "lockFailed": "Låsning mislykkedes. Din konto eller boks er muligvis allerede låst. Kontrollér deres status, før du prøver igen.",
+            "lockNotConfigured": "Der er ingen oplåst konto eller boks med hovedadgangskode, der kan låses.",
+            "lockContextChanged": "Kontoen eller låseindstillingerne blev ændret under anmodningen. Kontrollér den aktuelle tilstand, før du prøver igen."
         },
         "folderOverwrite": {
             "title": "Mappe findes allerede",

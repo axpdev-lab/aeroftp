@@ -10,24 +10,28 @@ import ReactDOM from 'react-dom/client';
 import AiApprovalWindow from './components/AiApprovalWindow';
 import { I18nProvider } from './i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import type { Theme } from './hooks/useTheme';
+import { useTheme } from './hooks/useTheme';
+import { applyThemeClasses, readAppearance, resolveAppearance } from './utils/appearance';
 import './styles.css';
 
-const savedTheme = (localStorage.getItem('aeroftp-theme') as Theme | null) ?? 'auto';
-const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-const isDark = savedTheme === 'auto'
-  ? prefersDark
-  : ['dark', 'truedark', 'tokyo', 'cyber', 'green', 'redhorse'].includes(savedTheme);
+const appearance = readAppearance();
+applyThemeClasses(resolveAppearance(appearance.preference, appearance.schedule, window.matchMedia('(prefers-color-scheme: dark)').matches));
 
-document.documentElement.classList.toggle('dark', isDark);
-document.documentElement.classList.toggle('truedark', savedTheme === 'truedark');
+function WindowTheme({ children }: { children: React.ReactNode }) {
+  // This approval surface has no event IPC capability. Storage, focus and
+  // minute refreshes keep its palette live without expanding its permissions.
+  useTheme({ ipcEvents: false });
+  return <>{children}</>;
+}
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <I18nProvider>
-      <ErrorBoundary>
-        <AiApprovalWindow />
-      </ErrorBoundary>
+      <WindowTheme>
+        <ErrorBoundary>
+          <AiApprovalWindow />
+        </ErrorBoundary>
+      </WindowTheme>
     </I18nProvider>
   </React.StrictMode>
 );

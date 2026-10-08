@@ -1,6 +1,6 @@
 # Contributing to AeroFTP
 
-> _Last updated: 2026-09-04_
+> _Last updated: 2026-10-08_
 
 First off, thank you for considering contributing to AeroFTP!
 
@@ -22,8 +22,19 @@ Be respectful, inclusive, and professional. We're here to build great software t
 - Check if the feature was already requested
 - Describe the use case clearly
 - Explain why this would be useful
+- Post in [Feature Discussions](https://github.com/axpdev-lab/aeroftp/discussions/categories/feature), or follow [UI and Design Changes](#ui-and-design-changes) for interface proposals
+
+### UI and Design Changes
+
+Changes to how AeroFTP looks or behaves in the interface (layouts, themes, new settings, keyboard interactions, visual polish) start in the [Design Threads](https://github.com/axpdev-lab/aeroftp/discussions/categories/design-threads) category before writing code or opening a pull request. Describe what bothers you and what you propose. Screenshots or mockups are helpful; code is not required.
+
+At this stage of the project, the maintainers handle UI implementation and integration once the design is agreed in the thread, coordinating changes across every theme and all 47 languages. The person who proposed the change is credited as co-author on the commit. Sharing use cases, design ideas and feedback is a welcome contribution in itself; you do not need to prepare code or translate the locales.
+
+**Agreement on a design does not by itself invite a pull request.** Submit a UI or design pull request only if a maintainer explicitly invites you to do so in the thread. Otherwise, leave implementation with the maintainers and continue the design discussion there. UI pull requests opened without that invitation are closed with a link to the design discussion.
 
 ### Pull Requests
+
+The steps below apply to code contributions. For UI and design proposals, follow [UI and Design Changes](#ui-and-design-changes); use these steps only if a maintainer has explicitly invited a pull request in the thread.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)

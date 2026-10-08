@@ -13,7 +13,8 @@ import ExtractWindow from './components/ExtractWindow';
 import { I18nProvider } from './i18n';
 import { AVAILABLE_LANGUAGES, type Language } from './i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import type { Theme } from './hooks/useTheme';
+import { useTheme } from './hooks/useTheme';
+import { applyThemeClasses, readAppearance, resolveAppearance } from './utils/appearance';
 import './styles.css';
 
 // Match the OS language (injected by the Rust open_extract_window payload), so the
@@ -25,21 +26,22 @@ const initialLanguage = AVAILABLE_LANGUAGES.some((l) => l.code === desktopLang)
   ? (desktopLang as Language)
   : undefined;
 
-const savedTheme = (localStorage.getItem('aeroftp-theme') as Theme | null) ?? 'auto';
-const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-const isDark = savedTheme === 'auto'
-  ? prefersDark
-  : ['dark', 'truedark', 'tokyo', 'cyber', 'green', 'redhorse'].includes(savedTheme);
+const appearance = readAppearance();
+applyThemeClasses(resolveAppearance(appearance.preference, appearance.schedule, window.matchMedia('(prefers-color-scheme: dark)').matches));
 
-document.documentElement.classList.toggle('dark', isDark);
-document.documentElement.classList.toggle('truedark', savedTheme === 'truedark');
+function WindowTheme({ children }: { children: React.ReactNode }) {
+  useTheme();
+  return <>{children}</>;
+}
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <I18nProvider initialLanguage={initialLanguage}>
-      <ErrorBoundary>
-        <ExtractWindow />
-      </ErrorBoundary>
+      <WindowTheme>
+        <ErrorBoundary>
+          <ExtractWindow />
+        </ErrorBoundary>
+      </WindowTheme>
     </I18nProvider>
   </React.StrictMode>
 );

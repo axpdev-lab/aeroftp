@@ -1194,7 +1194,17 @@
             "selectShown": "Selecciona els {count} mostrats",
             "deselectShown": "Desselecciona els {count} mostrats",
             "filterShownCount": "{shown} mostrats",
-            "selectedHiddenByFilter": "{count} seleccionats però amagats pel filtre, encara inclosos"
+            "selectedHiddenByFilter": "{count} seleccionats però amagats pel filtre, encara inclosos",
+            "appearanceMode": "Mode d’aparença",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Programació",
+            "scheduleLocalTime": "Canvia els temes segons l’hora local. Si tries un tema manualment, s’atura la programació.",
+            "scheduleNightStart": "Inici de la nit",
+            "scheduleNightEnd": "Final de la nit",
+            "scheduleDayTheme": "Tema diürn",
+            "scheduleNightTheme": "Tema nocturn",
+            "scheduleInvalidTime": "Tria dues hores vàlides diferents. L’última programació vàlida continua activa.",
+            "scheduleRestoreMode": "Restaura el mode d’aparença anterior"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Enganxa des del porta-retalls",
             "properties": "Propietats",
             "quickLook": "Vista ràpida",
-            "toggleDualPanel": "Activa/desactiva doble panell"
+            "toggleDualPanel": "Activa/desactiva doble panell",
+            "lockNow": "Bloqueja ara"
         },
         "overwrite": {
             "title": "El fitxer ja existeix",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Bombolles",
             "enter2FACode": "Autenticació de dos factors",
             "enter2FAHint": "Introduïu el codi de 6 dígits de la vostra aplicació d'autenticació",
-            "invalid2FACode": "Codi 2FA no vàlid. Torneu-ho a provar."
+            "invalid2FACode": "Codi 2FA no vàlid. Torneu-ho a provar.",
+            "lockFailed": "El bloqueig ha fallat. Pot ser que el compte o la caixa forta ja estiguin bloquejats. Comprova’n l’estat abans de tornar-ho a provar.",
+            "lockNotConfigured": "No hi ha cap compte desbloquejat ni cap caixa forta amb contrasenya mestra disponible per bloquejar.",
+            "lockContextChanged": "El compte o la configuració de bloqueig han canviat durant la sol·licitud. Comprova l’estat actual abans de tornar-ho a provar."
         },
         "folderOverwrite": {
             "title": "La carpeta ja existeix",

@@ -1194,7 +1194,17 @@
             "selectShown": "Odaberi prikazanih {count}",
             "deselectShown": "Poništi odabir prikazanih {count}",
             "filterShownCount": "prikazano: {shown}",
-            "selectedHiddenByFilter": "{count} odabrano, ali skriveno filtrom, i dalje uključeno"
+            "selectedHiddenByFilter": "{count} odabrano, ali skriveno filtrom, i dalje uključeno",
+            "appearanceMode": "Način izgleda",
+            "appearanceManual": "Ručno",
+            "appearanceSchedule": "Raspored",
+            "scheduleLocalTime": "Mijenjajte teme prema lokalnom vremenu. Ručni odabir teme zaustavlja raspored.",
+            "scheduleNightStart": "Početak noći",
+            "scheduleNightEnd": "Kraj noći",
+            "scheduleDayTheme": "Dnevna tema",
+            "scheduleNightTheme": "Noćna tema",
+            "scheduleInvalidTime": "Odaberite dva različita valjana vremena. Posljednji valjani raspored ostaje aktivan.",
+            "scheduleRestoreMode": "Vrati prethodni način izgleda"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Zalijepi iz međuspremnika",
             "properties": "Svojstva",
             "quickLook": "Brzi pregled",
-            "toggleDualPanel": "Uključi/isključi dvostruki panel"
+            "toggleDualPanel": "Uključi/isključi dvostruki panel",
+            "lockNow": "Zaključaj sada"
         },
         "overwrite": {
             "title": "Datoteka već postoji",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Mjehurići",
             "enter2FACode": "Dvofaktorska autentifikacija",
             "enter2FAHint": "Unesite 6-znamenkasti kod iz aplikacije za autentifikaciju",
-            "invalid2FACode": "Nevažeći 2FA kod. Pokušajte ponovo."
+            "invalid2FACode": "Nevažeći 2FA kod. Pokušajte ponovo.",
+            "lockFailed": "Zaključavanje nije uspjelo. Vaš račun ili trezor možda su već zaključani. Provjerite njihovo stanje prije ponovnog pokušaja.",
+            "lockNotConfigured": "Nema otključanog računa ni trezora s glavnom lozinkom koji je moguće zaključati.",
+            "lockContextChanged": "Račun ili postavke zaključavanja promijenili su se tijekom zahtjeva. Provjerite trenutačno stanje prije ponovnog pokušaja."
         },
         "folderOverwrite": {
             "title": "Mapa već postoji",

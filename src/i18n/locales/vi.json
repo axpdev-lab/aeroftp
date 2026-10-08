@@ -1194,7 +1194,17 @@
             "selectShown": "Chọn {count} mục đang hiển thị",
             "deselectShown": "Bỏ chọn {count} mục đang hiển thị",
             "filterShownCount": "{shown} đang hiển thị",
-            "selectedHiddenByFilter": "{count} đã chọn nhưng bị bộ lọc ẩn, vẫn được bao gồm"
+            "selectedHiddenByFilter": "{count} đã chọn nhưng bị bộ lọc ẩn, vẫn được bao gồm",
+            "appearanceMode": "Chế độ giao diện",
+            "appearanceManual": "Thủ công",
+            "appearanceSchedule": "Lịch trình",
+            "scheduleLocalTime": "Chuyển chủ đề theo giờ địa phương của bạn. Chọn chủ đề thủ công sẽ dừng lịch trình.",
+            "scheduleNightStart": "Bắt đầu ban đêm",
+            "scheduleNightEnd": "Kết thúc ban đêm",
+            "scheduleDayTheme": "Chủ đề ban ngày",
+            "scheduleNightTheme": "Chủ đề ban đêm",
+            "scheduleInvalidTime": "Chọn hai thời điểm hợp lệ khác nhau. Lịch trình hợp lệ gần nhất vẫn hoạt động.",
+            "scheduleRestoreMode": "Khôi phục chế độ giao diện trước đó"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Dán từ bộ nhớ tạm",
             "properties": "Thuộc tính",
             "quickLook": "Xem nhanh",
-            "toggleDualPanel": "Bật/tắt bảng kép"
+            "toggleDualPanel": "Bật/tắt bảng kép",
+            "lockNow": "Khóa ngay"
         },
         "overwrite": {
             "title": "Tệp đã tồn tại",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Bong bóng",
             "enter2FACode": "Xác thực hai yếu tố",
             "enter2FAHint": "Nhập mã 6 chữ số từ ứng dụng xác thực của bạn",
-            "invalid2FACode": "Mã 2FA không hợp lệ. Vui lòng thử lại."
+            "invalid2FACode": "Mã 2FA không hợp lệ. Vui lòng thử lại.",
+            "lockFailed": "Khóa thất bại. Tài khoản hoặc kho lưu trữ của bạn có thể đã được khóa. Kiểm tra trạng thái trước khi thử lại.",
+            "lockNotConfigured": "Không có tài khoản đã mở khóa hoặc kho lưu trữ có mật khẩu chính để khóa.",
+            "lockContextChanged": "Tài khoản hoặc cài đặt khóa đã thay đổi trong khi xử lý yêu cầu. Kiểm tra trạng thái hiện tại trước khi thử lại."
         },
         "folderOverwrite": {
             "title": "Thư mục đã tồn tại",

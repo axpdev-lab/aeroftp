@@ -1194,7 +1194,17 @@
             "selectShown": "Pilih {count} yang dipaparkan",
             "deselectShown": "Nyahpilih {count} yang dipaparkan",
             "filterShownCount": "{shown} dipaparkan",
-            "selectedHiddenByFilter": "{count} dipilih tetapi disembunyikan oleh penapis, masih disertakan"
+            "selectedHiddenByFilter": "{count} dipilih tetapi disembunyikan oleh penapis, masih disertakan",
+            "appearanceMode": "Mod penampilan",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Jadual",
+            "scheduleLocalTime": "Tukar tema mengikut waktu tempatan anda. Memilih tema secara manual menghentikan jadual.",
+            "scheduleNightStart": "Malam bermula",
+            "scheduleNightEnd": "Malam berakhir",
+            "scheduleDayTheme": "Tema siang",
+            "scheduleNightTheme": "Tema malam",
+            "scheduleInvalidTime": "Pilih dua waktu sah yang berbeza. Jadual sah terakhir kekal aktif.",
+            "scheduleRestoreMode": "Pulihkan mod penampilan sebelumnya"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Tampal dari papan keratan",
             "properties": "Sifat",
             "quickLook": "Pratonton Pantas",
-            "toggleDualPanel": "Togol panel berkembar"
+            "toggleDualPanel": "Togol panel berkembar",
+            "lockNow": "Kunci sekarang"
         },
         "overwrite": {
             "title": "Fail sudah wujud",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Gelembung",
             "enter2FACode": "Pengesahan Dua Faktor",
             "enter2FAHint": "Masukkan kod 6 digit daripada aplikasi pengesah anda",
-            "invalid2FACode": "Kod 2FA tidak sah. Sila cuba lagi."
+            "invalid2FACode": "Kod 2FA tidak sah. Sila cuba lagi.",
+            "lockFailed": "Penguncian gagal. Akaun atau peti simpanan anda mungkin sudah dikunci. Semak statusnya sebelum mencuba lagi.",
+            "lockNotConfigured": "Tiada akaun yang dibuka kuncinya atau peti simpanan dengan kata laluan induk tersedia untuk dikunci.",
+            "lockContextChanged": "Akaun atau tetapan penguncian berubah semasa permintaan. Semak keadaan semasa sebelum mencuba lagi."
         },
         "folderOverwrite": {
             "title": "Folder Sudah Wujud",

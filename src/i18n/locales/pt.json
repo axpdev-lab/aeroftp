@@ -1194,7 +1194,17 @@
             "selectShown": "Selecionar os {count} exibidos",
             "deselectShown": "Desmarcar os {count} exibidos",
             "filterShownCount": "{shown} exibidos",
-            "selectedHiddenByFilter": "{count} selecionados, mas ocultos pelo filtro, ainda incluídos"
+            "selectedHiddenByFilter": "{count} selecionados, mas ocultos pelo filtro, ainda incluídos",
+            "appearanceMode": "Modo de aparência",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Programação",
+            "scheduleLocalTime": "Alterne os temas de acordo com a sua hora local. Escolher um tema manualmente interrompe a programação.",
+            "scheduleNightStart": "Início da noite",
+            "scheduleNightEnd": "Fim da noite",
+            "scheduleDayTheme": "Tema diurno",
+            "scheduleNightTheme": "Tema noturno",
+            "scheduleInvalidTime": "Escolha duas horas válidas diferentes. A última programação válida permanece ativa.",
+            "scheduleRestoreMode": "Restaurar o modo de aparência anterior"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Colar da área de transferência",
             "properties": "Propriedades",
             "quickLook": "Pré-visualização rápida",
-            "toggleDualPanel": "Ativar/desativar painel duplo"
+            "toggleDualPanel": "Ativar/desativar painel duplo",
+            "lockNow": "Bloquear agora"
         },
         "overwrite": {
             "title": "O ficheiro já existe",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Bolhas",
             "enter2FACode": "Autenticação de dois fatores",
             "enter2FAHint": "Introduza o código de 6 dígitos da sua aplicação de autenticação",
-            "invalid2FACode": "Código 2FA inválido. Tente novamente."
+            "invalid2FACode": "Código 2FA inválido. Tente novamente.",
+            "lockFailed": "O bloqueio falhou. A sua conta ou cofre podem já estar bloqueados. Verifique o estado antes de tentar novamente.",
+            "lockNotConfigured": "Não existe nenhuma conta desbloqueada ou cofre com palavra-passe mestra disponível para bloquear.",
+            "lockContextChanged": "A conta ou as definições de bloqueio mudaram durante o pedido. Verifique o estado atual antes de tentar novamente."
         },
         "folderOverwrite": {
             "title": "A Pasta Já Existe",

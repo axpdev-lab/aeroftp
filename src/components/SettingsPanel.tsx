@@ -12,7 +12,8 @@ import { AeroShareContacts } from './AeroShare/AeroShareContacts';
 import { CheckpointEndpoints } from './CheckpointEndpoints';
 import { AeroSharePrivacySettings } from './AeroShare/AeroSharePrivacySettings';
 import type { Theme } from '../hooks/useTheme';
-import { getEffectiveTheme } from '../hooks/useTheme';
+import { useAppearance } from '../hooks/useAppearance';
+import { AppearanceModeControls } from './settings/AppearanceModeControls';
 import { useIconTheme } from '../hooks/useIconTheme';
 import { getIconThemeProvider, type IconTheme } from '../utils/iconThemes';
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
@@ -366,6 +367,7 @@ const CheckUpdateButton: React.FC<CheckUpdateButtonProps> = ({ onActivityLog }) 
 };
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, onOpenCloudPanel, onActivityLog, initialTab, initialAppearanceSubTab, initialKeystoreImportPath, onServersChanged, theme: appThemeProp = 'auto', setTheme: setAppTheme }) => {
+    const { effectiveTheme: previewTheme, mode: appearanceMode } = useAppearance();
     const [activeTab, setActiveTab] = useState<TabId>((initialTab as string) === 'servers' ? 'backup' : initialTab || 'general');
     const [appearanceSubTab, setAppearanceSubTab] = useState<AppearanceSubTabId>('interface');
     const { iconTheme, setIconTheme } = useIconTheme();
@@ -1952,6 +1954,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                     {/* Sub-tab: Theme */}
                                     {appearanceSubTab === 'theme' && (
                                         <div id="settings-appearance-panel-theme" role="tabpanel" aria-labelledby="settings-appearance-tab-theme" className="space-y-4">
+                                            <AppearanceModeControls />
                                             <p className="text-xs text-gray-500">{t('settings.themeDesc')}</p>
                                             <div className="grid grid-cols-2 gap-3">
                                                 {[
@@ -2051,13 +2054,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         desc: t('settings.themeRedlavaDesc'),
                                                     },
                                                 ].map((themeOption) => {
-                                                    const isSelected = appThemeProp === themeOption.id;
+                                                    const isSelected = appearanceMode === 'manual' && appThemeProp === themeOption.id;
                                                     return (
                                                         <button
                                                             key={themeOption.id}
                                                             onClick={() => {
                                                                 setAppTheme?.(themeOption.id);
-                                                                // Icon theme auto-syncs via useEffect in App.tsx
+                                                                // Explicit icon choices are retained across appearance changes
                                                             }}
                                                             className={`relative flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${isSelected ? themeOption.selectedBorder : 'border-gray-200 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}`}
                                                         >
@@ -2085,31 +2088,6 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     );
                                                 })}
                                             </div>
-
-                                            {/* Auto mode toggle */}
-                                            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                                                <Checkbox
-                                                    checked={appThemeProp === 'auto'}
-                                                    onChange={(v) => {
-                                                        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                                                        if (v) {
-                                                            setAppTheme?.('auto');
-                                                        } else {
-                                                            setAppTheme?.(prefersDark ? 'dark' : 'light');
-                                                        }
-                                                        // Icon theme auto-syncs via useEffect in App.tsx
-                                                    }}
-                                                    label={
-                                                        <div>
-                                                            <p className="font-medium flex items-center gap-2">
-                                                                <Monitor size={14} />
-                                                                {t('settings.autoTheme')}
-                                                            </p>
-                                                            <p className="text-sm text-gray-500">{t('settings.autoThemeDesc')}</p>
-                                                        </div>
-                                                    }
-                                                />
-                                            </div>
                                         </div>
                                     )}
 
@@ -2135,8 +2113,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                         desc: t('settings.iconThemeMinimalDesc'),
                                                     },
                                                 ].map((option) => {
-                                                    const isDarkMode = appThemeProp === 'dark' || appThemeProp === 'tokyo' || appThemeProp === 'cyber' || (appThemeProp === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-                                                    const effectiveTheme = getEffectiveTheme(appThemeProp, isDarkMode);
+                                                    const effectiveTheme = previewTheme;
                                                     const isSelected = iconTheme === option.id;
                                                     const provider = getIconThemeProvider(option.id, effectiveTheme);
                                                     return (

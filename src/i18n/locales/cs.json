@@ -1194,7 +1194,17 @@
             "selectShown": "Vybrat zobrazených {count}",
             "deselectShown": "Zrušit výběr zobrazených {count}",
             "filterShownCount": "zobrazeno: {shown}",
-            "selectedHiddenByFilter": "{count} vybráno, ale skryto filtrem, stále zahrnuto"
+            "selectedHiddenByFilter": "{count} vybráno, ale skryto filtrem, stále zahrnuto",
+            "appearanceMode": "Režim vzhledu",
+            "appearanceManual": "Ručně",
+            "appearanceSchedule": "Plán",
+            "scheduleLocalTime": "Přepínejte motivy podle místního času. Ruční výběr motivu zastaví plán.",
+            "scheduleNightStart": "Začátek noci",
+            "scheduleNightEnd": "Konec noci",
+            "scheduleDayTheme": "Denní motiv",
+            "scheduleNightTheme": "Noční motiv",
+            "scheduleInvalidTime": "Vyberte dva různé platné časy. Poslední platný plán zůstane aktivní.",
+            "scheduleRestoreMode": "Obnovit předchozí režim vzhledu"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Vložit ze schránky",
             "properties": "Vlastnosti",
             "quickLook": "Rychlý náhled",
-            "toggleDualPanel": "Přepnout dvojitý panel"
+            "toggleDualPanel": "Přepnout dvojitý panel",
+            "lockNow": "Zamknout nyní"
         },
         "overwrite": {
             "title": "Soubor již existuje",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Bubliny",
             "enter2FACode": "Dvoufázové ověření",
             "enter2FAHint": "Zadejte 6místný kód z vaší autentizační aplikace",
-            "invalid2FACode": "Neplatný kód 2FA. Zkuste to prosím znovu."
+            "invalid2FACode": "Neplatný kód 2FA. Zkuste to prosím znovu.",
+            "lockFailed": "Zamčení se nezdařilo. Váš účet nebo trezor už mohou být zamčené. Před dalším pokusem zkontrolujte jejich stav.",
+            "lockNotConfigured": "Není k dispozici žádný odemčený účet ani trezor s hlavním heslem, který by bylo možné zamknout.",
+            "lockContextChanged": "Během požadavku se změnil účet nebo nastavení zamykání. Před dalším pokusem zkontrolujte aktuální stav."
         },
         "folderOverwrite": {
             "title": "Složka již existuje",

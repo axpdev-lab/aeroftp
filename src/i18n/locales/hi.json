@@ -1194,7 +1194,17 @@
             "selectShown": "दिखाए गए {count} चुनें",
             "deselectShown": "दिखाए गए {count} का चयन हटाएँ",
             "filterShownCount": "{shown} दिखाए गए",
-            "selectedHiddenByFilter": "{count} चयनित लेकिन फ़िल्टर द्वारा छिपे हैं, फिर भी शामिल हैं"
+            "selectedHiddenByFilter": "{count} चयनित लेकिन फ़िल्टर द्वारा छिपे हैं, फिर भी शामिल हैं",
+            "appearanceMode": "दिखावट मोड",
+            "appearanceManual": "मैन्युअल",
+            "appearanceSchedule": "समय-सारणी",
+            "scheduleLocalTime": "अपने स्थानीय समय के अनुसार थीम बदलें। मैन्युअल रूप से थीम चुनने पर समय-सारणी रुक जाती है।",
+            "scheduleNightStart": "रात शुरू",
+            "scheduleNightEnd": "रात समाप्त",
+            "scheduleDayTheme": "दिन की थीम",
+            "scheduleNightTheme": "रात की थीम",
+            "scheduleInvalidTime": "दो अलग-अलग मान्य समय चुनें। पिछली मान्य समय-सारणी सक्रिय रहेगी।",
+            "scheduleRestoreMode": "पिछला दिखावट मोड बहाल करें"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "क्लिपबोर्ड से पेस्ट करें",
             "properties": "गुण",
             "quickLook": "त्वरित पूर्वावलोकन",
-            "toggleDualPanel": "डुअल पैनल चालू/बंद करें"
+            "toggleDualPanel": "डुअल पैनल चालू/बंद करें",
+            "lockNow": "अभी लॉक करें"
         },
         "overwrite": {
             "title": "फ़ाइल पहले से मौजूद है",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "बुलबुले",
             "enter2FACode": "दो-कारक प्रमाणीकरण",
             "enter2FAHint": "अपने ऑथेंटिकेटर ऐप से 6-अंकों का कोड दर्ज करें",
-            "invalid2FACode": "अमान्य 2FA कोड। कृपया पुनः प्रयास करें।"
+            "invalid2FACode": "अमान्य 2FA कोड। कृपया पुनः प्रयास करें।",
+            "lockFailed": "लॉक करना विफल रहा। आपका खाता या वॉल्ट पहले से लॉक हो सकता है। फिर कोशिश करने से पहले उनकी स्थिति जाँचें।",
+            "lockNotConfigured": "लॉक करने के लिए कोई अनलॉक किया गया खाता या मास्टर पासवर्ड वाला वॉल्ट उपलब्ध नहीं है।",
+            "lockContextChanged": "अनुरोध के दौरान खाता या लॉक सेटिंग्स बदल गईं। फिर कोशिश करने से पहले मौजूदा स्थिति जाँचें।"
         },
         "folderOverwrite": {
             "title": "फ़ोल्डर पहले से मौजूद है",

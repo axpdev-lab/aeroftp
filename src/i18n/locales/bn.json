@@ -1194,7 +1194,17 @@
             "selectShown": "দেখানো {count}টি নির্বাচন করুন",
             "deselectShown": "দেখানো {count}টি অনির্বাচিত করুন",
             "filterShownCount": "{shown}টি দেখানো হচ্ছে",
-            "selectedHiddenByFilter": "{count}টি নির্বাচিত কিন্তু ফিল্টারে লুকানো, তবুও অন্তর্ভুক্ত"
+            "selectedHiddenByFilter": "{count}টি নির্বাচিত কিন্তু ফিল্টারে লুকানো, তবুও অন্তর্ভুক্ত",
+            "appearanceMode": "চেহারার মোড",
+            "appearanceManual": "ম্যানুয়াল",
+            "appearanceSchedule": "সময়সূচি",
+            "scheduleLocalTime": "আপনার স্থানীয় সময় অনুযায়ী থিম বদলান। ম্যানুয়ালি থিম বেছে নিলে সময়সূচি বন্ধ হয়ে যায়।",
+            "scheduleNightStart": "রাত শুরু",
+            "scheduleNightEnd": "রাত শেষ",
+            "scheduleDayTheme": "দিনের থিম",
+            "scheduleNightTheme": "রাতের থিম",
+            "scheduleInvalidTime": "দুটি ভিন্ন বৈধ সময় বেছে নিন। সর্বশেষ বৈধ সময়সূচি সক্রিয় থাকবে।",
+            "scheduleRestoreMode": "আগের চেহারার মোড পুনরুদ্ধার করুন"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "ক্লিপবোর্ড থেকে পেস্ট করুন",
             "properties": "বৈশিষ্ট্য",
             "quickLook": "দ্রুত প্রিভিউ",
-            "toggleDualPanel": "ডুয়াল প্যানেল চালু/বন্ধ করুন"
+            "toggleDualPanel": "ডুয়াল প্যানেল চালু/বন্ধ করুন",
+            "lockNow": "এখনই লক করুন"
         },
         "overwrite": {
             "title": "ফাইল ইতিমধ্যে বিদ্যমান",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "বাবলস",
             "enter2FACode": "দুই-ধাপের প্রমাণীকরণ",
             "enter2FAHint": "আপনার অথেন্টিকেটর অ্যাপ থেকে ৬-সংখ্যার কোডটি লিখুন",
-            "invalid2FACode": "অবৈধ 2FA কোড। অনুগ্রহ করে আবার চেষ্টা করুন।"
+            "invalid2FACode": "অবৈধ 2FA কোড। অনুগ্রহ করে আবার চেষ্টা করুন।",
+            "lockFailed": "লক করা ব্যর্থ হয়েছে। আপনার অ্যাকাউন্ট বা ভল্ট ইতিমধ্যেই লক হয়ে থাকতে পারে। আবার চেষ্টা করার আগে সেগুলোর অবস্থা পরীক্ষা করুন।",
+            "lockNotConfigured": "লক করার জন্য কোনো আনলক করা অ্যাকাউন্ট বা মাস্টার পাসওয়ার্ডযুক্ত ভল্ট নেই।",
+            "lockContextChanged": "অনুরোধ চলাকালীন অ্যাকাউন্ট বা লকের সেটিংস বদলে গেছে। আবার চেষ্টা করার আগে বর্তমান অবস্থা পরীক্ষা করুন।"
         },
         "folderOverwrite": {
             "title": "ফোল্ডার বিদ্যমান",

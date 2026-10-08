@@ -1194,7 +1194,17 @@
             "selectShown": "Selectează cele {count} afișate",
             "deselectShown": "Deselectează cele {count} afișate",
             "filterShownCount": "{shown} afișate",
-            "selectedHiddenByFilter": "{count} selectate, dar ascunse de filtru, încă incluse"
+            "selectedHiddenByFilter": "{count} selectate, dar ascunse de filtru, încă incluse",
+            "appearanceMode": "Mod de aspect",
+            "appearanceManual": "Manual",
+            "appearanceSchedule": "Programare",
+            "scheduleLocalTime": "Schimbați temele în funcție de ora locală. Alegerea manuală a unei teme oprește programarea.",
+            "scheduleNightStart": "Începutul nopții",
+            "scheduleNightEnd": "Sfârșitul nopții",
+            "scheduleDayTheme": "Temă de zi",
+            "scheduleNightTheme": "Temă de noapte",
+            "scheduleInvalidTime": "Alegeți două ore valide diferite. Ultima programare validă rămâne activă.",
+            "scheduleRestoreMode": "Restabilește modul de aspect anterior"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Lipește din clipboard",
             "properties": "Proprietăți",
             "quickLook": "Previzualizare rapidă",
-            "toggleDualPanel": "Activează/dezactivează panoul dublu"
+            "toggleDualPanel": "Activează/dezactivează panoul dublu",
+            "lockNow": "Blochează acum"
         },
         "overwrite": {
             "title": "Fișierul există deja",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Bule",
             "enter2FACode": "Autentificare cu doi factori",
             "enter2FAHint": "Introduceți codul din 6 cifre din aplicația de autentificare",
-            "invalid2FACode": "Cod 2FA invalid. Vă rugăm să încercați din nou."
+            "invalid2FACode": "Cod 2FA invalid. Vă rugăm să încercați din nou.",
+            "lockFailed": "Blocarea a eșuat. Contul sau seiful dumneavoastră ar putea fi deja blocate. Verificați starea lor înainte de a încerca din nou.",
+            "lockNotConfigured": "Nu există niciun cont deblocat sau seif cu parolă principală disponibil pentru blocare.",
+            "lockContextChanged": "Contul sau setările de blocare s-au schimbat în timpul solicitării. Verificați starea actuală înainte de a încerca din nou."
         },
         "folderOverwrite": {
             "title": "Dosarul există deja",

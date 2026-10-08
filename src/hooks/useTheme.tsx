@@ -10,7 +10,11 @@
  * - DevTools / Monaco Editor / AIChat
  */
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { useAppearance } from './useAppearance';
+import { applyThemeClasses, getEffectiveTheme, isDarkTheme, type Theme, type EffectiveTheme } from '../utils/appearance';
+export { getEffectiveTheme } from '../utils/appearance';
+export type { Theme, EffectiveTheme } from '../utils/appearance';
 import { useTranslation } from '../i18n';
 import { Sun, Moon, Monitor, MoonStar, Leaf, Snowflake, Flame } from 'lucide-react';
 
@@ -37,21 +41,6 @@ const HorseIcon: React.FC<{ size?: number; className?: string }> = ({ size = 18,
         </g>
     </svg>
 );
-
-export type Theme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redhorse' | 'auto';
-
-/** Resolved theme (no 'auto') */
-export type EffectiveTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redhorse';
-
-/**
- * Get the effective theme (resolving 'auto' to actual theme)
- */
-export const getEffectiveTheme = (theme: Theme, prefersDark: boolean): EffectiveTheme => {
-    if (theme === 'auto') {
-        return prefersDark ? 'dark' : 'light';
-    }
-    return theme;
-};
 
 /**
  * Map app theme to Monaco editor theme
@@ -84,80 +73,26 @@ export const getLogTheme = (theme: Theme, prefersDark: boolean): EffectiveTheme 
  * Persists theme preference to localStorage
  * Supports auto mode that follows system preference
  */
-export const useTheme = () => {
-    const [theme, setTheme] = useState<Theme>(() => {
-        const saved = localStorage.getItem('aeroftp-theme') as Theme;
-        return saved || 'auto';
-    });
-    const [isDark, setIsDark] = useState(() => {
-        const saved = (localStorage.getItem('aeroftp-theme') as Theme) || 'auto';
-        if (saved === 'auto') {
-            return window.matchMedia('(prefers-color-scheme: dark)').matches;
-        }
-        return saved === 'dark' || saved === 'truedark' || saved === 'tokyo' || saved === 'cyber' || saved === 'green' || saved === 'redhorse';
-    });
-
-    useEffect(() => {
-        const updateDarkMode = () => {
-            const nextIsDark =
-                theme === 'auto'
-                    ? window.matchMedia('(prefers-color-scheme: dark)').matches
-                    : (theme === 'dark' || theme === 'truedark' || theme === 'tokyo' || theme === 'cyber' || theme === 'green' || theme === 'redhorse');
-
-            setIsDark(prev => (prev === nextIsDark ? prev : nextIsDark));
-        };
-        updateDarkMode();
-        localStorage.setItem('aeroftp-theme', theme);
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        mediaQuery.addEventListener('change', updateDarkMode);
-        return () => mediaQuery.removeEventListener('change', updateDarkMode);
-    }, [theme]);
-
-    // Re-read theme from localStorage when a keystore import restores it.
-    // The hook seeds state only once on mount, so a write into
-    // localStorage by `applyLocalStorage` would otherwise stay invisible
-    // until the next page reload (issue #214 C3 pt.E2).
-    useEffect(() => {
-        const reload = () => {
-            const saved = localStorage.getItem('aeroftp-theme') as Theme | null;
-            if (saved) {
-                setTheme(prev => (prev === saved ? prev : saved));
-            }
-        };
-        window.addEventListener('aeroftp-localstorage-restored', reload);
-        return () => window.removeEventListener('aeroftp-localstorage-restored', reload);
-    }, []);
-
+export const useTheme = (options?: { ipcEvents?: boolean }) => {
+    const appearance = useAppearance(options);
+    const { effectiveTheme } = appearance;
     useEffect(() => {
         const html = document.documentElement;
-        // Suppress transitions cascade-wide for one frame so WebKit can repaint
-        // the new theme in a single pass instead of animating hundreds of color
-        // properties. Without this guard, switching theme on a large file list
-        // pegs the CPU and spins the fan.
         html.classList.add('is-changing-theme');
-        html.classList.toggle('dark', isDark);
-        html.classList.toggle('truedark', theme === 'truedark');
-        html.classList.toggle('tokyo', theme === 'tokyo');
-        html.classList.toggle('cyber', theme === 'cyber');
-        html.classList.toggle('green', theme === 'green');
-        html.classList.toggle('ice', theme === 'ice');
-        html.classList.toggle('redhorse', theme === 'redhorse');
-        // Force a layout flush so the no-transition class actually takes effect
-        // before paint, then remove it on the next frame.
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-        html.offsetHeight;
-        const raf = requestAnimationFrame(() => {
+        applyThemeClasses(effectiveTheme);
+        void html.offsetHeight;
+        const raf = requestAnimationFrame(() => html.classList.remove('is-changing-theme'));
+        return () => {
+            cancelAnimationFrame(raf);
             html.classList.remove('is-changing-theme');
-        });
-        return () => cancelAnimationFrame(raf);
-    }, [isDark, theme]);
-
-    return { theme, setTheme, isDark };
+        };
+    }, [effectiveTheme]);
+    return { ...appearance, isDark: isDarkTheme(effectiveTheme) };
 };
 
 /**
  * Theme Toggle Button Component
- * Cycles through: light -> dark -> truedark -> tokyo -> cyber -> green -> auto
+ * Explicit palette cycling stops automated appearance.
  */
 interface ThemeToggleProps {
     theme: Theme;
@@ -168,7 +103,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({ theme, setTheme }) => 
     const t = useTranslation();
 
     const nextTheme = (): Theme => {
-        const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'ice', 'redhorse', 'auto'];
+        const order: Theme[] = ['light', 'dark', 'truedark', 'tokyo', 'cyber', 'green', 'ice', 'redhorse'];
         return order[(order.indexOf(theme) + 1) % order.length];
     };
 

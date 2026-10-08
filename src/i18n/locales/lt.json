@@ -1194,7 +1194,17 @@
             "selectShown": "Pažymėti rodomus {count}",
             "deselectShown": "Panaikinti rodomų {count} žymėjimą",
             "filterShownCount": "rodoma: {shown}",
-            "selectedHiddenByFilter": "{count} pažymėta, bet paslėpta filtro, vis tiek įtraukta"
+            "selectedHiddenByFilter": "{count} pažymėta, bet paslėpta filtro, vis tiek įtraukta",
+            "appearanceMode": "Išvaizdos režimas",
+            "appearanceManual": "Rankinis",
+            "appearanceSchedule": "Tvarkaraštis",
+            "scheduleLocalTime": "Keiskite temas pagal vietos laiką. Pasirinkus temą rankiniu būdu, tvarkaraštis sustabdomas.",
+            "scheduleNightStart": "Nakties pradžia",
+            "scheduleNightEnd": "Nakties pabaiga",
+            "scheduleDayTheme": "Dienos tema",
+            "scheduleNightTheme": "Nakties tema",
+            "scheduleInvalidTime": "Pasirinkite du skirtingus galiojančius laikus. Paskutinis galiojantis tvarkaraštis lieka aktyvus.",
+            "scheduleRestoreMode": "Atkurti ankstesnį išvaizdos režimą"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2027,7 +2037,8 @@
             "pasteFiles": "Įklijuoti iš iškarpinės",
             "properties": "Savybės",
             "quickLook": "Greita peržiūra",
-            "toggleDualPanel": "Įjungti/išjungti dvigubą skydelį"
+            "toggleDualPanel": "Įjungti/išjungti dvigubą skydelį",
+            "lockNow": "Užrakinti dabar"
         },
         "overwrite": {
             "title": "Failas jau egzistuoja",
@@ -3464,7 +3475,10 @@
             "patternBubbles": "Burbulai",
             "enter2FACode": "Dviejų veiksnių autentifikacija",
             "enter2FAHint": "Įveskite 6 skaitmenų kodą iš savo autentifikavimo programėlės",
-            "invalid2FACode": "Neteisingas 2FA kodas. Bandykite dar kartą."
+            "invalid2FACode": "Neteisingas 2FA kodas. Bandykite dar kartą.",
+            "lockFailed": "Užrakinti nepavyko. Jūsų paskyra arba saugykla jau gali būti užrakinta. Prieš bandydami dar kartą patikrinkite jų būseną.",
+            "lockNotConfigured": "Nėra atrakintos paskyros ar saugyklos su pagrindiniu slaptažodžiu, kurią būtų galima užrakinti.",
+            "lockContextChanged": "Užklausos metu pasikeitė paskyra arba užrakinimo nustatymai. Prieš bandydami dar kartą patikrinkite dabartinę būseną."
         },
         "folderOverwrite": {
             "title": "Aplankas jau egzistuoja",
