@@ -386,7 +386,7 @@ pub async fn unlock_overlay_keys(
                             "Cannot read AeroCrypt overlay config: no overlay at {config_path}"
                         ))
                     }
-                    Err(DefaultSaltReopenError::Refused(e)) => return Err(e),
+                    Err(e) => return Err(e.message(scope)),
                 }
             } else {
                 return Err(format!(

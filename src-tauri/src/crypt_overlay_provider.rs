@@ -1876,14 +1876,38 @@ fn local_headerless_config_from_params(
     Ok(Some(config_json))
 }
 
-/// Why a default-salt vault could not be rebuilt from its factors.
+/// Why a default-salt vault could not be rebuilt from its factors. Nothing is
+/// written in any of these cases.
 pub enum DefaultSaltReopenError {
     /// The scope holds nothing the password can be checked against: it is empty
     /// or does not exist yet. A caller allowed to create a vault may do so; any
     /// other caller reports that there is no vault.
     NothingToVerify,
-    /// Refused, with the reason. Nothing was written.
+    /// No name in the scope decrypts with the derived key: a wrong password (or
+    /// keyfile), or a vault that never used the default salt.
+    WrongKey(String),
+    /// The scope could not be listed, so its contents are unknown.
+    ListingFailed(ProviderError),
+    /// Refused for another reason: a marker exists that the probe missed, or
+    /// the config could not be built.
     Refused(String),
+}
+
+impl DefaultSaltReopenError {
+    /// The message for a caller that reports a refusal as text.
+    /// `NothingToVerify` is not a refusal and has no message of its own.
+    pub fn message(&self, scope: &str) -> String {
+        match self {
+            Self::NothingToVerify => {
+                format!("Cannot read AeroCrypt overlay config: no overlay at {scope}")
+            }
+            Self::WrongKey(m) | Self::Refused(m) => m.clone(),
+            Self::ListingFailed(e) => format!(
+                "Cannot rebuild the default-salt AeroCrypt vault at {scope}: its contents could \
+                 not be listed ({e})."
+            ),
+        }
+    }
 }
 
 /// Rebuild the public config of a default-salt AeroCrypt v3 vault whose marker
@@ -1897,14 +1921,15 @@ pub enum DefaultSaltReopenError {
 /// and are ignored. A wrong password, or a vault that never used the default
 /// salt, decrypts none, and the rebuild is refused.
 ///
-/// Fail-closed on everything it cannot see: a listing error is a refusal, never
-/// "empty", and a scope that LISTS a marker is refused too, because reaching
-/// here means that marker could not be read, and a rebuild must never be
-/// written over a vault's real marker.
+/// Fail-closed on everything it cannot see, because a rebuild must never be
+/// written over a vault's real marker. A listing error is a refusal, never
+/// "empty". Reaching here means the marker probe said "absent", which an
+/// `exists()` error also reports, and a plain listing can hide dotfiles (FTP
+/// `LIST` without MLSD), so a marker that is listed, or that still downloads,
+/// refuses the rebuild.
 ///
-/// Returns the parsed config, the master key and the config text, which is
-/// [`overlay::default_salt_config_v3`] of the key: the same bytes the create
-/// wrote for every default-salt vault created with a derived vault id.
+/// Returns the parsed config, the master key and the config text from
+/// [`overlay::default_salt_config_v3`], under a new vault id.
 pub async fn reopen_default_salt_vault(
     provider: &mut dyn StorageProvider,
     scope: &str,
@@ -1916,19 +1941,24 @@ pub async fn reopen_default_salt_vault(
     let entries = match provider.list(list_dir).await {
         Ok(entries) => entries,
         Err(ProviderError::NotFound(_)) => return Err(DefaultSaltReopenError::NothingToVerify),
-        Err(e) => {
-            return Err(DefaultSaltReopenError::Refused(format!(
-                "Cannot rebuild the default-salt AeroCrypt vault at {list_dir}: its contents \
-                 could not be listed ({e})."
-            )))
-        }
+        Err(e) => return Err(DefaultSaltReopenError::ListingFailed(e)),
     };
-    if entries
+    let marker_listed = entries
         .iter()
-        .any(|e| e.name == AEROCRYPT_CONFIG_NAME || e.name == overlay::CRYPT_CONFIG_LEGACY_NAME)
-    {
+        .any(|e| e.name == AEROCRYPT_CONFIG_NAME || e.name == overlay::CRYPT_CONFIG_LEGACY_NAME);
+    let mut marker_downloads = false;
+    for name in [AEROCRYPT_CONFIG_NAME, overlay::CRYPT_CONFIG_LEGACY_NAME] {
+        if marker_listed || marker_downloads {
+            break;
+        }
+        marker_downloads = provider
+            .download_to_bytes(&format!("{scope}/{name}"))
+            .await
+            .is_ok();
+    }
+    if marker_listed || marker_downloads {
         return Err(DefaultSaltReopenError::Refused(format!(
-            "The AeroCrypt marker at {list_dir} is listed but could not be read. Refusing to \
+            "An AeroCrypt marker exists at {list_dir} but could not be probed. Refusing to \
              rebuild the vault from its password over a marker that exists; retry when the \
              remote answers normally."
         )));
@@ -1949,7 +1979,7 @@ pub async fn reopen_default_salt_vault(
         } else {
             "this password"
         };
-        return Err(DefaultSaltReopenError::Refused(format!(
+        return Err(DefaultSaltReopenError::WrongKey(format!(
             "None of the {} names at {list_dir} decrypts with {factors} and the AeroCrypt \
              default salt, so it is not the vault they were written with. Nothing was written.",
             entries.len()
@@ -1985,7 +2015,7 @@ async fn reopen_default_salt_if_bound(
     {
         Ok(reopened) => Ok(Some(reopened)),
         Err(DefaultSaltReopenError::NothingToVerify) => Ok(None),
-        Err(DefaultSaltReopenError::Refused(e)) => Err(e),
+        Err(e) => Err(e.message(&params.remote_scope)),
     }
 }
 
@@ -1993,8 +2023,8 @@ async fn reopen_default_salt_if_bound(
 /// Public, no secrets.
 pub const DEFAULT_SALT_REOPENED_WARNING: &str = "This default-salt AeroCrypt vault had no marker \
 and no local copy of its configuration, so it was rebuilt from the password after names in the \
-folder decrypted with it. A vault created by an AeroFTP release that gave default-salt vaults a \
-random vault ID now has a new one: if kit verification reports a mismatch, save a new Recovery Kit.";
+folder decrypted with it. The rebuilt configuration has a new vault ID: save a new Recovery Kit, \
+since an earlier one no longer matches.";
 
 fn derive_aerocrypt_overlay_keys_from_config(
     config_json: &str,
@@ -2745,30 +2775,32 @@ async fn unlock_overlay_keys_encrypting(
                 } else {
                     overlay::random_salt_v3()
                 };
+                let salt_mode = if use_default {
+                    overlay::SaltMode::DefaultV1
+                } else {
+                    overlay::SaltMode::PerVault
+                };
                 let tmp = OverlayConfig::v3_bootstrap(salt);
                 let master_key =
                     overlay::derive_master_key_with_keyfile(&tmp, password, keyfile_digest)
                         .map_err(|e| format!("AeroCrypt key derivation failed: {e}"))?;
-                // With a keyfile the config records kdf_inputs + a vault_id and
-                // omits keyfile_hint by default (F5), mirroring the CLI
-                // `cmd_crypt_init`. A default-salt vault derives everything from
-                // the key, so its password alone rebuilds this exact config.
-                let json = if use_default {
-                    overlay::default_salt_config_v3(&master_key, keyfile_digest.is_some())
-                } else if keyfile_digest.is_some() {
+                // With a keyfile the config records kdf_inputs + a fresh vault_id
+                // and omits keyfile_hint by default (F5), mirroring the CLI
+                // `cmd_crypt_init`.
+                let json = if keyfile_digest.is_some() {
                     overlay::init_config_v3_with_keyfile(
                         &salt,
                         &master_key,
                         &overlay::random_vault_id(),
                         None,
-                        overlay::SaltMode::PerVault,
+                        salt_mode,
                     )
                 } else {
                     overlay::init_config_v3_with_vault_id(
                         &salt,
                         &master_key,
                         &overlay::random_vault_id(),
-                        overlay::SaltMode::PerVault,
+                        salt_mode,
                     )
                 }
                 .map_err(|e| format!("Cannot build AeroCrypt overlay config: {e}"))?;
@@ -3709,6 +3741,9 @@ mod tests {
         files: Mutex<HashMap<String, Vec<u8>>>,
         dirs: Mutex<Vec<String>>,
         cwd: Mutex<String>,
+        /// Behave like an FTP server without MLSD whose `LIST -a` failed:
+        /// `exists()` and `list()` miss dotfiles, a download still finds them.
+        hide_dotfiles: bool,
     }
 
     impl MemProvider {
@@ -3717,7 +3752,11 @@ mod tests {
                 files: Mutex::new(HashMap::new()),
                 dirs: Mutex::new(Vec::new()),
                 cwd: Mutex::new("/".to_string()),
+                hide_dotfiles: false,
             }
+        }
+        fn hidden(&self, path: &str) -> bool {
+            self.hide_dotfiles && path.rsplit('/').next().is_some_and(|n| n.starts_with('.'))
         }
         /// Resolve a relative wire path against the current dir, like a real
         /// session-oriented provider (FTP/SFTP) does. Absolute paths pass
@@ -3786,7 +3825,7 @@ mod tests {
             let files = self.files.lock().unwrap();
             for (p, data) in files.iter() {
                 if let Some(rest) = p.strip_prefix(&prefix) {
-                    if !rest.contains('/') {
+                    if !rest.contains('/') && !self.hidden(p) {
                         out.push(RemoteEntry {
                             name: rest.to_string(),
                             path: p.clone(),
@@ -3954,6 +3993,9 @@ mod tests {
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
             let p = self.resolve(p);
+            if self.hidden(&p) {
+                return Ok(false);
+            }
             Ok(self.files.lock().unwrap().contains_key(&p)
                 || self.dirs.lock().unwrap().contains(&p))
         }
@@ -4788,16 +4830,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn default_salt_create_writes_the_config_the_password_rebuilds() {
-        // The create must already write the deterministic config, or a rebuild
-        // could only ever produce a different vault id than the one on record.
+    async fn default_salt_create_writes_a_config_the_password_alone_opens() {
+        // The backend half of the #276 report: the create must use the public
+        // salt, so the key the password alone derives is the vault's key.
         let mut mem = MemProvider::new();
         let marker = default_salt_vault_without_marker(&mut mem, "/Vault").await;
         let key = overlay::derive_default_salt_master_key(DEFAULT_SALT_PW, None).unwrap();
-        assert_eq!(
-            marker,
-            overlay::default_salt_config_v3(&key, false).unwrap()
-        );
+        let cfg = overlay::parse_config(&marker).unwrap();
+        overlay::verify_config_mac(&cfg, &key).unwrap();
         assert!(marker.contains("salt_mode\tdefault-v1"));
     }
 
@@ -4829,9 +4869,14 @@ mod tests {
             "a headed binding must get its marker back"
         );
         let healed = String::from_utf8(mem.raw_bytes("/Vault/.aerocrypt.tsv").unwrap()).unwrap();
-        assert_eq!(
-            healed, original,
-            "the rebuilt marker must be the one the create wrote"
+        let healed_cfg = overlay::parse_config(&healed).unwrap();
+        overlay::verify_config_mac(&healed_cfg, &key).unwrap();
+        assert!(healed.contains("salt_mode\tdefault-v1"));
+        // A new random id: one derived from the key would make every kit and
+        // screenshot that shows it a password verifier.
+        assert_ne!(
+            healed_cfg.vault_id(),
+            overlay::parse_config(&original).unwrap().vault_id()
         );
         assert!(outcome
             .warning
@@ -5049,9 +5094,43 @@ mod tests {
         mem.seed_raw_file("/Vault/.aerocrypt.tsv", b"unreadable");
         match reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None).await {
             Err(DefaultSaltReopenError::Refused(e)) => assert!(e.contains("marker"), "{e}"),
-            Err(DefaultSaltReopenError::NothingToVerify) => panic!("a listed marker is not empty"),
+            Err(_) => panic!("refused for the wrong reason"),
             Ok(_) => panic!("must not rebuild over a listed marker"),
         }
+    }
+
+    #[tokio::test]
+    async fn default_salt_rebuild_never_overwrites_a_marker_the_probes_miss() {
+        // FTP without MLSD: a plain LIST hides dotfiles, and a failed `LIST -a`
+        // makes `exists()` answer false. The marker is there and readable, the
+        // names decrypt, and a headed heal would replace it: the download probe
+        // has to stop the rebuild before anything is written.
+        let mut mem = MemProvider::new();
+        default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        let key = overlay::derive_default_salt_master_key(DEFAULT_SALT_PW, None).unwrap();
+        let real = overlay::default_salt_config_v3(&key, false).unwrap();
+        mem.seed_raw_file("/Vault/.aerocrypt.tsv", real.as_bytes());
+        mem.hide_dotfiles = true;
+
+        let err = unlock_err(
+            unlock_overlay_keys_encrypting(
+                &mut mem,
+                &default_salt_binding("/Vault", true),
+                DEFAULT_SALT_PW,
+                "",
+                None,
+                false,
+                true,
+            )
+            .await,
+            "a marker the probes miss must not be rebuilt over",
+        );
+        assert!(err.contains("marker exists"), "{err}");
+        assert_eq!(
+            mem.raw_bytes("/Vault/.aerocrypt.tsv").unwrap(),
+            real.as_bytes(),
+            "the real marker must be left as it was"
+        );
     }
 
     #[tokio::test]

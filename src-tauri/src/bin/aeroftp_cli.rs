@@ -5468,8 +5468,8 @@ enum CryptCommands {
         keyfile: Option<String>,
         /// The overlay uses the AeroCrypt default salt. Recorded on the binding,
         /// so a connect that finds neither the remote marker nor the keystore
-        /// config rebuilds them from the stored password. Kept when the
-        /// binding already records it.
+        /// config rebuilds them from the stored password. A re-bind of the same
+        /// scope keeps it when the binding already records it.
         #[arg(long)]
         use_default_salt: bool,
     },
@@ -56370,9 +56370,17 @@ async fn load_or_reopen_crypt_config(
             print_error(format, missing_message, 5);
             Err(5)
         }
-        Err(DefaultSaltReopenError::Refused(e)) => {
-            print_error(format, &e, 6);
-            Err(6)
+        Err(e) => {
+            // A key no name accepts is a wrong factor (6, like a config MAC
+            // mismatch); a listing error keeps the provider's own code; a marker
+            // that exists but could not be probed is a server-side problem (10).
+            let code = match &e {
+                DefaultSaltReopenError::WrongKey(_) => 6,
+                DefaultSaltReopenError::ListingFailed(err) => provider_error_to_exit_code(err),
+                _ => 10,
+            };
+            print_error(format, &e.message(base_path), code);
+            Err(code)
         }
     }
 }
@@ -57996,17 +58004,24 @@ async fn cmd_crypt_bind(
         return 5;
     }
     let scope = resolve_remote_path(&scope);
-    // A re-bind keeps the intents the binding already records, so re-binding
-    // to change the password or the scope does not silently turn a headed vault
-    // headerless (no marker heal) or lose the default-salt reopen.
-    let existing = profile_overlay_binding(cli, &store, &profile_id);
-    let with_header = existing
+    // A re-bind of the SAME scope (to change the password, say) keeps the
+    // intents the binding records for the vault there, so it does not silently
+    // turn a headed vault headerless or lose the default-salt reopen. A new
+    // scope is another folder: nothing carries over, or a connect could heal
+    // the previous vault's marker into it or create a default-salt vault the
+    // user never asked for.
+    let same_scope = profile_overlay_binding(cli, &store, &profile_id).filter(|b| {
+        b.get("remoteScope")
+            .and_then(|v| v.as_str())
+            .is_some_and(|prev| prev.trim_end_matches('/') == scope.trim_end_matches('/'))
+    });
+    let with_header = same_scope
         .as_ref()
         .and_then(|b| b.get("withHeader"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let use_default_salt = use_default_salt
-        || existing
+        || same_scope
             .as_ref()
             .is_some_and(ftp_client_gui_lib::crypt_overlay_provider::overlay_uses_default_salt);
     if let Err(e) = bind_crypt_overlay_to_profile(
@@ -58132,6 +58147,11 @@ async fn cmd_crypt_init(
             return 5;
         }
     }
+    let salt_mode = if use_default_salt {
+        overlay::SaltMode::DefaultV1
+    } else {
+        overlay::SaltMode::PerVault
+    };
     let salt = if use_default_salt {
         ftp_client_gui_lib::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1
     } else {
@@ -58145,27 +58165,10 @@ async fn cmd_crypt_init(
             return 6;
         }
     };
-    // A default-salt vault derives its whole config from the key, so the
-    // password alone rebuilds it later (`crypt ls/get/put --use-default-salt`,
-    // a profile bound with the default salt).
-    let config_json = if use_default_salt {
-        match overlay::default_salt_config_v3(&master_key, keyfile_digest.is_some()) {
-            Ok(j) => j,
-            Err(e) => {
-                print_error(format, &format!("Failed to build crypt config: {}", e), 5);
-                return 5;
-            }
-        }
-    } else if keyfile_digest.is_some() {
+    let config_json = if keyfile_digest.is_some() {
         // F5: no keyfile_hint on the remote by default.
         let vault_id = overlay::random_vault_id();
-        match overlay::init_config_v3_with_keyfile(
-            &salt,
-            &master_key,
-            &vault_id,
-            None,
-            overlay::SaltMode::PerVault,
-        ) {
+        match overlay::init_config_v3_with_keyfile(&salt, &master_key, &vault_id, None, salt_mode) {
             Ok(j) => j,
             Err(e) => {
                 print_error(format, &format!("Failed to build crypt config: {}", e), 5);
@@ -58177,7 +58180,7 @@ async fn cmd_crypt_init(
             &salt,
             &master_key,
             &overlay::random_vault_id(),
-            overlay::SaltMode::PerVault,
+            salt_mode,
         ) {
             Ok(j) => j,
             Err(e) => {
