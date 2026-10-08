@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "delvist: scanningsgrænse nået",
             "usedScanUnreadable": "delvist, ulæselige mapper: {count}",
             "usedScanFailed": "Scanning af brugt lagerplads mislykkedes",
-            "usedScanEmpty": "Scanningen af {path} fandt ingen filer; det cachelagrede tal blev bevaret. Tjek stien eller serverens understøttelse af rekursiv visning."
+            "usedScanEmpty": "Scanningen af {path} fandt ingen filer; det cachelagrede tal blev bevaret. Tjek stien eller serverens understøttelse af rekursiv visning.",
+            "filenBridgeAccountTotal": "Filen Desktop rapporterer ikke din kontos samlede forbrug her: det viste forbrug er summen af filerne under denne sti. Den native Filen-forbindelse viser kontoens samlede forbrug med det samme."
         },
         "dialogs": {
             "confirmTitle": "Bekræft",

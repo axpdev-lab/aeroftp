@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "częściowo: osiągnięto limit skanowania",
             "usedScanUnreadable": "częściowo, nieczytelne foldery: {count}",
             "usedScanFailed": "Skanowanie zajętego miejsca nie powiodło się",
-            "usedScanEmpty": "Skan ścieżki {path} nie znalazł plików; zachowano wartość z pamięci podręcznej. Sprawdź ścieżkę lub obsługę listowania rekurencyjnego przez serwer."
+            "usedScanEmpty": "Skan ścieżki {path} nie znalazł plików; zachowano wartość z pamięci podręcznej. Sprawdź ścieżkę lub obsługę listowania rekurencyjnego przez serwer.",
+            "filenBridgeAccountTotal": "Filen Desktop nie podaje tutaj łącznego zużycia konta: wyświetlana wartość to suma plików w tej ścieżce. Natywne połączenie z Filen od razu pokazuje łączne zużycie konta."
         },
         "dialogs": {
             "confirmTitle": "Potwierdź",

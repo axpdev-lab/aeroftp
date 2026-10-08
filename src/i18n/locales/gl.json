@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "parcial: alcanzouse o límite de escaneo",
             "usedScanUnreadable": "parcial, cartafoles non lexibles: {count}",
             "usedScanFailed": "O escaneo do almacenamento usado fallou",
-            "usedScanEmpty": "O escaneo de {path} non atopou ficheiros; mantívose o valor en caché. Comprobe a ruta ou o soporte de listaxe recursiva do servidor."
+            "usedScanEmpty": "O escaneo de {path} non atopou ficheiros; mantívose o valor en caché. Comprobe a ruta ou o soporte de listaxe recursiva do servidor.",
+            "filenBridgeAccountTotal": "Filen Desktop non informa aquí do total da túa conta: a cifra usada é a suma dos ficheiros baixo esta ruta. A conexión nativa de Filen amosa o total da conta ao instante."
         },
         "dialogs": {
             "confirmTitle": "Confirmar",

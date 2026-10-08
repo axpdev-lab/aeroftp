@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "osaline: skannimispiir saavutatud",
             "usedScanUnreadable": "osaline, loetamatud kaustad: {count}",
             "usedScanFailed": "Kasutatud salvestusruumi skannimine ebaõnnestus",
-            "usedScanEmpty": "Tee {path} skannimisel ei leitud faile; vahemällu salvestatud väärtus säilitati. Kontrollige teed või serveri rekursiivse loendamise tuge."
+            "usedScanEmpty": "Tee {path} skannimisel ei leitud faile; vahemällu salvestatud väärtus säilitati. Kontrollige teed või serveri rekursiivse loendamise tuge.",
+            "filenBridgeAccountTotal": "Filen Desktop ei teata siin teie konto kogukasutust: kuvatud kasutus on selle tee all olevate failide summa. Natiivne Filen-ühendus näitab konto kogukasutust kohe."
         },
         "dialogs": {
             "confirmTitle": "Kinnita",

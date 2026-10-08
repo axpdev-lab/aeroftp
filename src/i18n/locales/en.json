@@ -3955,6 +3955,7 @@
             "secureConnectionTitle": "Encrypted connection via {protocol}",
             "usedNoCap": "used (no quota cap)",
             "usedScanAction": "Calculate used storage",
+            "filenBridgeAccountTotal": "Filen Desktop does not report your account total here: the used figure is the sum of the files under this path. The native Filen connection shows the account total at once.",
             "usedScanHint": "Recursively scan the tree to compute used space. Combined with a manual total it shows used/total/%. Runs on demand or when the saved profile has auto-scan enabled.",
             "usedScanRunning": "Scanning used storage...",
             "usedScanDone": "Used storage calculated",

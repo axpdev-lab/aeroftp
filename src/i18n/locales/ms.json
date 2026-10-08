@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "separa: had imbasan dicapai",
             "usedScanUnreadable": "separa, folder tidak boleh dibaca: {count}",
             "usedScanFailed": "Imbasan storan digunakan gagal",
-            "usedScanEmpty": "Imbasan {path} tidak menjumpai fail; nilai dalam cache dikekalkan. Semak laluan atau sokongan penyenaraian rekursif pelayan."
+            "usedScanEmpty": "Imbasan {path} tidak menjumpai fail; nilai dalam cache dikekalkan. Semak laluan atau sokongan penyenaraian rekursif pelayan.",
+            "filenBridgeAccountTotal": "Filen Desktop tidak melaporkan jumlah akaun anda di sini: angka yang digunakan ialah jumlah fail di bawah laluan ini. Sambungan Filen asli memaparkan jumlah akaun dengan serta-merta."
         },
         "dialogs": {
             "confirmTitle": "Sahkan",

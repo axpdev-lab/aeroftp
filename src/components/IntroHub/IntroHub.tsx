@@ -246,8 +246,6 @@ export function IntroHub(props: IntroHubProps) {
                     region: presetDefaultS3Region(providerId),
                     endpoint: resolveS3Endpoint(providerId, presetDefaultS3Region(providerId)) ?? undefined,
                     anonymous: provider?.defaults?.anonymous,
-                    // Pre-populate bucket from preset (e.g. Filen Desktop S3 hardcodes "filen")
-                    bucket: provider?.defaults?.bucket,
                     // Local-bridge WebDAV presets (Filen Desktop, MEGAcmd) carry their default scheme
                     webdavScheme: provider?.defaults?.webdavScheme,
                     // Local HTTPS bridges (Filen Desktop S3) use self-signed certs

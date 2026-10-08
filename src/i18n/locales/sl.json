@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "delno: dosežena meja pregledovanja",
             "usedScanUnreadable": "delno, neberljive mape: {count}",
             "usedScanFailed": "Pregledovanje porabljene shrambe ni uspelo",
-            "usedScanEmpty": "Pregled poti {path} ni našel datotek; ohranjena je bila predpomnjena vrednost. Preverite pot ali podporo strežnika za rekurzivni izpis."
+            "usedScanEmpty": "Pregled poti {path} ni našel datotek; ohranjena je bila predpomnjena vrednost. Preverite pot ali podporo strežnika za rekurzivni izpis.",
+            "filenBridgeAccountTotal": "Filen Desktop tu ne sporoča skupne porabe vašega računa: prikazana vrednost je vsota datotek na tej poti. Izvorna povezava Filen takoj prikaže skupno porabo računa."
         },
         "dialogs": {
             "confirmTitle": "Potrdi",

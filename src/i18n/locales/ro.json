@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "parțial: limita de scanare atinsă",
             "usedScanUnreadable": "parțial, dosare care nu au putut fi citite: {count}",
             "usedScanFailed": "Scanarea spațiului folosit a eșuat",
-            "usedScanEmpty": "Scanarea căii {path} nu a găsit fișiere; valoarea din cache a fost păstrată. Verifică calea sau suportul serverului pentru listarea recursivă."
+            "usedScanEmpty": "Scanarea căii {path} nu a găsit fișiere; valoarea din cache a fost păstrată. Verifică calea sau suportul serverului pentru listarea recursivă.",
+            "filenBridgeAccountTotal": "Filen Desktop nu raportează aici totalul contului tău: valoarea utilizată este suma fișierelor din această cale. Conexiunea nativă Filen afișează imediat totalul contului."
         },
         "dialogs": {
             "confirmTitle": "Confirmă",

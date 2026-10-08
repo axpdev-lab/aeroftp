@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "kısmi: tarama sınırına ulaşıldı",
             "usedScanUnreadable": "kısmi, okunamayan klasörler: {count}",
             "usedScanFailed": "Kullanılan depolama taraması başarısız oldu",
-            "usedScanEmpty": "{path} yolunun taraması hiç dosya bulamadı; önbellekteki değer korundu. Yolu veya sunucunun özyinelemeli listeleme desteğini kontrol edin."
+            "usedScanEmpty": "{path} yolunun taraması hiç dosya bulamadı; önbellekteki değer korundu. Yolu veya sunucunun özyinelemeli listeleme desteğini kontrol edin.",
+            "filenBridgeAccountTotal": "Filen Desktop burada hesabınızın toplamını bildirmez: gösterilen kullanım, bu yol altındaki dosyaların toplamıdır. Yerel Filen bağlantısı hesap toplamını hemen gösterir."
         },
         "dialogs": {
             "confirmTitle": "Onayla",

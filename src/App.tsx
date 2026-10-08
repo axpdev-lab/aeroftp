@@ -555,6 +555,7 @@ import { useFaviconDetection } from './hooks/useFaviconDetection';
 import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
+import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -6615,19 +6616,8 @@ const App: React.FC = () => {
 
   const normalizeProviderConnectionParams = (params: ConnectionParams): ConnectionParams => {
     const protocol = params.protocol;
-    // Issue #215: the Filen Desktop local bridges keep "admin" only as a
-    // placeholder hint, not a hard default, because the real bridge credentials
-    // are whatever the user set inside Filen Desktop > Network Drive. But many
-    // users connect first just to check the bridge is up before customizing it
-    // in both apps, so when the username/password (S3 maps access/secret key to
-    // username/password too) are left empty we fall back to "admin" rather than
-    // blocking the connect with a missing-fields error. Explicit values win.
-    if (params.providerId === 'filen-desktop-webdav' || params.providerId === 'filen-desktop-s3') {
-      return {
-        ...params,
-        username: params.username || 'admin',
-        password: params.password || 'admin',
-      };
+    if (isFilenDesktopBridge(params.providerId)) {
+      return withFilenBridgeCredentialDefaults(params);
     }
     if (protocol === 'mega') {
       return {
@@ -20006,6 +19996,9 @@ const App: React.FC = () => {
             onScanUsed={() => { void scanUsedStorage(); }}
             onCancelUsedScan={cancelUsedStorageScan}
             usedScanStatus={usedScanStatus}
+            usedScanNote={isFilenDesktopBridge(connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId)
+              ? t('statusBar.filenBridgeAccountTotal')
+              : undefined}
           />
         )}
 

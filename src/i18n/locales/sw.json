@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "kwa sehemu: kikomo cha uchanganuzi kimefikiwa",
             "usedScanUnreadable": "kwa sehemu, folda zisizosomeka: {count}",
             "usedScanFailed": "Uchanganuzi wa hifadhi iliyotumika umeshindwa",
-            "usedScanEmpty": "Uchanganuzi wa njia {path} haukupata faili; thamani iliyohifadhiwa kwenye akiba ilihifadhiwa. Angalia njia au usaidizi wa seva kwa orodha ya kujirudia."
+            "usedScanEmpty": "Uchanganuzi wa njia {path} haukupata faili; thamani iliyohifadhiwa kwenye akiba ilihifadhiwa. Angalia njia au usaidizi wa seva kwa orodha ya kujirudia.",
+            "filenBridgeAccountTotal": "Filen Desktop haitoi hapa jumla ya akaunti yako: kiasi kilichotumika ni jumla ya faili zilizo chini ya njia hii. Muunganisho asilia wa Filen huonyesha jumla ya akaunti papo hapo."
         },
         "dialogs": {
             "confirmTitle": "Thibitisha",

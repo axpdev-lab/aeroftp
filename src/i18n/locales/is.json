@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "að hluta: skönnunarmörkum náð",
             "usedScanUnreadable": "að hluta, ólæsilegar möppur: {count}",
             "usedScanFailed": "Skönnun á notaðri geymslu mistókst",
-            "usedScanEmpty": "Skönnun á {path} fann engar skrár; gildið í skyndiminni var haldið. Athugaðu slóðina eða stuðning þjónsins við endurkvæma upptalningu."
+            "usedScanEmpty": "Skönnun á {path} fann engar skrár; gildið í skyndiminni var haldið. Athugaðu slóðina eða stuðning þjónsins við endurkvæma upptalningu.",
+            "filenBridgeAccountTotal": "Filen Desktop gefur ekki upp heildarnotkun reikningsins þíns hér: notkunartalan er summa skránna undir þessari slóð. Upprunalega Filen-tengingin sýnir heildarnotkun reikningsins strax."
         },
         "dialogs": {
             "confirmTitle": "Staðfesta",

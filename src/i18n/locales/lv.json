@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "daļēji: sasniegts skenēšanas ierobežojums",
             "usedScanUnreadable": "daļēji, nenolasāmas mapes: {count}",
             "usedScanFailed": "Izmantotās krātuves skenēšana neizdevās",
-            "usedScanEmpty": "{path} skenēšanā netika atrasts neviens fails; kešatmiņā saglabātais skaitlis tika paturēts. Pārbaudiet ceļu vai servera rekursīvā saraksta atbalstu."
+            "usedScanEmpty": "{path} skenēšanā netika atrasts neviens fails; kešatmiņā saglabātais skaitlis tika paturēts. Pārbaudiet ceļu vai servera rekursīvā saraksta atbalstu.",
+            "filenBridgeAccountTotal": "Filen Desktop šeit nesniedz jūsu konta kopējo apjomu: rādītais izmantotais apjoms ir šajā ceļā esošo failu summa. Dzimtais Filen savienojums uzreiz parāda konta kopējo apjomu."
         },
         "dialogs": {
             "confirmTitle": "Apstiprināt",

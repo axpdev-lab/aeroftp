@@ -190,7 +190,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 activeColor: 'text-amber-500',
                 label: 'S3',
                 description:
-                    'S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, bucket "filen".',
+                    'S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, each top-level Filen folder is a bucket.',
                 badge: 'LOCAL',
                 bridgeKind: 'filen-s3',
             },

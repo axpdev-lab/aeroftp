@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2, Calculator, X } from 'lucide-react';
+import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2, Calculator, X, Info } from 'lucide-react';
 import { useTranslation, useI18n } from '../i18n';
 import { AVAILABLE_LANGUAGES } from '../i18n/types';
 import { AeroShareStatusButton } from './AeroShareStatusButton';
@@ -75,6 +75,9 @@ interface StatusBarProps {
     onScanUsed?: () => void;
     onCancelUsedScan?: () => void;
     usedScanStatus?: { running: boolean; files: number; bytes: number } | null;
+    /** What the used-storage figure does not cover, shown as an info icon next
+     *  to it. The Filen Desktop presets cannot report the account total (#958). */
+    usedScanNote?: string;
     /** Opens Settings on Appearance > Interface, where the language list is.
      *  Without a caller the chip is not rendered at all. */
     onOpenLanguageSettings?: () => void;
@@ -123,6 +126,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     onScanUsed,
     onCancelUsedScan,
     usedScanStatus,
+    usedScanNote,
 }) => {
     const t = useTranslation();
     const { language } = useI18n();
@@ -323,6 +327,11 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         </div>
                     );
                 })()}
+                {isConnected && usedScanNote && (
+                    <span className="flex items-center text-gray-400 dark:text-gray-500" title={usedScanNote} data-used-scan-note>
+                        <Info size={12} />
+                    </span>
+                )}
                 {isConnected && onScanUsed && !usedScanStatus?.running
                     && (!storageQuota || (storageQuota.total <= 0 && storageQuota.used <= 0)) && (
                     <button

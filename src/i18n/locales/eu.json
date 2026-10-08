@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "partziala: eskaneatze-muga gainditu da",
             "usedScanUnreadable": "partziala, irakurri ezin diren karpetak: {count}",
             "usedScanFailed": "Erabilitako biltegiratzearen eskaneatzeak huts egin du",
-            "usedScanEmpty": "{path} eskaneatzeak ez du fitxategirik aurkitu; cacheko balioa mantendu da. Egiaztatu bidea edo zerbitzariaren zerrendatze errekurtsiboaren euskarria."
+            "usedScanEmpty": "{path} eskaneatzeak ez du fitxategirik aurkitu; cacheko balioa mantendu da. Egiaztatu bidea edo zerbitzariaren zerrendatze errekurtsiboaren euskarria.",
+            "filenBridgeAccountTotal": "Filen Desktop-ek ez du hemen zure kontuaren guztizkoa jakinarazten: erabilitako zifra bide honetako fitxategien batura da. Filen konexio natiboak kontuaren guztizkoa berehala erakusten du."
         },
         "dialogs": {
             "confirmTitle": "Berretsi",

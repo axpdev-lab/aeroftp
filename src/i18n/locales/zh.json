@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "部分完成：已达到扫描上限",
             "usedScanUnreadable": "部分完成，无法读取的文件夹：{count}",
             "usedScanFailed": "已用存储扫描失败",
-            "usedScanEmpty": "扫描路径 {path} 未找到任何文件；已保留缓存中的数值。请检查路径或服务器对递归列目录的支持。"
+            "usedScanEmpty": "扫描路径 {path} 未找到任何文件；已保留缓存中的数值。请检查路径或服务器对递归列目录的支持。",
+            "filenBridgeAccountTotal": "Filen Desktop 在此不会报告您的账户总用量：显示的已用量是此路径下所有文件的总和。原生 Filen 连接可立即显示账户总用量。"
         },
         "dialogs": {
             "confirmTitle": "确认",

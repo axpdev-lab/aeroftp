@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "parcial: s'ha assolit el límit d'escaneig",
             "usedScanUnreadable": "parcial, carpetes no llegibles: {count}",
             "usedScanFailed": "L'escaneig de l'emmagatzematge utilitzat ha fallat",
-            "usedScanEmpty": "L'escaneig de {path} no ha trobat cap fitxer; s'ha mantingut el valor de la memòria cau. Comproveu el camí o el suport de llistat recursiu del servidor."
+            "usedScanEmpty": "L'escaneig de {path} no ha trobat cap fitxer; s'ha mantingut el valor de la memòria cau. Comproveu el camí o el suport de llistat recursiu del servidor.",
+            "filenBridgeAccountTotal": "Filen Desktop no informa aquí del total del teu compte: la xifra d'espai usat és la suma dels fitxers d'aquesta ruta. La connexió nativa de Filen mostra el total del compte directament."
         },
         "dialogs": {
             "confirmTitle": "Confirmar",

@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "parcial: se alcanzó el límite de escaneo",
             "usedScanUnreadable": "parcial, carpetas no legibles: {count}",
             "usedScanFailed": "El escaneo del almacenamiento usado falló",
-            "usedScanEmpty": "El escaneo de {path} no encontró archivos; se mantuvo el valor en caché. Compruebe la ruta o el soporte de listado recursivo del servidor."
+            "usedScanEmpty": "El escaneo de {path} no encontró archivos; se mantuvo el valor en caché. Compruebe la ruta o el soporte de listado recursivo del servidor.",
+            "filenBridgeAccountTotal": "Filen Desktop no informa aquí del total de tu cuenta: la cifra usada es la suma de los archivos bajo esta ruta. La conexión nativa de Filen muestra el total de la cuenta al instante."
         },
         "dialogs": {
             "confirmTitle": "Confirmar",

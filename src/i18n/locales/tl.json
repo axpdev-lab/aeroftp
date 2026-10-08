@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "bahagya: naabot na ang limitasyon ng pag-scan",
             "usedScanUnreadable": "bahagya, mga folder na hindi mabasa: {count}",
             "usedScanFailed": "Nabigo ang pag-scan ng nagamit na storage",
-            "usedScanEmpty": "Walang nakitang file ang pag-scan ng {path}; pinanatili ang naka-cache na halaga. Suriin ang path o ang suporta ng server sa recursive listing."
+            "usedScanEmpty": "Walang nakitang file ang pag-scan ng {path}; pinanatili ang naka-cache na halaga. Suriin ang path o ang suporta ng server sa recursive listing.",
+            "filenBridgeAccountTotal": "Hindi iniuulat ng Filen Desktop dito ang kabuuan ng iyong account: ang ipinapakitang nagamit ay ang kabuuan ng mga file sa ilalim ng path na ito. Agad na ipinapakita ng native na koneksyon ng Filen ang kabuuan ng account."
         },
         "dialogs": {
             "confirmTitle": "Kumpirmahin",

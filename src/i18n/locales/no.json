@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "delvis: skannegrense nådd",
             "usedScanUnreadable": "delvis, uleselige mapper: {count}",
             "usedScanFailed": "Skanning av brukt lagring mislyktes",
-            "usedScanEmpty": "Skanning av {path} fant ingen filer; den bufrede verdien ble beholdt. Sjekk banen eller serverens støtte for rekursiv listing."
+            "usedScanEmpty": "Skanning av {path} fant ingen filer; den bufrede verdien ble beholdt. Sjekk banen eller serverens støtte for rekursiv listing.",
+            "filenBridgeAccountTotal": "Filen Desktop rapporterer ikke kontoens totale bruk her: det viste forbruket er summen av filene under denne banen. Den opprinnelige Filen-tilkoblingen viser kontoens totale bruk med en gang."
         },
         "dialogs": {
             "confirmTitle": "Bekreft",

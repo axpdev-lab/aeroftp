@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "parsial: batas pemindaian tercapai",
             "usedScanUnreadable": "parsial, folder tak terbaca: {count}",
             "usedScanFailed": "Pemindaian penyimpanan terpakai gagal",
-            "usedScanEmpty": "Pemindaian {path} tidak menemukan berkas; angka yang tersimpan di cache dipertahankan. Periksa jalur atau dukungan daftar rekursif server."
+            "usedScanEmpty": "Pemindaian {path} tidak menemukan berkas; angka yang tersimpan di cache dipertahankan. Periksa jalur atau dukungan daftar rekursif server.",
+            "filenBridgeAccountTotal": "Filen Desktop tidak melaporkan total akun Anda di sini: angka terpakai adalah jumlah file di bawah path ini. Koneksi Filen native langsung menampilkan total akun."
         },
         "dialogs": {
             "confirmTitle": "Konfirmasi",

@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "parcial: limite de verificação atingido",
             "usedScanUnreadable": "parcial, pastas ilegíveis: {count}",
             "usedScanFailed": "Falha na verificação do armazenamento usado",
-            "usedScanEmpty": "A verificação de {path} não encontrou arquivos; o valor em cache foi mantido. Verifique o caminho ou o suporte do servidor à listagem recursiva."
+            "usedScanEmpty": "A verificação de {path} não encontrou arquivos; o valor em cache foi mantido. Verifique o caminho ou o suporte do servidor à listagem recursiva.",
+            "filenBridgeAccountTotal": "O Filen Desktop não informa aqui o total da sua conta: o valor usado é a soma dos arquivos neste caminho. A conexão nativa do Filen mostra o total da conta imediatamente."
         },
         "dialogs": {
             "confirmTitle": "Confirmar",

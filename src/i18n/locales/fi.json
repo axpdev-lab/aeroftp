@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "osittainen: skannausraja saavutettu",
             "usedScanUnreadable": "osittainen, lukukelvottomat kansiot: {count}",
             "usedScanFailed": "Käytetyn tallennustilan skannaus epäonnistui",
-            "usedScanEmpty": "Polun {path} skannaus ei löytänyt tiedostoja; välimuistissa ollut arvo säilytettiin. Tarkista polku tai palvelimen rekursiivisen listauksen tuki."
+            "usedScanEmpty": "Polun {path} skannaus ei löytänyt tiedostoja; välimuistissa ollut arvo säilytettiin. Tarkista polku tai palvelimen rekursiivisen listauksen tuki.",
+            "filenBridgeAccountTotal": "Filen Desktop ei ilmoita tässä tilisi kokonaiskäyttöä: näytetty käyttö on tämän polun tiedostojen summa. Natiivi Filen-yhteys näyttää tilin kokonaiskäytön heti."
         },
         "dialogs": {
             "confirmTitle": "Vahvista",

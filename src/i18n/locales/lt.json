@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "dalinis: pasiekta nuskaitymo riba",
             "usedScanUnreadable": "dalinis, neperskaitomi aplankai: {count}",
             "usedScanFailed": "Naudojamos saugyklos nuskaitymas nepavyko",
-            "usedScanEmpty": "Nuskaitant {path} failų nerasta; talpykloje saugotas skaičius išliko. Patikrinkite kelią arba serverio rekursyvaus sąrašo palaikymą."
+            "usedScanEmpty": "Nuskaitant {path} failų nerasta; talpykloje saugotas skaičius išliko. Patikrinkite kelią arba serverio rekursyvaus sąrašo palaikymą.",
+            "filenBridgeAccountTotal": "Filen Desktop čia nepateikia visos paskyros bendros apimties: rodomas panaudotas kiekis yra šio kelio failų suma. Gimtasis Filen ryšys iškart parodo bendrą paskyros apimtį."
         },
         "dialogs": {
             "confirmTitle": "Patvirtinti",

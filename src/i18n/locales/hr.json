@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "djelomično: dosegnuto je ograničenje skeniranja",
             "usedScanUnreadable": "djelomično, nečitljive mape: {count}",
             "usedScanFailed": "Skeniranje iskorištene pohrane nije uspjelo",
-            "usedScanEmpty": "Skeniranje putanje {path} nije pronašlo datoteke; zadržana je predmemorirana vrijednost. Provjerite putanju ili podršku poslužitelja za rekurzivno izlistavanje."
+            "usedScanEmpty": "Skeniranje putanje {path} nije pronašlo datoteke; zadržana je predmemorirana vrijednost. Provjerite putanju ili podršku poslužitelja za rekurzivno izlistavanje.",
+            "filenBridgeAccountTotal": "Filen Desktop ovdje ne prijavljuje ukupnu zauzetost vašeg računa: prikazana vrijednost zbroj je datoteka na ovoj putanji. Izvorna Filen veza odmah prikazuje ukupnu zauzetost računa."
         },
         "dialogs": {
             "confirmTitle": "Potvrdi",

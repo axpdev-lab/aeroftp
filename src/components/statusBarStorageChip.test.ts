@@ -72,3 +72,16 @@ it('shows the figure without a spinner or Cancel once the scan is over', async (
     expect(chip()!.querySelector('.animate-spin')).toBeNull();
     expect([...chip()!.querySelectorAll('button')].map((b) => b.title)).not.toContain('common.cancel');
 });
+
+it('points a Filen Desktop session to the native connection for the account total', async () => {
+    await render({ storageQuota: null, usedScanNote: 'statusBar.filenBridgeAccountTotal' });
+    const note = host.querySelector('[data-used-scan-note]') as HTMLElement | null;
+    expect(note).not.toBeNull();
+    expect(note!.title).toBe('statusBar.filenBridgeAccountTotal');
+    expect(host.textContent).toContain('statusBar.usedScanAction');
+});
+
+it('shows no account-total note on an ordinary session', async () => {
+    await render({ storageQuota: null });
+    expect(host.querySelector('[data-used-scan-note]')).toBeNull();
+});
