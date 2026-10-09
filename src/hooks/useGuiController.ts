@@ -22,6 +22,7 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
     const requestedSettingsArea = useRef<string | null>(null);
     const commitSequence = useRef(0);
     const commitWaiters = useRef(new Map<number, () => void>());
+    const endedActors = useRef(new Set<string>());
     const [commitTicket, setCommitTicket] = useState(0);
     const [lease, setLease] = useState<GuiLease | null>(null);
     // Event callbacks and asynchronous waits must read the latest committed UI state.
@@ -103,7 +104,11 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         // This symbol and its API are removed by Vite's production branch elimination.
         let finishListener = () => {};
         if (import.meta.env.DEV) {
-            finishListener = createTauriListener<{ actor_id: string }>('gui-actor-ended', event => service.releaseActor(event.payload.actor_id));
+            finishListener = createTauriListener<{ actor_id: string }>('gui-actor-ended', event => {
+                // A claim still in flight has no lease to release yet; the claim checks this set.
+                endedActors.current.add(event.payload.actor_id);
+                service.releaseActor(event.payload.actor_id);
+            });
             const actor: GuiActor = { id: `dev:${crypto.randomUUID()}`, kind: 'dev', label: 'Dev harness' };
             window.__aeroftpController = {
                 run: (request, owner = actor) => service.run(request, owner), state: () => service.state(), interrupt: () => service.interrupt(),
@@ -136,7 +141,8 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
             try {
                 const claim = await invoke<IntentClaim>('gui_intent_claim', { id });
                 const remaining = claim.remaining_ms;
-                if (!Number.isFinite(remaining) || remaining <= 25 || controller.current !== service) return;
+                if (!Number.isFinite(remaining) || remaining <= 25 || controller.current !== service ||
+                    endedActors.current.has(claim.actor.id)) return;
                 const mutating = !['state', 'wait'].includes(request.name);
                 // Busy requests must not overwrite the identity of an in-flight mutation.
                 const ownsId = mutating && mutationId.current === null;

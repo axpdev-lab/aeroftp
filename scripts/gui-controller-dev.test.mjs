@@ -2,12 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { inspectorPort, scriptTimeout } from './lib/gui-inspector.mjs';
-import { fixtureRoot, inspectorPid, developmentCheckout, validateFixtureEnvironment, readSession, requestBody } from './lib/gui-dev-runtime.mjs';
+import { acquireDriverLock, fixtureRoot, inspectorPid, developmentCheckout, validateFixtureEnvironment, readSession, requestBody } from './lib/gui-dev-runtime.mjs';
 
 test('ports stay bounded, integral and loopback-only', () => {
     assert.equal(inspectorPort(), 9222);
@@ -112,5 +112,16 @@ test('normal Tauri launch in src-tauri and direct launch in checkout are both ow
         assert.equal(developmentCheckout(root), root);
         assert.equal(developmentCheckout(join(root, 'src-tauri')), root);
         assert.throws(() => developmentCheckout(join(root, 'other')));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+});
+test('a driver lock whose PID write fails is removed, not left as a false live owner', () => {
+    const root = mkdtempSync(join(tmpdir(), 'gui-lock-test-'));
+    try {
+        const lock = join(root, 'controller-driver.lock');
+        assert.throws(() => acquireDriverLock(lock, () => { throw Object.assign(Error('disk full'), { code: 'ENOSPC' }); }), /disk full/);
+        assert.equal(existsSync(lock), false);
+        acquireDriverLock(lock);
+        assert.equal(readFileSync(lock, 'utf8'), `${process.pid}\n`);
+        assert.throws(() => acquireDriverLock(lock), /Another DEV driver owns/);
     } finally { rmSync(root, { recursive: true, force: true }); }
 });
