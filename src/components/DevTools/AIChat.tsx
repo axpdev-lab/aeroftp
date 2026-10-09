@@ -567,7 +567,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         expandedMessages, setExpandedMessages,
         messagesRef, conversationsRef,
         persistConversation, startNewChat: startNewChatBase, switchConversation: switchConversationBase,
-        handleDeleteConversation, loadChatHistory, exportConversation,
+        handleDeleteConversation, loadChatHistory, exportConversation, conversationUsageKey,
         activeBranchId, forkConversation, switchBranch, deleteBranch,
     } = useAIChatConversations();
 
@@ -2106,6 +2106,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number } | undefined,
     ) => {
         if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
+        // Every step counts under the chat this loop runs for, even if a reply lands after a switch.
+        const usageKey = conversationUsageKey();
         let stepCount = 1;
         let lastToolResult = initialToolResult;
         let consecutiveErrors = 0;
@@ -2143,7 +2145,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 // Each step was billed whether or not the loop goes on, and a step
                 // that ends in a tool call has no message: count it here, first.
                 const stepTokens = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, response.cache_creation_input_tokens, response.cache_read_input_tokens);
-                if (stepTokens) recordTokenUsage(activeConversationId || undefined, stepTokens.totalTokens ?? 0);
+                if (stepTokens) recordTokenUsage(usageKey, stepTokens.totalTokens ?? 0);
 
                 if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
                 if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error(t('ai.error.missingNativeToolState'));
@@ -2320,6 +2322,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const handleDelegateSend = async () => {
         const goal = input.trim();
         if (!goal || !localPath || isLoading || attachedImages.length > 0) return;
+        // The chat the delegation's tokens count toward, fixed when it starts.
+        const usageKey = conversationUsageKey();
         const remoteProfiles = selectedRemoteWorkerIds
             .map(id => remoteWorkerProfiles.find(profile => profile.id === id))
             .filter((profile): profile is DelegatedRemoteProfile => Boolean(profile));
@@ -2356,7 +2360,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             // The parent and its workers used these tokens even if the view
             // was cancelled meanwhile: count them before any check below.
             const tokenInfo = computeTokenInfo(result.inputTokens, result.outputTokens, undefined);
-            recordTokenUsage(activeConversationId || undefined, tokenInfo?.totalTokens ?? 0);
+            recordTokenUsage(usageKey, tokenInfo?.totalTokens ?? 0);
             if (activeDelegationIdRef.current !== requestId) return;
             if (cancelRequestedDelegationIdRef.current === requestId) {
                 setDelegationView(previous => previous?.requestId === requestId
@@ -2425,6 +2429,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
     const handleSend = async () => {
         if ((!input.trim() && attachedImages.length === 0) || isLoading) return;
+        // The chat this turn's tokens count toward, fixed when it starts.
+        const usageKey = conversationUsageKey();
 
         autoStopRef.current = false;
         const turnScope = crypto.randomUUID();
@@ -2817,7 +2823,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
 
                     // Every request counts toward the conversation's tokens, tool-loop steps included.
-                    if (tokenInfo) recordTokenUsage(activeConversationId || undefined, tokenInfo.totalTokens ?? 0);
+                    if (tokenInfo) recordTokenUsage(usageKey, tokenInfo.totalTokens ?? 0);
 
                     if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
                     if (streamError !== null || (requiresNativeTurn(aiRequest) && !streamResult.nativeTurn)) {
@@ -2928,7 +2934,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, response.cache_creation_input_tokens, response.cache_read_input_tokens);
 
                     // Every request counts toward the conversation's tokens (non-streaming path).
-                    if (tokenInfo) recordTokenUsage(activeConversationId || undefined, tokenInfo.totalTokens ?? 0);
+                    if (tokenInfo) recordTokenUsage(usageKey, tokenInfo.totalTokens ?? 0);
 
                     if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
                     if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error(t('ai.error.missingNativeToolState'));
@@ -3068,8 +3074,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     // The conversation's token count, refreshed whenever a reply lands or the
     // conversation changes; a chat not saved yet shows its tokens too.
     useEffect(() => {
-        setConversationTokens(conversationTokenUsage(activeConversationId)?.tokens ?? null);
-    }, [messages, activeConversationId]);
+        setConversationTokens(conversationTokenUsage(conversationUsageKey())?.tokens ?? null);
+    }, [messages, activeConversationId, conversationUsageKey]);
 
     return (
         <div

@@ -28,26 +28,26 @@ describe('the token count of a conversation', () => {
         expect(usage.conversationTokenUsage('c')?.tokens).toBe(Number.MAX_SAFE_INTEGER);
     });
 
-    it('keeps the tokens of a chat not saved yet and hands them to its conversation', async () => {
-        // The first replies of a new chat arrive before the delayed save gives
-        // it an id; they must not be dropped.
+    it("counts a new chat's replies whether they land before or after the save gives it an id", async () => {
+        // A new chat records under a key of its own; the delayed save binds
+        // that key to the conversation it creates. A reply still in flight
+        // when the save runs records under the key it started with.
         const usage = await import('./aiChatTokenUsage');
-        usage.recordTokenUsage(undefined, 100);
-        usage.recordTokenUsage(undefined, 20);
-        expect(usage.conversationTokenUsage(null)).toEqual({ tokens: 120, requests: 2 });
-        usage.adoptPendingTokenUsage('new');
-        expect(usage.conversationTokenUsage('new')).toEqual({ tokens: 120, requests: 2 });
-        expect(usage.conversationTokenUsage(null)).toBeNull();
-        usage.recordTokenUsage('new', 5);
-        expect(usage.conversationTokenUsage('new')).toEqual({ tokens: 125, requests: 3 });
+        usage.recordTokenUsage('chat-key', 100);
+        usage.bindTokenUsage('chat-key', 'conv');
+        usage.recordTokenUsage('chat-key', 20);
+        usage.recordTokenUsage('conv', 5);
+        expect(usage.conversationTokenUsage('conv')).toEqual({ tokens: 125, requests: 3 });
+        expect(usage.conversationTokenUsage('chat-key')).toEqual({ tokens: 125, requests: 3 });
     });
 
-    it('drops the tokens of an unsaved chat left for another one', async () => {
+    it('keeps two chats apart', async () => {
         const usage = await import('./aiChatTokenUsage');
-        usage.recordTokenUsage(undefined, 100);
-        usage.discardPendingTokenUsage();
-        usage.adoptPendingTokenUsage('other');
-        expect(usage.conversationTokenUsage('other')).toBeNull();
+        usage.recordTokenUsage('first-key', 100);
+        usage.bindTokenUsage('first-key', 'first');
+        usage.recordTokenUsage('second-key', 7);
+        expect(usage.conversationTokenUsage('first')).toEqual({ tokens: 100, requests: 1 });
+        expect(usage.conversationTokenUsage('second-key')).toEqual({ tokens: 7, requests: 1 });
     });
 });
 

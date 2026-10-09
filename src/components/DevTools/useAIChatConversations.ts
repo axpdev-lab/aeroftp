@@ -14,7 +14,7 @@ import {
     createConversation, BranchMessage,
 } from '../../utils/chatHistory';
 import { Message } from './aiChatTypes';
-import { adoptPendingTokenUsage, discardPendingTokenUsage } from './aiChatTokenUsage';
+import { bindTokenUsage } from './aiChatTokenUsage';
 
 export function useAIChatConversations() {
     const [messages, setMessages] = useState<Message[]>([]);
@@ -32,6 +32,8 @@ export function useAIChatConversations() {
     conversationsRef.current = conversations;
     const activeConversationIdRef = useRef(activeConversationId);
     activeConversationIdRef.current = activeConversationId;
+    // The key a new chat counts its tokens under until the save gives it an id.
+    const newChatKeyRef = useRef<string>(crypto.randomUUID());
     // BUG-007: Track saved content per message ID to detect streaming updates
     const savedMessageContentRef = useRef<Map<string, string>>(new Map());
     // Track whether title has been saved for current session
@@ -49,7 +51,7 @@ export function useAIChatConversations() {
             convId = newConv.id;
             setActiveConversationId(convId);
             activeConversationIdRef.current = convId;
-            adoptPendingTokenUsage(convId);
+            bindTokenUsage(newChatKeyRef.current, convId);
             titleSavedRef.current = false;
 
             const title = msgs.find(m => m.role === 'user')?.content.slice(0, 60) || 'New Chat';
@@ -127,10 +129,16 @@ export function useAIChatConversations() {
         });
     }, [activeBranchId]);
 
+    // The key this chat's token usage is counted under: its conversation id,
+    // or, before the first save, the new chat's own key.
+    const conversationUsageKey = useCallback(
+        () => activeConversationIdRef.current ?? newChatKeyRef.current, [],
+    );
+
     // New chat: resets messages and conversation ID.
     // Note: AIChat.tsx should wrap this to also clear pendingToolCalls.
     const startNewChat = useCallback(() => {
-        discardPendingTokenUsage();
+        newChatKeyRef.current = crypto.randomUUID();
         setMessages([]);
         setActiveConversationId(null);
         setActiveBranchId(null);
@@ -140,7 +148,6 @@ export function useAIChatConversations() {
 
     // Switch conversation: loads full messages from SQLite
     const switchConversation = useCallback(async (conv: Conversation) => {
-        discardPendingTokenUsage();
         setActiveConversationId(conv.id);
         titleSavedRef.current = true; // Already has a title
 
@@ -466,5 +473,6 @@ export function useAIChatConversations() {
         forkConversation, switchBranch, deleteBranch,
         loadChatHistory,
         exportConversation,
+        conversationUsageKey,
     };
 }
