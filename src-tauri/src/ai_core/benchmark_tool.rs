@@ -56,8 +56,11 @@ fn planned_steps(
         .iter()
         .filter(|op| config.operations.contains(op))
         .count() as u32;
-    let sweep =
-        config.sizes_bytes.len() as u32 * (config.warmup_runs + config.runs_per_size) * directions;
+    // Saturating: the resolver clamps runs, but the count does not rely on it.
+    let sweep = u32::try_from(config.sizes_bytes.len())
+        .unwrap_or(u32::MAX)
+        .saturating_mul(config.warmup_runs.saturating_add(config.runs_per_size))
+        .saturating_mul(directions);
     let many = many_files.map_or(0, |mf| mf.file_count.saturating_mul(2));
     sweep.saturating_add(many).max(1)
 }
@@ -215,5 +218,18 @@ mod tests {
         // The many-files workload alone: 100 uploads and 100 downloads.
         assert!(config.sizes_bytes.is_empty());
         assert_eq!(planned_steps(&config, many), 200);
+    }
+
+    #[test]
+    fn the_progress_total_saturates_instead_of_overflowing() {
+        // The resolver clamps runs to 20, but the count must not depend on it:
+        // a plan built another way would panic here in a debug build.
+        let config = community_benchmark::BenchmarkConfig {
+            sizes_bytes: vec![1024; 3],
+            runs_per_size: u32::MAX,
+            warmup_runs: 1,
+            operations: vec!["upload", "download"],
+        };
+        assert_eq!(planned_steps(&config, None), u32::MAX);
     }
 }
