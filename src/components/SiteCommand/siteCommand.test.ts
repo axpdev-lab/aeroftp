@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { carriesSecret, maskedEcho, mayChangeFiles, replyText, stripAnsi, withoutReplyCode, type SiteCommandReport } from './siteCommand';
+import { carriesSecret, maskedEcho, mayChangeFiles, replyText, siteCommandAvailable, stripAnsi, withoutReplyCode, type SiteCommandReport } from './siteCommand';
 import { clearSiteTranscript, forgetSiteSession, recordSiteExchange, siteHistory, siteTranscript } from './siteSessionMemory';
 
 const report = (over: Partial<SiteCommandReport> = {}): SiteCommandReport => ({
@@ -35,6 +35,23 @@ describe('SITE command helpers', () => {
         expect(mayChangeFiles(report({ verb_kind: 'other' }))).toBe(true);
         expect(mayChangeFiles(report({ verb_kind: 'other', outcome: 'unknown', code: null }))).toBe(true);
         expect(mayChangeFiles(report({ verb_kind: 'other', outcome: 'not_sent', code: null }))).toBe(false);
+    });
+});
+
+describe('SITE command availability', () => {
+    it('is on only for a connected FTP or FTPS session', () => {
+        expect(siteCommandAvailable(true, 'ftp')).toBe(true);
+        expect(siteCommandAvailable(true, 'ftps')).toBe(true);
+        expect(siteCommandAvailable(false, 'ftp')).toBe(false);
+        for (const other of ['sftp', 'webdav', 's3', 'googledrive', 'mega', undefined]) {
+            expect(siteCommandAvailable(true, other)).toBe(false);
+        }
+    });
+
+    it('follows the active session, not the Quick Connect form', () => {
+        expect(siteCommandAvailable(true, 'sftp', 'ftp')).toBe(false);
+        expect(siteCommandAvailable(true, 'ftps', 'webdav')).toBe(true);
+        expect(siteCommandAvailable(true, undefined, 'ftp')).toBe(true);
     });
 });
 

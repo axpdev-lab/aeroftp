@@ -167,7 +167,7 @@ import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
 import { SiteCommandDialog } from './components/SiteCommand/SiteCommandDialog';
 import { forgetSiteSession } from './components/SiteCommand/siteSessionMemory';
-import type { SiteCommandReport } from './components/SiteCommand/siteCommand';
+import { siteCommandAvailable, type SiteCommandReport } from './components/SiteCommand/siteCommand';
 import { ToastContainer, useToast } from './components/Toast';
 import { ContextMenu, useContextMenu, ContextMenuItem } from './components/ContextMenu';
 import { useAeroShareEnabled } from './hooks/useAeroShareEnabled';
@@ -4518,9 +4518,13 @@ const App: React.FC = () => {
   // SITE commands travel on the FTP control connection (discussion #1109):
   // offered on a connected FTP/FTPS session only. Computed here, ahead of the
   // command palette that lists it.
-  const siteProtocol = (connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol) as ProviderType | undefined;
-  const canSendSiteCommand = isConnected && !!siteProtocol && isFtpProtocol(siteProtocol);
+  const canSendSiteCommand = siteCommandAvailable(isConnected, sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol, connectionParams.protocol);
   canSendSiteCommandRef.current = canSendSiteCommand;
+  // The native menu (macOS menu bar, optional on Linux/Windows) follows the
+  // same rule: Connection > SITE Command is off unless this is true.
+  useEffect(() => {
+    invoke('set_site_command_menu_enabled', { enabled: canSendSiteCommand }).catch(() => { /* no native menu: nothing to update */ });
+  }, [canSendSiteCommand]);
 
   // Command palette items
   const commandPaletteItems: CommandItem[] = useMemo(() => [

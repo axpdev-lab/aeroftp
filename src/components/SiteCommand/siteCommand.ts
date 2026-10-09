@@ -20,6 +20,17 @@ export interface SiteCommandReport {
     reason: string | null;
 }
 
+/**
+ * Whether the SITE entries are active: a connected session whose protocol is
+ * FTP or FTPS. The active session's own protocol wins over the Quick Connect
+ * form, which can hold another protocol while a saved session is open.
+ * Everywhere else (no session, SFTP, cloud providers) the entries are off.
+ */
+export function siteCommandAvailable(isConnected: boolean, sessionProtocol?: string, formProtocol?: string): boolean {
+    const protocol = sessionProtocol || formProtocol;
+    return isConnected && (protocol === 'ftp' || protocol === 'ftps');
+}
+
 /** Default and bounds of the reply wait, mirrored from `providers/ftp_site.rs`. */
 export const SITE_REPLY_TIMEOUT_SECS = 60;
 
