@@ -733,16 +733,16 @@ Creates an empty file if it doesn't exist. If the file already exists, confirms 
 
 ```bash
 # SHA-256 hash
-aeroftp-cli hashsum --profile "server" sha256 /data/file.bin
+aeroftp-cli hashsum --profile "server" -a sha256 /data/file.bin
 
 # MD5 hash
-aeroftp-cli hashsum sftp://user@host md5 /data/file.iso
+aeroftp-cli hashsum sftp://user@host -a md5 /data/file.iso
 
 # BLAKE3 hash
-aeroftp-cli hashsum --profile "server" blake3 /path/file.dat
+aeroftp-cli hashsum --profile "server" -a blake3 /path/file.dat
 
 # JSON output
-aeroftp-cli hashsum --profile "server" sha256 /file.txt --json
+aeroftp-cli hashsum --profile "server" -a sha256 /file.txt --json
 ```
 
 Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format matches standard `sha256sum` format: `<hash>  <path>`.
@@ -1154,7 +1154,7 @@ aeroftp-cli serve sftp ./public --addr 0.0.0.0:2222 --allow-remote-bind
 
 Any of the four modes serves a folder of this machine instead of a remote (see [A Local Folder as the Remote](#a-local-folder-as-the-remote)): the folder is the jail root, nothing outside it can be reached.
 
-All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) or a local folder as a local server of the chosen protocol, and stop with Ctrl+C. They bind to loopback unless `--allow-remote-bind` is given; on a loopback address no login is asked, on any other address a login is required, and one is generated and printed when `--auth-token` (HTTP, WebDAV) or `--auth-user` / `--auth-password` (FTP, SFTP) are not given.
+All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) or a local folder as a local server of the chosen protocol, and stop with Ctrl+C. Every mode listens on loopback by default; a non-loopback `--addr` is refused unless `--allow-remote-bind` is given. On a loopback address no login is asked unless you set one. On any other address a login is always required: HTTP and WebDAV take `--auth-token`, generated and printed at start when it is not given; FTP and SFTP take `--auth-user` and `--auth-password`, where a missing user is `aeroftp` and a missing password is generated and printed at start. With `--quiet` only a generated credential is printed (one line on stderr); with `--format json` it is the `generated_auth_token` (HTTP, WebDAV) or `generated_auth_password` (FTP, SFTP) field.
 
 ### daemon - Background Service
 
