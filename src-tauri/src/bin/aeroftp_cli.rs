@@ -6889,6 +6889,41 @@ fn tracing_level_from_rust_log(value: &str) -> Option<tracing::Level> {
     selected
 }
 
+/// Crates whose own debug and trace output carries secrets verbatim, held at
+/// INFO whatever `-v`, `-vv` or `RUST_LOG` asks for. suppaftp writes every
+/// control-channel line at TRACE, the login's `PASS <password>` included, and
+/// every custom command at DEBUG before it validates the line.
+const SECRET_BEARING_LOG_TARGETS: &[&str] = &["suppaftp"];
+
+/// The per-target filter of the CLI subscriber: `level` for everything, capped
+/// at INFO for [`SECRET_BEARING_LOG_TARGETS`]. A quieter `level` stays quieter.
+fn cli_log_targets(level: tracing::Level) -> tracing_subscriber::filter::Targets {
+    let capped = std::cmp::min(level, tracing::Level::INFO);
+    SECRET_BEARING_LOG_TARGETS.iter().fold(
+        tracing_subscriber::filter::Targets::new().with_default(level),
+        |targets, target| targets.with_target(*target, capped),
+    )
+}
+
+/// The subscriber `-v`, `-vv` and `RUST_LOG` install, writing to `writer`.
+/// Records bridged from the `log` crate (suppaftp logs through it) pass the
+/// same per-target filter as native `tracing` events.
+fn cli_log_subscriber<W>(
+    level: tracing::Level,
+    writer: W,
+) -> impl tracing::Subscriber + Send + Sync + 'static
+where
+    W: for<'writer> tracing_subscriber::fmt::MakeWriter<'writer> + Send + Sync + 'static,
+{
+    use tracing_subscriber::layer::SubscriberExt as _;
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_target(true)
+        .with_writer(writer)
+        .finish()
+        .with(cli_log_targets(level))
+}
+
 fn tracing_level_rank(level: tracing::Level) -> u8 {
     match level {
         tracing::Level::ERROR => 1,
@@ -68896,11 +68931,8 @@ async fn main() {
             .and_then(|value| tracing_level_from_rust_log(&value))
     };
     if let Some(level) = level {
-        tracing_subscriber::fmt()
-            .with_max_level(level)
-            .with_target(true)
-            .with_writer(std::io::stderr)
-            .init();
+        use tracing_subscriber::util::SubscriberInitExt as _;
+        cli_log_subscriber(level, std::io::stderr).init();
     }
 
     // Setup Ctrl+C handling. Interactive commands get the double-Ctrl+C
@@ -74953,6 +74985,62 @@ mod tests {
             tracing_level_from_rust_log("ftp_client_gui_lib=warn,russh=error"),
             Some(tracing::Level::WARN)
         );
+    }
+
+    #[test]
+    fn cli_log_keeps_the_ftp_wire_trace_and_its_password_out() {
+        use std::sync::{Arc, Mutex};
+        use tracing::Level;
+
+        const SENTINEL: &str = "s0a-sentinel-password";
+
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'writer> tracing_subscriber::fmt::MakeWriter<'writer> for Capture {
+            type Writer = Capture;
+            fn make_writer(&'writer self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        for level in [Level::TRACE, Level::DEBUG, Level::INFO] {
+            let capture = Capture::default();
+            tracing::subscriber::with_default(cli_log_subscriber(level, capture.clone()), || {
+                tracing::trace!(
+                    target: "suppaftp::async_ftp::tokio_ftp::control",
+                    "CC OUT: PASS {SENTINEL}"
+                );
+                tracing::debug!(
+                    target: "suppaftp::async_ftp::tokio_ftp",
+                    "Sending SITE command: CHPASS someuser {SENTINEL}"
+                );
+                tracing::info!(target: "aeroftp_cli", "positive control");
+            });
+            let out = String::from_utf8_lossy(&capture.0.lock().unwrap()).into_owned();
+            assert!(
+                out.contains("positive control"),
+                "the capture recorded nothing at {level}, so the absence below would prove nothing: {out:?}"
+            );
+            assert!(
+                !out.contains(SENTINEL),
+                "suppaftp's wire trace reached the CLI output at {level} with the password in it: {out:?}"
+            );
+        }
+
+        let at_trace = cli_log_targets(Level::TRACE);
+        assert!(at_trace.would_enable("ftp_client_gui_lib::providers::ftp", &Level::TRACE));
+        assert!(at_trace.would_enable("suppaftp::async_ftp::tokio_ftp", &Level::INFO));
+        assert!(!at_trace.would_enable("suppaftp::async_ftp::tokio_ftp", &Level::DEBUG));
+        assert!(!cli_log_targets(Level::WARN).would_enable("suppaftp", &Level::INFO));
     }
 
     #[test]
