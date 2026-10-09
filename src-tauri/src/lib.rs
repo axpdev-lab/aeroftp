@@ -6842,19 +6842,6 @@ async fn create_remote_folder(state: State<'_, AppState>, path: String) -> Resul
     Ok(())
 }
 
-#[tauri::command]
-async fn chmod_remote_file(
-    state: State<'_, AppState>,
-    path: String,
-    mode: String,
-) -> Result<(), String> {
-    let mut ftp_manager = state.ftp_manager.lock().await;
-    ftp_manager
-        .chmod(&path, &mode)
-        .await
-        .map_err(|e| e.to_string())
-}
-
 /// Sentinel prefix returned when a local rename/copy would clobber an existing
 /// destination and the caller passed `overwrite: Some(false)`. The frontend
 /// matches this prefix to raise its overwrite confirmation instead of silently
@@ -19235,7 +19222,6 @@ pub fn run() {
             delete_remote_file,
             rename_remote_file,
             create_remote_folder,
-            chmod_remote_file,
             delete_local_file,
             rename_local_file,
             copy_local_file,
@@ -19696,6 +19682,7 @@ pub fn run() {
             provider_commands::provider_delete_file,
             provider_commands::provider_delete_dir,
             provider_commands::provider_rename,
+            provider_commands::provider_chmod,
             provider_commands::provider_server_copy,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,

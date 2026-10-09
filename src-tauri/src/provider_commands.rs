@@ -5944,6 +5944,36 @@ pub async fn provider_rename(
     Ok(())
 }
 
+/// Change a remote entry's permission bits through the active provider
+/// session, the one every FTP, FTPS and SFTP connection uses since v3.1.5.
+/// `mode` is what the Permissions dialog sends: octal (`644`, `0755`), or
+/// `rwx` letters.
+#[tauri::command]
+pub async fn provider_chmod(
+    state: State<'_, ProviderState>,
+    path: String,
+    mode: String,
+) -> Result<(), String> {
+    provider_chmod_inner(&state, &path, &mode).await
+}
+
+async fn provider_chmod_inner(state: &ProviderState, path: &str, mode: &str) -> Result<(), String> {
+    let bits = crate::providers::permission_mode(mode)
+        .ok_or_else(|| format!("Invalid permission mode: {mode}"))?;
+
+    let mut provider_lock = state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or("Not connected to any provider")?;
+
+    info!("Changing permissions: {} -> {:o}", path, bits);
+
+    provider
+        .chmod(path, bits)
+        .await
+        .map_err(|e| format!("Failed to change permissions: {}", e))
+}
+
 /// Capability-shaped copy through the production transfer DAG.
 ///
 /// The graph exposes either one native `ServerSideCopy` core or an explicit
@@ -16649,5 +16679,79 @@ mod tests {
             "drain returned much later than its timeout: {:?}",
             elapsed
         );
+    }
+}
+
+#[cfg(test)]
+mod provider_chmod_tests {
+    use super::*;
+    use crate::providers::edit_replace_tests::EditFake;
+
+    fn state_with(fake: EditFake) -> ProviderState {
+        let state = ProviderState::new();
+        *state.provider.try_lock().unwrap() = Some(Box::new(fake));
+        state
+    }
+
+    async fn mode_of(state: &ProviderState, path: &str) -> Option<u32> {
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<EditFake>()
+            .unwrap();
+        fake.modes.get(path).copied()
+    }
+
+    // The Permissions dialog used to reach a legacy FTP manager that no
+    // FTP, FTPS or SFTP connection opens since v3.1.5, so every save failed
+    // with "Not connected". It must reach the session the panel lists from.
+    #[tokio::test]
+    async fn the_dialog_mode_reaches_the_active_provider_session() {
+        let state = state_with(EditFake::new(true, false));
+
+        assert_eq!(
+            provider_chmod_inner(&state, "/t.txt", "755").await,
+            Ok(()),
+            "the Permissions dialog's save did not reach the connected provider session"
+        );
+        assert_eq!(mode_of(&state, "/t.txt").await, Some(0o755));
+
+        assert_eq!(
+            provider_chmod_inner(&state, "/t.txt", "rw-r-----").await,
+            Ok(()),
+            "a mode written as rwx letters did not reach the provider session"
+        );
+        assert_eq!(mode_of(&state, "/t.txt").await, Some(0o640));
+    }
+
+    #[tokio::test]
+    async fn a_mode_that_is_not_a_mode_is_refused_before_the_server() {
+        let state = state_with(EditFake::new(true, false));
+
+        let e = provider_chmod_inner(&state, "/t.txt", "9z9")
+            .await
+            .unwrap_err();
+        assert_eq!(e, "Invalid permission mode: 9z9");
+        assert_eq!(mode_of(&state, "/t.txt").await, None);
+    }
+
+    #[tokio::test]
+    async fn the_server_refusal_and_a_missing_session_are_reported() {
+        let mut fake = EditFake::new(true, false);
+        fake.chmod_fails_with = Some("550 SITE CHMOD command failed".to_string());
+        let state = state_with(fake);
+        let e = provider_chmod_inner(&state, "/t.txt", "644")
+            .await
+            .unwrap_err();
+        assert!(e.starts_with("Failed to change permissions: "), "{e}");
+        assert!(e.contains("550 SITE CHMOD command failed"), "{e}");
+
+        let none = ProviderState::new();
+        let e = provider_chmod_inner(&none, "/t.txt", "644")
+            .await
+            .unwrap_err();
+        assert_eq!(e, "Not connected to any provider");
     }
 }

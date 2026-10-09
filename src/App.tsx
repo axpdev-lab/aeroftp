@@ -16991,7 +16991,7 @@ const App: React.FC = () => {
           onSave={async (mode) => {
             if (permissionsDialog?.file) {
               try {
-                await invoke('chmod_remote_file', { path: permissionsDialog.file.path, mode });
+                await invoke('provider_chmod', { path: permissionsDialog.file.path, mode });
                 notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));
                 await loadRemoteFiles(undefined, true);
                 setPermissionsDialog(null);
