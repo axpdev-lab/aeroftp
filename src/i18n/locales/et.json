@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "AeroCrypti märgise teisendamine vormingusse .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypti märgis teisendatud vormingusse .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Kausta {filename} avamine..."
+            "box_unlock_folder": "[Box] Kausta {filename} avamine...",
+            "site_replied": "{command}: server vastas {code}",
+            "site_unknown": "{command}: täielik vastus puudub, tulemus on teadmata",
+            "site_not_sent": "{command} jäi saatmata"
         },
         "protocol": {
             "selectProtocol": "Vali protokoll...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Tegevuslogi",
             "detailedCards": "Üksikasjalikud serverikaardid",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Ühendus",
+            "siteCommand": "SITE-käsk..."
         },
         "activityPanel": {
             "awaitingCommands": "Käskude ootamine...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Uuenda seadeid",
                 "settings_close": "Sulge seaded"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-käsk",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-käsk ja selle argumendid",
+            "send": "Saada",
+            "sending": "Saatmine...",
+            "hideCodes": "Peida vastuskoodid",
+            "copyReply": "Kopeeri vastus",
+            "copyAll": "Kopeeri kõik",
+            "copied": "Kopeeritud",
+            "clear": "Tühjenda",
+            "empty": "Saadetud käsud kuvatakse siin koos serveri täieliku vastusega.",
+            "plainFtpNotice": "See ühendus ei ole krüptitud: käsud ja nende argumendid, sealhulgas paroolid, liiguvad üle võrgu lihttekstina.",
+            "codeNotice": "Vastused kuvatakse nii, nagu server need saatis. Vastuse kood ei näita, kas käsk toimis: mõned serverid vastavad keeldumisele koodiga 200, seega lugege teksti.",
+            "privacyNotice": "Siin sisestatut ega saadut ei salvestata ning parooli sisaldavad käsud jäetakse ajaloost välja.",
+            "chipNotSent": "saatmata",
+            "chipNoReply": "vastust pole",
+            "elapsed": "{ms} ms",
+            "latin1": "dekodeeritud kui Latin-1",
+            "notSent": {
+                "empty": "Pole midagi saata: sisesta SITE-käsk, näiteks WHO.",
+                "control_character": "Saatmata: käsk sisaldab juhtmärki (CR, LF, TAB...).",
+                "too_long": "Saatmata: käsk on pikem kui 1024 baiti.",
+                "not_ftp": "Saatmata: SITE-käsud vajavad FTP- või FTPS-ühendust.",
+                "not_connected": "Saatmata: seanss ei ole ühendatud.",
+                "busy": "Saatmata: seanss on teise toiminguga hõivatud. Proovi uuesti, kui see lõpeb.",
+                "reconnect_failed": "Saatmata: seanss pidi enne uuesti ühenduma, kuid see ei õnnestunud."
+            },
+            "unknown": {
+                "timeout": "Vastus ei saabunud õigeaegselt.",
+                "connection_lost": "Ühendus katkes enne vastust.",
+                "malformed_reply": "Vastus ei järginud FTP vormingut.",
+                "reply_too_large": "Vastus oli suurem kui 256 KiB ja jäeti kõrvale."
+            },
+            "unknownTail": "Server on käsu võib-olla rakendanud, võib-olla mitte. Seda ei saadetud uuesti.",
+            "sessionReconnected": "Seanss taastati.",
+            "sessionNotReconnected": "Seanssi ei õnnestunud taastada.",
+            "sessionReset": "Server saatis rohkem kui ühe vastuse, seega seanss taastati, et järgmine käsk loeks oma vastust.",
+            "sessionStateNote": "See käsk muudab ainult seda, kuidas server seda ühendust kohtleb: ülekanded kasutavad oma ühendusi ja faililoend võib välja näha teistsugune."
         }
     }
 }

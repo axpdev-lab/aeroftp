@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Menukar penanda AeroCrypt kepada .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Penanda AeroCrypt ditukar kepada .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Membuka kunci folder {filename}..."
+            "box_unlock_folder": "[Box] Membuka kunci folder {filename}...",
+            "site_replied": "{command}: pelayan membalas {code}",
+            "site_unknown": "{command}: tiada balasan lengkap, hasil tidak diketahui",
+            "site_not_sent": "{command} tidak dihantar"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Log Aktiviti",
             "detailedCards": "Kad pelayan terperinci",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Sambungan",
+            "siteCommand": "Arahan SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu arahan...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Kemas kini tetapan",
                 "settings_close": "Tutup tetapan"
             }
+        },
+        "siteCommand": {
+            "title": "Perintah SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Perintah SITE dan argumennya",
+            "send": "Hantar",
+            "sending": "Menghantar...",
+            "hideCodes": "Sembunyikan kod balasan",
+            "copyReply": "Salin balasan",
+            "copyAll": "Salin semua",
+            "copied": "Disalin",
+            "clear": "Kosongkan",
+            "empty": "Perintah yang anda hantar dipaparkan di sini bersama balasan penuh pelayan.",
+            "plainFtpNotice": "Sambungan ini tidak disulitkan: perintah dan argumennya, termasuk kata laluan, merentasi rangkaian sebagai teks biasa.",
+            "codeNotice": "Balasan dipaparkan seperti yang dihantar oleh pelayan. Kod balasan tidak menunjukkan sama ada perintah berjaya: sesetengah pelayan membalas 200 untuk penolakan, jadi bacalah teksnya.",
+            "privacyNotice": "Tiada apa yang ditaip atau diterima di sini disimpan, dan arahan yang membawa kata laluan tidak dimasukkan ke dalam sejarah.",
+            "chipNotSent": "tidak dihantar",
+            "chipNoReply": "tiada balasan",
+            "elapsed": "{ms} ms",
+            "latin1": "dinyahkod sebagai Latin-1",
+            "notSent": {
+                "empty": "Tiada apa-apa untuk dihantar: taip arahan SITE, contohnya WHO.",
+                "control_character": "Tidak dihantar: arahan mengandungi aksara kawalan (CR, LF, TAB...).",
+                "too_long": "Tidak dihantar: arahan lebih panjang daripada 1024 bait.",
+                "not_ftp": "Tidak dihantar: arahan SITE memerlukan sambungan FTP atau FTPS.",
+                "not_connected": "Tidak dihantar: sesi tidak disambungkan.",
+                "busy": "Tidak dihantar: sesi sedang sibuk dengan operasi lain. Cuba lagi apabila ia selesai.",
+                "reconnect_failed": "Tidak dihantar: sesi perlu bersambung semula dahulu, tetapi gagal."
+            },
+            "unknown": {
+                "timeout": "Balasan tidak tiba tepat pada masanya.",
+                "connection_lost": "Sambungan terputus sebelum balasan diterima.",
+                "malformed_reply": "Balasan tidak mengikut format FTP.",
+                "reply_too_large": "Balasan lebih besar daripada 256 KiB dan telah dibuang."
+            },
+            "unknownTail": "Pelayan mungkin telah melaksanakan arahan itu, mungkin juga tidak. Arahan tidak dihantar semula.",
+            "sessionReconnected": "Sesi telah dipulihkan.",
+            "sessionNotReconnected": "Sesi tidak dapat dipulihkan.",
+            "sessionReset": "Pelayan menghantar lebih daripada satu balasan, jadi sesi dipulihkan supaya arahan seterusnya membaca balasannya sendiri.",
+            "sessionStateNote": "Arahan ini hanya mengubah cara pelayan melayan sambungan ini: pemindahan menggunakan sambungannya sendiri, dan senarai fail mungkin kelihatan berbeza."
         }
     }
 }

@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt-markering wordt geconverteerd naar .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-marker geconverteerd naar .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Map {filename} ontgrendelen..."
+            "box_unlock_folder": "[Box] Map {filename} ontgrendelen...",
+            "site_replied": "{command}: de server antwoordde {code}",
+            "site_unknown": "{command}: geen volledig antwoord, uitkomst onbekend",
+            "site_not_sent": "{command} is niet verzonden"
         },
         "protocol": {
             "selectProtocol": "Selecteer protocol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Activiteitenlog",
             "detailedCards": "Gedetailleerde serverkaarten",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Verbinding",
+            "siteCommand": "SITE-opdracht..."
         },
         "activityPanel": {
             "awaitingCommands": "Wacht op opdrachten...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Instellingen bijwerken",
                 "settings_close": "Instellingen sluiten"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-opdracht",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-opdracht en de argumenten ervan",
+            "send": "Verzenden",
+            "sending": "Verzenden...",
+            "hideCodes": "Antwoordcodes verbergen",
+            "copyReply": "Antwoord kopiëren",
+            "copyAll": "Alles kopiëren",
+            "copied": "Gekopieerd",
+            "clear": "Wissen",
+            "empty": "Opdrachten die je verstuurt verschijnen hier met het volledige antwoord van de server.",
+            "plainFtpNotice": "Deze verbinding is niet versleuteld: opdrachten en hun argumenten, inclusief wachtwoorden, gaan als leesbare tekst over het netwerk.",
+            "codeNotice": "Antwoorden worden getoond zoals de server ze heeft verstuurd. Een antwoordcode zegt niet of de opdracht gelukt is: sommige servers antwoorden 200 op een weigering, dus lees de tekst.",
+            "privacyNotice": "Niets van wat hier wordt getypt of ontvangen wordt opgeslagen, en opdrachten met een wachtwoord blijven buiten de geschiedenis.",
+            "chipNotSent": "niet verzonden",
+            "chipNoReply": "geen antwoord",
+            "elapsed": "{ms} ms",
+            "latin1": "gedecodeerd als Latin-1",
+            "notSent": {
+                "empty": "Niets te verzenden: typ een SITE-opdracht, bijvoorbeeld WHO.",
+                "control_character": "Niet verzonden: de opdracht bevat een besturingsteken (CR, LF, TAB...).",
+                "too_long": "Niet verzonden: de opdracht is langer dan 1024 bytes.",
+                "not_ftp": "Niet verzonden: SITE-opdrachten vereisen een FTP- of FTPS-verbinding.",
+                "not_connected": "Niet verzonden: de sessie is niet verbonden.",
+                "busy": "Niet verzonden: de sessie is bezig met een andere bewerking. Probeer het opnieuw als deze klaar is.",
+                "reconnect_failed": "Niet verzonden: de sessie moest eerst opnieuw verbinden, maar dat lukte niet."
+            },
+            "unknown": {
+                "timeout": "Het antwoord kwam niet op tijd aan.",
+                "connection_lost": "De verbinding is verbroken vóór het antwoord.",
+                "malformed_reply": "Het antwoord volgde het FTP-formaat niet.",
+                "reply_too_large": "Het antwoord was groter dan 256 KiB en is genegeerd."
+            },
+            "unknownTail": "De server heeft de opdracht mogelijk toegepast, of niet. Ze is niet opnieuw verzonden.",
+            "sessionReconnected": "De sessie is hersteld.",
+            "sessionNotReconnected": "De sessie kon niet worden hersteld.",
+            "sessionReset": "De server stuurde meer dan één antwoord, daarom is de sessie hersteld zodat de volgende opdracht zijn eigen antwoord leest.",
+            "sessionStateNote": "Deze opdracht wijzigt alleen hoe de server deze verbinding behandelt: overdrachten gebruiken hun eigen verbindingen en de bestandslijst kan er anders uitzien."
         }
     }
 }

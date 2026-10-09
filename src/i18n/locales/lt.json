@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt žymuo konvertuojamas į .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt žymuo konvertuotas į .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Atrakinamas aplankas {filename}..."
+            "box_unlock_folder": "[Box] Atrakinamas aplankas {filename}...",
+            "site_replied": "{command}: serveris atsakė {code}",
+            "site_unknown": "{command}: išsamaus atsakymo nėra, rezultatas nežinomas",
+            "site_not_sent": "{command} nebuvo išsiųsta"
         },
         "protocol": {
             "selectProtocol": "Pasirinkti protokolą...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Veiklos žurnalas",
             "detailedCards": "Išsamios serverių kortelės",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Ryšys",
+            "siteCommand": "SITE komanda..."
         },
         "activityPanel": {
             "awaitingCommands": "Laukiama komandų...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Atnaujinti nustatymus",
                 "settings_close": "Uždaryti nustatymus"
             }
+        },
+        "siteCommand": {
+            "title": "SITE komanda",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE komanda ir jos argumentai",
+            "send": "Siųsti",
+            "sending": "Siunčiama...",
+            "hideCodes": "Slėpti atsakymo kodus",
+            "copyReply": "Kopijuoti atsakymą",
+            "copyAll": "Kopijuoti viską",
+            "copied": "Nukopijuota",
+            "clear": "Išvalyti",
+            "empty": "Išsiųstos komandos rodomos čia kartu su visu serverio atsakymu.",
+            "plainFtpNotice": "Šis ryšys nešifruotas: komandos ir jų argumentai, įskaitant slaptažodžius, tinklu keliauja atviru tekstu.",
+            "codeNotice": "Atsakymai rodomi tokie, kokius išsiuntė serveris. Atsakymo kodas nenurodo, ar komanda suveikė: kai kurie serveriai į atmetimą atsako 200, todėl perskaitykite tekstą.",
+            "privacyNotice": "Niekas, kas čia įvedama ar gaunama, nėra saugoma, o komandos su slaptažodžiu į istoriją neįtraukiamos.",
+            "chipNotSent": "neišsiųsta",
+            "chipNoReply": "nėra atsakymo",
+            "elapsed": "{ms} ms",
+            "latin1": "iškoduota kaip Latin-1",
+            "notSent": {
+                "empty": "Nėra ką siųsti: įveskite SITE komandą, pavyzdžiui, WHO.",
+                "control_character": "Neišsiųsta: komandoje yra valdymo simbolis (CR, LF, TAB...).",
+                "too_long": "Neišsiųsta: komanda ilgesnė nei 1024 baitai.",
+                "not_ftp": "Neišsiųsta: SITE komandoms reikalingas FTP arba FTPS ryšys.",
+                "not_connected": "Neišsiųsta: seansas neprijungtas.",
+                "busy": "Neišsiųsta: seansas užsiėmęs kita operacija. Bandykite dar kartą, kai ji baigsis.",
+                "reconnect_failed": "Neišsiųsta: seansas pirmiausia turėjo prisijungti iš naujo, bet to padaryti nepavyko."
+            },
+            "unknown": {
+                "timeout": "Atsakymas neatėjo laiku.",
+                "connection_lost": "Ryšys nutrūko prieš gaunant atsakymą.",
+                "malformed_reply": "Atsakymas nesilaikė FTP formato.",
+                "reply_too_large": "Atsakymas buvo didesnis nei 256 KiB ir buvo atmestas."
+            },
+            "unknownTail": "Serveris komandą galėjo pritaikyti, o galėjo ir ne. Ji nebuvo siųsta iš naujo.",
+            "sessionReconnected": "Seansas buvo atkurtas.",
+            "sessionNotReconnected": "Seanso atkurti nepavyko.",
+            "sessionReset": "Serveris atsiuntė daugiau nei vieną atsakymą, todėl seansas buvo atkurtas, kad kita komanda perskaitytų savo atsakymą.",
+            "sessionStateNote": "Ši komanda keičia tik tai, kaip serveris elgiasi su šiuo ryšiu: perdavimai naudoja savo ryšius, o failų sąrašas gali atrodyti kitaip."
         }
     }
 }

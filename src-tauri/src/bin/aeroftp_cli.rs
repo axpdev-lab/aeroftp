@@ -2362,6 +2362,31 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    /// Send a SITE command through an FTP/FTPS session and print the server's reply
+    #[command(after_help = SITE_AFTER_HELP)]
+    Site {
+        /// Server URL (omit when using --profile)
+        #[arg(default_value = "_", hide_default_value = true)]
+        url: String,
+        /// The SITE command and its arguments, with or without the word SITE (e.g. USER alice)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+        /// Seconds to wait for the complete reply (1-900)
+        #[arg(long, default_value_t = 60, value_name = "SECS")]
+        timeout: u64,
+        /// Ask for a value without echo and put it where {NAME} appears (repeatable); AEROFTP_SITE_SECRET_<NAME> supplies it without asking
+        #[arg(long = "secret", value_name = "NAME")]
+        secrets: Vec<String>,
+        /// Send the SITE commands of a file, one per line ('-' reads stdin); blank lines and # comments are skipped
+        #[arg(long, value_name = "PATH")]
+        file: Option<String>,
+        /// Print the reply lines without their NNN- / NNN prefix
+        #[arg(long)]
+        strip_codes: bool,
+        /// With --file, also stop at the first 4xx or 5xx reply
+        #[arg(long, requires = "file")]
+        fail_fast: bool,
+    },
     /// Show detailed server info, account, and storage quota
     About {
         /// Server URL or local folder (omit when using --profile)
@@ -18699,6 +18724,32 @@ async fn run_cli_tui_worker(
                         });
                     }
                 }
+            }
+            WorkerCommand::Site { args } => {
+                let active_identity = session
+                    .as_ref()
+                    .and_then(|session| session.state().identity.clone());
+                let _ = event_tx.send(WorkerEvent::Busy {
+                    operation: TuiWorkerOperation::Site,
+                    identity: active_identity.clone(),
+                });
+                let Some(active_session) = session.as_mut() else {
+                    let _ = event_tx.send(WorkerEvent::Failed {
+                        operation: TuiWorkerOperation::Site,
+                        identity: None,
+                        message: "no active TUI session".to_string(),
+                    });
+                    continue;
+                };
+                let provider = active_session.provider_mut();
+                let provider_type = provider.provider_type().to_string();
+                let run = ftp_client_gui_lib::providers::ftp_site::run_site_args(
+                    provider,
+                    &args,
+                    &ftp_client_gui_lib::providers::ftp_site::SiteOptions::default(),
+                )
+                .await;
+                let _ = event_tx.send(site_worker_event(&run, &provider_type));
             }
             WorkerCommand::Remove { path, recursive } => {
                 let active_identity = session
@@ -43984,6 +44035,379 @@ async fn cmd_lsjson(
         let _ = provider.disconnect().await;
         0
     }
+}
+
+/// Examples, exit codes and the shell-history warning of `aeroftp-cli site`.
+const SITE_AFTER_HELP: &str = "\
+Examples:
+  aeroftp-cli site --profile glftpd USER alice
+  aeroftp-cli site ftps://admin@ftp.example.com CHANGE alice ratio 5
+  aeroftp-cli site --profile glftpd --secret pw CHPASS alice {pw}
+  aeroftp-cli site --profile glftpd --file admin.txt --fail-fast
+
+Options go before the command: everything from the command's first word on is
+sent to the server as typed, options included.
+
+The command travels on the FTP control connection; the reply is printed as the
+server sent it, every line with its code. A reply code does not say whether the
+command worked: glFTPd answers 200 to some refusals, so read the text.
+
+Arguments typed on the command line stay in your shell history and are visible
+to other local users while the command runs: pass passwords with --secret, which
+asks for the value without echo (or reads AEROFTP_SITE_SECRET_<NAME>) and puts it
+where {NAME} appears. On plain FTP everything, passwords included, crosses the
+network unencrypted.
+
+A command is sent once. If the connection fails or the reply does not arrive in
+time, the outcome is unknown: the server may or may not have applied it, and it is
+not sent again (exit 8 or 1).
+
+Exit codes:
+  0  the server replied with a 1xx, 2xx or 3xx code
+  10 the server replied with a 4xx or 5xx code
+  8  no reply within --timeout: outcome unknown, not sent again (a slow server
+     script may need a longer --timeout)
+  1  not connected (nothing was sent), or the connection was lost or the reply
+     could not be read after sending: outcome unknown, not sent again
+  5  invalid command (empty, control character, longer than 1024 bytes)
+  7  the connection is not FTP or FTPS
+";
+
+/// The options of `aeroftp-cli site` besides the command itself.
+struct SiteCliOptions<'a> {
+    timeout_secs: u64,
+    secrets: &'a [String],
+    file: Option<&'a str>,
+    strip_codes: bool,
+    fail_fast: bool,
+}
+
+/// `{NAME}` replaced by the value of the `--secret NAME` with that name, in
+/// one pass, so a value that happens to contain `{other}` stays as typed.
+/// Braces that do not name a secret are left alone: they may belong to the
+/// server's own syntax.
+fn substitute_site_secrets(line: &str, secrets: &[(String, String)]) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 1..];
+        let named = after.find('}').and_then(|close| {
+            secrets
+                .iter()
+                .find(|(name, _)| *name == after[..close])
+                .map(|(_, value)| (close, value))
+        });
+        match named {
+            Some((close, value)) => {
+                out.push_str(value);
+                rest = &after[close + 1..];
+            }
+            None => {
+                out.push('{');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn is_valid_site_secret_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && name.len() <= 32
+}
+
+/// The value of `--secret NAME`: `AEROFTP_SITE_SECRET_<NAME>` when set, else
+/// a prompt without echo on the terminal.
+fn read_site_secret(name: &str) -> Result<String, String> {
+    let env_name = format!("AEROFTP_SITE_SECRET_{}", name.to_ascii_uppercase());
+    if let Ok(value) = std::env::var(&env_name) {
+        return Ok(value);
+    }
+    rpassword::prompt_password(format!("{name}: ")).map_err(|e| {
+        format!("--secret {name}: cannot ask for the value ({e}); set {env_name} instead")
+    })
+}
+
+/// The SITE lines of a `--file` (`-` = stdin) with their line numbers, blank
+/// lines and `#` comments skipped.
+fn read_site_batch(path: &str) -> Result<Vec<(usize, String)>, String> {
+    let text = if path == "-" {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+            .map_err(|e| format!("cannot read SITE commands from stdin: {e}"))?;
+        text
+    } else {
+        std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?
+    };
+    Ok(text
+        .lines()
+        .enumerate()
+        .map(|(index, line)| (index + 1, line.trim().to_string()))
+        .filter(|(_, line)| !line.is_empty() && !line.starts_with('#'))
+        .collect())
+}
+
+/// The exit code of one SITE exchange (see `SITE_AFTER_HELP`).
+fn site_exit_code(outcome: &ftp_client_gui_lib::providers::ftp_site::SiteOutcome) -> i32 {
+    use ftp_client_gui_lib::providers::ftp_site::{NotSentReason, SiteOutcome, UnknownCause};
+    match outcome {
+        SiteOutcome::Replied { reply, .. } if reply.code >= 400 => 10,
+        SiteOutcome::Replied { .. } => 0,
+        SiteOutcome::NotSent(NotSentReason::Input(_)) => 5,
+        SiteOutcome::NotSent(NotSentReason::NotFtp) => 7,
+        SiteOutcome::NotSent(_) => 1,
+        SiteOutcome::Unknown {
+            cause: UnknownCause::Timeout,
+            ..
+        } => 8,
+        SiteOutcome::Unknown { .. } => 1,
+    }
+}
+
+/// What to tell a person about a SITE exchange that got no reply. Built from
+/// the label and the outcome only: never the arguments.
+fn site_failure_message(
+    run: &ftp_client_gui_lib::providers::ftp_site::SiteRun,
+    provider_type: &str,
+) -> String {
+    use ftp_client_gui_lib::providers::ftp_site::{
+        NotSentReason, SiteInputError, SiteOutcome, UnknownCause,
+    };
+    let label = &run.label;
+    match &run.outcome {
+        SiteOutcome::Replied { .. } => String::new(),
+        SiteOutcome::NotSent(reason) => match reason {
+            NotSentReason::Input(SiteInputError::Empty) => {
+                "nothing to send: give the SITE command, for example `aeroftp-cli site --profile <name> WHO`".to_string()
+            }
+            NotSentReason::Input(SiteInputError::ControlCharacter) => {
+                format!("{label} was not sent: it contains a control character (CR, LF, TAB, NUL...)")
+            }
+            NotSentReason::Input(SiteInputError::TooLong) => format!(
+                "{label} was not sent: the line is longer than {} bytes",
+                ftp_client_gui_lib::providers::ftp_site::MAX_SITE_LINE_BYTES
+            ),
+            NotSentReason::NotFtp => format!(
+                "SITE commands need an FTP or FTPS connection, and this one is {provider_type}"
+            ),
+            NotSentReason::NotConnected
+            | NotSentReason::Busy
+            | NotSentReason::ReconnectFailed => {
+                format!("{label} was not sent: the FTP session is not connected")
+            }
+        },
+        SiteOutcome::Unknown {
+            cause,
+            session_reconnected,
+            ..
+        } => {
+            let why = match cause {
+                UnknownCause::Timeout => "the reply did not arrive in time",
+                UnknownCause::ConnectionLost => "the connection was lost",
+                UnknownCause::MalformedReply => "the reply did not follow the FTP format",
+                UnknownCause::ReplyTooLarge => "the reply was larger than 256 KiB",
+            };
+            let session = if *session_reconnected {
+                "the session was re-established"
+            } else {
+                "the session could not be re-established"
+            };
+            format!(
+                "{why}: the server may or may not have applied {label}. It was not sent again; {session}."
+            )
+        }
+    }
+}
+
+/// The TUI pager's view of a SITE exchange: the same wording as the CLI.
+fn site_worker_event(
+    run: &ftp_client_gui_lib::providers::ftp_site::SiteRun,
+    provider_type: &str,
+) -> cli_tui::worker::WorkerEvent {
+    use ftp_client_gui_lib::providers::ftp_site::SiteOutcome;
+    let (title, lines) = match &run.outcome {
+        SiteOutcome::Replied {
+            reply,
+            session_reset,
+            ..
+        } => {
+            let mut lines = reply.lines.clone();
+            if *session_reset {
+                lines.push(String::new());
+                lines.push(
+                    "(the server sent more than one reply; the session was re-established)"
+                        .to_string(),
+                );
+            }
+            (format!("{} - {}", run.label, reply.code), lines)
+        }
+        SiteOutcome::NotSent(_) => (
+            format!("{} - not sent", run.label),
+            vec![site_failure_message(run, provider_type)],
+        ),
+        SiteOutcome::Unknown { .. } => (
+            format!("{} - outcome unknown", run.label),
+            vec![site_failure_message(run, provider_type)],
+        ),
+    };
+    cli_tui::worker::WorkerEvent::SiteReply { title, lines }
+}
+
+/// `aeroftp-cli site`: send SITE commands through an FTP/FTPS session and
+/// print the replies. One connection for the whole run; a batch stops at the
+/// first command whose outcome is unknown or that could not be sent.
+async fn cmd_site(
+    url: &str,
+    words: &[String],
+    opts: SiteCliOptions<'_>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> i32 {
+    use ftp_client_gui_lib::providers::ftp_site::{self, SiteOptions, SiteOutcome};
+
+    let batch = opts.file.is_some();
+    let lines: Vec<(usize, String)> = match opts.file {
+        Some(path) => match read_site_batch(path) {
+            Ok(lines) => lines,
+            Err(msg) => {
+                print_error(format, &msg, 5);
+                return 5;
+            }
+        },
+        None => vec![(1, words.join(" "))],
+    };
+    if lines.iter().all(|(_, line)| line.trim().is_empty()) {
+        print_error(
+            format,
+            "nothing to send: give the SITE command, for example `aeroftp-cli site --profile <name> WHO`",
+            5,
+        );
+        return 5;
+    }
+
+    let mut secrets: Vec<(String, String)> = Vec::new();
+    for name in opts.secrets {
+        if !is_valid_site_secret_name(name) {
+            print_error(
+                format,
+                &format!("--secret {name:?}: a name is a letter followed by letters, digits or _ (at most 32)"),
+                5,
+            );
+            return 5;
+        }
+        let placeholder = format!("{{{name}}}");
+        if !lines.iter().any(|(_, line)| line.contains(&placeholder)) {
+            print_error(
+                format,
+                &format!("--secret {name} is not used: put {placeholder} where the value goes"),
+                5,
+            );
+            return 5;
+        }
+        match read_site_secret(name) {
+            Ok(value) => secrets.push((name.clone(), value)),
+            Err(msg) => {
+                print_error(format, &msg, 5);
+                return 5;
+            }
+        }
+    }
+
+    let (mut provider, _) = match create_and_connect(url, cli, format).await {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let provider_type = provider.provider_type();
+    if !secrets.is_empty() && provider_type == ProviderType::Ftp {
+        eprintln!(
+            "Warning: this FTP connection is not encrypted; the --secret values cross the network in clear text."
+        );
+    }
+
+    let site_opts = SiteOptions::with_reply_timeout_secs(opts.timeout_secs);
+    let mut reports = Vec::new();
+    let mut exit = 0;
+    let mut stopped_at = None;
+    for (line_no, line) in &lines {
+        let resolved = substitute_site_secrets(line, &secrets);
+        let run = ftp_site::run_site_command(provider.as_mut(), &resolved, &site_opts).await;
+        let code = site_exit_code(&run.outcome);
+        if code != 0 && (exit == 0 || !matches!(run.outcome, SiteOutcome::Replied { .. })) {
+            exit = code;
+        }
+        if matches!(format, OutputFormat::Text) {
+            if batch {
+                eprintln!("> {}", run.label);
+            }
+            match &run.outcome {
+                SiteOutcome::Replied {
+                    reply,
+                    elapsed,
+                    session_reset,
+                } => {
+                    for reply_line in &reply.lines {
+                        if opts.strip_codes {
+                            println!("{}", ftp_site::without_reply_code(reply_line));
+                        } else {
+                            println!("{reply_line}");
+                        }
+                    }
+                    if cli.verbose > 0 {
+                        eprintln!(
+                            "{}: reply {} in {} ms",
+                            run.label,
+                            reply.code,
+                            elapsed.as_millis()
+                        );
+                    }
+                    if *session_reset {
+                        eprintln!(
+                            "Note: the server sent more than one reply; the session was re-established so the next command reads its own."
+                        );
+                    }
+                }
+                _ => print_error(
+                    format,
+                    &site_failure_message(&run, &provider_type.to_string()),
+                    code,
+                ),
+            }
+        }
+        let replied = matches!(run.outcome, SiteOutcome::Replied { .. });
+        reports.push(run.report());
+        if !replied || (opts.fail_fast && code != 0) {
+            if batch && *line_no != lines.last().map(|(n, _)| *n).unwrap_or(0) {
+                stopped_at = Some(*line_no);
+            }
+            break;
+        }
+    }
+    let _ = provider.disconnect().await;
+
+    if let Some(line_no) = stopped_at {
+        if matches!(format, OutputFormat::Text) {
+            eprintln!("Stopped at line {line_no}; the commands after it were not sent.");
+        }
+    }
+    if matches!(format, OutputFormat::Json) {
+        let status = if exit == 0 { "ok" } else { "error" };
+        if batch {
+            print_json(&serde_json::json!({
+                "status": status,
+                "results": reports,
+                "stopped_at_line": stopped_at,
+            }));
+        } else if let Some(report) = reports.into_iter().next() {
+            let mut value = serde_json::to_value(&report).unwrap_or_default();
+            value["status"] = serde_json::json!(status);
+            print_json(&value);
+        }
+    }
+    exit
 }
 
 async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
@@ -69792,6 +70216,43 @@ async fn main() {
                 }
             }
         }
+        Commands::Site {
+            url,
+            command,
+            timeout,
+            secrets,
+            file,
+            strip_codes,
+            fail_fast,
+        } => {
+            // With --profile the first positional is the SITE verb, not a URL.
+            let mut words = command.clone();
+            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
+                words.insert(0, url.clone());
+                "_"
+            } else {
+                url
+            };
+            if file.is_some() && !words.is_empty() {
+                print_error(format, "give either a SITE command or --file, not both", 5);
+                5
+            } else {
+                cmd_site(
+                    u,
+                    &words,
+                    SiteCliOptions {
+                        timeout_secs: *timeout,
+                        secrets,
+                        file: file.as_deref(),
+                        strip_codes: *strip_codes,
+                        fail_fast: *fail_fast,
+                    },
+                    &cli,
+                    format,
+                )
+                .await
+            }
+        }
         Commands::About { url } => {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 "_"
@@ -74970,6 +75431,132 @@ mod tests {
             Ok(CliAccessLevel::Hidden)
         );
         assert!(CliAccessLevel::from_str("bogus", true).is_err());
+    }
+
+    #[test]
+    fn site_secrets_are_substituted_once_and_only_where_named() {
+        let secrets = vec![
+            ("pw".to_string(), "hun{ter}2".to_string()),
+            ("ter".to_string(), "X".to_string()),
+        ];
+        assert_eq!(
+            substitute_site_secrets("CHPASS alice {pw}", &secrets),
+            "CHPASS alice hun{ter}2",
+            "a value is not substituted again"
+        );
+        assert_eq!(
+            substitute_site_secrets("CHANGE {all} tagline {ter}{", &secrets),
+            "CHANGE {all} tagline X{",
+            "braces that name no secret belong to the command"
+        );
+        assert!(is_valid_site_secret_name("pw_2"));
+        assert!(!is_valid_site_secret_name("2pw"));
+        assert!(!is_valid_site_secret_name("p-w"));
+        assert!(!is_valid_site_secret_name(""));
+    }
+
+    #[test]
+    fn site_exit_codes_keep_the_cli_meaning_of_8() {
+        use ftp_client_gui_lib::providers::ftp_site::{
+            NotSentReason, ReplyEncoding, SiteInputError, SiteOutcome, SiteReply, UnknownCause,
+        };
+        let replied = |code| SiteOutcome::Replied {
+            reply: SiteReply {
+                code,
+                lines: vec![format!("{code} text")],
+                encoding: ReplyEncoding::Utf8,
+            },
+            elapsed: std::time::Duration::ZERO,
+            session_reset: false,
+        };
+        let unknown = |cause| SiteOutcome::Unknown {
+            cause,
+            elapsed: std::time::Duration::ZERO,
+            session_reconnected: true,
+        };
+        assert_eq!(site_exit_code(&replied(200)), 0);
+        assert_eq!(site_exit_code(&replied(214)), 0);
+        assert_eq!(site_exit_code(&replied(550)), 10);
+        // 8 is "stopped at a limit": only the reply deadline qualifies.
+        assert_eq!(site_exit_code(&unknown(UnknownCause::Timeout)), 8);
+        assert_eq!(site_exit_code(&unknown(UnknownCause::ConnectionLost)), 1);
+        assert_eq!(site_exit_code(&unknown(UnknownCause::ReplyTooLarge)), 1);
+        assert_eq!(
+            site_exit_code(&SiteOutcome::NotSent(NotSentReason::Input(
+                SiteInputError::ControlCharacter
+            ))),
+            5
+        );
+        assert_eq!(
+            site_exit_code(&SiteOutcome::NotSent(NotSentReason::NotFtp)),
+            7
+        );
+        assert_eq!(
+            site_exit_code(&SiteOutcome::NotSent(NotSentReason::NotConnected)),
+            1
+        );
+    }
+
+    #[test]
+    fn site_parses_a_profile_command_with_hyphen_values() {
+        // clap's command tree needs more than the default test stack.
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let cli = Cli::try_parse_from([
+                    "aeroftp-cli",
+                    "site",
+                    "--profile",
+                    "glftpd",
+                    "CHANGE",
+                    "alice",
+                    "flags",
+                    "-3",
+                ])
+                .expect("site parses");
+                match cli.command {
+                    Commands::Site {
+                        url,
+                        command,
+                        timeout,
+                        ..
+                    } => {
+                        assert_eq!(url, "CHANGE");
+                        assert_eq!(command, vec!["alice", "flags", "-3"]);
+                        assert_eq!(timeout, 60);
+                    }
+                    _ => panic!("expected the site subcommand"),
+                }
+                assert!(
+                    Cli::try_parse_from(["aeroftp-cli", "site", "--fail-fast", "ftp://h", "WHO"])
+                        .is_err(),
+                    "--fail-fast needs --file"
+                );
+                // Everything after the command's first word is the command, so a
+                // server argument that looks like an option reaches the server.
+                let cli = Cli::try_parse_from([
+                    "aeroftp-cli",
+                    "site",
+                    "ftp://h",
+                    "NUKE",
+                    "dir",
+                    "--timeout",
+                    "5",
+                ])
+                .expect("site parses");
+                match cli.command {
+                    Commands::Site {
+                        command, timeout, ..
+                    } => {
+                        assert_eq!(command, vec!["NUKE", "dir", "--timeout", "5"]);
+                        assert_eq!(timeout, 60);
+                    }
+                    _ => panic!("expected the site subcommand"),
+                }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]

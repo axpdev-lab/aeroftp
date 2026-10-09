@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Konverterer AeroCrypt-markør til .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markør konvertert til .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Låser opp mappen {filename}..."
+            "box_unlock_folder": "[Box] Låser opp mappen {filename}...",
+            "site_replied": "{command}: serveren svarte {code}",
+            "site_unknown": "{command}: ingen fullstendig respons, utfallet er ukjent",
+            "site_not_sent": "{command} ble ikke sendt"
         },
         "protocol": {
             "selectProtocol": "Velg protokoll...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerte serverkort",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Tilkobling",
+            "siteCommand": "SITE-kommando..."
         },
         "activityPanel": {
             "awaitingCommands": "Venter på kommandoer...",
@@ -6172,6 +6177,46 @@
                 "settings_update": "Oppdater innstillinger",
                 "settings_close": "Lukk innstillinger"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-kommando",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-kommando og argumentene",
+            "send": "Send",
+            "sending": "Sender...",
+            "hideCodes": "Skjul svarkoder",
+            "copyReply": "Kopier svar",
+            "copyAll": "Kopier alt",
+            "copied": "Kopiert",
+            "clear": "Tøm",
+            "empty": "Kommandoer du sender vises her sammen med serverens fullstendige svar.",
+            "plainFtpNotice": "Denne tilkoblingen er ikke kryptert: kommandoer og argumentene deres, inkludert passord, sendes over nettverket som ren tekst.",
+            "codeNotice": "Svar vises slik serveren sendte dem. En svarkode sier ikke om kommandoen virket: noen servere svarer 200 på en avvisning, så les teksten.",
+            "privacyNotice": "Ingenting som skrives eller mottas her, lagres, og kommandoer som inneholder et passord utelates fra historikken.",
+            "chipNotSent": "ikke sendt",
+            "chipNoReply": "ingen svar",
+            "elapsed": "{ms} ms",
+            "latin1": "dekodet som Latin-1",
+            "notSent": {
+                "empty": "Ingenting å sende: skriv inn en SITE-kommando, for eksempel WHO.",
+                "control_character": "Ikke sendt: kommandoen inneholder et kontrolltegn (CR, LF, TAB...).",
+                "too_long": "Ikke sendt: kommandoen er lengre enn 1024 byte.",
+                "not_ftp": "Ikke sendt: SITE-kommandoer krever en FTP- eller FTPS-tilkobling.",
+                "not_connected": "Ikke sendt: økten er ikke tilkoblet.",
+                "busy": "Ikke sendt: økten er opptatt med en annen operasjon. Prøv igjen når den er ferdig.",
+                "reconnect_failed": "Ikke sendt: økten måtte koble til på nytt først, og klarte det ikke."
+            },
+            "unknown": {
+                "timeout": "Svaret kom ikke frem i tide.",
+                "connection_lost": "Tilkoblingen ble brutt før svaret.",
+                "malformed_reply": "Svaret fulgte ikke FTP-formatet.",
+                "reply_too_large": "Svaret var større enn 256 KiB og ble forkastet."
+            },
+            "unknownTail": "Serveren kan ha brukt kommandoen, eller ikke. Den ble ikke sendt på nytt.",
+            "sessionReconnected": "Økten ble gjenopprettet.",
+            "sessionNotReconnected": "Økten kunne ikke gjenopprettes.",
+            "sessionReset": "Serveren sendte mer enn ett svar, så økten ble gjenopprettet slik at neste kommando leser sitt eget svar.",
+            "sessionStateNote": "Denne kommandoen endrer bare hvordan serveren behandler denne tilkoblingen: overføringer bruker egne tilkoblinger, og fillisten kan se annerledes ut."
         }
     }
 }

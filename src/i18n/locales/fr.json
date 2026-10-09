@@ -1444,7 +1444,7 @@
             "reconnecting": "Reconnexion en cours...",
             "connectionLost": "Connexion perdue, tentative de reconnexion",
             "reconnected": "Reconnecté",
-            "ftpRestored": "Connexion FTP retablie",
+            "ftpRestored": "Connexion FTP rétablie",
             "connectionLostTitle": "Connexion perdue",
             "connectionLostManual": "Impossible de se reconnecter. Veuillez vous reconnecter manuellement.",
             "connected": "Connecté",
@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Conversion du marqueur AeroCrypt en .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marqueur AeroCrypt converti en .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Déverrouillage du dossier {filename}..."
+            "box_unlock_folder": "[Box] Déverrouillage du dossier {filename}...",
+            "site_replied": "{command} : le serveur a répondu {code}",
+            "site_unknown": "{command} : aucune réponse complète, résultat inconnu",
+            "site_not_sent": "{command} n'a pas été envoyée"
         },
         "protocol": {
             "selectProtocol": "Sélectionner un protocole...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Journal d'activité",
             "detailedCards": "Cartes serveur détaillées",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Connexion",
+            "siteCommand": "Commande SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "En attente de commandes...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Mettre à jour les paramètres",
                 "settings_close": "Fermer les paramètres"
             }
+        },
+        "siteCommand": {
+            "title": "Commande SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Commande SITE et ses arguments",
+            "send": "Envoyer",
+            "sending": "Envoi...",
+            "hideCodes": "Masquer les codes de réponse",
+            "copyReply": "Copier la réponse",
+            "copyAll": "Tout copier",
+            "copied": "Copié",
+            "clear": "Effacer",
+            "empty": "Les commandes que vous envoyez apparaissent ici avec la réponse complète du serveur.",
+            "plainFtpNotice": "Cette connexion n'est pas chiffrée : les commandes et leurs arguments, mots de passe compris, transitent sur le réseau en clair.",
+            "codeNotice": "Les réponses sont affichées telles que le serveur les a envoyées. Un code de réponse n'indique pas si la commande a fonctionné : certains serveurs répondent 200 à un refus, lisez donc le texte.",
+            "privacyNotice": "Rien de ce qui est saisi ou reçu ici n'est enregistré, et les commandes contenant un mot de passe sont exclues de l'historique.",
+            "chipNotSent": "non envoyée",
+            "chipNoReply": "aucune réponse",
+            "elapsed": "{ms} ms",
+            "latin1": "décodé en Latin-1",
+            "notSent": {
+                "empty": "Rien à envoyer : saisissez une commande SITE, par exemple WHO.",
+                "control_character": "Non envoyée : la commande contient un caractère de contrôle (CR, LF, TAB...).",
+                "too_long": "Non envoyée : la commande dépasse 1024 octets.",
+                "not_ftp": "Non envoyée : les commandes SITE nécessitent une connexion FTP ou FTPS.",
+                "not_connected": "Non envoyée : la session n'est pas connectée.",
+                "busy": "Non envoyée : la session est occupée par une autre opération. Réessayez une fois celle-ci terminée.",
+                "reconnect_failed": "Non envoyée : la session devait d'abord se reconnecter, et n'y est pas parvenue."
+            },
+            "unknown": {
+                "timeout": "La réponse n'est pas arrivée à temps.",
+                "connection_lost": "La connexion a été perdue avant la réponse.",
+                "malformed_reply": "La réponse ne respectait pas le format FTP.",
+                "reply_too_large": "La réponse dépassait 256 KiB et a été ignorée."
+            },
+            "unknownTail": "Le serveur a peut-être appliqué la commande, ou non. Elle n'a pas été renvoyée.",
+            "sessionReconnected": "La session a été rétablie.",
+            "sessionNotReconnected": "La session n'a pas pu être rétablie.",
+            "sessionReset": "Le serveur a envoyé plus d'une réponse, donc la session a été rétablie pour que la commande suivante lise la sienne.",
+            "sessionStateNote": "Cette commande modifie uniquement la façon dont le serveur traite cette connexion : les transferts utilisent leurs propres connexions, et la liste des fichiers peut sembler différente."
         }
     }
 }

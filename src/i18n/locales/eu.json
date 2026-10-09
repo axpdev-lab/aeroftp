@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt marka .aerocrypt.tsv formatura bihurtzen…",
             "aerocrypt_marker_migrated": "AeroCrypt markatzailea .aerocrypt.tsv formatura bihurtu da",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] {filename} karpeta desblokeatzen..."
+            "box_unlock_folder": "[Box] {filename} karpeta desblokeatzen...",
+            "site_replied": "{command}: zerbitzariak {code} erantzun du",
+            "site_unknown": "{command}: erantzun osorik ez, emaitza ezezaguna",
+            "site_not_sent": "{command} ez da bidali"
         },
         "protocol": {
             "selectProtocol": "Aukeratu protokoloa...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Jarduera erregistroa",
             "detailedCards": "Zerbitzari-txartel zehatzak",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Konexioa",
+            "siteCommand": "SITE komandoa..."
         },
         "activityPanel": {
             "awaitingCommands": "Komandoen zain...",
@@ -6172,6 +6177,46 @@
                 "settings_update": "Eguneratu ezarpenak",
                 "settings_close": "Itxi ezarpenak"
             }
+        },
+        "siteCommand": {
+            "title": "SITE komandoa",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE komandoa eta bere argumentuak",
+            "send": "Bidali",
+            "sending": "Bidaltzen...",
+            "hideCodes": "Ezkutatu erantzun-kodeak",
+            "copyReply": "Kopiatu erantzuna",
+            "copyAll": "Kopiatu dena",
+            "copied": "Kopiatuta",
+            "clear": "Garbitu",
+            "empty": "Bidaltzen dituzun komandoak hemen agertzen dira, zerbitzariaren erantzun osoarekin.",
+            "plainFtpNotice": "Konexio hau ez dago zifratuta: komandoak eta haien argumentuak, pasahitzak barne, sarean testu arruntean doaz.",
+            "codeNotice": "Erantzunak zerbitzariak bidali zituen bezala erakusten dira. Erantzun-kode batek ez du esaten komandoak funtzionatu duen: zerbitzari batzuek 200 erantzuten dute errefusa bati, beraz irakurri testua.",
+            "privacyNotice": "Hemen idazten edo jasotzen den ezer ez da gordetzen, eta pasahitza daramaten komandoak historiatik kanpo uzten dira.",
+            "chipNotSent": "bidali gabe",
+            "chipNoReply": "erantzunik ez",
+            "elapsed": "{ms} ms",
+            "latin1": "Latin-1 gisa deskodetuta",
+            "notSent": {
+                "empty": "Ez dago bidaltzeko ezer: idatzi SITE komando bat, adibidez WHO.",
+                "control_character": "Ez da bidali: komandoak kontrol-karaktere bat dauka (CR, LF, TAB...).",
+                "too_long": "Ez da bidali: komandoa 1024 byte baino luzeagoa da.",
+                "not_ftp": "Ez da bidali: SITE komandoek FTP edo FTPS konexioa behar dute.",
+                "not_connected": "Ez da bidali: saioa ez dago konektatuta.",
+                "busy": "Ez da bidali: saioa beste eragiketa batean lanpetuta dago. Saiatu berriro amaitzen denean.",
+                "reconnect_failed": "Ez da bidali: saioak lehenik berriro konektatu behar zuen, eta ezin izan du."
+            },
+            "unknown": {
+                "timeout": "Erantzuna ez da garaiz iritsi.",
+                "connection_lost": "Konexioa galdu egin da erantzunaren aurretik.",
+                "malformed_reply": "Erantzunak ez zuen FTP formatua jarraitu.",
+                "reply_too_large": "Erantzuna 256 KiB baino handiagoa zen eta baztertu egin da."
+            },
+            "unknownTail": "Baliteke zerbitzariak komandoa aplikatu izana, edo ez. Ez da berriro bidali.",
+            "sessionReconnected": "Saioa berrezarri da.",
+            "sessionNotReconnected": "Ezin izan da saioa berrezarri.",
+            "sessionReset": "Zerbitzariak erantzun bat baino gehiago bidali ditu, beraz saioa berrezarri da, hurrengo komandoak bere erantzuna irakur dezan.",
+            "sessionStateNote": "Komando honek zerbitzariak konexio hau bakarrik nola tratatzen duen aldatzen du: transferentziek beren konexioak erabiltzen dituzte, eta fitxategi-zerrenda desberdin ager daiteke."
         }
     }
 }

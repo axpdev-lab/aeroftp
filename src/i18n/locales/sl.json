@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Pretvarjanje označbe AeroCrypt v .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Označba AeroCrypt pretvorjena v .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Odklepanje mape {filename}..."
+            "box_unlock_folder": "[Box] Odklepanje mape {filename}...",
+            "site_replied": "{command}: strežnik je odgovoril {code}",
+            "site_unknown": "{command}: ni popolnega odgovora, izid ni znan",
+            "site_not_sent": "{command} ni bil poslan"
         },
         "protocol": {
             "selectProtocol": "Izberi protokol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Dnevnik dejavnosti",
             "detailedCards": "Podrobne kartice strežnikov",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Povezava",
+            "siteCommand": "Ukaz SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Čakanje na ukaze...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Posodobi nastavitve",
                 "settings_close": "Zapri nastavitve"
             }
+        },
+        "siteCommand": {
+            "title": "Ukaz SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Ukaz SITE in njegovi argumenti",
+            "send": "Pošlji",
+            "sending": "Pošiljanje...",
+            "hideCodes": "Skrij kode odgovorov",
+            "copyReply": "Kopiraj odgovor",
+            "copyAll": "Kopiraj vse",
+            "copied": "Kopirano",
+            "clear": "Počisti",
+            "empty": "Poslani ukazi se prikažejo tukaj skupaj s celotnim odgovorom strežnika.",
+            "plainFtpNotice": "Ta povezava ni šifrirana: ukazi in njihovi argumenti, vključno z gesli, potujejo po omrežju kot navadno besedilo.",
+            "codeNotice": "Odgovori so prikazani tako, kot jih je poslal strežnik. Koda odgovora ne pove, ali je ukaz uspel: nekateri strežniki na zavrnitev odgovorijo s 200, zato preberite besedilo.",
+            "privacyNotice": "Nič, kar je tukaj vneseno ali prejeto, se ne shrani, ukazi z geslom pa so izpuščeni iz zgodovine.",
+            "chipNotSent": "ni poslano",
+            "chipNoReply": "brez odgovora",
+            "elapsed": "{ms} ms",
+            "latin1": "dekodirano kot Latin-1",
+            "notSent": {
+                "empty": "Ničesar ni za poslati: vnesite ukaz SITE, na primer WHO.",
+                "control_character": "Ni poslano: ukaz vsebuje nadzorni znak (CR, LF, TAB...).",
+                "too_long": "Ni poslano: ukaz je daljši od 1024 bajtov.",
+                "not_ftp": "Ni poslano: ukazi SITE zahtevajo povezavo FTP ali FTPS.",
+                "not_connected": "Ni poslano: seja ni povezana.",
+                "busy": "Ni poslano: seja je zasedena z drugo operacijo. Poskusite znova, ko se konča.",
+                "reconnect_failed": "Ni poslano: seja se je morala najprej znova povezati, a ji ni uspelo."
+            },
+            "unknown": {
+                "timeout": "Odgovor ni prispel pravočasno.",
+                "connection_lost": "Povezava je bila izgubljena pred odgovorom.",
+                "malformed_reply": "Odgovor ni sledil obliki FTP.",
+                "reply_too_large": "Odgovor je bil večji od 256 KiB in je bil zavržen."
+            },
+            "unknownTail": "Strežnik je ukaz morda uveljavil, morda pa ne. Ni bil poslan znova.",
+            "sessionReconnected": "Seja je bila znova vzpostavljena.",
+            "sessionNotReconnected": "Seje ni bilo mogoče znova vzpostaviti.",
+            "sessionReset": "Strežnik je poslal več kot en odgovor, zato je bila seja znova vzpostavljena, da bo naslednji ukaz prebral svoj odgovor.",
+            "sessionStateNote": "Ta ukaz spremeni le to, kako strežnik obravnava to povezavo: prenosi uporabljajo lastne povezave, seznam datotek pa je lahko videti drugače."
         }
     }
 }

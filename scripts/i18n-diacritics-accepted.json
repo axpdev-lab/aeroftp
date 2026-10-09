@@ -396,6 +396,13 @@
       "folded": "tokenu",
       "twin": "tokenů",
       "reason": "Hodnota tokenu is the genitive singular (the value of one token); tokenů is the genitive plural used by the cost-estimate strings, so both forms are correct."
+    },
+    "gl\u001fsiteCommand.unknownTail\u001fPode que o servidor aplicase o comando ou pode que non. Non se volveu enviar.": {
+      "locale": "gl",
+      "key": "siteCommand.unknownTail",
+      "folded": "aplicase",
+      "twin": "aplícase",
+      "reason": "aplicase is the imperfect subjunctive of aplicar (the server may have applied it); aplícase, the present reflexive, would mean something else."
     }
   }
 }

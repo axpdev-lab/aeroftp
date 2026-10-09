@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Prevádza sa značka AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Značka AeroCrypt bola prevedená na .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Odomyká sa priečinok {filename}..."
+            "box_unlock_folder": "[Box] Odomyká sa priečinok {filename}...",
+            "site_replied": "{command}: server odpovedal {code}",
+            "site_unknown": "{command}: žiadna úplná odpoveď, výsledok je neznámy",
+            "site_not_sent": "{command} sa neodoslal"
         },
         "protocol": {
             "selectProtocol": "Vybrať protokol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Denník aktivít",
             "detailedCards": "Podrobné karty serverov",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Spojenie",
+            "siteCommand": "Príkaz SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Čakanie na príkazy...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Aktualizovať nastavenia",
                 "settings_close": "Zavrieť nastavenia"
             }
+        },
+        "siteCommand": {
+            "title": "Príkaz SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Príkaz SITE a jeho argumenty",
+            "send": "Odoslať",
+            "sending": "Odosiela sa...",
+            "hideCodes": "Skryť kódy odpovedí",
+            "copyReply": "Kopírovať odpoveď",
+            "copyAll": "Kopírovať všetko",
+            "copied": "Skopírované",
+            "clear": "Vymazať",
+            "empty": "Odoslané príkazy sa zobrazia tu spolu s úplnou odpoveďou servera.",
+            "plainFtpNotice": "Toto pripojenie nie je šifrované: príkazy a ich argumenty vrátane hesiel putujú sieťou ako obyčajný text.",
+            "codeNotice": "Odpovede sa zobrazujú tak, ako ich server odoslal. Kód odpovede nehovorí, či príkaz fungoval: niektoré servery odpovedajú na odmietnutie kódom 200, preto si prečítajte text.",
+            "privacyNotice": "Nič, čo sa tu zadá alebo prijme, sa neukladá a príkazy obsahujúce heslo sa do histórie nezapisujú.",
+            "chipNotSent": "neodoslané",
+            "chipNoReply": "bez odpovede",
+            "elapsed": "{ms} ms",
+            "latin1": "dekódované ako Latin-1",
+            "notSent": {
+                "empty": "Nie je čo odoslať: zadajte príkaz SITE, napríklad WHO.",
+                "control_character": "Neodoslané: príkaz obsahuje riadiaci znak (CR, LF, TAB...).",
+                "too_long": "Neodoslané: príkaz je dlhší ako 1024 bajtov.",
+                "not_ftp": "Neodoslané: príkazy SITE vyžadujú pripojenie FTP alebo FTPS.",
+                "not_connected": "Neodoslané: relácia nie je pripojená.",
+                "busy": "Neodoslané: relácia je zaneprázdnená inou operáciou. Skúste to znova, keď skončí.",
+                "reconnect_failed": "Neodoslané: relácia sa musela najprv znova pripojiť, čo sa nepodarilo."
+            },
+            "unknown": {
+                "timeout": "Odpoveď nedorazila včas.",
+                "connection_lost": "Spojenie sa prerušilo pred odpoveďou.",
+                "malformed_reply": "Odpoveď nedodržiavala formát FTP.",
+                "reply_too_large": "Odpoveď bola väčšia ako 256 KiB a bola zahodená."
+            },
+            "unknownTail": "Server mohol príkaz vykonať, ale nemusel. Neodoslal sa znova.",
+            "sessionReconnected": "Relácia bola obnovená.",
+            "sessionNotReconnected": "Reláciu sa nepodarilo obnoviť.",
+            "sessionReset": "Server poslal viac ako jednu odpoveď, preto bola relácia obnovená, aby ďalší príkaz čítal svoju vlastnú odpoveď.",
+            "sessionStateNote": "Tento príkaz mení len to, ako server zaobchádza s týmto spojením: prenosy používajú vlastné spojenia a zoznam súborov môže vyzerať inak."
         }
     }
 }

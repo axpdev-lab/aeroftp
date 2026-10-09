@@ -203,7 +203,10 @@
             "aerocrypt_marker_migrate": "Converting AeroCrypt marker to .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt marker converted to .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Unlocking folder {filename}..."
+            "box_unlock_folder": "[Box] Unlocking folder {filename}...",
+            "site_replied": "{command}: the server replied {code}",
+            "site_unknown": "{command}: no complete reply, outcome unknown",
+            "site_not_sent": "{command} was not sent"
         },
         "activityPanel": {
             "awaitingCommands": "Awaiting commands...",
@@ -2533,7 +2536,9 @@
             "documentation": "Documentation",
             "mcp": "MCP Server...",
             "mountManager": "AeroMount...",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Connection",
+            "siteCommand": "SITE Command..."
         },
         "mountManager": {
             "title": "AeroMount",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Update settings",
                 "settings_close": "Close settings"
             }
+        },
+        "siteCommand": {
+            "title": "SITE Command",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE command and its arguments",
+            "send": "Send",
+            "sending": "Sending...",
+            "hideCodes": "Hide reply codes",
+            "copyReply": "Copy reply",
+            "copyAll": "Copy all",
+            "copied": "Copied",
+            "clear": "Clear",
+            "empty": "Commands you send appear here with the server's full reply.",
+            "plainFtpNotice": "This connection is not encrypted: commands and their arguments, passwords included, cross the network in clear text.",
+            "codeNotice": "Replies are shown as the server sent them. A reply code does not say whether the command worked: some servers answer 200 to a refusal, so read the text.",
+            "privacyNotice": "Nothing typed or received here is saved, and commands that carry a password are left out of the history.",
+            "chipNotSent": "not sent",
+            "chipNoReply": "no reply",
+            "elapsed": "{ms} ms",
+            "latin1": "decoded as Latin-1",
+            "notSent": {
+                "empty": "Nothing to send: type a SITE command, for example WHO.",
+                "control_character": "Not sent: the command contains a control character (CR, LF, TAB...).",
+                "too_long": "Not sent: the command is longer than 1024 bytes.",
+                "not_ftp": "Not sent: SITE commands need an FTP or FTPS connection.",
+                "not_connected": "Not sent: the session is not connected.",
+                "busy": "Not sent: the session is busy with another operation. Try again when it ends.",
+                "reconnect_failed": "Not sent: the session had to reconnect first, and could not."
+            },
+            "unknown": {
+                "timeout": "The reply did not arrive in time.",
+                "connection_lost": "The connection was lost before the reply.",
+                "malformed_reply": "The reply did not follow the FTP format.",
+                "reply_too_large": "The reply was larger than 256 KiB and was discarded."
+            },
+            "unknownTail": "The server may or may not have applied the command. It was not sent again.",
+            "sessionReconnected": "The session was re-established.",
+            "sessionNotReconnected": "The session could not be re-established.",
+            "sessionReset": "The server sent more than one reply; the session was re-established so the next command reads its own.",
+            "sessionStateNote": "This command changes how the server treats this connection only: transfers use their own connections, and the file list may look different."
         }
     }
 }

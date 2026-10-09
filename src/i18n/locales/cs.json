@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Převádí se značka AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Značka AeroCrypt převedena na .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Odemykání složky {filename}..."
+            "box_unlock_folder": "[Box] Odemykání složky {filename}...",
+            "site_replied": "{command}: server odpověděl {code}",
+            "site_unknown": "{command}: žádná úplná odpověď, výsledek není znám",
+            "site_not_sent": "{command} nebyl odeslán"
         },
         "protocol": {
             "selectProtocol": "Vybrat protokol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Protokol aktivit",
             "detailedCards": "Detailní karty serverů",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Spojení",
+            "siteCommand": "Příkaz SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Čekání na příkazy...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Aktualizovat nastavení",
                 "settings_close": "Zavřít nastavení"
             }
+        },
+        "siteCommand": {
+            "title": "Příkaz SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Příkaz SITE a jeho argumenty",
+            "send": "Odeslat",
+            "sending": "Odesílání...",
+            "hideCodes": "Skrýt kódy odpovědí",
+            "copyReply": "Kopírovat odpověď",
+            "copyAll": "Kopírovat vše",
+            "copied": "Zkopírováno",
+            "clear": "Vymazat",
+            "empty": "Odeslané příkazy se zobrazí zde spolu s úplnou odpovědí serveru.",
+            "plainFtpNotice": "Toto připojení není šifrované: příkazy a jejich argumenty, včetně hesel, putují sítí jako prostý text.",
+            "codeNotice": "Odpovědi se zobrazují tak, jak je server odeslal. Kód odpovědi neříká, zda příkaz fungoval: některé servery odpovídají na odmítnutí kódem 200, proto čtěte text.",
+            "privacyNotice": "Nic, co zde zadáte nebo přijmete, se neukládá a příkazy obsahující heslo se do historie nezapisují.",
+            "chipNotSent": "neodesláno",
+            "chipNoReply": "bez odpovědi",
+            "elapsed": "{ms} ms",
+            "latin1": "dekódováno jako Latin-1",
+            "notSent": {
+                "empty": "Není co odeslat: zadejte příkaz SITE, například WHO.",
+                "control_character": "Neodesláno: příkaz obsahuje řídicí znak (CR, LF, TAB...).",
+                "too_long": "Neodesláno: příkaz je delší než 1024 bajtů.",
+                "not_ftp": "Neodesláno: příkazy SITE vyžadují připojení FTP nebo FTPS.",
+                "not_connected": "Neodesláno: relace není připojena.",
+                "busy": "Neodesláno: relace je zaneprázdněna jinou operací. Zkuste to znovu, až skončí.",
+                "reconnect_failed": "Neodesláno: relace se musela nejprve znovu připojit, což se nepodařilo."
+            },
+            "unknown": {
+                "timeout": "Odpověď nedorazila včas.",
+                "connection_lost": "Spojení bylo ztraceno před odpovědí.",
+                "malformed_reply": "Odpověď nedodržovala formát FTP.",
+                "reply_too_large": "Odpověď byla větší než 256 KiB a byla zahozena."
+            },
+            "unknownTail": "Server mohl příkaz provést, ale nemusel. Nebyl odeslán znovu.",
+            "sessionReconnected": "Relace byla znovu navázána.",
+            "sessionNotReconnected": "Relaci se nepodařilo znovu navázat.",
+            "sessionReset": "Server poslal více než jednu odpověď, proto byla relace znovu navázána, aby další příkaz četl svou vlastní odpověď.",
+            "sessionStateNote": "Tento příkaz mění, jak server zachází pouze s tímto spojením: přenosy používají vlastní spojení a seznam souborů může vypadat jinak."
         }
     }
 }

@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Pretvaranje AeroCrypt oznake u .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt oznaka pretvorena u .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Otključavanje mape {filename}..."
+            "box_unlock_folder": "[Box] Otključavanje mape {filename}...",
+            "site_replied": "{command}: poslužitelj je odgovorio {code}",
+            "site_unknown": "{command}: nema potpunog odgovora, ishod nepoznat",
+            "site_not_sent": "{command} nije poslana"
         },
         "protocol": {
             "selectProtocol": "Odaberi protokol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Dnevnik aktivnosti",
             "detailedCards": "Detaljne kartice poslužitelja",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Veza",
+            "siteCommand": "SITE naredba..."
         },
         "activityPanel": {
             "awaitingCommands": "Čekanje naredbi...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Ažuriraj postavke",
                 "settings_close": "Zatvori postavke"
             }
+        },
+        "siteCommand": {
+            "title": "SITE naredba",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE naredba i njezini argumenti",
+            "send": "Pošalji",
+            "sending": "Slanje...",
+            "hideCodes": "Sakrij kodove odgovora",
+            "copyReply": "Kopiraj odgovor",
+            "copyAll": "Kopiraj sve",
+            "copied": "Kopirano",
+            "clear": "Očisti",
+            "empty": "Naredbe koje pošaljete pojavljuju se ovdje s cjelovitim odgovorom poslužitelja.",
+            "plainFtpNotice": "Ova veza nije šifrirana: naredbe i njihovi argumenti, uključujući lozinke, putuju mrežom kao običan tekst.",
+            "codeNotice": "Odgovori se prikazuju onako kako ih je poslužitelj poslao. Kod odgovora ne govori je li naredba uspjela: neki poslužitelji na odbijanje odgovaraju s 200, stoga pročitajte tekst.",
+            "privacyNotice": "Ništa što se ovdje upiše ili primi ne sprema se, a naredbe koje sadrže lozinku izostavljaju se iz povijesti.",
+            "chipNotSent": "nije poslano",
+            "chipNoReply": "nema odgovora",
+            "elapsed": "{ms} ms",
+            "latin1": "dekodirano kao Latin-1",
+            "notSent": {
+                "empty": "Nema što poslati: upišite SITE naredbu, na primjer WHO.",
+                "control_character": "Nije poslano: naredba sadrži kontrolni znak (CR, LF, TAB...).",
+                "too_long": "Nije poslano: naredba je dulja od 1024 bajta.",
+                "not_ftp": "Nije poslano: SITE naredbe zahtijevaju FTP ili FTPS vezu.",
+                "not_connected": "Nije poslano: sesija nije povezana.",
+                "busy": "Nije poslano: sesija je zauzeta drugom operacijom. Pokušajte ponovno kada završi.",
+                "reconnect_failed": "Nije poslano: sesija se prvo morala ponovno povezati, što nije uspjelo."
+            },
+            "unknown": {
+                "timeout": "Odgovor nije stigao na vrijeme.",
+                "connection_lost": "Veza je izgubljena prije odgovora.",
+                "malformed_reply": "Odgovor nije slijedio FTP format.",
+                "reply_too_large": "Odgovor je bio veći od 256 KiB i odbačen je."
+            },
+            "unknownTail": "Poslužitelj je naredbu možda primijenio, a možda i nije. Nije poslana ponovno.",
+            "sessionReconnected": "Sesija je ponovno uspostavljena.",
+            "sessionNotReconnected": "Sesiju nije bilo moguće ponovno uspostaviti.",
+            "sessionReset": "Poslužitelj je poslao više od jednog odgovora, pa je sesija ponovno uspostavljena kako bi sljedeća naredba pročitala svoj odgovor.",
+            "sessionStateNote": "Ova naredba mijenja način na koji poslužitelj postupa samo s ovom vezom: prijenosi koriste vlastite veze, a popis datoteka može izgledati drukčije."
         }
     }
 }

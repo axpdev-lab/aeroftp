@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Umbreyti AeroCrypt-merki í .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-merki umbreytt í .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Aflæsi möppu {filename}..."
+            "box_unlock_folder": "[Box] Aflæsi möppu {filename}...",
+            "site_replied": "{command}: þjónninn svaraði {code}",
+            "site_unknown": "{command}: ekkert fullkomið svar, niðurstaða óþekkt",
+            "site_not_sent": "{command} var ekki send"
         },
         "protocol": {
             "selectProtocol": "Select protocol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Aðgerðaskrá",
             "detailedCards": "Ítarleg netþjónakort",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Tenging",
+            "siteCommand": "SITE-skipun..."
         },
         "activityPanel": {
             "awaitingCommands": "Bíð eftir skipunum...",
@@ -6172,6 +6177,46 @@
                 "settings_update": "Uppfæra stillingar",
                 "settings_close": "Loka stillingum"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-skipun",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-skipun og röksemdir hennar",
+            "send": "Senda",
+            "sending": "Sendir...",
+            "hideCodes": "Fela svarkóða",
+            "copyReply": "Afrita svar",
+            "copyAll": "Afrita allt",
+            "copied": "Afritað",
+            "clear": "Hreinsa",
+            "empty": "Skipanir sem þú sendir birtast hér ásamt fullu svari þjónsins.",
+            "plainFtpNotice": "Þessi tenging er ekki dulkóðuð: skipanir og röksemdir þeirra, þar á meðal lykilorð, fara um netið sem ódulkóðaður texti.",
+            "codeNotice": "Svör eru sýnd eins og þjónninn sendi þau. Svarkóði segir ekki til um hvort skipunin virkaði: sumir þjónar svara 200 við synjun, svo lestu textann.",
+            "privacyNotice": "Ekkert sem er slegið inn eða tekið á móti hér er vistað, og skipanir sem innihalda lykilorð eru ekki skráðar í ferilinn.",
+            "chipNotSent": "ekki sent",
+            "chipNoReply": "ekkert svar",
+            "elapsed": "{ms} ms",
+            "latin1": "afkóðað sem Latin-1",
+            "notSent": {
+                "empty": "Ekkert til að senda: sláðu inn SITE-skipun, til dæmis WHO.",
+                "control_character": "Ekki sent: skipunin inniheldur stýristákn (CR, LF, TAB...).",
+                "too_long": "Ekki sent: skipunin er lengri en 1024 bæti.",
+                "not_ftp": "Ekki sent: SITE-skipanir þurfa FTP- eða FTPS-tengingu.",
+                "not_connected": "Ekki sent: lotan er ekki tengd.",
+                "busy": "Ekki sent: lotan er upptekin við aðra aðgerð. Reyndu aftur þegar henni lýkur.",
+                "reconnect_failed": "Ekki sent: lotan þurfti fyrst að tengjast aftur, en það tókst ekki."
+            },
+            "unknown": {
+                "timeout": "Svarið barst ekki í tæka tíð.",
+                "connection_lost": "Tengingin rofnaði áður en svarið barst.",
+                "malformed_reply": "Svarið fylgdi ekki FTP-sniðinu.",
+                "reply_too_large": "Svarið var stærra en 256 KiB og var hent."
+            },
+            "unknownTail": "Þjónninn gæti hafa framkvæmt skipunina eða ekki. Hún var ekki send aftur.",
+            "sessionReconnected": "Setan var endurreist.",
+            "sessionNotReconnected": "Ekki tókst að endurreisa setuna.",
+            "sessionReset": "Þjónninn sendi fleiri en eitt svar, þannig að setan var endurreist svo að næsta skipun lesi sitt eigið svar.",
+            "sessionStateNote": "Þessi skipun breytir aðeins því hvernig þjónninn meðhöndlar þessa tengingu: flutningar nota eigin tengingar og skráalistinn getur litið öðruvísi út."
         }
     }
 }

@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt işaretçisi .aerocrypt.tsv biçimine dönüştürülüyor…",
             "aerocrypt_marker_migrated": "AeroCrypt işareti .aerocrypt.tsv biçimine dönüştürüldü",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] {filename} klasörünün kilidi açılıyor..."
+            "box_unlock_folder": "[Box] {filename} klasörünün kilidi açılıyor...",
+            "site_replied": "{command}: sunucu {code} yanıtını verdi",
+            "site_unknown": "{command}: tam yanıt yok, sonuç bilinmiyor",
+            "site_not_sent": "{command} gönderilmedi"
         },
         "protocol": {
             "selectProtocol": "Protokol seç...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Etkinlik Günlüğü",
             "detailedCards": "Ayrıntılı sunucu kartları",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Bağlantı",
+            "siteCommand": "SITE Komutu..."
         },
         "activityPanel": {
             "awaitingCommands": "Komut bekleniyor...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Ayarları güncelle",
                 "settings_close": "Ayarları kapat"
             }
+        },
+        "siteCommand": {
+            "title": "SITE komutu",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE komutu ve bağımsız değişkenleri",
+            "send": "Gönder",
+            "sending": "Gönderiliyor...",
+            "hideCodes": "Yanıt kodlarını gizle",
+            "copyReply": "Yanıtı kopyala",
+            "copyAll": "Tümünü kopyala",
+            "copied": "Kopyalandı",
+            "clear": "Temizle",
+            "empty": "Gönderdiğiniz komutlar, sunucunun tam yanıtıyla birlikte burada görünür.",
+            "plainFtpNotice": "Bu bağlantı şifrelenmemiştir: komutlar ve bağımsız değişkenleri, parolalar dahil, ağ üzerinden düz metin olarak iletilir.",
+            "codeNotice": "Yanıtlar sunucunun gönderdiği şekilde gösterilir. Bir yanıt kodu komutun işe yarayıp yaramadığını söylemez: bazı sunucular reddetmeye 200 ile yanıt verir, bu yüzden metni okuyun.",
+            "privacyNotice": "Burada yazılan veya alınan hiçbir şey kaydedilmez ve parola içeren komutlar geçmişe eklenmez.",
+            "chipNotSent": "gönderilmedi",
+            "chipNoReply": "yanıt yok",
+            "elapsed": "{ms} ms",
+            "latin1": "Latin-1 olarak çözüldü",
+            "notSent": {
+                "empty": "Gönderilecek bir şey yok: bir SITE komutu yazın, örneğin WHO.",
+                "control_character": "Gönderilmedi: komut bir denetim karakteri (CR, LF, TAB...) içeriyor.",
+                "too_long": "Gönderilmedi: komut 1024 bayttan uzun.",
+                "not_ftp": "Gönderilmedi: SITE komutları için FTP veya FTPS bağlantısı gerekir.",
+                "not_connected": "Gönderilmedi: oturum bağlı değil.",
+                "busy": "Gönderilmedi: oturum başka bir işlemle meşgul. İşlem bitince tekrar deneyin.",
+                "reconnect_failed": "Gönderilmedi: oturumun önce yeniden bağlanması gerekiyordu ve bağlanamadı."
+            },
+            "unknown": {
+                "timeout": "Yanıt zamanında gelmedi.",
+                "connection_lost": "Bağlantı yanıttan önce kesildi.",
+                "malformed_reply": "Yanıt FTP biçimine uymuyordu.",
+                "reply_too_large": "Yanıt 256 KiB'den büyüktü ve atıldı."
+            },
+            "unknownTail": "Sunucu komutu uygulamış olabilir ya da olmayabilir. Komut yeniden gönderilmedi.",
+            "sessionReconnected": "Oturum yeniden kuruldu.",
+            "sessionNotReconnected": "Oturum yeniden kurulamadı.",
+            "sessionReset": "Sunucu birden fazla yanıt gönderdi, bu yüzden sonraki komutun kendi yanıtını okuması için oturum yeniden kuruldu.",
+            "sessionStateNote": "Bu komut yalnızca sunucunun bu bağlantıya nasıl davrandığını değiştirir: aktarımlar kendi bağlantılarını kullanır ve dosya listesi farklı görünebilir."
         }
     }
 }

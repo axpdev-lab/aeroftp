@@ -165,6 +165,9 @@ type MountManagerOpenOptions = {
 
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
+import { SiteCommandDialog } from './components/SiteCommand/SiteCommandDialog';
+import { forgetSiteSession } from './components/SiteCommand/siteSessionMemory';
+import type { SiteCommandReport } from './components/SiteCommand/siteCommand';
 import { ToastContainer, useToast } from './components/Toast';
 import { ContextMenu, useContextMenu, ContextMenuItem } from './components/ContextMenu';
 import { useAeroShareEnabled } from './hooks/useAeroShareEnabled';
@@ -826,6 +829,7 @@ const App: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   // A6-01: Refs for menu-event listener to avoid stale closures
   const isConnectedRef = useRef(false);
+  const canSendSiteCommandRef = useRef(false);
   const currentLocalPathRef = useRef('');
   const themeRef = useRef<Theme>('dark');
   const debugModeRef = useRef(false);
@@ -946,6 +950,7 @@ const App: React.FC = () => {
   const sortedLocalFilesRef = useRef<LocalFile[]>([]);
   const sortedRemoteFilesRef = useRef<RemoteFile[]>([]);
   const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean } | null>(null);
+  const [showSiteCommand, setShowSiteCommand] = useState(false);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
   // #401: synchronous in-flight latches. A second double-click (e.g. on "Parent
@@ -4510,6 +4515,13 @@ const App: React.FC = () => {
   const isAeroFileMode = !isConnected || !showRemotePanel;
   const isAeroFileVisible = !showConnectionScreen && isAeroFileMode;
 
+  // SITE commands travel on the FTP control connection (discussion #1109):
+  // offered on a connected FTP/FTPS session only. Computed here, ahead of the
+  // command palette that lists it.
+  const siteProtocol = (connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol) as ProviderType | undefined;
+  const canSendSiteCommand = isConnected && !!siteProtocol && isFtpProtocol(siteProtocol);
+  canSendSiteCommandRef.current = canSendSiteCommand;
+
   // Command palette items
   const commandPaletteItems: CommandItem[] = useMemo(() => [
     // Navigation
@@ -4519,6 +4531,7 @@ const App: React.FC = () => {
     // File
     { id: 'file-newfolder', label: t('contextMenu.newFolder'), category: 'file' as CommandCategory, icon: <FolderPlus size={14} />, action: () => createFolder(activePanel !== 'remote'), keywords: ['create', 'directory', 'mkdir'] },
     { id: 'file-refresh', label: t('contextMenu.refresh'), category: 'file' as CommandCategory, icon: <RefreshCw size={14} />, action: () => { if (activePanel === 'remote') loadRemoteFiles(); else loadLocalFiles(currentLocalPath); }, keywords: ['reload'] },
+    ...(canSendSiteCommand ? [{ id: 'connection-site-command', label: t('menu.siteCommand'), category: 'navigation' as CommandCategory, icon: <Terminal size={14} />, action: () => setShowSiteCommand(true), keywords: ['site', 'ftp', 'raw', 'quote', 'command', 'glftpd'] }] : []),
     // AI
     { id: 'ai-agent', label: 'AeroAgent', category: 'ai' as CommandCategory, icon: <Bot size={14} />, action: () => window.dispatchEvent(new CustomEvent('devtools-panel-ensure', { detail: 'agent' })), keywords: ['chat', 'assistant', 'ai'] },
     // Tools
@@ -4537,7 +4550,7 @@ const App: React.FC = () => {
       action: () => window.dispatchEvent(new CustomEvent('aerovault-overlay-toggle')),
       keywords: ['vault', 'aerovault', 'overlay', 'crypt', 'lock', 'unlock', 'encrypt'],
     },
-  ], [t, activePanel, currentLocalPath, aeroVaultOverlaySession]);
+  ], [t, activePanel, currentLocalPath, aeroVaultOverlaySession, canSendSiteCommand]);
 
   // Sync active tab path when navigating: only in AeroFile mode
   useEffect(() => {
@@ -5232,6 +5245,7 @@ const App: React.FC = () => {
         case 'support': setShowSupportDialog(true); break;
         case 'shortcuts': setShowShortcutsDialog(true); break;
         case 'settings': setShowSettingsPanel(true); break;
+        case 'site_command': if (canSendSiteCommandRef.current) setShowSiteCommand(true); break;
         case 'refresh':
           if (isConnectedRef.current) loadRemoteFiles();
           loadLocalFiles(currentLocalPathRef.current);
@@ -6680,6 +6694,17 @@ const App: React.FC = () => {
 
   const activeTransferProtocol = getActiveProviderProtocol();
   const supportsFtpTransferPresets = !!activeTransferProtocol && isFtpProtocol(activeTransferProtocol);
+  // One activity entry per SITE exchange, built from the report: the verb and
+  // the outcome, never the arguments (they can carry passwords).
+  const logSiteCommand = (report: SiteCommandReport) => {
+    if (report.outcome === 'replied') {
+      humanLog.logRaw('activity.site_replied', 'INFO', { command: report.command, code: report.code ?? 0 }, (report.code ?? 0) >= 400 ? 'error' : 'success');
+    } else if (report.outcome === 'unknown') {
+      humanLog.logRaw('activity.site_unknown', 'INFO', { command: report.command }, 'error');
+    } else {
+      humanLog.logRaw('activity.site_not_sent', 'INFO', { command: report.command }, 'error');
+    }
+  };
   const supportsSftpTransferPresets = activeTransferProtocol === 'sftp';
   const supportsParallelTransferPresets = supportsFtpTransferPresets || supportsSftpTransferPresets;
   const transferPresetLabelMap: Record<TransferSpeedPreset, string> = {
@@ -8069,6 +8094,8 @@ const App: React.FC = () => {
     quotaConnectionRef.current++;
     setStorageQuota(null);
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
+    // The SITE transcript and history live in memory for the session only.
+    if (activeSessionId) forgetSiteSession(activeSessionId);
     // The AeroSync dialog holds a Compare scan of THIS remote, so it stops
     // meaning anything the moment the session goes away: its entries point at
     // paths on a connection that no longer exists, and Execute would run them
@@ -8689,6 +8716,7 @@ const App: React.FC = () => {
   const closeSession = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
+    forgetSiteSession(sessionId);
 
     const overlaySessionId = session.aeroVaultOverlaySession?.sessionId;
     if (overlaySessionId) {
@@ -16230,6 +16258,8 @@ const App: React.FC = () => {
           setTheme={setTheme}
           isConnected={isConnected}
           onDisconnect={() => disconnectFromFtp('button')}
+          canSendSiteCommand={canSendSiteCommand}
+          onShowSiteCommand={() => setShowSiteCommand(true)}
           onShowConnectionScreen={handleNewTabFromSavedServer}
           showConnectionScreen={showConnectionScreen}
           onOpenSettings={() => setShowSettingsPanel(true)}
@@ -16983,6 +17013,18 @@ const App: React.FC = () => {
             onCreateFolder={handleSyncNavCreateFolder}
             onDisableSync={handleSyncNavDisable}
             onCancel={() => setSyncNavDialog(null)}
+          />
+        )}
+        {activeSessionId && (
+          <SiteCommandDialog
+            isOpen={showSiteCommand && canSendSiteCommand}
+            sessionId={activeSessionId}
+            sessionLabel={`${connectionParams.server} · ${(activeTransferProtocol || '').toUpperCase()}`}
+            onClose={(changedFiles) => {
+              setShowSiteCommand(false);
+              if (changedFiles) loadRemoteFiles(undefined, true);
+            }}
+            onActivity={logSiteCommand}
           />
         )}
         <PermissionsDialog

@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Se convertește marcajul AeroCrypt în .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcajul AeroCrypt a fost convertit în .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Se deblochează folderul {filename}..."
+            "box_unlock_folder": "[Box] Se deblochează folderul {filename}...",
+            "site_replied": "{command}: serverul a răspuns {code}",
+            "site_unknown": "{command}: niciun răspuns complet, rezultat necunoscut",
+            "site_not_sent": "{command} nu a fost trimisă"
         },
         "protocol": {
             "selectProtocol": "Selectare protocol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Jurnal activitate",
             "detailedCards": "Carduri server detaliate",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Conexiune",
+            "siteCommand": "Comandă SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Se așteaptă comenzi...",
@@ -6153,6 +6158,46 @@
                 "settings_update": "Actualizează setările",
                 "settings_close": "Închide setările"
             }
+        },
+        "siteCommand": {
+            "title": "Comandă SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Comandă SITE și argumentele ei",
+            "send": "Trimite",
+            "sending": "Se trimite...",
+            "hideCodes": "Ascunde codurile de răspuns",
+            "copyReply": "Copiază răspunsul",
+            "copyAll": "Copiază tot",
+            "copied": "Copiat",
+            "clear": "Golește",
+            "empty": "Comenzile trimise apar aici împreună cu răspunsul complet al serverului.",
+            "plainFtpNotice": "Această conexiune nu este criptată: comenzile și argumentele lor, inclusiv parolele, circulă prin rețea în text simplu.",
+            "codeNotice": "Răspunsurile sunt afișate așa cum le-a trimis serverul. Un cod de răspuns nu spune dacă comanda a funcționat: unele servere răspund cu 200 la o refuzare, așa că citiți textul.",
+            "privacyNotice": "Nimic din ce se tastează sau se primește aici nu este salvat, iar comenzile care conțin o parolă sunt excluse din istoric.",
+            "chipNotSent": "netrimis",
+            "chipNoReply": "fără răspuns",
+            "elapsed": "{ms} ms",
+            "latin1": "decodat ca Latin-1",
+            "notSent": {
+                "empty": "Nimic de trimis: tastați o comandă SITE, de exemplu WHO.",
+                "control_character": "Netrimis: comanda conține un caracter de control (CR, LF, TAB...).",
+                "too_long": "Netrimis: comanda este mai lungă de 1024 de octeți.",
+                "not_ftp": "Netrimis: comenzile SITE necesită o conexiune FTP sau FTPS.",
+                "not_connected": "Netrimis: sesiunea nu este conectată.",
+                "busy": "Netrimis: sesiunea este ocupată cu o altă operațiune. Încercați din nou când se termină.",
+                "reconnect_failed": "Netrimis: sesiunea a trebuit să se reconecteze mai întâi, dar nu a reușit."
+            },
+            "unknown": {
+                "timeout": "Răspunsul nu a sosit la timp.",
+                "connection_lost": "Conexiunea a fost pierdută înainte de răspuns.",
+                "malformed_reply": "Răspunsul nu a respectat formatul FTP.",
+                "reply_too_large": "Răspunsul a depășit 256 KiB și a fost eliminat."
+            },
+            "unknownTail": "Este posibil ca serverul să fi aplicat comanda sau nu. Nu a fost trimisă din nou.",
+            "sessionReconnected": "Sesiunea a fost restabilită.",
+            "sessionNotReconnected": "Sesiunea nu a putut fi restabilită.",
+            "sessionReset": "Serverul a trimis mai mult de un răspuns, așa că sesiunea a fost restabilită pentru ca următoarea comandă să citească propriul răspuns.",
+            "sessionStateNote": "Această comandă schimbă doar modul în care serverul tratează această conexiune: transferurile folosesc propriile conexiuni, iar lista de fișiere poate arăta diferit."
         }
     }
 }

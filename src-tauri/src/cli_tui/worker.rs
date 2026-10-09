@@ -273,6 +273,12 @@ pub enum WorkerCommand {
         remote_path: String,
         temp_path: String,
     },
+    /// Send a `SITE` command on the live FTP/FTPS session (palette `site`).
+    /// The line was validated when the palette submitted it; its `Debug`
+    /// shows the verb only, never the arguments. Replies with `SiteReply`.
+    Site {
+        args: ftp_client_gui_lib::providers::ftp_site::SiteArgs,
+    },
 }
 
 impl WorkerCommand {
@@ -312,6 +318,7 @@ impl WorkerCommand {
             WorkerCommand::EditFetch { .. } | WorkerCommand::EditCommit { .. } => {
                 TuiWorkerOperation::Edit
             }
+            WorkerCommand::Site { .. } => TuiWorkerOperation::Site,
         }
     }
 }
@@ -337,6 +344,7 @@ pub enum TuiWorkerOperation {
     Size,
     Touch,
     Edit,
+    Site,
 }
 
 impl TuiWorkerOperation {
@@ -360,6 +368,7 @@ impl TuiWorkerOperation {
             TuiWorkerOperation::Size => "size",
             TuiWorkerOperation::Touch => "touch",
             TuiWorkerOperation::Edit => "edit",
+            TuiWorkerOperation::Site => "site",
         }
     }
 }
@@ -461,6 +470,13 @@ pub enum WorkerEvent {
         remote_path: String,
         message: String,
     },
+    /// The outcome of a [`WorkerCommand::Site`]: `title` names the verb and
+    /// the reply code (never the arguments), `lines` the reply as received,
+    /// or what is known when no reply came.
+    SiteReply {
+        title: String,
+        lines: Vec<String>,
+    },
 }
 
 impl WorkerEvent {
@@ -507,6 +523,7 @@ impl WorkerEvent {
             }
             WorkerEvent::EditReady { remote_path, .. } => format!("edit ready {}", remote_path),
             WorkerEvent::EditDone { remote_path, .. } => format!("edit done {}", remote_path),
+            WorkerEvent::SiteReply { title, .. } => format!("site reply {}", title),
         }
     }
 }

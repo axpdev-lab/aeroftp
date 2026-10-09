@@ -11580,8 +11580,36 @@ fn rebuild_menu_on_main(
     )
     .map_err(|e| e.to_string())?;
 
-    let menu = Menu::with_items(&app, &[&file_menu, &edit_menu, &view_menu, &help_menu])
-        .map_err(|e| e.to_string())?;
+    // Connection > SITE Command (discussion #1109). Always enabled here: the
+    // native menu is not rebuilt per session, so the frontend ignores the
+    // event unless the active session is FTP/FTPS.
+    let site_command = MenuItem::with_id(
+        &app,
+        "site_command",
+        get("siteCommand", "SITE Command..."),
+        true,
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
+    let connection_menu = Submenu::with_items(
+        &app,
+        get("connection", "Connection"),
+        true,
+        &[&site_command],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let menu = Menu::with_items(
+        &app,
+        &[
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &connection_menu,
+            &help_menu,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
 
     // If splash is still open (APP_READY_DONE==false), store menu for later -
     // don't set globally (GTK applies global menus to ALL windows, causing flash).
@@ -18828,7 +18856,21 @@ pub fn run() {
             // Build menu but do NOT set it globally yet: GTK applies global menus
             // to ALL windows instantly, causing a menu flash on the splash screen.
             // The menu will be set in app_ready() after the splash is closed.
-            let menu = Menu::with_items(app, &[&file_menu, &edit_menu, &view_menu, &help_menu])?;
+            // Connection > SITE Command, as rebuild_menu_on_main builds it.
+            let site_command =
+                MenuItem::with_id(app, "site_command", "SITE Command...", true, None::<&str>)?;
+            let connection_menu = Submenu::with_items(app, "Connection", true, &[&site_command])?;
+
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &file_menu,
+                    &edit_menu,
+                    &view_menu,
+                    &connection_menu,
+                    &help_menu,
+                ],
+            )?;
             app.manage(std::sync::Mutex::new(Some(menu)));
 
             // Safety timeout: if the frontend does not signal app_ready within 10
@@ -19700,6 +19742,8 @@ pub fn run() {
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
             provider_commands::provider_keep_alive,
+            provider_commands::provider_site_command,
+            provider_commands::provider_site_session,
             // OAuth2 cloud provider commands
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,
