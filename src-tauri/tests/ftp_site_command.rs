@@ -29,6 +29,8 @@ enum OnSite {
     /// Write the first bytes, wait this many milliseconds, then write the
     /// second ones (a surplus reply that arrives late).
     Delayed(Vec<u8>, u64, Vec<u8>),
+    /// Write these bytes as the reply, then close the connection.
+    ReplyThenClose(Vec<u8>),
 }
 
 /// How the scripted server answers a `SITE` line on the connection with the
@@ -105,6 +107,11 @@ async fn session(
                 OnSite::Reply(bytes) => bytes,
                 OnSite::Silent => continue,
                 OnSite::Close => return,
+                OnSite::ReplyThenClose(bytes) => {
+                    let _ = write.write_all(&bytes).await;
+                    let _ = write.shutdown().await;
+                    return;
+                }
                 OnSite::Delayed(first, delay_ms, later) => {
                     if write.write_all(&first).await.is_err() {
                         return;
@@ -577,6 +584,39 @@ async fn a_surplus_reply_that_arrives_late_still_resets_the_session() {
         "the surplus must not be read as the next reply"
     );
     assert_eq!(wire.lock().unwrap().connections, 2);
+}
+
+// T21
+/// A server that replies and then closes the control connection: the session
+/// is redialed at once, so the next command gets its own reply instead of an
+/// unknown outcome from writing to a closed socket. Nothing is sent twice.
+#[tokio::test]
+async fn a_session_closed_after_the_reply_is_redialed_before_the_next_command() {
+    let script: Script = Arc::new(|index, _| {
+        if index == 0 {
+            OnSite::ReplyThenClose(b"200 Bye for now\r\n".to_vec())
+        } else {
+            OnSite::Reply(b"200 ok\r\n".to_vec())
+        }
+    });
+    let (mut provider, wire) = provider_with(script).await;
+    let opts = quick().with_settle(Duration::from_millis(800));
+    let (code, _, _, session_reset) = replied(
+        run_site_command(&mut provider, "KICK me", &opts)
+            .await
+            .outcome,
+    );
+    assert_eq!(code, 200);
+    assert!(!session_reset, "a closed connection is not a surplus reply");
+    let (_, lines, _, _) = replied(run_site_command(&mut provider, "WHO", &opts).await.outcome);
+    assert_eq!(lines, vec!["200 ok"]);
+    let wire = wire.lock().unwrap();
+    assert_eq!(wire.connections, 2);
+    assert_eq!(
+        wire.site_lines(),
+        vec!["SITE KICK me", "SITE WHO"],
+        "each command exactly once"
+    );
 }
 
 // T16

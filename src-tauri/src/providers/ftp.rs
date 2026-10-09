@@ -2857,6 +2857,17 @@ fn parse_hash_feat(value: &str) -> (Vec<String>, Option<String>) {
     (algorithms, selected)
 }
 
+/// What follows a SITE command's final reply on the control connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AfterSiteReply {
+    /// Nothing within the settle window: the session stays as it is.
+    Clean,
+    /// Another reply: the next command would read it as its own.
+    Surplus,
+    /// The server closed the connection (end of file or a socket error).
+    Closed,
+}
+
 /// The lines of an FTP reply without their status code, last line first.
 /// suppaftp hands a custom command's reply back whole, `213 ` and line
 /// endings included, and a multi-line reply puts its answer on the final
@@ -3599,33 +3610,34 @@ impl FtpProvider {
             > 0
     }
 
-    /// Whether a reply arrives within `window`: buffered bytes count at once,
-    /// otherwise the socket is watched until bytes arrive, it closes, or the
-    /// window ends. A zero window is [`Self::reply_pending`]. Bounded, and no
-    /// proof that nothing comes later.
-    async fn reply_arrives_within(&self, window: std::time::Duration) -> bool {
-        if window.is_zero() {
-            return self.reply_pending().await;
-        }
+    /// What the control connection shows after a SITE command's final
+    /// reply, waiting at most `window` (zero: one non-blocking look). Bytes
+    /// buffered or arriving are a surplus reply; end of file or a socket error
+    /// mean the server closed the connection, which is a different reason to
+    /// stop using it. Bounded, and no proof that nothing comes later.
+    async fn after_final_reply(&self, window: std::time::Duration) -> AfterSiteReply {
         let Some(stream) = self.stream.as_ref() else {
-            return false;
+            return AfterSiteReply::Closed;
         };
         let control = stream.get_ref().await;
         if !control.buffered_reply_bytes().is_empty() {
-            return true;
+            return AfterSiteReply::Surplus;
         }
         let mut probe = [0u8; 1];
         let mut got = tokio::io::ReadBuf::new(&mut probe);
-        tokio::time::timeout(
-            window,
-            std::future::poll_fn(|cx| match control.poll_peek(cx, &mut got) {
-                std::task::Poll::Ready(Ok(bytes)) => std::task::Poll::Ready(bytes > 0),
-                std::task::Poll::Ready(Err(_)) => std::task::Poll::Ready(false),
-                std::task::Poll::Pending => std::task::Poll::Pending,
-            }),
-        )
-        .await
-        .unwrap_or(false)
+        let look = std::future::poll_fn(|cx| match control.poll_peek(cx, &mut got) {
+            std::task::Poll::Ready(Ok(0)) | std::task::Poll::Ready(Err(_)) => {
+                std::task::Poll::Ready(AfterSiteReply::Closed)
+            }
+            std::task::Poll::Ready(Ok(_)) => std::task::Poll::Ready(AfterSiteReply::Surplus),
+            std::task::Poll::Pending if window.is_zero() => {
+                std::task::Poll::Ready(AfterSiteReply::Clean)
+            }
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        });
+        tokio::time::timeout(window, look)
+            .await
+            .unwrap_or(AfterSiteReply::Clean)
     }
 
     /// Send `SITE <args>` once on this session and read the server's whole
@@ -3747,11 +3759,20 @@ impl FtpProvider {
         // suppaftp ends a multi-line reply at the first `NNN ` line whatever
         // its code (glFTPd needs that), so a listing row such as `123 files`
         // can cut the reply short and leave the rest buffered.
-        let session_reset = self.reply_arrives_within(opts.settle).await;
-        if session_reset {
-            tracing::warn!(
+        let after = self.after_final_reply(opts.settle).await;
+        let session_reset = after == AfterSiteReply::Surplus;
+        match after {
+            AfterSiteReply::Clean => {}
+            AfterSiteReply::Surplus => tracing::warn!(
                 "FTP session held more than one reply after a SITE command; redialing so the next command reads its own reply"
-            );
+            ),
+            // Nothing to misattribute, but a closed session would turn the
+            // next command into an unknown outcome instead of a redial.
+            AfterSiteReply::Closed => tracing::debug!(
+                "FTP server closed the control connection after a SITE reply; redialing"
+            ),
+        }
+        if after != AfterSiteReply::Clean {
             self.stream = None;
             if let Err(err) = self.ensure_connected().await {
                 tracing::warn!("FTP redial after a SITE reply failed: {err}");

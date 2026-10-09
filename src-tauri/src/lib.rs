@@ -11340,10 +11340,12 @@ static SITE_COMMAND_MENU_ENABLED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 /// Enable or disable Connection > SITE Command in the native menu, which is
-/// always visible on macOS and optional on Linux and Windows. Applied on the
-/// GTK main thread, like every other menu change (LT1 / tracker Known #7).
+/// always visible on macOS and optional on Linux and Windows. The command is
+/// async so IPC does not run it on the GTK thread; the menu change itself is
+/// queued onto that thread, like every other menu change (LT1 / tracker
+/// Known #7), and the command returns without waiting for it.
 #[tauri::command]
-fn set_site_command_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+async fn set_site_command_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
     SITE_COMMAND_MENU_ENABLED.store(enabled, Ordering::SeqCst);
     let app_main = app.clone();
     app.run_on_main_thread(move || apply_site_command_menu_enabled(&app_main, enabled))
