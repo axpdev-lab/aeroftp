@@ -557,7 +557,7 @@ import { useFaviconDetection } from './hooks/useFaviconDetection';
 import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
-import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
+import { activeProviderId, isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -20012,7 +20012,7 @@ const App: React.FC = () => {
             onScanUsed={() => { void scanUsedStorage(); }}
             onCancelUsedScan={cancelUsedStorageScan}
             usedScanStatus={usedScanStatus}
-            usedScanNote={isFilenDesktopBridge(connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId)
+            usedScanNote={isFilenDesktopBridge(activeProviderId(sessions.find(s => s.id === activeSessionId)?.providerId, connectionParams.providerId))
               ? t('statusBar.filenBridgeAccountTotal')
               : undefined}
           />

@@ -25,3 +25,16 @@ export function withFilenBridgeCredentialDefaults<T extends Pick<ConnectionParam
         password: params.password || 'admin',
     };
 }
+
+/**
+ * The preset of the session on screen: the active session's own provider id,
+ * falling back to the connection form only when the session carries none.
+ * The form's params are not cleared on disconnect, so a stale id there must
+ * not decide preset-aware UI such as the account-total note (#958).
+ */
+export function activeProviderId(
+    sessionProviderId: string | null | undefined,
+    formProviderId: string | null | undefined,
+): string | undefined {
+    return sessionProviderId || formProviderId || undefined;
+}
