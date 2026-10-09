@@ -2710,14 +2710,33 @@ pub fn resolve_active_credential(
     let conn = open_or_init_cli()?;
     match active_user_id(&conn)? {
         None => get_optional_secret(store, credential_id),
-        Some(user_id) => {
-            let mut root_key = store.derive_user_partition_wrapping_key();
-            let result =
-                read_credential_with_fallback(&conn, store, &root_key, user_id, credential_id);
-            root_key.zeroize();
-            result
-        }
+        Some(user_id) => read_credential_for_user(&conn, store, user_id, credential_id),
     }
+}
+
+/// [`resolve_active_credential`] for an explicit `user_id`, whichever account
+/// is active: a caller bound to the account it read profiles from keeps
+/// reading that account's secrets across a switch.
+pub fn resolve_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    read_credential_for_user(&conn, store, user_id, credential_id)
+}
+
+fn read_credential_for_user(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = read_credential_with_fallback(conn, store, &root_key, user_id, credential_id);
+    root_key.zeroize();
+    result
 }
 
 /// Active-user dual writer (GUI): write the vault first, then mirror in-scope
@@ -4894,12 +4913,13 @@ fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<(i64, Vec<Value
     };
     // rclone-crypt secrets an older import left in a profile's options move to
     // the vault and a binding, once; the list is re-read, merged and written
-    // in one transaction, and only when a move applied.
+    // in one transaction, and only when a move applied. Secrets and profiles
+    // go to the account the list was read from, not to one switched to since.
     let notes = crate::bridge_commands::migrate_legacy_rclone_crypt_on_load(
         &mut profiles,
-        |key, secret| store_active_credential_dual(&store, key, secret),
+        |key, secret| store_credential_for_user_dual(&store, user_id, key, secret),
         |key| {
-            resolve_active_credential(&store, key)
+            resolve_credential_for_user(&store, user_id, key)
                 .ok()
                 .flatten()
                 .map(|s| s.to_string())
