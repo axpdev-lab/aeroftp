@@ -5952,8 +5952,10 @@ pub const CONNECTION_CHANGED_MARKER: &str = "CONNECTION_CHANGED";
 /// bumps it while holding the provider lock, so a dialog that reads it when it
 /// opens can ask a later command to act only on that same connection.
 #[tauri::command]
-pub fn provider_connection_generation(state: State<'_, ProviderState>) -> u64 {
-    state.connection_generation.load(Ordering::SeqCst)
+pub async fn provider_connection_generation(
+    state: State<'_, ProviderState>,
+) -> Result<u64, String> {
+    Ok(state.connection_generation.load(Ordering::SeqCst))
 }
 
 /// Change a remote entry's permission bits through the active provider

@@ -121,6 +121,28 @@ describe('Permissions dialog session binding', () => {
     }
   });
 
+  it('drops an opening that a later one overtook', () => {
+    const { program } = parseSync('App.tsx', APP);
+    const opens: { fn: Node; call: Node }[] = [];
+    const stack: Node[] = [];
+    const visit = (node: Node) => {
+      stack.push(node);
+      if (isCallTo(node, 'setPermissionsDialog')) {
+        const arg = (node.arguments as Node[])[0];
+        const fn = [...stack].reverse().find(n => FUNCTION_TYPES.has(n.type));
+        if (arg?.type === 'ObjectExpression' && fn) opens.push({ fn, call: node });
+      }
+      for (const child of children(node)) visit(child);
+      stack.pop();
+    };
+    visit(program as unknown as Node);
+    expect(opens.length).toBeGreaterThan(0);
+    for (const { fn, call } of opens) {
+      const guarded = guardsBefore(fn, call).some(guard => identifiers(guard.test as Node).has('permissionsOpenSeqRef') && returns(guard.consequent as Node));
+      expect(guarded, 'an earlier Permissions opening that resolves late can replace the dialog of the file picked after it').toBe(true);
+    }
+  });
+
   it('records the session every time the dialog opens', () => {
     for (const arg of found.dialogOpens) {
       const keys = (arg.properties as Node[]).map(p => ((p.key as Node)?.name as string) ?? '');

@@ -946,6 +946,9 @@ const App: React.FC = () => {
   const sortedLocalFilesRef = useRef<LocalFile[]>([]);
   const sortedRemoteFilesRef = useRef<RemoteFile[]>([]);
   const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean, sessionId: string | null, generation: number | null } | null>(null);
+  // Latest Permissions opening: an earlier one whose generation lookup lands
+  // later must not replace the dialog of the file picked after it.
+  const permissionsOpenSeqRef = useRef(0);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
   // #401: synchronous in-flight latches. A second double-click (e.g. on "Parent
@@ -13962,7 +13965,9 @@ const App: React.FC = () => {
         // The backend connection this listing came from; provider_chmod refuses
         // to act once another connection has taken the slot.
         const sessionId = activeSessionId;
+        const seq = ++permissionsOpenSeqRef.current;
         const generation = await invoke<number>('provider_connection_generation').catch(() => null);
+        if (seq !== permissionsOpenSeqRef.current) return;
         setPermissionsDialog({ file, visible: true, sessionId, generation });
       }, disabled: count > 1 }] : []),
       {
