@@ -26,6 +26,9 @@ enum OnSite {
     Silent,
     /// Close the connection without answering.
     Close,
+    /// Write the first bytes, wait this many milliseconds, then write the
+    /// second ones (a surplus reply that arrives late).
+    Delayed(Vec<u8>, u64, Vec<u8>),
 }
 
 /// How the scripted server answers a `SITE` line on the connection with the
@@ -102,6 +105,13 @@ async fn session(
                 OnSite::Reply(bytes) => bytes,
                 OnSite::Silent => continue,
                 OnSite::Close => return,
+                OnSite::Delayed(first, delay_ms, later) => {
+                    if write.write_all(&first).await.is_err() {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                    later
+                }
             },
             "USER" => b"331 Password required\r\n".to_vec(),
             "PASS" => b"230 Logged in\r\n".to_vec(),
@@ -536,6 +546,37 @@ async fn preliminary_replies_past_the_exchange_cap_are_abandoned() {
         started.elapsed()
     );
     assert_eq!(wire.lock().unwrap().site_lines().len(), 1);
+}
+
+// T20
+/// A surplus reply that arrives after the final one, but within the settle
+/// window, still resets the session: a non-blocking probe right after the
+/// final reply missed it, and the next command read it as its own answer.
+#[tokio::test]
+async fn a_surplus_reply_that_arrives_late_still_resets_the_session() {
+    let script: Script = Arc::new(|index, _| {
+        if index == 0 {
+            OnSite::Delayed(b"200 First\r\n".to_vec(), 50, b"226 Surplus\r\n".to_vec())
+        } else {
+            OnSite::Reply(b"200 ok\r\n".to_vec())
+        }
+    });
+    let (mut provider, wire) = provider_with(script).await;
+    let opts = quick().with_settle(Duration::from_millis(800));
+    let (code, _, _, session_reset) =
+        replied(run_site_command(&mut provider, "WHO", &opts).await.outcome);
+    assert_eq!(code, 200);
+    assert!(
+        session_reset,
+        "the late surplus reply must reset the session"
+    );
+    let (_, lines, _, _) = replied(run_site_command(&mut provider, "WHO", &opts).await.outcome);
+    assert_eq!(
+        lines,
+        vec!["200 ok"],
+        "the surplus must not be read as the next reply"
+    );
+    assert_eq!(wire.lock().unwrap().connections, 2);
 }
 
 // T16

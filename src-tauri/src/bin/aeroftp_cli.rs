@@ -44322,6 +44322,26 @@ async fn cmd_site(
         }
     }
 
+    // Every line is substituted and validated before connecting: a batch
+    // that would stop at a bad line must not have sent the lines before it.
+    let mut commands = Vec::with_capacity(lines.len());
+    for (line_no, line) in &lines {
+        match ftp_site::SiteArgs::parse(&substitute_site_secrets(line, &secrets)) {
+            Ok(args) => commands.push((*line_no, args)),
+            Err(err) => {
+                let run = ftp_site::SiteRun::not_sent(line, ftp_site::NotSentReason::Input(err));
+                let message = site_failure_message(&run, "FTP");
+                let message = if batch {
+                    format!("line {line_no}: {message}; nothing was sent")
+                } else {
+                    message
+                };
+                print_error(format, &message, 5);
+                return 5;
+            }
+        }
+    }
+
     let (mut provider, _) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
         Err(code) => return code,
@@ -44337,9 +44357,8 @@ async fn cmd_site(
     let mut reports = Vec::new();
     let mut exit = 0;
     let mut stopped_at = None;
-    for (line_no, line) in &lines {
-        let resolved = substitute_site_secrets(line, &secrets);
-        let run = ftp_site::run_site_command(provider.as_mut(), &resolved, &site_opts).await;
+    for (line_no, args) in &commands {
+        let run = ftp_site::run_site_args(provider.as_mut(), args, &site_opts).await;
         let code = site_exit_code(&run.outcome);
         if code != 0 && (exit == 0 || !matches!(run.outcome, SiteOutcome::Replied { .. })) {
             exit = code;
@@ -44388,7 +44407,7 @@ async fn cmd_site(
         let replied = matches!(run.outcome, SiteOutcome::Replied { .. });
         reports.push(run.report());
         if !replied || (opts.fail_fast && code != 0) {
-            if batch && *line_no != lines.last().map(|(n, _)| *n).unwrap_or(0) {
+            if batch && *line_no != commands.last().map(|(n, _)| *n).unwrap_or(0) {
                 stopped_at = Some(*line_no);
             }
             break;

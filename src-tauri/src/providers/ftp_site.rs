@@ -47,6 +47,13 @@ pub const MAX_SITE_REPLY_BYTES: usize = 256 * 1024;
 /// `SITE RESCAN` or `SITE WIPE -r` can take minutes), and a deadline that is
 /// too short turns a working command into an unknown outcome.
 pub const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long an exchange waits after its final reply for a surplus one. A
+/// server that sends a second final reply late would otherwise have it read
+/// as the next command's answer (a CLI batch sends its next line at once).
+/// Bounded and short: it catches a late surplus, it does not prove that
+/// nothing can arrive afterwards, and the next command's pre-flight check
+/// still catches what lands later.
+pub const DEFAULT_SETTLE: Duration = Duration::from_millis(50);
 /// Shortest wait a caller may ask for.
 pub const MIN_REPLY_TIMEOUT: Duration = Duration::from_secs(1);
 /// Longest wait a caller may ask for.
@@ -314,12 +321,16 @@ pub fn strip_ansi(line: &str) -> String {
 pub struct SiteOptions {
     /// Wait for the complete reply, preliminary replies included.
     pub reply_timeout: Duration,
+    /// Wait after the final reply for a surplus one ([`DEFAULT_SETTLE`]);
+    /// zero checks once without waiting.
+    pub settle: Duration,
 }
 
 impl Default for SiteOptions {
     fn default() -> Self {
         Self {
             reply_timeout: DEFAULT_REPLY_TIMEOUT,
+            settle: DEFAULT_SETTLE,
         }
     }
 }
@@ -330,7 +341,13 @@ impl SiteOptions {
     pub fn with_reply_timeout_secs(secs: u64) -> Self {
         Self {
             reply_timeout: Duration::from_secs(secs).clamp(MIN_REPLY_TIMEOUT, MAX_REPLY_TIMEOUT),
+            ..Self::default()
         }
+    }
+
+    /// The same options with another settle window.
+    pub fn with_settle(self, settle: Duration) -> Self {
+        Self { settle, ..self }
     }
 }
 

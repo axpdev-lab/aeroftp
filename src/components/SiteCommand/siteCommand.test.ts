@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { carriesSecret, maskedEcho, mayChangeFiles, replyText, siteCommandAvailable, stripAnsi, withoutReplyCode, type SiteCommandReport } from './siteCommand';
-import { clearSiteTranscript, forgetSiteSession, recordSiteExchange, siteHistory, siteTranscript } from './siteSessionMemory';
+import { clearSiteTranscript, forgetSiteSession, recordSiteExchange, siteHistory, siteSessionOpen, siteTranscript } from './siteSessionMemory';
 
 const report = (over: Partial<SiteCommandReport> = {}): SiteCommandReport => ({
     outcome: 'replied', command: 'SITE WHO', verb_kind: 'read_only', code: 200, lines: ['200 ok'],
@@ -57,8 +57,8 @@ describe('SITE command availability', () => {
 });
 
 describe('SITE session memory', () => {
+    // A forgotten session stays closed for good, so every test uses its own id.
     afterEach(() => {
-        forgetSiteSession('s1');
         vi.unstubAllGlobals();
     });
 
@@ -67,21 +67,30 @@ describe('SITE session memory', () => {
         const setItem = vi.fn();
         vi.stubGlobal('localStorage', { setItem, getItem: vi.fn(), removeItem: vi.fn() });
         vi.stubGlobal('sessionStorage', { setItem, getItem: vi.fn(), removeItem: vi.fn() });
-        recordSiteExchange('s1', 'WHO', maskedEcho('WHO'), report());
-        recordSiteExchange('s1', 'CHPASS alice hunter2', maskedEcho('CHPASS alice hunter2'), report({ command: 'SITE CHPASS', verb_kind: 'other' }));
-        recordSiteExchange('s1', 'WHO', maskedEcho('WHO'), report());
-        expect(siteHistory('s1')).toEqual(['WHO']);
-        expect(siteTranscript('s1').map(entry => entry.echo)).toEqual(['SITE WHO', 'SITE CHPASS alice ••••••', 'SITE WHO']);
-        expect(JSON.stringify(siteTranscript('s1'))).not.toContain('hunter2');
+        recordSiteExchange('s-history', 'WHO', maskedEcho('WHO'), report());
+        recordSiteExchange('s-history', 'CHPASS alice hunter2', maskedEcho('CHPASS alice hunter2'), report({ command: 'SITE CHPASS', verb_kind: 'other' }));
+        recordSiteExchange('s-history', 'WHO', maskedEcho('WHO'), report());
+        expect(siteHistory('s-history')).toEqual(['WHO']);
+        expect(siteTranscript('s-history').map(entry => entry.echo)).toEqual(['SITE WHO', 'SITE CHPASS alice ••••••', 'SITE WHO']);
+        expect(JSON.stringify(siteTranscript('s-history'))).not.toContain('hunter2');
         expect(setItem).not.toHaveBeenCalled();
     });
 
+    it('does not bring a closed session back when a reply completes late', () => {
+        recordSiteExchange('s-late', 'WHO', 'SITE WHO', report());
+        forgetSiteSession('s-late');
+        expect(siteSessionOpen('s-late')).toBe(false);
+        expect(recordSiteExchange('s-late', 'WHO', 'SITE WHO', report())).toBeNull();
+        expect(siteTranscript('s-late')).toEqual([]);
+        expect(siteHistory('s-late')).toEqual([]);
+    });
+
     it('forgets a session on disconnect and clears a transcript on request', () => {
-        recordSiteExchange('s1', 'WHO', 'SITE WHO', report());
-        clearSiteTranscript('s1');
-        expect(siteTranscript('s1')).toEqual([]);
-        expect(siteHistory('s1')).toEqual(['WHO']);
-        forgetSiteSession('s1');
-        expect(siteHistory('s1')).toEqual([]);
+        recordSiteExchange('s-forget', 'WHO', 'SITE WHO', report());
+        clearSiteTranscript('s-forget');
+        expect(siteTranscript('s-forget')).toEqual([]);
+        expect(siteHistory('s-forget')).toEqual(['WHO']);
+        forgetSiteSession('s-forget');
+        expect(siteHistory('s-forget')).toEqual([]);
     });
 });

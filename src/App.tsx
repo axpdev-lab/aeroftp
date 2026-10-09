@@ -19,7 +19,7 @@ import { TID, type GuiPanelId } from './utils/testIds';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { LatestListing } from './utils/latestListing';
 import * as React from 'react';
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
@@ -4519,7 +4519,9 @@ const App: React.FC = () => {
   // offered on a connected FTP/FTPS session only. Computed here, ahead of the
   // command palette that lists it.
   const canSendSiteCommand = siteCommandAvailable(isConnected, sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol, connectionParams.protocol);
-  canSendSiteCommandRef.current = canSendSiteCommand;
+  // The native-menu handler reads the committed value: a render React
+  // discards must not move it.
+  useLayoutEffect(() => { canSendSiteCommandRef.current = canSendSiteCommand; }, [canSendSiteCommand]);
   // The native menu (macOS menu bar, optional on Linux/Windows) follows the
   // same rule: Connection > SITE Command is off unless this is true.
   useEffect(() => {
@@ -17045,6 +17047,9 @@ const App: React.FC = () => {
               if (changedFiles) loadRemoteFiles(undefined, true);
             }}
             onActivity={logSiteCommand}
+            onFilesChanged={(changedSessionId) => {
+              if (changedSessionId === activeSessionId) loadRemoteFiles(undefined, true);
+            }}
           />
         )}
         <PermissionsDialog

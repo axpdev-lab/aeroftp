@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { X, Terminal, Send, ShieldAlert, Trash2, Copy } from 'lucide-react';
 import { useTranslation } from '../../i18n';
@@ -22,6 +22,12 @@ interface SiteCommandDialogProps {
     onClose: (changedFiles: boolean) => void;
     /** One activity-log entry per exchange: the report names the verb only. */
     onActivity: (report: SiteCommandReport) => void;
+    /**
+     * A command that may have changed files completed after this dialog was
+     * closed or moved to another session: App refreshes that session's list
+     * only if it is still the active one.
+     */
+    onFilesChanged: (sessionId: string) => void;
 }
 
 /** Reasons that mean the line itself was refused: keep it in the field to fix it. */
@@ -46,7 +52,7 @@ interface SiteSessionStatus {
     encrypted: boolean | null;
 }
 
-export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, sessionId, sessionLabel, onClose, onActivity }) => {
+export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, sessionId, sessionLabel, onClose, onActivity, onFilesChanged }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [line, setLine] = useState('');
@@ -59,11 +65,20 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
     // back to clear text, which the connection settings alone cannot tell.
     const [encrypted, setEncrypted] = useState<boolean | null>(null);
     const changedFiles = useRef(false);
+    // Which opening is on screen: a command that completes after its dialog
+    // closed, or after it moved to another session, must not write into the
+    // dialog shown now.
+    const opening = useRef<{ sessionId: string; generation: number } | null>(null);
+    const generation = useRef(0);
+    const callbacks = useRef({ onActivity, onFilesChanged });
+    useLayoutEffect(() => { callbacks.current = { onActivity, onFilesChanged }; }, [onActivity, onFilesChanged]);
     const inputRef = useRef<HTMLInputElement>(null);
     const endRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!isOpen) return;
+        generation.current += 1;
+        opening.current = { sessionId, generation: generation.current };
         setTranscript(siteTranscript(sessionId));
         changedFiles.current = false;
         setEncrypted(null);
@@ -78,6 +93,8 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
         const focus = window.setTimeout(() => inputRef.current?.focus(), 0);
         return () => {
             current = false;
+            opening.current = null;
+            setSending(false);
             window.clearTimeout(focus);
             document.documentElement.classList.remove('modal-open');
             // A draft can hold a password (CHPASS alice ...): it does not
@@ -104,6 +121,7 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
     const send = useCallback(async () => {
         const typed = line.trim();
         if (!typed || sending) return;
+        const sentFrom = opening.current;
         setSending(true);
         let report: SiteCommandReport;
         try {
@@ -111,14 +129,25 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
         } catch {
             report = noSession();
         }
-        setTranscript(recordSiteExchange(sessionId, typed, maskedEcho(typed), report));
+        // The session the command went to keeps its record even if the dialog
+        // moved on; a session closed meanwhile gets nothing back.
+        const recorded = recordSiteExchange(sessionId, typed, maskedEcho(typed), report);
+        if (recorded === null) return;
+        callbacks.current.onActivity(report);
+        const now = opening.current;
+        const stillShown = sentFrom !== null && now !== null
+            && now.sessionId === sentFrom.sessionId && now.generation === sentFrom.generation;
+        if (!stillShown) {
+            if (mayChangeFiles(report)) callbacks.current.onFilesChanged(sessionId);
+            return;
+        }
+        setTranscript(recorded);
         if (mayChangeFiles(report)) changedFiles.current = true;
-        onActivity(report);
         if (!(report.outcome === 'not_sent' && report.reason && INPUT_REASONS.has(report.reason))) setLine('');
         setHistoryIndex(null);
         setSending(false);
         inputRef.current?.focus();
-    }, [line, sending, sessionId, onActivity]);
+    }, [line, sending, sessionId]);
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {

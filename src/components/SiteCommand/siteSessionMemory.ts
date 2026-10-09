@@ -28,6 +28,8 @@ const MAX_TRANSCRIPT = 200;
  * CHPASS...) never enters the history.
  */
 const memory = new Map<string, SiteSessionMemory>();
+/** Sessions already closed: a reply that completes late must not bring their memory back. */
+const closed = new Set<string>();
 let nextId = 1;
 
 function memoryOf(sessionId: string): SiteSessionMemory {
@@ -47,7 +49,17 @@ export function siteHistory(sessionId: string): string[] {
     return memory.get(sessionId)?.history ?? [];
 }
 
-export function recordSiteExchange(sessionId: string, typed: string, echo: string, report: SiteCommandReport): SiteTranscriptEntry[] {
+/** Whether the session's memory may still be written: false once it was forgotten. */
+export function siteSessionOpen(sessionId: string): boolean {
+    return !closed.has(sessionId);
+}
+
+/**
+ * Record one exchange for `sessionId`, or nothing when that session was
+ * closed meanwhile (`null`): its memory stays gone.
+ */
+export function recordSiteExchange(sessionId: string, typed: string, echo: string, report: SiteCommandReport): SiteTranscriptEntry[] | null {
+    if (closed.has(sessionId)) return null;
     const session = memoryOf(sessionId);
     session.transcript = [...session.transcript, { id: nextId++, echo, report }].slice(-MAX_TRANSCRIPT);
     if (!carriesSecret(typed)) {
@@ -64,4 +76,5 @@ export function clearSiteTranscript(sessionId: string): void {
 /** Drop everything remembered for a session (call on disconnect). */
 export function forgetSiteSession(sessionId: string): void {
     memory.delete(sessionId);
+    closed.add(sessionId);
 }

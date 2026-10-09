@@ -2354,10 +2354,10 @@ impl StorageProvider for FtpProvider {
             ftp_site::SiteArgs::verbatim(format!("CHMOD {mode:o} {path}")).map_err(|_| {
                 ProviderError::InvalidPath(format!("cannot send SITE CHMOD for {path:?}"))
             })?;
-        match self
-            .site_command(&args, &ftp_site::SiteOptions::default())
-            .await
-        {
+        // A standard verb with a one-line reply: no settle window, so a
+        // recursive chmod does not wait after every file.
+        let opts = ftp_site::SiteOptions::default().with_settle(std::time::Duration::ZERO);
+        match self.site_command(&args, &opts).await {
             SiteOutcome::Replied { reply, .. } if (200..300).contains(&reply.code) => Ok(()),
             SiteOutcome::Replied { reply, .. } => Err(ProviderError::ServerError(format!(
                 "the server refused SITE CHMOD on {path}: {}",
@@ -3599,6 +3599,35 @@ impl FtpProvider {
             > 0
     }
 
+    /// Whether a reply arrives within `window`: buffered bytes count at once,
+    /// otherwise the socket is watched until bytes arrive, it closes, or the
+    /// window ends. A zero window is [`Self::reply_pending`]. Bounded, and no
+    /// proof that nothing comes later.
+    async fn reply_arrives_within(&self, window: std::time::Duration) -> bool {
+        if window.is_zero() {
+            return self.reply_pending().await;
+        }
+        let Some(stream) = self.stream.as_ref() else {
+            return false;
+        };
+        let control = stream.get_ref().await;
+        if !control.buffered_reply_bytes().is_empty() {
+            return true;
+        }
+        let mut probe = [0u8; 1];
+        let mut got = tokio::io::ReadBuf::new(&mut probe);
+        tokio::time::timeout(
+            window,
+            std::future::poll_fn(|cx| match control.poll_peek(cx, &mut got) {
+                std::task::Poll::Ready(Ok(bytes)) => std::task::Poll::Ready(bytes > 0),
+                std::task::Poll::Ready(Err(_)) => std::task::Poll::Ready(false),
+                std::task::Poll::Pending => std::task::Poll::Pending,
+            }),
+        )
+        .await
+        .unwrap_or(false)
+    }
+
     /// Send `SITE <args>` once on this session and read the server's whole
     /// reply, whatever its code.
     ///
@@ -3718,7 +3747,7 @@ impl FtpProvider {
         // suppaftp ends a multi-line reply at the first `NNN ` line whatever
         // its code (glFTPd needs that), so a listing row such as `123 files`
         // can cut the reply short and leave the rest buffered.
-        let session_reset = self.reply_pending().await;
+        let session_reset = self.reply_arrives_within(opts.settle).await;
         if session_reset {
             tracing::warn!(
                 "FTP session held more than one reply after a SITE command; redialing so the next command reads its own reply"
