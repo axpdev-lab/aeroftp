@@ -1876,6 +1876,32 @@ fn local_headerless_config_from_params(
     Ok(Some(config_json))
 }
 
+/// List the scope of an overlay for a decision that writes (create a vault,
+/// rebuild one) and must not mistake "could not look" for "nothing there".
+/// `Ok(None)` is a scope confirmed absent.
+///
+/// A listing `NotFound` alone is not that confirmation: SFTP maps every
+/// listing failure except a timeout to `NotFound`, a permission denial
+/// included, and other providers are not uniform either. So a `NotFound` is
+/// checked with `exists()`, and only a scope that `exists()` also reports
+/// absent counts as absent; one that exists, or whose check fails, is an
+/// error, so the caller refuses over contents it could not inspect.
+async fn list_scope_for_write(
+    provider: &mut dyn StorageProvider,
+    dir: &str,
+) -> Result<Option<Vec<RemoteEntry>>, ProviderError> {
+    match provider.list(dir).await {
+        Ok(entries) => Ok(Some(entries)),
+        Err(ProviderError::NotFound(listing)) => match provider.exists(dir).await? {
+            false => Ok(None),
+            true => Err(ProviderError::ServerError(format!(
+                "{dir} exists but could not be listed ({listing})"
+            ))),
+        },
+        Err(e) => Err(e),
+    }
+}
+
 /// Why a default-salt vault could not be rebuilt from its factors. Nothing is
 /// written in any of these cases.
 pub enum DefaultSaltReopenError {
@@ -1938,9 +1964,9 @@ pub async fn reopen_default_salt_vault(
 ) -> Result<(OverlayConfig, [u8; KEY_SIZE], String), DefaultSaltReopenError> {
     let scope = scope.trim_end_matches('/');
     let list_dir = if scope.is_empty() { "/" } else { scope };
-    let entries = match provider.list(list_dir).await {
-        Ok(entries) => entries,
-        Err(ProviderError::NotFound(_)) => return Err(DefaultSaltReopenError::NothingToVerify),
+    let entries = match list_scope_for_write(provider, list_dir).await {
+        Ok(Some(entries)) => entries,
+        Ok(None) => return Err(DefaultSaltReopenError::NothingToVerify),
         Err(e) => return Err(DefaultSaltReopenError::ListingFailed(e)),
     };
     // A marker the listing shows, or one a download either returns or fails
@@ -2729,10 +2755,10 @@ async fn unlock_overlay_keys_encrypting(
                 // than rotating the salt over data it could not see (audit B-F2).
                 // The frictionless flow is intact: an empty existing folder / the
                 // whole remote root (Ok(empty)) and a not-yet-created subfolder
-                // (NotFound) both still bootstrap.
+                // (NotFound, confirmed by `exists()`) both still bootstrap.
                 let list_dir = if scope.is_empty() { "/" } else { scope };
-                match provider.list(list_dir).await {
-                    Ok(entries) => {
+                match list_scope_for_write(provider, list_dir).await {
+                    Ok(Some(entries)) => {
                         if entries.iter().any(|e| e.name != AEROCRYPT_CONFIG_NAME) {
                             return Err(format!(
                                 "Refusing to initialize a new AeroCrypt overlay at {list_dir}: it \
@@ -2743,7 +2769,7 @@ async fn unlock_overlay_keys_encrypting(
                         }
                     }
                     // Scope does not exist yet: frictionless first-write bootstrap.
-                    Err(ProviderError::NotFound(_)) => {}
+                    Ok(None) => {}
                     Err(ProviderError::PermissionDenied(msg)) => {
                         return Err(format!(
                             "Refusing to initialize a new AeroCrypt overlay at {list_dir}: it \
@@ -3747,6 +3773,9 @@ mod tests {
         /// Behave like an FTP server without MLSD whose `LIST -a` failed:
         /// `exists()` and `list()` miss dotfiles, a download still finds them.
         hide_dotfiles: bool,
+        /// Every listing answers `NotFound`, as SFTP does for a folder it is not
+        /// allowed to read.
+        listing_says_not_found: bool,
         /// Downloads of dotfiles fail with this error, as on a remote that stopped
         /// answering or a marker the server will not let us read.
         dotfile_download_error: Option<fn() -> ProviderError>,
@@ -3759,6 +3788,7 @@ mod tests {
                 dirs: Mutex::new(Vec::new()),
                 cwd: Mutex::new("/".to_string()),
                 hide_dotfiles: false,
+                listing_says_not_found: false,
                 dotfile_download_error: None,
             }
         }
@@ -3823,6 +3853,11 @@ mod tests {
             true
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            if self.listing_says_not_found {
+                return Err(ProviderError::NotFound(format!(
+                    "Failed to list directory: {path}"
+                )));
+            }
             let prefix = if path.is_empty() || path == "." || path == "/" {
                 "/".to_string()
             } else {
@@ -5179,6 +5214,48 @@ mod tests {
                 .await
                 .is_ok()
         );
+    }
+
+    #[tokio::test]
+    async fn a_listing_not_found_on_an_existing_scope_never_creates_or_rebuilds() {
+        // SFTP reports a folder it may not read as NotFound. Taken at its word,
+        // the rebuild saw "nothing to verify" and the GUI bootstrap minted a new
+        // vault over files it never saw. The folder exists, so both refuse and
+        // nothing is written.
+        let mut mem = MemProvider::new();
+        default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        mem.seed_raw_dir("/Vault");
+        mem.listing_says_not_found = true;
+        let before = mem.raw_paths().len();
+
+        assert!(matches!(
+            reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None).await,
+            Err(DefaultSaltReopenError::ListingFailed(_))
+        ));
+        for binding in [
+            default_salt_binding("/Vault", true),
+            OverlayUnlockParams {
+                use_default_salt: false,
+                ..default_salt_binding("/Vault", true)
+            },
+        ] {
+            let err = unlock_err(
+                unlock_overlay_keys_encrypting(
+                    &mut mem,
+                    &binding,
+                    DEFAULT_SALT_PW,
+                    "",
+                    None,
+                    true,
+                    true,
+                )
+                .await,
+                "an uninspectable scope must not be created over",
+            );
+            assert!(err.contains("could not be listed"), "{err}");
+        }
+        assert_eq!(mem.raw_paths().len(), before, "nothing may be written");
+        assert!(mem.raw_bytes("/Vault/.aerocrypt.tsv").is_none());
     }
 
     #[tokio::test]
