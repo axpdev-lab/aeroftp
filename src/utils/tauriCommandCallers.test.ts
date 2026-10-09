@@ -999,6 +999,11 @@ const INHERITED_UNCALLED: string[] = [
  * fails until it is removed here.
  */
 const AUDITED_UNCALLED: Record<string, string> = {
+    gui_dev_session_begin:
+        'Owner-authorized DEV YOLO driver (2026-10-09), debug builds only in both function and handler. ' +
+        'Called by tracked scripts/gui-controller-dev.mjs; no production screen may start a DEV identity.',
+    gui_dev_session_end:
+        'Same debug-only external development driver as gui_dev_session_begin; releases only that actor lease.',
     debug_panic_command:
         'Debug builds only (#[cfg(debug_assertions)]): panics on purpose so a developer can check from the ' +
         'devtools console that invoke() rejects instead of hanging (panic_safe.rs). No screen is meant to call it.',

@@ -26,7 +26,7 @@ beforeEach(() => {
         select: () => {}, disconnect: async () => {}, stop: async () => {}, ...createToolsHandlers({ open, close }) }), () => {});
 });
 afterEach(() => controller.dispose());
-const run = (name: string, args = {}, timeout_ms = 1000) => controller.run({ name, args, pace: 'fast', timeout_ms }, 'test', Infinity, 'claimed');
+const run = (name: string, args = {}, timeout_ms = 1000) => controller.run({ name, args, pace: 'fast', timeout_ms }, { id: 'test', kind: 'aeroagent', label: 'Test' }, Infinity, 'claimed');
 it('opens, observes and closes committed workspace metadata through the real handler factory', async () => {
     expect((await run('tools_open', { tool: 'terminal' })).snapshot.tools?.visible_panels).toEqual(['terminal']);
     expect((await run('tools_read')).ok).toBe(true);

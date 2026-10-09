@@ -1,80 +1,105 @@
 #!/usr/bin/env node
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
-// Linux development fixture driver. Never bundled into the application.
-import { readFileSync, readlinkSync, existsSync } from 'node:fs';
-import { execFileSync, spawnSync } from 'node:child_process';
+// Complete Linux DEV driver; never bundled into the application.
+import { readFileSync, writeFileSync, unlinkSync, existsSync, openSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { homedir } from 'node:os';
+import { evaluate, inspectorPort } from './lib/gui-inspector.mjs';
+import { fixtureRoot, inspectFixture, readSession, requestBody } from './lib/gui-dev-runtime.mjs';
 
-const [mode, value] = process.argv.slice(2);
-if (!['--request', '--js', '--unlock'].includes(mode) || (mode !== '--unlock' && !value)) {
-    console.error('Usage: node scripts/gui-controller-dev.mjs --request <request-json> | --js <test-file> | --unlock');
-    process.exit(2);
-}
-try {
-    const fixture = resolve(process.env.AEROFTP_GUI_TEST_ROOT || '/tmp/aeroftp-gui-native-01a110c5');
-    if (!fixture.startsWith('/tmp/aeroftp-gui-')) throw Error('Expected an isolated /tmp/aeroftp-gui-* fixture');
-    let listener, pid;
-    const deadline = Date.now() + 10000;
-    do {
-        listener = execFileSync('ss', ['-ltnp', 'sport = :9222'], { encoding: 'utf8' });
-        pid = listener.match(/"aeroftp",pid=(\d+)/)?.[1];
-        if (pid) break;
-        await new Promise(resolve => setTimeout(resolve, 100));
-    } while (Date.now() < deadline);
-    if (!pid || !listener.includes('127.0.0.1:9222')) throw Error('Owned loopback dev inspector unavailable');
-    const env = Object.fromEntries(readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0')
-        .filter(item => item.includes('=')).map(item => [item.slice(0, item.indexOf('=')), item.slice(item.indexOf('=') + 1)]));
-    if (['CONFIG', 'CACHE', 'DATA'].some(key => env[`XDG_${key}_HOME`] !== join(fixture, key.toLowerCase())) ||
-        env.WEBKIT_INSPECTOR_HTTP_SERVER !== '127.0.0.1:9222') throw Error('Inspector is not the isolated test fixture');
-    const cwd = readlinkSync(`/proc/${pid}/cwd`);
-    if (!existsSync(join(cwd, 'src/gui/controller.ts'))) throw Error('Expected AeroFTP development checkout');
-    const driver = join(homedir(), '.codex/skills/gui-drive/scripts/drive.mjs');
-    if (!existsSync(driver)) throw Error('Install the gui-drive development skill first');
-    let body;
-    if (mode === '--js') body = readFileSync(resolve(value), 'utf8');
-    else if (mode === '--unlock') {
-        const password = process.env.AEROFTP_GUI_TEST_MASTER;
-        if (!password) throw Error('Set AEROFTP_GUI_TEST_MASTER to the artificial fixture password');
-        body = `const controller = window.__aeroftpController;
-            if (!controller) throw Error('Development controller unavailable');
-            if (!controller.state().locked) return { unlocked: true, already_unlocked: true };
-            const input = document.querySelector('input[type=password]');
-            if (!input?.closest('form')) throw Error('Fixture unlock form unavailable');
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(password)});
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            await new Promise(resolve => setTimeout(resolve, 50)); input.closest('form').requestSubmit();
-            const deadline = Date.now() + 20000;
-            while (controller.state().locked) {
-                if (Date.now() >= deadline) throw Error('Fixture unlock failed');
-                await new Promise(resolve => setTimeout(resolve, 100));
+const usage = `Owned AeroFTP DEV controller (Node 22+, Linux)
+  --begin --actor <name> [--session-file <path>]
+  --request <json> [--session-file <path>]
+  --finish [--session-file <path>]
+  --js <file>          Full DEV YOLO inspector/native script
+  --unlock            Uses AEROFTP_GUI_TEST_MASTER, never prints it
+  --help
+Required: AEROFTP_GUI_TEST_ROOT. Optional: INSPECTOR_PORT (9222).
+Request: {"name":"show_view","args":{"view":"servers"},"timeout_ms":10000}
+This is the DEV envelope, not public gui_run's {"intent":...}.
+No automatic retries. begin/request/finish share one session; other scripts are serialized.`;
+
+async function main() {
+    const argv = process.argv.slice(2);
+    if (argv.length === 1 && argv[0] === '--help') { console.log(usage); return; }
+    let mode, value, actor = process.env.AEROFTP_GUI_ACTOR, sessionPath, actorOption = false;
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i];
+        if (arg === '--actor' || arg === '--session-file') {
+            const next = argv[++i];
+            if (!next || next.startsWith('--')) throw Error(`Missing ${arg} value`);
+            if (arg === '--actor') { actor = next; actorOption = true; } else sessionPath = resolve(next);
+        } else if (['--begin', '--request', '--finish', '--js', '--unlock'].includes(arg) && !mode) {
+            mode = arg;
+            if (arg === '--request' || arg === '--js') {
+                value = argv[++i]; if (!value || value.startsWith('--')) throw Error(`Missing ${arg} value`);
             }
-            return { unlocked: true };`;
-    } else {
-        const request = JSON.parse(value);
-        body = `const request = ${JSON.stringify(request)};
-            const { validateGuiRequest } = await import('/src/gui/controller.ts'); validateGuiRequest(request);
-            const invoke = window.__TAURI_INTERNALS__.invoke;
-            const name = request.name;
-            const toolName = name === 'state' ? 'gui_state' : name === 'wait' ? 'gui_wait' : 'gui_run';
-            const args = name === 'state' ? {} : { ...request.args,
-                ...(name === 'wait' ? {} : { intent: name }),
-                ...(request.timeout_ms === undefined ? {} : { timeout_ms: request.timeout_ms }),
-                ...(request.if_revision === undefined ? {} : { if_revision: request.if_revision }) };
-            const sessionId = 'gui-dev-driver';
-            const prepared = await invoke('prepare_ai_tool_approval', { toolName, args, sessionId });
-            let approvalGrantId;
-            if (prepared.approvalRequired) {
-                const grant = await invoke('grant_ai_tool_approval', { requestId: prepared.requestId,
-                    rememberForSession: false, skipNativeDialog: true });
-                if (!grant.approved || !grant.grantId) throw Error('Fixture expert-mode authorization unavailable');
-                approvalGrantId = grant.grantId;
-            }
-            return await invoke('execute_ai_tool', { toolName, args, sessionId, approvalGrantId });`;
+        } else throw Error(`Unknown or duplicate option: ${arg}. Use --help`);
     }
-    const result = spawnSync(process.execPath, [driver, body, '55000'], { encoding: 'utf8', timeout: 60000 });
-    if (result.stdout) process.stdout.write(result.stdout);
-    if (result.stderr) process.stderr.write(result.stderr);
-    process.exit(result.status ?? 1);
-} catch (error) { console.error(error.message); process.exit(1); }
+    if (!mode) throw Error('Select one mode. Use --help');
+    if (actorOption && mode !== '--begin') throw Error('--actor is set only at --begin');
+    // Give envelope mistakes a useful error before contacting a process or approving a tool.
+    let request;
+    if (mode === '--request') {
+        try { request = JSON.parse(value); }
+        catch { throw Error('Invalid DEV request JSON. Use --help'); }
+        if (!request || typeof request !== 'object' || Array.isArray(request) || typeof request.name !== 'string') {
+            throw Error('DEV request requires name, not intent. Use --help');
+        }
+        const allowed = ['name', 'args', 'timeout_ms', 'if_revision'];
+        const unknown = Object.keys(request).find(key => !allowed.includes(key));
+        if (unknown) throw Error(`Unknown DEV request field: ${unknown}; expected ${allowed.join(', ')}`);
+    }
+    const root = fixtureRoot(process.env.AEROFTP_GUI_TEST_ROOT);
+    const port = inspectorPort(process.env.INSPECTOR_PORT);
+    const fixture = inspectFixture(root, port);
+    sessionPath ??= join(root, 'controller-session.json');
+    // Serialize every adapter process for this inspector. Never remove a live lock automatically.
+    const lock = join(root, 'controller-driver.lock');
+    let fd;
+    try { fd = openSync(lock, 'wx', 0o600); writeFileSync(fd, `${process.pid}\n`); }
+    catch { throw Error(`Another DEV driver owns ${lock}; wait or inspect its PID before cleanup`); }
+    try {
+        let body;
+        if (mode === '--begin') {
+            if (!actor?.trim()) throw Error('--begin requires --actor or AEROFTP_GUI_ACTOR');
+            if (existsSync(sessionPath)) throw Error('Session file already exists; finish it or choose another --session-file');
+            body = `return await window.__TAURI_INTERNALS__.invoke('gui_dev_session_begin', { label: ${JSON.stringify(actor)} });`;
+        } else if (mode === '--request' || mode === '--finish') {
+            const session = readSession(sessionPath, fixture);
+            body = mode === '--request' ? requestBody(request, session.session_id) :
+                `await window.__TAURI_INTERNALS__.invoke('gui_dev_session_end', { sessionId: ${JSON.stringify(session.session_id)} }); return { finished: true };`;
+        } else if (mode === '--js') body = readFileSync(resolve(value), 'utf8');
+        else {
+            const password = process.env.AEROFTP_GUI_TEST_MASTER;
+            if (!password) throw Error('Set AEROFTP_GUI_TEST_MASTER for the owned DEV master');
+            body = `const controller = window.__aeroftpController;
+                if (!controller.state().locked) return { unlocked: true, already_unlocked: true };
+                const input = document.querySelector('input[type=password]');
+                if (!input?.closest('form')) throw Error('DEV unlock form unavailable');
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(password)});
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                await new Promise(resolve => setTimeout(resolve, 50)); input.closest('form').requestSubmit();
+                const deadline = Date.now() + 20000;
+                while (controller.state().locked) {
+                    if (Date.now() >= deadline) throw Error('DEV unlock failed');
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                return { unlocked: true };`;
+        }
+        const result = await evaluate(body, { port });
+        if (mode === '--begin') {
+            try {
+                writeFileSync(sessionPath, JSON.stringify({ schema_version: 1, ...fixture, ...result }) + '\n', { flag: 'wx', mode: 0o600 });
+            } catch (error) {
+                // A failed local receipt must not orphan an active backend session.
+                await evaluate(`await window.__TAURI_INTERNALS__.invoke('gui_dev_session_end', { sessionId: ${JSON.stringify(result.session_id)} }); return true;`, { port });
+                throw error;
+            }
+        } else if (mode === '--finish') unlinkSync(sessionPath);
+        console.log(JSON.stringify({ value: result, ...(mode === '--begin' ? { session_file: sessionPath } : {}) }));
+        // execute_ai_tool serializes a tool outcome even on refusal. It is not a successful CLI run.
+        if (result?.ok === false || result?.success === false) process.exitCode = 1;
+    } finally { closeSync(fd); unlinkSync(lock); }
+}
+main().catch(error => { console.error(error.message); process.exitCode = 1; });

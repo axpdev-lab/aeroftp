@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Linux development GUI driver has explicit begin/request/finish sessions, configurable inspector ports and both isolated HOME and XDG storage recipes; it runs from the checkout without a personal agent installation. Full development scripts remain available for application and credential testing.
 - The CLI takes a folder of this machine wherever it takes a URL: `aeroftp-cli serve webdav /srv/share` shares a folder with no external server, and `ls`, `get`, `put`, `sync`, `check` and `crypt` work on `/abs/path`, `./rel/path` or `file:///abs/path`. The folder is the root of a path jail: nothing outside it can be read or written, and a served client cannot reach outside it.
 - A local folder computes md5, sha1, sha256, sha512 and blake3 in place (`hashsum`, `check --checksum` and `sync --checksum` need no download), reports its filesystem to `df`, copies inside itself with `cp`, and resumes an interrupted transfer from the bytes already held.
 - Profile column choices and storage-by-protocol breakdown are remembered across CLI and GUI runs. My Servers has a shared breakdown checkbox; `profiles --breakdown=false` disables it. Default JSON output keeps its array shape.
@@ -16,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- GUI control leases distinguish the calling session from the name shown in the banner. Two agents or chats with the same display name cannot inherit each other's lease, and the development driver shows its declared actor instead of always appearing as AeroAgent.
 - `aeroftp-cli serve sftp` stores uploaded files. It acknowledged every write and discarded the data, so a client saw a finished upload and no file existed, on every backend; it also left the OpenSSH client hanging at the end of a session.
 - `aeroftp-cli sync <folder> <local> <remote>` with a folder as the first argument no longer drops the third one: it syncs against the folder as a remote instead of copying folder to folder.
 - AeroAgent works with Anthropic. Every request carried an `anthropic-version` header the API rejects, so chat, the model list and the Test button all failed with HTTP 400, and the Test button sent the key as a Bearer token. Claude Sonnet 5.5, Haiku 5.5, Opus 5.5, Fable 5.1 and the 5 and 4.7/4.8 models now use the request shape the API requires (adaptive thinking with effort, no sampling parameters), the model list has Sonnet 5.5 and Haiku 5.5 and no retired model, and it is readable in the light theme.

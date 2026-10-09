@@ -180,3 +180,9 @@ bun.lock
 .claude/
 .github/agents/
 .antigravitycli/
+
+# Portable owned DEV GUI driver and its focused tests.
+!/scripts/lib/
+!/scripts/lib/gui-inspector.mjs
+!/scripts/lib/gui-dev-runtime.mjs
+!/scripts/gui-controller-dev.test.mjs

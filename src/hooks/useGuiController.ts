@@ -3,8 +3,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { GuiController, GuiError, type GuiHandlers, type GuiIntent, type GuiLease, type GuiRequest, type GuiSource } from '../gui/controller';
-import { useTauriListener } from './useTauriListener';
+import { GuiController, GuiError, type GuiActor, type GuiHandlers, type GuiIntent, type GuiLease, type GuiRequest, type GuiSource } from '../gui/controller';
+import { createTauriListener, useTauriListener } from './useTauriListener';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
 import { TID } from '../utils/testIds';
 
@@ -12,6 +12,7 @@ declare global {
     interface Window { __aeroftpController?: Pick<GuiController, 'run' | 'state' | 'interrupt'>; }
 }
 interface IntentEvent { id: string; expires_at: number; request: GuiRequest; }
+interface IntentClaim { remaining_ms: number; actor: GuiActor; }
 export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit: (intent: GuiIntent, ok: boolean, owner: string) => void) {
     const current = useRef({ source, handlers, audit });
     const controller = useRef<GuiController | null>(null);
@@ -97,11 +98,16 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         window.addEventListener('keydown', interrupt, true);
         window.addEventListener(PROFILES_CHANGED_EVENT, partitionChanged);
         // This symbol and its API are removed by Vite's production branch elimination.
-        if (import.meta.env.DEV) window.__aeroftpController = {
-            run: request => service.run(request, 'Dev harness'), state: () => service.state(), interrupt: () => service.interrupt(),
-        };
+        let finishListener = () => {};
+        if (import.meta.env.DEV) {
+            finishListener = createTauriListener<{ actor_id: string }>('gui-actor-ended', event => service.releaseActor(event.payload.actor_id));
+            const actor: GuiActor = { id: `dev:${crypto.randomUUID()}`, kind: 'dev', label: 'Dev harness' };
+            window.__aeroftpController = {
+                run: (request, owner = actor) => service.run(request, owner), state: () => service.state(), interrupt: () => service.interrupt(),
+            };
+        }
         return () => {
-            mounted = false; service.dispose(); controller.current = null;
+            finishListener(); mounted = false; service.dispose(); controller.current = null;
             for (const resolve of commitWaiters.current.values()) resolve();
             commitWaiters.current.clear();
             window.removeEventListener('pointerdown', interrupt, true);
@@ -124,14 +130,15 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         if (!service || typeof id !== 'string' || !Number.isFinite(expires_at) || Date.now() >= expires_at) return;
         void (async () => {
             try {
-                const remaining = await invoke<number>('gui_intent_claim', { id });
-                if (remaining <= 25 || controller.current !== service) return;
+                const claim = await invoke<IntentClaim>('gui_intent_claim', { id });
+                const remaining = claim.remaining_ms;
+                if (!Number.isFinite(remaining) || remaining <= 25 || controller.current !== service) return;
                 const mutating = !['state', 'wait'].includes(request.name);
                 // Busy requests must not overwrite the identity of an in-flight mutation.
                 const ownsId = mutating && mutationId.current === null;
                 if (ownsId) mutationId.current = id;
                 try {
-                    const reply = await service.run(request, 'AeroAgent', Math.min(Date.now() + remaining - 25, expires_at - 25), id);
+                    const reply = await service.run(request, claim.actor, Math.min(Date.now() + remaining - 25, expires_at - 25), id);
                     await invoke('gui_intent_result', { id, payload: reply });
                 } finally { if (ownsId && mutationId.current === id) mutationId.current = null; }
             } catch { /* Broker expiry/window/account refusal has no raw error to expose. */ }
