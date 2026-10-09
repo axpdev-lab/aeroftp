@@ -230,6 +230,27 @@ impl DurableMultipartCheckpoint {
     fn mark_failed(&mut self) {
         let _ = self.store.mark_failed(&mut self.record);
     }
+
+    /// Drop the record once its provider session is gone, so no later run
+    /// tries to resume or scavenge it.
+    fn remove(&self) {
+        let _ = self.store.remove(&self.record.transfer_key);
+    }
+}
+
+/// What a multipart upload that fails or is cancelled leaves behind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MultipartFailure {
+    /// Keep the provider session and its durable checkpoint, so a later run of
+    /// the same transfer submits only the missing parts. Every production
+    /// transfer.
+    KeepForResume,
+    /// Abort the provider session and, once the abort succeeded, drop the
+    /// checkpoint. For a transfer that will never be resumed, such as a
+    /// benchmark payload written to a temp file: kept, its parts would stay on
+    /// the provider until a later transfer to the same endpoint scavenged them
+    /// past the checkpoint TTL.
+    Abort,
 }
 
 /// Observe the local source file for pre-commit verification. A stat failure is
@@ -737,7 +758,7 @@ where
 /// transfer is recovered and returned, so the caller keeps its exact error
 /// classification (CLI exit codes, GUI error strings) unchanged.
 #[allow(clippy::too_many_arguments)]
-pub async fn execute_single_file_dag(
+pub async fn execute_single_file_dag_with(
     built: &ShapedFileDag,
     provider: SharedProvider,
     remote_path: String,
@@ -771,6 +792,7 @@ pub async fn execute_single_file_dag(
     // every call site is deliberate — a new test cannot reach the real store
     // by forgetting something.
     checkpoint_store: Option<crate::transfer_dag::TransferCheckpointStore>,
+    on_failure: MultipartFailure,
 ) -> Result<(), ProviderError> {
     let direction = built.direction;
     let remote: Arc<str> = Arc::from(remote_path.as_str());
@@ -1474,10 +1496,18 @@ pub async fn execute_single_file_dag(
     // a later connected run, which can abort the matching provider session.
     if outcome.is_err() {
         if let Some(checkpoint) = durable_checkpoint.as_ref() {
-            checkpoint
-                .lock()
-                .expect("checkpoint mutex poisoned")
-                .mark_failed();
+            // A transfer that will not be resumed aborts its session instead,
+            // and drops the record only once the provider confirmed the abort:
+            // a record left behind is still found and retried by the
+            // scavenger, a record dropped too early would orphan the parts.
+            let aborted = on_failure == MultipartFailure::Abort
+                && abort_open_session(multipart_state.as_deref(), &provider).await;
+            let mut checkpoint = checkpoint.lock().expect("checkpoint mutex poisoned");
+            if aborted {
+                checkpoint.remove();
+            } else {
+                checkpoint.mark_failed();
+            }
         } else if let Some(state) = multipart_state.as_ref() {
             if let Some(handle) = state.take_for_abort().await {
                 let mut guard = provider.lock().await;
@@ -1496,6 +1526,62 @@ pub async fn execute_single_file_dag(
             .take()
             .unwrap_or_else(|| ProviderError::TransferFailed(dag_err.to_string()))),
     }
+}
+
+/// [`execute_single_file_dag_with`] for a production transfer: a failed or
+/// cancelled multipart upload keeps its provider session and checkpoint for a
+/// resume ([`MultipartFailure::KeepForResume`]).
+#[allow(clippy::too_many_arguments)]
+pub async fn execute_single_file_dag(
+    built: &ShapedFileDag,
+    provider: SharedProvider,
+    remote_path: String,
+    local_path: String,
+    modified: Option<String>,
+    progress_cb: Option<ProgressCallback>,
+    observer: Arc<dyn DagObserver>,
+    report_size: Arc<AtomicU64>,
+    file_size: u64,
+    // FINDING-4 Part B: when present, the plain single-file transfer node races
+    // its `download` / `upload` against this token so a user Stop
+    // (`cancel_transfer` -> `ProviderState::request_cancel`) drops the in-flight
+    // future promptly (russh is async, so dropping tears the SFTP stream down)
+    // instead of running the current file to completion. The CLI passes one
+    // that its Ctrl+C flag raises. `None` = no cancel wrapping.
+    cancel_token: Option<CancellationToken>,
+    // Where durable multipart checkpoints are journaled, and therefore which
+    // orphan records this run is allowed to scavenge and abort. `None` means
+    // the real per-user store under the AeroFTP data root, which is what the
+    // three production call sites pass.
+    //
+    // It is a parameter rather than a `default_store()` call inside the body
+    // because the body also *acts* on what it finds there: it aborts stale
+    // provider sessions whose endpoint matches this one. With no way to
+    // inject it, every test that shaped a multipart upload read and wrote the
+    // developer's own `~/.config/aeroftp-dev/transfer-checkpoints`, so its
+    // result depended on the machine's history rather than on the code. That
+    // is not a hypothetical: it is how
+    // `cancel_token_keeps_durable_multipart_session_for_resume` came to fail
+    // on a residue seven days old (see its comment). Making this explicit at
+    // every call site is deliberate — a new test cannot reach the real store
+    // by forgetting something.
+    checkpoint_store: Option<crate::transfer_dag::TransferCheckpointStore>,
+) -> Result<(), ProviderError> {
+    execute_single_file_dag_with(
+        built,
+        provider,
+        remote_path,
+        local_path,
+        modified,
+        progress_cb,
+        observer,
+        report_size,
+        file_size,
+        cancel_token,
+        checkpoint_store,
+        MultipartFailure::KeepForResume,
+    )
+    .await
 }
 
 /// Stash the original [`ProviderError`] for the caller and return a typed
@@ -1569,6 +1655,156 @@ fn single_file_budget(built: &ShapedFileDag) -> TransferBudget {
         budget.disk_read_slots = 1;
     }
     budget
+}
+
+/// Abort the provider session a multipart upload opened. `true` when the
+/// provider confirmed the abort, or when no session had been opened yet.
+async fn abort_open_session(state: Option<&MultipartFileState>, provider: &SharedProvider) -> bool {
+    let Some(state) = state else {
+        return false;
+    };
+    let Some(handle) = state.take_for_abort().await else {
+        return true;
+    };
+    let mut guard = provider.lock().await;
+    match guard.as_mut() {
+        Some(p) => p.abort_multipart_upload(handle).await.is_ok(),
+        None => false,
+    }
+}
+
+/// The error a single-file transfer ends with when its cancel token is raised
+/// before the transfer finished.
+pub fn transfer_cancelled_error() -> ProviderError {
+    ProviderError::TransferFailed("Transfer cancelled by user".to_string())
+}
+
+/// Where the router sends one plain single-file transfer on `provider`: the
+/// shaped DAG or the provider's own `upload` / `download`.
+///
+/// The hint is the provider's own `router_hint()` (which inspects its config
+/// URL), so a profile-based connection gets the right classification even
+/// without a URL from the caller. `server_url` survives as a fallback for a
+/// provider built without a URL in its config: when the provider says vanilla
+/// WebDAV and the caller has a URL with extra signal (a CLI `--profile` lookup
+/// that populated it), the URL-allowlist branches get their chance to catch
+/// Tab.digital / Koofr / FeliCloud.
+pub fn pick_single_file_route(
+    provider: &dyn StorageProvider,
+    direction: TransferDirection,
+    local_path: &str,
+    user_override: crate::transfer_router::Override,
+    server_url: Option<&str>,
+) -> crate::transfer_router::Decision {
+    use crate::transfer_router::{hints, Operation, ProviderHint, RouteContext, Router};
+    let hint = {
+        let provider_hint = provider.router_hint();
+        if matches!(provider_hint, ProviderHint::WebDavVanilla) {
+            hints::from_provider_type(provider.provider_type(), server_url, None)
+        } else {
+            provider_hint
+        }
+    };
+    // For Upload the local size is exact. For Download the current hint table
+    // has no size-conditional rule, so the placeholder cannot affect the
+    // decision and avoids an extra remote stat round-trip.
+    let route_size: u64 = match direction {
+        TransferDirection::Upload => std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0),
+        TransferDirection::Download => u64::MAX,
+    };
+    let op = match direction {
+        TransferDirection::Upload => Operation::Upload,
+        TransferDirection::Download => Operation::Download,
+    };
+    let ctx = RouteContext::new(hint, op, route_size).with_override(user_override);
+    Router::new().pick(ctx)
+}
+
+/// Run one plain single-file transfer on the engine `decision` names, and hand
+/// the provider back with the result.
+///
+/// The legacy engine calls the provider directly, without the DAG node graph,
+/// for the cases the router flagged as regressing under the shaped engine. The
+/// DAG engine shapes the graph from the provider's capabilities and the local
+/// size (single `UploadFile` or a multipart fan-out). A raised `cancel` ends
+/// either one: the legacy transfer with [`transfer_cancelled_error`], the DAG
+/// through its transfer node, which closes itself, guards included, before
+/// the graph returns. `on_failure` says what a failed multipart upload leaves
+/// behind (see [`MultipartFailure`]).
+#[allow(clippy::too_many_arguments)]
+pub async fn run_single_file_on_route(
+    provider: Box<dyn StorageProvider>,
+    decision: &crate::transfer_router::Decision,
+    direction: TransferDirection,
+    remote_path: &str,
+    local_path: &str,
+    progress_cb: Option<ProgressCallback>,
+    cancel: Option<CancellationToken>,
+    on_failure: MultipartFailure,
+) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
+    if decision.engine == crate::transfer_router::Engine::Legacy {
+        let mut provider = provider;
+        let transfer = async {
+            match direction {
+                TransferDirection::Upload => {
+                    provider.upload(local_path, remote_path, progress_cb).await
+                }
+                TransferDirection::Download => {
+                    provider
+                        .download(remote_path, local_path, progress_cb)
+                        .await
+                }
+            }
+        };
+        let result = match cancel {
+            Some(token) => tokio::select! {
+                biased;
+                out = transfer => out,
+                () = token.cancelled() => Err(transfer_cancelled_error()),
+            },
+            None => transfer.await,
+        };
+        return (provider, result);
+    }
+
+    // Capabilities and the local size are resolved before the provider moves
+    // into the shared Arc: the shaped-graph builder needs both to decide
+    // between the single-`UploadFile` shape and a multipart fan-out on the
+    // upload direction. A download still resolves caps so `rate_limited_api`
+    // and `resume_download` reach the builder; its file size has no shaping
+    // effect today.
+    let caps = provider.transfer_capabilities();
+    let file_size: u64 = match direction {
+        TransferDirection::Upload => std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0),
+        TransferDirection::Download => 0,
+    };
+    let arc = Arc::new(Mutex::new(Some(provider)));
+    let built = TransferDagBuilder::shaped_file(direction, &caps, file_size);
+    let report = Arc::new(AtomicU64::new(0));
+    let observer: Arc<dyn DagObserver> = Arc::new(crate::transfer_dag::NoopDagObserver);
+    let result = execute_single_file_dag_with(
+        &built,
+        Arc::clone(&arc),
+        remote_path.to_string(),
+        local_path.to_string(),
+        None,
+        progress_cb,
+        observer,
+        report,
+        file_size,
+        cancel,
+        // The real per-user checkpoint store, also when the run will not resume
+        // (`on_failure` then removes the record it opened).
+        None,
+        on_failure,
+    )
+    .await;
+    let provider = arc
+        .lock()
+        .await
+        .take()
+        .expect("provider is returned by the single-file DAG");
+    (provider, result)
 }
 
 #[cfg(test)]
@@ -2578,6 +2814,78 @@ mod tests {
             !*multipart_aborted.lock().unwrap(),
             "a durable checkpoint keeps the provider session for missing-part resume"
         );
+    }
+
+    /// The mirror of the test above for a transfer that will never be resumed
+    /// (a benchmark payload in a temp file): the cancelled multipart upload
+    /// aborts its provider session and leaves no checkpoint behind, where
+    /// `KeepForResume` keeps both.
+    #[tokio::test]
+    async fn abort_on_failure_closes_the_session_and_drops_the_checkpoint() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, b"0123456789abcdefghij").expect("write source");
+
+        let multipart_completed = Arc::new(StdMutex::new(false));
+        let multipart_aborted = Arc::new(StdMutex::new(false));
+        let part_started = Arc::new(AtomicU64::new(0));
+        let token = CancellationToken::new();
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::clone(&multipart_completed),
+            Arc::clone(&multipart_aborted),
+            Arc::clone(&part_started),
+        )
+        .cancelling_during_part(token.clone());
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 20);
+        assert_eq!(built.profile.upload_parts, 2);
+        let store = test_checkpoint_store(dir.path());
+        let res = execute_single_file_dag_with(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            None,
+            Arc::new(crate::transfer_dag::NoopDagObserver),
+            Arc::new(AtomicU64::new(20)),
+            20,
+            Some(token),
+            store,
+            MultipartFailure::Abort,
+        )
+        .await;
+
+        assert!(res.is_err(), "a cancelled multipart upload must fail");
+        assert!(
+            *multipart_aborted.lock().unwrap(),
+            "a transfer that will not be resumed aborts its provider session"
+        );
+        assert!(!*multipart_completed.lock().unwrap());
+        // Every record is one JSON file in the store directory.
+        let left: Vec<_> = std::fs::read_dir(dir.path().join("checkpoints"))
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .map(|e| e.path())
+                    .filter(|p| p.extension().and_then(|v| v.to_str()) == Some("json"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        assert!(left.is_empty(), "no checkpoint left to resume: {left:?}");
     }
 
     /// The orphan scavenger reads the store it was handed, and aborts a stale

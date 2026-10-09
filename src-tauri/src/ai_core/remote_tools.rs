@@ -2827,6 +2827,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let local_dir = get_str(args, "local_dir")?;
     let remote_dir = get_str(args, "remote_dir")?;
     validate_remote_path(&remote_dir, "remote_dir")?;
+    validate_local_path(&local_dir, "local_dir")?;
     let direction = get_str_opt(args, "direction").unwrap_or_else(|| "both".to_string());
     // A fixed set: the value is written into the suggested command line.
     if !matches!(direction.as_str(), "upload" | "download" | "both") {
@@ -3376,6 +3377,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     let local_dir = get_str(args, "local_dir")?;
     let remote_dir = get_str(args, "remote_dir")?;
     validate_remote_path(&remote_dir, "remote_dir")?;
+    validate_local_path(&local_dir, "local_dir")?;
     let checksum = get_bool_opt(args, "checksum").unwrap_or(false);
     let one_way = get_bool_opt(args, "one_way").unwrap_or(false);
     let summary_only = get_bool_opt(args, "summary_only").unwrap_or(false);
@@ -5592,5 +5594,50 @@ mod tests {
             msg.contains("denied"),
             "expected a denylist refusal, got: {msg}"
         );
+    }
+
+    /// The local side of `reconcile` and `sync_doctor` is a directory the tool
+    /// walks and, for reconcile with `checksum`, reads: it passes the same
+    /// sensitive-path list as every other local path a remote tool takes
+    /// (upload's and download's `local_path`). Both read it unchecked, so
+    /// `~/.ssh` was listed, sized and hashed for any agent that asked.
+    #[test]
+    fn reconcile_and_sync_doctor_refuse_a_local_dir_under_home_ssh() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let home = std::fs::canonicalize(dir.path())
+            .expect("canonical tempdir")
+            .join("home");
+        std::fs::create_dir_all(home.join(".ssh")).expect("create ~/.ssh");
+        std::fs::write(home.join(".ssh").join("id_ed25519"), b"key").expect("write key");
+        let prev = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let local_dir = home.join(".ssh");
+        let args = json!({
+            "server": "s",
+            "local_dir": local_dir.to_str().expect("utf8"),
+            "remote_dir": "/pub",
+        });
+        let ctx = test_ctx(Arc::new(FakeBackend::sample()));
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let reconciled = runtime.block_on(reconcile(&ctx, &args));
+        let doctored = runtime.block_on(sync_doctor(&ctx, &args));
+        match prev {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        for (tool, out) in [("reconcile", reconciled), ("sync_doctor", doctored)] {
+            let msg = match &out {
+                Ok(v) => format!("Ok({v})"),
+                Err(e) => format!("Err({e})"),
+            };
+            assert!(
+                out.is_err() && msg.contains("denied"),
+                "{tool} read ~/.ssh: {msg}"
+            );
+        }
     }
 }

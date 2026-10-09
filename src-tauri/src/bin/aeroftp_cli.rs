@@ -72,6 +72,12 @@ use axum::{
 };
 use base64::Engine as _;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use ftp_client_gui_lib::community_benchmark::{
+    self, benchmark_mkdir_ladder, benchmark_public_ip, benchmark_service_label,
+    resolve_benchmark_plan, results_have_fatal, sanitized_report_json, BenchmarkEvent,
+    BenchmarkLevel, BenchmarkObserver, BenchmarkOptions, BenchmarkReport, BenchmarkResult,
+    BENCHMARK_IP_CHANGED_WARNING, BENCHMARK_TOTAL_TIMEOUT_SECS,
+};
 use ftp_client_gui_lib::dedupe::{self, Modality, SimilarityMode};
 use ftp_client_gui_lib::local_bridge::{
     bridge_kind_for_provider_id, probe_bridge_blocking, BridgeUiState,
@@ -89,6 +95,7 @@ use ftp_client_gui_lib::shell_quote::shell_arg;
 use ftp_client_gui_lib::sync_core::mtime::ModifyWindow;
 use ftp_client_gui_lib::user_partitions;
 use ftp_client_gui_lib::util::shutdown_signal;
+use ftp_client_gui_lib::util::size::{format_size, parse_size_filter};
 use futures_util::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use semver::Version;
@@ -6558,140 +6565,6 @@ struct CliDoctorResult {
     ec_max_file_size: Option<u64>,
 }
 
-// ── Community Benchmark report (schema v1) ────────────────────────────
-// See docs/dev/roadmap/APPENDIX-BENCHMARK_Community-Protocol-Comparison.md
-// Schema contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md
-
-#[derive(Copy, Clone, Debug, Serialize, ValueEnum)]
-#[serde(rename_all = "lowercase")]
-enum BenchmarkLevel {
-    Quick,
-    Standard,
-    Deep,
-    Custom,
-}
-
-#[derive(Serialize)]
-struct BenchmarkReport {
-    schema_version: u32,
-    report_id: String,
-    generated_at: String,
-    cli: BenchmarkCliMeta,
-    level: BenchmarkLevel,
-    // Access-method class of the profile (issue #277): the wire protocol for
-    // transport providers (SFTP, WebDAV, S3, ...) or the auth/API class for
-    // native ones (OAuth 2.0, OAuth 1.0, REST API). Additive to schema v1.
-    #[serde(default)]
-    access: String,
-    // Service identity of the profile (issue #277): the catalog company for a
-    // preconfigured preset (`Koofr`, `TAB.DIGITAL`), the provider itself for a
-    // native API, or `Custom` for a generic transport aimed at the user's own
-    // host. A fixed vocabulary drawn from the embedded catalog, never user
-    // text, so the report stays as anonymous as it was. Additive to schema v1.
-    #[serde(default)]
-    service: String,
-    // Transport mode this run measured when `--all-protocols` expanded one
-    // profile into several runs (issue #277 B4): `api`, `webdav`, `s3` or `ftp`.
-    // Absent for an ordinary single-mode run. Without it a JSON consumer cannot
-    // tell the fan-out rows apart, because the per-mode label lives only in the
-    // text table. A fixed vocabulary, never user text, so the report stays as
-    // anonymous as it was. Additive to schema v1.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    mode: Option<String>,
-    environment: BenchmarkEnvironment,
-    consent: BenchmarkConsent,
-    results: Vec<BenchmarkResult>,
-    summary: BenchmarkSummary,
-    // Caveats about what the figures measure (#368): a Filen Desktop preset
-    // measures the local bridge and its cache, not Filen. A fixed vocabulary,
-    // never user text. Absent when empty. Additive to schema v1.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    notes: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct BenchmarkCliMeta {
-    version: String,
-    build_target: String,
-    rustc: String,
-}
-
-#[derive(Serialize)]
-struct BenchmarkEnvironment {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    asn_bucket: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    country_bucket: Option<String>,
-    tod_bucket: String,
-    os_family: String,
-    os_arch: String,
-    cpu_class: String,
-}
-
-#[derive(Serialize)]
-struct BenchmarkConsent {
-    publish: bool,
-    anonymize_extra: bool,
-}
-
-#[derive(Serialize)]
-struct BenchmarkResult {
-    protocol: String,
-    provider_hint: Option<String>,
-    provider_hash: Option<String>,
-    operation: String,
-    payload_size_bytes: u64,
-    runs: u32,
-    warmup_runs_discarded: u32,
-    // Many-small-files axis (schema v1, additive): number of files exercised by
-    // a batch operation (upload-all / download-all / list-dir / stat-all /
-    // delete-all) and the resulting files-per-second. Omitted for the
-    // single-file size sweep, where `latency_ms` and `throughput_mbps` already
-    // carry the meaningful numbers. See APPENDIX-BENCHMARK schema doc.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    file_count: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    files_per_second: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    throughput_mbps: Option<BenchmarkStats>,
-    latency_ms: BenchmarkStats,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tls_handshake_ms: Option<BenchmarkStats>,
-    errors: BenchmarkErrors,
-    raw_runs: Vec<BenchmarkRawRun>,
-}
-
-#[derive(Serialize, Clone, Debug, PartialEq)]
-struct BenchmarkStats {
-    p50: f64,
-    p95: f64,
-    stddev: f64,
-    min: f64,
-    max: f64,
-}
-
-#[derive(Serialize)]
-struct BenchmarkErrors {
-    transient: u32,
-    fatal: u32,
-}
-
-#[derive(Serialize)]
-struct BenchmarkRawRun {
-    duration_ms: u64,
-    bytes: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    throughput_mbps: Option<f64>,
-}
-
-#[derive(Serialize)]
-struct BenchmarkSummary {
-    total_runs: u32,
-    total_bytes_transferred: u64,
-    total_duration_ms: u64,
-    errors: Vec<String>,
-}
-
 // ── Helpers ────────────────────────────────────────────────────────
 
 fn cli_config_path() -> Result<PathBuf, String> {
@@ -8155,25 +8028,6 @@ async fn record_sync_ec_after_successful_upload(
     }
 }
 
-fn format_size(bytes: u64) -> String {
-    const KB: u64 = 1024;
-    const MB: u64 = 1024 * KB;
-    const GB: u64 = 1024 * MB;
-    const TB: u64 = 1024 * GB;
-
-    if bytes >= TB {
-        format!("{:.1} TB", bytes as f64 / TB as f64)
-    } else if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
-    } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
 /// Total byte size of the inputs to an archive, recursing into directories.
 /// Best-effort: unreadable entries are skipped so a ratio can still be shown
 /// rather than aborting the whole command.
@@ -8843,54 +8697,6 @@ fn path_matches_prefix(path: &str, prefix: &str) -> bool {
 }
 
 // ── Filter System ─────────────────────────────────────────────────
-
-/// Parse a size string like "100k", "1M", "2G" into bytes.
-fn parse_size_filter(s: &str) -> Result<u64, String> {
-    let s = s.trim();
-    if s.is_empty() {
-        return Err("Empty size".into());
-    }
-    let (num_str, multiplier) = match s.as_bytes().last() {
-        Some(b'k' | b'K') => (&s[..s.len() - 1], 1024u64),
-        Some(b'm' | b'M') => (&s[..s.len() - 1], 1024 * 1024),
-        Some(b'g' | b'G') => (&s[..s.len() - 1], 1024 * 1024 * 1024),
-        _ => (s, 1u64),
-    };
-    let value = num_str
-        .trim()
-        .parse::<f64>()
-        .map_err(|e| format!("Invalid size '{}': {}", s, e))?;
-    let bytes = value * multiplier as f64;
-    // Reject NaN, infinities and negatives: the saturating `as u64` cast
-    // would silently turn them into 0, which for a cutoff means "segment
-    // everything" (CodeRabbit on #920).
-    if !bytes.is_finite() || bytes < 0.0 {
-        return Err(format!(
-            "Invalid size '{}': not a non-negative finite number",
-            s
-        ));
-    }
-    Ok(bytes as u64)
-}
-
-/// Parse a benchmark payload size (issue #277). Unlike the shared
-/// [`parse_size_filter`], a bare number here means MEBIBYTES, not bytes: the
-/// benchmark file-size and chunk-size domain is always discussed in MB, so
-/// `--file-size 1` is a 1 MiB file rather than a 1-byte file. Explicit K/M/G
-/// suffixes keep the same 1024-power meaning as everywhere else.
-fn parse_benchmark_size(s: &str) -> Result<u64, String> {
-    let t = s.trim();
-    if t.is_empty() {
-        return Err("Empty size".into());
-    }
-    match t.as_bytes().last() {
-        Some(b'k' | b'K' | b'm' | b'M' | b'g' | b'G') => parse_size_filter(t),
-        _ => t
-            .parse::<f64>()
-            .map(|n| (n * (1024.0 * 1024.0)) as u64)
-            .map_err(|e| format!("Invalid size '{}': {}", t, e)),
-    }
-}
 
 /// Parse an age/duration string like "7d", "24h", "2w" into seconds.
 fn parse_age_filter(s: &str) -> Result<u64, String> {
@@ -10721,7 +10527,7 @@ async fn run_until_interrupted<T>(
 
 /// The error an interrupted transfer ends with.
 fn interrupted_by_user() -> ProviderError {
-    ProviderError::TransferFailed("Transfer cancelled by user".to_string())
+    ftp_client_gui_lib::transfer_dag_single_file::transfer_cancelled_error()
 }
 
 /// How long a command stopped by Ctrl-C waits for its connection to close.
@@ -10827,6 +10633,15 @@ async fn delta_until_interrupted<T>(
     outcome
 }
 
+/// The engine `--transfer-engine` forces, if any.
+fn cli_transfer_engine_override(cli: &Cli) -> ftp_client_gui_lib::transfer_router::Override {
+    match cli.transfer_engine.as_str() {
+        "dag" => ftp_client_gui_lib::transfer_router::Override::ForceDag,
+        "legacy" => ftp_client_gui_lib::transfer_router::Override::ForceLegacy,
+        _ => ftp_client_gui_lib::transfer_router::Override::None,
+    }
+}
+
 /// Run a plain single-file CLI transfer through the engine chosen by the
 /// data-driven router (or by the user override, when `--transfer-engine`
 /// is not `auto`).
@@ -10850,68 +10665,15 @@ async fn cli_run_single_file_dag(
     server_url: Option<&str>,
     cancelled: Option<&Arc<AtomicBool>>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
-    // Resolve capabilities and the local file size before wrapping the
-    // provider in the shared Arc: the shaped-graph builder needs both to
-    // decide between the single-`UploadFile` shape and a multipart fan-out
-    // on the upload direction. For a download we still resolve caps so
-    // `rate_limited_api` and `resume_download` flags reach the builder; the
-    // file size on the download direction has no shaping effect today.
-    let caps = provider.transfer_capabilities();
-    let local_size: u64 = std::fs::metadata(local).map(|m| m.len()).unwrap_or(0);
-    let file_size: u64 = match direction {
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => local_size,
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => 0,
-    };
-
-    // Data-driven routing decision (Phase B). The hint is taken from the
-    // provider's own `router_hint()` (which inspects its config URL via
-    // the WebDavProvider trait override) so a `--profile` invocation
-    // gets the right classification even when `server_url` (the CLI
-    // argument) is empty. The optional `server_url` parameter survives
-    // as a fallback for callers that constructed the provider without
-    // a URL in its config.
-    let hint = {
-        let provider_hint = provider.router_hint();
-        // If the provider trait returned vanilla but the caller has a
-        // URL with extra signal (e.g. `--profile` lookup populated
-        // `cli.url`), re-evaluate so the URL-allowlist branches catch
-        // Tab.digital / Koofr / FeliCloud.
-        if matches!(
-            provider_hint,
-            ftp_client_gui_lib::transfer_router::ProviderHint::WebDavVanilla
-        ) {
-            ftp_client_gui_lib::transfer_router::hints::from_provider_type(
-                provider.provider_type(),
-                server_url,
-                None,
-            )
-        } else {
-            provider_hint
-        }
-    };
-    // For Upload the local size is exact. For Download the current hint
-    // table has no size-conditional rule, so the placeholder cannot affect
-    // the decision and avoids an extra remote stat round-trip.
-    let route_size: u64 = match direction {
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => local_size,
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => u64::MAX,
-    };
-    let op = match direction {
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
-            ftp_client_gui_lib::transfer_router::Operation::Upload
-        }
-        ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
-            ftp_client_gui_lib::transfer_router::Operation::Download
-        }
-    };
-    let user_override = match cli.transfer_engine.as_str() {
-        "dag" => ftp_client_gui_lib::transfer_router::Override::ForceDag,
-        "legacy" => ftp_client_gui_lib::transfer_router::Override::ForceLegacy,
-        _ => ftp_client_gui_lib::transfer_router::Override::None,
-    };
-    let ctx = ftp_client_gui_lib::transfer_router::RouteContext::new(hint, op, route_size)
-        .with_override(user_override);
-    let decision = ftp_client_gui_lib::transfer_router::Router::new().pick(ctx);
+    // Data-driven routing decision (Phase B), shared with the community
+    // benchmark so a measurement takes the path a real transfer takes.
+    let decision = ftp_client_gui_lib::transfer_dag_single_file::pick_single_file_route(
+        provider.as_ref(),
+        direction,
+        local,
+        cli_transfer_engine_override(cli),
+        server_url,
+    );
 
     if cli.verbose > 0 {
         eprintln!(
@@ -10920,39 +10682,8 @@ async fn cli_run_single_file_dag(
         );
     }
 
-    // Legacy branch: call the provider directly without wrapping in the
-    // DAG node graph. Restores the pre-DAG behaviour for cases the router
-    // flagged as regressing under the shaped engine.
-    if decision.engine == ftp_client_gui_lib::transfer_router::Engine::Legacy {
-        let mut provider = provider;
-        let transfer = async {
-            match direction {
-                ftp_client_gui_lib::transfer_dag::TransferDirection::Upload => {
-                    provider.upload(local, remote, progress_cb).await
-                }
-                ftp_client_gui_lib::transfer_dag::TransferDirection::Download => {
-                    provider.download(remote, local, progress_cb).await
-                }
-            }
-        };
-        let result = match cancelled {
-            Some(flag) => run_until_interrupted(flag, transfer)
-                .await
-                .unwrap_or_else(|| Err(interrupted_by_user())),
-            None => transfer.await,
-        };
-        return (provider, result);
-    }
-
-    let arc = Arc::new(tokio::sync::Mutex::new(Some(provider)));
-    let built = ftp_client_gui_lib::transfer_dag::TransferDagBuilder::shaped_file(
-        direction, &caps, file_size,
-    );
-    let report = Arc::new(AtomicU64::new(0));
-    let observer: Arc<dyn ftp_client_gui_lib::transfer_dag::DagObserver> =
-        Arc::new(ftp_client_gui_lib::transfer_dag::NoopDagObserver);
-    // Ctrl-C raises the flag; the graph's transfer node races the token and
-    // closes itself, guards included, before the graph returns.
+    // Ctrl-C raises the flag; the transfer races the token, the DAG's
+    // transfer node closing itself, guards included, before the graph returns.
     let cancel_token = cancelled.map(|flag| {
         let token = tokio_util::sync::CancellationToken::new();
         let watched = token.clone();
@@ -10965,30 +10696,22 @@ async fn cli_run_single_file_dag(
         });
         (token, watcher)
     });
-    let result = ftp_client_gui_lib::transfer_dag_single_file::execute_single_file_dag(
-        &built,
-        Arc::clone(&arc),
-        remote.to_string(),
-        local.to_string(),
-        None,
+    let result = ftp_client_gui_lib::transfer_dag_single_file::run_single_file_on_route(
+        provider,
+        &decision,
+        direction,
+        remote,
+        local,
         progress_cb,
-        observer,
-        report,
-        file_size,
         cancel_token.as_ref().map(|(token, _)| token.clone()),
-        // The real per-user checkpoint store: this is a production transfer.
-        None,
+        // A user transfer keeps a failed multipart session for `--resume`.
+        ftp_client_gui_lib::transfer_dag_single_file::MultipartFailure::KeepForResume,
     )
     .await;
     if let Some((_, watcher)) = cancel_token {
         watcher.abort();
     }
-    let provider = arc
-        .lock()
-        .await
-        .take()
-        .expect("provider is returned by the single-file DAG");
-    (provider, result)
+    result
 }
 
 /// Why a single-file transfer on a held connection did not complete.
@@ -44143,34 +43866,6 @@ async fn cmd_about(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     0
 }
 
-/// Write a non-compressible random payload to `path` and return its hex SHA-256.
-///
-/// Uses `rand::thread_rng()` to generate high-entropy bytes (~8 bits/byte),
-/// preventing TLS or transport-level compression from skewing the benchmark.
-/// This is *high-entropy random* in the benchmarking sense, not a cryptographic
-/// secrecy guarantee: the bytes are read back over the wire and hashed.
-fn write_speed_test_file_random(path: &Path, size: u64) -> Result<String, String> {
-    use rand::RngCore;
-    use sha2::{Digest, Sha256};
-    let mut file = std::fs::File::create(path)
-        .map_err(|e| format!("Cannot create speed test payload: {}", e))?;
-    let mut rng = rand::thread_rng();
-    let mut hasher = Sha256::new();
-    let mut chunk = vec![0u8; 1024 * 1024];
-    let mut remaining = size;
-    while remaining > 0 {
-        let next = remaining.min(chunk.len() as u64) as usize;
-        rng.fill_bytes(&mut chunk[..next]);
-        file.write_all(&chunk[..next])
-            .map_err(|e| format!("Cannot write speed test payload: {}", e))?;
-        hasher.update(&chunk[..next]);
-        remaining -= next as u64;
-    }
-    file.flush()
-        .map_err(|e| format!("Cannot flush speed test payload: {}", e))?;
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
 /// Redact userinfo password from a URL for safe display in logs / reports.
 /// Returns `protocol://user@host[:port]/path` when the URL is parseable, or a
 /// best-effort manual redaction otherwise. Never returns the original password.
@@ -44405,6 +44100,31 @@ async fn cmd_speed(
     exit_code
 }
 
+/// Wait, before a timed download, until the file this run just uploaded can
+/// be read back. A server that writes uploads back after a delay (Filen
+/// Desktop's `rclone serve s3`) would otherwise put that delay into the
+/// download time: 10 MB measured at 5 Mbps that was 15 s of waiting and well
+/// under a second of transfer. The wait is told apart on the terminal and is
+/// not counted. An error is left to the download, which reports it.
+async fn wait_until_upload_readable(
+    provider: &mut Box<dyn StorageProvider>,
+    remote_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+) {
+    if let Ok(Some(waited)) = provider.wait_until_readable(remote_path).await {
+        if waited >= std::time::Duration::from_millis(100)
+            && !cli.quiet
+            && matches!(format, OutputFormat::Text)
+        {
+            eprintln!(
+                "  waited {:.1} s for the server to make the upload readable (not counted as download time)",
+                waited.as_secs_f64()
+            );
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_single_speed_test(
     url: &str,
@@ -44480,14 +44200,15 @@ async fn run_single_speed_test(
         // Unique payload per iteration so content-dedup backends cannot
         // short-circuit the upload. The integrity check (last iteration only)
         // compares against this iteration's freshly recomputed SHA-256.
-        upload_sha256 = match write_speed_test_file_random(local_upload.path(), size) {
-            Ok(sha) => sha,
-            Err(e) => {
-                let _ = provider.delete(remote_test_path).await;
-                let _ = provider.disconnect().await;
-                return Err((e, 5));
-            }
-        };
+        upload_sha256 =
+            match ftp_client_gui_lib::speed_payload::write_random(local_upload.path(), size) {
+                Ok(sha) => sha,
+                Err(e) => {
+                    let _ = provider.delete(remote_test_path).await;
+                    let _ = provider.disconnect().await;
+                    return Err((e, 5));
+                }
+            };
 
         let upload_start = Instant::now();
         if let Err(e) = provider
@@ -44950,767 +44671,6 @@ async fn cmd_speed_compare(
     }
 }
 
-// ── Community Benchmark implementation ────────────────────────────────
-// Schema contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md
-// Phase 1: single-profile run (uses global --profile), levels quick + standard
-// fully implemented; deep falls back to standard with widened matrix; custom
-// requires explicit overrides. No automated upload: report is paste-ready.
-
-const BENCHMARK_MAX_SIZE_BYTES: u64 = 5 * 1024 * 1024 * 1024;
-const BENCHMARK_TOTAL_TIMEOUT_SECS: u64 = 60 * 60;
-/// Upper bound on `--file-count` for the many-small-files workload. A run of
-/// 100k metadata round-trips is already long enough to be meaningful; beyond
-/// this the wall time is dominated by the workload itself, not the protocol.
-const BENCHMARK_MAX_FILE_COUNT: u32 = 100_000;
-
-/// Resolved parameters for the many-small-files axis. Built only when
-/// `--file-count` is provided; the single-file size sweep is unaffected.
-#[derive(Debug, Clone, Copy)]
-struct ManyFilesConfig {
-    file_count: u32,
-    file_size_bytes: u64,
-}
-
-/// Validate and resolve the many-small-files workload parameters. Returns
-/// `Ok(None)` when the workload is not requested (`file_count` is `None`/0).
-fn resolve_many_files_config(
-    file_count: Option<u32>,
-    file_size: &str,
-) -> Result<Option<ManyFilesConfig>, String> {
-    let count = match file_count {
-        Some(n) if n > 0 => n,
-        _ => return Ok(None),
-    };
-    if count > BENCHMARK_MAX_FILE_COUNT {
-        return Err(format!(
-            "--file-count {} exceeds the {} cap",
-            count, BENCHMARK_MAX_FILE_COUNT
-        ));
-    }
-    let file_size_bytes = parse_benchmark_size(file_size)?;
-    if file_size_bytes == 0 {
-        return Err("--file-size cannot be zero".into());
-    }
-    // Bound the aggregate payload so a careless `--file-count 100000 --file-size
-    // 1M` cannot try to push 100 GiB. The product is checked in u128 to avoid
-    // overflow on the multiply.
-    let total = file_size_bytes as u128 * count as u128;
-    if total > BENCHMARK_MAX_SIZE_BYTES as u128 {
-        return Err(format!(
-            "many-files payload {} (file-count {} x file-size {}) exceeds the 5 GiB cap",
-            format_size((total.min(u64::MAX as u128)) as u64),
-            count,
-            format_size(file_size_bytes)
-        ));
-    }
-    Ok(Some(ManyFilesConfig {
-        file_count: count,
-        file_size_bytes,
-    }))
-}
-
-/// Accumulated output of the many-small-files workload, merged back into the
-/// main benchmark report by the caller.
-struct ManyFilesOutcome {
-    results: Vec<BenchmarkResult>,
-    bytes_transferred: u64,
-    runs: u32,
-    errors: Vec<String>,
-}
-
-/// Build a single batch-operation result for the many-small-files axis.
-/// `per_file_ms` carries the per-file latency distribution (its p50 is the mean
-/// per-file time); `files_per_second` is the headline rate over the whole batch.
-#[allow(clippy::too_many_arguments)]
-fn many_files_result(
-    protocol: &str,
-    anonymize_extra: bool,
-    report_id: &str,
-    operation: &str,
-    payload_size_bytes: u64,
-    files: u32,
-    files_per_second: f64,
-    per_file_ms: &[f64],
-    throughput_mbps: Option<&[f64]>,
-    fatal: u32,
-) -> BenchmarkResult {
-    let (hint, hash) = benchmark_provider_hint(protocol, anonymize_extra, report_id);
-    let raw_runs = per_file_ms
-        .iter()
-        .map(|ms| BenchmarkRawRun {
-            duration_ms: *ms as u64,
-            bytes: payload_size_bytes,
-            throughput_mbps: None,
-        })
-        .collect();
-    BenchmarkResult {
-        protocol: protocol.to_string(),
-        provider_hint: hint,
-        provider_hash: hash,
-        operation: operation.to_string(),
-        payload_size_bytes,
-        // `runs` is the number of timed measurements (one list-dir call vs. one
-        // per file for the batch ops); `file_count` is how many files the op
-        // touched (the N entries listed, the N files uploaded, etc.).
-        runs: per_file_ms.len() as u32,
-        warmup_runs_discarded: 0,
-        file_count: Some(files),
-        files_per_second: Some(files_per_second),
-        throughput_mbps: throughput_mbps.map(benchmark_stats_from),
-        latency_ms: benchmark_stats_from(per_file_ms),
-        tls_handshake_ms: None,
-        errors: BenchmarkErrors {
-            transient: 0,
-            fatal,
-        },
-        raw_runs,
-    }
-}
-
-/// Run the many-small-files axis: create N files of a fixed small size and
-/// measure upload-all / list-dir / stat-all / download-all / delete-all,
-/// reporting files/sec and per-file latency. This is the workload where
-/// per-file overhead (handshake, signing, metadata round-trips) dominates and
-/// S3 typically beats WebDAV/FTP.
-///
-/// Unlike the single-file size sweep (which goes through the transfer DAG to
-/// mirror a real transfer), these ops call the provider directly so the numbers
-/// isolate the protocol's raw per-file cost, the dimension being compared.
-#[allow(clippy::too_many_arguments)]
-async fn run_many_files_workload(
-    provider: &mut Box<dyn StorageProvider>,
-    mf: ManyFilesConfig,
-    test_root: &str,
-    protocol: &str,
-    anonymize_extra: bool,
-    report_id: &str,
-    deadline_secs: u64,
-    total_start: Instant,
-    cli: &Cli,
-    format: OutputFormat,
-) -> ManyFilesOutcome {
-    let mut out = ManyFilesOutcome {
-        results: Vec::new(),
-        bytes_transferred: 0,
-        runs: 0,
-        errors: Vec::new(),
-    };
-
-    let many_dir = format!("{}/manyfiles", test_root);
-    if let Err(e) = provider.mkdir(&many_dir).await {
-        if !matches!(e, ProviderError::AlreadyExists(_)) {
-            out.errors.push(format!(
-                "many-files: cannot create scratch dir '{}': {}",
-                many_dir, e
-            ));
-            return out;
-        }
-    }
-
-    let size = mf.file_size_bytes;
-    let remote_name =
-        |i: u32| ftp_client_gui_lib::speed_payload::name(&format!("{}/f{:06}", many_dir, i));
-
-    if !cli.quiet && matches!(format, OutputFormat::Text) {
-        eprintln!(
-            "running many-small-files workload: {} files of {}",
-            mf.file_count,
-            format_size(size)
-        );
-    }
-
-    // ── upload-all ──────────────────────────────────────────────────
-    let local_up = match NamedTempFile::new() {
-        Ok(f) => f,
-        Err(e) => {
-            out.errors
-                .push(format!("many-files: cannot create local temp: {}", e));
-            return out;
-        }
-    };
-    let local_up_path = local_up.path().to_string_lossy().to_string();
-    let mut up_ms: Vec<f64> = Vec::new();
-    let mut up_mbps: Vec<f64> = Vec::new();
-    let mut up_fatal = 0u32;
-    let mut uploaded = 0u32;
-    let up_start = Instant::now();
-    let progress_show = !cli.quiet && matches!(format, OutputFormat::Text);
-    let up_pb = many_files_progress_bar("upload-all", mf.file_count as u64, progress_show);
-    for i in 0..mf.file_count {
-        if total_start.elapsed().as_secs() > deadline_secs {
-            out.errors
-                .push("many-files: hit profile-timeout during upload-all".into());
-            break;
-        }
-        // Fresh random content per file (untimed) so content-dedup backends
-        // cannot short-circuit the upload and inflate files/sec.
-        if let Err(e) = write_speed_test_file_random(local_up.path(), size) {
-            out.errors.push(format!("many-files: {}", e));
-            break;
-        }
-        let remote = remote_name(i);
-        let start = Instant::now();
-        match provider.upload(&local_up_path, &remote, None).await {
-            Ok(()) => {
-                let ms = start.elapsed().as_secs_f64() * 1000.0;
-                up_ms.push(ms);
-                up_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
-                uploaded += 1;
-                out.bytes_transferred += size;
-                out.runs += 1;
-                up_pb.inc(1);
-            }
-            Err(e) => {
-                up_fatal += 1;
-                out.errors
-                    .push(format!("many-files: upload of file {} failed: {}", i, e));
-                break;
-            }
-        }
-    }
-    up_pb.finish_and_clear();
-    if uploaded > 0 {
-        let secs = up_start.elapsed().as_secs_f64().max(1e-6);
-        out.results.push(many_files_result(
-            protocol,
-            anonymize_extra,
-            report_id,
-            "upload-all",
-            size,
-            uploaded,
-            uploaded as f64 / secs,
-            &up_ms,
-            Some(&up_mbps),
-            up_fatal,
-        ));
-    }
-    if uploaded == 0 {
-        // Nothing landed remotely: the remaining ops have no payload to act on.
-        return out;
-    }
-
-    // ── list-dir (one call, returns N entries) ──────────────────────
-    let list_start = Instant::now();
-    match provider.list(&many_dir).await {
-        Ok(entries) => {
-            let ms = list_start.elapsed().as_secs_f64() * 1000.0;
-            let listed = entries.iter().filter(|e| !e.is_dir).count() as u32;
-            let fps = listed as f64 / (ms / 1000.0).max(1e-6);
-            out.results.push(many_files_result(
-                protocol,
-                anonymize_extra,
-                report_id,
-                "list-dir",
-                0,
-                listed,
-                fps,
-                &[ms],
-                None,
-                0,
-            ));
-            out.runs += 1;
-        }
-        Err(e) => out
-            .errors
-            .push(format!("many-files: list-dir failed: {}", e)),
-    }
-
-    // ── stat-all ────────────────────────────────────────────────────
-    let mut stat_ms: Vec<f64> = Vec::new();
-    let mut stat_fatal = 0u32;
-    let stat_start = Instant::now();
-    for i in 0..uploaded {
-        if total_start.elapsed().as_secs() > deadline_secs {
-            out.errors
-                .push("many-files: hit profile-timeout during stat-all".into());
-            break;
-        }
-        let start = Instant::now();
-        match provider.stat(&remote_name(i)).await {
-            Ok(_) => stat_ms.push(start.elapsed().as_secs_f64() * 1000.0),
-            Err(e) => {
-                stat_fatal += 1;
-                out.errors
-                    .push(format!("many-files: stat of file {} failed: {}", i, e));
-            }
-        }
-    }
-    if !stat_ms.is_empty() {
-        let secs = stat_start.elapsed().as_secs_f64().max(1e-6);
-        out.results.push(many_files_result(
-            protocol,
-            anonymize_extra,
-            report_id,
-            "stat-all",
-            0,
-            stat_ms.len() as u32,
-            stat_ms.len() as f64 / secs,
-            &stat_ms,
-            None,
-            stat_fatal,
-        ));
-        out.runs += stat_ms.len() as u32;
-    }
-
-    // ── download-all ────────────────────────────────────────────────
-    let local_dn = match NamedTempFile::new() {
-        Ok(f) => Some(f),
-        Err(e) => {
-            out.errors
-                .push(format!("many-files: cannot create download temp: {}", e));
-            None
-        }
-    };
-    if let Some(local_dn) = local_dn {
-        let local_dn_path = local_dn.path().to_string_lossy().to_string();
-        let mut dn_ms: Vec<f64> = Vec::new();
-        let mut dn_mbps: Vec<f64> = Vec::new();
-        let mut dn_fatal = 0u32;
-        let dn_start = Instant::now();
-        let dn_pb = many_files_progress_bar("download-all", uploaded as u64, progress_show);
-        for i in 0..uploaded {
-            if total_start.elapsed().as_secs() > deadline_secs {
-                out.errors
-                    .push("many-files: hit profile-timeout during download-all".into());
-                break;
-            }
-            wait_until_upload_readable(provider, &remote_name(i), cli, format).await;
-            let start = Instant::now();
-            match provider
-                .download(&remote_name(i), &local_dn_path, None)
-                .await
-            {
-                Ok(()) => {
-                    let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    dn_ms.push(ms);
-                    dn_mbps.push((size as f64 * 8.0) / 1_000_000.0 / (ms / 1000.0).max(1e-6));
-                    out.bytes_transferred += size;
-                    out.runs += 1;
-                    dn_pb.inc(1);
-                }
-                Err(e) => {
-                    dn_fatal += 1;
-                    out.errors
-                        .push(format!("many-files: download of file {} failed: {}", i, e));
-                }
-            }
-        }
-        dn_pb.finish_and_clear();
-        if !dn_ms.is_empty() {
-            let secs = dn_start.elapsed().as_secs_f64().max(1e-6);
-            out.results.push(many_files_result(
-                protocol,
-                anonymize_extra,
-                report_id,
-                "download-all",
-                size,
-                dn_ms.len() as u32,
-                dn_ms.len() as f64 / secs,
-                &dn_ms,
-                Some(&dn_mbps),
-                dn_fatal,
-            ));
-        }
-    }
-
-    // ── delete-all (also clears the scratch files) ──────────────────
-    let mut del_ms: Vec<f64> = Vec::new();
-    let mut del_fatal = 0u32;
-    let del_start = Instant::now();
-    for i in 0..uploaded {
-        let start = Instant::now();
-        match provider.delete(&remote_name(i)).await {
-            Ok(()) => del_ms.push(start.elapsed().as_secs_f64() * 1000.0),
-            Err(e) => {
-                del_fatal += 1;
-                out.errors
-                    .push(format!("many-files: delete of file {} failed: {}", i, e));
-            }
-        }
-    }
-    if !del_ms.is_empty() {
-        let secs = del_start.elapsed().as_secs_f64().max(1e-6);
-        out.results.push(many_files_result(
-            protocol,
-            anonymize_extra,
-            report_id,
-            "delete-all",
-            0,
-            del_ms.len() as u32,
-            del_ms.len() as f64 / secs,
-            &del_ms,
-            None,
-            del_fatal,
-        ));
-        out.runs += del_ms.len() as u32;
-    }
-
-    out
-}
-
-#[derive(Debug)]
-struct BenchmarkConfig {
-    sizes_bytes: Vec<u64>,
-    runs_per_size: u32,
-    warmup_runs: u32,
-    operations: Vec<&'static str>,
-}
-
-fn resolve_benchmark_config(
-    level: BenchmarkLevel,
-    sizes_override: Option<&str>,
-    runs_override: Option<u32>,
-    operations_override: Option<&str>,
-) -> Result<BenchmarkConfig, String> {
-    let mib: u64 = 1024 * 1024;
-    let gib: u64 = 1024 * mib;
-    let (default_sizes, default_runs, default_warmup, default_ops): (
-        Vec<u64>,
-        u32,
-        u32,
-        Vec<&'static str>,
-    ) = match level {
-        BenchmarkLevel::Quick => (vec![10 * mib], 1, 0, vec!["upload", "download"]),
-        BenchmarkLevel::Standard => (
-            vec![mib, 100 * mib, gib],
-            3,
-            1,
-            vec!["upload", "download", "list", "stat", "delete"],
-        ),
-        BenchmarkLevel::Deep => (
-            vec![mib, 10 * mib, 100 * mib, gib, 5 * gib],
-            5,
-            1,
-            vec!["upload", "download", "list", "stat", "delete"],
-        ),
-        BenchmarkLevel::Custom => (
-            vec![100 * mib],
-            3,
-            1,
-            vec!["upload", "download", "list", "stat", "delete"],
-        ),
-    };
-
-    let sizes_bytes = if let Some(s) = sizes_override {
-        let parsed: Result<Vec<u64>, String> = s
-            .split(',')
-            .filter(|t| !t.trim().is_empty())
-            .map(|tok| parse_benchmark_size(tok.trim()))
-            .collect();
-        let v = parsed?;
-        if v.is_empty() {
-            return Err("--sizes must contain at least one value".into());
-        }
-        v
-    } else {
-        default_sizes
-    };
-
-    for &sz in &sizes_bytes {
-        if sz == 0 {
-            return Err("benchmark size cannot be zero".into());
-        }
-        if sz > BENCHMARK_MAX_SIZE_BYTES {
-            return Err(format!(
-                "benchmark size {} exceeds 5 GiB cap",
-                format_size(sz)
-            ));
-        }
-    }
-
-    let runs_per_size = runs_override.unwrap_or(default_runs).clamp(1, 20);
-
-    let operations: Vec<&'static str> = if let Some(o) = operations_override {
-        let mut out = Vec::new();
-        for tok in o.split(',') {
-            let trimmed = tok.trim();
-            if trimmed.is_empty() {
-                continue;
-            }
-            match trimmed {
-                "upload" => out.push("upload"),
-                "download" => out.push("download"),
-                "list" => out.push("list"),
-                "stat" => out.push("stat"),
-                "delete" => out.push("delete"),
-                other => return Err(format!("unknown operation: {}", other)),
-            }
-        }
-        if out.is_empty() {
-            return Err("--operations must contain at least one value".into());
-        }
-        out
-    } else {
-        default_ops
-    };
-
-    Ok(BenchmarkConfig {
-        sizes_bytes,
-        runs_per_size,
-        warmup_runs: default_warmup,
-        operations,
-    })
-}
-
-fn benchmark_percentile(sorted: &[f64], p: f64) -> f64 {
-    if sorted.is_empty() {
-        return 0.0;
-    }
-    if sorted.len() == 1 {
-        return sorted[0];
-    }
-    let rank = (p / 100.0) * (sorted.len() - 1) as f64;
-    let lo = rank.floor() as usize;
-    let hi = rank.ceil() as usize;
-    if lo == hi {
-        return sorted[lo];
-    }
-    let frac = rank - lo as f64;
-    sorted[lo] * (1.0 - frac) + sorted[hi] * frac
-}
-
-fn benchmark_stats_from(values: &[f64]) -> BenchmarkStats {
-    if values.is_empty() {
-        return BenchmarkStats {
-            p50: 0.0,
-            p95: 0.0,
-            stddev: 0.0,
-            min: 0.0,
-            max: 0.0,
-        };
-    }
-    let mut sorted: Vec<f64> = values.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-    let n = sorted.len() as f64;
-    let mean = sorted.iter().sum::<f64>() / n;
-    let variance = sorted.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
-    let stddev = variance.sqrt();
-    BenchmarkStats {
-        p50: benchmark_percentile(&sorted, 50.0),
-        p95: benchmark_percentile(&sorted, 95.0),
-        stddev,
-        min: sorted[0],
-        max: sorted[sorted.len() - 1],
-    }
-}
-
-fn benchmark_os_family() -> String {
-    if cfg!(target_os = "linux") {
-        "linux".into()
-    } else if cfg!(target_os = "windows") {
-        "windows".into()
-    } else if cfg!(target_os = "macos") {
-        "macos".into()
-    } else if cfg!(target_os = "freebsd") {
-        "freebsd".into()
-    } else {
-        "other".into()
-    }
-}
-
-fn benchmark_cpu_class() -> String {
-    let arch = std::env::consts::ARCH;
-    match arch {
-        "x86_64" => "x64-modern".into(),
-        "aarch64" => "arm64-modern".into(),
-        "x86" | "i686" => "x64-legacy".into(),
-        "arm" | "armv7" => "arm64-legacy".into(),
-        other => format!("other-{}", other),
-    }
-}
-
-fn benchmark_tod_bucket() -> &'static str {
-    use chrono::{Local, Timelike};
-    let h = Local::now().hour();
-    match h {
-        0..=5 => "night",
-        6..=11 => "morning",
-        12..=17 => "afternoon",
-        18..=23 => "evening",
-        _ => "unknown",
-    }
-}
-
-/// Best-effort public-IP probe for the benchmark fairness check (issue #368
-/// #1). A single short HTTPS GET to an IP-echo endpoint; any failure (offline,
-/// blocked, timeout) yields `None` and the fairness check is silently skipped,
-/// so the benchmark never gains a hard network dependency. The value is only
-/// compared locally to detect a VPN/network switch mid-run and is never written
-/// to the published report (the sanitizer would redact an IPv4 anyway).
-async fn benchmark_public_ip() -> Option<String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .ok()?;
-    // api.ipify.org returns the bare IPv4/IPv6 as text/plain.
-    let resp = client.get("https://api.ipify.org").send().await.ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
-    let trimmed = resp.text().await.ok()?.trim().to_string();
-    if trimmed.is_empty() || trimmed.len() > 64 {
-        return None;
-    }
-    Some(trimmed)
-}
-
-/// Warning text shown when the public IP changed between the start and end of a
-/// benchmark (issue #368 #1): the run spanned a VPN/network switch, so latency
-/// and throughput numbers across profiles are not comparable. No raw IP is
-/// included so the message is safe to surface in the report's error list.
-const BENCHMARK_IP_CHANGED_WARNING: &str =
-    "public IP changed during the benchmark (VPN/network switch detected): results across profiles are NOT comparable, re-run on a stable connection";
-
-fn benchmark_rounded_hour_utc() -> String {
-    use chrono::{Datelike, Timelike, Utc};
-    let now = Utc::now();
-    format!(
-        "{:04}-{:02}-{:02}T{:02}:00:00Z",
-        now.year(),
-        now.month(),
-        now.day(),
-        now.hour()
-    )
-}
-
-fn benchmark_provider_hint(
-    protocol: &str,
-    anonymize_extra: bool,
-    report_id: &str,
-) -> (Option<String>, Option<String>) {
-    if anonymize_extra {
-        use sha2::{Digest, Sha256};
-        let mut h = Sha256::new();
-        h.update(protocol.as_bytes());
-        h.update(b"|");
-        h.update(report_id.as_bytes());
-        let hex = format!("{:x}", h.finalize());
-        (None, Some(hex.chars().take(16).collect()))
-    } else {
-        (Some(protocol.to_string()), None)
-    }
-}
-
-fn benchmark_remote_roots(initial_path: &str, report_id: &str) -> (String, String) {
-    // Drop the leading dot: dot-prefixed folders (`.aeroftp-bench`) are rejected by
-    // some providers (Internxt, certain WebDAV servers) that treat them as hidden
-    // or invalid names. Plain `aeroftp-bench` is portable across all 22 backends.
-    let bench_base = resolve_cli_remote_path(initial_path, "aeroftp-bench");
-    let test_root = if bench_base.trim_end_matches('/').is_empty() {
-        format!("aeroftp-bench/{}", report_id)
-    } else {
-        format!("{}/{}", bench_base.trim_end_matches('/'), report_id)
-    };
-    (bench_base, test_root)
-}
-
-fn benchmark_remote_roots_from_prefix(prefix: &str, report_id: &str) -> (String, String) {
-    // Honor `--test-root-prefix` verbatim: the user has chosen a writable
-    // sub-path (typically required for kDrive and SeaFile WebDAV which refuse
-    // operations on `/`). We still nest a unique scratch dir under it so the
-    // base prefix can be reused across runs without colliding.
-    let trimmed = prefix.trim();
-    let normalized = trimmed.trim_end_matches('/');
-    let bench_base = if normalized.is_empty() {
-        "/".to_string()
-    } else if normalized.starts_with('/') {
-        normalized.to_string()
-    } else {
-        format!("/{}", normalized)
-    };
-    let test_root = if bench_base == "/" {
-        format!("/{}", report_id)
-    } else {
-        format!("{}/{}", bench_base, report_id)
-    };
-    (bench_base, test_root)
-}
-
-/// Create a remote directory and every missing parent (mkdir -p semantics).
-///
-/// Several backends do not auto-create intermediate path components and reject
-/// a folder creation whose parent collection does not exist. pCloud WebDAV
-/// (issue #368) returned `Parent directory does not exist` for the scratch
-/// `aeroftp-bench/<uuid>` tree because the `aeroftp-bench` base had not been
-/// created first. The benchmark scratch tree is at least two levels deep under
-/// the profile root, so we create each component in turn, treating
-/// `AlreadyExists` as success. Returns the error of the deepest component that
-/// still failed (so the caller can decide whether to hard-fail), or `Ok` when
-/// the full path now exists.
-/// The benchmark's word on the trash purge of `path`: announced when it purged,
-/// a line in `errors` when the provider refused or failed, nothing when there
-/// was nothing to purge.
-fn note_trash_purge(
-    path: &str,
-    outcome: Result<bool, ProviderError>,
-    announce: bool,
-    errors: &mut Vec<String>,
-) {
-    match outcome {
-        Ok(true) => {
-            if announce {
-                eprintln!("trash purge: {} hard-deleted", path);
-            }
-        }
-        Ok(false) => {}
-        Err(e) => errors.push(format!(
-            "trash purge of {} failed, check the provider's trash: {}",
-            path, e
-        )),
-    }
-}
-
-/// Wait, before a timed download, until the file this run just uploaded can
-/// be read back. A server that writes uploads back after a delay (Filen
-/// Desktop's `rclone serve s3`) would otherwise put that delay into the
-/// download time: 10 MB measured at 5 Mbps that was 15 s of waiting and well
-/// under a second of transfer. The wait is told apart on the terminal and is
-/// not counted. An error is left to the download, which reports it.
-async fn wait_until_upload_readable(
-    provider: &mut Box<dyn StorageProvider>,
-    remote_path: &str,
-    cli: &Cli,
-    format: OutputFormat,
-) {
-    if let Ok(Some(waited)) = provider.wait_until_readable(remote_path).await {
-        if waited >= std::time::Duration::from_millis(100)
-            && !cli.quiet
-            && matches!(format, OutputFormat::Text)
-        {
-            eprintln!(
-                "  waited {:.1} s for the server to make the upload readable (not counted as download time)",
-                waited.as_secs_f64()
-            );
-        }
-    }
-}
-
-async fn benchmark_mkdir_p(
-    provider: &mut Box<dyn StorageProvider>,
-    path: &str,
-) -> Result<(), ProviderError> {
-    let mut last_err: Option<ProviderError> = None;
-    for acc in benchmark_mkdir_ladder(path) {
-        match provider.mkdir(&acc).await {
-            Ok(()) | Err(ProviderError::AlreadyExists(_)) => last_err = None,
-            Err(e) => last_err = Some(e),
-        }
-    }
-    match last_err {
-        Some(e) => Err(e),
-        None => Ok(()),
-    }
-}
-
-/// Pure path-splitting helper for [`benchmark_mkdir_p`]: turn a remote path into
-/// the ordered list of cumulative ancestor paths to create, preserving a
-/// leading slash for absolute paths. `"a/b/c"` yields `[a, a/b, a/b/c]`;
-/// `"/x/y"` yields `[/x, /x/y]`. An empty (or slash-only) path yields `[]`.
-/// `--skip-restricted`: separate the targets a backend would refuse by name.
-///
-/// A folder with a forbidden character takes every file under it along, since
-/// none of them can be created. Returns the kept folders, the kept files and
-/// one human-readable note per skipped target ("<path>: <reason>").
 /// The outcome of [`split_restricted_targets`].
 struct RestrictedSplit {
     dirs: Vec<String>,
@@ -45718,6 +44678,11 @@ struct RestrictedSplit {
     notes: Vec<String>,
 }
 
+/// `--skip-restricted`: separate the targets a backend would refuse by name.
+///
+/// A folder with a forbidden character takes every file under it along, since
+/// none of them can be created. Returns the kept folders, the kept files and
+/// one human-readable note per skipped target ("<path>: <reason>").
 fn split_restricted_targets(
     ptype: ProviderType,
     dirs: Vec<String>,
@@ -45773,100 +44738,12 @@ fn remote_parent_dir(remote_path: &str) -> Option<String> {
     }
 }
 
-fn benchmark_mkdir_ladder(path: &str) -> Vec<String> {
-    let trimmed = path.trim_end_matches('/');
-    if trimmed.trim_start_matches('/').is_empty() {
-        return Vec::new();
-    }
-    let absolute = trimmed.starts_with('/');
-    let mut acc = String::new();
-    let mut out = Vec::new();
-    for comp in trimmed.split('/').filter(|c| !c.is_empty()) {
-        if acc.is_empty() && !absolute {
-            acc.push_str(comp);
-        } else {
-            acc.push('/');
-            acc.push_str(comp);
-        }
-        out.push(acc.clone());
-    }
-    out
-}
-
-/// Pattern table reused by both [`benchmark_sanitize`] (replacement pass) and
-/// [`benchmark_sanitization_sweep`] (assertion pass).
-fn benchmark_pii_patterns() -> &'static [(&'static str, &'static str, &'static str)] {
-    // (pattern, replacement, label)
-    &[
-        (r"AKIA[0-9A-Z]{16}", "AKIA<redacted>", "AWS access key"),
-        (
-            r"xox[baprs]-[0-9a-zA-Z-]{10,}",
-            "xox<redacted>",
-            "Slack token",
-        ),
-        (r"ghp_[A-Za-z0-9]{30,}", "ghp_<redacted>", "GitHub PAT"),
-        (
-            r"gho_[A-Za-z0-9]{30,}",
-            "gho_<redacted>",
-            "GitHub OAuth token",
-        ),
-        (
-            r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+",
-            "<redacted-jwt>",
-            "JWT",
-        ),
-        (
-            r"\b(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b",
-            "<redacted-ip>",
-            "IPv4 address",
-        ),
-        (
-            r"/home/[a-zA-Z0-9._-]+/",
-            "/home/<redacted>/",
-            "Linux home path",
-        ),
-        (
-            r"C:\\\\Users\\\\[a-zA-Z0-9._-]+",
-            r"C:\\Users\\<redacted>",
-            "Windows user path",
-        ),
-        (
-            r"/Users/[a-zA-Z0-9._-]+/",
-            "/Users/<redacted>/",
-            "macOS user path",
-        ),
-        (
-            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
-            "<redacted>@<redacted>",
-            "email",
-        ),
-    ]
-}
-
-/// Replacement pass: substitutes any PII match with a fixed placeholder so
-/// the rest of the report (provider hint, error strings, summary) stays
-/// usable. Errors emitted by remote providers often contain the username
-/// (which is an email for most OAuth providers) or a server-side IP. Without
-/// this pass, those reports were silently rejected by the sweep on otherwise
-/// good runs (FeliCloud, Filen S3 in the 2026-05-07 community sweep).
-fn benchmark_sanitize(serialized: String) -> String {
-    let mut out = serialized;
-    for (pat, replacement, _label) in benchmark_pii_patterns() {
-        match regex::Regex::new(pat) {
-            Ok(re) => {
-                out = re.replace_all(&out, *replacement).into_owned();
-            }
-            Err(e) => {
-                tracing::warn!(
-                    "benchmark_sanitize: bad regex {} ({}); pattern skipped",
-                    pat,
-                    e
-                );
-            }
-        }
-    }
-    out
-}
+// ── Community Benchmark: the CLI front ────────────────────────────────
+// The engine and the schema-v1 report live in
+// `ftp_client_gui_lib::community_benchmark`, shared with AeroAgent. This is
+// the CLI side: arguments, connection, narration on stderr, output. Schema
+// contract: docs/dev/roadmap/APPENDIX-BENCHMARK/01_JSON-Schema-v1.md. No
+// automated upload: the report is paste-ready.
 
 /// RAII guard that switches SIGPIPE handling to `SIG_IGN` for the lifetime
 /// of the guard, restoring the previous handler on drop.
@@ -45907,19 +44784,142 @@ impl Drop for SigpipeIgnoreGuard {
     }
 }
 
-/// Final assertion: after [`benchmark_sanitize`] has run, no PII pattern
-/// should remain. If any does, that means [`benchmark_sanitize`] missed a
-/// case (e.g. a new pattern was added to the table without a placeholder)
-/// and we still refuse to write the report rather than risk leaking PII.
-fn benchmark_sanitization_sweep(serialized: &str) -> Result<(), String> {
-    for (pat, _repl, label) in benchmark_pii_patterns() {
-        let re = regex::Regex::new(pat)
-            .map_err(|e| format!("internal: bad sweep regex {}: {}", pat, e))?;
-        if re.is_match(serialized) {
-            return Err(format!("sanitization sweep matched {}", label));
+/// The CLI narration of a benchmark run on stderr: the phase lines and the
+/// progress bars, both silent under `--quiet` and under JSON output.
+struct CliBenchmarkObserver {
+    show: bool,
+    bytes_bar: std::sync::Mutex<Option<ProgressBar>>,
+    batch_bar: std::sync::Mutex<Option<ProgressBar>>,
+}
+
+impl CliBenchmarkObserver {
+    fn new(show: bool) -> Self {
+        Self {
+            show,
+            bytes_bar: std::sync::Mutex::new(None),
+            batch_bar: std::sync::Mutex::new(None),
         }
     }
-    Ok(())
+}
+
+impl BenchmarkObserver for CliBenchmarkObserver {
+    fn event(&self, event: BenchmarkEvent<'_>) {
+        match event {
+            BenchmarkEvent::BaseDirNotCreated { error } => {
+                if self.show {
+                    eprintln!("warning: could not create benchmark base dir: {}", error);
+                }
+            }
+            BenchmarkEvent::Payload { size } => {
+                if self.show {
+                    eprintln!("running benchmark with payload {}", format_size(size));
+                }
+            }
+            BenchmarkEvent::Run {
+                operation,
+                size,
+                run,
+                total,
+                warmup,
+            } => {
+                if self.show {
+                    eprintln!(
+                        "  {:<8} {} run {}/{}{}",
+                        operation,
+                        format_size(size),
+                        run,
+                        total,
+                        if warmup { " (warmup)" } else { "" }
+                    );
+                }
+            }
+            BenchmarkEvent::ManyFiles {
+                file_count,
+                file_size,
+            } => {
+                if self.show {
+                    eprintln!(
+                        "running many-small-files workload: {} files of {}",
+                        file_count,
+                        format_size(file_size)
+                    );
+                }
+            }
+            BenchmarkEvent::BatchStarted { operation, total } => {
+                // Count bar for the many-small-files loops (issue #277 #14).
+                *self.batch_bar.lock().unwrap_or_else(|e| e.into_inner()) =
+                    Some(many_files_progress_bar(operation, total, self.show));
+            }
+            BenchmarkEvent::BatchItem { .. } => {
+                if let Some(pb) = self
+                    .batch_bar
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .as_ref()
+                {
+                    pb.inc(1);
+                }
+            }
+            BenchmarkEvent::BatchFinished { .. } => {
+                if let Some(pb) = self
+                    .batch_bar
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take()
+                {
+                    pb.finish_and_clear();
+                }
+            }
+            BenchmarkEvent::TrashPurged { path } => {
+                if self.show {
+                    eprintln!("trash purge: {} hard-deleted", path);
+                }
+            }
+            BenchmarkEvent::WaitedForReadable { waited } => {
+                if self.show && waited >= std::time::Duration::from_millis(100) {
+                    eprintln!(
+                        "  waited {:.1} s for the server to make the upload readable (not counted as download time)",
+                        waited.as_secs_f64()
+                    );
+                }
+            }
+        }
+    }
+
+    fn transfer_progress(
+        &self,
+        operation: &'static str,
+        size: u64,
+        warmup: bool,
+    ) -> Option<Box<dyn Fn(u64, u64) + Send>> {
+        // Byte progress bar for large single-file payloads (issue #277): real
+        // per-byte updates from the transfer engine, only once the payload
+        // clears the house 10 MB threshold, and never for a warmup run.
+        let show_bar = self.show && !warmup && size >= BENCHMARK_PROGRESS_MIN_BYTES;
+        let label = if operation == "upload" {
+            "upload  "
+        } else {
+            "download"
+        };
+        let pb = benchmark_bytes_progress_bar(label, size, show_bar);
+        *self.bytes_bar.lock().unwrap_or_else(|e| e.into_inner()) = Some(pb.clone());
+        if show_bar {
+            Some(Box::new(move |done, _total| pb.set_position(done)))
+        } else {
+            None
+        }
+    }
+
+    fn transfer_finished(&self) {
+        if let Some(pb) = self
+            .bytes_bar
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+        {
+            pb.finish_and_clear();
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -45965,16 +44965,6 @@ async fn cmd_benchmark(
         return 5;
     }
 
-    // Resolve the optional many-small-files axis up front so a bad
-    // --file-count / --file-size fails before we connect or transfer anything.
-    let many_files_cfg = match resolve_many_files_config(file_count, file_size) {
-        Ok(c) => c,
-        Err(msg) => {
-            print_error(format, &msg, 5);
-            return 5;
-        }
-    };
-
     // PATH-01: `--test-root-prefix` is honored verbatim and becomes the root for
     // mkdir/upload/rmdir_recursive. Reject `..`/null so the scratch tree (and its
     // recursive cleanup) cannot escape the chosen prefix.
@@ -45989,40 +44979,25 @@ async fn cmd_benchmark(
     // doc-comment for the rationale (Backblaze multipart SIGPIPE workaround).
     let _sigpipe_guard = SigpipeIgnoreGuard::new();
 
-    // IP fairness check (issue #368 #1): snapshot the public IP at the start of
-    // a standalone run so we can warn if it changes mid-run (a VPN switch makes
-    // the numbers incomparable). In compare mode (`out.is_some()`) the sweep
-    // owns one start/end snapshot spanning all profiles, so we skip the
-    // per-profile probe here.
-    let start_public_ip = if out.is_none() {
-        benchmark_public_ip().await
-    } else {
-        None
+    // Resolve the whole plan before connecting, so bad sizes, operations or
+    // --file-count / --file-size fail before we connect or transfer anything.
+    let (cfg, many_files_cfg) = match resolve_benchmark_plan(
+        level,
+        sizes_override,
+        runs_override,
+        operations_override,
+        file_count,
+        file_size,
+    ) {
+        Ok(plan) => plan,
+        Err(msg) => {
+            print_error(format, &msg, 5);
+            return 5;
+        }
     };
 
-    let mut cfg =
-        match resolve_benchmark_config(level, sizes_override, runs_override, operations_override) {
-            Ok(c) => c,
-            Err(msg) => {
-                print_error(format, &msg, 5);
-                return 5;
-            }
-        };
-
-    // B6 (issue #277): when the many-small-files workload is requested and the
-    // user did NOT pass explicit --sizes, run ONLY that workload and skip the
-    // single-file size sweep. Ehud expected `--file-count N --file-size S` to
-    // transfer N files of S, not also a separate single-file payload alongside.
-    // An explicit --sizes still runs both axes (opt back in).
-    if many_files_cfg.is_some() && sizes_override.is_none() {
-        cfg.sizes_bytes.clear();
-    }
-
-    if matches!(level, BenchmarkLevel::Deep)
-        && !cfg.sizes_bytes.is_empty()
-        && !cli.quiet
-        && matches!(format, OutputFormat::Text)
-    {
+    let show = !cli.quiet && matches!(format, OutputFormat::Text);
+    if matches!(level, BenchmarkLevel::Deep) && !cfg.sizes_bytes.is_empty() && show {
         let total_bytes: u64 =
             cfg.sizes_bytes.iter().sum::<u64>() * (cfg.runs_per_size + cfg.warmup_runs) as u64;
         eprintln!(
@@ -46034,25 +45009,12 @@ async fn cmd_benchmark(
     // In compare mode the profile to connect comes from `compare_label`, not
     // the global --profile (which stays unset across the whole compare run).
     let profile_for_connect = compare_label.or(cli.profile.as_deref());
-    let (mut provider, initial_path, _metadata) =
+    let (provider, initial_path, _metadata) =
         match create_and_connect_with("_", cli, profile_for_connect, format, true, synth_profile)
             .await
         {
             Ok(v) => v,
             Err(code) => return code,
-        };
-    let protocol = provider.provider_type().to_string();
-    // Access-method label for the "Protocol" column (issue #277): computed from
-    // the live provider type so it reflects the transport the factory actually
-    // built (e.g. a Koofr-over-WebDAV profile reports `WebDAV`, native `REST API`).
-    let access =
-        if ftp_client_gui_lib::crypt_overlay_provider::concrete_provider_mut(&mut *provider)
-            .as_any_mut()
-            .is::<ftp_client_gui_lib::providers::mega::MegaCmdProvider>()
-        {
-            "CLI".to_string()
-        } else {
-            provider.provider_type().access_label().to_string()
         };
     // Service identity for the "Server" column (issue #277, Ehud): the preset's
     // company when the profile is preconfigured, the provider for a native API,
@@ -46063,665 +45025,48 @@ async fn cmd_benchmark(
         benchmark_profile_provider_id(cli, profile_for_connect, synth_profile, source_profile)
             .as_deref(),
     );
+    let protocol = provider.provider_type().to_string();
 
-    let report_id = uuid::Uuid::new_v4().to_string();
-    let (bench_base, test_root) = match test_root_prefix_override {
-        Some(prefix) => benchmark_remote_roots_from_prefix(prefix, &report_id),
-        None => benchmark_remote_roots(&initial_path, &report_id),
+    let options = BenchmarkOptions {
+        level,
+        config: cfg,
+        many_files: many_files_cfg,
+        consent_publish,
+        anonymize_extra,
+        profile_timeout_secs,
+        test_root_prefix: test_root_prefix_override.map(str::to_string),
+        pre_delete,
+        direct_transfers: cli.partial,
+        engine_override: cli_transfer_engine_override(cli),
+        // IP fairness check (issue #368 #1): in compare mode (`out.is_some()`)
+        // the sweep owns one start/end snapshot spanning all profiles, so the
+        // per-profile probe is skipped.
+        check_public_ip: out.is_none(),
+        service,
+        cancel: None,
     };
-    // Create the scratch directory tree before any upload. `bench_base` may
-    // already exist from a prior run (`AlreadyExists` is fine), but `test_root`
-    // is unique per run. benchmark_mkdir_p below also creates the base with
-    // parents; doing it here first lets us warn clearly if the profile root is
-    // not writable. The final cleanup no longer needs a "did we create it" flag:
-    // in the no-prefix case `bench_base` is always our own `aeroftp-bench` folder
-    // and is safe to remove when empty (issue #368: the reporter had to delete it
-    // by hand on every drive afterwards).
-    match provider.mkdir(&bench_base).await {
-        Ok(()) | Err(ProviderError::AlreadyExists(_)) => {}
-        Err(e) => {
-            if !cli.quiet && matches!(format, OutputFormat::Text) {
-                eprintln!("warning: could not create benchmark base dir: {}", e);
-            }
-        }
-    }
-    // Create `test_root` with parents (mkdir -p). Some WebDAV servers (pCloud,
-    // issue #368) refuse a folder whose parent collection does not yet exist
-    // and do not auto-create intermediates, so a single mkdir of the nested
-    // scratch path failed with "Parent directory does not exist" even though
-    // the base creation above had also been rejected. Creating each component
-    // in turn makes the scratch tree robust across all 22 backends.
-    if let Err(e) = benchmark_mkdir_p(&mut provider, &test_root).await {
-        if !matches!(e, ProviderError::AlreadyExists(_)) {
-            print_error(
-                format,
-                &format!(
-                    "benchmark cannot create scratch dir '{}': {}. Provider may not allow folder creation in the configured root (try --test-root-prefix to point at a writable sub-path).",
-                    test_root, e
-                ),
-                4,
-            );
+    let observer = CliBenchmarkObserver::new(show);
+    let outcome = match community_benchmark::run(provider, &initial_path, options, &observer).await
+    {
+        Ok(outcome) => outcome,
+        Err(msg) => {
+            print_error(format, &msg, 4);
             return 4;
         }
-    }
-
-    let total_start = Instant::now();
-    let mut results: Vec<BenchmarkResult> = Vec::new();
-    let mut total_bytes_transferred: u64 = 0;
-    let mut total_runs: u32 = 0;
-    let mut errors: Vec<String> = Vec::new();
-    let mut early_abort = false;
-
-    'outer: for &size in &cfg.sizes_bytes {
-        if total_start.elapsed().as_secs() > profile_timeout_secs {
-            errors.push(format!(
-                "benchmark hit profile-timeout cap ({}s), aborting",
-                profile_timeout_secs
-            ));
-            early_abort = true;
-            break;
-        }
-
-        let local_payload = match NamedTempFile::new() {
-            Ok(f) => f,
-            Err(e) => {
-                errors.push(format!("cannot create local temp: {}", e));
-                early_abort = true;
-                break;
-            }
-        };
-        if let Err(e) = write_speed_test_file_random(local_payload.path(), size) {
-            errors.push(e);
-            early_abort = true;
-            break;
-        }
-
-        let local_download = match NamedTempFile::new() {
-            Ok(f) => f,
-            Err(e) => {
-                errors.push(format!("cannot create download temp: {}", e));
-                early_abort = true;
-                break;
-            }
-        };
-
-        let remote_path =
-            ftp_client_gui_lib::speed_payload::name(&format!("{}/payload-{}", test_root, size));
-
-        if !cli.quiet && matches!(format, OutputFormat::Text) {
-            eprintln!("running benchmark with payload {}", format_size(size));
-        }
-
-        let mut upload_durations_ms: Vec<f64> = Vec::new();
-        let mut download_durations_ms: Vec<f64> = Vec::new();
-        let mut upload_throughput_mbps: Vec<f64> = Vec::new();
-        let mut download_throughput_mbps: Vec<f64> = Vec::new();
-        let upload_transient = 0u32;
-        let mut upload_fatal = 0u32;
-        let mut download_transient = 0u32;
-        let mut download_fatal = 0u32;
-        let mut upload_raw: Vec<BenchmarkRawRun> = Vec::new();
-        let mut download_raw: Vec<BenchmarkRawRun> = Vec::new();
-
-        let total_iters = cfg.warmup_runs + cfg.runs_per_size;
-        let needs_upload = cfg.operations.contains(&"upload");
-        let needs_download = cfg.operations.contains(&"download");
-
-        for iter in 0..total_iters {
-            let is_warmup = iter < cfg.warmup_runs;
-
-            if needs_upload {
-                // Progress indication (issue #368 #2): show the current phase
-                // and run so a long per-profile benchmark is not a blind wait.
-                if !cli.quiet && matches!(format, OutputFormat::Text) {
-                    eprintln!(
-                        "  upload   {} run {}/{}{}",
-                        format_size(size),
-                        iter + 1,
-                        total_iters,
-                        if is_warmup { " (warmup)" } else { "" }
-                    );
-                }
-                // Strict providers (4shared, several WebDAV servers) reject
-                // overwrite-on-PUT: between successive runs of the same size
-                // we delete the previous payload best-effort. Errors are
-                // ignored on the first iteration (file does not exist yet)
-                // and on transient deletes (the upload itself will reveal
-                // any real failure).
-                if pre_delete && iter > 0 {
-                    let _ = provider.delete(&remote_path).await;
-                }
-
-                let start = Instant::now();
-                let local_payload_path = local_payload.path().to_string_lossy().to_string();
-                let upload_result = if !cli.partial {
-                    // Byte progress bar for large single-file payloads (issue
-                    // #277): real per-byte updates from the transfer engine, only
-                    // once the payload clears the house 10 MB threshold.
-                    let show_bar = !cli.quiet
-                        && matches!(format, OutputFormat::Text)
-                        && !is_warmup
-                        && size >= BENCHMARK_PROGRESS_MIN_BYTES;
-                    let pb = benchmark_bytes_progress_bar("upload  ", size, show_bar);
-                    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if show_bar {
-                        let pbc = pb.clone();
-                        Some(Box::new(move |done, _total| pbc.set_position(done)))
-                    } else {
-                        None
-                    };
-                    let (returned, result) = cli_run_single_file_dag(
-                        provider,
-                        ftp_client_gui_lib::transfer_dag::TransferDirection::Upload,
-                        &remote_path,
-                        &local_payload_path,
-                        progress_cb,
-                        cli,
-                        None,
-                        None,
-                    )
-                    .await;
-                    provider = returned;
-                    pb.finish_and_clear();
-                    result
-                } else {
-                    provider
-                        .upload(&local_payload_path, &remote_path, None)
-                        .await
-                };
-                let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-                match upload_result {
-                    Ok(()) => {
-                        if !is_warmup {
-                            upload_durations_ms.push(elapsed_ms);
-                            let mbps =
-                                (size as f64 * 8.0) / 1_000_000.0 / (elapsed_ms / 1000.0).max(1e-6);
-                            upload_throughput_mbps.push(mbps);
-                            upload_raw.push(BenchmarkRawRun {
-                                duration_ms: elapsed_ms as u64,
-                                bytes: size,
-                                throughput_mbps: Some(mbps),
-                            });
-                            total_bytes_transferred += size;
-                            total_runs += 1;
-                        }
-                    }
-                    Err(e) => {
-                        upload_fatal += 1;
-                        let (h, hh) =
-                            benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
-                        results.push(BenchmarkResult {
-                            protocol: protocol.clone(),
-                            provider_hint: h,
-                            provider_hash: hh,
-                            operation: "upload".into(),
-                            payload_size_bytes: size,
-                            runs: 0,
-                            warmup_runs_discarded: cfg.warmup_runs,
-                            file_count: None,
-                            files_per_second: None,
-                            throughput_mbps: None,
-                            latency_ms: BenchmarkStats {
-                                p50: 0.0,
-                                p95: 0.0,
-                                stddev: 0.0,
-                                min: 0.0,
-                                max: 0.0,
-                            },
-                            tls_handshake_ms: None,
-                            errors: BenchmarkErrors {
-                                transient: upload_transient,
-                                fatal: upload_fatal,
-                            },
-                            raw_runs: Vec::new(),
-                        });
-                        errors.push(format!("upload {} bytes failed: {}", format_size(size), e));
-                        early_abort = true;
-                        break 'outer;
-                    }
-                }
-            }
-
-            if needs_download {
-                // Progress indication (issue #368 #2): mirror the upload phase.
-                if !cli.quiet && matches!(format, OutputFormat::Text) {
-                    eprintln!(
-                        "  download {} run {}/{}{}",
-                        format_size(size),
-                        iter + 1,
-                        total_iters,
-                        if is_warmup { " (warmup)" } else { "" }
-                    );
-                }
-                wait_until_upload_readable(&mut provider, &remote_path, cli, format).await;
-                let start = Instant::now();
-                let local_download_path = local_download.path().to_string_lossy().to_string();
-                let dl_result = if !cli.partial {
-                    // Byte progress bar for large downloads, mirroring the upload
-                    // phase (issue #277).
-                    let show_bar = !cli.quiet
-                        && matches!(format, OutputFormat::Text)
-                        && !is_warmup
-                        && size >= BENCHMARK_PROGRESS_MIN_BYTES;
-                    let pb = benchmark_bytes_progress_bar("download", size, show_bar);
-                    let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if show_bar {
-                        let pbc = pb.clone();
-                        Some(Box::new(move |done, _total| pbc.set_position(done)))
-                    } else {
-                        None
-                    };
-                    let (returned, result) = cli_run_single_file_dag(
-                        provider,
-                        ftp_client_gui_lib::transfer_dag::TransferDirection::Download,
-                        &remote_path,
-                        &local_download_path,
-                        progress_cb,
-                        cli,
-                        None,
-                        None,
-                    )
-                    .await;
-                    provider = returned;
-                    pb.finish_and_clear();
-                    result
-                } else {
-                    provider
-                        .download(&remote_path, &local_download_path, None)
-                        .await
-                };
-                let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-                match dl_result {
-                    Ok(()) => {
-                        if !is_warmup {
-                            download_durations_ms.push(elapsed_ms);
-                            let mbps =
-                                (size as f64 * 8.0) / 1_000_000.0 / (elapsed_ms / 1000.0).max(1e-6);
-                            download_throughput_mbps.push(mbps);
-                            download_raw.push(BenchmarkRawRun {
-                                duration_ms: elapsed_ms as u64,
-                                bytes: size,
-                                throughput_mbps: Some(mbps),
-                            });
-                            total_bytes_transferred += size;
-                            total_runs += 1;
-                        }
-                    }
-                    Err(e) => {
-                        if !is_warmup {
-                            download_fatal += 1;
-                        } else {
-                            download_transient += 1;
-                        }
-                        errors.push(format!("download {} bytes failed: {}", size, e));
-                    }
-                }
-            }
-        }
-
-        let (provider_hint_str, provider_hash_str) =
-            benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
-
-        if needs_upload && !upload_durations_ms.is_empty() {
-            results.push(BenchmarkResult {
-                protocol: protocol.clone(),
-                provider_hint: provider_hint_str.clone(),
-                provider_hash: provider_hash_str.clone(),
-                operation: "upload".into(),
-                payload_size_bytes: size,
-                runs: upload_durations_ms.len() as u32,
-                warmup_runs_discarded: cfg.warmup_runs,
-                file_count: None,
-                files_per_second: None,
-                throughput_mbps: Some(benchmark_stats_from(&upload_throughput_mbps)),
-                latency_ms: benchmark_stats_from(&upload_durations_ms),
-                tls_handshake_ms: None,
-                errors: BenchmarkErrors {
-                    transient: upload_transient,
-                    fatal: upload_fatal,
-                },
-                raw_runs: upload_raw,
-            });
-        }
-        if needs_download && !download_durations_ms.is_empty() {
-            results.push(BenchmarkResult {
-                protocol: protocol.clone(),
-                provider_hint: provider_hint_str.clone(),
-                provider_hash: provider_hash_str.clone(),
-                operation: "download".into(),
-                payload_size_bytes: size,
-                runs: download_durations_ms.len() as u32,
-                warmup_runs_discarded: cfg.warmup_runs,
-                file_count: None,
-                files_per_second: None,
-                throughput_mbps: Some(benchmark_stats_from(&download_throughput_mbps)),
-                latency_ms: benchmark_stats_from(&download_durations_ms),
-                tls_handshake_ms: None,
-                errors: BenchmarkErrors {
-                    transient: download_transient,
-                    fatal: download_fatal,
-                },
-                raw_runs: download_raw,
-            });
-        }
-
-        // list / stat / delete are measured once per size since they do not
-        // benefit from multiple runs in the same way as throughput tests.
-        if cfg.operations.contains(&"list") {
-            let start = Instant::now();
-            match provider.list(&test_root).await {
-                Ok(_) => {
-                    let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    let (h, hh) = benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
-                    results.push(BenchmarkResult {
-                        protocol: protocol.clone(),
-                        provider_hint: h,
-                        provider_hash: hh,
-                        operation: "list".into(),
-                        payload_size_bytes: 0,
-                        runs: 1,
-                        warmup_runs_discarded: 0,
-                        file_count: None,
-                        files_per_second: None,
-                        throughput_mbps: None,
-                        latency_ms: BenchmarkStats {
-                            p50: ms,
-                            p95: ms,
-                            stddev: 0.0,
-                            min: ms,
-                            max: ms,
-                        },
-                        tls_handshake_ms: None,
-                        errors: BenchmarkErrors {
-                            transient: 0,
-                            fatal: 0,
-                        },
-                        raw_runs: vec![BenchmarkRawRun {
-                            duration_ms: ms as u64,
-                            bytes: 0,
-                            throughput_mbps: None,
-                        }],
-                    });
-                    total_runs += 1;
-                }
-                Err(e) => errors.push(format!("list failed: {}", e)),
-            }
-        }
-
-        if cfg.operations.contains(&"stat") {
-            let start = Instant::now();
-            match provider.stat(&remote_path).await {
-                Ok(_) => {
-                    let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    let (h, hh) = benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
-                    results.push(BenchmarkResult {
-                        protocol: protocol.clone(),
-                        provider_hint: h,
-                        provider_hash: hh,
-                        operation: "stat".into(),
-                        payload_size_bytes: 0,
-                        runs: 1,
-                        warmup_runs_discarded: 0,
-                        file_count: None,
-                        files_per_second: None,
-                        throughput_mbps: None,
-                        latency_ms: BenchmarkStats {
-                            p50: ms,
-                            p95: ms,
-                            stddev: 0.0,
-                            min: ms,
-                            max: ms,
-                        },
-                        tls_handshake_ms: None,
-                        errors: BenchmarkErrors {
-                            transient: 0,
-                            fatal: 0,
-                        },
-                        raw_runs: vec![BenchmarkRawRun {
-                            duration_ms: ms as u64,
-                            bytes: 0,
-                            throughput_mbps: None,
-                        }],
-                    });
-                    total_runs += 1;
-                }
-                Err(e) => errors.push(format!("stat failed: {}", e)),
-            }
-        }
-
-        if cfg.operations.contains(&"delete") {
-            let start = Instant::now();
-            match provider.delete(&remote_path).await {
-                Ok(()) => {
-                    let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    let (h, hh) = benchmark_provider_hint(&protocol, anonymize_extra, &report_id);
-                    results.push(BenchmarkResult {
-                        protocol: protocol.clone(),
-                        provider_hint: h,
-                        provider_hash: hh,
-                        operation: "delete".into(),
-                        payload_size_bytes: 0,
-                        runs: 1,
-                        warmup_runs_discarded: 0,
-                        file_count: None,
-                        files_per_second: None,
-                        throughput_mbps: None,
-                        latency_ms: BenchmarkStats {
-                            p50: ms,
-                            p95: ms,
-                            stddev: 0.0,
-                            min: ms,
-                            max: ms,
-                        },
-                        tls_handshake_ms: None,
-                        errors: BenchmarkErrors {
-                            transient: 0,
-                            fatal: 0,
-                        },
-                        raw_runs: vec![BenchmarkRawRun {
-                            duration_ms: ms as u64,
-                            bytes: 0,
-                            throughput_mbps: None,
-                        }],
-                    });
-                    total_runs += 1;
-                }
-                Err(e) => errors.push(format!("delete failed: {}", e)),
-            }
-        }
-    }
-
-    // Many-small-files axis (separate from the size sweep above): only run when
-    // requested via --file-count and when the size sweep did not already abort
-    // on a fatal/connection error.
-    if let Some(mf) = many_files_cfg {
-        if !early_abort && total_start.elapsed().as_secs() <= profile_timeout_secs {
-            let outcome = run_many_files_workload(
-                &mut provider,
-                mf,
-                &test_root,
-                &protocol,
-                anonymize_extra,
-                &report_id,
-                profile_timeout_secs,
-                total_start,
-                cli,
-                format,
-            )
-            .await;
-            total_bytes_transferred += outcome.bytes_transferred;
-            total_runs += outcome.runs;
-            results.extend(outcome.results);
-            errors.extend(outcome.errors);
-        }
-    }
-
-    // Final cleanup: remove the test root recursively. Best-effort;
-    // any residual is logged as an error but does not invalidate the run.
-    let rmdir_ok = match provider.rmdir_recursive(&test_root).await {
-        Ok(()) => true,
-        Err(e) => {
-            // Some providers may not implement rmdir_recursive against a path
-            // they did not auto-create. We still try to delete the parent.
-            errors.push(format!(
-                "cleanup of {} returned error (manual review may be needed): {}",
-                test_root, e
-            ));
-            false
-        }
     };
-    // Trash purge: rmdir_recursive on consumer cloud providers (Google Drive,
-    // Dropbox, OneDrive, Box, MEGA, Yandex, FileLu, Internxt, kDrive, Zoho,
-    // pCloud, Jottacloud, OpenDrive) is a soft delete and the test root ends
-    // up in the recycle bin. Hard-purge it so quotas do not silently fill up
-    // across repeated benchmark runs. No-op for FTP/SFTP/S3/plain WebDAV.
-    let announce_purge = !cli.quiet && matches!(format, OutputFormat::Text);
-    if rmdir_ok {
-        let outcome = provider.delete_permanent(&test_root).await;
-        note_trash_purge(&test_root, outcome, announce_purge, &mut errors);
-    }
+    let report = outcome.report;
 
-    // Remove the shared `aeroftp-bench` base dir too (issue #368: the reporter
-    // had to delete it by hand on Google Drive, MEGA and kDrive). ONLY in the
-    // no-prefix case: there `bench_base` is always OUR `aeroftp-bench` folder, so
-    // it is always safe to remove when empty. With `--test-root-prefix`,
-    // `bench_base` IS the user's own chosen directory (see
-    // benchmark_remote_roots_from_prefix), which we must never auto-remove.
-    // We intentionally no longer gate on `base_created`: on a second run the base
-    // already exists (mkdir returns AlreadyExists, base_created=false) but the
-    // folder is still ours to clean, which is exactly why it accumulated empty on
-    // Drive/kDrive/MEGA before. Emptiness-guarded so a folder that unexpectedly
-    // still holds data (soft-delete lag) is left in place and reported, never
-    // force-deleted.
-    if test_root_prefix_override.is_none() {
-        let base_empty = match provider.list(&bench_base).await {
-            Ok(entries) => entries.is_empty(),
-            // If we cannot confirm emptiness, leave the base dir in place
-            // rather than risk deleting non-benchmark data.
-            Err(_) => false,
-        };
-        if base_empty {
-            if provider.rmdir_recursive(&bench_base).await.is_ok() {
-                // Hard-purge the soft-deleted base on consumer clouds, mirroring
-                // the test_root trash purge above, refusal included: its result
-                // used to be dropped, so a base left in the bin said nothing (#368).
-                let outcome = provider.delete_permanent(&bench_base).await;
-                note_trash_purge(&bench_base, outcome, announce_purge, &mut errors);
-            } else {
-                errors.push(format!(
-                    "note: empty scratch folder '{}' could not be removed automatically; delete it manually",
-                    bench_base
-                ));
-            }
-        } else {
-            errors.push(format!(
-                "note: scratch folder '{}' left in place (not empty after cleanup)",
-                bench_base
-            ));
-        }
-    }
-    let _ = provider.disconnect().await;
-
-    // Close the IP fairness check (issue #368 #1) for a standalone run: if the
-    // public IP changed since the start, flag the run as not comparable.
-    if let Some(start_ip) = &start_public_ip {
-        if let Some(end_ip) = benchmark_public_ip().await {
-            if &end_ip != start_ip {
-                errors.push(BENCHMARK_IP_CHANGED_WARNING.to_string());
-            }
-        }
-    }
-
-    // Yandex region hint (issue #368 #3): Yandex Disk endpoints are unreachable
-    // from some countries and VPN exit nodes and the request hangs until the
-    // timeout. If any error references a Yandex host, add a one-line hint so the
-    // user understands the failure is region/VPN related, not an AeroFTP bug.
-    if errors.iter().any(|e| e.to_lowercase().contains("yandex")) {
-        errors.push(
-            "hint: Yandex Disk is unreachable from some countries and VPN exit nodes; if it hangs or fails to connect, switch your VPN region and re-run".to_string(),
-        );
-    }
-
-    let total_duration_ms = total_start.elapsed().as_millis() as u64;
-
-    let environment = BenchmarkEnvironment {
-        asn_bucket: if consent_publish {
-            // ASN/country lookup is server-side responsibility (Phase 2).
-            // In Phase 1 we only flag intent to publish; aggregator fills
-            // these from the submitter's network at submission time.
-            None
-        } else {
-            None
-        },
-        country_bucket: None,
-        tod_bucket: benchmark_tod_bucket().into(),
-        os_family: benchmark_os_family(),
-        os_arch: std::env::consts::ARCH.into(),
-        cpu_class: benchmark_cpu_class(),
-    };
-
-    let report = BenchmarkReport {
-        schema_version: 1,
-        report_id: report_id.clone(),
-        generated_at: benchmark_rounded_hour_utc(),
-        cli: BenchmarkCliMeta {
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            build_target: std::env::var("TARGET")
-                .unwrap_or_else(|_| std::env::consts::ARCH.to_string()),
-            rustc: option_env!("RUSTC_VERSION")
-                .unwrap_or("unknown")
-                .to_string(),
-        },
-        level,
-        access: access.clone(),
-        service: service.clone(),
-        // Set by the compare sweep for a fan-out run; a standalone run has no mode.
-        mode: None,
-        environment,
-        consent: BenchmarkConsent {
-            publish: consent_publish,
-            anonymize_extra,
-        },
-        results,
-        summary: BenchmarkSummary {
-            total_runs,
-            total_bytes_transferred,
-            total_duration_ms,
-            errors: errors.clone(),
-        },
-        notes: provider
-            .measurement_note()
-            .map(|note| vec![note.to_string()])
-            .unwrap_or_default(),
-    };
-
-    let serialized = match serde_json::to_string_pretty(&report) {
+    // The report leaves the process only in its sanitized form: PII patterns
+    // substituted, then swept, and refused if anything still matches.
+    let serialized = match sanitized_report_json(&report) {
         Ok(s) => s,
         Err(e) => {
-            print_error(format, &format!("could not serialize report: {}", e), 99);
+            print_error(format, &e, 99);
             return 99;
         }
     };
 
-    // First pass: substitute any PII (emails, IPs, OS path prefixes, cloud
-    // tokens) with placeholders. Provider error strings frequently embed the
-    // account email or a server IP that has no place in a public benchmark
-    // report. Then run the assertion pass: if anything still matches, that
-    // means the substitution table missed a case and we refuse to write
-    // rather than leak.
-    let serialized = benchmark_sanitize(serialized);
-    if let Err(e) = benchmark_sanitization_sweep(&serialized) {
-        print_error(
-            format,
-            &format!(
-                "report failed sanitization sweep after substitution: {}. \
-                 This is a bug in benchmark_sanitize patterns: please open an issue.",
-                e
-            ),
-            99,
-        );
-        return 99;
-    }
-
-    let exit_code = if early_abort || !report.summary.errors.is_empty() {
+    let exit_code = if outcome.early_abort || !report.summary.errors.is_empty() {
         if results_have_fatal(&report.results) {
             4
         } else {
@@ -46735,9 +45080,7 @@ async fn cmd_benchmark(
     // writing a per-profile file or printing a standalone report. The caller
     // renders the combined comparison once every profile has run.
     if let Some(sink) = out {
-        let label = compare_label
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| protocol.clone());
+        let label = compare_label.map(|s| s.to_string()).unwrap_or(protocol);
         sink.borrow_mut().push((label, report));
         return exit_code;
     }
@@ -46745,13 +45088,16 @@ async fn cmd_benchmark(
     if let Some(path) = report_path {
         if let Err(e) = std::fs::write(path, &serialized) {
             eprintln!("warning: could not write report to {}: {}", path, e);
-        } else if !cli.quiet && matches!(format, OutputFormat::Text) {
+        } else if show {
             eprintln!("report written to {}", path);
         }
     }
 
     match format {
-        OutputFormat::Json => print_json(&report),
+        // The sanitized payload, the same bytes as the report file and the
+        // publish block: the JSON printed here is what an MCP client and any
+        // script that pipes the command receive.
+        OutputFormat::Json => println!("{}", serialized),
         OutputFormat::Text => {
             if !cli.quiet {
                 print_benchmark_text_report(&report);
@@ -46763,10 +45109,6 @@ async fn cmd_benchmark(
     }
 
     exit_code
-}
-
-fn results_have_fatal(results: &[BenchmarkResult]) -> bool {
-    results.iter().any(|r| r.errors.fatal > 0)
 }
 
 /// Transport/protocol label for a report (issue #368 #5): the `provider_type`
@@ -47438,22 +45780,13 @@ async fn cmd_benchmark_compare(
     match format {
         OutputFormat::Json => {
             let reports: Vec<&BenchmarkReport> = entries.iter().map(|(_, r)| r).collect();
-            let combined = match serde_json::to_string_pretty(&reports) {
+            let combined = match sanitized_report_json(&reports) {
                 Ok(s) => s,
                 Err(e) => {
-                    print_error(format, &format!("could not serialize reports: {}", e), 99);
+                    print_error(format, &format!("comparison {}", e), 99);
                     return 99;
                 }
             };
-            let combined = benchmark_sanitize(combined);
-            if let Err(e) = benchmark_sanitization_sweep(&combined) {
-                print_error(
-                    format,
-                    &format!("comparison report failed sanitization sweep: {}", e),
-                    99,
-                );
-                return 99;
-            }
             println!("{}", combined);
         }
         OutputFormat::Text => {
@@ -47667,60 +46000,6 @@ fn benchmark_profile_identity(p: &serde_json::Value) -> (String, String) {
         ),
         None => (protocol.clone(), protocol),
     }
-}
-
-/// Generic transports: the ones a user points at a host of their own, so the
-/// profile carries no service identity beyond what the Protocol column says.
-/// Every other provider type IS a service (Koofr, kDrive, MEGA, ...).
-fn is_generic_transport(provider_type: ProviderType) -> bool {
-    matches!(
-        provider_type,
-        ProviderType::Ftp
-            | ProviderType::Ftps
-            | ProviderType::Sftp
-            | ProviderType::WebDav
-            | ProviderType::S3
-            | ProviderType::Swift
-    )
-}
-
-/// Company display name for a catalog preset id, e.g. `koofr` -> `Koofr`,
-/// `mega-s4` -> `MEGA`, `tabdigital` -> `TAB.DIGITAL`. `None` when the id is
-/// not a known preset. Only ever used as a lookup key: the value returned comes
-/// from the embedded catalog, never from user text, so it cannot leak anything
-/// into a benchmark report.
-fn catalog_company_for_provider_id(provider_id: &str) -> Option<String> {
-    load_cli_catalog().ok()?.into_iter().find_map(|c| {
-        c.protocols
-            .iter()
-            .any(|m| m.provider_id.as_deref() == Some(provider_id))
-            .then_some(c.company)
-    })
-}
-
-/// Service identity for the benchmark "Server" column (issue #277, Ehud).
-///
-/// The column answers "who and where", so it must never repeat the Protocol
-/// column, which answers "how". A profile built on a preconfigured preset
-/// reports its service (`Koofr`, `TAB.DIGITAL`, `MEGA`); a native-API profile
-/// reports the provider itself; and a profile that is only a generic transport
-/// aimed at the user's own host reports `Custom`, because the old "WebDAV /
-/// WebDAV" pair told the reader nothing the Protocol column had not said.
-fn benchmark_service_label(provider_type: ProviderType, provider_id: Option<&str>) -> String {
-    if provider_type == ProviderType::PCloud {
-        return "pCloud Drive".to_string();
-    }
-    if let Some(company) = provider_id
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .and_then(catalog_company_for_provider_id)
-    {
-        return company;
-    }
-    if is_generic_transport(provider_type) {
-        return "Custom".to_string();
-    }
-    provider_type.to_string()
 }
 
 /// Best-effort lookup of a saved profile's preset id, for the benchmark
@@ -78431,30 +76710,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_benchmark_size_bare_number_is_mib() {
-        // Issue #277: a bare benchmark size is MiB, not bytes.
-        assert_eq!(parse_benchmark_size("1").unwrap(), 1024 * 1024);
-        assert_eq!(parse_benchmark_size("10").unwrap(), 10 * 1024 * 1024);
-        assert_eq!(parse_benchmark_size(" 100 ").unwrap(), 100 * 1024 * 1024);
-        // Explicit suffixes keep their 1024-power meaning.
-        assert_eq!(parse_benchmark_size("64K").unwrap(), 64 * 1024);
-        assert_eq!(parse_benchmark_size("4M").unwrap(), 4 * 1024 * 1024);
-        assert_eq!(parse_benchmark_size("1G").unwrap(), 1024 * 1024 * 1024);
-        assert!(parse_benchmark_size("").is_err());
-        assert!(parse_benchmark_size("abc").is_err());
-    }
-
-    #[test]
-    fn test_many_files_config_bare_file_size_is_mib() {
-        // `--file-count 10 --file-size 1` must be ten 1 MiB files, not 1-byte.
-        let mf = resolve_many_files_config(Some(10), "1")
-            .expect("valid config")
-            .expect("workload requested");
-        assert_eq!(mf.file_count, 10);
-        assert_eq!(mf.file_size_bytes, 1024 * 1024);
-    }
-
-    #[test]
     fn test_mount_knobs_default_is_all_none() {
         // The defaulted `MountKnobs` has every field unset; `AeroFuseFs::new`
         // then falls back to the `--cache-ttl` legacy values on Linux. This
@@ -79882,311 +78137,6 @@ mod tests {
     // ── Community Benchmark unit tests ────────────────────────────────
 
     #[test]
-    fn benchmark_percentile_handles_edge_cases() {
-        assert_eq!(benchmark_percentile(&[], 50.0), 0.0);
-        assert_eq!(benchmark_percentile(&[42.0], 50.0), 42.0);
-        assert_eq!(benchmark_percentile(&[42.0], 95.0), 42.0);
-        let v = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        assert_eq!(benchmark_percentile(&v, 50.0), 3.0);
-        assert!((benchmark_percentile(&v, 95.0) - 4.8).abs() < 1e-9);
-        assert_eq!(benchmark_percentile(&v, 0.0), 1.0);
-        assert_eq!(benchmark_percentile(&v, 100.0), 5.0);
-    }
-
-    #[test]
-    fn benchmark_stats_reject_mean_field_only_returns_p50_p95() {
-        let v = vec![10.0, 20.0, 30.0, 40.0, 50.0];
-        let stats = benchmark_stats_from(&v);
-        assert_eq!(stats.min, 10.0);
-        assert_eq!(stats.max, 50.0);
-        assert_eq!(stats.p50, 30.0);
-        // The schema explicitly forbids `mean`; verify Serialize does not
-        // emit one and that the only fields are the documented five.
-        let json = serde_json::to_value(&stats).unwrap();
-        let obj = json.as_object().expect("stats is an object");
-        let mut keys: Vec<&str> = obj.keys().map(|k| k.as_str()).collect();
-        keys.sort();
-        assert_eq!(keys, vec!["max", "min", "p50", "p95", "stddev"]);
-    }
-
-    #[test]
-    fn benchmark_stats_stddev_is_population() {
-        // variance = ((-2)^2 + (-1)^2 + 0 + 1^2 + 2^2) / 5 = 10/5 = 2
-        // stddev = sqrt(2) ≈ 1.41421356
-        let v = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        let stats = benchmark_stats_from(&v);
-        assert!((stats.stddev - 2_f64.sqrt()).abs() < 1e-9);
-    }
-
-    #[test]
-    fn benchmark_resolve_config_quick_defaults() {
-        let cfg = resolve_benchmark_config(BenchmarkLevel::Quick, None, None, None).unwrap();
-        assert_eq!(cfg.sizes_bytes, vec![10 * 1024 * 1024]);
-        assert_eq!(cfg.runs_per_size, 1);
-        assert_eq!(cfg.warmup_runs, 0);
-        assert_eq!(cfg.operations, vec!["upload", "download"]);
-    }
-
-    #[test]
-    fn a_refused_trash_purge_is_reported() {
-        let mut errors = Vec::new();
-        note_trash_purge("aeroftp-bench", Ok(false), false, &mut errors);
-        note_trash_purge("aeroftp-bench", Ok(true), false, &mut errors);
-        assert!(errors.is_empty(), "{errors:?}");
-        note_trash_purge(
-            "aeroftp-bench",
-            Err(ProviderError::Other("2 items named 'aeroftp-bench'".into())),
-            false,
-            &mut errors,
-        );
-        assert_eq!(errors.len(), 1);
-        assert!(
-            errors[0].starts_with("trash purge of aeroftp-bench failed")
-                && errors[0].ends_with("2 items named 'aeroftp-bench'"),
-            "{errors:?}"
-        );
-    }
-
-    #[test]
-    fn benchmark_overrides_apply_at_a_preset_level() {
-        // The MCP tool describes `sizes`, `runs` and `operations` as applying at
-        // any level; this is the behaviour that description rests on (#368).
-        let cfg = resolve_benchmark_config(
-            BenchmarkLevel::Quick,
-            Some("1M,4M"),
-            Some(2),
-            Some("upload"),
-        )
-        .unwrap();
-        assert_eq!(cfg.sizes_bytes, vec![1024 * 1024, 4 * 1024 * 1024]);
-        assert_eq!(cfg.runs_per_size, 2);
-        assert_eq!(cfg.operations, vec!["upload"]);
-    }
-
-    #[test]
-    fn benchmark_resolve_config_standard_defaults() {
-        let cfg = resolve_benchmark_config(BenchmarkLevel::Standard, None, None, None).unwrap();
-        assert_eq!(cfg.sizes_bytes.len(), 3);
-        assert_eq!(cfg.runs_per_size, 3);
-        assert_eq!(cfg.warmup_runs, 1);
-        assert!(cfg.operations.contains(&"upload"));
-        assert!(cfg.operations.contains(&"download"));
-        assert!(cfg.operations.contains(&"list"));
-    }
-
-    #[test]
-    fn benchmark_resolve_config_rejects_invalid_operations() {
-        let err =
-            resolve_benchmark_config(BenchmarkLevel::Standard, None, None, Some("upload,nope"))
-                .unwrap_err();
-        assert!(err.contains("unknown operation"));
-    }
-
-    #[test]
-    fn benchmark_resolve_config_rejects_oversized_payload() {
-        // 10 GiB > 5 GiB cap
-        let err =
-            resolve_benchmark_config(BenchmarkLevel::Custom, Some("10G"), None, None).unwrap_err();
-        assert!(err.contains("5 GiB"));
-    }
-
-    #[test]
-    fn benchmark_resolve_config_rejects_zero_size() {
-        let err =
-            resolve_benchmark_config(BenchmarkLevel::Custom, Some("0"), None, None).unwrap_err();
-        assert!(err.to_lowercase().contains("zero"));
-    }
-
-    #[test]
-    fn benchmark_resolve_config_clamps_runs() {
-        let cfg = resolve_benchmark_config(BenchmarkLevel::Standard, None, Some(99), None).unwrap();
-        assert_eq!(cfg.runs_per_size, 20);
-    }
-
-    #[test]
-    fn mkdir_ladder_builds_relative_cumulative_paths() {
-        assert_eq!(
-            benchmark_mkdir_ladder("aeroftp-bench/rid"),
-            vec!["aeroftp-bench".to_string(), "aeroftp-bench/rid".to_string()]
-        );
-    }
-
-    #[test]
-    fn mkdir_ladder_preserves_leading_slash() {
-        assert_eq!(
-            benchmark_mkdir_ladder("/Private/aeroftp-bench/rid"),
-            vec![
-                "/Private".to_string(),
-                "/Private/aeroftp-bench".to_string(),
-                "/Private/aeroftp-bench/rid".to_string(),
-            ]
-        );
-    }
-
-    #[test]
-    fn mkdir_ladder_empty_for_root_or_blank() {
-        assert!(benchmark_mkdir_ladder("").is_empty());
-        assert!(benchmark_mkdir_ladder("/").is_empty());
-        assert!(benchmark_mkdir_ladder("///").is_empty());
-    }
-
-    #[test]
-    fn mkdir_ladder_ignores_trailing_and_duplicate_slashes() {
-        assert_eq!(
-            benchmark_mkdir_ladder("a//b/"),
-            vec!["a".to_string(), "a/b".to_string()]
-        );
-    }
-
-    #[test]
-    fn mkdir_ladder_covers_put_recursive_ancestor_chain() {
-        // cmd_put_recursive pre-creates this chain before any STOR, so a
-        // nested target with no pre-existing parents no longer stalls on
-        // FTP/FTPS.
-        assert_eq!(
-            benchmark_mkdir_ladder("/a/b/src"),
-            vec!["/a".to_string(), "/a/b".to_string(), "/a/b/src".to_string(),]
-        );
-    }
-
-    #[test]
-    fn many_files_config_absent_when_not_requested() {
-        assert!(resolve_many_files_config(None, "64K").unwrap().is_none());
-        assert!(resolve_many_files_config(Some(0), "64K").unwrap().is_none());
-    }
-
-    #[test]
-    fn many_files_config_resolves_count_and_size() {
-        let mf = resolve_many_files_config(Some(100), "64K")
-            .unwrap()
-            .expect("workload requested");
-        assert_eq!(mf.file_count, 100);
-        assert_eq!(mf.file_size_bytes, 64 * 1024);
-    }
-
-    #[test]
-    fn many_files_config_rejects_excessive_count() {
-        let err = resolve_many_files_config(Some(BENCHMARK_MAX_FILE_COUNT + 1), "1K").unwrap_err();
-        assert!(err.contains("cap"), "got: {}", err);
-    }
-
-    #[test]
-    fn many_files_config_rejects_zero_size() {
-        let err = resolve_many_files_config(Some(10), "0").unwrap_err();
-        assert!(err.contains("zero"), "got: {}", err);
-    }
-
-    #[test]
-    fn many_files_config_rejects_oversized_aggregate() {
-        // 100k files x 1 MiB = ~100 GiB, well over the 5 GiB cap.
-        let err = resolve_many_files_config(Some(100_000), "1M").unwrap_err();
-        assert!(err.contains("5 GiB cap"), "got: {}", err);
-    }
-
-    #[test]
-    fn many_files_result_carries_files_per_second_and_count() {
-        let r = many_files_result(
-            "s3",
-            false,
-            "rid",
-            "upload-all",
-            64 * 1024,
-            3,
-            250.0,
-            &[3.0, 4.0, 5.0],
-            Some(&[120.0, 130.0, 140.0]),
-            0,
-        );
-        assert_eq!(r.operation, "upload-all");
-        assert_eq!(r.file_count, Some(3));
-        assert_eq!(r.files_per_second, Some(250.0));
-        assert_eq!(r.runs, 3);
-        assert!(r.throughput_mbps.is_some());
-        assert_eq!(r.latency_ms.p50, 4.0);
-        assert_eq!(r.raw_runs.len(), 3);
-        // Serialized many-files result must still pass the PII sweep.
-        let pretty = serde_json::to_string_pretty(&r).unwrap();
-        assert!(benchmark_sanitization_sweep(&pretty).is_ok());
-        assert!(pretty.contains("files_per_second"));
-        assert!(pretty.contains("file_count"));
-    }
-
-    #[test]
-    fn benchmark_sanitization_sweep_passes_clean_payload() {
-        let clean = r#"{"protocol":"s3","provider_hint":"amazon-s3-eu-west-1","level":"standard"}"#;
-        assert!(benchmark_sanitization_sweep(clean).is_ok());
-    }
-
-    #[test]
-    fn benchmark_sanitize_replaces_email() {
-        // Provider errors often embed the account email: must be substituted,
-        // not rejected.
-        let dirty = r#"{"errors":["upload failed for user@example.com"]}"#.to_string();
-        let cleaned = benchmark_sanitize(dirty);
-        assert!(!cleaned.contains("user@example.com"));
-        assert!(cleaned.contains("<redacted>@<redacted>"));
-        // After substitution the assertion sweep must pass.
-        assert!(benchmark_sanitization_sweep(&cleaned).is_ok());
-    }
-
-    #[test]
-    fn benchmark_sanitize_replaces_aws_key() {
-        let dirty = r#"{"note":"AKIAIOSFODNN7EXAMPLE oops"}"#.to_string();
-        let cleaned = benchmark_sanitize(dirty);
-        assert!(!cleaned.contains("AKIAIOSFODNN7EXAMPLE"));
-        assert!(cleaned.contains("AKIA<redacted>"));
-        assert!(benchmark_sanitization_sweep(&cleaned).is_ok());
-    }
-
-    #[test]
-    fn benchmark_sanitize_replaces_ipv4() {
-        let dirty = r#"{"host":"192.168.1.1"}"#.to_string();
-        let cleaned = benchmark_sanitize(dirty);
-        assert!(!cleaned.contains("192.168.1.1"));
-        assert!(cleaned.contains("<redacted-ip>"));
-        assert!(benchmark_sanitization_sweep(&cleaned).is_ok());
-    }
-
-    #[test]
-    fn benchmark_sanitization_sweep_blocks_unsanitized_email() {
-        // Belt-and-suspenders: if benchmark_sanitize is bypassed and PII
-        // slips through, the assertion sweep must still flag it.
-        let dirty = r#"{"submitter":"user@example.com"}"#;
-        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
-        assert!(err.to_lowercase().contains("email"));
-    }
-
-    #[test]
-    fn benchmark_sanitization_sweep_blocks_linux_home_path() {
-        let dirty = r#"{"path":"/home/alice/secret"}"#;
-        let err = benchmark_sanitization_sweep(dirty).unwrap_err();
-        assert!(err.contains("Linux"));
-    }
-
-    #[test]
-    fn benchmark_provider_hint_anonymize_extra_emits_hash_only() {
-        let (hint, hash) = benchmark_provider_hint("s3", true, "report-id-123");
-        assert!(hint.is_none());
-        let h = hash.expect("hash present");
-        assert_eq!(h.len(), 16, "hash truncated to 16 hex chars");
-        assert!(h.chars().all(|c| c.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn benchmark_provider_hint_normal_emits_hint_only() {
-        let (hint, hash) = benchmark_provider_hint("webdav", false, "rid");
-        assert_eq!(hint.as_deref(), Some("webdav"));
-        assert!(hash.is_none());
-    }
-
-    #[test]
-    fn benchmark_remote_roots_respect_profile_initial_path() {
-        let (base, root) = benchmark_remote_roots("/workdir", "rid");
-        assert_eq!(base, "/workdir/aeroftp-bench");
-        assert_eq!(root, "/workdir/aeroftp-bench/rid");
-    }
-
-    #[test]
     fn benchmark_identity_names_pcloud_drive_and_distinguishes_megacmd() {
         assert_eq!(
             benchmark_profile_identity(&json!({"protocol":"pcloud"})),
@@ -80209,41 +78159,6 @@ mod tests {
                 .1,
             "WebDAV"
         );
-    }
-
-    #[test]
-    fn benchmark_remote_roots_stay_relative_without_initial_path() {
-        let (base, root) = benchmark_remote_roots("", "rid");
-        assert_eq!(base, "aeroftp-bench");
-        assert_eq!(root, "aeroftp-bench/rid");
-    }
-
-    #[test]
-    fn benchmark_remote_roots_from_prefix_keeps_user_subpath() {
-        let (base, root) = benchmark_remote_roots_from_prefix("/Drive/aeroftp-bench", "rid");
-        assert_eq!(base, "/Drive/aeroftp-bench");
-        assert_eq!(root, "/Drive/aeroftp-bench/rid");
-    }
-
-    #[test]
-    fn benchmark_remote_roots_from_prefix_normalizes_trailing_slash() {
-        let (base, root) = benchmark_remote_roots_from_prefix("/Drive/bench/", "rid");
-        assert_eq!(base, "/Drive/bench");
-        assert_eq!(root, "/Drive/bench/rid");
-    }
-
-    #[test]
-    fn benchmark_remote_roots_from_prefix_prepends_leading_slash() {
-        let (base, root) = benchmark_remote_roots_from_prefix("home/aeroftp", "rid");
-        assert_eq!(base, "/home/aeroftp");
-        assert_eq!(root, "/home/aeroftp/rid");
-    }
-
-    #[test]
-    fn benchmark_remote_roots_from_prefix_falls_back_to_root() {
-        let (base, root) = benchmark_remote_roots_from_prefix("/", "rid");
-        assert_eq!(base, "/");
-        assert_eq!(root, "/rid");
     }
 
     #[test]
@@ -80300,72 +78215,6 @@ mod tests {
             strip_legacy_nextcloud_webdav_root("/remote.php/dav/files/alice", "tabdigital", ""),
             "/remote.php/dav/files/alice"
         );
-    }
-
-    #[test]
-    fn benchmark_rounded_hour_utc_omits_subhour_precision() {
-        let stamp = benchmark_rounded_hour_utc();
-        assert!(stamp.ends_with(":00:00Z"), "got {}", stamp);
-        assert_eq!(stamp.len(), 20);
-    }
-
-    #[test]
-    fn benchmark_tod_bucket_returns_known_label() {
-        let label = benchmark_tod_bucket();
-        assert!(matches!(
-            label,
-            "night" | "morning" | "afternoon" | "evening"
-        ));
-    }
-
-    #[test]
-    fn benchmark_report_serializes_to_schema_v1() {
-        let report = BenchmarkReport {
-            schema_version: 1,
-            report_id: "11111111-2222-3333-4444-555555555555".into(),
-            generated_at: "2026-05-06T15:00:00Z".into(),
-            cli: BenchmarkCliMeta {
-                version: "3.8.0".into(),
-                build_target: "x86_64-unknown-linux-gnu".into(),
-                rustc: "1.75.0".into(),
-            },
-            level: BenchmarkLevel::Quick,
-            access: "SFTP".into(),
-            service: "Custom".into(),
-            mode: None,
-            environment: BenchmarkEnvironment {
-                asn_bucket: None,
-                country_bucket: None,
-                tod_bucket: "afternoon".into(),
-                os_family: "linux".into(),
-                os_arch: "x86_64".into(),
-                cpu_class: "x64-modern".into(),
-            },
-            consent: BenchmarkConsent {
-                publish: false,
-                anonymize_extra: false,
-            },
-            results: vec![],
-            summary: BenchmarkSummary {
-                total_runs: 0,
-                total_bytes_transferred: 0,
-                total_duration_ms: 0,
-                errors: vec![],
-            },
-            notes: vec![],
-        };
-        let v: serde_json::Value = serde_json::to_value(&report).unwrap();
-        assert!(
-            v.get("notes").is_none(),
-            "an ordinary run must not carry an empty notes array"
-        );
-        assert_eq!(v["schema_version"], 1);
-        assert_eq!(v["level"], "quick");
-        assert!(v["environment"].get("asn_bucket").is_none());
-        assert_eq!(v["consent"]["publish"], false);
-        // Pass through sanitization sweep on a real serialized payload.
-        let pretty = serde_json::to_string_pretty(&report).unwrap();
-        assert!(benchmark_sanitization_sweep(&pretty).is_ok());
     }
 
     // ── Audit subcommand (M3) ──────────────────────────────────────
