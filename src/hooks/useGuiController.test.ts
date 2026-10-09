@@ -271,3 +271,17 @@ it('uses backend-claimed actor, not event metadata, and only releases that actor
     expect(host.querySelector('[role="status"]')).toBeNull();
     expect(audit).toHaveBeenCalledWith('refresh', true, 'Codex');
 });
+
+it('does not run a request whose dev actor ended while its claim was in flight', async () => {
+    await mount();
+    let claim!: (value: unknown) => void;
+    bridge.invoke.mockImplementationOnce(() => new Promise<unknown>(resolve => { claim = resolve; }));
+    await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
+        id: 'ended-before-claim', expires_at: Date.now() + 2000, request: { name: 'disconnect', pace: 'fast' },
+    } }));
+    await act(async () => bridge.callbacks.get('gui-actor-ended')!({ payload: { actor_id: 'gui-dev-ended' } }));
+    await act(async () => claim({ remaining_ms: 2000, actor: { id: 'gui-dev-ended', kind: 'dev', label: 'Codex' } }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+    expect(handlers.disconnect).not.toHaveBeenCalled();
+    expect(host.querySelector('[role="status"]')).toBeNull();
+});
