@@ -30378,6 +30378,16 @@ fn generate_auth_token() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
 
+/// `--quiet` hides the serve banner, but a credential the server generated
+/// is the only way to reach it, so it is shown anyway, alone, on stderr.
+/// With `--format json` it is the `generated_auth_*` field instead.
+fn print_generated_credential_when_quiet(user: Option<&str>, secret: &str) {
+    match user {
+        Some(user) => eprintln!("Generated login: user {user}, password {secret}"),
+        None => eprintln!("Generated password/token: {secret}"),
+    }
+}
+
 fn resolve_service_auth_token(
     requested_token: Option<String>,
     bind_addr: SocketAddr,
@@ -31201,6 +31211,10 @@ async fn cmd_serve_http(
             eprintln!("Authentication: disabled for local loopback access");
         }
         eprintln!("Press Ctrl+C to stop.");
+    } else if generated_auth_token {
+        if let Some(token) = auth_token.as_deref() {
+            print_generated_credential_when_quiet(None, token);
+        }
     }
 
     let result = axum::serve(listener, app)
@@ -31764,6 +31778,10 @@ async fn cmd_serve_webdav(
             eprintln!("Authentication: disabled for local loopback access");
         }
         eprintln!("Read-write mode. Press Ctrl+C to stop.");
+    } else if generated_auth_token {
+        if let Some(token) = auth_token.as_deref() {
+            print_generated_credential_when_quiet(None, token);
+        }
     }
 
     let result = axum::serve(listener, app)
@@ -32197,6 +32215,8 @@ async fn cmd_serve_ftp(
             eprintln!("Authentication: disabled for local loopback access");
         }
         eprintln!("Press Ctrl+C to stop.");
+    } else if let Some(credentials) = auth_credentials.as_ref().filter(|c| c.generated) {
+        print_generated_credential_when_quiet(Some(&credentials.username), &credentials.password);
     }
 
     // libunftp's `listen` does not accept a shutdown future, so race it
@@ -33220,6 +33240,8 @@ async fn cmd_serve_sftp(
         } else {
             eprintln!("Authentication: disabled for local loopback access");
         }
+    } else if let Some(credentials) = auth_credentials.as_ref().filter(|c| c.generated) {
+        print_generated_credential_when_quiet(Some(&credentials.username), &credentials.password);
     }
 
     let provider_arc = Arc::new(AsyncMutex::new(provider));
