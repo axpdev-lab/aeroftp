@@ -6178,7 +6178,25 @@
                 "settings_open": "Opna stillingar",
                 "settings_read": "Skoða stillingar",
                 "settings_update": "Uppfæra stillingar",
-                "settings_close": "Loka stillingum"
+                "settings_close": "Loka stillingum",
+                "tools_open": "Opna verkfæri",
+                "tools_read": "Skoða verkfæri",
+                "tools_close": "Loka verkfærum"
+            },
+            "speed": "Stýrihraði",
+            "pause": "Gera hlé",
+            "resume": "Halda áfram",
+            "paused": "Í hléi",
+            "preferences": "Stýring fulltrúa",
+            "defaultSpeed": "Sjálfgefinn stýrihraði (%)",
+            "presets": "Forstillingar hraða (%)",
+            "preset": "Forstilling {index}",
+            "fallback": "Aðgerð sýnd í merkinu",
+            "preferencesDescription": "Breytingar hér gilda fyrir síðari lotur. Notaðu merkið til að stilla núverandi lotu.",
+            "speedSource": {
+                "default": "Sjálfgefið úr stillingum",
+                "agent": "Beðið um fyrir þessa lotu",
+                "human": "Breytt af þér"
             }
         }
     }

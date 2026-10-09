@@ -6159,7 +6159,25 @@
                 "settings_open": "Apri le impostazioni",
                 "settings_read": "Ispeziona le impostazioni",
                 "settings_update": "Aggiorna le impostazioni",
-                "settings_close": "Chiudi le impostazioni"
+                "settings_close": "Chiudi le impostazioni",
+                "tools_open": "Apri strumenti",
+                "tools_read": "Ispeziona strumenti",
+                "tools_close": "Chiudi strumenti"
+            },
+            "speed": "Velocità di controllo",
+            "pause": "Pausa",
+            "resume": "Riprendi",
+            "paused": "In pausa",
+            "preferences": "Controllo agente",
+            "defaultSpeed": "Velocità di controllo predefinita (%)",
+            "presets": "Velocità preimpostate (%)",
+            "preset": "Preimpostazione {index}",
+            "fallback": "Azione mostrata nel badge",
+            "preferencesDescription": "Le modifiche qui si applicano alle sessioni future. Usa il badge per regolare la sessione corrente.",
+            "speedSource": {
+                "default": "Predefinita nelle impostazioni",
+                "agent": "Richiesta per questa sessione",
+                "human": "Modificata da te"
             }
         }
     }

@@ -6159,7 +6159,25 @@
                 "settings_open": "Otvori postavke",
                 "settings_read": "Pregledaj postavke",
                 "settings_update": "Ažuriraj postavke",
-                "settings_close": "Zatvori postavke"
+                "settings_close": "Zatvori postavke",
+                "tools_open": "Otvori alate",
+                "tools_read": "Pregledaj alate",
+                "tools_close": "Zatvori alate"
+            },
+            "speed": "Brzina upravljanja",
+            "pause": "Pauziraj",
+            "resume": "Nastavi",
+            "paused": "Pauzirano",
+            "preferences": "Upravljanje agentom",
+            "defaultSpeed": "Zadana brzina upravljanja (%)",
+            "presets": "Unaprijed postavljene brzine (%)",
+            "preset": "Postavka {index}",
+            "fallback": "Radnja prikazana na znački",
+            "preferencesDescription": "Ovdje unesene promjene vrijede za buduće sesije. Upotrijebite značku za prilagodbu trenutačne sesije.",
+            "speedSource": {
+                "default": "Zadana iz postavki",
+                "agent": "Zatražena za ovu sesiju",
+                "human": "Promijenili ste je vi"
             }
         }
     }

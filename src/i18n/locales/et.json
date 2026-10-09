@@ -6159,7 +6159,25 @@
                 "settings_open": "Ava seaded",
                 "settings_read": "Uuri seadeid",
                 "settings_update": "Uuenda seadeid",
-                "settings_close": "Sulge seaded"
+                "settings_close": "Sulge seaded",
+                "tools_open": "Ava tööriistad",
+                "tools_read": "Vaata tööriistu",
+                "tools_close": "Sulge tööriistad"
+            },
+            "speed": "Juhtimiskiirus",
+            "pause": "Peata",
+            "resume": "Jätka",
+            "paused": "Peatatud",
+            "preferences": "Agendi juhtimine",
+            "defaultSpeed": "Vaikimisi juhtimiskiirus (%)",
+            "presets": "Kiiruse eelseadistused (%)",
+            "preset": "Eelseadistus {index}",
+            "fallback": "Märgil kuvatav toiming",
+            "preferencesDescription": "Siinsed muudatused rakenduvad tulevastele seanssidele. Praeguse seansi kohandamiseks kasutage märki.",
+            "speedSource": {
+                "default": "Seadete vaikeväärtus",
+                "agent": "Taotletud selle seansi jaoks",
+                "human": "Teie muudetud"
             }
         }
     }

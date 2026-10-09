@@ -6178,7 +6178,25 @@
                 "settings_open": "Åpne innstillinger",
                 "settings_read": "Undersøk innstillinger",
                 "settings_update": "Oppdater innstillinger",
-                "settings_close": "Lukk innstillinger"
+                "settings_close": "Lukk innstillinger",
+                "tools_open": "Åpne verktøy",
+                "tools_read": "Inspiser verktøy",
+                "tools_close": "Lukk verktøy"
+            },
+            "speed": "Styringshastighet",
+            "pause": "Pause",
+            "resume": "Fortsett",
+            "paused": "Satt på pause",
+            "preferences": "Agentstyring",
+            "defaultSpeed": "Standard styringshastighet (%)",
+            "presets": "Forhåndsinnstilte hastigheter (%)",
+            "preset": "Forhåndsinnstilling {index}",
+            "fallback": "Handling vist i merket",
+            "preferencesDescription": "Endringer her gjelder fremtidige økter. Bruk merket til å justere gjeldende økt.",
+            "speedSource": {
+                "default": "Standard fra innstillinger",
+                "agent": "Forespurt for denne økten",
+                "human": "Endret av deg"
             }
         }
     }

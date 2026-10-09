@@ -6159,7 +6159,25 @@
                 "settings_open": "設定を開く",
                 "settings_read": "設定を確認",
                 "settings_update": "設定を更新",
-                "settings_close": "設定を閉じる"
+                "settings_close": "設定を閉じる",
+                "tools_open": "ツールを開く",
+                "tools_read": "ツールを確認",
+                "tools_close": "ツールを閉じる"
+            },
+            "speed": "操作速度",
+            "pause": "一時停止",
+            "resume": "再開",
+            "paused": "一時停止中",
+            "preferences": "エージェント操作",
+            "defaultSpeed": "既定の操作速度 (%)",
+            "presets": "速度プリセット (%)",
+            "preset": "プリセット {index}",
+            "fallback": "バッジに表示される操作",
+            "preferencesDescription": "ここでの変更は今後のセッションに適用されます。現在のセッションはバッジから調整してください。",
+            "speedSource": {
+                "default": "設定の既定値",
+                "agent": "このセッション用に要求",
+                "human": "あなたが変更"
             }
         }
     }

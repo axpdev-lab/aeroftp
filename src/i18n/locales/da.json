@@ -6159,7 +6159,25 @@
                 "settings_open": "Åbn indstillinger",
                 "settings_read": "Undersøg indstillinger",
                 "settings_update": "Opdatér indstillinger",
-                "settings_close": "Luk indstillinger"
+                "settings_close": "Luk indstillinger",
+                "tools_open": "Åbn værktøjer",
+                "tools_read": "Inspicer værktøjer",
+                "tools_close": "Luk værktøjer"
+            },
+            "speed": "Kontrolhastighed",
+            "pause": "Pause",
+            "resume": "Fortsæt",
+            "paused": "Sat på pause",
+            "preferences": "Agentstyring",
+            "defaultSpeed": "Standardhastighed for styring (%)",
+            "presets": "Forudindstillede hastigheder (%)",
+            "preset": "Forudindstilling {index}",
+            "fallback": "Handling vist i mærket",
+            "preferencesDescription": "Ændringer her gælder for fremtidige sessioner. Brug mærket til at justere den aktuelle session.",
+            "speedSource": {
+                "default": "Standard fra indstillinger",
+                "agent": "Anmodet for denne session",
+                "human": "Ændret af dig"
             }
         }
     }

@@ -6,15 +6,16 @@ import { invoke } from '@tauri-apps/api/core';
 import { GuiController, GuiError, type GuiActor, type GuiHandlers, type GuiIntent, type GuiLease, type GuiRequest, type GuiSource } from '../gui/controller';
 import { createTauriListener, useTauriListener } from './useTauriListener';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
+import { DEFAULT_GUI_PRESENTATION, type GuiPresentationSettings } from '../gui/presentation';
 import { TID } from '../utils/testIds';
 
 declare global {
-    interface Window { __aeroftpController?: Pick<GuiController, 'run' | 'state' | 'interrupt'>; }
+    interface Window { __aeroftpController?: Pick<GuiController, 'run' | 'state' | 'interrupt' | 'setHumanSpeed' | 'setPaused' | 'resetSessions'>; }
 }
 interface IntentEvent { id: string; expires_at: number; request: GuiRequest; }
 interface IntentClaim { remaining_ms: number; actor: GuiActor; }
-export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit: (intent: GuiIntent, ok: boolean, owner: string) => void) {
-    const current = useRef({ source, handlers, audit });
+export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit: (intent: GuiIntent, ok: boolean, owner: string) => void, preferences: GuiPresentationSettings = DEFAULT_GUI_PRESENTATION) {
+    const current = useRef({ source, handlers, audit, preferences });
     const controller = useRef<GuiController | null>(null);
     const mutationId = useRef<string | null>(null);
     const ownedSettingsArea = useRef<string | null>(null);
@@ -24,7 +25,7 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
     const [commitTicket, setCommitTicket] = useState(0);
     const [lease, setLease] = useState<GuiLease | null>(null);
     // Event callbacks and asynchronous waits must read the latest committed UI state.
-    useEffect(() => { current.current = { source, handlers, audit }; controller.current?.state(); });
+    useEffect(() => { current.current = { source, handlers, audit, preferences }; controller.current?.state(); });
     // A same-path refresh can settle before React commits its setters. A fresh
     // render receipt makes the source above authoritative even when its path,
     // count and loading fields happen to equal the previous snapshot.
@@ -79,10 +80,10 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
                     await current.current.handlers.settingsUpdate(area, set, scope); await committed();
                 },
             }),
-            value => { if (mounted) setLease(value); }, (intent, ok, owner) => current.current.audit(intent, ok, owner));
+            value => { if (mounted) setLease(value); }, (intent, ok, owner) => current.current.audit(intent, ok, owner), () => current.current.preferences);
         controller.current = service;
         const interrupt = (event: Event) => {
-            if (event.isTrusted && !(event.target instanceof Element && event.target.closest('[data-gui-controller-stop]'))) {
+            if (event.isTrusted && !(event.target instanceof Element && event.target.closest('[data-gui-controller-stop], [data-gui-controller-control]'))) {
                 ownedSettingsArea.current = null; requestedSettingsArea.current = null; service.interrupt();
             }
         };
@@ -92,7 +93,9 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
             if (service.connecting && (event as CustomEvent).detail?.connectionMetadata === true) return;
             ownedSettingsArea.current = null;
             requestedSettingsArea.current = null;
-            service.interrupt();
+            // Profile edits interrupt, but cannot reopen start-only speed.
+            if ((event as CustomEvent).detail?.accountChanged === true) service.resetSessions();
+            else service.interrupt();
         };
         window.addEventListener('pointerdown', interrupt, true);
         window.addEventListener('keydown', interrupt, true);
@@ -104,6 +107,7 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
             const actor: GuiActor = { id: `dev:${crypto.randomUUID()}`, kind: 'dev', label: 'Dev harness' };
             window.__aeroftpController = {
                 run: (request, owner = actor) => service.run(request, owner), state: () => service.state(), interrupt: () => service.interrupt(),
+                setHumanSpeed: value => service.setHumanSpeed(value), setPaused: value => service.setPaused(value), resetSessions: () => service.resetSessions(),
             };
         }
         return () => {
@@ -116,7 +120,7 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
             if (import.meta.env.DEV) delete window.__aeroftpController;
         };
     }, []);
-    useEffect(() => { if (source.locked) { ownedSettingsArea.current = null; requestedSettingsArea.current = null; controller.current?.interrupt(); } }, [source.locked]);
+    useEffect(() => { if (source.locked) { ownedSettingsArea.current = null; requestedSettingsArea.current = null; controller.current?.resetSessions(); } }, [source.locked]);
     useEffect(() => {
         if (!lease?.panel || !lease.intent) return;
         const target = Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="${TID.panel}"]`))
@@ -148,6 +152,8 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         if (mutationId.current === event.payload.id) controller.current?.interrupt();
     });
     return { lease,
+        setSpeed: (value: number) => controller.current?.setHumanSpeed(value),
+        setPaused: (value: boolean) => controller.current?.setPaused(value),
         interrupt: () => { ownedSettingsArea.current = null; requestedSettingsArea.current = null; controller.current?.interrupt(); },
         stop: () => controller.current?.run({ name: 'stop' }) };
 }

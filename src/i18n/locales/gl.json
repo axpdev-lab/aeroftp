@@ -6178,7 +6178,25 @@
                 "settings_open": "Abrir os axustes",
                 "settings_read": "Inspeccionar os axustes",
                 "settings_update": "Actualizar os axustes",
-                "settings_close": "Pechar os axustes"
+                "settings_close": "Pechar os axustes",
+                "tools_open": "Abrir ferramentas",
+                "tools_read": "Inspeccionar ferramentas",
+                "tools_close": "Pechar ferramentas"
+            },
+            "speed": "Velocidade de control",
+            "pause": "Pausar",
+            "resume": "Retomar",
+            "paused": "En pausa",
+            "preferences": "Control do axente",
+            "defaultSpeed": "Velocidade de control predeterminada (%)",
+            "presets": "Velocidades predefinidas (%)",
+            "preset": "Predefinición {index}",
+            "fallback": "Acción mostrada no distintivo",
+            "preferencesDescription": "Os cambios aquí aplícanse ás sesións futuras. Usa o distintivo para axustar a sesión actual.",
+            "speedSource": {
+                "default": "Valor predeterminado da configuración",
+                "agent": "Solicitada para esta sesión",
+                "human": "Modificada por ti"
             }
         }
     }

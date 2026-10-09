@@ -81,7 +81,7 @@ const formatLastUnlocked = (timestamp: number | null | undefined, neverLabel: st
 
 const notifyProfilesChanged = (onChanged?: () => void) => {
     try {
-        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { accountChanged: true } }));
     } catch {
         // Browserless tests: best effort.
     }

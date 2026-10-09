@@ -6159,7 +6159,25 @@
                 "settings_open": "Öppna inställningar",
                 "settings_read": "Granska inställningar",
                 "settings_update": "Uppdatera inställningar",
-                "settings_close": "Stäng inställningar"
+                "settings_close": "Stäng inställningar",
+                "tools_open": "Öppna verktyg",
+                "tools_read": "Granska verktyg",
+                "tools_close": "Stäng verktyg"
+            },
+            "speed": "Styrhastighet",
+            "pause": "Pausa",
+            "resume": "Återuppta",
+            "paused": "Pausad",
+            "preferences": "Agentstyrning",
+            "defaultSpeed": "Standardhastighet för styrning (%)",
+            "presets": "Förinställda hastigheter (%)",
+            "preset": "Förinställning {index}",
+            "fallback": "Åtgärd som visas i märket",
+            "preferencesDescription": "Ändringar här gäller framtida sessioner. Använd märket för att justera den aktuella sessionen.",
+            "speedSource": {
+                "default": "Standard från inställningar",
+                "agent": "Begärd för denna session",
+                "human": "Ändrad av dig"
             }
         }
     }

@@ -6159,7 +6159,25 @@
                 "settings_open": "Einstellungen öffnen",
                 "settings_read": "Einstellungen prüfen",
                 "settings_update": "Einstellungen aktualisieren",
-                "settings_close": "Einstellungen schließen"
+                "settings_close": "Einstellungen schließen",
+                "tools_open": "Werkzeuge öffnen",
+                "tools_read": "Werkzeuge prüfen",
+                "tools_close": "Werkzeuge schließen"
+            },
+            "speed": "Steuerungsgeschwindigkeit",
+            "pause": "Pausieren",
+            "resume": "Fortsetzen",
+            "paused": "Pausiert",
+            "preferences": "Agentensteuerung",
+            "defaultSpeed": "Standard-Steuerungsgeschwindigkeit (%)",
+            "presets": "Geschwindigkeitsvorgaben (%)",
+            "preset": "Vorgabe {index}",
+            "fallback": "Im Badge angezeigte Aktion",
+            "preferencesDescription": "Änderungen hier gelten für zukünftige Sitzungen. Über das Badge können Sie die aktuelle Sitzung anpassen.",
+            "speedSource": {
+                "default": "Standard aus den Einstellungen",
+                "agent": "Für diese Sitzung angefordert",
+                "human": "Von Ihnen geändert"
             }
         }
     }

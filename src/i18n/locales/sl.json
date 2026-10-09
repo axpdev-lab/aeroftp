@@ -6159,7 +6159,25 @@
                 "settings_open": "Odpri nastavitve",
                 "settings_read": "Preglej nastavitve",
                 "settings_update": "Posodobi nastavitve",
-                "settings_close": "Zapri nastavitve"
+                "settings_close": "Zapri nastavitve",
+                "tools_open": "Odpri orodja",
+                "tools_read": "Preglej orodja",
+                "tools_close": "Zapri orodja"
+            },
+            "speed": "Hitrost upravljanja",
+            "pause": "Premor",
+            "resume": "Nadaljuj",
+            "paused": "Začasno ustavljeno",
+            "preferences": "Upravljanje z agentom",
+            "defaultSpeed": "Privzeta hitrost upravljanja (%)",
+            "presets": "Prednastavitve hitrosti (%)",
+            "preset": "Prednastavitev {index}",
+            "fallback": "Dejanje, prikazano na znački",
+            "preferencesDescription": "Spremembe tukaj veljajo za prihodnje seje. Trenutno sejo prilagodite z značko.",
+            "speedSource": {
+                "default": "Privzeta iz nastavitev",
+                "agent": "Zahtevana za to sejo",
+                "human": "Spremenili ste jo vi"
             }
         }
     }

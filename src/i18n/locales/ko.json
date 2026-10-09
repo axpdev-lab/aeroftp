@@ -6159,7 +6159,25 @@
                 "settings_open": "설정 열기",
                 "settings_read": "설정 살펴보기",
                 "settings_update": "설정 업데이트",
-                "settings_close": "설정 닫기"
+                "settings_close": "설정 닫기",
+                "tools_open": "도구 열기",
+                "tools_read": "도구 살펴보기",
+                "tools_close": "도구 닫기"
+            },
+            "speed": "제어 속도",
+            "pause": "일시 중지",
+            "resume": "재개",
+            "paused": "일시 중지됨",
+            "preferences": "에이전트 제어",
+            "defaultSpeed": "기본 제어 속도 (%)",
+            "presets": "속도 사전 설정 (%)",
+            "preset": "사전 설정 {index}",
+            "fallback": "배지에 표시된 작업",
+            "preferencesDescription": "여기서 변경한 내용은 이후 세션에 적용됩니다. 현재 세션을 조정하려면 배지를 사용하세요.",
+            "speedSource": {
+                "default": "설정 기본값",
+                "agent": "이 세션에 요청됨",
+                "human": "사용자가 변경함"
             }
         }
     }

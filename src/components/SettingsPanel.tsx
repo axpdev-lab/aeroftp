@@ -29,6 +29,8 @@ import { ImportExportIcon } from './icons/ImportExportIcon';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from '../utils/appBackgroundPatterns';
 import { IMAGE_PREVIEW_BG_PRESETS, readImagePreviewBg, writeImagePreviewBg, resolveImagePreviewBgStyle, resolveImagePreviewBgHex } from '../utils/imagePreviewBg';
+import { GuiPresentationSettings } from './settings/GuiPresentationSettings';
+import { normalizeGuiPresentation, DEFAULT_GUI_PRESENTATION, type GuiPresentationSettings as GuiPreferences } from '../gui/presentation';
 import { TotpSetup } from './TotpSetup';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
@@ -149,6 +151,7 @@ const defaultOAuthSettings: OAuthSettings = {
 };
 
 interface AppSettings {
+    guiPresentation: GuiPreferences;
     // General
     defaultLocalPath: string;
     showHiddenFiles: boolean;
@@ -228,6 +231,7 @@ interface AppSettings {
 }
 
 const defaultSettings: AppSettings = {
+    guiPresentation: DEFAULT_GUI_PRESENTATION,
     defaultLocalPath: '',
     showHiddenFiles: true, // Developer-first: show all files by default
     confirmBeforeDelete: true,
@@ -664,6 +668,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                         const normalizedSettings = {
                             ...defaultSettings,
                             ...saved,
+                            guiPresentation: normalizeGuiPresentation(saved.guiPresentation),
                             fontSize: clampAppFontSize(saved.fontSize ?? defaultSettings.fontSize),
                             fontFamily: normalizeAppFontFamily(saved.fontFamily ?? defaultSettings.fontFamily),
                             introHubIconSize: clampIntroHubIconSize(saved.introHubIconSize ?? defaultSettings.introHubIconSize),
@@ -813,7 +818,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         if (saveState === 'saving') return; // prevent double-click
         setSaveState('saving');
         const base = settingsBase.current;
-        const captured = { ...settings, fontSize: clampAppFontSize(settings.fontSize),
+        const captured = { ...settings, guiPresentation: normalizeGuiPresentation(settings.guiPresentation), fontSize: clampAppFontSize(settings.fontSize),
             fontFamily: normalizeAppFontFamily(settings.fontFamily), introHubIconSize: clampIntroHubIconSize(settings.introHubIconSize) };
         try {
             const scope = await bindSettingsScope(new ConnectScope(() => { if (!panelOpen.current) throw new GuiError('lease_interrupted'); }));
@@ -2500,6 +2505,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                     </div>
                                                 }
                                             />
+
+                                            <GuiPresentationSettings value={normalizeGuiPresentation(settings.guiPresentation)} onChange={value => updateSetting('guiPresentation', value)} />
 
                                             {/* Visible Columns */}
                                             <div className="border-t border-gray-200 dark:border-gray-700 my-4" />

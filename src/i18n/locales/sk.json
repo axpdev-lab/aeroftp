@@ -6159,7 +6159,25 @@
                 "settings_open": "Otvoriť nastavenia",
                 "settings_read": "Preskúmať nastavenia",
                 "settings_update": "Aktualizovať nastavenia",
-                "settings_close": "Zavrieť nastavenia"
+                "settings_close": "Zavrieť nastavenia",
+                "tools_open": "Otvoriť nástroje",
+                "tools_read": "Preskúmať nástroje",
+                "tools_close": "Zavrieť nástroje"
+            },
+            "speed": "Rýchlosť ovládania",
+            "pause": "Pozastaviť",
+            "resume": "Pokračovať",
+            "paused": "Pozastavené",
+            "preferences": "Ovládanie agentom",
+            "defaultSpeed": "Predvolená rýchlosť ovládania (%)",
+            "presets": "Predvoľby rýchlosti (%)",
+            "preset": "Predvoľba {index}",
+            "fallback": "Akcia zobrazená na odznaku",
+            "preferencesDescription": "Zmeny tu platia pre budúce relácie. Aktuálnu reláciu upravte pomocou odznaku.",
+            "speedSource": {
+                "default": "Predvolená z nastavení",
+                "agent": "Vyžiadaná pre túto reláciu",
+                "human": "Zmenená vami"
             }
         }
     }

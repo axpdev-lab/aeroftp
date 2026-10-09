@@ -6178,7 +6178,25 @@
                 "settings_open": "Agor gosodiadau",
                 "settings_read": "Archwilio gosodiadau",
                 "settings_update": "Diweddaru gosodiadau",
-                "settings_close": "Cau gosodiadau"
+                "settings_close": "Cau gosodiadau",
+                "tools_open": "Agor offer",
+                "tools_read": "Archwilio offer",
+                "tools_close": "Cau offer"
+            },
+            "speed": "Cyflymder rheoli",
+            "pause": "Oedi",
+            "resume": "Ailddechrau",
+            "paused": "Wedi oedi",
+            "preferences": "Rheolaeth asiant",
+            "defaultSpeed": "Cyflymder rheoli diofyn (%)",
+            "presets": "Rhagosodiadau cyflymder (%)",
+            "preset": "Rhagosodiad {index}",
+            "fallback": "Gweithred a ddangosir yn y bathodyn",
+            "preferencesDescription": "Mae newidiadau yma yn berthnasol i sesiynau yn y dyfodol. Defnyddiwch y bathodyn i addasu’r sesiwn gyfredol.",
+            "speedSource": {
+                "default": "Rhagosodiad y gosodiadau",
+                "agent": "Gofynnwyd amdani ar gyfer y sesiwn hon",
+                "human": "Wedi’i newid gennych chi"
             }
         }
     }

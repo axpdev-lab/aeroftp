@@ -6159,7 +6159,25 @@
                 "settings_open": "Abrir configurações",
                 "settings_read": "Inspecionar configurações",
                 "settings_update": "Atualizar configurações",
-                "settings_close": "Fechar configurações"
+                "settings_close": "Fechar configurações",
+                "tools_open": "Abrir ferramentas",
+                "tools_read": "Inspecionar ferramentas",
+                "tools_close": "Fechar ferramentas"
+            },
+            "speed": "Velocidade de controlo",
+            "pause": "Pausar",
+            "resume": "Retomar",
+            "paused": "Em pausa",
+            "preferences": "Controlo do agente",
+            "defaultSpeed": "Velocidade de controlo predefinida (%)",
+            "presets": "Velocidades predefinidas (%)",
+            "preset": "Predefinição {index}",
+            "fallback": "Ação apresentada no distintivo",
+            "preferencesDescription": "As alterações aqui aplicam-se a sessões futuras. Use o distintivo para ajustar a sessão atual.",
+            "speedSource": {
+                "default": "Predefinição das definições",
+                "agent": "Solicitada para esta sessão",
+                "human": "Alterada por si"
             }
         }
     }

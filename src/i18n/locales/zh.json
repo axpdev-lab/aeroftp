@@ -6159,7 +6159,25 @@
                 "settings_open": "打开设置",
                 "settings_read": "检查设置",
                 "settings_update": "更新设置",
-                "settings_close": "关闭设置"
+                "settings_close": "关闭设置",
+                "tools_open": "打开工具",
+                "tools_read": "检查工具",
+                "tools_close": "关闭工具"
+            },
+            "speed": "控制速度",
+            "pause": "暂停",
+            "resume": "继续",
+            "paused": "已暂停",
+            "preferences": "代理控制",
+            "defaultSpeed": "默认控制速度 (%)",
+            "presets": "速度预设 (%)",
+            "preset": "预设 {index}",
+            "fallback": "徽章中显示的操作",
+            "preferencesDescription": "此处的更改将应用于以后的会话。使用徽章调整当前会话。",
+            "speedSource": {
+                "default": "设置默认值",
+                "agent": "为此会话请求",
+                "human": "由你更改"
             }
         }
     }

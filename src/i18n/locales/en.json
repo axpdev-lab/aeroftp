@@ -6159,7 +6159,25 @@
                 "settings_open": "Open settings",
                 "settings_read": "Inspect settings",
                 "settings_update": "Update settings",
-                "settings_close": "Close settings"
+                "settings_close": "Close settings",
+                "tools_open": "Open tools",
+                "tools_read": "Inspect tools",
+                "tools_close": "Close tools"
+            },
+            "speed": "Control speed",
+            "pause": "Pause",
+            "resume": "Resume",
+            "paused": "Paused",
+            "preferences": "Agent control",
+            "defaultSpeed": "Default control speed (%)",
+            "presets": "Speed presets (%)",
+            "preset": "Preset {index}",
+            "fallback": "Action shown in the badge",
+            "preferencesDescription": "Changes here apply to future sessions. Use the badge to adjust the current session.",
+            "speedSource": {
+                "default": "Settings default",
+                "agent": "Requested for this session",
+                "human": "Changed by you"
             }
         }
     }

@@ -6159,7 +6159,25 @@
                 "settings_open": "Atidaryti nustatymus",
                 "settings_read": "Patikrinti nustatymus",
                 "settings_update": "Atnaujinti nustatymus",
-                "settings_close": "Uždaryti nustatymus"
+                "settings_close": "Uždaryti nustatymus",
+                "tools_open": "Atverti įrankius",
+                "tools_read": "Peržiūrėti įrankius",
+                "tools_close": "Užverti įrankius"
+            },
+            "speed": "Valdymo greitis",
+            "pause": "Pristabdyti",
+            "resume": "Tęsti",
+            "paused": "Pristabdyta",
+            "preferences": "Agento valdymas",
+            "defaultSpeed": "Numatytasis valdymo greitis (%)",
+            "presets": "Išankstinės greičio nuostatos (%)",
+            "preset": "Nuostata {index}",
+            "fallback": "Ženklelyje rodomas veiksmas",
+            "preferencesDescription": "Čia atlikti pakeitimai taikomi būsimoms sesijoms. Dabartinę sesiją koreguokite naudodami ženklelį.",
+            "speedSource": {
+                "default": "Numatytoji iš nuostatų",
+                "agent": "Paprašyta šiai sesijai",
+                "human": "Jūsų pakeista"
             }
         }
     }

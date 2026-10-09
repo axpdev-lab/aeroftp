@@ -11,6 +11,7 @@ import { reorderVisibleInFull } from './reorderByIndex';
 import { createProfileCredentialJournal } from './profileCredentialJournal';
 import { mergeAppSettingsDraft } from './appSettingsDraft';
 import { ConnectScope } from '../gui/connectScope';
+import { normalizeGuiPresentation } from '../gui/presentation';
 import type { ServerProfile } from '../types';
 
 // Run the production closures, with their captured IPC and React state cells
@@ -143,7 +144,7 @@ describe('saved profile write rejection in production handlers', () => {
             saveState: 'idle', settings: { fontSize: 14, fontFamily: 'system', introHubIconSize: 32 },
             settingsBase: { current: { fontSize: 12, fontFamily: 'system', introHubIconSize: 32 } },
             panelOpen: { current: true }, ConnectScope, bindSettingsScope: async (scope: ConnectScope) => scope,
-            mergeAppSettingsDraft, updateAppSettings: vi.fn(async mutate => mutate({ fontSize: 12 })),
+            mergeAppSettingsDraft, normalizeGuiPresentation, updateAppSettings: vi.fn(async mutate => mutate({ fontSize: 12 })),
             clampAppFontSize: (v: unknown) => v, normalizeAppFontFamily: (v: unknown) => v, clampIntroHubIconSize: (v: unknown) => v,
             secureStoreAndClean: vi.fn(), SETTINGS_VAULT_KEY: 'settings', SETTINGS_KEY: 'settings', OAUTH_SETTINGS_KEY: 'oauth',
             oauthSettings: Object.fromEntries(['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'].map(p => [p, {}])),

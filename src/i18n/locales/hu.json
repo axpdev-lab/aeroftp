@@ -6159,7 +6159,25 @@
                 "settings_open": "Beállítások megnyitása",
                 "settings_read": "Beállítások vizsgálata",
                 "settings_update": "Beállítások frissítése",
-                "settings_close": "Beállítások bezárása"
+                "settings_close": "Beállítások bezárása",
+                "tools_open": "Eszközök megnyitása",
+                "tools_read": "Eszközök ellenőrzése",
+                "tools_close": "Eszközök bezárása"
+            },
+            "speed": "Vezérlési sebesség",
+            "pause": "Szünet",
+            "resume": "Folytatás",
+            "paused": "Szüneteltetve",
+            "preferences": "Ügynöki vezérlés",
+            "defaultSpeed": "Alapértelmezett vezérlési sebesség (%)",
+            "presets": "Sebességbeállítások (%)",
+            "preset": "Előbeállítás {index}",
+            "fallback": "A jelvényen megjelenő művelet",
+            "preferencesDescription": "Az itteni módosítások a későbbi munkamenetekre érvényesek. A jelenlegi munkamenetet a jelvénnyel módosíthatja.",
+            "speedSource": {
+                "default": "Beállítások alapértéke",
+                "agent": "Ehhez a munkamenethez kérve",
+                "human": "Ön módosította"
             }
         }
     }

@@ -6159,7 +6159,25 @@
                 "settings_open": "Otevřít nastavení",
                 "settings_read": "Prozkoumat nastavení",
                 "settings_update": "Aktualizovat nastavení",
-                "settings_close": "Zavřít nastavení"
+                "settings_close": "Zavřít nastavení",
+                "tools_open": "Otevřít nástroje",
+                "tools_read": "Prohlédnout nástroje",
+                "tools_close": "Zavřít nástroje"
+            },
+            "speed": "Rychlost ovládání",
+            "pause": "Pozastavit",
+            "resume": "Pokračovat",
+            "paused": "Pozastaveno",
+            "preferences": "Ovládání agentem",
+            "defaultSpeed": "Výchozí rychlost ovládání (%)",
+            "presets": "Předvolby rychlosti (%)",
+            "preset": "Předvolba {index}",
+            "fallback": "Akce zobrazená na odznaku",
+            "preferencesDescription": "Změny zde platí pro budoucí relace. Aktuální relaci upravte pomocí odznaku.",
+            "speedSource": {
+                "default": "Výchozí z nastavení",
+                "agent": "Vyžádána pro tuto relaci",
+                "human": "Změněna vámi"
             }
         }
     }

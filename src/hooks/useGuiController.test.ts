@@ -6,6 +6,7 @@ import { act, createElement as h, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useGuiController } from './useGuiController';
+import { DEFAULT_GUI_PRESENTATION } from '../gui/presentation';
 import { GuiControllerBanner } from '../components/GuiControllerBanner';
 import type { GuiHandlers, GuiSource } from '../gui/controller';
 import { PROFILES_CHANGED_EVENT } from '../utils/serverProfileStore';
@@ -28,7 +29,7 @@ let handlers: GuiHandlers;
 const audit = vi.fn();
 function Harness() {
     const controller = useGuiController(source, handlers, audit);
-    return h(GuiControllerBanner, { lease: controller.lease, onStop: () => { void controller.stop(); } });
+    return h(GuiControllerBanner, { lease: controller.lease, preferences: DEFAULT_GUI_PRESENTATION, onSpeed: controller.setSpeed, onPause: controller.setPaused, onStop: () => { void controller.stop(); } });
 }
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -270,4 +271,16 @@ it('uses backend-claimed actor, not event metadata, and only releases that actor
     await act(async () => bridge.callbacks.get('gui-actor-ended')!({ payload: { actor_id: 'gui-dev-first' } }));
     expect(host.querySelector('[role="status"]')).toBeNull();
     expect(audit).toHaveBeenCalledWith('refresh', true, 'Codex');
+});
+
+
+it('profile edits retain the speed lock while explicit account changes start a fresh scope', async () => {
+    await mount(); await runCommittedRefresh();
+    await act(async () => window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { connectionMetadata: false } })));
+    let reply;
+    await act(async () => { reply = await window.__aeroftpController!.run({ name: 'show_view', args: { view: 'files' }, speed_percent: 200, pace: 'fast' }); });
+    expect(reply).toMatchObject({ error: 'speed_locked' });
+    await act(async () => window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { accountChanged: true } })));
+    await act(async () => { reply = await window.__aeroftpController!.run({ name: 'show_view', args: { view: 'files' }, speed_percent: 200, pace: 'fast' }); });
+    expect(reply).toMatchObject({ ok: true, snapshot: { control: { speed_percent: 200 } } });
 });
