@@ -1703,18 +1703,40 @@ mod tests {
         );
     }
 
-    /// `report ` and `report` are two files: a path is not trimmed into
-    /// another one.
+    /// ` report` and `report` are two files: a path is not trimmed into
+    /// another one. A trailing space is checked only where the filesystem
+    /// keeps it: Win32 strips trailing spaces from a name, so on Windows the
+    /// fixture `report ` would be created as `report` and there would be no
+    /// second file to tell apart.
     #[tokio::test]
     async fn names_that_differ_by_spaces_are_different_files() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(dir.path().join("report"), b"plain").unwrap();
-        std::fs::write(dir.path().join("report "), b"spaced").unwrap();
-        let mut p = local(dir.path()).await;
-        assert_eq!(p.download_to_bytes("/report ").await.unwrap(), b"spaced");
-        assert_eq!(p.download_to_bytes("/report").await.unwrap(), b"plain");
-        p.delete("/report ").await.unwrap();
-        assert_eq!(std::fs::read(dir.path().join("report")).unwrap(), b"plain");
+        let mut spaced = vec![" report"];
+        if cfg!(not(windows)) {
+            spaced.push("report ");
+        }
+        for name in spaced {
+            let dir = tempfile::tempdir().expect("tempdir");
+            std::fs::write(dir.path().join("report"), b"plain").unwrap();
+            std::fs::write(dir.path().join(name), b"spaced").unwrap();
+            let mut p = local(dir.path()).await;
+            let vpath = format!("/{name}");
+            assert_eq!(
+                p.download_to_bytes(&vpath).await.unwrap(),
+                b"spaced",
+                "{name:?}"
+            );
+            assert_eq!(
+                p.download_to_bytes("/report").await.unwrap(),
+                b"plain",
+                "{name:?}"
+            );
+            p.delete(&vpath).await.unwrap();
+            assert_eq!(
+                std::fs::read(dir.path().join("report")).unwrap(),
+                b"plain",
+                "{name:?}"
+            );
+        }
     }
 
     /// An upload of a file onto itself truncated it and reported success; it

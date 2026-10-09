@@ -1508,6 +1508,55 @@ pub fn replace_active_server_profiles(
     replace_server_profiles_for(conn, root_key, user_id, profiles)
 }
 
+/// Refusal of a profile write whose account is no longer the active one.
+pub const ACCOUNT_CHANGED: &str =
+    "ACCOUNT_CHANGED: the active account changed since these profiles were read; nothing was saved";
+
+/// The active user's profiles together with that user's id, read on one
+/// connection, so a later write can be bound to the account they came from
+/// (see [`replace_expected_server_profiles`]).
+pub fn list_active_server_profiles_scoped(
+    conn: &Connection,
+    root_key: &[u8; 32],
+) -> Result<(i64, Vec<Value>), String> {
+    let user_id = active_user_id(conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    Ok((user_id, list_server_profiles_for(conn, root_key, user_id)?))
+}
+
+/// [`replace_active_server_profiles`] for a list read while `expected_user`
+/// was active. A read-modify-write takes seconds, and an account switched in
+/// between (GUI or CLI) would otherwise receive the other account's list, so
+/// the write is refused with [`ACCOUNT_CHANGED`] unless `expected_user` is
+/// still active when it commits: the check and the rows share one IMMEDIATE
+/// transaction, which an account switch (a `global_state` write) cannot
+/// interleave. The transaction opens inside [`with_user_dek`], after the
+/// session lock, the same order every partition writer takes.
+pub fn replace_expected_server_profiles(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+    expected_user: i64,
+    profiles: &[Value],
+) -> Result<(), String> {
+    let conn: &Connection = conn;
+    // Answer a switch away from a locked account as ACCOUNT_CHANGED, before
+    // its DEK lookup can fail as USER_LOCKED.
+    if active_user_id(conn)? != Some(expected_user) {
+        return Err(ACCOUNT_CHANGED.to_string());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, expected_user, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start expected profile replace: {e}"))?;
+        if active_user_id(&tx)? != Some(user_id) {
+            return Err(ACCOUNT_CHANGED.to_string());
+        }
+        insert_profiles_with_dek(&tx, &root_secret, user_id, dek, profiles)?;
+        tx.commit()
+            .map_err(|e| format!("Commit expected profile replace: {e}"))
+    })
+}
+
 /// Read server profiles for a specific user id without changing active_user_id.
 /// This is the back-end for CLI `--user` per-invocation scoping (MU-3): the
 /// caller resolves the target user id (via `cli_find_user_by_name`) and the
@@ -2677,14 +2726,33 @@ pub fn resolve_active_credential(
     let conn = open_or_init_cli()?;
     match active_user_id(&conn)? {
         None => get_optional_secret(store, credential_id),
-        Some(user_id) => {
-            let mut root_key = store.derive_user_partition_wrapping_key();
-            let result =
-                read_credential_with_fallback(&conn, store, &root_key, user_id, credential_id);
-            root_key.zeroize();
-            result
-        }
+        Some(user_id) => read_credential_for_user(&conn, store, user_id, credential_id),
     }
+}
+
+/// [`resolve_active_credential`] for an explicit `user_id`, whichever account
+/// is active: a caller bound to the account it read profiles from keeps
+/// reading that account's secrets across a switch.
+pub fn resolve_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    read_credential_for_user(&conn, store, user_id, credential_id)
+}
+
+fn read_credential_for_user(
+    conn: &Connection,
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<Option<Zeroizing<String>>, String> {
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = read_credential_with_fallback(conn, store, &root_key, user_id, credential_id);
+    root_key.zeroize();
+    result
 }
 
 /// Active-user dual writer (GUI): write the vault first, then mirror in-scope
@@ -4825,13 +4893,35 @@ fn reconcile_overlay_secret_flags<F: Fn(&str) -> bool>(has_secret: F, profiles: 
 pub async fn user_partitions_load_active_server_profiles(
     app: AppHandle,
 ) -> Result<Vec<Value>, String> {
-    init_or_migrate(&app)?;
+    load_active_server_profiles_scoped(&app).map(|(_, profiles)| profiles)
+}
+
+/// The profiles of [`user_partitions_load_active_server_profiles`] and the id
+/// of the account they belong to, for a caller that will write the list back
+/// through `user_partitions_save_active_server_profiles` with that id.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopedServerProfiles {
+    pub user_id: i64,
+    pub profiles: Vec<Value>,
+}
+
+#[tauri::command]
+pub async fn user_partitions_load_active_server_profiles_scoped(
+    app: AppHandle,
+) -> Result<ScopedServerProfiles, String> {
+    load_active_server_profiles_scoped(&app)
+        .map(|(user_id, profiles)| ScopedServerProfiles { user_id, profiles })
+}
+
+fn load_active_server_profiles_scoped(app: &AppHandle) -> Result<(i64, Vec<Value>), String> {
+    init_or_migrate(app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let mut conn = open_or_init(&app)?;
-    let result = list_active_server_profiles(&conn, &root_key);
-    let mut profiles = match result {
-        Ok(profiles) => profiles,
+    let mut conn = open_or_init(app)?;
+    let result = list_active_server_profiles_scoped(&conn, &root_key);
+    let (user_id, mut profiles) = match result {
+        Ok(scoped) => scoped,
         Err(e) => {
             root_key.zeroize();
             return Err(e);
@@ -4839,17 +4929,18 @@ pub async fn user_partitions_load_active_server_profiles(
     };
     // rclone-crypt secrets an older import left in a profile's options move to
     // the vault and a binding, once; the list is re-read, merged and written
-    // in one transaction, and only when a move applied.
+    // in one transaction, and only when a move applied. Secrets and profiles
+    // go to the account the list was read from, not to one switched to since.
     let notes = crate::bridge_commands::migrate_legacy_rclone_crypt_on_load(
         &mut profiles,
-        |key, secret| store_active_credential_dual(&store, key, secret),
+        |key, secret| store_credential_for_user_dual(&store, user_id, key, secret),
         |key| {
-            resolve_active_credential(&store, key)
+            resolve_credential_for_user(&store, user_id, key)
                 .ok()
                 .flatten()
                 .map(|s| s.to_string())
         },
-        |apply| update_active_server_profiles(&mut conn, &root_key, apply),
+        |apply| update_server_profiles_for(&mut conn, &root_key, user_id, apply),
     );
     for note in &notes {
         tracing::warn!("{note}");
@@ -4867,21 +4958,35 @@ pub async fn user_partitions_load_active_server_profiles(
         |key| store.get(key).map(|v| !v.is_empty()).unwrap_or(false),
         &mut profiles,
     );
-    Ok(profiles)
+    Ok((user_id, profiles))
 }
 
+/// Replace the active account's profiles. With `expected_user_id` (the id a
+/// scoped load returned) the write is bound to that account and refused with
+/// [`ACCOUNT_CHANGED`] when another account became active since the read.
 #[tauri::command]
 pub async fn user_partitions_save_active_server_profiles(
     app: AppHandle,
     profiles: Vec<Value>,
+    expected_user_id: Option<i64>,
 ) -> Result<(), String> {
     init_or_migrate(&app)?;
     let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let mut conn = open_or_init(&app)?;
-    let result = replace_active_server_profiles(&mut conn, &root_key, &profiles);
+    let result = match expected_user_id {
+        Some(expected) => {
+            replace_expected_server_profiles(&mut conn, &root_key, expected, &profiles)
+        }
+        None => replace_active_server_profiles(&mut conn, &root_key, &profiles),
+    };
     root_key.zeroize();
     result?;
+    // The blob mirrors the active account; a switch that landed after a bound
+    // write leaves it to the next load of the new account.
+    if expected_user_id.is_some() && active_user_id(&conn)? != expected_user_id {
+        return Ok(());
+    }
     // #736: the same mirror the CLI's `save_active_user_profiles` does, so a
     // profile deleted or renamed here is deleted or renamed in the blob too.
     // The partition write already succeeded, so a mirror failure is a warning.
@@ -5898,6 +6003,49 @@ mod tests {
         set_active_user(&conn, extra.id).expect("switch extra again");
         let reloaded_ops = list_active_server_profiles(&conn, &root).expect("load extra");
         assert_eq!(reloaded_ops, ops_profiles);
+    }
+
+    #[test]
+    fn expected_user_write_is_refused_after_an_account_switch() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let ops = create_passphrase_less_user(&mut conn, &root, "Ops", Some("O"), Some("#22c55e"))
+            .expect("create ops");
+        let default = list_users(&conn)
+            .expect("users")
+            .into_iter()
+            .find(|user| user.name == DEFAULT_USER_NAME)
+            .expect("default user");
+
+        // The edit form reads the default account's list...
+        set_active_user(&conn, default.id).expect("switch default");
+        let (read_user, mut edited) =
+            list_active_server_profiles_scoped(&conn, &root).expect("scoped read");
+        assert_eq!(read_user, default.id);
+        edited[0]["name"] = json!("Edited");
+
+        // ...the account switches before its Save lands...
+        set_active_user(&conn, ops.id).expect("switch ops");
+        let refused = replace_expected_server_profiles(&mut conn, &root, read_user, &edited)
+            .expect_err("a write for the previous account");
+        assert_eq!(refused, ACCOUNT_CHANGED);
+
+        // ...and neither account received the other's list.
+        assert!(list_active_server_profiles(&conn, &root)
+            .expect("load ops")
+            .is_empty());
+        set_active_user(&conn, default.id).expect("switch default again");
+        let default_profiles = list_active_server_profiles(&conn, &root).expect("load default");
+        assert_eq!(default_profiles[0]["name"], "Profile 0");
+
+        // With the account still active, the bound write goes through.
+        replace_expected_server_profiles(&mut conn, &root, read_user, &edited)
+            .expect("write for the active account");
+        assert_eq!(
+            list_active_server_profiles(&conn, &root).expect("reload default")[0]["name"],
+            "Edited"
+        );
     }
 
     #[test]

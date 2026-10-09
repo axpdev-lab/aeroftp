@@ -19,8 +19,12 @@ import {
     PROFILES_CHANGED_EVENT,
     loadSavedServerProfiles,
     loadSavedServerProfilesStrict,
+    mergeSavedServerProfile,
+    readSavedServerProfilesForWrite,
+    savedProfilesGeneration,
     storeSavedServerProfiles,
 } from './serverProfileStore';
+import { unlockUser } from './userPartitions';
 import type { ServerProfile } from '../types';
 
 const sampleProfile = (overrides: Partial<ServerProfile> = {}): ServerProfile => ({
@@ -117,6 +121,45 @@ describe('storeSavedServerProfiles', () => {
         mockInvoke.mockRejectedValueOnce(boom);
 
         await expect(storeSavedServerProfiles([sampleProfile()])).rejects.toBe(boom);
+    });
+
+    it('hands the stored list to listeners and counts only writes that landed', async () => {
+        // My Servers shows this list at once and drops a re-read that started
+        // before it; a failed write must not make a view drop a valid read.
+        const handler = vi.fn();
+        eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
+        const profiles = [sampleProfile({ name: 'renamed' })];
+        const before = savedProfilesGeneration();
+
+        mockInvoke.mockRejectedValueOnce(new Error('disk full'));
+        await expect(storeSavedServerProfiles(profiles)).rejects.toThrow('disk full');
+        expect(savedProfilesGeneration()).toBe(before);
+        expect(handler).not.toHaveBeenCalled();
+
+        mockInvoke.mockResolvedValueOnce(undefined);
+        await storeSavedServerProfiles(profiles, true);
+        expect(savedProfilesGeneration()).toBe(before + 1);
+        expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ connectionMetadata: true, profiles });
+    });
+
+    it('publishes no list for a write that an account switch overlapped', async () => {
+        // The list may belong to the account that was active when the write
+        // started; listeners re-read the active one instead.
+        const handler = vi.fn();
+        eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
+        let finishSave!: () => void;
+        mockInvoke.mockImplementation((cmd: string) => cmd === 'user_partitions_save_active_server_profiles'
+            ? new Promise<void>((resolve) => { finishSave = resolve; })
+            : Promise.resolve({ isUnlocked: true, activeUserId: 2 }));
+        const before = savedProfilesGeneration();
+
+        const save = storeSavedServerProfiles([sampleProfile()]);
+        await unlockUser(2, null);
+        finishSave();
+        await save;
+
+        expect(savedProfilesGeneration()).toBeGreaterThan(before);
+        expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ connectionMetadata: false });
     });
 });
 
@@ -263,5 +306,41 @@ describe('loadSavedServerProfilesStrict', () => {
         mockInvoke.mockRejectedValueOnce(boom);
 
         await expect(loadSavedServerProfilesStrict()).rejects.toBe(boom);
+    });
+});
+
+describe('account-bound profile writes', () => {
+    it('reads the list together with the account it belongs to', async () => {
+        const profiles = [sampleProfile()];
+        mockInvoke.mockResolvedValueOnce({ userId: 4, profiles });
+
+        await expect(readSavedServerProfilesForWrite()).resolves.toEqual({ profiles, userId: 4 });
+        expect(mockInvoke).toHaveBeenCalledWith('user_partitions_load_active_server_profiles_scoped', undefined);
+    });
+
+    it('hands the account to the backend and never falls back to the legacy store', async () => {
+        // The legacy blob has no accounts: writing a bound list there would
+        // drop the binding the backend refused to honour.
+        mockInvoke.mockRejectedValueOnce(new Error('STORE_NOT_READY'));
+
+        await expect(storeSavedServerProfiles([sampleProfile()], false, 4)).rejects.toThrow('STORE_NOT_READY');
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+        expect(mockInvoke).toHaveBeenCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: [sampleProfile()],
+            expectedUserId: 4,
+        });
+    });
+
+    it('binds a single-profile merge to the account it read', async () => {
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()] })
+            .mockResolvedValueOnce(undefined);
+
+        await mergeSavedServerProfile('srv_1', profile => ({ ...profile, name: 'merged' }));
+
+        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: [sampleProfile({ name: 'merged' })],
+            expectedUserId: 4,
+        });
     });
 });
