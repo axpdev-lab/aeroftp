@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Cerca a totes les converses...",
                 "searching": "Cercant...",
                 "sessions": "Sessions",
-                "totalCost": "Cost",
                 "totalTokens": "Tokens",
                 "unlimited": "Il·limitat",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Instal·lat i desactivat",
                 "presetReady": "A punt"
             },
-            "costEstimates": {
-                "cacheTitle": "Estalviat per la memòria cau del prompt, estimat: {read} tokens llegits, {created} escrits",
-                "description": "El recompte de tokens ve del proveïdor i és exacte. El cost és una estimació a partir de la llista de preus d'AeroFTP, es mostra amb la data d'aquesta llista i s'omet quan la llista té més de {days} dies o no té data. L'import facturat és a la consola del vostre proveïdor.",
-                "enable": "Mostra les estimacions de cost",
-                "estimateTitle": "Estimació a partir de la llista de preus d'AeroFTP del {date}. L'import facturat és a la consola del vostre proveïdor.",
-                "expiredTitle": "Sense estimar: la llista de preus d'AeroFTP per a aquest model és del {date}, de fa més de {days} dies. El recompte de tokens és exacte; l'import facturat és a la consola del vostre proveïdor.",
-                "savedEstimateTitle": "Estimació desada amb aquest missatge. L'import facturat és a la consola del vostre proveïdor.",
-                "sumTitle": "Suma de les estimacions de cada resposta. L'import facturat és a la consola del vostre proveïdor.",
-                "title": "Estimacions de cost",
-                "undatedTitle": "Sense estimar: els preus d'AeroFTP per a aquest model no tenen data de revisió. El recompte de tokens és exacte; l'import facturat és a la consola del vostre proveïdor."
+            "tokens": {
+                "breakdown": "{input} tokens d'entrada, {output} tokens de sortida, segons el recompte del proveïdor",
+                "breakdownCache": "{input} tokens d'entrada, {output} tokens de sortida, {cacheRead} llegits de la memòria cau del prompt, {cacheWritten} escrits en aquesta, segons el recompte del proveïdor"
             }
         },
         "archive": {

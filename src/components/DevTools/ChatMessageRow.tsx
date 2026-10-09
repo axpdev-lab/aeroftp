@@ -28,8 +28,6 @@ import { CodingDiagnosticsReview } from './CodingDiagnosticsReview';
 import { getCodingDiagnosticsFromResultData } from './aiChatCodingDiagnostics';
 import { CodingSearchReview } from './CodingSearchReview';
 import { getCodingSearchFromResultData } from './aiChatCodingSearch';
-import { costEstimateView } from './aiChatCostEstimate';
-import { formatCost } from './CostBudgetManager';
 import type { Message, TransferPlan, TransferPlanResultData } from './aiChatTypes';
 import type { AIProviderType } from '../../types/ai';
 
@@ -44,8 +42,6 @@ interface ChatMessageRowProps {
     isExecutingPlan: boolean;
     editorFilePath?: string;
     editorFileName?: string;
-    /** The `showCostEstimates` setting: when off, token counts only. */
-    showCostEstimates: boolean;
     onToggleExpand: (id: string, expand: boolean) => void;
     onCopy: (message: Message) => void;
     onFork: (id: string) => void;
@@ -59,6 +55,17 @@ interface ChatMessageRowProps {
     }>;
 }
 
+/** The provider's own counts behind a reply's total, prompt cache included. */
+function tokenBreakdown(
+    info: NonNullable<Message['tokenInfo']>,
+    t: (key: string, params?: Record<string, string | number>) => string,
+): string {
+    const counts = { input: info.inputTokens || 0, output: info.outputTokens || 0 };
+    return info.cacheReadTokens || info.cacheCreationTokens
+        ? t('ai.tokens.breakdownCache', { ...counts, cacheRead: info.cacheReadTokens || 0, cacheWritten: info.cacheCreationTokens || 0 })
+        : t('ai.tokens.breakdown', counts);
+}
+
 const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     message,
     ct,
@@ -69,7 +76,6 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     isExecutingPlan,
     editorFilePath,
     editorFileName,
-    showCostEstimates,
     onToggleExpand,
     onCopy,
     onFork,
@@ -79,7 +85,6 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     TransferPlanReview,
 }) => {
     const isAssistant = message.role === 'assistant';
-    const costView = costEstimateView(message.tokenInfo, { enabled: showCostEstimates, t });
     const extractedCodingPlan = React.useMemo(
         () => extractCodingPlanArtifact(message.content),
         [message.content],
@@ -244,24 +249,8 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                         </span>
                     )}
                     {message.tokenInfo && (
-                        <span className="flex items-center gap-1 text-gray-500">
+                        <span className="flex items-center gap-1 text-gray-500 cursor-help" title={tokenBreakdown(message.tokenInfo, t)}>
                             • {message.tokenInfo.totalTokens ?? ((message.tokenInfo.inputTokens || 0) + (message.tokenInfo.outputTokens || 0))} tok
-                            {costView.kind !== 'hidden' && (
-                                <span
-                                    className={costView.kind === 'estimate' ? 'text-green-500/70 cursor-help' : 'text-gray-500 cursor-help'}
-                                    title={costView.title}
-                                >
-                                    {costView.text}
-                                </span>
-                            )}
-                            {costView.kind === 'estimate' && message.tokenInfo.cacheSavings !== undefined && message.tokenInfo.cacheSavings > 0 && (
-                                <span
-                                    className="text-cyan-500/70 cursor-help"
-                                    title={t('ai.costEstimates.cacheTitle', { read: message.tokenInfo.cacheReadTokens || 0, created: message.tokenInfo.cacheCreationTokens || 0 })}
-                                >
-                                    ↓≈{formatCost(message.tokenInfo.cacheSavings)}
-                                </span>
-                            )}
                         </span>
                     )}
                 </div>
@@ -284,8 +273,7 @@ function rowsEqual(prev: ChatMessageRowProps, next: ChatMessageRowProps): boolea
         prev.ct === next.ct &&
         prev.t === next.t &&
         prev.editorFilePath === next.editorFilePath &&
-        prev.editorFileName === next.editorFileName &&
-        prev.showCostEstimates === next.showCostEstimates
+        prev.editorFileName === next.editorFileName
     );
 }
 

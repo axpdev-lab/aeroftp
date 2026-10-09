@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Chwilio ar draws pob sgwrs...",
                 "searching": "Yn chwilio...",
                 "sessions": "Sesiynau",
-                "totalCost": "Cost",
                 "totalTokens": "Tokens",
                 "unlimited": "Diderfyn",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Wedi'i osod ac wedi'i ddiffodd",
                 "presetReady": "Yn barod"
             },
-            "costEstimates": {
-                "cacheTitle": "Arbedwyd gan storfa'r anogwr, amcangyfrif: {read} tocyn wedi'u darllen, {created} wedi'u hysgrifennu",
-                "description": "Daw cyfrif y tocynnau gan y darparwr ac maent yn fanwl gywir. Amcangyfrif yw'r gost o restr brisiau AeroFTP, a ddangosir gyda dyddiad y rhestr honno, a chaiff ei hepgor pan fo'r rhestr yn fwy na {days} diwrnod oed neu heb ddyddiad. Mae'r swm a godir ar gonsol eich darparwr.",
-                "enable": "Dangos amcangyfrifon cost",
-                "estimateTitle": "Amcangyfrif o restr brisiau AeroFTP ar {date}. Mae'r swm a godir ar gonsol eich darparwr.",
-                "expiredTitle": "Heb ei amcangyfrif: mae rhestr brisiau AeroFTP ar gyfer y model hwn o {date}, mwy na {days} diwrnod yn ôl. Mae cyfrif y tocynnau'n fanwl gywir; mae'r swm a godir ar gonsol eich darparwr.",
-                "savedEstimateTitle": "Amcangyfrif wedi'i gadw gyda'r neges hon. Mae'r swm a godir ar gonsol eich darparwr.",
-                "sumTitle": "Cyfanswm amcangyfrifon pob ateb. Mae'r swm a godir ar gonsol eich darparwr.",
-                "title": "Amcangyfrifon cost",
-                "undatedTitle": "Heb ei amcangyfrif: nid oes dyddiad adolygu i brisiau AeroFTP ar gyfer y model hwn. Mae cyfrif y tocynnau'n fanwl gywir; mae'r swm a godir ar gonsol eich darparwr."
+            "tokens": {
+                "breakdown": "{input} tocyn mewnbwn, {output} tocyn allbwn, yn ôl cyfrif y darparwr",
+                "breakdownCache": "{input} tocyn mewnbwn, {output} tocyn allbwn, {cacheRead} wedi'i ddarllen o storfa dros dro'r anogwr, {cacheWritten} wedi'i ysgrifennu iddi, yn ôl cyfrif y darparwr"
             }
         },
         "archive": {

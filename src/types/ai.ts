@@ -17,22 +17,6 @@ export interface AIProvider {
     updatedAt: Date;
 }
 
-/**
- * The parts of a provider's price list a flat input/output rate cannot carry,
- * all relative to the flat rates of the model (or of the tier that applies).
- */
-export interface AIModelPricing {
-    /** Price of a cache read as a fraction of the input price. */
-    cacheReadMultiplier?: number;
-    /** Price of a cache write as a fraction of the input price. */
-    cacheWriteMultiplier?: number;
-    /**
-     * Rates for a request whose prompt (uncached input plus cache reads and
-     * writes) is above `aboveTokens`; the highest tier that applies wins.
-     */
-    tiers?: Array<{ aboveTokens: number; inputCostPer1k: number; outputCostPer1k: number }>;
-}
-
 export interface AIModel {
     id: string;
     providerId: string;
@@ -40,8 +24,6 @@ export interface AIModel {
     displayName: string;
     maxTokens: number;
     maxContextTokens?: number;         // Input context window size (distinct from maxTokens output limit)
-    inputCostPer1k?: number;
-    outputCostPer1k?: number;
     supportsStreaming: boolean;
     supportsTools: boolean;
     supportsVision: boolean;
@@ -55,9 +37,6 @@ export interface AIModel {
     capabilitiesVerifiedAt?: string;           // ISO date for provider-doc verification
     capabilitiesSourceUrl?: string;            // Public provider documentation, never a secret URL
     nativeCapabilities?: AIModelNativeCapabilities;
-    pricing?: AIModelPricing;
-    /** ISO date the prices were checked against the provider's price list; the cost is not estimated without it. */
-    priceReviewedAt?: string;
     lifecycleStatus?: 'active' | 'deprecated' | 'retired';
     isEnabled: boolean;
     isDefault: boolean;
@@ -119,7 +98,6 @@ export interface AISettings {
         chatHistoryRetentionDays?: number; // 0 = unlimited, 30/60/90/180/365 days
         enableAutoRAGIndexing?: boolean;   // B07: opt-in auto-index workspace for RAG context (default: true)
         responseStyle?: 'default' | 'concise' | 'explanatory' | 'learning'; // CC-10 output style persona
-        showCostEstimates?: boolean;   // Show estimated costs next to token counts (default: true)
     };
     defaultModelId: string | null;
 }

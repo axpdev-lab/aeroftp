@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Sök i alla konversationer...",
                 "searching": "Söker...",
                 "sessions": "Sessioner",
-                "totalCost": "Kostnad",
                 "totalTokens": "Tokens",
                 "unlimited": "Obegränsat",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Installerad och avstängd",
                 "presetReady": "Redo"
             },
-            "costEstimates": {
-                "cacheTitle": "Sparat av promptcachen, uppskattat: {read} tokens lästa, {created} skrivna",
-                "description": "Antalet tokens kommer från leverantören och är exakt. Kostnaden är en uppskattning baserad på AeroFTP:s prislista, visas med datumet för den listan och utelämnas när listan är mer än {days} dagar gammal eller saknar datum. Det fakturerade beloppet finns i din leverantörs konsol.",
-                "enable": "Visa kostnadsuppskattningar",
-                "estimateTitle": "Uppskattning baserad på AeroFTP:s prislista från {date}. Det fakturerade beloppet finns i din leverantörs konsol.",
-                "expiredTitle": "Ingen uppskattning: AeroFTP:s prislista för den här modellen är från {date}, mer än {days} dagar gammal. Antalet tokens är exakt. Det fakturerade beloppet finns i din leverantörs konsol.",
-                "savedEstimateTitle": "Uppskattning sparad med det här meddelandet. Det fakturerade beloppet finns i din leverantörs konsol.",
-                "sumTitle": "Summan av uppskattningarna för varje svar. Det fakturerade beloppet finns i din leverantörs konsol.",
-                "title": "Kostnadsuppskattningar",
-                "undatedTitle": "Ingen uppskattning: AeroFTP:s priser för den här modellen saknar granskningsdatum. Antalet tokens är exakt. Det fakturerade beloppet finns i din leverantörs konsol."
+            "tokens": {
+                "breakdown": "{input} indatatokens, {output} utdatatokens, enligt leverantörens räkning",
+                "breakdownCache": "{input} indatatokens, {output} utdatatokens, {cacheRead} lästa från promptcachen, {cacheWritten} skrivna till den, enligt leverantörens räkning"
             }
         },
         "archive": {

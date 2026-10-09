@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Otsi kõigist vestlustest...",
                 "searching": "Otsimine...",
                 "sessions": "Seansid",
-                "totalCost": "Maksumus",
                 "totalTokens": "Tokens",
                 "unlimited": "Piiramatu",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Installitud ja välja lülitatud",
                 "presetReady": "Valmis"
             },
-            "costEstimates": {
-                "cacheTitle": "Prompti vahemälu säästis hinnanguliselt: {read} tokenit loetud, {created} kirjutatud",
-                "description": "Tokenite arv pärineb teenusepakkujalt ja on täpne. Kulu on hinnang AeroFTP hinnakirja põhjal, seda näidatakse koos hinnakirja kuupäevaga ning see jäetakse ära, kui hinnakiri on vanem kui {days} päeva või kuupäev puudub. Tegelik arve summa on teie teenusepakkuja konsoolis.",
-                "enable": "Kuva kuluhinnangud",
-                "estimateTitle": "Hinnang AeroFTP hinnakirja põhjal seisuga {date}. Tegelik arve summa on teie teenusepakkuja konsoolis.",
-                "expiredTitle": "Hinnangut ei tehtud: AeroFTP hinnakiri selle mudeli jaoks on kuupäevaga {date}, rohkem kui {days} päeva vana. Tokenite arv on täpne. Tegelik arve summa on teie teenusepakkuja konsoolis.",
-                "savedEstimateTitle": "Selle sõnumiga salvestatud hinnang. Tegelik arve summa on teie teenusepakkuja konsoolis.",
-                "sumTitle": "Iga vastuse hinnangute summa. Tegelik arve summa on teie teenusepakkuja konsoolis.",
-                "title": "Kuluhinnangud",
-                "undatedTitle": "Hinnangut ei tehtud: AeroFTP selle mudeli hindadel puudub ülevaatuse kuupäev. Tokenite arv on täpne. Tegelik arve summa on teie teenusepakkuja konsoolis."
+            "tokens": {
+                "breakdown": "{input} sisendtokenit, {output} väljundtokenit, teenusepakkuja arvestuse järgi",
+                "breakdownCache": "{input} sisendtokenit, {output} väljundtokenit, {cacheRead} loetud viiba vahemälust, {cacheWritten} sinna kirjutatud, teenusepakkuja arvestuse järgi"
             }
         },
         "archive": {

@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "搜索所有对话...",
                 "searching": "搜索中...",
                 "sessions": "会话",
-                "totalCost": "费用",
                 "totalTokens": "Tokens",
                 "unlimited": "无限制",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "已安装并已关闭",
                 "presetReady": "就绪"
             },
-            "costEstimates": {
-                "cacheTitle": "提示词缓存节省（估算）：读取 {read} 个 token，写入 {created} 个",
-                "description": "Token 数量来自服务提供商，是精确的。费用是根据 AeroFTP 价格表得出的估算值，并与该价格表的日期一同显示；如果价格表超过 {days} 天或没有日期，则不显示费用。实际计费金额请在您的服务提供商控制台中查看。",
-                "enable": "显示费用估算",
-                "estimateTitle": "根据 AeroFTP 于 {date} 的价格表得出的估算。实际计费金额请在您的服务提供商控制台中查看。",
-                "expiredTitle": "未估算：此模型的 AeroFTP 价格表日期为 {date}，已超过 {days} 天。Token 数量是精确的；实际计费金额请在您的服务提供商控制台中查看。",
-                "savedEstimateTitle": "随此消息保存的估算。实际计费金额请在您的服务提供商控制台中查看。",
-                "sumTitle": "每条回复估算值的总和。实际计费金额请在您的服务提供商控制台中查看。",
-                "title": "费用估算",
-                "undatedTitle": "未估算：此模型的 AeroFTP 价格没有复核日期。Token 数量是精确的；实际计费金额请在您的服务提供商控制台中查看。"
+            "tokens": {
+                "breakdown": "输入 {input} 个 token，输出 {output} 个 token，以提供商统计为准",
+                "breakdownCache": "输入 {input} 个 token，输出 {output} 个 token，从提示缓存读取 {cacheRead} 个，写入提示缓存 {cacheWritten} 个，以提供商统计为准"
             }
         },
         "archive": {

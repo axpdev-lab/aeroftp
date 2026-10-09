@@ -3071,9 +3071,10 @@ enum Commands {
         #[arg(long)]
         plan_only: bool,
 
-        /// Cost limit in USD (stop when exceeded)
+        /// Stop the agent once its tokens (input, output and prompt cache, as
+        /// the provider counts them) pass this number
         #[arg(long)]
-        cost_limit: Option<f64>,
+        token_limit: Option<u64>,
 
         /// Custom system prompt (or @file.txt to load from file)
         #[arg(long)]
@@ -6724,32 +6725,6 @@ fn apply_top_level_json_field_filter(
     } else {
         value
     }
-}
-
-fn estimate_ai_cost_usd(provider: &str, input_tokens: u64, output_tokens: u64) -> f64 {
-    let (input_per_million, output_per_million) = match provider {
-        "anthropic" => (3.0, 15.0),
-        "openai" => (5.0, 15.0),
-        "gemini" | "google" => (0.35, 1.05),
-        "xai" => (5.0, 15.0),
-        "groq" => (0.59, 0.79),
-        "mistral" => (2.0, 6.0),
-        "deepseek" => (0.27, 1.10),
-        "perplexity" => (1.0, 1.0),
-        "cohere" => (3.0, 15.0),
-        "together" => (0.88, 0.88),
-        "fireworks" => (0.90, 0.90),
-        "cerebras" => (0.85, 1.20),
-        "sambanova" => (0.90, 0.90),
-        "openrouter" => (5.0, 15.0),
-        "kimi" | "moonshot" => (2.0, 10.0),
-        "qwen" => (0.60, 0.60),
-        "ai21" => (2.0, 8.0),
-        "ollama" => (0.0, 0.0),
-        _ => (5.0, 15.0),
-    };
-    (input_tokens as f64 / 1_000_000.0) * input_per_million
-        + (output_tokens as f64 / 1_000_000.0) * output_per_million
 }
 
 fn normalize_release_version(raw: &str) -> Option<Version> {
@@ -67624,26 +67599,8 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
                 .usage
                 .lock()
                 .map_err(|_| "Agent usage lock poisoned".to_string())?;
-            usage.input_tokens += response.input_tokens.unwrap_or(0) as u64;
-            usage.output_tokens += response.output_tokens.unwrap_or(0) as u64;
-            usage.total_tokens += response.tokens_used.unwrap_or(0) as u64;
-
-            if let Some(limit) = cfg.cost_limit {
-                let estimated = estimate_ai_cost_usd(
-                    &cfg.provider_name,
-                    usage.input_tokens,
-                    usage.output_tokens,
-                );
-                if estimated > limit {
-                    return Err(format!(
-                        "Estimated AI cost limit exceeded: ${:.4} > ${:.4} (input tokens: {}, output tokens: {})",
-                        estimated,
-                        limit,
-                        usage.input_tokens,
-                        usage.output_tokens,
-                    ));
-                }
-            }
+            usage.add(response);
+            usage.check_limit(cfg.token_limit)?;
         }
 
         Ok(())
@@ -67869,7 +67826,7 @@ async fn cmd_agent(
     mcp: bool,
     stdin_mode: bool,
     plan_only: bool,
-    cost_limit: Option<f64>,
+    token_limit: Option<u64>,
     system_prompt: Option<String>,
     _cli: &Cli,
     format: OutputFormat,
@@ -68005,7 +67962,7 @@ async fn cmd_agent(
         max_steps,
         system,
         plan_only,
-        cost_limit,
+        token_limit,
         usage: Arc::new(Mutex::new(AgentUsage::default())),
     };
 
@@ -68059,15 +68016,59 @@ struct AgentConfig {
     max_steps: u32,
     system: String,
     plan_only: bool,
-    cost_limit: Option<f64>,
+    token_limit: Option<u64>,
     usage: Arc<Mutex<AgentUsage>>,
 }
 
+/// The agent's tokens, as the providers reported them. AeroFTP does not
+/// estimate what they cost: prices change per model and no provider returns
+/// them per request.
 #[derive(Default)]
 struct AgentUsage {
     input_tokens: u64,
     output_tokens: u64,
+    cache_read_tokens: u64,
+    cache_write_tokens: u64,
     total_tokens: u64,
+}
+
+impl AgentUsage {
+    /// Add one response. Anthropic reports prompt-cache reads and writes
+    /// apart from `input_tokens`, and `tokens_used` is input plus output; no
+    /// other provider fills the cache fields, so nothing is counted twice.
+    fn add(&mut self, response: &ftp_client_gui_lib::ai::AIResponse) {
+        let input = u64::from(response.input_tokens.unwrap_or(0));
+        let output = u64::from(response.output_tokens.unwrap_or(0));
+        let read = u64::from(response.cache_read_input_tokens.unwrap_or(0));
+        let write = u64::from(response.cache_creation_input_tokens.unwrap_or(0));
+        let base = response
+            .tokens_used
+            .map(u64::from)
+            .unwrap_or(input.saturating_add(output));
+        self.input_tokens = self.input_tokens.saturating_add(input);
+        self.output_tokens = self.output_tokens.saturating_add(output);
+        self.cache_read_tokens = self.cache_read_tokens.saturating_add(read);
+        self.cache_write_tokens = self.cache_write_tokens.saturating_add(write);
+        self.total_tokens = self
+            .total_tokens
+            .saturating_add(base.saturating_add(read).saturating_add(write));
+    }
+
+    /// `--token-limit`: an exact count, so the limit holds whatever the model costs.
+    fn check_limit(&self, limit: Option<u64>) -> Result<(), String> {
+        match limit {
+            Some(limit) if self.total_tokens > limit => Err(format!(
+                "Token limit exceeded: {} > {} (input {}, output {}, cache read {}, cache written {})",
+                self.total_tokens,
+                limit,
+                self.input_tokens,
+                self.output_tokens,
+                self.cache_read_tokens,
+                self.cache_write_tokens,
+            )),
+            _ => Ok(()),
+        }
+    }
 }
 
 /// One-shot agent mode
@@ -68231,7 +68232,7 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                     eprintln!("  /tools         List available tools");
                     eprintln!("  /context       Show current context");
                     eprintln!("  /clear         Clear conversation");
-                    eprintln!("  /cost          Show token usage");
+                    eprintln!("  /usage         Show token usage");
                     eprintln!("  /quit          Exit\n");
                 }
                 "/tools" => {
@@ -68268,18 +68269,14 @@ async fn cmd_agent_repl(cfg: &AgentConfig) -> i32 {
                     conversation.clear();
                     eprintln!("  Conversation cleared.\n");
                 }
-                "/cost" => match cfg.usage.lock() {
+                "/usage" => match cfg.usage.lock() {
                     Ok(usage) => {
-                        let estimated = estimate_ai_cost_usd(
-                            &cfg.provider_name,
-                            usage.input_tokens,
-                            usage.output_tokens,
-                        );
                         eprintln!("  Messages:      {}", conversation.len());
                         eprintln!("  Input tokens:  {}", usage.input_tokens);
                         eprintln!("  Output tokens: {}", usage.output_tokens);
-                        eprintln!("  Total tokens:  {}", usage.total_tokens);
-                        eprintln!("  Est. cost:     ${:.4}\n", estimated);
+                        eprintln!("  Cache read:    {}", usage.cache_read_tokens);
+                        eprintln!("  Cache written: {}", usage.cache_write_tokens);
+                        eprintln!("  Total tokens:  {}\n", usage.total_tokens);
                     }
                     Err(_) => eprintln!("  Token usage unavailable.\n"),
                 },
@@ -72673,7 +72670,7 @@ async fn main() {
             stdin,
             yes,
             plan_only,
-            cost_limit,
+            token_limit,
             system,
         } => {
             cmd_agent(
@@ -72691,7 +72688,7 @@ async fn main() {
                 *mcp,
                 *stdin,
                 *plan_only,
-                *cost_limit,
+                *token_limit,
                 system.clone(),
                 &cli,
                 format,
@@ -74893,7 +74890,7 @@ mod tests {
                 stdin: false,
                 yes: false,
                 plan_only: false,
-                cost_limit: None,
+                token_limit: None,
                 system: None,
             }
         }
@@ -75288,7 +75285,7 @@ mod tests {
                 stdin: false,
                 yes,
                 plan_only: false,
-                cost_limit: None,
+                token_limit: None,
                 system: None,
             },
             ..test_cli()
