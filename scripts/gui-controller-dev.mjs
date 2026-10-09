@@ -94,7 +94,12 @@ async function main() {
                 writeFileSync(sessionPath, JSON.stringify({ schema_version: 1, ...fixture, ...result }) + '\n', { flag: 'wx', mode: 0o600 });
             } catch (error) {
                 // A failed local receipt must not orphan an active backend session.
-                await evaluate(`await window.__TAURI_INTERNALS__.invoke('gui_dev_session_end', { sessionId: ${JSON.stringify(result.session_id)} }); return true;`, { port });
+                try {
+                    await evaluate(`await window.__TAURI_INTERNALS__.invoke('gui_dev_session_end', { sessionId: ${JSON.stringify(result.session_id)} }); return true;`, { port });
+                } catch {
+                    // Preserve the local failure and say explicitly that cleanup is uncertain.
+                    throw new Error(`Session receipt was not written (${error.code ?? 'write failed'}); backend cleanup also failed. Restart the owned fixture before beginning again.`);
+                }
                 throw error;
             }
         } else if (mode === '--finish') unlinkSync(sessionPath);

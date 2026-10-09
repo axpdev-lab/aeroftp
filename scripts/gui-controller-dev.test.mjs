@@ -56,6 +56,16 @@ test('session receipts cannot be reused against another process, port or fixture
         }
     } finally { rmSync(root, { recursive: true, force: true }); }
 });
+test('malformed receipt values produce actionable session recovery errors', () => {
+    const root = mkdtempSync(join(tmpdir(), 'gui-receipt-test-'));
+    try {
+        const path = join(root, 'receipt.json');
+        for (const value of [null, [], 1, 'bad']) {
+            writeFileSync(path, JSON.stringify(value));
+            assert.throws(() => readSession(path, {}), /begin a new session/);
+        }
+    } finally { rmSync(root, { recursive: true, force: true }); }
+});
 test('real request pipeline preserves immutable session and does not force fast presentation', async () => {
     const calls = [];
     const body = requestBody({ name: 'show_view', args: { view: 'servers' }, timeout_ms: 1234 }, 'session-one');

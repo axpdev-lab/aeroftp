@@ -166,6 +166,22 @@ pub async fn gui_dev_session_begin(
     dev_sessions::begin(current, &label)
 }
 #[cfg(debug_assertions)]
+fn validate_dev_session_id(id: &str) -> Result<(), String> {
+    let valid = id
+        .strip_prefix("gui-dev-")
+        .and_then(|value| {
+            uuid::Uuid::parse_str(value)
+                .ok()
+                .filter(|uuid| uuid.hyphenated().to_string() == value)
+        })
+        .is_some();
+    if valid {
+        Ok(())
+    } else {
+        Err("invalid_args".into())
+    }
+}
+#[cfg(debug_assertions)]
 #[tauri::command]
 pub async fn gui_dev_session_end(
     app: tauri::AppHandle,
@@ -173,6 +189,7 @@ pub async fn gui_dev_session_end(
     session_id: String,
 ) -> Result<(), String> {
     check_window(window.label())?;
+    validate_dev_session_id(&session_id)?;
     // Cleanup remains possible after expiry or an account/unlock generation change.
     // UUID identity ensures an old finish cannot release a newer actor's lease.
     let _ = dev_sessions::end(scope(&app).await?, &session_id);
@@ -820,6 +837,19 @@ mod tests {
             third["session_id"].as_str().unwrap()
         )
         .is_err());
+    }
+    #[cfg(debug_assertions)]
+    #[test]
+    fn developer_cleanup_refuses_other_namespaces_but_accepts_stale_ids() {
+        assert!(validate_dev_session_id("gui-dev-00000000-0000-4000-8000-000000000000").is_ok());
+        for id in [
+            "aeroagent:abc",
+            "gui-dev-",
+            "gui-dev-00000000000040008000000000000000",
+            "gui-dev-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        ] {
+            assert!(validate_dev_session_id(id).is_err());
+        }
     }
     #[test]
     fn gui_controller_replies_reject_secrets_and_locked_data() {

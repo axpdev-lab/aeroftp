@@ -55,7 +55,7 @@ export function developmentCheckout(cwd) {
 
 export function readSession(path, fixture) {
     const session = JSON.parse(readFileSync(path, 'utf8'));
-    if (session.schema_version !== 1 || session.pid !== fixture.pid || session.port !== fixture.port || session.root !== fixture.root ||
+    if (!session || typeof session !== 'object' || Array.isArray(session) || session.schema_version !== 1 || session.pid !== fixture.pid || session.port !== fixture.port || session.root !== fixture.root ||
         !/^gui-dev-[0-9a-f-]{36}$/.test(session.session_id) || session.actor?.id !== session.session_id || session.actor?.kind !== 'dev') {
         throw Error('Session does not belong to this running fixture; begin a new session');
     }
