@@ -64,6 +64,7 @@ describe('the chat counts the tokens of every model request', () => {
                 const earlyReturn = chatSource.indexOf(site.earlyReturn, request);
                 const recorded = chatSource.indexOf('recordTokenUsage(', request);
                 expect(earlyReturn, `no early return found after AIChat.tsx:${line(request)}`).toBeGreaterThan(request);
+                expect(recorded, `request at AIChat.tsx:${line(request)} records no tokens`).toBeGreaterThan(request);
                 expect(recorded, `request at AIChat.tsx:${line(request)} records its tokens after an early return`).toBeLessThan(earlyReturn);
             }
         }
