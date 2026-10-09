@@ -92,6 +92,15 @@ fn box_is_rate_limited(status: u16) -> bool {
     status == 429 || status == 503
 }
 
+/// How many times a commit answered 202 Accepted is sent again, and how
+/// long the whole wait may last, before the upload is reported as failed.
+const BOX_COMMIT_MAX_ATTEMPTS: u32 = 30;
+const BOX_COMMIT_MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(300);
+/// The wait between two commits when a 202 carries no usable Retry-After,
+/// and the most a single Retry-After is honoured for.
+const BOX_COMMIT_DEFAULT_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
+const BOX_COMMIT_WAIT_CAP: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Compute the marker substring for a Box rate-limit response. Pure-fn
 /// so the test exercises the header-parsing branches without any HTTP
 /// scaffolding.
@@ -1567,30 +1576,86 @@ impl BoxProvider {
 
         // Commit
         let file_sha1 = BASE64.encode(whole_sha1.finalize());
-        let token = self.get_token().await?;
         let commit_body = serde_json::json!({"parts": parts});
-
-        let resp = self
-            .client
-            .post(&commit_url)
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .header(CONTENT_TYPE, "application/json")
-            .header("Digest", format!("sha={}", file_sha1))
-            .json(&commit_body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        if !resp.status().is_success() && resp.status().as_u16() != 201 {
-            let t = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!(
-                "Commit failed: {}",
-                sanitize_api_error(&t)
-            )));
-        }
+        self.commit_upload_session(&commit_url, &commit_body, &file_sha1)
+            .await?;
 
         progress.complete();
         Ok(())
+    }
+
+    /// Commit an upload session: `POST {commit_url}` with the parts and the
+    /// whole-file SHA-1. Box answers 201 with the file, or 202 Accepted while
+    /// it is still processing the parts: then the file does not exist yet,
+    /// and the documented answer is to send the commit again after the
+    /// response's `Retry-After` seconds. A 202 used to be taken as success,
+    /// so an upload could be reported done with no file behind it. The
+    /// commit is repeated up to [`BOX_COMMIT_MAX_ATTEMPTS`] times and for at
+    /// most [`BOX_COMMIT_MAX_WAIT`]; a session still processing after that
+    /// is an error.
+    async fn commit_upload_session(
+        &self,
+        commit_url: &str,
+        commit_body: &serde_json::Value,
+        file_sha1: &str,
+    ) -> Result<(), ProviderError> {
+        let started = std::time::Instant::now();
+        let mut sent = 0;
+        for attempt in 1..=BOX_COMMIT_MAX_ATTEMPTS {
+            sent = attempt;
+            let token = self.get_token().await?;
+            let resp = self
+                .client
+                .post(commit_url)
+                .header(AUTHORIZATION, Self::bearer_header(&token)?)
+                .header(CONTENT_TYPE, "application/json")
+                .header("Digest", format!("sha={}", file_sha1))
+                .json(commit_body)
+                .send()
+                .await
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+
+            let status = resp.status();
+            let retry_header = resp
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from);
+            if status.as_u16() == 202 {
+                // Retry-After in seconds; an HTTP-date, which Box is not seen
+                // to send, falls back to the default wait.
+                let wait = retry_header
+                    .as_deref()
+                    .and_then(super::retry_after::parse_retry_after_seconds)
+                    .unwrap_or(BOX_COMMIT_DEFAULT_WAIT)
+                    .min(BOX_COMMIT_WAIT_CAP);
+                if attempt == BOX_COMMIT_MAX_ATTEMPTS
+                    || started.elapsed() + wait > BOX_COMMIT_MAX_WAIT
+                {
+                    break;
+                }
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+            if status.is_success() {
+                return Ok(());
+            }
+            let text = resp.text().await.unwrap_or_default();
+            let mut msg = format!(
+                "Box commit failed (HTTP {}): {}",
+                status,
+                sanitize_api_error(&text)
+            );
+            if let Some(tail) = box_retry_marker_tail(status.as_u16(), retry_header.as_deref()) {
+                msg.push_str(&tail);
+            }
+            return Err(ProviderError::TransferFailed(msg));
+        }
+        Err(ProviderError::TransferFailed(format!(
+            "Box commit failed: the upload session was still processing its parts after {} commits over {}s",
+            sent,
+            started.elapsed().as_secs()
+        )))
     }
 }
 
@@ -3088,38 +3153,8 @@ impl StorageProvider for BoxProvider {
         let file_sha1 = BASE64.encode(hasher.finalize());
 
         let commit_body = serde_json::json!({ "parts": commit_parts });
-        let token = self.get_token().await?;
-        let resp = self
-            .client
-            .post(&meta.commit_url)
-            .header(AUTHORIZATION, Self::bearer_header(&token)?)
-            .header(CONTENT_TYPE, "application/json")
-            .header("Digest", format!("sha={}", file_sha1))
-            .json(&commit_body)
-            .send()
+        self.commit_upload_session(&meta.commit_url, &commit_body, &file_sha1)
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-        let status = resp.status();
-        // Box returns 201 Created or 202 Accepted (async commit) on success.
-        if !status.is_success() && status.as_u16() != 201 && status.as_u16() != 202 {
-            let retry_header = resp
-                .headers()
-                .get(reqwest::header::RETRY_AFTER)
-                .and_then(|v| v.to_str().ok())
-                .map(String::from);
-            let text = resp.text().await.unwrap_or_default();
-            let mut msg = format!(
-                "Box commit failed (HTTP {}): {}",
-                status,
-                sanitize_api_error(&text)
-            );
-            if let Some(tail) = box_retry_marker_tail(status.as_u16(), retry_header.as_deref()) {
-                msg.push_str(&tail);
-            }
-            return Err(ProviderError::TransferFailed(msg));
-        }
-        Ok(())
     }
 
     async fn abort_multipart_upload(
@@ -4174,6 +4209,82 @@ mod tests {
         got.sort();
         assert_eq!(got, vec![1, 2, 3, 4]);
         server.abort();
+    }
+
+    /// A commit double answering 202 Accepted (`Retry-After: 0`) to the first
+    /// `accepted` commits and then `final_status`; returns the outcome of
+    /// `commit_upload_session` and how many commits the double read.
+    async fn commit_against(
+        accepted: usize,
+        final_status: u16,
+    ) -> (Result<(), ProviderError>, usize) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().route(
+            "/commit",
+            axum::routing::post(move || {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let call = seen.fetch_add(1, Ordering::SeqCst);
+                    let status = if call < accepted { 202 } else { final_status };
+                    axum::response::Response::builder()
+                        .status(status)
+                        .header("retry-after", "0")
+                        .body(axum::body::Body::from("{}"))
+                        .unwrap()
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let provider = fixture_connected();
+        let outcome = provider
+            .commit_upload_session(
+                &format!("http://{addr}/commit"),
+                &serde_json::json!({ "parts": [] }),
+                "sha",
+            )
+            .await;
+        server.abort();
+        (outcome, calls.load(Ordering::SeqCst))
+    }
+
+    /// Box answers 202 Accepted while it is still processing the parts, and
+    /// documents that the commit is to be sent again after Retry-After: the
+    /// file does not exist yet. Both commit paths took the 202 as success.
+    #[tokio::test]
+    async fn a_commit_answered_202_is_sent_again_until_box_creates_the_file() {
+        let (outcome, calls) = commit_against(2, 201).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(calls, 3, "two 202s, then the 201");
+    }
+
+    /// A session that is still processing after the limit is a failed
+    /// upload, never a completed one.
+    #[tokio::test]
+    async fn a_commit_that_stays_202_fails_after_the_limit() {
+        let (outcome, calls) = commit_against(usize::MAX, 201).await;
+        assert_eq!(calls, BOX_COMMIT_MAX_ATTEMPTS as usize);
+        let Err(ProviderError::TransferFailed(msg)) = outcome else {
+            panic!("expected a failure, got {outcome:?}");
+        };
+        assert!(msg.contains("still processing"), "{msg}");
+    }
+
+    /// Any other refusal still fails at once, with its status.
+    #[tokio::test]
+    async fn a_refused_commit_fails_at_once() {
+        let (outcome, calls) = commit_against(0, 409).await;
+        assert_eq!(calls, 1);
+        let Err(ProviderError::TransferFailed(msg)) = outcome else {
+            panic!("expected a failure, got {outcome:?}");
+        };
+        assert!(msg.contains("HTTP 409"), "{msg}");
     }
 
     #[tokio::test]
