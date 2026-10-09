@@ -79,9 +79,11 @@ const formatLastUnlocked = (timestamp: number | null | undefined, neverLabel: st
     return new Date(timestamp).toLocaleString();
 };
 
+// No action here switches the active account (it cannot be deleted), so the
+// GUI controller keeps its sessions; lock and unlock send accountChanged.
 const notifyProfilesChanged = (onChanged?: () => void) => {
     try {
-        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { accountChanged: true } }));
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
     } catch {
         // Browserless tests: best effort.
     }
