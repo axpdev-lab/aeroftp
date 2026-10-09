@@ -1520,7 +1520,8 @@
             "connectTimedOut": "连接超时。服务器始终没有响应，尝试已中止。",
             "transferFailed": "传输失败",
             "navigationFailed": "导航失败：{error}",
-            "transferComplete": "已复制 {count} 个文件"
+            "transferComplete": "已复制 {count} 个文件",
+            "permissionsSessionChanged": "自打开此对话框以来连接已发生变化，因此未做任何更改。请在当前连接上重新打开“权限”。"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",

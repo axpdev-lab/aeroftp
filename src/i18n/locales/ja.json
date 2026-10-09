@@ -1520,7 +1520,8 @@
             "connectTimedOut": "接続がタイムアウトしました。サーバーが応答しなかったため、試行は中止されました。",
             "transferFailed": "転送に失敗しました",
             "navigationFailed": "移動に失敗しました: {error}",
-            "transferComplete": "{count} 個のファイルをコピーしました"
+            "transferComplete": "{count} 個のファイルをコピーしました",
+            "permissionsSessionChanged": "このダイアログを開いてから接続が変更されたため、何も変更されませんでした。現在の接続で「権限」をもう一度開いてください。"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",

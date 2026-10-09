@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Tempo limite de conexão esgotado. O servidor nunca respondeu e a tentativa foi cancelada.",
             "transferFailed": "Falha na transferência",
             "navigationFailed": "Falha na navegação: {error}",
-            "transferComplete": "{count} ficheiro(s) copiado(s)"
+            "transferComplete": "{count} ficheiro(s) copiado(s)",
+            "permissionsSessionChanged": "A conexão mudou desde que este diálogo foi aberto, por isso nada foi alterado. Abra Permissões novamente na conexão atual."
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",

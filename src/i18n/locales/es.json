@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Se agotó el tiempo de espera de la conexión. El servidor nunca respondió y el intento se canceló.",
             "transferFailed": "Error en la transferencia",
             "navigationFailed": "Error de navegación: {error}",
-            "transferComplete": "{count} archivos copiados"
+            "transferComplete": "{count} archivos copiados",
+            "permissionsSessionChanged": "La conexión cambió desde que se abrió este diálogo, por lo que no se cambió nada. Abre Permisos de nuevo en la conexión actual."
         },
         "about": {
             "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",

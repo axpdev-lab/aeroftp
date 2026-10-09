@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Tidsavbrudd for tilkoblingen. Serveren svarte aldri, og forsøket ble avbrutt.",
             "transferFailed": "Overføring mislyktes",
             "navigationFailed": "Navigering mislyktes: {error}",
-            "transferComplete": "{count} fil(er) kopiert"
+            "transferComplete": "{count} fil(er) kopiert",
+            "permissionsSessionChanged": "Tilkoblingen er endret siden denne dialogen ble åpnet, så ingenting ble endret. Åpne Tillatelser på nytt på den gjeldende tilkoblingen."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",

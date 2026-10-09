@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Ühenduse ajalimiit ületati. Server ei vastanud kunagi ja katse katkestati.",
             "transferFailed": "Ülekanne ebaõnnestus",
             "navigationFailed": "Navigeerimine ebaõnnestus: {error}",
-            "transferComplete": "Kopeeriti {count} faili"
+            "transferComplete": "Kopeeriti {count} faili",
+            "permissionsSessionChanged": "Ühendus muutus pärast selle dialoogi avamist, seega midagi ei muudetud. Ava Õigused uuesti praeguse ühenduse jaoks."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",

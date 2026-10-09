@@ -945,7 +945,7 @@ const App: React.FC = () => {
   // Refs for keyboard navigation (sorted arrays defined later via useMemo)
   const sortedLocalFilesRef = useRef<LocalFile[]>([]);
   const sortedRemoteFilesRef = useRef<RemoteFile[]>([]);
-  const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean } | null>(null);
+  const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean, sessionId: string | null } | null>(null);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
   // #401: synchronous in-flight latches. A second double-click (e.g. on "Parent
@@ -13958,7 +13958,7 @@ const App: React.FC = () => {
           setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
         }
       }] : []),
-      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
+      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true, sessionId: activeSessionId }), disabled: count > 1 }] : []),
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => openRemoteProperties('general')
       },
@@ -16990,6 +16990,14 @@ const App: React.FC = () => {
           onClose={() => setPermissionsDialog(null)}
           onSave={async (mode) => {
             if (permissionsDialog?.file) {
+              // provider_chmod acts on whatever session the backend holds now. A
+              // tab switch or reconnect since the dialog opened would apply this
+              // path from the old listing to another server, so refuse instead.
+              if (remoteConnectPhaseRef.current || permissionsDialog.sessionId !== activeSessionId) {
+                setPermissionsDialog(null);
+                notify.error(t('common.failed'), t('toast.permissionsSessionChanged'));
+                return;
+              }
               try {
                 await invoke('provider_chmod', { path: permissionsDialog.file.path, mode });
                 notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));

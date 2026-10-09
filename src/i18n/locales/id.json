@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Waktu koneksi habis. Server tidak pernah merespons dan upaya dibatalkan.",
             "transferFailed": "Transfer gagal",
             "navigationFailed": "Navigasi gagal: {error}",
-            "transferComplete": "{count} berkas disalin"
+            "transferComplete": "{count} berkas disalin",
+            "permissionsSessionChanged": "Koneksi berubah sejak dialog ini dibuka, jadi tidak ada yang diubah. Buka Izin lagi pada koneksi saat ini."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",

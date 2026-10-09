@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Konexioaren denbora-muga gainditu da. Zerbitzariak ez du inoiz erantzun eta saiakera bertan behera utzi da.",
             "transferFailed": "Transferentziak huts egin du",
             "navigationFailed": "Nabigazioak huts egin du: {error}",
-            "transferComplete": "{count} fitxategi kopiatu dira"
+            "transferComplete": "{count} fitxategi kopiatu dira",
+            "permissionsSessionChanged": "Elkarrizketa-koadroa ireki zenetik konexioa aldatu da, beraz, ez da ezer aldatu. Ireki Baimenak berriro uneko konexioan."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",

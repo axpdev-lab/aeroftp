@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Timpul de conectare a expirat. Serverul nu a răspuns niciodată și încercarea a fost anulată.",
             "transferFailed": "Transferul a eșuat",
             "navigationFailed": "Navigarea a eșuat: {error}",
-            "transferComplete": "{count} fișiere copiate"
+            "transferComplete": "{count} fișiere copiate",
+            "permissionsSessionChanged": "Conexiunea s-a schimbat de când a fost deschis acest dialog, așa că nu s-a modificat nimic. Deschideți din nou Permisiuni pe conexiunea curentă."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",

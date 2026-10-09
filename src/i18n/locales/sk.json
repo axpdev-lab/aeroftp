@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Vypršal časový limit pripojenia. Server nikdy neodpovedal a pokus bol prerušený.",
             "transferFailed": "Prenos zlyhal",
             "navigationFailed": "Navigácia zlyhala: {error}",
-            "transferComplete": "Skopírovaných {count} súborov"
+            "transferComplete": "Skopírovaných {count} súborov",
+            "permissionsSessionChanged": "Pripojenie sa od otvorenia tohto dialógu zmenilo, preto sa nič nezmenilo. Otvorte Oprávnenia znova na aktuálnom pripojení."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",

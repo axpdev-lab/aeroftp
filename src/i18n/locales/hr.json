@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Isteklo je vrijeme za povezivanje. Poslužitelj nikada nije odgovorio i pokušaj je prekinut.",
             "transferFailed": "Prijenos nije uspio",
             "navigationFailed": "Navigacija nije uspjela: {error}",
-            "transferComplete": "Kopirano {count} datoteka"
+            "transferComplete": "Kopirano {count} datoteka",
+            "permissionsSessionChanged": "Veza se promijenila otkako je ovaj dijalog otvoren, pa ništa nije promijenjeno. Ponovno otvorite Dozvole na trenutnoj vezi."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",

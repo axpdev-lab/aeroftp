@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Sambungan tamat masa. Pelayan tidak pernah membalas dan percubaan telah dibatalkan.",
             "transferFailed": "Pemindahan gagal",
             "navigationFailed": "Navigasi gagal: {error}",
-            "transferComplete": "{count} fail disalin"
+            "transferComplete": "{count} fail disalin",
+            "permissionsSessionChanged": "Sambungan telah berubah sejak dialog ini dibuka, jadi tiada apa yang diubah. Buka Kebenaran semula pada sambungan semasa."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",

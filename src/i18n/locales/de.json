@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Zeitüberschreitung der Verbindung. Der Server hat nie geantwortet und der Versuch wurde abgebrochen.",
             "transferFailed": "Übertragung fehlgeschlagen",
             "navigationFailed": "Navigation fehlgeschlagen: {error}",
-            "transferComplete": "{count} Datei(en) kopiert"
+            "transferComplete": "{count} Datei(en) kopiert",
+            "permissionsSessionChanged": "Die Verbindung hat sich geändert, seit dieser Dialog geöffnet wurde, daher wurde nichts geändert. Öffnen Sie Berechtigungen erneut für die aktuelle Verbindung."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",

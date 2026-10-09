@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Nag-timeout ang koneksyon. Hindi kailanman tumugon ang server at ikinansela ang pagtatangka.",
             "transferFailed": "Nabigo ang paglipat",
             "navigationFailed": "Nabigo ang paglipat: {error}",
-            "transferComplete": "{count} (na) file ang nakopya"
+            "transferComplete": "{count} (na) file ang nakopya",
+            "permissionsSessionChanged": "Nagbago ang koneksyon mula nang buksan ang dialog na ito, kaya walang binago. Buksan muli ang Mga Pahintulot sa kasalukuyang koneksyon."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",

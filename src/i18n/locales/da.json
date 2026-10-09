@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Forbindelsen fik timeout. Serveren svarede aldrig, og forsøget blev afbrudt.",
             "transferFailed": "Overførsel mislykkedes",
             "navigationFailed": "Navigation mislykkedes: {error}",
-            "transferComplete": "{count} filer kopieret"
+            "transferComplete": "{count} filer kopieret",
+            "permissionsSessionChanged": "Forbindelsen er ændret, siden denne dialog blev åbnet, så intet er blevet ændret. Åbn Tilladelser igen på den aktuelle forbindelse."
         },
         "about": {
             "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",

@@ -1520,7 +1520,8 @@
             "connectTimedOut": "연결 시간이 초과되었습니다. 서버가 응답하지 않아 시도가 중단되었습니다.",
             "transferFailed": "전송 실패",
             "navigationFailed": "이동 실패: {error}",
-            "transferComplete": "{count}개 파일을 복사했습니다"
+            "transferComplete": "{count}개 파일을 복사했습니다",
+            "permissionsSessionChanged": "이 대화상자를 연 이후 연결이 변경되어 아무것도 변경되지 않았습니다. 현재 연결에서 권한을 다시 여세요."
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",
