@@ -4,10 +4,28 @@
 import { Message } from './aiChatTypes';
 import { determineBudgetMode } from './aiChatSmartContext';
 import { BudgetMode } from '../../types/contextIntelligence';
+import type { AIModelPricing } from '../../types/ai';
+import { PRICE_LIST_MAX_AGE_DAYS } from '../../types/aiModelRegistry';
 
 export interface ModelCostInfo {
     inputCostPer1k?: number;
     outputCostPer1k?: number;
+    pricing?: AIModelPricing;
+    priceReviewedAt?: string;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether prices checked on `reviewedAt` (an ISO day) can still back an
+ * estimate at `now`: through the 90th day after the review, yes. A missing
+ * or unparseable date is no date; one ahead of the clock counts as current.
+ */
+export function priceListStatus(reviewedAt: string | undefined, now: Date): 'current' | 'expired' | 'undated' {
+    if (!reviewedAt || !/^\d{4}-\d{2}-\d{2}$/.test(reviewedAt)) return 'undated';
+    const reviewed = Date.parse(`${reviewedAt}T00:00:00Z`);
+    if (Number.isNaN(reviewed) || new Date(reviewed).toISOString().slice(0, 10) !== reviewedAt) return 'undated';
+    return Math.floor((now.getTime() - reviewed) / DAY_MS) > PRICE_LIST_MAX_AGE_DAYS ? 'expired' : 'current';
 }
 
 export interface TokenBudgetBreakdown {
@@ -83,32 +101,71 @@ export function computeTokenInfo(
     modelCost: ModelCostInfo | undefined,
     cacheCreationTokens?: number,
     cacheReadTokens?: number,
+    now: Date = new Date(),
 ): Message['tokenInfo'] | undefined {
-    if (!inputTokens && !outputTokens && !tokensUsed) return undefined;
+    const input = inputTokens || 0;
+    const output = outputTokens || 0;
+    const written = cacheCreationTokens || 0;
+    const read = cacheReadTokens || 0;
+    if (!input && !output && !tokensUsed && !written && !read) return undefined;
+    const pricing = modelCost?.pricing;
 
-    const cost = modelCost?.inputCostPer1k && modelCost?.outputCostPer1k
-        ? ((inputTokens || 0) / 1000) * modelCost.inputCostPer1k +
-          ((outputTokens || 0) / 1000) * modelCost.outputCostPer1k
-        : undefined;
-
-    // Anthropic prompt caching savings calculation:
-    // Cache reads are 90% cheaper than normal input tokens.
-    // Cache creation costs 25% more than normal input tokens.
-    // Net savings = read discount - creation surcharge.
+    let cost: number | undefined;
     let cacheSavings: number | undefined;
-    if (modelCost?.inputCostPer1k && (cacheCreationTokens || cacheReadTokens)) {
-        const readDiscount = ((cacheReadTokens || 0) / 1000) * modelCost.inputCostPer1k * 0.9;
-        const creationSurcharge = ((cacheCreationTokens || 0) / 1000) * modelCost.inputCostPer1k * 0.25;
-        cacheSavings = readDiscount - creationSurcharge;
+    if (pricing && modelCost?.inputCostPer1k && modelCost?.outputCostPer1k) {
+        // A model with a published price list (every Anthropic model): the
+        // provider bills cache writes and reads apart from `input_tokens`, so
+        // each is priced at its own multiplier, and the tier is picked from the
+        // whole prompt, cached parts included.
+        const prompt = input + written + read;
+        const tier = [...(pricing.tiers ?? [])]
+            .sort((a, b) => b.aboveTokens - a.aboveTokens)
+            .find(t => prompt > t.aboveTokens);
+        const inRate = tier?.inputCostPer1k ?? modelCost.inputCostPer1k;
+        const outRate = tier?.outputCostPer1k ?? modelCost.outputCostPer1k;
+        const writeMultiplier = pricing.cacheWriteMultiplier ?? 1;
+        const readMultiplier = pricing.cacheReadMultiplier ?? 1;
+        cost = (input / 1000) * inRate
+            + (output / 1000) * outRate
+            + (written / 1000) * inRate * writeMultiplier
+            + (read / 1000) * inRate * readMultiplier;
+        if (written || read) {
+            // Against the same prompt sent uncached.
+            cacheSavings = (read / 1000) * inRate * (1 - readMultiplier)
+                - (written / 1000) * inRate * (writeMultiplier - 1);
+        }
+    } else {
+        cost = modelCost?.inputCostPer1k && modelCost?.outputCostPer1k
+            ? (input / 1000) * modelCost.inputCostPer1k + (output / 1000) * modelCost.outputCostPer1k
+            : undefined;
+        // Without a price list, the generic estimate: reads about 90% cheaper
+        // than input, writes 25% dearer.
+        if (modelCost?.inputCostPer1k && (written || read)) {
+            const readDiscount = (read / 1000) * modelCost.inputCostPer1k * 0.9;
+            const creationSurcharge = (written / 1000) * modelCost.inputCostPer1k * 0.25;
+            cacheSavings = readDiscount - creationSurcharge;
+        }
     }
 
-    return {
+    const tokens = {
         inputTokens,
         outputTokens,
-        totalTokens: tokensUsed ?? ((inputTokens || 0) + (outputTokens || 0)),
-        cost,
+        // Anthropic reports cache writes and reads apart from `input_tokens`,
+        // and the backend's `tokens_used` is input plus output only; no other
+        // provider fills the cache fields, so adding them never counts twice.
+        totalTokens: (tokensUsed ?? (input + output)) + written + read,
         cacheCreationTokens,
         cacheReadTokens,
-        cacheSavings,
     };
+    // A model priced at zero (a local one) costs nothing: a known amount,
+    // with no price list to date.
+    if (modelCost?.inputCostPer1k === 0 && modelCost?.outputCostPer1k === 0) return { ...tokens, cost: 0 };
+    if (cost === undefined) return tokens;
+    // The tokens are the provider's count; the money is ours, from a price
+    // list that ages. Without a date, or past 90 days, no amount is shown,
+    // summed, saved or exported: the reply says why instead.
+    const status = priceListStatus(modelCost?.priceReviewedAt, now);
+    const priceListDate = status === 'undated' ? undefined : modelCost?.priceReviewedAt;
+    if (status !== 'current') return { ...tokens, priceListDate, costWithheld: status };
+    return { ...tokens, cost, cacheSavings, priceListDate };
 }

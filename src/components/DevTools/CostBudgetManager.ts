@@ -18,6 +18,7 @@ export interface SpendingRecord {
     totalCost: number;      // Total USD spent
     requestCount: number;   // Number of requests
     tokenCount: number;     // Total tokens used
+    unpricedRequests?: number; // Requests whose cost could not be estimated (absent in older records)
 }
 
 /** Per-conversation cost summary */
@@ -77,7 +78,7 @@ export async function initBudgetManager(): Promise<void> {
                 // Admission runs before recordSpending: normalize persisted cost
                 // now, and fail closed when the prior spend cannot be trusted.
                 spendingCache.set(spendingKey(r.providerId, r.month), {
-                    ...r, totalCost: persistedCost(r.totalCost),
+                    ...r, totalCost: persistedCost(r.totalCost), unpricedRequests: persistedUnpriced(r.unpricedRequests),
                 });
             });
         }
@@ -91,6 +92,12 @@ function persistedCost(value: unknown): number {
     return typeof parsed === 'number' && Number.isFinite(parsed) && parsed >= 0
         ? Math.min(parsed, Number.MAX_SAFE_INTEGER)
         : Number.MAX_SAFE_INTEGER;
+}
+
+/** A record from before the field existed has none; anything else unreadable fails closed. */
+function persistedUnpriced(value: unknown): number {
+    if (value === undefined) return 0;
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : Number.MAX_SAFE_INTEGER;
 }
 
 /**
@@ -129,6 +136,24 @@ export function checkBudget(providerId: string): BudgetCheckResult {
         };
     }
 
+    // A request whose cost could not be estimated (no current price list) is
+    // not a $0 request: the spend above leaves it out, so the limit can no
+    // longer be proved. A hard stop refuses, a plain budget warns.
+    const unpriced = record?.unpricedRequests ?? 0;
+    if (unpriced > 0) {
+        const requests = unpriced === 1 ? '1 request' : `${unpriced} requests`;
+        return {
+            allowed: !config.hardStop,
+            currentSpend,
+            limit: config.monthlyLimitUsd,
+            percentUsed: Math.min(100, Math.round(percentUsed)),
+            warning: true,
+            message: config.hardStop
+                ? `Monthly budget cannot be enforced: ${requests} this month had no cost estimate (no current price list for the model).`
+                : `Budget cannot be checked: ${requests} this month had no cost estimate (no current price list for the model).`,
+        };
+    }
+
     return {
         allowed: true,
         currentSpend,
@@ -154,7 +179,8 @@ function addBoundedCounter(current: number, delta: number): number {
  */
 export async function recordSpending(
     providerId: string,
-    cost: number,
+    /** Estimated USD; `undefined` when it could not be estimated, never meaning $0. */
+    cost: number | undefined,
     tokens: number,
     conversationId?: string,
 ): Promise<BudgetCheckResult> {
@@ -168,8 +194,13 @@ export async function recordSpending(
         totalCost: 0,
         requestCount: 0,
         tokenCount: 0,
+        unpricedRequests: 0,
     };
-    existing.totalCost = addBoundedCounter(existing.totalCost, cost);
+    if (cost === undefined) {
+        existing.unpricedRequests = addBoundedCounter(existing.unpricedRequests ?? 0, 1);
+    } else {
+        existing.totalCost = addBoundedCounter(existing.totalCost, cost);
+    }
     existing.requestCount = addBoundedCounter(existing.requestCount, 1);
     existing.tokenCount = addBoundedCounter(existing.tokenCount, tokens);
     spendingCache.set(key, existing);
@@ -183,7 +214,9 @@ export async function recordSpending(
             requestCount: 0,
             lastUpdated: new Date().toISOString(),
         };
-        convCost.totalCost = addBoundedCounter(convCost.totalCost, cost);
+        // The conversation shows the sum of the estimates; the reply itself
+        // says when its cost was not estimated.
+        convCost.totalCost = addBoundedCounter(convCost.totalCost, cost ?? 0);
         convCost.totalTokens = addBoundedCounter(convCost.totalTokens, tokens);
         convCost.requestCount = addBoundedCounter(convCost.requestCount, 1);
         convCost.lastUpdated = new Date().toISOString();

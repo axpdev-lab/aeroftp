@@ -14,9 +14,17 @@ describe('delegation spending', () => {
     });
     it('records aggregate usage with the pinned model pricing before returning the answer', async () => {
         const dispatch = vi.fn(async () => ({ answer: 'done', inputTokens: 1000, outputTokens: 500 }));
-        const result = await runBudgetedDelegation('provider', { inputCostPer1k: 2, outputCostPer1k: 3 }, 'chat', dispatch, vi.fn());
+        // Prices checked today: the estimate stands whatever day the suite runs.
+        const priceReviewedAt = new Date().toISOString().slice(0, 10);
+        const result = await runBudgetedDelegation('provider', { inputCostPer1k: 2, outputCostPer1k: 3, priceReviewedAt }, 'chat', dispatch, vi.fn());
         expect(mocks.record).toHaveBeenCalledWith('provider', 3.5, 1500, 'chat');
         expect(result.tokenInfo?.cost).toBe(3.5); expect(result.result.answer).toBe('done');
+    });
+    it('records the tokens and an unknown amount, not $0, when the prices carry no review date', async () => {
+        const dispatch = vi.fn(async () => ({ answer: 'done', inputTokens: 1000, outputTokens: 500 }));
+        const result = await runBudgetedDelegation('provider', { inputCostPer1k: 2, outputCostPer1k: 3 }, 'chat', dispatch, vi.fn());
+        expect(mocks.record).toHaveBeenCalledWith('provider', undefined, 1500, 'chat');
+        expect(result.tokenInfo?.cost).toBeUndefined(); expect(result.tokenInfo?.costWithheld).toBe('undated');
     });
     it('does not invent provider usage when dispatch fails', async () => {
         await expect(runBudgetedDelegation('provider', undefined, undefined, () => Promise.reject(new Error('failed')), vi.fn())).rejects.toThrow('failed');

@@ -3130,6 +3130,17 @@
                 "presetInstall": "Instalar",
                 "presetInstalledDisabled": "Instalado e desligado",
                 "presetReady": "Pronto"
+            },
+            "costEstimates": {
+                "cacheTitle": "Economizado pelo cache do prompt, estimativa: {read} tokens lidos, {created} gravados",
+                "description": "A contagem de tokens vem do provedor e é exata. O custo é uma estimativa baseada na lista de preços do AeroFTP, exibida com a data dessa lista, e é omitida quando a lista tem mais de {days} dias ou não tem data. O valor cobrado está no console do seu provedor.",
+                "enable": "Mostrar estimativas de custo",
+                "estimateTitle": "Estimativa baseada na lista de preços do AeroFTP de {date}. O valor cobrado está no console do seu provedor.",
+                "expiredTitle": "Não estimado: a lista de preços do AeroFTP para este modelo é de {date}, há mais de {days} dias. A contagem de tokens é exata; o valor cobrado está no console do seu provedor.",
+                "savedEstimateTitle": "Estimativa salva com esta mensagem. O valor cobrado está no console do seu provedor.",
+                "sumTitle": "Soma das estimativas de cada resposta. O valor cobrado está no console do seu provedor.",
+                "title": "Estimativas de custo",
+                "undatedTitle": "Não estimado: os preços do AeroFTP para este modelo não têm data de revisão. A contagem de tokens é exata; o valor cobrado está no console do seu provedor."
             }
         },
         "archive": {

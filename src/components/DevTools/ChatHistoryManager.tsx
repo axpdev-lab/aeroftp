@@ -24,6 +24,8 @@ interface ChatHistoryManagerProps {
     onClose: () => void;
     onSessionDeleted: () => void;
     onNavigateToSession: (sessionId: string) => void;
+    /** The `showCostEstimates` setting: when off, the total cost is not shown. */
+    showCostEstimates: boolean;
 }
 
 export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
@@ -31,6 +33,7 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
     onClose,
     onSessionDeleted,
     onNavigateToSession,
+    showCostEstimates,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -139,7 +142,11 @@ export const ChatHistoryManager: React.FC<ChatHistoryManagerProps> = ({
                     <span>{t('ai.history.sessions')}: <strong>{stats.total_sessions}</strong></span>
                     <span>{t('ai.history.messagesCount')}: <strong>{stats.total_messages}</strong></span>
                     <span>{t('ai.history.totalTokens')}: <strong>{stats.total_tokens.toLocaleString()}</strong></span>
-                    <span>{t('ai.history.totalCost')}: <strong>{new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(stats.total_cost)}</strong></span>
+                    {showCostEstimates && (
+                        <span className="cursor-help" title={t('ai.costEstimates.sumTitle')}>
+                            {t('ai.history.totalCost')}: <strong>≈{new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(stats.total_cost)}</strong>
+                        </span>
+                    )}
                     <span>{t('ai.history.dbSize')}: <strong>{formatBytes(stats.db_size_bytes)}</strong></span>
                 </div>
             )}

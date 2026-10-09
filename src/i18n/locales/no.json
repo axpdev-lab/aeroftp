@@ -3130,6 +3130,17 @@
                 "presetInstall": "Installer",
                 "presetInstalledDisabled": "Installert og slått av",
                 "presetReady": "Klar"
+            },
+            "costEstimates": {
+                "cacheTitle": "Spart av prompt-bufferen, estimert: {read} tokens lest, {created} skrevet",
+                "description": "Antall tokens kommer fra leverandøren og er nøyaktig. Kostnaden er et estimat basert på AeroFTPs prisliste, vises med datoen for den listen og utelates når listen er mer enn {days} dager gammel eller mangler dato. Det fakturerte beløpet finner du i leverandørens konsoll.",
+                "enable": "Vis kostnadsestimater",
+                "estimateTitle": "Estimat basert på AeroFTPs prisliste fra {date}. Det fakturerte beløpet finner du i leverandørens konsoll.",
+                "expiredTitle": "Ikke estimert: AeroFTPs prisliste for denne modellen er fra {date}, mer enn {days} dager gammel. Antall tokens er nøyaktig. Det fakturerte beløpet finner du i leverandørens konsoll.",
+                "savedEstimateTitle": "Estimat lagret sammen med denne meldingen. Det fakturerte beløpet finner du i leverandørens konsoll.",
+                "sumTitle": "Summen av estimatene for hvert svar. Det fakturerte beløpet finner du i leverandørens konsoll.",
+                "title": "Kostnadsestimater",
+                "undatedTitle": "Ikke estimert: AeroFTPs priser for denne modellen har ingen gjennomgangsdato. Antall tokens er nøyaktig. Det fakturerte beløpet finner du i leverandørens konsoll."
             }
         },
         "archive": {
@@ -4041,8 +4052,8 @@
                     "lossless": "Tapsfri",
                     "lossy": "Med tap",
                     "losslessHint": "Reversibel: piksler bevares nøyaktig når de lagres i et tapsfritt format",
-                    "lossyHint": "Endrer piksler: endringen kan ikke angres noyaktig",
-                    "formatLosslessNote": "Tapsfritt format: piksler lagres noyaktig. Redigeringer med tap ovenfor endrer likevel bildet.",
+                    "lossyHint": "Endrer piksler: endringen kan ikke angres nøyaktig",
+                    "formatLosslessNote": "Tapsfritt format: piksler lagres nøyaktig. Redigeringer med tap ovenfor endrer likevel bildet.",
                     "formatLossyNote": "Format med tap: omkoding forkaster noen bildedata, også tapsfrie redigeringer.",
                     "reencodeWarnTitle": "Konvertering fra tapsformat til tapsformat",
                     "reencodeWarnNote": "Å konvertere ett tapsformat til et annet omkoder bildet og legger til enda en permanent generasjon med kvalitetstap. Å beholde originalformatet unngår det.",

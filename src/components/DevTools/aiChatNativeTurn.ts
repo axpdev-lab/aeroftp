@@ -52,11 +52,29 @@ function lastAssistantIndex(history: History): number {
     return -1;
 }
 
+/**
+ * Anthropic models on the native contract: adaptive thinking steered by
+ * effort, no sampling parameters. Their API refuses `temperature`, `top_p`,
+ * `top_k` and `budget_tokens` with a 400, all of which the legacy adapter
+ * sends. Kept equal to `ANTHROPIC_NATIVE_MODELS` in `ai_native.rs` by a Rust
+ * test, and to the registry's `fixedSamplingParameters` by a vitest.
+ */
+export const ANTHROPIC_NATIVE_MODELS: readonly string[] = [
+    'claude-fable-5-1',
+    'claude-opus-5-5',
+    'claude-sonnet-5-5',
+    'claude-haiku-5-5',
+    'claude-opus-5',
+    'claude-sonnet-5',
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+];
+
 export function requiresNativeTurn(request: Record<string, unknown>): boolean {
     return request.use_responses_api === true
         || usesModelStudioContract(String(request.provider_type), String(request.base_url), String(request.model))
         || request.provider_type === 'nvidia' || request.provider_type === 'openrouter'
-        || (request.provider_type === 'anthropic' && ['claude-opus-5-5', 'claude-fable-5-1'].includes(String(request.model)))
+        || (request.provider_type === 'anthropic' && ANTHROPIC_NATIVE_MODELS.includes(String(request.model)))
         || (request.provider_type === 'kimi' && request.model === 'kimi-k3')
         || (request.provider_type === 'xai' && request.model === 'grok-4.7')
         || (request.provider_type === 'openai' && ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'].includes(String(request.model)));

@@ -3130,6 +3130,17 @@
                 "presetInstall": "Kur",
                 "presetInstalledDisabled": "Kuruldu ve kapalı",
                 "presetReady": "Hazır"
+            },
+            "costEstimates": {
+                "cacheTitle": "İstem önbelleğiyle tasarruf, tahmini: {read} token okundu, {created} yazıldı",
+                "description": "Token sayıları sağlayıcıdan gelir ve kesindir. Maliyet, AeroFTP'nin fiyat listesine dayanan bir tahmindir, o listenin tarihiyle birlikte gösterilir ve liste {days} günden eskiyse veya tarihi yoksa gösterilmez. Faturalanan tutar sağlayıcınızın konsolundadır.",
+                "enable": "Maliyet tahminlerini göster",
+                "estimateTitle": "AeroFTP'nin {date} tarihli fiyat listesine dayanan tahmin. Faturalanan tutar sağlayıcınızın konsolundadır.",
+                "expiredTitle": "Tahmin edilmedi: AeroFTP'nin bu model için fiyat listesi {date} tarihli ve {days} günden daha eski. Token sayıları kesindir; faturalanan tutar sağlayıcınızın konsolundadır.",
+                "savedEstimateTitle": "Bu mesajla birlikte kaydedilen tahmin. Faturalanan tutar sağlayıcınızın konsolundadır.",
+                "sumTitle": "Her yanıtın tahminlerinin toplamı. Faturalanan tutar sağlayıcınızın konsolundadır.",
+                "title": "Maliyet tahminleri",
+                "undatedTitle": "Tahmin edilmedi: AeroFTP'nin bu model için fiyatlarında inceleme tarihi yok. Token sayıları kesindir; faturalanan tutar sağlayıcınızın konsolundadır."
             }
         },
         "archive": {

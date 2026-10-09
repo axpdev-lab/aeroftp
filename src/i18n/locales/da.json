@@ -3130,6 +3130,17 @@
                 "presetInstall": "Installer",
                 "presetInstalledDisabled": "Installeret og slået fra",
                 "presetReady": "Klar"
+            },
+            "costEstimates": {
+                "cacheTitle": "Sparet af promptcachen, anslået: {read} tokens læst, {created} skrevet",
+                "description": "Antallet af tokens kommer fra udbyderen og er præcist. Prisen er et overslag baseret på AeroFTP's prisliste, vises med datoen for den liste og udelades, når listen er mere end {days} dage gammel eller ikke har en dato. Det faktiske faktureringsbeløb står i din udbyders konsol.",
+                "enable": "Vis omkostningsoverslag",
+                "estimateTitle": "Overslag baseret på AeroFTP's prisliste fra {date}. Det faktiske faktureringsbeløb står i din udbyders konsol.",
+                "expiredTitle": "Ikke beregnet: AeroFTP's prisliste for denne model er fra {date}, mere end {days} dage gammel. Antallet af tokens er præcist; det faktiske faktureringsbeløb står i din udbyders konsol.",
+                "savedEstimateTitle": "Overslag gemt sammen med denne besked. Det faktiske faktureringsbeløb står i din udbyders konsol.",
+                "sumTitle": "Summen af overslagene for hvert svar. Det faktiske faktureringsbeløb står i din udbyders konsol.",
+                "title": "Omkostningsoverslag",
+                "undatedTitle": "Ikke beregnet: AeroFTP's priser for denne model har ingen gennemgangsdato. Antallet af tokens er præcist; det faktiske faktureringsbeløb står i din udbyders konsol."
             }
         },
         "archive": {

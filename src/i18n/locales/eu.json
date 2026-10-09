@@ -3130,6 +3130,17 @@
                 "presetInstall": "Instalatu",
                 "presetInstalledDisabled": "Instalatuta eta itzalita",
                 "presetReady": "Prest"
+            },
+            "costEstimates": {
+                "cacheTitle": "Prompt-cachearen bidez aurreztua, zenbatetsia: {read} token irakurri dira, {created} idatzi",
+                "description": "Token kopuruak hornitzailearengandik datoz eta zehatzak dira. Kostua AeroFTPren prezio-zerrendan oinarritutako zenbatespena da, zerrenda horren datarekin erakusten da, eta zerrenda {days} egun baino zaharragoa denean edo datarik ez duenean kentzen da. Fakturatutako zenbatekoa zure hornitzailearen kontsolan dago.",
+                "enable": "Erakutsi kostuen zenbatespenak",
+                "estimateTitle": "AeroFTPren prezio-zerrendan oinarritutako zenbatespena (data: {date}). Fakturatutako zenbatekoa zure hornitzailearen kontsolan dago.",
+                "expiredTitle": "Ez da zenbatetsi: eredu honen AeroFTPren prezio-zerrenda {date} datakoa da, {days} egun baino gehiago dira. Token kopuruak zehatzak dira. Fakturatutako zenbatekoa zure hornitzailearen kontsolan dago.",
+                "savedEstimateTitle": "Mezu honekin gordetako zenbatespena. Fakturatutako zenbatekoa zure hornitzailearen kontsolan dago.",
+                "sumTitle": "Erantzun bakoitzaren zenbatespenen batura. Fakturatutako zenbatekoa zure hornitzailearen kontsolan dago.",
+                "title": "Kostuen zenbatespenak",
+                "undatedTitle": "Ez da zenbatetsi: eredu honen AeroFTPren prezioek ez dute berrikuspen-datarik. Token kopuruak zehatzak dira. Fakturatutako zenbatekoa zure hornitzailearen kontsolan dago."
             }
         },
         "archive": {

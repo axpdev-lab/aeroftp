@@ -167,7 +167,7 @@ fn gpt6_tool_transport_never_silently_falls_back() {
 
 #[test]
 fn anthropic_always_on_adaptive_and_no_sampling_on_both_paths() {
-    for model in ["claude-opus-5-5", "claude-fable-5-1"] {
+    for model in ANTHROPIC_NATIVE_MODELS.iter().copied() {
         let req = request("anthropic", model);
         for stream in [false, true] {
             let body = anthropic_body(&req, stream).unwrap();
@@ -986,4 +986,59 @@ async fn anthropic_requests_reach_v1_messages_from_either_base_url_form() {
             }
         }
     }
+}
+
+/// Every Anthropic model whose API refuses the sampling parameters and
+/// `budget_tokens` is on the native contract, and the models that accept them
+/// stay on the legacy one. The legacy adapter sends `temperature` and, with a
+/// thinking budget, `budget_tokens`: on Opus 4.7, Opus 4.8, Opus 5, Sonnet 5,
+/// Sonnet 5.5 and Haiku 5.5 each of those is a 400, so on that path they never
+/// answered.
+#[test]
+fn anthropic_models_that_refuse_sampling_take_the_native_contract() {
+    for model in [
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
+        "claude-opus-5-5",
+        "claude-fable-5-1",
+    ] {
+        assert!(modern_anthropic(&request("anthropic", model)), "{model}");
+        assert_eq!(
+            reasoning_efforts(&request("anthropic", model)),
+            &["low", "medium", "high", "xhigh", "max"],
+            "{model}"
+        );
+    }
+    for model in [
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-5-20250929",
+    ] {
+        assert!(!modern_anthropic(&request("anthropic", model)), "{model}");
+    }
+    // The same name on another provider is not Anthropic's contract.
+    assert!(!modern_anthropic(&request("openrouter", "claude-opus-4-8")));
+}
+
+/// The webview decides the turn shape from its own copy of the list; a model
+/// in one list and not the other would send a native turn to the legacy
+/// adapter, or the reverse.
+#[test]
+fn the_webview_and_the_backend_agree_on_the_native_anthropic_models() {
+    let source = include_str!("../../src/components/DevTools/aiChatNativeTurn.ts");
+    let decl = source
+        .find("export const ANTHROPIC_NATIVE_MODELS")
+        .expect("ANTHROPIC_NATIVE_MODELS in aiChatNativeTurn.ts");
+    // The list opens at `= [`; the type annotation has its own `[]` before it.
+    let start = decl + source[decl..].find("= [").expect("start of list");
+    let list = &source[start..start + source[start..].find("];").expect("end of list")];
+    let webview: std::collections::BTreeSet<&str> = list.split('\'').skip(1).step_by(2).collect();
+    let backend: std::collections::BTreeSet<&str> =
+        ANTHROPIC_NATIVE_MODELS.iter().copied().collect();
+    assert_eq!(webview, backend);
 }

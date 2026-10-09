@@ -3130,6 +3130,17 @@
                 "presetInstall": "Instalează",
                 "presetInstalledDisabled": "Instalat și oprit",
                 "presetReady": "Gata"
+            },
+            "costEstimates": {
+                "cacheTitle": "Economisit de cache-ul promptului, estimare: {read} tokeni citiți, {created} scriși",
+                "description": "Numărul de tokeni provine de la furnizor și este exact. Costul este o estimare pe baza listei de prețuri AeroFTP, afișată cu data acelei liste, și este omis când lista are mai mult de {days} zile sau nu are dată. Suma facturată se află în consola furnizorului tău.",
+                "enable": "Afișează estimările de cost",
+                "estimateTitle": "Estimare pe baza listei de prețuri AeroFTP din {date}. Suma facturată se află în consola furnizorului tău.",
+                "expiredTitle": "Neestimat: lista de prețuri AeroFTP pentru acest model este din {date}, de acum mai mult de {days} zile. Numărul de tokeni este exact; suma facturată se află în consola furnizorului tău.",
+                "savedEstimateTitle": "Estimare salvată împreună cu acest mesaj. Suma facturată se află în consola furnizorului tău.",
+                "sumTitle": "Suma estimărilor fiecărui răspuns. Suma facturată se află în consola furnizorului tău.",
+                "title": "Estimări de cost",
+                "undatedTitle": "Neestimat: prețurile AeroFTP pentru acest model nu au dată de revizuire. Numărul de tokeni este exact; suma facturată se află în consola furnizorului tău."
             }
         },
         "archive": {

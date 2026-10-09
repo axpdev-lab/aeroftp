@@ -3130,6 +3130,17 @@
                 "presetInstall": "Installeren",
                 "presetInstalledDisabled": "Geïnstalleerd en uitgeschakeld",
                 "presetReady": "Gereed"
+            },
+            "costEstimates": {
+                "cacheTitle": "Bespaard door de promptcache, geraamd: {read} tokens gelezen, {created} geschreven",
+                "description": "Het aantal tokens komt van de provider en is exact. De kosten zijn een raming op basis van de prijslijst van AeroFTP, worden getoond met de datum van die lijst en worden weggelaten als de lijst ouder is dan {days} dagen of geen datum heeft. Het gefactureerde bedrag staat in de console van je provider.",
+                "enable": "Kostenramingen tonen",
+                "estimateTitle": "Raming op basis van de prijslijst van AeroFTP van {date}. Het gefactureerde bedrag staat in de console van je provider.",
+                "expiredTitle": "Niet geraamd: de prijslijst van AeroFTP voor dit model is van {date}, meer dan {days} dagen geleden. Het aantal tokens is exact; het gefactureerde bedrag staat in de console van je provider.",
+                "savedEstimateTitle": "Raming opgeslagen bij dit bericht. Het gefactureerde bedrag staat in de console van je provider.",
+                "sumTitle": "Som van de ramingen van elk antwoord. Het gefactureerde bedrag staat in de console van je provider.",
+                "title": "Kostenramingen",
+                "undatedTitle": "Niet geraamd: de prijzen van AeroFTP voor dit model hebben geen beoordelingsdatum. Het aantal tokens is exact; het gefactureerde bedrag staat in de console van je provider."
             }
         },
         "archive": {

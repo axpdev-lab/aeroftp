@@ -14,6 +14,7 @@ import {
     createConversation, BranchMessage,
 } from '../../utils/chatHistory';
 import { Message } from './aiChatTypes';
+import { exportTokenLine, withoutCost } from './aiChatCostEstimate';
 
 export function useAIChatConversations() {
     const [messages, setMessages] = useState<Message[]>([]);
@@ -228,7 +229,8 @@ export function useAIChatConversations() {
     }, []);
 
     // Export conversation
-    const exportConversation = useCallback(async (format: 'markdown' | 'json') => {
+    // `includeCost` is the `showCostEstimates` setting: off, the file carries tokens only.
+    const exportConversation = useCallback(async (format: 'markdown' | 'json', includeCost: boolean) => {
         setShowExportMenu(false);
         if (messages.length === 0) return;
 
@@ -247,9 +249,8 @@ export function useAIChatConversations() {
                     const modelTag = msg.modelInfo ? ` *(${msg.modelInfo.modelName})*` : '';
                     lines.push(`### ${role}${modelTag}`);
                     lines.push(msg.content);
-                    if (msg.tokenInfo?.totalTokens) {
-                        lines.push(`> ${msg.tokenInfo.totalTokens} tokens${msg.tokenInfo.cost ? ` · $${msg.tokenInfo.cost.toFixed(4)}` : ''}`);
-                    }
+                    const tokenLine = exportTokenLine(msg.tokenInfo, includeCost);
+                    if (tokenLine) lines.push(tokenLine);
                     lines.push('');
                 }
                 lines.push('---');
@@ -269,13 +270,13 @@ export function useAIChatConversations() {
                     exportedAt: new Date().toISOString(),
                     messageCount: messages.length,
                     totalTokens: messages.reduce((sum, m) => sum + (m.tokenInfo?.totalTokens || 0), 0),
-                    totalCost: messages.reduce((sum, m) => sum + (m.tokenInfo?.cost || 0), 0),
+                    ...(includeCost ? { totalCost: messages.reduce((sum, m) => sum + (m.tokenInfo?.cost || 0), 0) } : {}),
                     messages: messages.map(m => ({
                         role: m.role,
                         content: m.content,
                         timestamp: m.timestamp.toISOString(),
                         modelInfo: m.modelInfo || null,
-                        tokenInfo: m.tokenInfo || null,
+                        tokenInfo: (includeCost ? m.tokenInfo : withoutCost(m.tokenInfo)) || null,
                     })),
                     metadata: conv ? {
                         conversationId: conv.id,

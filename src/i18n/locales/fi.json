@@ -3130,6 +3130,17 @@
                 "presetInstall": "Asenna",
                 "presetInstalledDisabled": "Asennettu ja pois päältä",
                 "presetReady": "Valmis"
+            },
+            "costEstimates": {
+                "cacheTitle": "Promptivälimuistin säästämä, arvio: {read} tokenia luettu, {created} kirjoitettu",
+                "description": "Tokenien määrä tulee palveluntarjoajalta ja on tarkka. Kustannus on arvio AeroFTP:n hinnastosta, se näytetään hinnaston päivämäärän kanssa ja jätetään pois, jos hinnasto on yli {days} päivää vanha tai siinä ei ole päivämäärää. Laskutettu summa näkyy palveluntarjoajasi konsolissa.",
+                "enable": "Näytä kustannusarviot",
+                "estimateTitle": "Arvio AeroFTP:n hinnastosta päivämäärältä {date}. Laskutettu summa näkyy palveluntarjoajasi konsolissa.",
+                "expiredTitle": "Ei arviota: AeroFTP:n hinnasto tälle mallille on päivältä {date}, yli {days} päivää vanha. Tokenien määrä on tarkka. Laskutettu summa näkyy palveluntarjoajasi konsolissa.",
+                "savedEstimateTitle": "Tämän viestin mukana tallennettu arvio. Laskutettu summa näkyy palveluntarjoajasi konsolissa.",
+                "sumTitle": "Kunkin vastauksen arvioiden summa. Laskutettu summa näkyy palveluntarjoajasi konsolissa.",
+                "title": "Kustannusarviot",
+                "undatedTitle": "Ei arviota: AeroFTP:n hinnoilla tälle mallille ei ole tarkistuspäivämäärää. Tokenien määrä on tarkka. Laskutettu summa näkyy palveluntarjoajasi konsolissa."
             }
         },
         "archive": {

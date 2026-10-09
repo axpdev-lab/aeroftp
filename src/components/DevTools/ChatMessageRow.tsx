@@ -28,6 +28,8 @@ import { CodingDiagnosticsReview } from './CodingDiagnosticsReview';
 import { getCodingDiagnosticsFromResultData } from './aiChatCodingDiagnostics';
 import { CodingSearchReview } from './CodingSearchReview';
 import { getCodingSearchFromResultData } from './aiChatCodingSearch';
+import { costEstimateView } from './aiChatCostEstimate';
+import { formatCost } from './CostBudgetManager';
 import type { Message, TransferPlan, TransferPlanResultData } from './aiChatTypes';
 import type { AIProviderType } from '../../types/ai';
 
@@ -42,6 +44,8 @@ interface ChatMessageRowProps {
     isExecutingPlan: boolean;
     editorFilePath?: string;
     editorFileName?: string;
+    /** The `showCostEstimates` setting: when off, token counts only. */
+    showCostEstimates: boolean;
     onToggleExpand: (id: string, expand: boolean) => void;
     onCopy: (message: Message) => void;
     onFork: (id: string) => void;
@@ -65,6 +69,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     isExecutingPlan,
     editorFilePath,
     editorFileName,
+    showCostEstimates,
     onToggleExpand,
     onCopy,
     onFork,
@@ -74,6 +79,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     TransferPlanReview,
 }) => {
     const isAssistant = message.role === 'assistant';
+    const costView = costEstimateView(message.tokenInfo, { enabled: showCostEstimates, t });
     const extractedCodingPlan = React.useMemo(
         () => extractCodingPlanArtifact(message.content),
         [message.content],
@@ -240,14 +246,20 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                     {message.tokenInfo && (
                         <span className="flex items-center gap-1 text-gray-500">
                             • {message.tokenInfo.totalTokens ?? ((message.tokenInfo.inputTokens || 0) + (message.tokenInfo.outputTokens || 0))} tok
-                            {message.tokenInfo.cost !== undefined && message.tokenInfo.cost > 0 && (
-                                <span className="text-green-500/70">
-                                    ${message.tokenInfo.cost < 0.01 ? message.tokenInfo.cost.toFixed(4) : message.tokenInfo.cost.toFixed(3)}
+                            {costView.kind !== 'hidden' && (
+                                <span
+                                    className={costView.kind === 'estimate' ? 'text-green-500/70 cursor-help' : 'text-gray-500 cursor-help'}
+                                    title={costView.title}
+                                >
+                                    {costView.text}
                                 </span>
                             )}
-                            {message.tokenInfo.cacheSavings !== undefined && message.tokenInfo.cacheSavings > 0 && (
-                                <span className="text-cyan-500/70" title={`Cache: ${message.tokenInfo.cacheReadTokens || 0} read, ${message.tokenInfo.cacheCreationTokens || 0} created`}>
-                                    ↓${message.tokenInfo.cacheSavings < 0.01 ? message.tokenInfo.cacheSavings.toFixed(4) : message.tokenInfo.cacheSavings.toFixed(3)}
+                            {costView.kind === 'estimate' && message.tokenInfo.cacheSavings !== undefined && message.tokenInfo.cacheSavings > 0 && (
+                                <span
+                                    className="text-cyan-500/70 cursor-help"
+                                    title={t('ai.costEstimates.cacheTitle', { read: message.tokenInfo.cacheReadTokens || 0, created: message.tokenInfo.cacheCreationTokens || 0 })}
+                                >
+                                    ↓≈{formatCost(message.tokenInfo.cacheSavings)}
                                 </span>
                             )}
                         </span>
@@ -272,7 +284,8 @@ function rowsEqual(prev: ChatMessageRowProps, next: ChatMessageRowProps): boolea
         prev.ct === next.ct &&
         prev.t === next.t &&
         prev.editorFilePath === next.editorFilePath &&
-        prev.editorFileName === next.editorFileName
+        prev.editorFileName === next.editorFileName &&
+        prev.showCostEstimates === next.showCostEstimates
     );
 }
 

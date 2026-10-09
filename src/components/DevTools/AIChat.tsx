@@ -33,7 +33,7 @@ import { buildToolRegistry, resolveRegisteredTool, resolveMacroStep, ToolExposur
 import { MCP_SERVERS_CHANGED, mcpSnapshotLoader, notifyMcpServersChanged, runMcpTool } from './aiChatMcp';
 import { describeMcpError } from '../AISettings/mcpErrors';
 import { validateToolArgs } from './aiChatToolValidation';
-import { computeTokenInfo } from './aiChatTokenInfo';
+import { computeTokenInfo, type ModelCostInfo } from './aiChatTokenInfo';
 import { runBudgetedDelegation } from './aiChatDelegationBudget';
 import { delegationCardEntries } from './aiChatDelegationCards';
 import { useAIChatImages } from './useAIChatImages';
@@ -67,6 +67,7 @@ import { ChatHistoryManager } from './ChatHistoryManager';
 import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcuts';
 import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
 import { CostBudgetIndicator } from './CostBudgetIndicator';
+import { latestWithheldCost } from './aiChatCostEstimate';
 import { copyText } from '../../utils/clipboard';
 
 /** Maximum autonomous steps: now driven by AGENT_MODE_MAX_STEPS */
@@ -859,6 +860,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             return raw ? JSON.parse(raw) : null;
         } catch { return null; }
     });
+    const showCostEstimates = cachedAiSettings?.advancedSettings?.showCostEstimates ?? true;
+    const exportChat = useCallback(
+        (format: 'markdown' | 'json') => exportConversation(format, showCostEstimates),
+        [exportConversation, showCostEstimates],
+    );
     // Extreme mode: auto-approve all tools, increased step limit (Cyber + True Dark themes only)
     // Unified Agent Mode: safe → normal → expert → extreme
     const [agentMode, setAgentMode] = useState<AgentMode>(() => {
@@ -920,7 +926,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         aiRequest: Record<string, unknown>;
         messageHistory: Array<Record<string, unknown>>;
         modelInfo: { modelName: string; providerName: string; providerType: AIProviderType };
-        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number; inputCostPer1k?: number; outputCostPer1k?: number } | undefined;
+        modelDef: ({ supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number } & ModelCostInfo) | undefined;
     } | null>(null);
     const streamingMsgIdRef = useRef<string | null>(null);
     const activeStreamIdRef = useRef<string | null>(null);
@@ -1075,7 +1081,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const shortcuts = getDefaultShortcuts({
         clearChat: startNewChat,
         newChat: startNewChat,
-        exportChat: () => exportConversation('markdown'),
+        exportChat: () => exportChat('markdown'),
         toggleSearch: () => setShowSearch(prev => !prev),
         focusInput: () => inputRef.current?.focus(),
     });
@@ -2108,7 +2114,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         aiRequest: Record<string, unknown>,
         messageHistory: Array<Record<string, unknown>>,
         modelInfo: { modelName: string; providerName: string; providerType: AIProviderType },
-        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number; inputCostPer1k?: number; outputCostPer1k?: number } | undefined,
+        modelDef: ({ supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number } & ModelCostInfo) | undefined,
     ) => {
         if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
         let stepCount = 1;
@@ -2826,9 +2832,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                     // Phase 4: Record spending for cost budget tracking
                     if (tokenInfo && activeModel) {
-                        const cost = tokenInfo.cost || 0;
-                        const tokens = (streamResult.inputTokens || 0) + (streamResult.outputTokens || 0);
-                        recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                        // An amount that could not be estimated stays unknown: the budget counts it apart, never as $0.
+                        recordSpending(activeModel.providerId, tokenInfo.cost, tokenInfo.totalTokens ?? 0, activeConversationId || undefined)
                             .then(result => setBudgetCheck(result));
                     }
 
@@ -2942,9 +2947,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                     // Phase 4: Record spending for cost budget tracking (non-streaming path)
                     if (tokenInfo && activeModel) {
-                        const cost = tokenInfo.cost || 0;
-                        const tokens = response.tokens_used || ((response.input_tokens || 0) + (response.output_tokens || 0));
-                        recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                        // An amount that could not be estimated stays unknown: the budget counts it apart, never as $0.
+                        recordSpending(activeModel.providerId, tokenInfo.cost, tokenInfo.totalTokens ?? 0, activeConversationId || undefined)
                             .then(result => setBudgetCheck(result));
                     }
 
@@ -3122,7 +3126,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onNewChat={startNewChat}
                 showExportMenu={showExportMenu}
                 onToggleExportMenu={() => setShowExportMenu(!showExportMenu)}
-                onExport={exportConversation}
+                onExport={exportChat}
                 onOpenSettings={() => setShowSettings(true)}
                 onOpenHistoryManager={() => setShowHistoryManager(true)}
                 hasMessages={messages.length > 0}
@@ -3205,6 +3209,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             {/* Chat History Manager: full-text search + bulk management */}
             <ChatHistoryManager
                 visible={showHistoryManager}
+                showCostEstimates={showCostEstimates}
                 onClose={() => setShowHistoryManager(false)}
                 onSessionDeleted={() => {
                     loadChatHistory(true);
@@ -3362,6 +3367,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 isExecutingPlan={executingTransferPlanId === message.id}
                                 editorFilePath={editorFilePath}
                                 editorFileName={editorFileName}
+                                showCostEstimates={showCostEstimates}
                                 onToggleExpand={handleToggleExpand}
                                 onCopy={handleCopyMessage}
                                 onFork={handleForkMessage}
@@ -3826,7 +3832,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         </div>
 
                         {/* Phase 4: Cost budget indicator (#77) */}
-                        <CostBudgetIndicator conversationCost={conversationCost} budgetCheck={budgetCheck} compact />
+                        <CostBudgetIndicator
+                            conversationCost={conversationCost}
+                            budgetCheck={budgetCheck}
+                            showCostEstimates={showCostEstimates}
+                            withheldCost={latestWithheldCost(messages)}
+                        />
                         {/* AI Disclaimer */}
                         <span className={`text-[10px] ${ct.textMuted}`}>{t('ai.disclaimer')}</span>
                     </div>

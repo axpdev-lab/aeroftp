@@ -948,13 +948,7 @@ async fn stream_anthropic(
         }
     }
 
-    // Use 2025-04-15 for all Anthropic calls (required for prompt caching and thinking)
-    let anthropic_version = "2025-04-15";
-
-    let response = client
-        .post(&url)
-        .header("x-api-key", api_key)
-        .header("anthropic-version", anthropic_version)
+    let response = crate::ai::with_anthropic_auth(client.post(&url), api_key)
         .header("content-type", "application/json")
         .json(&body)
         .send()

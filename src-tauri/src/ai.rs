@@ -75,26 +75,113 @@ pub fn sanitize_error_message(msg: &str) -> String {
     result
 }
 
+/// The `anthropic-version` header of every Anthropic API call. Anthropic
+/// accepts only the versions it publishes; `2023-06-01` is the current one, and
+/// prompt caching, extended thinking and tool use all work with it. The
+/// `2025-04-15` sent by the chat, the model list and the stream since v2.0.0 is
+/// not a version: every such call came back `400 invalid_request_error,
+/// "anthropic-version: \"2025-04-15\" is not a valid version"`.
+pub(crate) const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// `builder` with the two headers every Anthropic API call carries: the key in
+/// `x-api-key` (Anthropic does not read `Authorization: Bearer`) and
+/// [`ANTHROPIC_VERSION`]. The one place they are set, so a call cannot send one
+/// without the other or a version of its own.
+pub(crate) fn with_anthropic_auth(
+    builder: reqwest::RequestBuilder,
+    api_key: &str,
+) -> reqwest::RequestBuilder {
+    builder
+        .header("x-api-key", api_key)
+        .header("anthropic-version", ANTHROPIC_VERSION)
+}
+
 /// The Messages endpoint for an Anthropic base URL. The default base ends in
 /// `/v1`; a profile saved with the bare host (`https://api.anthropic.com`, the
 /// CLI default before) gets the `/v1` it needs. A base with any other path,
 /// such as a gateway prefix, is used as configured.
 pub(crate) fn anthropic_messages_url(base_url: &str) -> String {
+    anthropic_endpoint_url(base_url, "messages")
+}
+
+/// The Models endpoint, resolved like [`anthropic_messages_url`]: the model
+/// list and the settings test used `{base}/models` as typed, which on the bare
+/// host is `/models`, a path Anthropic does not serve.
+pub(crate) fn anthropic_models_url(base_url: &str) -> String {
+    anthropic_endpoint_url(base_url, "models")
+}
+
+fn anthropic_endpoint_url(base_url: &str, endpoint: &str) -> String {
     let base = base_url.trim();
     let Ok(mut url) = reqwest::Url::parse(base) else {
-        return format!("{}/messages", base.trim_end_matches('/'));
+        return format!("{}/{endpoint}", base.trim_end_matches('/'));
     };
     // The endpoint goes on the path, so a query string (a gateway's region or
     // key parameter) stays after it; a fragment is never sent and is dropped.
     url.set_fragment(None);
     let path = url.path().trim_end_matches('/');
-    let endpoint = if path.is_empty() {
-        "/v1/messages".to_string()
+    let full_path = if path.is_empty() {
+        format!("/v1/{endpoint}")
     } else {
-        format!("{path}/messages")
+        format!("{path}/{endpoint}")
     };
-    url.set_path(&endpoint);
+    url.set_path(&full_path);
     url.to_string()
+}
+
+#[cfg(test)]
+mod anthropic_request_tests {
+    use super::{anthropic_models_url, with_anthropic_auth, ANTHROPIC_VERSION};
+
+    /// The two headers Anthropic reads, and no Bearer header it would ignore.
+    #[test]
+    fn an_anthropic_call_carries_the_key_and_the_published_version() {
+        let request = with_anthropic_auth(
+            reqwest::Client::new().get("https://api.anthropic.com/v1/models"),
+            "test-key",
+        )
+        .build()
+        .unwrap();
+        let headers = request.headers();
+        assert_eq!(headers["x-api-key"], "test-key");
+        assert_eq!(headers["anthropic-version"], "2023-06-01");
+        assert_eq!(ANTHROPIC_VERSION, "2023-06-01");
+        assert!(headers.get("authorization").is_none());
+    }
+
+    /// Every Anthropic call goes through `with_anthropic_auth`: no other line
+    /// in the AI clients names the version header. Three call sites each set
+    /// their own until 2026-10, two of them with a version Anthropic refuses.
+    #[test]
+    fn no_anthropic_call_sets_its_own_version() {
+        for (file, source) in [
+            ("ai.rs", include_str!("ai.rs")),
+            ("ai_stream.rs", include_str!("ai_stream.rs")),
+            ("ai_native.rs", include_str!("ai_native.rs")),
+        ] {
+            let setters = source
+                .lines()
+                .filter(|line| line.contains(".header(\"anthropic-version\""))
+                .count();
+            let expected = if file == "ai.rs" { 1 } else { 0 };
+            assert_eq!(
+                setters, expected,
+                "{file} sets anthropic-version {setters} time(s)"
+            );
+        }
+    }
+
+    #[test]
+    fn the_models_endpoint_gets_the_v1_the_bare_host_lacks() {
+        assert_eq!(
+            anthropic_models_url("https://api.anthropic.com"),
+            "https://api.anthropic.com/v1/models"
+        );
+        assert_eq!(
+            anthropic_models_url("https://api.anthropic.com/v1/"),
+            "https://api.anthropic.com/v1/models"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1312,13 +1399,7 @@ mod anthropic {
             }
         }
 
-        // Use 2025-04-15 for all Anthropic calls (required for prompt caching and thinking)
-        let anthropic_version = "2025-04-15";
-
-        let response = client
-            .post(&url)
-            .header("x-api-key", api_key)
-            .header("anthropic-version", anthropic_version)
+        let response = crate::ai::with_anthropic_auth(client.post(&url), api_key)
             .header("content-type", "application/json")
             .json(&body)
             .send()
@@ -1510,6 +1591,17 @@ pub async fn test_provider(
                 .await?;
             Ok(response.status().is_success())
         }
+        AIProviderType::Anthropic => {
+            // The model list is authenticated, so a bad key fails; Anthropic
+            // reads the key from `x-api-key`, never from a Bearer header,
+            // which is why the generic arm below rejected every key.
+            let api_key = api_key.ok_or(AIError::MissingApiKey)?;
+            let response =
+                with_anthropic_auth(client.get(anthropic_models_url(&base_url)), &api_key)
+                    .send()
+                    .await?;
+            Ok(response.status().is_success())
+        }
         _ => {
             // OpenAI-compatible: an authenticated endpoint, so a bad key fails.
             let api_key = api_key.ok_or(AIError::MissingApiKey)?;
@@ -1589,13 +1681,10 @@ pub async fn list_models(
         }
         AIProviderType::Anthropic => {
             let api_key = api_key.ok_or(AIError::MissingApiKey)?;
-            let url = format!("{}/models", base_url);
-            let response = client
-                .get(&url)
-                .header("x-api-key", &api_key)
-                .header("anthropic-version", "2025-04-15")
-                .send()
-                .await?;
+            let response =
+                with_anthropic_auth(client.get(anthropic_models_url(&base_url)), &api_key)
+                    .send()
+                    .await?;
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();

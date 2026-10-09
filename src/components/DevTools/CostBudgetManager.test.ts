@@ -70,3 +70,60 @@ it('accepts valid numeric persisted strings before admission without formatting 
     await budget.initBudgetManager();
     expect(budget.checkBudget('p')).toMatchObject({ allowed: true, currentSpend: 9, warning: true });
 });
+
+it('counts a request it cannot price as unpriced, never as $0 spent', async () => {
+    const budget = await import('./CostBudgetManager');
+    await budget.recordSpending('p', 0.5, 10, 'c');
+    await budget.recordSpending('p', undefined, 20, 'c');
+    expect(budget.getMonthlySpending()[0]).toMatchObject({ totalCost: 0.5, tokenCount: 30, requestCount: 2, unpricedRequests: 1 });
+    expect(budget.getConversationCost('c')).toMatchObject({ totalCost: 0.5, totalTokens: 30, requestCount: 2 });
+});
+
+it('a hard stop refuses further requests once the month has usage it could not price', async () => {
+    const budget = await import('./CostBudgetManager');
+    await budget.saveBudgetConfig([{ providerId: 'p', monthlyLimitUsd: 10, warningThreshold: 80, hardStop: true }]);
+    expect((await budget.recordSpending('p', 1, 10)).allowed).toBe(true);
+    const result = await budget.recordSpending('p', undefined, 10);
+    expect(result).toMatchObject({ allowed: false, warning: true });
+    expect(result.message).toContain('no cost estimate');
+    expect(budget.checkBudget('p').allowed).toBe(false);
+});
+
+it('without a hard stop, unpriced usage warns instead of passing for $0', async () => {
+    const budget = await import('./CostBudgetManager');
+    await budget.saveBudgetConfig([{ providerId: 'p', monthlyLimitUsd: 10, warningThreshold: 80, hardStop: false }]);
+    const result = await budget.recordSpending('p', undefined, 10);
+    expect(result).toMatchObject({ allowed: true, warning: true });
+    expect(result.message).toContain('no cost estimate');
+});
+
+it('with no budget, unpriced usage changes nothing', async () => {
+    const budget = await import('./CostBudgetManager');
+    expect(await budget.recordSpending('p', undefined, 10)).toMatchObject({ allowed: true, warning: false });
+});
+
+it.each(['many', -1, 1.5])('fails closed on a corrupt persisted unpriced count %s', async unpricedRequests => {
+    const budget = await import('./CostBudgetManager');
+    const month = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    mocks.invoke.mockImplementation(async (command: string, args: { key: string }) => {
+        if (command !== 'vault_get') return undefined;
+        return JSON.stringify(args.key === 'ai_budget_config'
+            ? [{ providerId: 'p', monthlyLimitUsd: 10, warningThreshold: 80, hardStop: true }]
+            : [{ providerId: 'p', month, totalCost: 1, unpricedRequests }]);
+    });
+    await budget.initBudgetManager();
+    expect(budget.checkBudget('p').allowed).toBe(false);
+});
+
+it('reads a persisted record without the unpriced count, from an older version, as none', async () => {
+    const budget = await import('./CostBudgetManager');
+    const month = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    mocks.invoke.mockImplementation(async (command: string, args: { key: string }) => {
+        if (command !== 'vault_get') return undefined;
+        return JSON.stringify(args.key === 'ai_budget_config'
+            ? [{ providerId: 'p', monthlyLimitUsd: 10, warningThreshold: 80, hardStop: true }]
+            : [{ providerId: 'p', month, totalCost: 1, tokenCount: 5, requestCount: 1 }]);
+    });
+    await budget.initBudgetManager();
+    expect(budget.checkBudget('p')).toMatchObject({ allowed: true, warning: false });
+});

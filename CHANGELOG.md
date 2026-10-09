@@ -10,9 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Profile column choices and storage-by-protocol breakdown are remembered across CLI and GUI runs. My Servers has a shared breakdown checkbox; `profiles --breakdown=false` disables it. Default JSON output keeps its array shape.
+- AeroAgent marks the cost next to a reply as an estimate (≈) and names the date of the price list it came from: token counts are the provider's and exact, the amount is AeroFTP's estimate, and the bill is in the provider's console. Prices older than 90 days, or without a review date, are not used, and the reply says "not estimated" instead of showing a number that may be wrong. AI Settings > Advanced > Cost estimates hides every amount, in the chat, the history and exported conversations.
 
 ### Fixed
 
+- AeroAgent works with Anthropic. Every request carried an `anthropic-version` header the API rejects, so chat, the model list and the Test button all failed with HTTP 400, and the Test button sent the key as a Bearer token. Claude Sonnet 5.5, Haiku 5.5, Opus 5.5, Fable 5.1 and the 5 and 4.7/4.8 models now use the request shape the API requires (adaptive thinking with effort, no sampling parameters), the model list has Sonnet 5.5 and Haiku 5.5 and no retired model, and it is readable in the light theme.
+- AeroAgent prices Anthropic replies from the published price list, including prompt-cache reads and writes (left out before, so a turn that read from the cache showed less than it cost) and the Haiku 5.5 rate above 100,000 prompt tokens; the token count of a reply includes its cached input too. A price corrected in the model registry now also reaches models saved before the correction.
 - The CLI reads My Servers columns and sort from the same application-settings vault key as the GUI, including the Saved % column. The GUI reloads these preferences after vault unlock and when regaining focus.
 - Calculating used storage keeps running totals instead of retaining every file from the recursive walk, reducing peak memory on large trees while preserving progress, limits and incomplete-scan reporting.
 - SFTP listing workers open their first connection before listing, eliminating the false "Not connected to server: reconnecting" warnings at the start of a pooled scan.

@@ -3130,6 +3130,17 @@
                 "presetInstall": "Sakinisha",
                 "presetInstalledDisabled": "Imesakinishwa na imezimwa",
                 "presetReady": "Tayari"
+            },
+            "costEstimates": {
+                "cacheTitle": "Imeokolewa na akiba ya maelekezo, makadirio: tokeni {read} zimesomwa, {created} zimeandikwa",
+                "description": "Idadi ya tokeni inatoka kwa mtoa huduma na ni sahihi. Gharama ni makadirio kutoka orodha ya bei ya AeroFTP, huonyeshwa pamoja na tarehe ya orodha hiyo, na huachwa wakati orodha ina zaidi ya siku {days} au haina tarehe. Kiasi kilichotozwa kiko kwenye kiweko cha mtoa huduma wako.",
+                "enable": "Onyesha makadirio ya gharama",
+                "estimateTitle": "Makadirio kutoka orodha ya bei ya AeroFTP ya {date}. Kiasi kilichotozwa kiko kwenye kiweko cha mtoa huduma wako.",
+                "expiredTitle": "Haikukadiriwa: orodha ya bei ya AeroFTP ya modeli hii ni ya {date}, zaidi ya siku {days} zilizopita. Idadi ya tokeni ni sahihi; kiasi kilichotozwa kiko kwenye kiweko cha mtoa huduma wako.",
+                "savedEstimateTitle": "Makadirio yaliyohifadhiwa pamoja na ujumbe huu. Kiasi kilichotozwa kiko kwenye kiweko cha mtoa huduma wako.",
+                "sumTitle": "Jumla ya makadirio ya kila jibu. Kiasi kilichotozwa kiko kwenye kiweko cha mtoa huduma wako.",
+                "title": "Makadirio ya gharama",
+                "undatedTitle": "Haikukadiriwa: bei za AeroFTP za modeli hii hazina tarehe ya ukaguzi. Idadi ya tokeni ni sahihi; kiasi kilichotozwa kiko kwenye kiweko cha mtoa huduma wako."
             }
         },
         "archive": {
