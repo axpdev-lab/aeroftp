@@ -19,7 +19,7 @@ vi.mock('../../i18n', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('../../utils/serverProfileStore', () => ({
     loadSavedServerProfiles: async () => state.profiles, loadSavedServerProfilesStrict: async () => state.profiles,
     storeSavedServerProfiles: vi.fn(), mergeSavedServerProfile: async () => state.profiles,
-    savedProfilesWriteGeneration: () => 0, PROFILES_CHANGED_EVENT: 'aeroftp-profiles-changed',
+    savedProfilesGeneration: () => 0, PROFILES_CHANGED_EVENT: 'aeroftp-profiles-changed',
 }));
 vi.mock('../../utils/userPartitions', () => ({ getUnlockStatus: async () => ({ ...state.status }), listUsers: async () => [] }));
 vi.mock('../../utils/favoriteServers', () => ({ loadFavoriteServers: async () => [], saveFavoriteServers: vi.fn() }));

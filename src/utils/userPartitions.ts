@@ -81,14 +81,29 @@ export const copyUser = (
 ): Promise<UserMetadata> =>
     invoke<UserMetadata>('user_partitions_copy_user', { sourceUserId, newName });
 
+// Counts account switches and locks, bumped when one starts and again when it
+// settles. A profile list read or written across a change may belong to the
+// other account, so its reader compares the count at both ends.
+let accountChanges = 0;
+export const accountChangeGeneration = (): number => accountChanges;
+
+const changingAccount = async <T>(run: () => Promise<T>): Promise<T> => {
+    accountChanges += 1;
+    try {
+        return await run();
+    } finally {
+        accountChanges += 1;
+    }
+};
+
 export const unlockUser = (
     userId: number,
     passphrase?: string | null,
 ): Promise<UserUnlockStatus> =>
-    invoke<UserUnlockStatus>('user_partitions_unlock_user', { userId, passphrase });
+    changingAccount(() => invoke<UserUnlockStatus>('user_partitions_unlock_user', { userId, passphrase }));
 
 export const lockUserSession = (): Promise<void> =>
-    invoke<void>('user_partitions_lock_session');
+    changingAccount(() => invoke<void>('user_partitions_lock_session'));
 
 export const getUnlockStatus = (): Promise<UserUnlockStatus> =>
     invoke<UserUnlockStatus>('user_partitions_unlock_status');

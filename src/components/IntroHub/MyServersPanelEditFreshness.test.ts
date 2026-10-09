@@ -14,6 +14,7 @@ vi.mock('../../hooks/useActivityLog', () => ({ useActivityLog: () => ({ log: () 
 
 import { MyServersPanel } from './MyServersPanel';
 import { storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { unlockUser } from '../../utils/userPartitions';
 
 const profile = (bucket: string): ServerProfile => ({
     id: 'srv_minio',
@@ -32,6 +33,7 @@ type Load = { resolve: (profiles: ServerProfile[]) => void };
 let root: Root;
 let host: HTMLDivElement;
 let loads: Load[];
+let pendingSave: Promise<void> | undefined;
 let onEdit: ReturnType<typeof vi.fn<(profile: ServerProfile) => void>>;
 
 const panel = (lastUpdate: number) => createElement(MyServersPanel, {
@@ -49,6 +51,7 @@ beforeEach(() => {
     vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
     localStorage.clear();
     loads = [];
+    pendingSave = undefined;
     onEdit = vi.fn<(profile: ServerProfile) => void>();
     // Every profile read waits until the test answers it, like the ~3 s
     // partition read of a debug build; every other command answers at once.
@@ -57,7 +60,8 @@ beforeEach(() => {
         if (command === 'user_partitions_load_active_server_profiles') {
             return new Promise<ServerProfile[]>((resolve) => { loads.push({ resolve }); });
         }
-        if (command === 'user_partitions_save_active_server_profiles') return Promise.resolve();
+        if (command === 'user_partitions_save_active_server_profiles') return pendingSave ?? Promise.resolve();
+        if (command === 'user_partitions_unlock_user') return Promise.resolve({ isUnlocked: true, activeUserId: 2 });
         return Promise.resolve(null);
     });
     host = document.createElement('div');
@@ -103,5 +107,30 @@ describe('My Servers Edit after a profile Save', () => {
         await act(async () => editButton()!.click());
 
         expect(editedBucket()).toBe('new-bucket');
+    });
+
+    it('does not show the list a Save stored for the account active before a switch', async () => {
+        await mountWith(profile('old-bucket'));
+
+        let finishSave!: () => void;
+        pendingSave = new Promise<void>((resolve) => { finishSave = resolve; });
+        const save = storeSavedServerProfiles([profile('previous-account-bucket')]);
+        await act(async () => { await unlockUser(2, null); });
+        await act(async () => { finishSave(); await save; });
+        await act(async () => editButton()!.click());
+
+        expect(editedBucket()).not.toBe('previous-account-bucket');
+    });
+
+    it('drops a read that started before an account switch', async () => {
+        await mountWith(profile('old-bucket'));
+
+        await act(async () => root.render(panel(1)));
+        const startedBeforeSwitch = loads.splice(0);
+        await act(async () => { await unlockUser(2, null); });
+        await act(async () => startedBeforeSwitch[0].resolve([profile('previous-account-bucket')]));
+        await act(async () => editButton()!.click());
+
+        expect(editedBucket()).not.toBe('previous-account-bucket');
     });
 });

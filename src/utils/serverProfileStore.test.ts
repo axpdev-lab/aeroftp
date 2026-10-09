@@ -19,9 +19,10 @@ import {
     PROFILES_CHANGED_EVENT,
     loadSavedServerProfiles,
     loadSavedServerProfilesStrict,
-    savedProfilesWriteGeneration,
+    savedProfilesGeneration,
     storeSavedServerProfiles,
 } from './serverProfileStore';
+import { unlockUser } from './userPartitions';
 import type { ServerProfile } from '../types';
 
 const sampleProfile = (overrides: Partial<ServerProfile> = {}): ServerProfile => ({
@@ -126,17 +127,37 @@ describe('storeSavedServerProfiles', () => {
         const handler = vi.fn();
         eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
         const profiles = [sampleProfile({ name: 'renamed' })];
-        const before = savedProfilesWriteGeneration();
+        const before = savedProfilesGeneration();
 
         mockInvoke.mockRejectedValueOnce(new Error('disk full'));
         await expect(storeSavedServerProfiles(profiles)).rejects.toThrow('disk full');
-        expect(savedProfilesWriteGeneration()).toBe(before);
+        expect(savedProfilesGeneration()).toBe(before);
         expect(handler).not.toHaveBeenCalled();
 
         mockInvoke.mockResolvedValueOnce(undefined);
         await storeSavedServerProfiles(profiles, true);
-        expect(savedProfilesWriteGeneration()).toBe(before + 1);
+        expect(savedProfilesGeneration()).toBe(before + 1);
         expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ connectionMetadata: true, profiles });
+    });
+
+    it('publishes no list for a write that an account switch overlapped', async () => {
+        // The list may belong to the account that was active when the write
+        // started; listeners re-read the active one instead.
+        const handler = vi.fn();
+        eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
+        let finishSave!: () => void;
+        mockInvoke.mockImplementation((cmd: string) => cmd === 'user_partitions_save_active_server_profiles'
+            ? new Promise<void>((resolve) => { finishSave = resolve; })
+            : Promise.resolve({ isUnlocked: true, activeUserId: 2 }));
+        const before = savedProfilesGeneration();
+
+        const save = storeSavedServerProfiles([sampleProfile()]);
+        await unlockUser(2, null);
+        finishSave();
+        await save;
+
+        expect(savedProfilesGeneration()).toBeGreaterThan(before);
+        expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ connectionMetadata: false });
     });
 });
 

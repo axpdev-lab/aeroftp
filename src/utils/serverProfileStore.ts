@@ -4,6 +4,7 @@
 import type { ServerProfile } from '../types';
 import { secureGet, secureStore } from './secureStorage';
 import {
+    accountChangeGeneration,
     loadActiveServerProfiles,
     saveActiveServerProfiles,
 } from './userPartitions';
@@ -133,20 +134,25 @@ export const PROFILES_CHANGED_EVENT = 'aeroftp-profiles-changed';
 
 // Detail of PROFILES_CHANGED_EVENT. `profiles` is the list a write just stored,
 // so a view can show it at once instead of waiting for a re-read (seconds on a
-// large vault). Other dispatchers (an account switch) send no list.
+// large vault). It is left out when an account switch or lock overlapped the
+// write, since the list may belong to the other account; other dispatchers (an
+// account switch) send no list either.
 export interface ProfilesChangedDetail {
     connectionMetadata?: boolean;
     profiles?: ServerProfile[];
 }
 
-// Counts the profile writes made from this window. A read that started before
-// a write answers with the list as it was before it; a view compares the count
-// at both ends of its read and drops such an answer, because the write's own
-// event already carried the newer list.
+// Changes with every profile write made from this window and every account
+// switch or lock. A read that started before a write answers with the list as
+// it was before it, and one that started before a switch may answer with the
+// other account's list; a view compares the value at both ends of its read and
+// drops such an answer (the write's event carried the newer list, and a switch
+// is followed by its own profiles-changed event and re-read).
 let profilesWriteGeneration = 0;
-export const savedProfilesWriteGeneration = (): number => profilesWriteGeneration;
+export const savedProfilesGeneration = (): number => profilesWriteGeneration + accountChangeGeneration();
 
 export const storeSavedServerProfiles = async (profiles: ServerProfile[], connectionMetadata = false): Promise<void> => {
+    const accountBefore = accountChangeGeneration();
     try {
         await saveActiveServerProfiles(profiles);
     } catch (error) {
@@ -160,7 +166,10 @@ export const storeSavedServerProfiles = async (profiles: ServerProfile[], connec
         // best-effort cleanup
     }
     try {
-        window.dispatchEvent(new CustomEvent<ProfilesChangedDetail>(PROFILES_CHANGED_EVENT, { detail: { connectionMetadata, profiles } }));
+        const sameAccount = accountChangeGeneration() === accountBefore;
+        window.dispatchEvent(new CustomEvent<ProfilesChangedDetail>(PROFILES_CHANGED_EVENT, {
+            detail: sameAccount ? { connectionMetadata, profiles } : { connectionMetadata },
+        }));
     } catch {
         // SSR / non-DOM environment: dispatch is a best-effort notification.
     }

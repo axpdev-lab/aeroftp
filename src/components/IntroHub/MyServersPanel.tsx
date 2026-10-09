@@ -15,7 +15,7 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles, savedProfilesWriteGeneration, PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../../utils/serverProfileStore';
+import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles, savedProfilesGeneration, PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../../utils/serverProfileStore';
 import { getStorageDedupKey } from '../../utils/storageDedup';
 import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
@@ -510,10 +510,12 @@ export function MyServersPanel({
                 // A Save made while this read is in flight is newer than its
                 // answer: the Save's event already showed the stored list, and
                 // reopening Edit from the old one brought the old values back.
-                const writesBefore = savedProfilesWriteGeneration();
+                // A read across an account switch may answer for the other
+                // account; the switch's own event re-reads.
+                const generationBefore = savedProfilesGeneration();
                 const vaultServers = await loadSavedServerProfiles();
                 if (cancelled || !Array.isArray(vaultServers)) return;
-                if (savedProfilesWriteGeneration() !== writesBefore) return;
+                if (savedProfilesGeneration() !== generationBefore) return;
                 showServers(vaultServers);
             } catch { /* vault not ready / locked, retry on next lastUpdate bump */ }
         })();
