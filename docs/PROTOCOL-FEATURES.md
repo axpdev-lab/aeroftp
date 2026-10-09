@@ -293,6 +293,7 @@ A backend's own scheme keeps its own name. Dropbox's `content_hash` is a SHA-256
 | Uploadcare | - |  |
 | Cloudinary | - |  |
 | MTP | - |  |
+| Local directory | MD5, SHA-1, SHA-256, SHA-512, BLAKE3 |  |
 
 <!-- END CHECKSUM-MATRIX -->
 

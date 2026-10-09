@@ -288,6 +288,7 @@ pub fn canonicalize_path(path: &str) -> String {
 pub fn capabilities_for_protocol(protocol: &str) -> Vec<&'static str> {
     match protocol.to_ascii_lowercase().as_str() {
         "ftp" | "ftps" => vec!["resume", "find"],
+        "local" => vec!["resume", "server_copy", "checksum"],
         "sftp" => vec!["resume", "find", "chmod", "symlinks", "permissions"],
         "webdav" => vec!["server_copy", "find"],
         "s3" => vec!["server_copy", "checksum"],
@@ -373,6 +374,7 @@ pub fn provider_type_for_transfer_capabilities(protocol: &str) -> Option<Provide
         "uploadcare" | "upload_care" => Some(ProviderType::Uploadcare),
         "backblaze" | "b2" | "backblazeb2" | "backblaze_b2" => Some(ProviderType::Backblaze),
         "cloudinary" => Some(ProviderType::Cloudinary),
+        "local" => Some(ProviderType::Local),
         _ => None,
     }
 }
@@ -704,6 +706,11 @@ pub fn transfer_capabilities_for_provider_type(
     provider_type: ProviderType,
     protocol_for_feature_hint: &str,
 ) -> TransferCapabilities {
+    // A local folder's capabilities need no connection: the provider's own
+    // value, not one derived from generic hints that would deny its resume.
+    if provider_type == ProviderType::Local {
+        return crate::providers::directory::DirectoryProvider::local_transfer_capabilities();
+    }
     let server_copy = provider_supports_server_side_copy_baseline(provider_type)
         || capabilities_for_protocol(protocol_for_feature_hint).contains(&"server_copy");
 
