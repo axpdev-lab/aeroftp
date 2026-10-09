@@ -3666,15 +3666,32 @@ impl FtpProvider {
         };
 
         // A 1xx is preliminary (RFC 959 4.2): the final reply of the same
-        // exchange follows, within the same deadline.
-        while ftp_site::final_reply_code_of(&body).is_some_and(|code| (100..200).contains(&code)) {
+        // exchange follows, within the same deadline and the same size cap
+        // for the whole exchange. Both are checked on every turn: a server
+        // that keeps the socket full makes each read ready on its first poll,
+        // and tokio's timeout polls the read before its delay, so the deadline
+        // alone would never fire. Only the reply just read is decoded for its
+        // code, so the loop stays linear in what the server sends.
+        let mut last_code = ftp_site::final_reply_code_of(&body);
+        while last_code.is_some_and(|code| (100..200).contains(&code)) {
+            if body.len() > ftp_site::MAX_SITE_REPLY_BYTES {
+                return self
+                    .abandon_site_session(UnknownCause::ReplyTooLarge, started)
+                    .await;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return self
+                    .abandon_site_session(UnknownCause::Timeout, started)
+                    .await;
+            }
             let Some(stream) = self.stream.as_mut() else {
                 break;
             };
             let next = tokio::time::timeout_at(deadline, stream.read_response_in(&[])).await;
             match next {
                 Ok(Ok(response)) | Ok(Err(FtpError::UnexpectedResponse(response))) => {
-                    body.extend_from_slice(&response.body)
+                    last_code = ftp_site::final_reply_code_of(&response.body);
+                    body.extend_from_slice(&response.body);
                 }
                 Ok(Err(err)) => {
                     let cause = self.site_failure_cause(&err).await;
@@ -3686,6 +3703,11 @@ impl FtpProvider {
                         .await
                 }
             }
+        }
+        if body.len() > ftp_site::MAX_SITE_REPLY_BYTES {
+            return self
+                .abandon_site_session(UnknownCause::ReplyTooLarge, started)
+                .await;
         }
 
         let Some(reply) = SiteReply::from_body(&body) else {

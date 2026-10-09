@@ -36,6 +36,12 @@ use super::{FtpProvider, StorageProvider};
 /// paste of a whole file through.
 pub const MAX_SITE_LINE_BYTES: usize = 1024;
 
+/// Most bytes one `SITE` exchange may bring back, preliminary replies
+/// included: suppaftp's cap is per reply, and a server that answers with
+/// endless `1xx` lines would otherwise grow the exchange without limit. The
+/// same 256 KiB suppaftp allows a single reply.
+pub const MAX_SITE_REPLY_BYTES: usize = 256 * 1024;
+
 /// Default wait for the complete reply. Account commands answer in
 /// milliseconds, but servers also run slow scripts through `SITE` (a glFTPd
 /// `SITE RESCAN` or `SITE WIPE -r` can take minutes), and a deadline that is
@@ -116,10 +122,18 @@ impl SiteArgs {
     }
 
     /// Validate a line built by the program (for example `CHMOD 644 <path>`),
-    /// sent exactly as given: a path may legitimately begin or end with a
-    /// space.
+    /// sent exactly as given: a path may begin or end with a space, contain a
+    /// TAB, or be long. Only what would end the line early or smuggle a second
+    /// command is refused (CR, LF, NUL), as suppaftp did before this path
+    /// existed; the stricter rules of [`SiteArgs::parse`] are for typed input.
     pub(crate) fn verbatim(line: String) -> Result<Self, SiteInputError> {
-        Self::checked(line)
+        if line.trim().is_empty() {
+            return Err(SiteInputError::Empty);
+        }
+        if line.contains(['\r', '\n', '\0']) {
+            return Err(SiteInputError::ControlCharacter);
+        }
+        Ok(Self::with_verb(line))
     }
 
     fn checked(line: String) -> Result<Self, SiteInputError> {
@@ -132,12 +146,16 @@ impl SiteArgs {
         if "SITE ".len() + line.len() > MAX_SITE_LINE_BYTES {
             return Err(SiteInputError::TooLong);
         }
+        Ok(Self::with_verb(line))
+    }
+
+    fn with_verb(line: String) -> Self {
         let verb = line
             .split_whitespace()
             .next()
             .filter(|word| is_plausible_verb(word))
             .map(str::to_ascii_uppercase);
-        Ok(Self { line, verb })
+        Self { line, verb }
     }
 
     /// The control-channel line, CRLF excluded.
@@ -146,7 +164,10 @@ impl SiteArgs {
     }
 
     /// `SITE <VERB>`, or `SITE` when the first word does not look like a
-    /// verb (a password pasted into the wrong field must not become a label).
+    /// verb. This keeps a password with symbols, or longer than 16
+    /// characters, out of labels when it is pasted alone; a short
+    /// alphanumeric one (`hunter2`) still reads as a verb, since nothing tells
+    /// it apart from a custom command such as `REQFILLED`. A declared limit.
     pub fn label(&self) -> String {
         site_label(self.verb.as_deref())
     }
@@ -598,9 +619,20 @@ mod tests {
     }
 
     #[test]
-    fn a_program_line_keeps_its_spaces() {
+    fn a_program_line_keeps_its_spaces_tabs_and_length() {
         let args = SiteArgs::verbatim("CHMOD 644  name ".to_string()).unwrap();
         assert_eq!(args.wire_line(), "SITE CHMOD 644  name ");
+        let tab = SiteArgs::verbatim("CHMOD 644 a\tb".to_string()).unwrap();
+        assert_eq!(tab.wire_line(), "SITE CHMOD 644 a\tb");
+        let long = format!("CHMOD 644 /{}", "d/".repeat(800));
+        assert!(
+            SiteArgs::verbatim(long).is_ok(),
+            "a long path is the server's call"
+        );
+        assert_eq!(
+            SiteArgs::verbatim("CHMOD 644 a\0b".to_string()),
+            Err(SiteInputError::ControlCharacter)
+        );
         assert_eq!(
             SiteArgs::verbatim("CHMOD 644 a\r\nDELE b".to_string()),
             Err(SiteInputError::ControlCharacter)

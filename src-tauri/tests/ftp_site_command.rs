@@ -478,6 +478,66 @@ async fn a_reply_over_the_cap_is_abandoned_and_the_session_rebuilt() {
     assert_eq!(wire.lock().unwrap().site_lines().len(), 1);
 }
 
+// T18
+/// Many preliminary replies in one burst: the follow-up loop decodes only the
+/// reply it just read, so the cost is linear. Decoding the whole accumulated
+/// body on every turn made 128 KiB of `150` lines take about 16 s.
+#[tokio::test]
+async fn a_burst_of_preliminary_replies_is_followed_in_linear_time() {
+    let mut burst = Vec::new();
+    while burst.len() <= 128 * 1024 {
+        burst.extend_from_slice(b"150 x\r\n");
+    }
+    burst.extend_from_slice(b"200 Done\r\n");
+    let (mut provider, wire) = provider_with(reply(&burst)).await;
+    let started = std::time::Instant::now();
+    let run = run_site_command(
+        &mut provider,
+        "RESCAN",
+        &SiteOptions::with_reply_timeout_secs(60),
+    )
+    .await;
+    let elapsed = started.elapsed();
+    let (code, lines, _, _) = replied(run.outcome);
+    assert_eq!(code, 200);
+    assert_eq!(lines.last().map(String::as_str), Some("200 Done"));
+    assert!(
+        elapsed < Duration::from_secs(8),
+        "following the 1xx replies took {elapsed:?}"
+    );
+    assert_eq!(wire.lock().unwrap().site_lines().len(), 1);
+}
+
+// T19
+/// suppaftp caps each reply at 256 KiB; the exchange as a whole has the same
+/// cap, so endless `1xx` lines cannot grow it without limit.
+#[tokio::test]
+async fn preliminary_replies_past_the_exchange_cap_are_abandoned() {
+    let mut burst = Vec::new();
+    while burst.len() <= 300 * 1024 {
+        burst.extend_from_slice(b"150 x\r\n");
+    }
+    burst.extend_from_slice(b"200 Done\r\n");
+    let (mut provider, wire) = provider_with(reply(&burst)).await;
+    let started = std::time::Instant::now();
+    let run = run_site_command(
+        &mut provider,
+        "RESCAN",
+        &SiteOptions::with_reply_timeout_secs(60),
+    )
+    .await;
+    match run.outcome {
+        SiteOutcome::Unknown { cause, .. } => assert_eq!(cause, UnknownCause::ReplyTooLarge),
+        other => panic!("expected the exchange to be abandoned at the cap, got {other:?}"),
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(15),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(wire.lock().unwrap().site_lines().len(), 1);
+}
+
 // T16
 #[tokio::test]
 async fn a_final_line_without_text_cannot_hang_the_session() {
@@ -510,6 +570,18 @@ async fn chmod_takes_any_2xx_and_reports_a_refusal() {
         wire.lock().unwrap().site_lines(),
         vec!["SITE CHMOD 644 /pub/a file "],
         "the path is sent as given, trailing space included"
+    );
+
+    // A name with a TAB reaches the server, as it did before chmod moved onto
+    // the SITE core: only CR, LF and NUL are refused on this path.
+    let (mut provider, wire) = provider_with(reply(b"200 ok\r\n")).await;
+    provider
+        .chmod("/pub/a\tb", 0o600)
+        .await
+        .expect("a TAB in a name is sent");
+    assert_eq!(
+        wire.lock().unwrap().site_lines(),
+        vec!["SITE CHMOD 600 /pub/a\tb"]
     );
 
     let (mut provider, _) = provider_with(reply(b"550 Permission denied\r\n")).await;
