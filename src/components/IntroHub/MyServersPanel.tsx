@@ -15,7 +15,7 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles, savedProfilesWriteGeneration, PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../../utils/serverProfileStore';
 import { getStorageDedupKey } from '../../utils/storageDedup';
 import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
@@ -477,6 +477,24 @@ export function MyServersPanel({
         };
     }, [viewMode]); // re-attach when container swaps between grid/list
 
+    const showServers = useCallback((list: ServerProfile[]) => {
+        const rows = list.map(s => {
+            if (s.providerId) return s;
+            const derived = deriveProviderId(s);
+            return derived ? { ...s, providerId: derived } : s;
+        });
+        const serialized = JSON.stringify(rows);
+        setServers(prev => {
+            // Same rows can still have fresh card data (lastQuota, auth
+            // badges, lastConnected). Compare the content, not only ids, or
+            // detailed cards keep stale quota until a full app reload.
+            try {
+                if (JSON.stringify(prev) === serialized) return prev;
+            } catch { /* fall through to replacing state */ }
+            return rows;
+        });
+    }, []);
+
     useEffect(() => {
         // Reconcile with the active user's vault partition, which is the
         // source of truth. loadSavedServerProfiles transparently falls
@@ -489,29 +507,30 @@ export function MyServersPanel({
         let cancelled = false;
         (async () => {
             try {
+                // A Save made while this read is in flight is newer than its
+                // answer: the Save's event already showed the stored list, and
+                // reopening Edit from the old one brought the old values back.
+                const writesBefore = savedProfilesWriteGeneration();
                 const vaultServers = await loadSavedServerProfiles();
                 if (cancelled || !Array.isArray(vaultServers)) return;
-                for (const s of vaultServers) {
-                    if (!s.providerId) {
-                        const derived = deriveProviderId(s);
-                        if (derived) s.providerId = derived;
-                    }
-                }
-                const serialized = JSON.stringify(vaultServers);
-                setServers(prev => {
-                    // Same rows can still have fresh card data (lastQuota,
-                    // auth badges, lastConnected). Compare the content, not
-                    // only ids, or detailed cards keep stale quota until a
-                    // full app reload.
-                    try {
-                        if (JSON.stringify(prev) === serialized) return prev;
-                    } catch { /* fall through to replacing state */ }
-                    return vaultServers;
-                });
+                if (savedProfilesWriteGeneration() !== writesBefore) return;
+                showServers(vaultServers);
             } catch { /* vault not ready / locked, retry on next lastUpdate bump */ }
         })();
         return () => { cancelled = true; };
-    }, [lastUpdate, localRefresh]);
+    }, [lastUpdate, localRefresh, showServers]);
+
+    useEffect(() => {
+        // Show a list this window just stored at once. The re-read the same
+        // event triggers takes seconds on a large vault, and an Edit opened in
+        // that window got the profile as it was before the Save.
+        const onProfilesChanged = (evt: Event) => {
+            const stored = (evt as CustomEvent<ProfilesChangedDetail | undefined>).detail?.profiles;
+            if (Array.isArray(stored)) showServers(stored);
+        };
+        window.addEventListener(PROFILES_CHANGED_EVENT, onProfilesChanged);
+        return () => window.removeEventListener(PROFILES_CHANGED_EVENT, onProfilesChanged);
+    }, [showServers]);
 
     useEffect(() => {
         // N4 (#270): gate the cross-user copy/move menu entries on at least

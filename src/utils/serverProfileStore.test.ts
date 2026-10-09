@@ -19,6 +19,7 @@ import {
     PROFILES_CHANGED_EVENT,
     loadSavedServerProfiles,
     loadSavedServerProfilesStrict,
+    savedProfilesWriteGeneration,
     storeSavedServerProfiles,
 } from './serverProfileStore';
 import type { ServerProfile } from '../types';
@@ -117,6 +118,25 @@ describe('storeSavedServerProfiles', () => {
         mockInvoke.mockRejectedValueOnce(boom);
 
         await expect(storeSavedServerProfiles([sampleProfile()])).rejects.toBe(boom);
+    });
+
+    it('hands the stored list to listeners and counts only writes that landed', async () => {
+        // My Servers shows this list at once and drops a re-read that started
+        // before it; a failed write must not make a view drop a valid read.
+        const handler = vi.fn();
+        eventTarget.addEventListener(PROFILES_CHANGED_EVENT, handler);
+        const profiles = [sampleProfile({ name: 'renamed' })];
+        const before = savedProfilesWriteGeneration();
+
+        mockInvoke.mockRejectedValueOnce(new Error('disk full'));
+        await expect(storeSavedServerProfiles(profiles)).rejects.toThrow('disk full');
+        expect(savedProfilesWriteGeneration()).toBe(before);
+        expect(handler).not.toHaveBeenCalled();
+
+        mockInvoke.mockResolvedValueOnce(undefined);
+        await storeSavedServerProfiles(profiles, true);
+        expect(savedProfilesWriteGeneration()).toBe(before + 1);
+        expect((handler.mock.calls[0][0] as CustomEvent).detail).toEqual({ connectionMetadata: true, profiles });
     });
 });
 

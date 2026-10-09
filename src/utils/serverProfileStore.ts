@@ -131,6 +131,21 @@ export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> 
 // the `transfer-toast-update` / `editor-reload` pattern used elsewhere.
 export const PROFILES_CHANGED_EVENT = 'aeroftp-profiles-changed';
 
+// Detail of PROFILES_CHANGED_EVENT. `profiles` is the list a write just stored,
+// so a view can show it at once instead of waiting for a re-read (seconds on a
+// large vault). Other dispatchers (an account switch) send no list.
+export interface ProfilesChangedDetail {
+    connectionMetadata?: boolean;
+    profiles?: ServerProfile[];
+}
+
+// Counts the profile writes made from this window. A read that started before
+// a write answers with the list as it was before it; a view compares the count
+// at both ends of its read and drops such an answer, because the write's own
+// event already carried the newer list.
+let profilesWriteGeneration = 0;
+export const savedProfilesWriteGeneration = (): number => profilesWriteGeneration;
+
 export const storeSavedServerProfiles = async (profiles: ServerProfile[], connectionMetadata = false): Promise<void> => {
     try {
         await saveActiveServerProfiles(profiles);
@@ -138,13 +153,14 @@ export const storeSavedServerProfiles = async (profiles: ServerProfile[], connec
         if (!canUseLegacyProfileFallback(error)) throw error;
         await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
     }
+    profilesWriteGeneration += 1;
     try {
         localStorage.removeItem(SAVED_SERVERS_STORAGE_KEY);
     } catch {
         // best-effort cleanup
     }
     try {
-        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { connectionMetadata } }));
+        window.dispatchEvent(new CustomEvent<ProfilesChangedDetail>(PROFILES_CHANGED_EVENT, { detail: { connectionMetadata, profiles } }));
     } catch {
         // SSR / non-DOM environment: dispatch is a best-effort notification.
     }

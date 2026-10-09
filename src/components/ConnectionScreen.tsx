@@ -116,6 +116,7 @@ interface ConnectionScreenProps {
     serversRefreshKey?: number;  // Change this to force refresh of saved servers list
     editingProfile?: ServerProfile;  // IntroHub: auto-enter edit mode on mount for this profile
     onFormSaved?: () => void;  // IntroHub: callback after save/edit completes (to close form tab)
+    onEditSessionEnd?: () => void;  // IntroHub: the form left edit mode, so Edit must not reuse its tab
     onTabLabelChange?: (label: string) => void;  // IntroHub: update tab label when connection name changes
 }
 
@@ -280,6 +281,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     serversRefreshKey = 0,
     editingProfile,
     onFormSaved,
+    onEditSessionEnd,
     onTabLabelChange,
 }) => {
     const t = useTranslation();
@@ -537,6 +539,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         editingProfileIdRef.current = null;
         setOriginalEditMode(null);
         resetOverlayForm();
+        onEditSessionEnd?.();
     };
 
     // Issue #215: MEGAcmd WebDAV endpoint auto-fetch state. Running
@@ -1787,10 +1790,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         }
     };
 
-    // Cancel the OAuth/API edit: discard form state and close the IntroHub form
-    // tab (or just exit edit mode on the main screen). Paired with the edit-mode
-    // Save so the footer is not a lone Save button.
-    const handleOAuthCancel = () => {
+    // Cancel an edit: discard form state and close the IntroHub form tab (or
+    // just exit edit mode on the main screen). Shared by every Cancel Editing
+    // control, including the one paired with the OAuth/API edit-mode Save.
+    const handleCancelEditAndClose = () => {
         handleCancelEdit();
         onFormSaved?.();
     };
@@ -2885,7 +2888,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         <>
             <div className="flex flex-wrap gap-2 pt-2">
                 <button
-                    onClick={handleCancelEdit}
+                    onClick={handleCancelEditAndClose}
                     className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
                     title={t('connection.cancelEditing')}
                 >
@@ -3580,7 +3583,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 ) : (
                     <div className={(showCancelSaveAsNew || cancelOverride) ? 'flex gap-2' : 'pt-2'}>
                         {showCancelSaveAsNew && editingProfileId && (
-                            <button onClick={handleCancelEdit} className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title={t('connection.cancelEditing')}>
+                            <button onClick={handleCancelEditAndClose} className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-medium rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors" title={t('connection.cancelEditing')}>
                                 <X size={20} />
                             </button>
                         )}
@@ -3956,7 +3959,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             buttonColorClass: 'bg-green-600 hover:bg-green-700',
                                             hideSaveButton: false,
                                             saveOverride: handleOAuthMetadataSave,
-                                            cancelOverride: handleOAuthCancel,
+                                            cancelOverride: handleCancelEditAndClose,
                                             buttonText: (<><Save size={18} /> {t('common.save')}</>),
                                         }
                                         : { disabled: false, buttonColorClass: '', hideSaveButton: true },
@@ -4023,7 +4026,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             buttonColorClass: 'bg-green-600 hover:bg-green-700',
                                             hideSaveButton: false,
                                             saveOverride: handleOAuthMetadataSave,
-                                            cancelOverride: handleOAuthCancel,
+                                            cancelOverride: handleCancelEditAndClose,
                                             buttonText: (<><Save size={18} /> {t('common.save')}</>),
                                         }
                                         : { disabled: false, buttonColorClass: '', hideSaveButton: true },

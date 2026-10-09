@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import source from './ConnectionScreen.tsx?raw';
+import introHubSource from './IntroHub/IntroHub.tsx?raw';
 
 // ConnectionScreen has no render harness here, so these read its source: the
 // properties below are about which code paths exist, not about rendering.
@@ -100,5 +101,24 @@ describe('ConnectionScreen edit sessions', () => {
             expect(choice).toContain('confirmChange={overlayFieldsLocked}');
             expect(choice).toContain('missing={cryptFormsHalfRecorded}');
         }
+    });
+
+    it('tells the IntroHub tab when its edit session ends, and Cancel Editing closes the tab', () => {
+        // A tab whose session had ended stayed open, and Edit on the same card
+        // switched back to it: a blank Quick Connect form, or on 4.2.2 a remount
+        // from the profile captured when the tab first opened (the bucket saved
+        // since then showed its old value, and a Save wrote it back).
+        expect(bodyOf('endEditSession')).toContain('onEditSessionEnd?.()');
+        const cancels = source.match(/<button\s+onClick=\{(\w+)\}[^>]*?title=\{t\('connection\.cancelEditing'\)\}/g) ?? [];
+        const handlers = [...new Set(cancels.map((c) => c.match(/onClick=\{(\w+)\}/)![1]))];
+        expect(cancels.length, 'both Cancel Editing buttons are found').toBe(2);
+        expect(handlers).toEqual(['handleCancelEditAndClose']);
+        const cancelAndClose = bodyOf('handleCancelEditAndClose');
+        expect(cancelAndClose).toContain('handleCancelEdit()');
+        expect(cancelAndClose).toContain('onFormSaved?.()');
+
+        // IntroHub reuses only a tab still editing the profile.
+        expect(introHubSource).toMatch(/const existing = findOpenEditTab\(formTabs, profile\.id\);/);
+        expect(introHubSource).toMatch(/onEditSessionEnd=\{\(\) => setFormTabs\(prev => markEditSessionEnded\(prev, formTab\.id\)\)\}/);
     });
 });
