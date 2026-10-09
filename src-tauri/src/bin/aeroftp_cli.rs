@@ -5818,7 +5818,7 @@ enum AliasCommands {
 
 #[derive(Subcommand, Clone)]
 enum ServeCommands {
-    /// Serve a remote over local HTTP (read-only)
+    /// Serve a remote or a local folder over local HTTP (read-only)
     Http {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -5836,7 +5836,7 @@ enum ServeCommands {
         #[arg(long, env = "AEROFTP_SERVE_AUTH_TOKEN", hide_env_values = true)]
         auth_token: Option<String>,
     },
-    /// Serve a remote over local WebDAV (read-write)
+    /// Serve a remote or a local folder over local WebDAV (read-write)
     #[command(name = "webdav")]
     WebDav {
         /// Server URL or local folder (omit when using --profile)
@@ -5855,7 +5855,7 @@ enum ServeCommands {
         #[arg(long, env = "AEROFTP_SERVE_AUTH_TOKEN", hide_env_values = true)]
         auth_token: Option<String>,
     },
-    /// Serve a remote over local FTP (read-write, anonymous)
+    /// Serve a remote or a local folder over local FTP (read-write)
     Ftp {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
@@ -5879,7 +5879,7 @@ enum ServeCommands {
         #[arg(long, default_value = "49152-49200")]
         passive_ports: String,
     },
-    /// Serve a remote over local SFTP (SSH file transfer, read-write)
+    /// Serve a remote or a local folder over local SFTP (SSH file transfer, read-write)
     Sftp {
         /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
