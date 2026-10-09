@@ -557,6 +557,97 @@ fn map_sftp_try_exists(
 }
 
 fn classify_sftp_exists_err(e: russh_sftp::client::error::Error) -> ProviderError {
+    classify_sftp_status_err(e, "Failed to check existence")
+}
+
+/// Map a failed stat of a path (`stat`, `size`, `cd`). Only
+/// `SSH_FX_NO_SUCH_FILE` is `NotFound`, with the message it always had; every
+/// other failure says what it is, as [`classify_sftp_status_err`] does. A
+/// caller that reads `NotFound` as "nothing there" (a no-clobber check before
+/// an upload, a resume offset, a delete that treats a missing path as done)
+/// must never get it for a path that exists: on OpenSSH a stat is denied when
+/// a parent folder cannot be traversed, and the path behind it is still there.
+fn classify_sftp_metadata_err(e: russh_sftp::client::error::Error, context: &str) -> ProviderError {
+    if let russh_sftp::client::error::Error::Status(status) = &e {
+        if status.status_code == russh_sftp::protocol::StatusCode::NoSuchFile {
+            return ProviderError::NotFound(e.to_string());
+        }
+    }
+    classify_sftp_status_err(e, context)
+}
+
+/// A status a server uses for more than one cause, so it does not say on its
+/// own whether the path exists (`FAILURE`, `BAD_MESSAGE`, `OP_UNSUPPORTED`).
+fn is_ambiguous_sftp_status(e: &russh_sftp::client::error::Error) -> bool {
+    matches!(
+        e,
+        russh_sftp::client::error::Error::Status(status) if matches!(
+            status.status_code,
+            russh_sftp::protocol::StatusCode::Failure
+                | russh_sftp::protocol::StatusCode::BadMessage
+                | russh_sftp::protocol::StatusCode::OpUnsupported
+        )
+    )
+}
+
+/// The parent folder and the last name of an absolute SFTP path, `None` for
+/// the root.
+fn split_sftp_parent(full_path: &str) -> Option<(&str, &str)> {
+    let trimmed = full_path.trim_end_matches('/');
+    let (parent, name) = trimmed.rsplit_once('/')?;
+    if name.is_empty() {
+        return None;
+    }
+    Some((if parent.is_empty() { "/" } else { parent }, name))
+}
+
+/// Settle an ambiguous stat failure with the listing of the parent folder: a
+/// name the folder does not list is `NotFound`, so a server that answers a
+/// missing path with `FAILURE` keeps working; a listed name, or a parent that
+/// does not list either, keeps `classified`, the failure as it was.
+fn resolve_ambiguous_stat_failure(
+    classified: ProviderError,
+    missing: String,
+    name: &str,
+    parent_names: Option<Vec<String>>,
+) -> ProviderError {
+    match parent_names {
+        Some(names) if !names.iter().any(|n| n == name) => ProviderError::NotFound(missing),
+        _ => classified,
+    }
+}
+
+/// A failed stat of `full_path`, classified by [`classify_sftp_metadata_err`]
+/// and, for an ambiguous status, settled by listing the parent folder
+/// ([`resolve_ambiguous_stat_failure`]). The extra request runs only on that
+/// failure path.
+async fn classify_sftp_stat_failure(
+    sftp: &SftpChannel,
+    full_path: &str,
+    e: russh_sftp::client::error::Error,
+    context: &str,
+) -> ProviderError {
+    let ambiguous = is_ambiguous_sftp_status(&e);
+    let missing = e.to_string();
+    let classified = classify_sftp_metadata_err(e, context);
+    if !ambiguous {
+        return classified;
+    }
+    let Some((parent, name)) = split_sftp_parent(full_path) else {
+        return classified;
+    };
+    let parent_names = until_sftp_ends(&sftp.ended, sftp.read_dir(parent))
+        .await
+        .ok()
+        .map(|entries| entries.map(|entry| entry.file_name()).collect());
+    resolve_ambiguous_stat_failure(classified, missing, name, parent_names)
+}
+
+/// A failed request about a path, other than "no such file": a permission
+/// denial, a lost or absent session, and anything else as a `ServerError`
+/// prefixed with `context` (a timeout or a closed session still classified by
+/// [`classify_russh_err`]).
+fn classify_sftp_status_err(e: russh_sftp::client::error::Error, context: &str) -> ProviderError {
     if let russh_sftp::client::error::Error::Status(status) = &e {
         match status.status_code {
             russh_sftp::protocol::StatusCode::PermissionDenied => {
@@ -576,9 +667,7 @@ fn classify_sftp_exists_err(e: russh_sftp::client::error::Error) -> ProviderErro
             _ => {}
         }
     }
-    classify_russh_err(e, |s| {
-        ProviderError::ServerError(format!("Failed to check existence: {s}"))
-    })
+    classify_russh_err(e, |s| ProviderError::ServerError(format!("{context}: {s}")))
 }
 
 /// Shared, lock-protected handle to the underlying russh SSH session.
@@ -2350,9 +2439,18 @@ impl StorageProvider for SftpProvider {
         // idle reaper, broken pipe) are routed to ConnectionLost so the
         // command layer can reconnect+replay instead of misclassifying
         // them as a missing path.
-        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
-            .await
-            .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
+        let metadata = match until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)).await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                return Err(classify_sftp_stat_failure(
+                    sftp,
+                    &full_path,
+                    e,
+                    "Failed to change directory",
+                )
+                .await)
+            }
+        };
 
         if let Some(perms) = metadata.permissions {
             if (perms & 0o40000) == 0 {
@@ -2424,7 +2522,9 @@ impl StorageProvider for SftpProvider {
                 if let Some(Ok(file)) = preopened {
                     close_sftp_file(file, &sftp.ended).await;
                 }
-                return Err(classify_russh_err(error, ProviderError::NotFound));
+                return Err(
+                    classify_sftp_stat_failure(sftp, &full_path, error, "Failed to stat").await,
+                );
             }
         };
         let mut total_size = metadata.size.unwrap_or(0);
@@ -3488,9 +3588,12 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
-            .await
-            .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
+        let metadata = match until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)).await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                return Err(classify_sftp_stat_failure(sftp, &full_path, e, "Failed to stat").await)
+            }
+        };
 
         let name = Path::new(&full_path)
             .file_name()
@@ -3528,9 +3631,14 @@ impl StorageProvider for SftpProvider {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
-        let metadata = until_sftp_ends(&sftp.ended, sftp.metadata(&full_path))
-            .await
-            .map_err(|e| classify_russh_err(e, ProviderError::NotFound))?;
+        let metadata = match until_sftp_ends(&sftp.ended, sftp.metadata(&full_path)).await {
+            Ok(metadata) => metadata,
+            Err(e) => {
+                return Err(
+                    classify_sftp_stat_failure(sftp, &full_path, e, "Failed to read size").await,
+                )
+            }
+        };
 
         Ok(metadata.size.unwrap_or(0))
     }
@@ -6083,6 +6191,100 @@ mod tests {
                 ProviderError::PermissionDenied(_)
             ));
         }
+    }
+
+    #[test]
+    fn a_stat_is_not_found_only_when_the_path_is_missing() {
+        // The message of a real "no such file" is unchanged.
+        match classify_sftp_metadata_err(
+            sftp_status(russh_sftp::protocol::StatusCode::NoSuchFile, "No such file"),
+            "Failed to stat",
+        ) {
+            ProviderError::NotFound(message) => assert_eq!(message, "No such file: No such file"),
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+        // A path behind a folder the user may not traverse exists: read as
+        // NotFound, a no-clobber check passed and a delete reported it gone.
+        assert!(matches!(
+            classify_sftp_metadata_err(
+                sftp_status(
+                    russh_sftp::protocol::StatusCode::PermissionDenied,
+                    "Permission denied"
+                ),
+                "Failed to stat"
+            ),
+            ProviderError::PermissionDenied(_)
+        ));
+        match classify_sftp_metadata_err(
+            sftp_status(russh_sftp::protocol::StatusCode::Failure, "Failure"),
+            "Failed to read size",
+        ) {
+            ProviderError::ServerError(message) => {
+                assert!(message.starts_with("Failed to read size: "), "{message}")
+            }
+            other => panic!("expected ServerError, got {other:?}"),
+        }
+        assert!(matches!(
+            classify_sftp_metadata_err(
+                sftp_status(
+                    russh_sftp::protocol::StatusCode::ConnectionLost,
+                    "Connection lost"
+                ),
+                "Failed to change directory"
+            ),
+            ProviderError::ConnectionLost(_)
+        ));
+        assert!(!matches!(
+            classify_sftp_metadata_err(
+                russh_sftp::client::error::Error::IO("broken pipe".into()),
+                "Failed to stat"
+            ),
+            ProviderError::NotFound(_)
+        ));
+    }
+
+    #[test]
+    fn an_ambiguous_stat_failure_is_settled_by_the_parent_listing() {
+        assert!(is_ambiguous_sftp_status(&sftp_status(
+            russh_sftp::protocol::StatusCode::Failure,
+            "Failure"
+        )));
+        assert!(!is_ambiguous_sftp_status(&sftp_status(
+            russh_sftp::protocol::StatusCode::PermissionDenied,
+            "Permission denied"
+        )));
+        assert_eq!(split_sftp_parent("/a/b/c.txt"), Some(("/a/b", "c.txt")));
+        assert_eq!(split_sftp_parent("/top"), Some(("/", "top")));
+        assert_eq!(split_sftp_parent("/a/dir/"), Some(("/a", "dir")));
+        assert_eq!(split_sftp_parent("/"), None);
+
+        let classified = || ProviderError::ServerError("Failed to stat: Failure: x".into());
+        // The parent does not list the name: the path is missing, whatever
+        // FAILURE the server answered the stat with.
+        assert!(matches!(
+            resolve_ambiguous_stat_failure(
+                classified(),
+                "Failure: x".into(),
+                "c.txt",
+                Some(vec!["other".into()])
+            ),
+            ProviderError::NotFound(_)
+        ));
+        // It does list it: the path exists and the stat failed.
+        assert!(matches!(
+            resolve_ambiguous_stat_failure(
+                classified(),
+                "Failure: x".into(),
+                "c.txt",
+                Some(vec!["c.txt".into()])
+            ),
+            ProviderError::ServerError(_)
+        ));
+        // The parent does not list either: nothing proves absence.
+        assert!(matches!(
+            resolve_ambiguous_stat_failure(classified(), "Failure: x".into(), "c.txt", None),
+            ProviderError::ServerError(_)
+        ));
     }
 
     #[test]
