@@ -480,6 +480,62 @@ fn classify_sftp_read_err(e: russh_sftp::client::error::Error) -> ProviderError 
     })
 }
 
+/// What a failed directory listing says, as far as its status alone can tell.
+enum SftpListFailure {
+    /// The status settles it.
+    Decided(ProviderError),
+    /// A status a server uses for more than one cause (`SSH_FX_FAILURE`,
+    /// `SSH_FX_BAD_MESSAGE`, `SSH_FX_OP_UNSUPPORTED`, ...): OpenSSH reports a
+    /// missing path as `NO_SUCH_FILE`, but a server that answers it with
+    /// `FAILURE` would otherwise turn every "folder not there yet" into an
+    /// error. Only a stat of the path can tell the two apart.
+    Ambiguous(String),
+}
+
+/// Map a failed listing. Only `SSH_FX_NO_SUCH_FILE` is `NotFound`: a caller
+/// that reads `NotFound` as "the folder is not there" (`rm --force`, which
+/// ignores it, a bootstrap that creates the folder, a serve answering 404)
+/// must never get it for a folder that exists and could not be read. A
+/// permission denial is `PermissionDenied`, a lost session is reported as
+/// one, and a timeout or a transport failure is classified as
+/// [`classify_russh_err`] does.
+fn classify_sftp_list_err(e: russh_sftp::client::error::Error) -> SftpListFailure {
+    if let russh_sftp::client::error::Error::Status(status) = &e {
+        let error = match status.status_code {
+            russh_sftp::protocol::StatusCode::NoSuchFile => {
+                ProviderError::NotFound(format!("Failed to list directory: {e}"))
+            }
+            russh_sftp::protocol::StatusCode::PermissionDenied => {
+                ProviderError::PermissionDenied(format!("Failed to list directory: {e}"))
+            }
+            russh_sftp::protocol::StatusCode::ConnectionLost => {
+                ProviderError::ConnectionLost(status.error_message.clone())
+            }
+            russh_sftp::protocol::StatusCode::NoConnection => ProviderError::NotConnected,
+            _ => return SftpListFailure::Ambiguous(format!("Failed to list directory: {e}")),
+        };
+        return SftpListFailure::Decided(error);
+    }
+    SftpListFailure::Decided(classify_russh_err(e, |s| {
+        ProviderError::ServerError(format!("Failed to list directory: {s}"))
+    }))
+}
+
+/// Settle an [`SftpListFailure::Ambiguous`] listing with the answer of
+/// `exists()` on the same path: a path the server says is not there is
+/// `NotFound`, one that exists failed to list (`ServerError`), and a failed
+/// check is that check's own error.
+fn resolve_ambiguous_list_failure(
+    message: String,
+    exists: Result<bool, ProviderError>,
+) -> ProviderError {
+    match exists {
+        Ok(false) => ProviderError::NotFound(message),
+        Ok(true) => ProviderError::ServerError(message),
+        Err(error) => error,
+    }
+}
+
 /// Map `SftpSession::try_exists` onto [`StorageProvider::exists`].
 ///
 /// russh-sftp converts `SSH_FX_NO_SUCH_FILE` into `Ok(false)` and returns
@@ -2123,13 +2179,20 @@ impl StorageProvider for SftpProvider {
 
         tracing::debug!("SFTP: Listing directory: {}", full_path);
 
-        let entries = until_sftp_ends(&sftp.ended, sftp.read_dir(&full_path))
-            .await
-            .map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::NotFound(format!("Failed to list directory: {}", s))
+        let entries = match until_sftp_ends(&sftp.ended, sftp.read_dir(&full_path)).await {
+            Ok(entries) => entries,
+            Err(e) => {
+                return Err(match classify_sftp_list_err(e) {
+                    SftpListFailure::Decided(error) => error,
+                    SftpListFailure::Ambiguous(message) => resolve_ambiguous_list_failure(
+                        message,
+                        map_sftp_try_exists(
+                            until_sftp_ends(&sftp.ended, sftp.try_exists(&full_path)).await,
+                        ),
+                    ),
                 })
-            })?;
+            }
+        };
 
         // Build the work list from the READDIR reply without any further I/O.
         // Every entry's own attributes are already in hand; a follow-up request
@@ -5938,6 +6001,88 @@ mod tests {
             )),
             ProviderError::TransferFailed(_)
         ));
+    }
+
+    fn decided(failure: SftpListFailure) -> ProviderError {
+        match failure {
+            SftpListFailure::Decided(error) => error,
+            SftpListFailure::Ambiguous(message) => panic!("expected a decided failure: {message}"),
+        }
+    }
+
+    #[test]
+    fn a_listing_is_not_found_only_when_the_folder_is_missing() {
+        assert!(matches!(
+            decided(classify_sftp_list_err(sftp_status(
+                russh_sftp::protocol::StatusCode::NoSuchFile,
+                "No such file"
+            ))),
+            ProviderError::NotFound(_)
+        ));
+        // An existing folder the user may not read is not a missing one: read
+        // as NotFound, `rm --force` reported it deleted and exited 0.
+        match decided(classify_sftp_list_err(sftp_status(
+            russh_sftp::protocol::StatusCode::PermissionDenied,
+            "Permission denied",
+        ))) {
+            ProviderError::PermissionDenied(message) => {
+                assert!(message.contains("Failed to list directory"), "{message}")
+            }
+            other => panic!("expected PermissionDenied, got {other:?}"),
+        }
+        assert!(matches!(
+            decided(classify_sftp_list_err(sftp_status(
+                russh_sftp::protocol::StatusCode::ConnectionLost,
+                "Connection lost"
+            ))),
+            ProviderError::ConnectionLost(_)
+        ));
+        assert!(matches!(
+            decided(classify_sftp_list_err(sftp_status(
+                russh_sftp::protocol::StatusCode::NoConnection,
+                "No connection"
+            ))),
+            ProviderError::NotConnected
+        ));
+        // A transport error is not a missing folder either.
+        assert!(!matches!(
+            decided(classify_sftp_list_err(
+                russh_sftp::client::error::Error::IO("broken pipe".into())
+            )),
+            ProviderError::NotFound(_)
+        ));
+    }
+
+    #[test]
+    fn a_generic_listing_failure_is_settled_by_whether_the_folder_exists() {
+        for code in [
+            russh_sftp::protocol::StatusCode::Failure,
+            russh_sftp::protocol::StatusCode::BadMessage,
+            russh_sftp::protocol::StatusCode::OpUnsupported,
+        ] {
+            let message = match classify_sftp_list_err(sftp_status(code, "Failure")) {
+                SftpListFailure::Ambiguous(message) => message,
+                SftpListFailure::Decided(error) => panic!("{code:?} decided as {error:?}"),
+            };
+            // A server that answers a missing folder with FAILURE keeps the
+            // NotFound its callers expect for "not there yet".
+            assert!(matches!(
+                resolve_ambiguous_list_failure(message.clone(), Ok(false)),
+                ProviderError::NotFound(_)
+            ));
+            // An existing folder that failed to list is an error, never absent.
+            assert!(matches!(
+                resolve_ambiguous_list_failure(message.clone(), Ok(true)),
+                ProviderError::ServerError(_)
+            ));
+            assert!(matches!(
+                resolve_ambiguous_list_failure(
+                    message,
+                    Err(ProviderError::PermissionDenied("no".into()))
+                ),
+                ProviderError::PermissionDenied(_)
+            ));
+        }
     }
 
     #[test]

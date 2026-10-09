@@ -1824,8 +1824,8 @@ async fn scan_remote_dir(
 /// Such a root is no gap: a sync into a directory it has yet to create scans it
 /// as an empty tree, and a sync that reads from it is refused as a missing
 /// source (see [`ScanBoundaries::root_missing`]). The listing error does not say so
-/// (SFTP reports every listing failure it does not classify as `NotFound`, and
-/// FTP answers 550 for a missing and a forbidden directory alike), so the
+/// (a provider may report a directory it cannot read as `NotFound`, and FTP
+/// answers 550 for a missing and a forbidden directory alike), so the
 /// provider is asked whether the root exists: any answer but "no" leaves the
 /// root a gap.
 async fn root_is_absent(provider: &mut Box<dyn StorageProvider>, dir: &RemoteScanDir) -> bool {
@@ -3059,8 +3059,9 @@ pub(crate) mod tests {
     pub(crate) struct WalkTreeProvider {
         pub(crate) dirs: std::collections::HashMap<String, Vec<crate::providers::RemoteEntry>>,
         /// Directories that exist and do not list: `list` fails with `NotFound`,
-        /// which is how SFTP reports any listing failure it does not classify,
-        /// while `stat` finds them.
+        /// which is how a provider that cannot tell an unreadable directory from
+        /// a missing one reports it (SFTP did for every listing failure until it
+        /// kept `NotFound` for `NO_SUCH_FILE`), while `stat` finds them.
         pub(crate) unlistable: std::collections::HashSet<String>,
         /// Directories whose `exists` check itself fails (permission, I/O).
         /// Distinct from `unlistable`: that path answers `Ok(true)`, this one
@@ -3417,7 +3418,7 @@ pub(crate) mod tests {
     /// A root that exists and does not list hides the whole tree: there is no
     /// path to bound a run around, so the gap has no name and the run is
     /// refused. It lists as `NotFound` and stats as a directory, the way an
-    /// unreadable directory looks on SFTP.
+    /// unreadable directory looks on a provider that reports it as missing.
     #[tokio::test]
     async fn a_root_that_exists_and_does_not_list_refuses_the_run() {
         for pool in [false, true] {
