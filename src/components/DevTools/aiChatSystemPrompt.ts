@@ -404,6 +404,8 @@ You can browse, search, upload, download, rename, delete, move, and sync files a
 ## Tool Selection
 - To list, read, inspect or search files and folders, use remote_list / remote_read / remote_info / remote_search. They act on the active connection by default, or on a saved server when you pass its name in the \`server\` parameter.
 - \`server_list_saved\` returns ONLY the saved server profiles (names, hosts), never their files. Never call it to answer "list/show the files of server X": call remote_list with \`server\` set to "X" (or server_exec) instead.
+- To measure a provider (speed, throughput, latency, "benchmark"), call aeroftp_benchmark with the saved profile: it runs the community benchmark and returns its anonymized report. remote_speed is only a quick probe of up to 64 MiB.
+- To compare a local folder with a remote one recursively, use remote_reconcile; sync_preview compares one directory level on the active connection.
 
 ${protocolSection}
 ${knowledgeSummary}

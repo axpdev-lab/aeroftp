@@ -284,7 +284,7 @@ fn normalize_path_arg(args: &Value, primary: &str, default: &str) -> String {
     get_str_opt(args, primary).unwrap_or_else(|| default.to_string())
 }
 
-fn alias_name(tool_name: &str) -> &str {
+pub(crate) fn alias_name(tool_name: &str) -> &str {
     match tool_name {
         "remote_list" | "remote_list_files" => "aeroftp_list_files",
         "remote_read" | "remote_read_file" => "aeroftp_read_file",

@@ -368,9 +368,56 @@ function formatServerList(r: Record<string, unknown>): string {
     return out.join('\n');
 }
 
+/** Every item is an object with a string `name` or `path`: the shape the
+ *  listing and search formatters print. */
+function everyItemNamed(items: unknown[]): boolean {
+    return items.every(item => {
+        if (!item || typeof item !== 'object') return false;
+        const o = item as Record<string, unknown>;
+        return typeof o.name === 'string' || typeof o.path === 'string';
+    });
+}
+
+/** The community benchmark report (schema v1) as a compact table: one row per
+ *  measured operation and size, then the errors. The raw runs and the
+ *  environment block stay out, so a standard or deep report fits the model's
+ *  context instead of being cut by the catch-all cap. */
+function formatBenchmarkReport(r: Record<string, unknown>): string {
+    const mib = (bytes: unknown) => typeof bytes === 'number' && bytes > 0 ? `${(bytes / 1048576).toFixed(bytes % 1048576 ? 2 : 0)} MiB` : '';
+    const num = (v: unknown, digits = 1) => typeof v === 'number' ? v.toFixed(digits) : '-';
+    const lines: string[] = [];
+    lines.push(`**Benchmark ${String(r.level ?? '')}**: ${String(r.service ?? '')} over ${String(r.access ?? '')}${r.mode ? ` (${String(r.mode)})` : ''}`);
+    lines.push('| operation | size | runs | Mbps p50 | latency p50 ms | files/s | fatal |');
+    lines.push('|---|---|---|---|---|---|---|');
+    for (const item of r.results as Array<Record<string, unknown>>) {
+        const throughput = item.throughput_mbps as Record<string, unknown> | undefined;
+        const latency = item.latency_ms as Record<string, unknown> | undefined;
+        const errors = item.errors as Record<string, unknown> | undefined;
+        const size = item.file_count != null ? `${String(item.file_count)} x ${mib(item.payload_size_bytes) || '-'}` : (mib(item.payload_size_bytes) || '-');
+        lines.push(`| ${String(item.operation)} | ${size} | ${String(item.runs ?? '-')} | ${num(throughput?.p50)} | ${num(latency?.p50)} | ${num(item.files_per_second)} | ${String(errors?.fatal ?? 0)} |`);
+    }
+    const summary = r.summary as Record<string, unknown> | undefined;
+    if (summary) {
+        lines.push(`\nTotal: ${String(summary.total_runs ?? 0)} runs, ${mib(summary.total_bytes_transferred) || '0 MiB'}, ${num(Number(summary.total_duration_ms ?? 0) / 1000)} s`);
+        const errs = Array.isArray(summary.errors) ? summary.errors as string[] : [];
+        if (errs.length) {
+            lines.push(`\n**Notes and errors (${errs.length}):**`);
+            errs.forEach(e => lines.push(`  - ${escapeMarkdown(String(e))}`));
+        }
+    }
+    // What the figures measure, e.g. a local bridge instead of the service (#368).
+    const notes = Array.isArray(r.notes) ? r.notes as string[] : [];
+    notes.forEach(note => lines.push(`\n**Note:** ${escapeMarkdown(String(note))}`));
+    lines.push(`\nReport id \`${String(r.report_id ?? '')}\`, schema v1, anonymized.`);
+    return lines.join('\n');
+}
+
 export function formatToolResult(_toolName: string, result: unknown): string {
     if (result && typeof result === 'object') {
         const r = result as Record<string, unknown>;
+        if (_toolName === 'aeroftp_benchmark' && r.schema_version === 1 && Array.isArray(r.results)) {
+            return formatBenchmarkReport(r);
+        }
         // Saved server profiles (server_list_saved / aeroftp_list_servers). One
         // compact line per profile: the full JSON of a large vault (96 profiles,
         // about 34 KB) went through the catch-all cap below, and the model only
@@ -380,18 +427,23 @@ export function formatToolResult(_toolName: string, result: unknown): string {
         if (Array.isArray(r.servers) && r.capabilities_included !== true) {
             return formatServerList(r);
         }
-        // List results
-        if (r.entries && Array.isArray(r.entries)) {
-            const entries = r.entries as Array<{ name: string; is_dir: boolean; size: number }>;
-            const lines = entries.map(e => `${e.is_dir ? '/' : ' '} ${e.name}${e.is_dir ? '' : ` (${e.size} bytes)`}`);
+        // List results (remote_list, local_list) and the flat remote_tree, whose
+        // entries carry `path` instead of `name`. A result whose entries have
+        // neither (a trash listing, a plugin's own shape) is not a listing and
+        // goes to the JSON below: printed as one, every line read `undefined`.
+        if (Array.isArray(r.entries) && everyItemNamed(r.entries)) {
+            const entries = r.entries as Array<{ name?: string; path?: string; is_dir: boolean; size?: number }>;
+            const lines = entries.map(e => `${e.is_dir ? '/' : ' '} ${e.name ?? e.path}${e.is_dir || e.size == null ? '' : ` (${e.size} bytes)`}`);
             let output = lines.join('\n');
-            if (r.truncated) output += `\n_...truncated (${r.total} total)_`;
+            if (r.truncated) output += r.total != null ? `\n_...truncated (${r.total} total)_` : '\n_...truncated_';
             return `\`\`\`\n${output}\n\`\`\``;
         }
         // Read results
         if (typeof r.content === 'string') {
             let output = r.content as string;
-            if (r.truncated) output += `\n\n_...truncated (${r.size} bytes total)_`;
+            // remote_head / remote_tail report `total_size`, the reads `size`.
+            const size = r.size ?? r.total_size;
+            if (r.truncated) output += size != null ? `\n\n_...truncated (${size} bytes total)_` : '\n\n_...truncated_';
             return `\`\`\`\n${output}\n\`\`\``;
         }
         // Sync preview results
@@ -651,8 +703,10 @@ export function formatToolResult(_toolName: string, result: unknown): string {
         }
         // Success message
         if (r.message) return String(r.message);
-        // Search results (local_search returns name, is_dir, size)
-        if (r.results && Array.isArray(r.results)) {
+        // Search results (local_search returns name, is_dir, size). The
+        // benchmark report also has a `results` array, of measurements: printed
+        // as search hits it reached the model as two lines of `undefined`.
+        if (Array.isArray(r.results) && everyItemNamed(r.results)) {
             const results = r.results as Array<{ name: string; path?: string; is_dir: boolean; size?: number }>;
             if (results.length === 0) return 'No results found.';
             const lines = results.map(e => {
