@@ -1,8 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
-import { readFileSync, readlinkSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, readlinkSync, existsSync, realpathSync, openSync, writeFileSync, closeSync, unlinkSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, join, isAbsolute, dirname, basename } from 'node:path';
+
+// Serialize every adapter process for this inspector. Never remove a live lock automatically.
+export function acquireDriverLock(lock, write = writeFileSync) {
+    let fd;
+    try { fd = openSync(lock, 'wx', 0o600); }
+    catch { throw Error(`Another DEV driver owns ${lock}; wait or inspect its PID before cleanup`); }
+    // This process created the lock, so a failed PID write must not leave a false live owner.
+    try { write(fd, `${process.pid}\n`); }
+    catch (error) { closeSync(fd); unlinkSync(lock); throw error; }
+    return fd;
+}
 
 export function fixtureRoot(value) {
     if (!value || !isAbsolute(value)) throw Error('Set AEROFTP_GUI_TEST_ROOT to the absolute owned fixture directory');

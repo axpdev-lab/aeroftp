@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // Complete Linux DEV driver; never bundled into the application.
-import { readFileSync, writeFileSync, unlinkSync, existsSync, openSync, closeSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { evaluate, inspectorPort, scriptTimeout } from './lib/gui-inspector.mjs';
-import { fixtureRoot, inspectFixture, readSession, requestBody } from './lib/gui-dev-runtime.mjs';
+import { acquireDriverLock, fixtureRoot, inspectFixture, readSession, requestBody } from './lib/gui-dev-runtime.mjs';
 
 const usage = `Owned AeroFTP DEV controller (Node 22+, Linux)
   --begin --actor <name> [--session-file <path>]
@@ -55,11 +55,8 @@ async function main() {
     const port = inspectorPort(process.env.INSPECTOR_PORT);
     const fixture = inspectFixture(root, port);
     sessionPath ??= join(root, 'controller-session.json');
-    // Serialize every adapter process for this inspector. Never remove a live lock automatically.
     const lock = join(root, 'controller-driver.lock');
-    let fd;
-    try { fd = openSync(lock, 'wx', 0o600); writeFileSync(fd, `${process.pid}\n`); }
-    catch { throw Error(`Another DEV driver owns ${lock}; wait or inspect its PID before cleanup`); }
+    const fd = acquireDriverLock(lock);
     try {
         let body;
         if (mode === '--begin') {
