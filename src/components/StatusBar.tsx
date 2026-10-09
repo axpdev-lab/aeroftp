@@ -129,6 +129,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     usedScanNote,
 }) => {
     const t = useTranslation();
+    // The used-storage chip is on screen while a scan runs or a figure exists;
+    // the note describes that figure, so it is shown only alongside it.
+    const storageFigureShown = !!usedScanStatus?.running
+        || (!!storageQuota && (storageQuota.total > 0 || storageQuota.used > 0));
     const { language } = useI18n();
     // Name for the language chip. `common.language` already exists in all 47
     // locale files, so this stays a chip that adds no key, and the fallback
@@ -327,9 +331,16 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         </div>
                     );
                 })()}
-                {isConnected && usedScanNote && (
-                    <span className="flex items-center text-gray-400 dark:text-gray-500" title={usedScanNote} data-used-scan-note>
-                        <Info size={12} />
+                {isConnected && usedScanNote && storageFigureShown && (
+                    <span
+                        role="note"
+                        tabIndex={0}
+                        aria-label={usedScanNote}
+                        title={usedScanNote}
+                        className="flex items-center text-gray-400 dark:text-gray-500 rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500"
+                        data-used-scan-note
+                    >
+                        <Info size={12} aria-hidden="true" />
                     </span>
                 )}
                 {isConnected && onScanUsed && !usedScanStatus?.running

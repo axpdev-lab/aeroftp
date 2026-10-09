@@ -199,7 +199,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             'WebDAV':
                 'Requires Filen Desktop running and signed in on this machine. The bridge is local-only: nothing leaves the loopback. Use the Native API mode for E2E encryption without Filen Desktop.',
             'S3':
-                'Requires Filen Desktop running and signed in on this machine. On first connect the bridge auto-creates a top-level folder named "filen" on your account: existing files live one level above the bridge view.',
+                'Requires Filen Desktop running and signed in on this machine. Each top-level folder of your Filen drive is a bucket: pick one with Fetch. Files directly in the Filen root are not reachable over S3.',
         },
     },
     {

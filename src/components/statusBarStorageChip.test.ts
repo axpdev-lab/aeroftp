@@ -74,14 +74,24 @@ it('shows the figure without a spinner or Cancel once the scan is over', async (
 });
 
 it('points a Filen Desktop session to the native connection for the account total', async () => {
-    await render({ storageQuota: null, usedScanNote: 'statusBar.filenBridgeAccountTotal' });
+    await render({ storageQuota: { used: 40, total: 0, free: 0, files: 3 }, usedScanNote: 'statusBar.filenBridgeAccountTotal' });
     const note = host.querySelector('[data-used-scan-note]') as HTMLElement | null;
     expect(note).not.toBeNull();
     expect(note!.title).toBe('statusBar.filenBridgeAccountTotal');
+    // Reachable without a mouse: focusable, with the text as its accessible name.
+    expect(note!.tabIndex).toBe(0);
+    expect(note!.getAttribute('aria-label')).toBe('statusBar.filenBridgeAccountTotal');
+});
+
+it('keeps the note with the figure: none while no figure is shown', async () => {
+    await render({ storageQuota: null, usedScanNote: 'statusBar.filenBridgeAccountTotal' });
+    expect(host.querySelector('[data-used-scan-note]')).toBeNull();
     expect(host.textContent).toContain('statusBar.usedScanAction');
+    await render({ storageQuota: null, usedScanStatus: { running: true, files: 1, bytes: 10 }, usedScanNote: 'statusBar.filenBridgeAccountTotal' });
+    expect(host.querySelector('[data-used-scan-note]')).not.toBeNull();
 });
 
 it('shows no account-total note on an ordinary session', async () => {
-    await render({ storageQuota: null });
+    await render({ storageQuota: { used: 40, total: 0, free: 0, files: 3 } });
     expect(host.querySelector('[data-used-scan-note]')).toBeNull();
 });

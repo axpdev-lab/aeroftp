@@ -9032,6 +9032,9 @@ const App: React.FC = () => {
         password: cloudPassword,
         protocol,
         port: cloudServer.port,
+        // Carried so preset-aware UI (the Filen Desktop account-total note in
+        // the status bar) also applies to a session AeroCloud opened.
+        providerId: cloudServer.providerId,
         options: cloudServer.options,
       };
 
