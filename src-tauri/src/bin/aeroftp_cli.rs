@@ -32396,6 +32396,24 @@ mod serve_sftp {
     const SSH_FX_PERMISSION_DENIED: u32 = 3;
     const SSH_FX_FAILURE: u32 = 4;
 
+    // SSH_FXP_OPEN pflags (draft-ietf-secsh-filexfer-02, section 6.3).
+    const SSH_FXF_WRITE: u32 = 0x0000_0002;
+    const SSH_FXF_APPEND: u32 = 0x0000_0004;
+    const SSH_FXF_CREAT: u32 = 0x0000_0008;
+    const SSH_FXF_TRUNC: u32 = 0x0000_0010;
+    const SSH_FXF_EXCL: u32 = 0x0000_0020;
+
+    /// A file opened for writing. The client writes at offsets in any order
+    /// (OpenSSH keeps several WRITEs in flight), while a backend takes a whole
+    /// file, so the bytes go to a spool file on this machine and are uploaded
+    /// when the client closes the handle. The spool is deleted when this is
+    /// dropped: a session that ends without CLOSE publishes nothing.
+    struct SpooledWrite {
+        remote: String,
+        spool: tempfile::TempPath,
+        append: bool,
+    }
+
     fn read_u32(data: &[u8], pos: &mut usize) -> Option<u32> {
         let end = pos.checked_add(4)?;
         let bytes: [u8; 4] = data.get(*pos..end)?.try_into().ok()?;
@@ -32408,6 +32426,15 @@ mod serve_sftp {
         let bytes: [u8; 8] = data.get(*pos..end)?.try_into().ok()?;
         *pos = end;
         Some(u64::from_be_bytes(bytes))
+    }
+
+    /// An SFTP `string` read as the bytes it carries (file data is not text).
+    fn read_bytes<'a>(data: &'a [u8], pos: &mut usize) -> Option<&'a [u8]> {
+        let len = read_u32(data, pos)? as usize;
+        let end = pos.checked_add(len)?;
+        let bytes = data.get(*pos..end)?;
+        *pos = end;
+        Some(bytes)
     }
 
     fn read_string(data: &[u8], pos: &mut usize) -> Option<String> {
@@ -32477,16 +32504,12 @@ mod serve_sftp {
     impl SshServer for AeroSftpServer {
         type Handler = AeroSftpHandler;
         fn new_client(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
-            AeroSftpHandler {
-                provider: self.provider.clone(),
-                base_path: self.base_path.clone(),
-                auth_credentials: self.auth_credentials.clone(),
-                handles: HashMap::new(),
-                next_handle: 0,
-                dir_read: std::collections::HashSet::new(),
-                sftp_buf: Vec::new(),
-                rt: self.rt.clone(),
-            }
+            AeroSftpHandler::new(
+                self.provider.clone(),
+                self.base_path.clone(),
+                self.auth_credentials.clone(),
+                self.rt.clone(),
+            )
         }
     }
 
@@ -32495,6 +32518,8 @@ mod serve_sftp {
         base_path: String,
         auth_credentials: Option<ServeAuthCredentials>,
         handles: HashMap<String, String>,
+        /// Handles opened for writing, by handle.
+        writes: HashMap<String, SpooledWrite>,
         next_handle: u64,
         dir_read: std::collections::HashSet<String>,
         sftp_buf: Vec<u8>,
@@ -32509,16 +32534,7 @@ mod serve_sftp {
             provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
             rt: Arc<tokio::runtime::Runtime>,
         ) -> Self {
-            Self {
-                provider,
-                base_path: "/".to_string(),
-                auth_credentials: None,
-                handles: HashMap::new(),
-                next_handle: 0,
-                dir_read: std::collections::HashSet::new(),
-                sftp_buf: Vec::new(),
-                rt,
-            }
+            Self::new(provider, "/".to_string(), None, rt)
         }
 
         /// The reply to one SFTP packet (type byte first, no length).
@@ -32528,6 +32544,26 @@ mod serve_sftp {
     }
 
     impl AeroSftpHandler {
+        /// One session's handler: no handles open, nothing buffered.
+        fn new(
+            provider: Arc<AsyncMutex<Box<dyn StorageProvider>>>,
+            base_path: String,
+            auth_credentials: Option<ServeAuthCredentials>,
+            rt: Arc<tokio::runtime::Runtime>,
+        ) -> Self {
+            Self {
+                provider,
+                base_path,
+                auth_credentials,
+                handles: HashMap::new(),
+                writes: HashMap::new(),
+                next_handle: 0,
+                dir_read: std::collections::HashSet::new(),
+                sftp_buf: Vec::new(),
+                rt,
+            }
+        }
+
         fn resolve_path(&self, path: &str) -> Result<String, &'static str> {
             resolve_served_backend_path(&self.base_path, path)
         }
@@ -32713,7 +32749,7 @@ mod serve_sftp {
                 SSH_FXP_OPEN => {
                     let id = parse_u32!();
                     let path = parse_string!();
-                    let _flags = parse_u32!();
+                    let flags = parse_u32!();
                     let remote = match self.resolve_path(&path) {
                         Ok(remote) => remote,
                         Err(_) => {
@@ -32724,7 +32760,62 @@ mod serve_sftp {
                             )
                         }
                     };
+                    if flags & (SSH_FXF_WRITE | SSH_FXF_APPEND) == 0 {
+                        let handle = self.alloc_handle(&remote);
+                        return make_handle(id, &handle);
+                    }
+                    let r = remote.clone();
+                    let existing = match prov!(provider, rt, async |p| {
+                        if !p.exists(&r).await? {
+                            return Ok(None);
+                        }
+                        Ok(Some(p.stat(&r).await.map(|e| e.is_dir).unwrap_or(false)))
+                    }) {
+                        Ok(existing) => existing,
+                        Err(e) => {
+                            return make_status(id, SSH_FX_FAILURE, &format!("open failed: {e}"))
+                        }
+                    };
+                    match existing {
+                        Some(true) => return make_status(id, SSH_FX_FAILURE, "is a directory"),
+                        Some(false) if flags & SSH_FXF_EXCL != 0 => {
+                            return make_status(id, SSH_FX_FAILURE, "file already exists")
+                        }
+                        None if flags & SSH_FXF_CREAT == 0 => {
+                            return make_status(id, SSH_FX_NO_SUCH_FILE, "no such file")
+                        }
+                        _ => {}
+                    }
+                    let spool = match tempfile::Builder::new()
+                        .prefix(".aeroftp-sftp-upload-")
+                        .tempfile()
+                    {
+                        Ok(file) => file.into_temp_path(),
+                        Err(e) => {
+                            return make_status(id, SSH_FX_FAILURE, &format!("open failed: {e}"))
+                        }
+                    };
+                    // Without TRUNC the client writes into the file as it is:
+                    // start from its current content, so bytes it does not
+                    // rewrite survive the upload at CLOSE.
+                    if existing == Some(false) && flags & SSH_FXF_TRUNC == 0 {
+                        let r = remote.clone();
+                        let local = spool.to_string_lossy().into_owned();
+                        if let Err(e) =
+                            prov!(provider, rt, async |p| p.download(&r, &local, None).await)
+                        {
+                            return make_status(id, SSH_FX_FAILURE, &format!("open failed: {e}"));
+                        }
+                    }
                     let handle = self.alloc_handle(&remote);
+                    self.writes.insert(
+                        handle.clone(),
+                        SpooledWrite {
+                            remote,
+                            spool,
+                            append: flags & SSH_FXF_APPEND != 0,
+                        },
+                    );
                     make_handle(id, &handle)
                 }
                 SSH_FXP_READ => {
@@ -32773,18 +32864,51 @@ mod serve_sftp {
                 }
                 SSH_FXP_WRITE => {
                     let id = parse_u32!();
-                    let _handle = parse_string!();
-                    let _offset = parse_u64!();
-                    let _data_len = parse_u32!();
-                    // Write support: simplified - upload on close
-                    make_status(id, SSH_FX_OK, "")
+                    let handle = parse_string!();
+                    let offset = parse_u64!();
+                    let Some(bytes) = read_bytes(data, &mut pos) else {
+                        return malformed_status(data);
+                    };
+                    let Some(write) = self.writes.get(&handle) else {
+                        return make_status(id, SSH_FX_FAILURE, "handle not open for writing");
+                    };
+                    let written = (|| -> std::io::Result<()> {
+                        use std::io::{Seek, SeekFrom, Write};
+                        let mut file =
+                            std::fs::OpenOptions::new().write(true).open(&write.spool)?;
+                        if write.append {
+                            file.seek(SeekFrom::End(0))?;
+                        } else {
+                            file.seek(SeekFrom::Start(offset))?;
+                        }
+                        file.write_all(bytes)
+                    })();
+                    match written {
+                        Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(e) => make_status(id, SSH_FX_FAILURE, &format!("write failed: {e}")),
+                    }
                 }
                 SSH_FXP_CLOSE => {
                     let id = parse_u32!();
                     let handle = parse_string!();
                     self.handles.remove(&handle);
                     self.dir_read.remove(&handle);
-                    make_status(id, SSH_FX_OK, "")
+                    // A written file reaches the backend here, and the client
+                    // hears whether it did: an OK for bytes that were never
+                    // stored is the failure this replaces.
+                    let Some(write) = self.writes.remove(&handle) else {
+                        return make_status(id, SSH_FX_OK, "");
+                    };
+                    let local = write.spool.to_string_lossy().into_owned();
+                    let remote = write.remote.clone();
+                    let uploaded = prov!(provider, rt, async |p| p
+                        .upload(&local, &remote, None)
+                        .await);
+                    drop(write);
+                    match uploaded {
+                        Ok(()) => make_status(id, SSH_FX_OK, ""),
+                        Err(e) => make_status(id, SSH_FX_FAILURE, &format!("upload failed: {e}")),
+                    }
                 }
                 SSH_FXP_REMOVE => {
                     let id = parse_u32!();
@@ -32982,6 +33106,23 @@ mod serve_sftp {
             }
         }
 
+        /// The client sent EOF: the SFTP session is over. End the channel the
+        /// way OpenSSH's sftp-server does when its input closes (exit status
+        /// 0, EOF, close); without it the client waits for the channel to
+        /// close and never returns. A handle still open for writing was never
+        /// closed by the client, so its file is not uploaded.
+        fn channel_eof(
+            &mut self,
+            channel: ChannelId,
+            session: &mut Session,
+        ) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send {
+            self.writes.clear();
+            let _ = session.exit_status_request(channel, 0);
+            let _ = session.eof(channel);
+            let _ = session.close(channel);
+            async { Ok(()) }
+        }
+
         fn subsystem_request(
             &mut self,
             channel: ChannelId,
@@ -33125,16 +33266,12 @@ mod serve_sftp {
                 Err(_) => continue,
             };
 
-            let handler = AeroSftpHandler {
-                provider: provider.clone(),
-                base_path: base_path.clone(),
-                auth_credentials: auth_credentials.clone(),
-                handles: HashMap::new(),
-                next_handle: 0,
-                dir_read: std::collections::HashSet::new(),
-                sftp_buf: Vec::new(),
-                rt: sftp_rt.clone(),
-            };
+            let handler = AeroSftpHandler::new(
+                provider.clone(),
+                base_path.clone(),
+                auth_credentials.clone(),
+                sftp_rt.clone(),
+            );
 
             let cfg = config.clone();
             sessions.spawn(async move {
@@ -90898,6 +91035,8 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         links: HashMap<String, String>,
         /// What `supports_chmod` answers.
         chmod_supported: bool,
+        /// When set, `upload` fails with this and stores nothing.
+        upload_fails_with: Option<String>,
         /// When set, `chmod` fails with this.
         chmod_fails_with: Option<String>,
         /// Empty directories: `stat` reports them as such, and both `rmdir`
@@ -90924,6 +91063,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 modes: HashMap::new(),
                 links: HashMap::new(),
                 chmod_supported: false,
+                upload_fails_with: None,
                 chmod_fails_with: None,
                 dirs: std::collections::HashSet::new(),
             }
@@ -90998,6 +91138,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             remote_path: &str,
             _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            if let Some(msg) = &self.upload_fails_with {
+                return Err(ProviderError::TransferFailed(msg.clone()));
+            }
             let data = std::fs::read(local_path).map_err(ProviderError::IoError)?;
             self.uploads.push((remote_path.to_string(), data.clone()));
             self.modes.entry(remote_path.to_string()).or_insert(0o644);
@@ -91844,6 +91987,183 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let reply = handler.answer(&packet(15));
         assert_eq!(status(&reply), 0, "SSH_FX_OK");
         assert!(!rt.block_on(served_directory_is_there(&provider)));
+    }
+
+    /// Packets for the served SFTP write tests: OPEN, WRITE, CLOSE, READ.
+    mod sftp_packets {
+        fn string(packet: &mut Vec<u8>, bytes: &[u8]) {
+            packet.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
+            packet.extend_from_slice(bytes);
+        }
+        pub fn open(id: u32, path: &str, flags: u32) -> Vec<u8> {
+            let mut p = vec![3u8];
+            p.extend_from_slice(&id.to_be_bytes());
+            string(&mut p, path.as_bytes());
+            p.extend_from_slice(&flags.to_be_bytes());
+            p.extend_from_slice(&0u32.to_be_bytes()); // attrs: no flags
+            p
+        }
+        pub fn write(id: u32, handle: &[u8], offset: u64, data: &[u8]) -> Vec<u8> {
+            let mut p = vec![6u8];
+            p.extend_from_slice(&id.to_be_bytes());
+            string(&mut p, handle);
+            p.extend_from_slice(&offset.to_be_bytes());
+            string(&mut p, data);
+            p
+        }
+        pub fn close(id: u32, handle: &[u8]) -> Vec<u8> {
+            let mut p = vec![4u8];
+            p.extend_from_slice(&id.to_be_bytes());
+            string(&mut p, handle);
+            p
+        }
+        /// The handle of an SSH_FXP_HANDLE reply, or the panic says what came.
+        pub fn handle_of(reply: &[u8]) -> Vec<u8> {
+            assert_eq!(reply[0], 102, "SSH_FXP_HANDLE expected, got {reply:?}");
+            let len = u32::from_be_bytes(reply[5..9].try_into().unwrap()) as usize;
+            reply[9..9 + len].to_vec()
+        }
+        /// The status code of an SSH_FXP_STATUS reply.
+        pub fn status_of(reply: &[u8]) -> u32 {
+            assert_eq!(reply[0], 101, "SSH_FXP_STATUS expected, got {reply:?}");
+            u32::from_be_bytes(reply[5..9].try_into().unwrap())
+        }
+    }
+
+    type ServedProvider = Arc<AsyncMutex<Box<dyn StorageProvider>>>;
+
+    fn served_sftp_handler(
+        fake: CliEditFakeProvider,
+    ) -> (
+        serve_sftp::AeroSftpHandler,
+        ServedProvider,
+        Arc<tokio::runtime::Runtime>,
+    ) {
+        let rt = Arc::new(
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .expect("runtime"),
+        );
+        let provider: Box<dyn StorageProvider> = Box::new(fake);
+        let provider = Arc::new(AsyncMutex::new(provider));
+        let handler = serve_sftp::AeroSftpHandler::for_tests(provider.clone(), rt.clone());
+        (handler, provider, rt)
+    }
+
+    fn served_file(
+        rt: &tokio::runtime::Runtime,
+        provider: &ServedProvider,
+        path: &str,
+    ) -> Option<Vec<u8>> {
+        rt.block_on(async {
+            let mut guard = provider.lock().await;
+            guard
+                .as_any_mut()
+                .downcast_mut::<CliEditFakeProvider>()
+                .expect("the fake")
+                .remote_files
+                .get(path)
+                .cloned()
+        })
+    }
+
+    /// An upload through `serve sftp` answered every WRITE with OK, threw the
+    /// bytes away and uploaded nothing at CLOSE: the client reported success
+    /// and no file existed. The bytes now land, written out of order as
+    /// OpenSSH pipelines them, and are uploaded when the handle closes.
+    #[test]
+    fn served_sftp_upload_stores_the_bytes_the_client_wrote() {
+        use sftp_packets::*;
+        let (mut handler, provider, rt) = served_sftp_handler(CliEditFakeProvider::new());
+        // WRITE | CREAT | TRUNC, what OpenSSH `put` sends.
+        let handle = handle_of(&handler.answer(&open(1, "/new.txt", 0x1a)));
+        assert_eq!(
+            status_of(&handler.answer(&write(2, &handle, 6, b"world"))),
+            0
+        );
+        assert_eq!(
+            status_of(&handler.answer(&write(3, &handle, 0, b"hello "))),
+            0
+        );
+        assert_eq!(
+            served_file(&rt, &provider, "/new.txt"),
+            None,
+            "nothing before CLOSE"
+        );
+        assert_eq!(status_of(&handler.answer(&close(4, &handle))), 0);
+        assert_eq!(
+            served_file(&rt, &provider, "/new.txt").as_deref(),
+            Some(&b"hello world"[..])
+        );
+    }
+
+    /// Without TRUNC the client writes into the file as it is (OpenSSH
+    /// `reput`): bytes it does not rewrite survive. APPEND adds at the end
+    /// whatever offset it names.
+    #[test]
+    fn served_sftp_write_without_trunc_keeps_the_rest_and_append_adds() {
+        use sftp_packets::*;
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"0123456789".to_vec());
+        let (mut handler, provider, rt) = served_sftp_handler(fake);
+
+        let handle = handle_of(&handler.answer(&open(1, "/a.txt", 0x02)));
+        assert_eq!(status_of(&handler.answer(&write(2, &handle, 2, b"AB"))), 0);
+        assert_eq!(status_of(&handler.answer(&close(3, &handle))), 0);
+        assert_eq!(
+            served_file(&rt, &provider, "/a.txt").as_deref(),
+            Some(&b"01AB456789"[..])
+        );
+
+        let handle = handle_of(&handler.answer(&open(4, "/a.txt", 0x02 | 0x04)));
+        assert_eq!(status_of(&handler.answer(&write(5, &handle, 0, b"!"))), 0);
+        assert_eq!(status_of(&handler.answer(&close(6, &handle))), 0);
+        assert_eq!(
+            served_file(&rt, &provider, "/a.txt").as_deref(),
+            Some(&b"01AB456789!"[..])
+        );
+    }
+
+    /// The open flags are kept: EXCL refuses an existing file, a write
+    /// without CREAT refuses a missing one, a WRITE on a handle opened for
+    /// reading fails, and an upload the backend refuses is a failed CLOSE
+    /// instead of an OK.
+    #[test]
+    fn served_sftp_write_keeps_the_open_flags_and_reports_a_failed_upload() {
+        use sftp_packets::*;
+        let mut fake = CliEditFakeProvider::new();
+        fake.remote_files
+            .insert("/a.txt".to_string(), b"A".to_vec());
+        let (mut handler, _provider, _rt) = served_sftp_handler(fake);
+        assert_eq!(
+            status_of(&handler.answer(&open(1, "/a.txt", 0x2a))),
+            4,
+            "EXCL"
+        );
+        assert_eq!(
+            status_of(&handler.answer(&open(2, "/none.txt", 0x02))),
+            2,
+            "no CREAT"
+        );
+        let read = handle_of(&handler.answer(&open(3, "/a.txt", 0x01)));
+        assert_eq!(
+            status_of(&handler.answer(&write(4, &read, 0, b"x"))),
+            4,
+            "read handle"
+        );
+
+        let mut fake = CliEditFakeProvider::new();
+        fake.upload_fails_with = Some("quota exceeded".to_string());
+        let (mut handler, provider, rt) = served_sftp_handler(fake);
+        let handle = handle_of(&handler.answer(&open(1, "/new.txt", 0x1a)));
+        assert_eq!(status_of(&handler.answer(&write(2, &handle, 0, b"x"))), 0);
+        let reply = handler.answer(&close(3, &handle));
+        assert_eq!(status_of(&reply), 4, "a refused upload is SSH_FX_FAILURE");
+        assert!(String::from_utf8_lossy(&reply).contains("quota exceeded"));
+        assert_eq!(served_file(&rt, &provider, "/new.txt"), None);
     }
 
     #[test]
