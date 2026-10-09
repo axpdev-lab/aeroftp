@@ -593,7 +593,8 @@ pub fn default_transfer_optimization_hints_for_provider(
         | ProviderType::Proton
         | ProviderType::AeroVaultMount
         | ProviderType::Peer
-        | ProviderType::Mtp => TransferOptimizationHints::default(),
+        | ProviderType::Mtp
+        | ProviderType::Local => TransferOptimizationHints::default(),
     }
 }
 

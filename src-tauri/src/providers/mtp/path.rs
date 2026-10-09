@@ -26,12 +26,13 @@ pub fn normalize_virtual_path(path: &str) -> Result<String, ProviderError> {
             "MTP path contains a null byte".to_string(),
         ));
     }
-    let trimmed = path.trim();
-    if trimmed.is_empty() || trimmed == "/" {
+    // Not trimmed: `report ` and `report` are two objects, and a trimmed
+    // name addresses the other one.
+    if path.is_empty() || path == "/" {
         return Ok("/".to_string());
     }
     let mut out = String::from("/");
-    for part in trimmed.split('/') {
+    for part in path.split('/') {
         if part.is_empty() {
             continue;
         }
@@ -79,7 +80,7 @@ pub fn split_segments(normalized: &str) -> Result<Vec<String>, ProviderError> {
 
 /// Join a parent virtual directory and a leaf name into a normalized path.
 pub fn join_virtual(parent: &str, name: &str) -> Result<String, ProviderError> {
-    let leaf = name.trim();
+    let leaf = name;
     if leaf.is_empty() || leaf == "." || leaf == ".." || leaf.contains('/') || leaf.contains('\0') {
         return Err(ProviderError::InvalidPath(format!(
             "invalid MTP leaf name: {name:?}"
@@ -165,6 +166,17 @@ mod tests {
         assert_eq!(normalize_virtual_path("/").unwrap(), "/");
         assert_eq!(normalize_virtual_path("///a//b/").unwrap(), "/a/b");
         assert!(split_segments("/").unwrap().is_empty());
+    }
+
+    #[test]
+    fn names_keep_their_spaces() {
+        assert_eq!(normalize_virtual_path("/a/report ").unwrap(), "/a/report ");
+        assert_eq!(join_virtual("/a", " b ").unwrap(), "/a/ b ");
+        assert_eq!(leaf_name("/a/report ").unwrap(), "report ");
+        assert_eq!(
+            split_segments("/ a/b ").unwrap(),
+            vec![" a".to_string(), "b ".to_string()]
+        );
     }
 
     #[test]

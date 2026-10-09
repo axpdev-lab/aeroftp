@@ -157,7 +157,8 @@ pub fn capability(kind: ProviderType) -> ChecksumCapability {
         | ProviderType::Cloudinary
         | ProviderType::AeroVaultMount
         | ProviderType::Peer
-        | ProviderType::Mtp => ChecksumCapability::default(),
+        | ProviderType::Mtp
+        | ProviderType::Local => ChecksumCapability::default(),
     }
 }
 

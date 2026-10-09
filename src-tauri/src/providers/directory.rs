@@ -1,14 +1,22 @@
-//! Filesystem-backed MTP provider: ride a desktop gvfs (or other FUSE) mount.
+//! `StorageProvider` over a directory tree on this machine, behind a path jail.
 //!
-//! Why this exists (APPENDIX-DEVICE-PROFILES live findings 2026-07-16): a phone
-//! grants **one MTP session per physical plug**. gvfs takes it at automount, so
-//! exclusive libmtp always loses (`PTP_ERROR_IO`) and can wedge the device. The
-//! only mechanism proven to work when the desktop already mounted the phone is
-//! browsing its FUSE path as a filesystem while keeping the **remote** panel
-//! identity (`ProviderType::Mtp`) so dual-panel transfers and AeroSync still
-//! apply.
+//! Two front ends share it, and differ only in identity and wording:
 //!
-//! Exclusive [`super::provider::MtpProvider`] remains the no-gvfs fallback.
+//! - **MTP over a desktop mount** ([`DirectoryProvider::mtp`]). A phone grants
+//!   one MTP session per physical plug; gvfs takes it at automount, so
+//!   exclusive libmtp always loses (`PTP_ERROR_IO`) and can wedge the device.
+//!   Browsing the FUSE path as a filesystem while keeping the remote identity
+//!   (`ProviderType::Mtp`) is the mechanism proven to work when the desktop
+//!   already mounted the phone (APPENDIX-DEVICE-PROFILES live findings
+//!   2026-07-16). Exclusive [`super::mtp::MtpProvider`] remains the no-gvfs
+//!   fallback.
+//! - **A local directory as a remote** ([`DirectoryProvider::local`],
+//!   `ProviderType::Local`): what `aeroftp-cli serve webdav /srv/share` or
+//!   `aeroftp-cli ls file:///srv/share` open.
+//!
+//! Virtual paths are `/`-rooted and map 1:1 under the root. Every resolved
+//! real path must stay under the canonical root: `..` clamps at `/` by
+//! construction, and a symlink that resolves outside is refused.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -25,46 +33,98 @@ use crate::providers::types::{ProviderError, ProviderType, RemoteEntry};
 use crate::providers::StorageProvider;
 use crate::transfer_dag::TransferCapabilities;
 
-/// Cap for `download_to_bytes` materialization (10 MiB). Larger objects stream
-/// to disk via `download`.
-const BYTES_CAP: u64 = 10 * 1024 * 1024;
+/// Cap for `download_to_bytes` materialization on a phone (10 MiB): every
+/// byte crosses USB. Larger objects stream to disk via `download`. A local
+/// folder takes the general cap every other backend has.
+const MTP_BYTES_CAP: u64 = 10 * 1024 * 1024;
 
-/// Marker in `ProviderConfig.extra` when this backend is installed.
-pub const MTP_EXTRA_BACKEND: &str = "mtp_backend";
-pub const MTP_BACKEND_GVFS: &str = "gvfs";
-pub const MTP_EXTRA_MOUNT_PATH: &str = "mtp_mount_path";
+/// Which front end a [`DirectoryProvider`] is: it sets the provider identity
+/// and the words its errors use, never the path jail.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DirectoryIdentity {
+    /// A portable device browsed through its desktop (gvfs/FUSE) mount.
+    Mtp { device_id: String },
+    /// A directory of this machine used as a remote.
+    Local,
+}
 
-/// `StorageProvider` over a directory tree rooted at a desktop MTP mount.
+/// The folder a `ProviderType::Local` config names: its `host`, which must be
+/// an absolute path. A relative one would be resolved against whatever
+/// directory the process happens to run in, so it is refused here and made
+/// absolute by the caller that knows the user's directory (the CLI).
+pub fn local_root_from_config(
+    config: &crate::providers::ProviderConfig,
+) -> Result<PathBuf, ProviderError> {
+    let raw = config.host.trim();
+    if raw.is_empty() {
+        return Err(ProviderError::InvalidConfig(
+            "a local directory remote needs the folder path".to_string(),
+        ));
+    }
+    let root = PathBuf::from(raw);
+    if !root.is_absolute() {
+        return Err(ProviderError::InvalidConfig(format!(
+            "a local directory remote needs an absolute path, got '{raw}'"
+        )));
+    }
+    Ok(root)
+}
+
+/// `StorageProvider` over a directory tree rooted at `root_path`.
 ///
-/// Virtual paths are `/`-rooted and map 1:1 under `mount_root`. Path jail:
-/// every resolved real path must stay under the canonical mount root (symlink
-/// escape refused).
-pub struct MtpFsProvider {
-    mount_root: PathBuf,
+/// Virtual paths are `/`-rooted and map 1:1 under the root. Path jail: every
+/// resolved real path must stay under the canonical root (symlink escape
+/// refused).
+pub struct DirectoryProvider {
+    root_path: PathBuf,
     /// Canonicalized root after `connect()`.
     root: Option<PathBuf>,
-    device_id: String,
+    identity: DirectoryIdentity,
     display_name: String,
     cwd: String,
 }
 
-impl MtpFsProvider {
-    pub fn new(mount_root: PathBuf, device_id: String, display_name: String) -> Self {
+impl DirectoryProvider {
+    /// A portable device through its desktop mount, with the `Mtp` identity so
+    /// dual-panel transfers and AeroSync treat it as a remote.
+    pub fn mtp(mount_root: PathBuf, device_id: String, display_name: String) -> Self {
         Self {
-            mount_root,
+            root_path: mount_root,
             root: None,
-            device_id,
+            identity: DirectoryIdentity::Mtp { device_id },
             display_name,
             cwd: "/".to_string(),
         }
     }
 
-    pub fn device_id(&self) -> &str {
-        &self.device_id
+    /// A directory of this machine as a remote. The display name is the path
+    /// as given, so a served share says which folder it exposes.
+    pub fn local(root: PathBuf) -> Self {
+        let display_name = root.display().to_string();
+        Self {
+            root_path: root,
+            root: None,
+            identity: DirectoryIdentity::Local,
+            display_name,
+            cwd: "/".to_string(),
+        }
     }
 
-    pub fn mount_root_display(&self) -> String {
-        self.mount_root.display().to_string()
+    /// What the root is called in an error: the user reads "the MTP mount
+    /// root" for a phone and "the served directory" for a local folder.
+    fn root_noun(&self) -> &'static str {
+        match self.identity {
+            DirectoryIdentity::Mtp { .. } => "the MTP mount root",
+            DirectoryIdentity::Local => "the served directory",
+        }
+    }
+
+    /// How a connect error names the root it could not open.
+    fn root_label(&self) -> &'static str {
+        match self.identity {
+            DirectoryIdentity::Mtp { .. } => "MTP mount path",
+            DirectoryIdentity::Local => "Directory",
+        }
     }
 
     fn root(&self) -> Result<&Path, ProviderError> {
@@ -79,18 +139,18 @@ impl MtpFsProvider {
                 "path contains a NUL byte".to_string(),
             ));
         }
-        let trimmed = path.trim();
         // provider_list_files / provider_change_dir pass "." for "list cwd".
-        if trimmed.is_empty() || trimmed == "." {
+        // Nothing else is trimmed: `report ` and `report` are two files.
+        if path.is_empty() || path == "." {
             return Ok(self.cwd.clone());
         }
-        let base = if trimmed.starts_with('/') {
+        let base = if path.starts_with('/') {
             "/"
         } else {
             &self.cwd
         };
         let mut parts: Vec<&str> = base.split('/').filter(|c| !c.is_empty()).collect();
-        for comp in trimmed.split('/') {
+        for comp in path.split('/') {
             match comp {
                 "" | "." => {}
                 ".." => {
@@ -133,9 +193,10 @@ impl MtpFsProvider {
             }
         })?;
         if !canon.starts_with(root) {
-            return Err(ProviderError::InvalidPath(
-                "path resolves outside the MTP mount root".to_string(),
-            ));
+            return Err(ProviderError::InvalidPath(format!(
+                "path resolves outside {}",
+                self.root_noun()
+            )));
         }
         Ok(canon)
     }
@@ -146,14 +207,34 @@ impl MtpFsProvider {
         self.contained(&fs)
     }
 
+    /// The entry a mutation acts on: its folder must exist inside the root,
+    /// and the leaf is the entry itself, not what it points to. Deleting or
+    /// renaming `/alias` acts on the link, and leaves the file it names
+    /// alone; through `resolve_existing` it reached the target instead.
+    fn resolve_entry(&self, vpath: &str) -> Result<PathBuf, ProviderError> {
+        let norm = normalize_virtual_path(vpath)?;
+        let name = leaf_name(&norm)?;
+        let parent = parent_path(&norm)?;
+        let entry = self.resolve_existing(&parent)?.join(&name);
+        std::fs::symlink_metadata(&entry).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ProviderError::NotFound(format!("{vpath}: {e}"))
+            } else {
+                ProviderError::IoError(e)
+            }
+        })?;
+        Ok(entry)
+    }
+
     /// Resolve a create target: parent must exist and be contained; leaf is
     /// joined without following a pre-existing symlink on the leaf itself.
     fn resolve_for_create(&self, vpath: &str) -> Result<PathBuf, ProviderError> {
         let norm = normalize_virtual_path(vpath)?;
         if norm == "/" {
-            return Err(ProviderError::InvalidPath(
-                "cannot create at device root".to_string(),
-            ));
+            return Err(ProviderError::InvalidPath(format!(
+                "cannot create {} itself",
+                self.root_noun()
+            )));
         }
         let name = leaf_name(&norm)?;
         let parent = parent_path(&norm)?;
@@ -166,11 +247,24 @@ impl MtpFsProvider {
         Ok(target)
     }
 
+    /// What a listing shows for the symbolic link at `link`: the metadata of
+    /// the file it points to when that file is inside the root, so the size
+    /// and date listed are those a download reads. A link to a folder is not
+    /// followed, because a walk through it can loop back to an ancestor, and a
+    /// link that leaves the root or points nowhere cannot be read; those
+    /// answer `None` and the listing names them in a warning.
+    fn linked_file(&self, link: &Path) -> Option<std::fs::Metadata> {
+        let target = self.contained(link).ok()?;
+        let meta = std::fs::metadata(target).ok()?;
+        meta.is_file().then_some(meta)
+    }
+
     fn entry_for(
         &self,
         name: String,
         virtual_path: String,
         meta: &std::fs::Metadata,
+        is_symlink: bool,
     ) -> RemoteEntry {
         let modified = meta
             .modified()
@@ -193,7 +287,7 @@ impl MtpFsProvider {
             permissions,
             owner: None,
             group: None,
-            is_symlink: meta.file_type().is_symlink(),
+            is_symlink,
             link_target: None,
             mime_type: None,
             metadata: Default::default(),
@@ -229,13 +323,16 @@ impl MtpFsProvider {
 }
 
 #[async_trait]
-impl StorageProvider for MtpFsProvider {
+impl StorageProvider for DirectoryProvider {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
 
     fn provider_type(&self) -> ProviderType {
-        ProviderType::Mtp
+        match self.identity {
+            DirectoryIdentity::Mtp { .. } => ProviderType::Mtp,
+            DirectoryIdentity::Local => ProviderType::Local,
+        }
     }
 
     fn display_name(&self) -> String {
@@ -243,22 +340,23 @@ impl StorageProvider for MtpFsProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
-        let meta = tokio::fs::metadata(&self.mount_root).await.map_err(|e| {
+        let label = self.root_label();
+        let meta = tokio::fs::metadata(&self.root_path).await.map_err(|e| {
             ProviderError::ConnectionFailed(format!(
-                "MTP mount path {} is not available: {e}",
-                self.mount_root.display()
+                "{label} {} is not available: {e}",
+                self.root_path.display()
             ))
         })?;
         if !meta.is_dir() {
             return Err(ProviderError::ConnectionFailed(format!(
-                "MTP mount path {} is not a directory",
-                self.mount_root.display()
+                "{label} {} is not a directory",
+                self.root_path.display()
             )));
         }
-        let canon = self.mount_root.canonicalize().map_err(|e| {
+        let canon = self.root_path.canonicalize().map_err(|e| {
             ProviderError::ConnectionFailed(format!(
-                "cannot resolve MTP mount {}: {e}",
-                self.mount_root.display()
+                "cannot resolve {label} {}: {e}",
+                self.root_path.display()
             ))
         })?;
         self.root = Some(canon);
@@ -293,11 +391,23 @@ impl StorageProvider for MtpFsProvider {
             .await
             .map_err(ProviderError::IoError)?;
         let mut entries = Vec::new();
+        let mut left_out = Vec::new();
         while let Some(item) = rd.next_entry().await.map_err(ProviderError::IoError)? {
             let name = item.file_name().to_string_lossy().to_string();
-            let meta = match tokio::fs::symlink_metadata(item.path()).await {
-                Ok(m) => m,
-                Err(_) => continue,
+            let Ok(meta) = tokio::fs::symlink_metadata(item.path()).await else {
+                left_out.push(name);
+                continue;
+            };
+            let (meta, is_symlink) = if meta.file_type().is_symlink() {
+                match self.linked_file(&item.path()) {
+                    Some(target) => (target, true),
+                    None => {
+                        left_out.push(name);
+                        continue;
+                    }
+                }
+            } else {
+                (meta, false)
             };
             let ventry = join_virtual(&vpath, &name).unwrap_or_else(|_| {
                 if vpath == "/" {
@@ -306,7 +416,30 @@ impl StorageProvider for MtpFsProvider {
                     format!("{vpath}/{name}")
                 }
             });
-            entries.push(self.entry_for(name, ventry, &meta));
+            entries.push(self.entry_for(name, ventry, &meta, is_symlink));
+        }
+        if !left_out.is_empty() {
+            left_out.sort();
+            let shown = left_out
+                .iter()
+                .take(5)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ");
+            let more = left_out.len().saturating_sub(5);
+            let more = if more > 0 {
+                format!(" and {more} more")
+            } else {
+                String::new()
+            };
+            crate::providers::report_warning(format!(
+                "{vpath}: {} item(s) not listed: {shown}{more}. A symbolic link is listed \
+                 only when it points to a file inside {}; a link to a folder, one that \
+                 leaves it, one that points nowhere and an item that cannot be read \
+                 are left out.",
+                left_out.len(),
+                self.root_noun()
+            ));
         }
         Ok(entries)
     }
@@ -390,7 +523,50 @@ impl StorageProvider for MtpFsProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        self.download_to_bytes_capped(remote_path, BYTES_CAP).await
+        let cap = match self.identity {
+            DirectoryIdentity::Mtp { .. } => MTP_BYTES_CAP,
+            DirectoryIdentity::Local => super::MAX_DOWNLOAD_TO_BYTES,
+        };
+        self.download_to_bytes_capped(remote_path, cap).await
+    }
+
+    /// `len` bytes from `offset`, fewer at the end of the file and none past
+    /// it (a served SFTP READ takes an empty answer as EOF). What `serve sftp`
+    /// and a resumed `serve ftp` RETR read, so a file is served a window at a
+    /// time instead of whole into memory.
+    async fn read_range(
+        &mut self,
+        path: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Vec<u8>, ProviderError> {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let vpath = self.virtual_path(path)?;
+        let src = self.resolve_existing(&vpath)?;
+        let mut file = tokio::fs::File::open(&src)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let meta = file.metadata().await.map_err(ProviderError::IoError)?;
+        if meta.is_dir() {
+            return Err(ProviderError::InvalidPath(format!(
+                "{vpath} is a directory"
+            )));
+        }
+        let size = meta.len();
+        if offset >= size {
+            return Ok(Vec::new());
+        }
+        let want = len.min(size - offset).min(super::MAX_DOWNLOAD_TO_BYTES);
+        file.seek(std::io::SeekFrom::Start(offset))
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut buf = Vec::with_capacity(want as usize);
+        (&mut file)
+            .take(want)
+            .read_to_end(&mut buf)
+            .await
+            .map_err(ProviderError::IoError)?;
+        Ok(buf)
     }
 
     async fn download_to_bytes_capped(
@@ -410,7 +586,7 @@ impl StorageProvider for MtpFsProvider {
         }
         if meta.len() > max_bytes {
             return Err(ProviderError::TransferFailed(format!(
-                "MTP object exceeded the {:.0} MB in-memory cap (stream to disk instead).",
+                "{vpath} exceeded the {:.0} MB in-memory cap (stream to disk instead).",
                 max_bytes as f64 / 1_048_576.0,
             )));
         }
@@ -419,7 +595,7 @@ impl StorageProvider for MtpFsProvider {
             .map_err(ProviderError::IoError)?;
         if data.len() as u64 > max_bytes {
             return Err(ProviderError::TransferFailed(format!(
-                "MTP object exceeded the {:.0} MB in-memory cap (stream to disk instead).",
+                "{vpath} exceeded the {:.0} MB in-memory cap (stream to disk instead).",
                 max_bytes as f64 / 1_048_576.0,
             )));
         }
@@ -435,9 +611,10 @@ impl StorageProvider for MtpFsProvider {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let vpath = self.virtual_path(remote_path)?;
         if vpath == "/" {
-            return Err(ProviderError::InvalidPath(
-                "cannot upload to device root; pick a folder first".to_string(),
-            ));
+            return Err(ProviderError::InvalidPath(format!(
+                "cannot upload onto {} itself; name a file inside it",
+                self.root_noun()
+            )));
         }
         let dest = self.resolve_for_create(&vpath)?;
         let meta = tokio::fs::metadata(local_path)
@@ -447,6 +624,18 @@ impl StorageProvider for MtpFsProvider {
             return Err(ProviderError::InvalidPath(
                 "upload source must be a file".to_string(),
             ));
+        }
+        // Creating the destination truncates it: when it is the source itself
+        // (the same path, a link to it, or a second hard link), the read that
+        // follows finds nothing and the file is lost while the upload reports
+        // success.
+        if let Ok(occupant) = std::fs::metadata(&dest) {
+            let source = std::fs::metadata(local_path).map_err(ProviderError::IoError)?;
+            if same_file(Path::new(local_path), &dest, &source, &occupant) {
+                return Err(ProviderError::InvalidPath(format!(
+                    "{vpath} is the upload source itself"
+                )));
+            }
         }
         let total = meta.len();
         let mut reader = tokio::fs::File::open(local_path)
@@ -480,6 +669,20 @@ impl StorageProvider for MtpFsProvider {
             }
         }
         writer.flush().await.map_err(ProviderError::IoError)?;
+        if self.identity == DirectoryIdentity::Local {
+            // A copy into a local folder keeps the source's modification time,
+            // as `cp -p` does: a sync compares by
+            // time, and a stored copy dated "now" reads as newer than the file
+            // it was made from on the next run.
+            if let Ok(modified) = meta.modified() {
+                let file = writer.into_std().await;
+                if let Err(e) = file.set_modified(modified) {
+                    crate::providers::report_warning(format!(
+                        "{vpath}: uploaded, but its modification time could not be kept ({e})"
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -495,11 +698,12 @@ impl StorageProvider for MtpFsProvider {
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let vpath = self.virtual_path(path)?;
         if vpath == "/" {
-            return Err(ProviderError::NotSupported(
-                "cannot delete the MTP mount root".to_string(),
-            ));
+            return Err(ProviderError::NotSupported(format!(
+                "cannot delete {}",
+                self.root_noun()
+            )));
         }
-        let fs = self.resolve_existing(&vpath)?;
+        let fs = self.resolve_entry(&vpath)?;
         let meta = tokio::fs::symlink_metadata(&fs)
             .await
             .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
@@ -517,11 +721,12 @@ impl StorageProvider for MtpFsProvider {
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
         let vpath = self.virtual_path(path)?;
         if vpath == "/" {
-            return Err(ProviderError::NotSupported(
-                "cannot delete the MTP mount root".to_string(),
-            ));
+            return Err(ProviderError::NotSupported(format!(
+                "cannot delete {}",
+                self.root_noun()
+            )));
         }
-        let fs = self.resolve_existing(&vpath)?;
+        let fs = self.resolve_entry(&vpath)?;
         // `remove_dir` never recurses: the operating system refuses a
         // directory that is not empty, which is said as such.
         tokio::fs::remove_dir(&fs).await.map_err(|e| {
@@ -539,11 +744,14 @@ impl StorageProvider for MtpFsProvider {
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
         let vpath = self.virtual_path(path)?;
         if vpath == "/" {
-            return Err(ProviderError::NotSupported(
-                "cannot delete the MTP mount root".to_string(),
-            ));
+            return Err(ProviderError::NotSupported(format!(
+                "cannot delete {}",
+                self.root_noun()
+            )));
         }
-        let fs = self.resolve_existing(&vpath)?;
+        // On a link `remove_dir_all` removes the link and not the folder it
+        // names.
+        let fs = self.resolve_entry(&vpath)?;
         tokio::fs::remove_dir_all(&fs)
             .await
             .map_err(ProviderError::IoError)?;
@@ -554,11 +762,12 @@ impl StorageProvider for MtpFsProvider {
         let from_v = self.virtual_path(from)?;
         let to_v = self.virtual_path(to)?;
         if from_v == "/" || to_v == "/" {
-            return Err(ProviderError::InvalidPath(
-                "cannot rename the MTP mount root".to_string(),
-            ));
+            return Err(ProviderError::InvalidPath(format!(
+                "cannot rename {}",
+                self.root_noun()
+            )));
         }
-        let src = self.resolve_existing(&from_v)?;
+        let src = self.resolve_entry(&from_v)?;
         let dest = self.resolve_for_create(&to_v)?;
         if src == dest {
             return Ok(());
@@ -591,16 +800,17 @@ impl StorageProvider for MtpFsProvider {
         let from_v = self.virtual_path(from)?;
         let to_v = self.virtual_path(to)?;
         if from_v == "/" || to_v == "/" {
-            return Err(ProviderError::InvalidPath(
-                "cannot rename the MTP mount root".to_string(),
-            ));
+            return Err(ProviderError::InvalidPath(format!(
+                "cannot rename {}",
+                self.root_noun()
+            )));
         }
-        let src = self.resolve_existing(&from_v)?;
+        let src = self.resolve_entry(&from_v)?;
         let dest = self.resolve_for_create(&to_v)?;
         match std::fs::symlink_metadata(&dest) {
             Ok(occupant) => {
                 let source = std::fs::symlink_metadata(&src).map_err(ProviderError::IoError)?;
-                super::super::refuse_replace_across_types(to, source.is_dir(), occupant.is_dir())?;
+                super::refuse_replace_across_types(to, source.is_dir(), occupant.is_dir())?;
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(ProviderError::IoError(e)),
@@ -616,12 +826,19 @@ impl StorageProvider for MtpFsProvider {
         let meta = tokio::fs::symlink_metadata(&fs)
             .await
             .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
+        // `fs` is the resolved target; whether the name itself is a link is
+        // asked of the unresolved path.
+        let is_symlink = self
+            .fs_path(&vpath)
+            .ok()
+            .and_then(|p| std::fs::symlink_metadata(p).ok())
+            .is_some_and(|m| m.file_type().is_symlink());
         let name = if vpath == "/" {
             self.display_name.clone()
         } else {
             leaf_name(&vpath).unwrap_or_else(|_| vpath.clone())
         };
-        Ok(self.entry_for(name, vpath, &meta))
+        Ok(self.entry_for(name, vpath, &meta, is_symlink))
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
@@ -653,17 +870,27 @@ impl StorageProvider for MtpFsProvider {
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
-        Ok(format!(
-            "MTP portable device (gvfs/filesystem): {} ({}) at {}",
-            self.display_name,
-            self.device_id,
-            self.mount_root.display()
-        ))
+        Ok(match &self.identity {
+            DirectoryIdentity::Mtp { device_id } => format!(
+                "MTP portable device (gvfs/filesystem): {} ({device_id}) at {}",
+                self.display_name,
+                self.root_path.display()
+            ),
+            DirectoryIdentity::Local => {
+                format!("Local directory: {}", self.root_path.display())
+            }
+        })
     }
 
     fn transfer_capabilities(&self) -> TransferCapabilities {
         // Same honest surface as exclusive libmtp: whole-file, single slot.
-        MtpProvider::honest_transfer_capabilities()
+        // Nothing here ranges, resumes or runs in parallel yet, and a
+        // capability is declared only where the code above provides it.
+        let mut caps = MtpProvider::honest_transfer_capabilities();
+        caps.preferred_download_segments = Some(
+            crate::transfer_settings::download_segments_preference_for(self.provider_type()),
+        );
+        caps
     }
 
     fn supports_delta_sync(&self) -> bool {
@@ -706,8 +933,8 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    async fn connected(root: &Path) -> MtpFsProvider {
-        let mut p = MtpFsProvider::new(
+    async fn connected(root: &Path) -> DirectoryProvider {
+        let mut p = DirectoryProvider::mtp(
             root.to_path_buf(),
             "dev-test".to_string(),
             "Test Phone".to_string(),
@@ -896,15 +1123,19 @@ mod tests {
                 matches!(err, Err(ProviderError::InvalidPath(_))),
                 "symlink escape must be refused, got {err:?}"
             );
-            let entries = p.list("/").await.unwrap();
-            let leak = entries.iter().find(|e| e.name == "leak.txt").unwrap();
-            assert!(leak.is_symlink);
+            // Listed only when it points to a file inside the root: this one
+            // leaves it, so the listing leaves it out and says so.
+            let warnings = crate::providers::CallWarnings::default();
+            let entries = warnings.scope(p.list("/")).await.unwrap();
+            assert!(entries.iter().all(|e| e.name != "leak.txt"), "{entries:?}");
+            let said = warnings.take();
+            assert!(said.len() == 1 && said[0].contains("leak.txt"), "{said:?}");
         }
     }
 
     #[tokio::test]
     async fn connect_requires_existing_directory() {
-        let mut p = MtpFsProvider::new(
+        let mut p = DirectoryProvider::mtp(
             PathBuf::from("/no/such/mtp/mount/path-xyz"),
             "dev".into(),
             "x".into(),
@@ -936,5 +1167,315 @@ mod tests {
         let err = p.keep_alive().await.unwrap_err();
         assert!(matches!(err, ProviderError::NotConnected));
         assert!(!p.is_connected());
+    }
+
+    async fn local(root: &Path) -> DirectoryProvider {
+        let mut p = DirectoryProvider::local(root.to_path_buf());
+        p.connect().await.expect("connect");
+        p
+    }
+
+    /// A local folder is its own backend: it says `Local`, names the folder,
+    /// and its errors speak of the served directory, not of a phone.
+    #[tokio::test]
+    async fn a_local_directory_has_its_own_identity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut p = local(dir.path()).await;
+        assert_eq!(p.provider_type(), ProviderType::Local);
+        assert_eq!(p.display_name(), dir.path().display().to_string());
+        let info = p.server_info().await.unwrap();
+        assert!(info.starts_with("Local directory: "), "{info}");
+
+        let refused = p.delete("/").await.unwrap_err();
+        assert!(
+            matches!(&refused, ProviderError::NotSupported(m) if m == "cannot delete the served directory"),
+            "{refused:?}"
+        );
+        let refused = p.rmdir_recursive("/").await.unwrap_err();
+        assert!(
+            matches!(refused, ProviderError::NotSupported(_)),
+            "{refused:?}"
+        );
+        let src = dir.path().join("a.txt");
+        std::fs::write(&src, b"A").unwrap();
+        let refused = p
+            .upload(src.to_str().unwrap(), "/", None)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&refused, ProviderError::InvalidPath(m) if m.contains("the served directory itself")),
+            "{refused:?}"
+        );
+
+        let mut missing = DirectoryProvider::local(dir.path().join("nope"));
+        let refused = missing.connect().await.unwrap_err();
+        assert!(
+            matches!(&refused, ProviderError::ConnectionFailed(m) if m.starts_with("Directory ")),
+            "{refused:?}"
+        );
+    }
+
+    /// Every verb a served share or a CLI command uses, on a real folder.
+    #[tokio::test]
+    async fn a_local_directory_lists_transfers_and_edits() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let work = tempfile::tempdir().expect("work");
+        let mut p = local(dir.path()).await;
+
+        let src = work.path().join("note.txt");
+        std::fs::write(&src, b"hello local").unwrap();
+        p.mkdir("/docs").await.unwrap();
+        p.upload(src.to_str().unwrap(), "/docs/note.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read(dir.path().join("docs/note.txt")).unwrap(),
+            b"hello local"
+        );
+
+        let listed = p.list("/docs").await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].path, "/docs/note.txt");
+        assert_eq!(listed[0].size, 11);
+        assert!(!listed[0].is_symlink);
+        assert_eq!(p.stat("/docs/note.txt").await.unwrap().size, 11);
+        assert!(p.exists("/docs/note.txt").await.unwrap());
+
+        let back = work.path().join("back.txt");
+        p.download("/docs/note.txt", back.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&back).unwrap(), b"hello local");
+
+        p.rename("/docs/note.txt", "/docs/renamed.txt")
+            .await
+            .unwrap();
+        assert!(dir.path().join("docs/renamed.txt").is_file());
+        p.delete("/docs/renamed.txt").await.unwrap();
+        p.rmdir("/docs").await.unwrap();
+        assert!(!dir.path().join("docs").exists());
+
+        p.mkdir("/tree").await.unwrap();
+        p.mkdir("/tree/sub").await.unwrap();
+        std::fs::write(dir.path().join("tree/sub/f.txt"), b"f").unwrap();
+        p.rmdir_recursive("/tree").await.unwrap();
+        assert!(!dir.path().join("tree").exists());
+    }
+
+    /// The jail holds for writes too: `..` clamps at the root, and a folder
+    /// that is a link to somewhere else takes no upload, folder or rename,
+    /// and nothing lands outside.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_local_directory_refuses_writes_that_leave_it() {
+        let outside = tempfile::tempdir().expect("outside");
+        let dir = tempfile::tempdir().expect("tempdir");
+        let work = tempfile::tempdir().expect("work");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("out")).unwrap();
+        let src = work.path().join("x.txt");
+        std::fs::write(&src, b"x").unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        let mut p = local(dir.path()).await;
+
+        p.upload(src.to_str().unwrap(), "../../escape.txt", None)
+            .await
+            .unwrap();
+        assert!(dir.path().join("escape.txt").is_file());
+
+        let up = p.upload(src.to_str().unwrap(), "/out/x.txt", None).await;
+        assert!(matches!(up, Err(ProviderError::InvalidPath(_))), "{up:?}");
+        let made = p.mkdir("/out/new").await;
+        assert!(
+            matches!(made, Err(ProviderError::InvalidPath(_))),
+            "{made:?}"
+        );
+        let moved = p.rename("/a.txt", "/out/a.txt").await;
+        assert!(
+            matches!(moved, Err(ProviderError::InvalidPath(_))),
+            "{moved:?}"
+        );
+        std::fs::write(outside.path().join("secret.txt"), b"s").unwrap();
+        let read = p.download_to_bytes("/out/secret.txt").await;
+        assert!(
+            matches!(read, Err(ProviderError::InvalidPath(_))),
+            "{read:?}"
+        );
+
+        let landed: Vec<_> = std::fs::read_dir(outside.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(landed, vec!["secret.txt"], "nothing may land outside");
+        assert_eq!(std::fs::read(dir.path().join("a.txt")).unwrap(), b"A");
+    }
+
+    /// A link to a file inside the root is listed with the size and date a
+    /// download reads; a link to a folder (a walk through it can loop), one
+    /// that leaves the root and one that points nowhere are left out, and
+    /// the listing says which.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_listing_shows_the_links_it_can_read_and_names_the_rest() {
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("secret.txt"), b"top-secret").unwrap();
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("real.txt"), b"twelve bytes").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let link = |target: &Path, name: &str| {
+            std::os::unix::fs::symlink(target, dir.path().join(name)).unwrap()
+        };
+        link(&dir.path().join("real.txt"), "inside.txt");
+        link(&dir.path().join("sub"), "loop");
+        link(&outside.path().join("secret.txt"), "leak.txt");
+        link(&dir.path().join("gone.txt"), "dangling.txt");
+        let mut p = local(dir.path()).await;
+
+        let warnings = crate::providers::CallWarnings::default();
+        let entries = warnings.scope(p.list("/")).await.unwrap();
+        let mut names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["inside.txt", "real.txt", "sub"]);
+        let inside = entries.iter().find(|e| e.name == "inside.txt").unwrap();
+        assert!(inside.is_symlink && !inside.is_dir);
+        assert_eq!(inside.size, 12);
+        assert_eq!(
+            p.download_to_bytes("/inside.txt").await.unwrap(),
+            b"twelve bytes"
+        );
+
+        let said = warnings.take();
+        assert_eq!(said.len(), 1, "{said:?}");
+        for name in ["dangling.txt", "leak.txt", "loop"] {
+            assert!(said[0].contains(name), "{name} unnamed in {said:?}");
+        }
+        assert!(said[0].starts_with("/: 3 item(s) not listed"), "{said:?}");
+
+        let stat = p.stat("/inside.txt").await.unwrap();
+        assert!(stat.is_symlink && stat.size == 12, "{stat:?}");
+    }
+
+    /// A served folder reads a window at a time, and a whole file up to the
+    /// general cap: the 10 MiB phone cap refused an 11 MiB file to every
+    /// `serve` mode. A phone keeps its cap.
+    #[tokio::test]
+    async fn a_local_directory_reads_ranges_and_files_past_the_phone_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let big: Vec<u8> = (0..11 * 1024 * 1024u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(dir.path().join("big.bin"), &big).unwrap();
+        std::fs::write(dir.path().join("small.txt"), b"0123456789").unwrap();
+
+        let mut p = local(dir.path()).await;
+        assert_eq!(
+            p.download_to_bytes("/big.bin").await.unwrap().len(),
+            big.len()
+        );
+        assert_eq!(p.read_range("/small.txt", 2, 3).await.unwrap(), b"234");
+        assert_eq!(p.read_range("/small.txt", 8, 100).await.unwrap(), b"89");
+        assert!(p.read_range("/small.txt", 10, 4).await.unwrap().is_empty());
+        let window = p.read_range("/big.bin", 5_000_000, 4).await.unwrap();
+        assert_eq!(window, big[5_000_000..5_000_004].to_vec());
+
+        let mut phone = connected(dir.path()).await;
+        assert!(phone.download_to_bytes("/big.bin").await.is_err());
+    }
+
+    /// An upload into a local folder keeps the source's modification time, so
+    /// the next sync does not read the copy as newer than its source.
+    #[tokio::test]
+    async fn an_upload_into_a_local_directory_keeps_the_source_time() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let work = tempfile::tempdir().expect("work");
+        let src = work.path().join("old.txt");
+        std::fs::write(&src, b"old").unwrap();
+        let then =
+            std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&src)
+            .unwrap()
+            .set_modified(then)
+            .unwrap();
+        let mut p = local(dir.path()).await;
+        p.upload(src.to_str().unwrap(), "/old.txt", None)
+            .await
+            .unwrap();
+        let stored = std::fs::metadata(dir.path().join("old.txt"))
+            .unwrap()
+            .modified()
+            .unwrap();
+        assert_eq!(stored, then);
+    }
+
+    /// Deleting, renaming or removing a link acts on the link: the file or
+    /// folder it names stays. Through the target, a delete of `/alias`
+    /// removed the file and left the link dangling.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_mutation_on_a_link_acts_on_the_link_not_its_target() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("real.txt"), b"keep").unwrap();
+        std::fs::create_dir(dir.path().join("folder")).unwrap();
+        std::fs::write(dir.path().join("folder/inside.txt"), b"keep").unwrap();
+        let link = |target: &str, name: &str| {
+            std::os::unix::fs::symlink(dir.path().join(target), dir.path().join(name)).unwrap()
+        };
+        link("real.txt", "alias.txt");
+        link("real.txt", "moved-from.txt");
+        link("folder", "folder-link");
+        let mut p = local(dir.path()).await;
+
+        p.delete("/alias.txt").await.unwrap();
+        assert!(dir.path().join("alias.txt").symlink_metadata().is_err());
+        p.rename("/moved-from.txt", "/moved-to.txt").await.unwrap();
+        let moved = dir.path().join("moved-to.txt").symlink_metadata().unwrap();
+        assert!(moved.file_type().is_symlink());
+        p.rmdir_recursive("/folder-link").await.unwrap();
+        assert!(dir.path().join("folder-link").symlink_metadata().is_err());
+
+        assert_eq!(std::fs::read(dir.path().join("real.txt")).unwrap(), b"keep");
+        assert_eq!(
+            std::fs::read(dir.path().join("folder/inside.txt")).unwrap(),
+            b"keep"
+        );
+    }
+
+    /// `report ` and `report` are two files: a path is not trimmed into
+    /// another one.
+    #[tokio::test]
+    async fn names_that_differ_by_spaces_are_different_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("report"), b"plain").unwrap();
+        std::fs::write(dir.path().join("report "), b"spaced").unwrap();
+        let mut p = local(dir.path()).await;
+        assert_eq!(p.download_to_bytes("/report ").await.unwrap(), b"spaced");
+        assert_eq!(p.download_to_bytes("/report").await.unwrap(), b"plain");
+        p.delete("/report ").await.unwrap();
+        assert_eq!(std::fs::read(dir.path().join("report")).unwrap(), b"plain");
+    }
+
+    /// An upload of a file onto itself truncated it and reported success; it
+    /// is refused, by path and through a second hard link, and the file
+    /// keeps its bytes.
+    #[tokio::test]
+    async fn an_upload_onto_its_own_source_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let src = dir.path().join("data.bin");
+        std::fs::write(&src, b"precious").unwrap();
+        let mut p = local(dir.path()).await;
+        let same = p.upload(src.to_str().unwrap(), "/data.bin", None).await;
+        assert!(
+            matches!(same, Err(ProviderError::InvalidPath(_))),
+            "{same:?}"
+        );
+        #[cfg(unix)]
+        {
+            std::fs::hard_link(&src, dir.path().join("twin.bin")).unwrap();
+            let twin = p.upload(src.to_str().unwrap(), "/twin.bin", None).await;
+            assert!(
+                matches!(twin, Err(ProviderError::InvalidPath(_))),
+                "{twin:?}"
+            );
+        }
+        assert_eq!(std::fs::read(&src).unwrap(), b"precious");
     }
 }

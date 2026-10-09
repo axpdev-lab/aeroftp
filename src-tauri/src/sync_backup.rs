@@ -275,6 +275,7 @@ pub fn remote_move_support(provider: ProviderType) -> RemoteMove {
         P::Peer => Unsupported("read-only peer"),
         // libmtp refuses rename; the gvfs mount's cross-folder rename is untested.
         P::Mtp => Unsupported("rename is not supported"),
+        P::Local => Native, // rename(2) inside the jail, refused onto a taken name
         // Not a connection type: AeroCloud connects through its backend's provider.
         P::AeroCloud => Unsupported("not a connection type"),
     }

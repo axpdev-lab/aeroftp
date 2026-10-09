@@ -4698,7 +4698,7 @@ const App: React.FC = () => {
 
   // MTP / portable devices (APPENDIX-MTP Phase 4+5 + DEVICE-PROFILES Phase 3):
   // session open via PLACES or My Servers card. Installs MtpProvider (exclusive)
-  // or MtpFsProvider (gvfs-first) into ProviderState so remote panel lists via
+  // or DirectoryProvider::mtp (gvfs-first) into ProviderState so remote panel lists via
   // provider_list_files. Card "connected" = this remote session is live;
   // attach-dot = cable present (separate). Never invent a fake OS path for exclusive.
   const [activePortableDeviceId, setActivePortableDeviceId] = useState<string | null>(null);

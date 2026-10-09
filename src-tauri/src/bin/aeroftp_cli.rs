@@ -142,6 +142,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     "yandexdisk",
     "github",
     "gitlab",
+    "file",
 ];
 
 #[derive(Parser, Clone)]
@@ -149,8 +150,8 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     name = "aeroftp",
     about = "AeroFTP CLI - Multi-protocol file transfer client",
     version,
-    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Drime, and Twake Drive.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\n\nAI agents: use --machine (recommended) or --format json.\n  'aeroftp --machine --profile NAME ls /path --json'   → pure data on stdout\n  'aeroftp agent-info --json'                        → capability discovery\n  'aeroftp agent-bootstrap --json'                   → canonical workflows",
-    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Stopped at a limit, nothing failed\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)\n\nEXIT CODE 8 MEANS ONE THING: the run stopped at a limit and NOTHING failed.\nThe run did what it could inside the limit it was given, and the decision is\nwhether to raise it. WHICH limit depends on the command: for most it is a\ntimeout, and for sync it is the --max-transfer budget, because there a\ntimeout that fails a transfer is a failure and reports 4 instead. With --json\na reached budget is named by an over_budget count of the files it left\nbehind; a timeout has no such field."
+    long_about = "Direct URL schemes: FTP, FTPS, SFTP, WebDAV(S), S3, MEGA, Azure, Filen, Internxt, Jottacloud, FileLu, Koofr, OpenDrive, Yandex Disk, GitHub.\nA folder of this machine works as a remote wherever a URL does: /abs/path, ./rel/path or file:///abs/path.\nSaved profiles additionally cover Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho WorkDrive, 4shared, Drime, and Twake Drive.\n\nConnect via saved profiles (--profile) or URL (protocol://user@host:port/path).\n\nAI agents: use --machine (recommended) or --format json.\n  'aeroftp --machine --profile NAME ls /path --json'   → pure data on stdout\n  'aeroftp agent-info --json'                        → capability discovery\n  'aeroftp agent-bootstrap --json'                   → canonical workflows",
+    after_help = "EXAMPLES (profiles - no credentials needed):\n  aeroftp-cli profiles                                      List saved servers\n  aeroftp-cli ls --profile \"My Server\" /var/www/ -l          List files\n  aeroftp-cli put --profile \"Production\" ./app.js /www/      Upload file\n  aeroftp-cli get --profile \"NAS\" /backups/db.sql ./         Download file\n  aeroftp-cli sync --profile \"Staging\" ./build/ /www/ --dry-run\n  aeroftp-cli --machine --profile \"My Server\" ls /path --json   (recommended for agents)\n  aeroftp-cli agent-bootstrap --json                         AI quick-start playbook\n  aeroftp-cli agent-info --json                              AI capability discovery\n\nEXAMPLES (URL mode):\n  aeroftp-cli connect sftp://user@myserver.com\n  aeroftp-cli ls sftp://user@myserver.com /var/www/ -l\n  aeroftp-cli get sftp://user@host \"/data/*.csv\"\n  aeroftp-cli cat sftp://user@host /config.ini | grep DB_HOST\n  aeroftp-cli batch deploy.aeroftp-script\n\nEXAMPLES (a local folder as the remote):\n  aeroftp-cli serve webdav /srv/share                       Share a folder over WebDAV\n  aeroftp-cli ls file:///srv/share /docs -l\n\nEXIT CODES:\n  0  Success                    5  Invalid config/usage\n  1  Connection/network error   6  Authentication failed\n  2  Not found                  7  Not supported\n  3  Permission denied          8  Stopped at a limit, nothing failed\n  4  Transfer failed/partial    9  Already exists / directory not empty\n 10  Server or parse error     11  Local I/O error\n 99  Unknown error            130  Interrupted (SIGINT)\n\nEXIT CODE 8 MEANS ONE THING: the run stopped at a limit and NOTHING failed.\nThe run did what it could inside the limit it was given, and the decision is\nwhether to raise it. WHICH limit depends on the command: for most it is a\ntimeout, and for sync it is the --max-transfer budget, because there a\ntimeout that fails a transfer is a failure and reports 4 instead. With --json\na reached budget is named by an over_budget count of the files it left\nbehind; a timeout has no such field."
 )]
 struct Cli {
     /// Output format
@@ -1699,13 +1700,13 @@ enum CheckpointCommands {
 enum TrashCommands {
     /// List the items currently in the server-side trash.
     List {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
     /// Permanently delete EVERY item in the trash. This frees the space.
     Empty {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Required: emptying the trash is irreversible.
@@ -1716,7 +1717,7 @@ enum TrashCommands {
     Restore {
         /// Trash item id, as reported by `trash list`
         id: String,
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
@@ -1724,7 +1725,7 @@ enum TrashCommands {
     Delete {
         /// Trash item id, as reported by `trash list`
         id: String,
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
@@ -1761,7 +1762,7 @@ enum Commands {
     },
     /// List files on a remote server
     Ls {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
@@ -1793,7 +1794,7 @@ enum Commands {
     },
     /// Download file(s) from remote server
     Get {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path (supports glob patterns like "*.csv")
@@ -1819,7 +1820,7 @@ enum Commands {
     },
     /// Segmented parallel download (alias for `get` with --segments preset)
     Pget {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -1833,7 +1834,7 @@ enum Commands {
     },
     /// Upload file(s) to remote server (supports glob patterns like "*.csv")
     Put {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local file path (supports glob patterns like "*.csv")
@@ -1866,7 +1867,7 @@ enum Commands {
     },
     /// Create a remote directory
     Mkdir {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote directory path
@@ -1886,7 +1887,7 @@ enum Commands {
     /// providers that model access (OpenDrive). The CLI counterpart of the
     /// GUI Properties > Permissions tab; file-vs-folder is detected via `stat`.
     Access {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path of the file or folder
@@ -1907,7 +1908,7 @@ enum Commands {
     /// matching files, and only the directories it empties in doing so.
     #[command(visible_aliases = ["delete", "del"])]
     Rm {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to delete
@@ -1926,7 +1927,7 @@ enum Commands {
     },
     /// Rename/move a remote file
     Mv {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Source path
@@ -1938,7 +1939,7 @@ enum Commands {
     },
     /// Copy a remote file on the server side when supported
     Cp {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Source path
@@ -1950,7 +1951,7 @@ enum Commands {
     },
     /// Create a share link for a remote file when supported
     Link {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path
@@ -1974,7 +1975,7 @@ enum Commands {
     },
     /// Find and replace text in a remote UTF-8 file
     Edit {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -2000,7 +2001,7 @@ enum Commands {
     },
     /// Print remote file to stdout (for piping)
     Cat {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -2009,7 +2010,7 @@ enum Commands {
     },
     /// Print first N lines of a remote file
     Head {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -2026,7 +2027,7 @@ enum Commands {
     },
     /// Print last N lines of a remote file
     Tail {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -2043,7 +2044,7 @@ enum Commands {
     /// invert direction, `--bytes N` for binary-safe byte previews, or
     /// fall back to `cat` for the full content.
     Peek {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -2061,7 +2062,7 @@ enum Commands {
     },
     /// Create empty file or update timestamp
     Touch {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -2085,7 +2086,7 @@ enum Commands {
         /// yields a sha256 checksum.
         #[arg(value_enum, short = 'a', long = "algorithm", default_value = "sha256")]
         algorithm: HashAlgorithm,
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -2100,7 +2101,7 @@ enum Commands {
     },
     /// Verify local and remote directories are identical
     Check {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory
@@ -2118,7 +2119,7 @@ enum Commands {
     },
     /// Cryptcheck integrity against encrypted rclone remote
     Cryptcheck {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory
@@ -2159,7 +2160,7 @@ enum Commands {
     },
     /// Reconcile local and remote trees with categorized diff output
     Reconcile {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory
@@ -2183,7 +2184,7 @@ enum Commands {
     },
     /// Show file/directory metadata
     Stat {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path
@@ -2192,7 +2193,7 @@ enum Commands {
     },
     /// Search for files by pattern
     Find {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Base path to search from
@@ -2219,7 +2220,7 @@ enum Commands {
     },
     /// Show storage quota/usage
     Df {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Compute "used" by recursively scanning the tree (item 4b).
@@ -2238,7 +2239,7 @@ enum Commands {
     /// A scan cancelled with Ctrl-C still prints the figure it reached and
     /// exits 4 (partial), so a script can tell it from a complete measurement.
     Size {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to measure (default: profile initial path / root)
@@ -2247,7 +2248,7 @@ enum Commands {
     },
     /// List directories only (rclone-style `lsd`)
     Lsd {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
@@ -2256,7 +2257,7 @@ enum Commands {
     },
     /// Long listing: permissions, size, date, name (rclone-style `lsl`)
     Lsl {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
@@ -2265,7 +2266,7 @@ enum Commands {
     },
     /// Flat machine-parsable listing, one entry per line (rclone-style `lsf`)
     Lsf {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
@@ -2274,7 +2275,7 @@ enum Commands {
     },
     /// Machine-readable JSON listing with a stable record schema
     Lsjson {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
@@ -2324,7 +2325,7 @@ enum Commands {
     /// of them active, `purge` deletes only the matching files and only the
     /// directories left empty afterwards; without them it removes everything.
     Purge {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to purge
@@ -2340,7 +2341,7 @@ enum Commands {
     },
     /// Remove a single empty directory (fails if not empty)
     Rmdir {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote directory to remove
@@ -2351,7 +2352,7 @@ enum Commands {
     /// non-empty directories are left untouched; the path itself is
     /// never removed). Dry-run by default; --force to delete.
     Rmdirs {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to prune (default: /)
@@ -2363,13 +2364,13 @@ enum Commands {
     },
     /// Show detailed server info, account, and storage quota
     About {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
     },
     /// Measure upload/download throughput against a writable remote
     Speed {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Test file size (e.g. 1M, 8M, 64M, 1G). Also accepts --size / -s.
@@ -2557,7 +2558,7 @@ enum Commands {
     },
     /// Remove orphaned .aerotmp files from interrupted downloads.
     Cleanup {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to scan (default: /)
@@ -2574,7 +2575,7 @@ enum Commands {
     },
     /// Find duplicate files on a remote by content hash and optionally remove them.
     Dedupe {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to scan
@@ -2603,7 +2604,9 @@ enum Commands {
     },
     /// Synchronize local and remote directories
     Sync {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile). With two
+        /// local folders and no REMOTE, the local-to-local copier runs; give a
+        /// REMOTE other than / to sync against the first folder as a remote.
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory path
@@ -2736,7 +2739,7 @@ enum Commands {
     },
     /// Preflight checks and risk summary before sync
     SyncDoctor {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Local directory path
@@ -2785,7 +2788,7 @@ enum Commands {
     },
     /// Display remote directory tree
     Tree {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path (default: /)
@@ -2801,7 +2804,7 @@ enum Commands {
     },
     /// Interactive disk usage explorer (ncdu-style TUI)
     Ncdu {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote path to scan (default: /)
@@ -2819,7 +2822,7 @@ enum Commands {
     Mount {
         /// Local mount point: empty directory (Linux/macOS) or drive letter like "Z:" (Windows)
         mountpoint: String,
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path (default: / or the URL/profile initial path)
@@ -2988,7 +2991,7 @@ enum Commands {
     },
     /// Upload stdin directly to a remote file
     Rcat {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote destination path
@@ -5318,7 +5321,7 @@ enum JobCommands {
 enum VersionCommands {
     /// List previous versions of a file (newest first)
     List {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -5327,7 +5330,7 @@ enum VersionCommands {
     },
     /// Download a specific previous version of a file
     Get {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -5342,7 +5345,7 @@ enum VersionCommands {
     },
     /// Restore a file to a specific previous version
     Restore {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -5354,7 +5357,7 @@ enum VersionCommands {
     },
     /// Permanently delete (purge) one version or delete marker of a file
     Purge {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote file path
@@ -5369,7 +5372,7 @@ enum VersionCommands {
     },
     /// List the S3 trash: soft-deleted objects and delete markers under a prefix
     Trash {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Key prefix to scope the trash (default: whole bucket)
@@ -5381,7 +5384,7 @@ enum VersionCommands {
     },
     /// Empty the S3 trash under a prefix (purge every version and delete marker)
     EmptyTrash {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Key prefix to scope the trash (default: whole bucket)
@@ -5403,7 +5406,7 @@ enum VersionCommands {
 enum CryptCommands {
     /// Initialize an encrypted overlay on a remote directory
     Init {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote directory to encrypt
@@ -5480,7 +5483,7 @@ enum CryptCommands {
     Unbind,
     /// Convert a headed vault to local-metadata headerless mode
     ToHeaderless {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5506,7 +5509,7 @@ enum CryptCommands {
     },
     /// Convert a headerless vault to a portable remote marker
     ToHeaded {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5521,7 +5524,7 @@ enum CryptCommands {
     },
     /// Convert a legacy .aeroftp-crypt.json marker to .aerocrypt.tsv
     MigrateMarker {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5539,7 +5542,7 @@ enum CryptCommands {
     /// never auto-migrates.
     #[command(name = "migrate-v4")]
     MigrateV4 {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5555,7 +5558,7 @@ enum CryptCommands {
     /// List keyslots on a v4 vault (id, type, salt length; no secrets)
     #[command(name = "list-slots")]
     ListSlots {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5571,7 +5574,7 @@ enum CryptCommands {
     /// Add a keyslot to a v4 vault (no data rewrite; epoch unchanged)
     #[command(name = "add-slot")]
     AddSlot {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5598,7 +5601,7 @@ enum CryptCommands {
     /// single-survivor case: unlock with a slot you keep, then remove the other.
     #[command(name = "remove-slot")]
     RemoveSlot {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5617,7 +5620,7 @@ enum CryptCommands {
     /// Rotate one keyslot's factor (same epoch; re-wrap that slot only)
     #[command(name = "rotate-slot")]
     RotateSlot {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5663,7 +5666,7 @@ enum CryptCommands {
     },
     /// List files in an encrypted overlay (decrypted names)
     Ls {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5683,7 +5686,7 @@ enum CryptCommands {
     Put {
         /// Local file or directory to encrypt and upload
         local: String,
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory
@@ -5703,7 +5706,7 @@ enum CryptCommands {
     Get {
         /// Remote name (decrypted, e.g. "secret.txt" or "photos/2026")
         remote: String,
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote encrypted directory (same as used in crypt init/put)
@@ -5730,7 +5733,7 @@ enum RcloneCryptCommands {
     Put {
         /// Local file to encrypt and upload
         local: String,
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote destination directory
@@ -5793,7 +5796,7 @@ enum AliasCommands {
 enum ServeCommands {
     /// Serve a remote over local HTTP (read-only)
     Http {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
@@ -5812,7 +5815,7 @@ enum ServeCommands {
     /// Serve a remote over local WebDAV (read-write)
     #[command(name = "webdav")]
     WebDav {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
@@ -5830,7 +5833,7 @@ enum ServeCommands {
     },
     /// Serve a remote over local FTP (read-write, anonymous)
     Ftp {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
@@ -5839,7 +5842,7 @@ enum ServeCommands {
         /// Local bind address for control connection
         #[arg(long, default_value = "127.0.0.1:2121")]
         addr: String,
-        /// Allow binding to non-loopback addresses (unsafe; FTP serve is anonymous)
+        /// Allow binding to non-loopback addresses (exposes the served remote to other hosts; a login is then required, generated when not given)
         #[arg(long, default_value_t = false)]
         allow_remote_bind: bool,
         /// Username for FTP serve auth. If omitted on non-loopback, defaults to "aeroftp".
@@ -5854,7 +5857,7 @@ enum ServeCommands {
     },
     /// Serve a remote over local SFTP (SSH file transfer, read-write)
     Sftp {
-        /// Server URL (omit when using --profile)
+        /// Server URL or local folder (omit when using --profile)
         #[arg(default_value = "_", hide_default_value = true)]
         url: String,
         /// Remote base path to expose (default: / or the URL/profile initial path)
@@ -5863,7 +5866,7 @@ enum ServeCommands {
         /// Local bind address
         #[arg(long, default_value = "127.0.0.1:2222")]
         addr: String,
-        /// Allow binding to non-loopback addresses (unsafe; SFTP serve accepts any password)
+        /// Allow binding to non-loopback addresses (exposes the served remote to other hosts; a login is then required, generated when not given)
         #[arg(long, default_value_t = false)]
         allow_remote_bind: bool,
         /// Username for SFTP serve auth. If omitted on non-loopback, defaults to "aeroftp".
@@ -12089,7 +12092,101 @@ fn resolve_password(
     Ok(String::new())
 }
 
+/// The folder or file of this machine a positional names, when it names one
+/// instead of a server: `file:///abs/path`, an absolute path, or a path that
+/// starts at the current directory (`.`, `..`, `./x`, `../x`). A bare word
+/// stays a URL error: it is more often a profile typed without `--profile`
+/// than a folder, and reading it as a folder would serve the wrong thing
+/// without a word.
+///
+/// The argument is taken as written, spaces included: a trimmed `/srv/a `
+/// would name the folder `/srv/a`, and a destructive command would then act
+/// on another folder than the one the user typed.
+fn local_path_target(arg: &str) -> Option<Result<std::path::PathBuf, String>> {
+    // `get`, not `[..7]`: byte 7 can fall inside a character of a path.
+    if arg
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("file://"))
+    {
+        let parsed = url::Url::parse(arg).map_err(|e| format!("Invalid file URL '{arg}': {e}"));
+        return Some(parsed.and_then(|u| {
+            match u.host_str() {
+                None | Some("") | Some("localhost") => {}
+                Some(host) => {
+                    return Err(format!(
+                        "file URL '{arg}' names host '{host}': a file URL names a folder of this machine (file:///abs/path)"
+                    ))
+                }
+            }
+            u.to_file_path()
+                .map_err(|()| format!("file URL '{arg}' is not an absolute local path"))
+        }));
+    }
+    if arg.contains("://") || arg.is_empty() || arg == "_" {
+        return None;
+    }
+    let path = std::path::Path::new(arg);
+    let from_here = arg == "."
+        || arg == ".."
+        || arg.starts_with("./")
+        || arg.starts_with("../")
+        || (cfg!(windows) && (arg.starts_with(".\\") || arg.starts_with("..\\")));
+    if path.is_absolute() || from_here {
+        return Some(Ok(path.to_path_buf()));
+    }
+    None
+}
+
+/// A folder of this machine as the remote, for every command that takes a
+/// URL. The folder is the root of a path jail: nothing the command or a
+/// served client asks for can resolve outside it. A file is opened through
+/// its folder, with the returned path naming it, the way a URL's path names
+/// a remote file.
+fn local_target_to_provider_config(
+    target: std::path::PathBuf,
+) -> Result<(ProviderConfig, String), String> {
+    let absolute = std::path::absolute(&target)
+        .map_err(|e| format!("Cannot resolve local path '{}': {e}", target.display()))?;
+    let meta = std::fs::metadata(&absolute).map_err(|e| {
+        format!(
+            "Local path '{}' cannot be opened as a remote: {e}",
+            absolute.display()
+        )
+    })?;
+    let (root, path) = if meta.is_dir() {
+        (absolute, "/".to_string())
+    } else {
+        let name = absolute
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .ok_or_else(|| format!("Local path '{}' names no file", absolute.display()))?;
+        let parent = absolute
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| format!("Local path '{}' has no folder", absolute.display()))?;
+        (parent, format!("/{name}"))
+    };
+    let root_text = root
+        .to_str()
+        .ok_or_else(|| format!("Local path '{}' is not valid UTF-8", root.display()))?
+        .to_string();
+    let config = ProviderConfig {
+        name: root_text.clone(),
+        provider_type: ProviderType::Local,
+        host: root_text,
+        port: None,
+        username: None,
+        password: None,
+        initial_path: Some(path.clone()),
+        extra: HashMap::new(),
+    };
+    Ok((config, path))
+}
+
 fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, String), String> {
+    if let Some(target) = local_path_target(url) {
+        return local_target_to_provider_config(target?);
+    }
     let url_obj = url::Url::parse(url).map_err(|e| {
         // A parse failure on a string with no scheme is almost always a
         // user typing what they think is a saved profile path
@@ -12098,7 +12195,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         // unhelpful, so map to something actionable. Issue #125 polish.
         if !url.contains("://") {
             format!(
-                "Invalid URL or unknown profile in '{}'. Use --profile <name> for saved profiles, or protocol://host/path for direct URLs (supported: {}).",
+                "Invalid URL or unknown profile in '{}'. Use --profile <name> for saved profiles, protocol://host/path for direct URLs (supported: {}), or a local folder as /abs/path, ./rel/path or file:///abs/path.",
                 url,
                 SUPPORTED_URL_SCHEMES.join(", ")
             )
@@ -27581,8 +27678,10 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
             "mega", "filen", "internxt", "kdrive", "koofr",
             "jottacloud", "filelu", "opendrive", "yandexdisk", "azure",
             "github", "gitlab", "googledrive", "dropbox", "onedrive", "box",
-            "pcloud", "zohoworkdrive", "fourshared", "drime", "swift", "twake"
+            "pcloud", "zohoworkdrive", "fourshared", "drime", "swift", "twake", "local"
         ],
+        // A folder of this machine works wherever a URL does.
+        "local_remote_forms": ["/abs/path", "./rel/path", "file:///abs/path"],
         // Per-protocol capability matrix: answers "which protocols
         // support feature X" in one call instead of N agent-connect
         // round-trips. Tokens align with the StorageProvider trait
@@ -31533,6 +31632,16 @@ async fn webdav_path_handler(
     webdav_dispatch(state, method, path, headers, body).await
 }
 
+/// The routes `serve webdav` answers (and the Windows mount, which is a
+/// local WebDAV server too), apart so a test drives the same ones.
+fn webdav_app(state: ServeHttpState) -> Router {
+    Router::new()
+        .route("/", any(webdav_root_handler))
+        .route("/{*path}", any(webdav_path_handler))
+        .layer(DefaultBodyLimit::max(WEBDAV_MAX_UPLOAD_BYTES))
+        .with_state(state)
+}
+
 async fn cmd_serve_webdav(
     url: &str,
     path: &str,
@@ -31579,11 +31688,7 @@ async fn cmd_serve_webdav(
         warnings: ServedWarnings::stderr(format),
     };
 
-    let app = Router::new()
-        .route("/", any(webdav_root_handler))
-        .route("/{*path}", any(webdav_path_handler))
-        .layer(DefaultBodyLimit::max(WEBDAV_MAX_UPLOAD_BYTES))
-        .with_state(state.clone());
+    let app = webdav_app(state.clone());
 
     let listener = match tokio::net::TcpListener::bind(bind_addr).await {
         Ok(listener) => listener,
@@ -48327,14 +48432,23 @@ fn backup_then_delete_local(
 /// first positional (clap-named `url`) holds the source path; the second
 /// (clap-named `local`) holds the destination. Auto-detection collapses
 /// this into a single call to `cmd_sync_local_to_local`.
+///
+/// A third positional (`remote`) other than `/` is the shape
+/// `<URL> <LOCAL> <REMOTE>` with a local folder as the remote: the copier has
+/// no REMOTE and would drop it, so auto-detection leaves that to the sync
+/// engine, which opens the folder as a `Local` remote and honours it.
 fn is_local_to_local_sync(
     explicit_local_flag: bool,
     src_arg: &str,
     cli_profile: Option<&str>,
     dst_arg: &str,
+    remote_arg: &str,
 ) -> bool {
     if explicit_local_flag {
         return true;
+    }
+    if remote_arg != "/" {
+        return false;
     }
     if cli_profile.is_some() {
         return false;
@@ -53645,11 +53759,7 @@ async fn cmd_mount_windows(
         warnings: ServedWarnings::stderr(format),
     };
 
-    let app = Router::new()
-        .route("/", any(webdav_root_handler))
-        .route("/{*path}", any(webdav_path_handler))
-        .layer(DefaultBodyLimit::max(WEBDAV_MAX_UPLOAD_BYTES))
-        .with_state(state.clone());
+    let app = webdav_app(state.clone());
 
     let bind_addr: SocketAddr = addr.parse().unwrap();
     let listener = match tokio::net::TcpListener::bind(bind_addr).await {
@@ -63523,7 +63633,7 @@ async fn dispatch_sync(
         local_to_local_dst = local.as_str();
         local_to_local_match = true;
     } else if cli.profile.is_none()
-        && is_local_to_local_sync(false, url, cli.profile.as_deref(), local)
+        && is_local_to_local_sync(false, url, cli.profile.as_deref(), local, remote)
     {
         // Shape `<URL> <LOCAL> <REMOTE>` where URL is actually a path.
         local_to_local_src = url.as_str();
@@ -64158,7 +64268,9 @@ fn read_batch_script(content: &str) -> Result<Vec<BatchLine>, (usize, String)> {
                             "CONNECT --profile takes one name: quote a name with spaces, CONNECT --profile \"My Server\"".to_string(),
                         ));
                     }
-                    [url] if url.contains("://") => BatchTarget::Url(url.clone()),
+                    [url] if url.contains("://") || local_path_target(url).is_some() => {
+                        BatchTarget::Url(url.clone())
+                    }
                     [name] => {
                         return Err((
                             line_num,
@@ -67679,7 +67791,7 @@ async fn cmd_agent(
     let mut system = build_agent_system_prompt(&system_prompt);
 
     if let Some(target) = connect_url {
-        let summary = if target.contains("://") {
+        let summary = if target.contains("://") || local_path_target(&target).is_some() {
             match create_and_connect(&target, _cli, format).await {
                 Ok((mut provider, initial_path)) => {
                     let provider_label = provider.provider_type().to_string();
@@ -76068,6 +76180,188 @@ mod tests {
                 .unwrap(),
             "folder/file.txt"
         );
+    }
+
+    /// Which positionals name a folder of this machine: a file URL, an
+    /// absolute path, or a path from the current directory. A bare word
+    /// stays a URL error (it is more often a profile without --profile),
+    /// and a file URL naming another host is refused rather than read as
+    /// a local path.
+    #[test]
+    fn a_local_folder_is_named_by_a_path_or_a_file_url_only() {
+        #[cfg(unix)]
+        let absolute = ["/srv/share", "/srv/share ", "/ab/\u{e9}\u{e9}\u{e9}"];
+        #[cfg(windows)]
+        let absolute = [
+            r"C:\srv\share",
+            r"C:\srv\share ",
+            "C:/ab/\u{e9}\u{e9}\u{e9}",
+        ];
+        for local in [".", "..", "./site", "../site"].into_iter().chain(absolute) {
+            assert_eq!(
+                local_path_target(local).map(|r| r.unwrap()),
+                Some(std::path::PathBuf::from(local)),
+                "{local:?} is taken as written"
+            );
+        }
+        // A leading space makes no absolute path: it is not trimmed into one.
+        assert!(local_path_target(" ./site").is_none());
+        for not_local in ["share", "My Server", "_", "", "sftp://h/srv", "s3://bucket"] {
+            assert!(local_path_target(not_local).is_none(), "{not_local}");
+        }
+        assert!(matches!(
+            local_path_target("file://nas.lan/srv/share"),
+            Some(Err(e)) if e.contains("nas.lan")
+        ));
+        #[cfg(unix)]
+        {
+            assert_eq!(
+                local_path_target("FILE:///srv/my%20share").map(|r| r.unwrap()),
+                Some(std::path::PathBuf::from("/srv/my share"))
+            );
+            assert_eq!(
+                local_path_target("file://localhost/srv").map(|r| r.unwrap()),
+                Some(std::path::PathBuf::from("/srv"))
+            );
+        }
+    }
+
+    /// A folder opens as a `Local` remote at its root; a file opens through
+    /// its folder with the file as the path, as a URL's path names a remote
+    /// file; a path that does not exist is a usage error, not a connection
+    /// to an empty folder.
+    #[test]
+    fn a_local_folder_resolves_to_a_local_remote() {
+        let cli = test_cli();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), b"A").unwrap();
+        let folder = dir.path().to_str().unwrap().to_string();
+        let file_url = url::Url::from_directory_path(dir.path())
+            .unwrap()
+            .to_string();
+        for arg in [folder.clone(), file_url] {
+            let (config, path) = url_to_provider_config(&arg, &cli).unwrap();
+            assert_eq!(config.provider_type, ProviderType::Local, "{arg}");
+            assert_eq!(std::path::Path::new(&config.host), dir.path(), "{arg}");
+            assert_eq!(path, "/", "{arg}");
+        }
+
+        let file = dir.path().join("a.txt");
+        let (config, path) = url_to_provider_config(file.to_str().unwrap(), &cli).unwrap();
+        assert_eq!(std::path::Path::new(&config.host), dir.path());
+        assert_eq!(path, "/a.txt");
+
+        let missing = dir.path().join("nope");
+        let err = url_to_provider_config(missing.to_str().unwrap(), &cli).unwrap_err();
+        assert!(err.contains("cannot be opened as a remote"), "{err}");
+
+        let err = url_to_provider_config("share", &cli).unwrap_err();
+        assert!(err.contains("file:///abs/path"), "{err}");
+    }
+
+    /// A batch script and `agent --connect` take a local folder as they take
+    /// a URL; a bare word is still refused with the profile hint.
+    /// Two local folders and no REMOTE keep the local-to-local copier; a
+    /// REMOTE other than `/` was dropped by it and now goes to the sync
+    /// engine with the first folder as the remote; `--local` always copies.
+    #[test]
+    fn a_remote_after_two_local_folders_goes_to_the_sync_engine() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let (a, b) = (a.path().to_str().unwrap(), b.path().to_str().unwrap());
+        assert!(is_local_to_local_sync(false, a, None, b, "/"));
+        assert!(!is_local_to_local_sync(false, a, None, b, "/2026"));
+        assert!(is_local_to_local_sync(true, a, None, b, "/2026"));
+        assert!(!is_local_to_local_sync(false, a, Some("NAS"), b, "/"));
+    }
+
+    #[test]
+    fn batch_connect_takes_a_local_folder() {
+        #[cfg(unix)]
+        let absolute = "/srv/share";
+        #[cfg(windows)]
+        let absolute = "C:/srv/share";
+        let lines = read_batch_script(&format!("CONNECT {absolute}\nCONNECT ./site\n")).unwrap();
+        assert_eq!(lines[0].target, Some(BatchTarget::Url(absolute.into())));
+        assert_eq!(lines[1].target, Some(BatchTarget::Url("./site".into())));
+        assert!(read_batch_script("CONNECT share\n").is_err());
+    }
+
+    /// The end-to-end the gap was about: a folder served over WebDAV with the
+    /// same routes `serve webdav` answers, driven by AeroFTP's own WebDAV
+    /// client. Each verb lands in the folder, and nothing reaches outside it.
+    #[tokio::test]
+    async fn serve_webdav_of_a_local_folder_works_with_the_aeroftp_webdav_client() {
+        let cli = test_cli();
+        let served = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        std::fs::write(served.path().join("hello.txt"), b"hello served").unwrap();
+
+        let (config, base_path) =
+            url_to_provider_config(served.path().to_str().unwrap(), &cli).unwrap();
+        let mut local = ProviderFactory::create(&config).unwrap();
+        local.connect().await.unwrap();
+        let state = ServeHttpState {
+            provider: Arc::new(AsyncMutex::new(local)),
+            provider_label: "local".to_string(),
+            base_path,
+            auth_token: None,
+            warnings: ServedWarnings::stderr(OutputFormat::Text),
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, webdav_app(state)).await;
+        });
+
+        let (client_config, _) =
+            url_to_provider_config(&format!("webdav://tester:x@127.0.0.1:{port}/"), &cli).unwrap();
+        let mut client = ProviderFactory::create(&client_config).unwrap();
+        client.connect().await.unwrap();
+
+        let names: Vec<String> = client
+            .list("/")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert_eq!(names, vec!["hello.txt".to_string()]);
+
+        let down = work.path().join("hello.txt");
+        client
+            .download("/hello.txt", down.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&down).unwrap(), b"hello served");
+
+        let up = work.path().join("up.txt");
+        std::fs::write(&up, b"uploaded through webdav").unwrap();
+        client.mkdir("/inbox").await.unwrap();
+        client
+            .upload(up.to_str().unwrap(), "/inbox/up.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(
+            std::fs::read(served.path().join("inbox/up.txt")).unwrap(),
+            b"uploaded through webdav"
+        );
+
+        client
+            .rename("/inbox/up.txt", "/inbox/moved.txt")
+            .await
+            .unwrap();
+        assert!(served.path().join("inbox/moved.txt").is_file());
+        client.delete("/inbox/moved.txt").await.unwrap();
+        client.rmdir("/inbox").await.unwrap();
+        assert!(!served.path().join("inbox").exists());
+
+        // `..` in a served path stays inside the folder.
+        let escape = client.download_to_bytes("/../../etc/hostname").await;
+        assert!(escape.is_err(), "{escape:?}");
+
+        let _ = client.disconnect().await;
+        server.abort();
     }
 
     #[test]

@@ -29,6 +29,7 @@ AeroFTP CLI is a production command-line client for multi-protocol file transfer
 | OpenDrive | `opendrive://` | Password |
 | GitHub | `github://` | PAT / Device Flow |
 | Yandex Disk | `yandexdisk://` | OAuth2 (via `--profile`) |
+| Local folder | `/abs/path`, `./rel/path`, `file:///abs/path` | None (a folder of this machine) |
 
 ### Profile-Backed Providers
 
@@ -179,7 +180,30 @@ s3://AKIAIOSFODNN7EXAMPLE:secret@s3.amazonaws.com
 
 # MEGA (email as user)
 mega://user@example.com
+
+# A folder of this machine, wherever a URL goes
+/srv/share
+./build
+file:///srv/share
 ```
+
+### A Local Folder as the Remote
+
+Every command that takes a URL also takes a folder of this machine: an absolute path, a path that starts at the current directory (`.`, `..`, `./x`, `../x`), or a `file:///abs/path` URL. A bare word such as `share` stays a URL error, because it is more often a profile name typed without `--profile`.
+
+```bash
+aeroftp-cli serve webdav /srv/share                 # share a folder over WebDAV
+aeroftp-cli ls file:///srv/share /docs -l
+aeroftp-cli put ./backup /home/me/report.pdf /reports/
+aeroftp-cli sync /mnt/archive ./photos /2026 --direction upload
+```
+
+- The folder is the root of a path jail: `..` stops at it, and a symbolic link that resolves outside it is refused, for reads and for writes. A served client can never reach a file outside the folder.
+- A listing shows a symbolic link only when it points to a file inside the folder (with that file's size and date). A link to a folder, a link that leaves the folder and a link that points nowhere are left out, and the command prints a warning naming them.
+- A file uploaded into the folder keeps the modification time of its source, so the next `sync` does not read the copy as newer.
+- A path that names a file opens its folder, with the file as the path, the same as a URL whose path names a remote file.
+- Transfers are whole-file, one at a time: no resume, ranged or parallel transfers and no server-side checksum yet.
+- `sync` with two local folders and no REMOTE keeps using the local-to-local copier (`aeroftp-cli sync /a /b`). Give a REMOTE other than `/` to sync against the first folder as a remote with the full sync engine.
 
 ### Password Handling
 
@@ -1108,19 +1132,29 @@ aeroftp-cli --profile "server" serve webdav _ / --addr 127.0.0.1:8080
 #### serve ftp (read-write)
 
 ```bash
-aeroftp-cli --profile "server" serve ftp _ / --addr 0.0.0.0:2121 --passive-ports 49152-49200
-# Connect with any FTP client: curl ftp://localhost:2121/
+aeroftp-cli --profile "server" serve ftp _ / --addr 0.0.0.0:2121 --allow-remote-bind --passive-ports 49152-49200
+# A login is required on a non-loopback address: user aeroftp, password printed at start
+# Connect with any FTP client; curl asks for the password: curl -u aeroftp ftp://this-host:2121/
 ```
 
 #### serve sftp (read-write)
 
 ```bash
-aeroftp-cli --profile "server" serve sftp _ / --addr 0.0.0.0:2222
-# Connect with: sftp -P 2222 anon@localhost
+aeroftp-cli --profile "server" serve sftp _ / --addr 0.0.0.0:2222 --allow-remote-bind
+# Connect with: sftp -P 2222 aeroftp@localhost (the password is printed at start)
 # Or: curl sftp://localhost:2222/
 ```
 
-All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) as a local server of the chosen protocol. Anonymous access, Ctrl+C to stop.
+#### serve a local folder
+
+```bash
+aeroftp-cli serve webdav /srv/share
+aeroftp-cli serve sftp ./public --addr 0.0.0.0:2222 --allow-remote-bind
+```
+
+Any of the four modes serves a folder of this machine instead of a remote (see [A Local Folder as the Remote](#a-local-folder-as-the-remote)): the folder is the jail root, nothing outside it can be reached.
+
+All serve modes expose any AeroFTP provider (S3, MEGA, WebDAV, FTP, etc.) or a local folder as a local server of the chosen protocol, and stop with Ctrl+C. They bind to loopback unless `--allow-remote-bind` is given; on a loopback address no login is asked, on any other address a login is required, and one is generated and printed when `--auth-token` (HTTP, WebDAV) or `--auth-user` / `--auth-password` (FTP, SFTP) are not given.
 
 ### daemon - Background Service
 
