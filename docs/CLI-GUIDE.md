@@ -733,16 +733,16 @@ Creates an empty file if it doesn't exist. If the file already exists, confirms 
 
 ```bash
 # SHA-256 hash
-aeroftp-cli hashsum --profile "server" sha256 /data/file.bin
+aeroftp-cli hashsum --profile "server" -a sha256 /data/file.bin
 
 # MD5 hash
-aeroftp-cli hashsum sftp://user@host md5 /data/file.iso
+aeroftp-cli hashsum sftp://user@host -a md5 /data/file.iso
 
 # BLAKE3 hash
-aeroftp-cli hashsum --profile "server" blake3 /path/file.dat
+aeroftp-cli hashsum --profile "server" -a blake3 /path/file.dat
 
 # JSON output
-aeroftp-cli hashsum --profile "server" sha256 /file.txt --json
+aeroftp-cli hashsum --profile "server" -a sha256 /file.txt --json
 ```
 
 Supported algorithms: `md5`, `sha1`, `sha256`, `sha512`, `blake3`. Output format matches standard `sha256sum` format: `<hash>  <path>`.
