@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import chatSource from './AIChat.tsx?raw';
 
 describe('the token count of a conversation', () => {
     beforeEach(() => vi.resetModules());
@@ -31,5 +32,21 @@ describe('the token count of a conversation', () => {
         const usage = await import('./aiChatTokenUsage');
         usage.recordTokenUsage(undefined, 100);
         expect(usage.conversationTokenUsage('')).toBeNull();
+    });
+});
+
+describe('the chat counts the tokens of every model request', () => {
+    it('records each request before any early return, tool-loop steps included', () => {
+        // A request that ends in a tool call has no message of its own: unless
+        // its tokens are recorded where it returns, the count misses it.
+        const requests = [...chatSource.matchAll(/chatRequestsRef\.current\.call</g)].map(match => match.index!);
+        expect(requests.length).toBeGreaterThanOrEqual(2);
+        for (const at of requests) {
+            const firstReturn = chatSource.indexOf('if (autoStopRef.current', at);
+            const recorded = chatSource.indexOf('recordTokenUsage(', at);
+            const line = chatSource.slice(0, at).split('\n').length;
+            expect(recorded, `request at AIChat.tsx:${line} records no tokens`).toBeGreaterThan(at);
+            expect(recorded, `request at AIChat.tsx:${line} records its tokens after an early return`).toBeLessThan(firstReturn);
+        }
     });
 });

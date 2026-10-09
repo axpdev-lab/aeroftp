@@ -2140,6 +2140,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                         ? { tools: toolExposureRef.current.definitions() } : {}),
                 });
 
+                // Each step was billed whether or not the loop goes on, and a step
+                // that ends in a tool call has no message: count it here, first.
+                const stepTokens = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, response.cache_creation_input_tokens, response.cache_read_input_tokens);
+                if (stepTokens) recordTokenUsage(activeConversationId || undefined, stepTokens.totalTokens ?? 0);
+
                 if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
                 if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error(t('ai.error.missingNativeToolState'));
                 if (response.native_turn && !nativeTurnMatches(response.native_turn, aiRequest)) throw new Error(t('ai.error.nativeTurnScopeMismatch'));
@@ -2166,15 +2171,13 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                 if (allToolsParsedMS.length === 0) {
                     // AI responded without a tool call - show final response and stop
-                    const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, undefined, response.cache_creation_input_tokens, response.cache_read_input_tokens);
-
                     const finalMsg: Message = {
                         id: crypto.randomUUID(),
                         role: 'assistant',
                         content: response.content,
                         timestamp: new Date(),
                         modelInfo,
-                        tokenInfo,
+                        tokenInfo: stepTokens,
                     };
                     setMessages(prev => [...prev, finalMsg]);
                     break;
