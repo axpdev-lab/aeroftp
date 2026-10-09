@@ -7,9 +7,10 @@
  * There is exactly ONE such salt, not one per tier. It is a nothing-up-my-sleeve
  * constant, `SHA-256("AeroCrypt default salt v1")`, and it is deliberately
  * public: default-salt mode trades the per-vault random salt for portability
- * (password alone opens the vault anywhere), which is only safe because the
- * password itself has to carry the entropy. The 128-bit / 256-bit radios pick
- * how much entropy that is — they are a password requirement, NOT a salt size.
+ * (password alone opens the vault anywhere, and rebuilds its config when the
+ * marker and the keystore copy are both gone), which is only safe because the
+ * password itself has to carry the entropy: create requires a Strong password
+ * of 20+ characters, enforced again by the backend.
  *
  * Mirrors `AEROCRYPT_DEFAULT_SALT_V1` in `src-tauri/src/aerocrypt/mod.rs`. Both
  * sides are independently pinned to the same SHA-256 derivation by a test, so

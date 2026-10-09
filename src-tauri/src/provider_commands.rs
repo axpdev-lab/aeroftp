@@ -1856,7 +1856,9 @@ pub struct ApplyCryptOverlayParams {
     #[serde(default)]
     pub with_header: Option<bool>,
     /// Opt-in default-salt mode for native AeroCrypt (D1). When true, the
-    /// create path uses the public constant instead of a random per-vault salt.
+    /// create path uses the public constant instead of a random per-vault salt,
+    /// and an unlock that finds no marker and no keystore config rebuilds the
+    /// vault from the password once the names in the scope prove the key.
     #[serde(default)]
     pub use_default_salt: Option<bool>,
 }
@@ -1973,11 +1975,11 @@ pub async fn provider_apply_crypt_overlay(
         local_config_json,
         local_config_salt,
         with_header,
+        use_default_salt: params.use_default_salt.unwrap_or(false),
         password_form,
         salt_form,
     };
     let salt = params.salt.unwrap_or_default();
-    let use_default_salt = params.use_default_salt;
     // Keyfile second factor: resolve the picked path to its digest before
     // touching the connection; a keyfile vault with no keyfile fails closed
     // inside the unlock with a clear "requires a keyfile" error.
@@ -1994,7 +1996,6 @@ pub async fn provider_apply_crypt_overlay(
             &salt,
             keyfile_digest.as_ref(),
             with_header,
-            use_default_salt,
         )
         .await
         {

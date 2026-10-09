@@ -505,6 +505,7 @@ pub fn resolve_overlay_secrets(
             Some(salt.clone())
         },
         with_header,
+        use_default_salt: crate::crypt_overlay_provider::overlay_uses_default_salt(&overlay),
         password_form: crate::rclone_crypt::secret_form_for_source(
             password_form,
             password_from_env,

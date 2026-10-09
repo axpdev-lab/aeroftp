@@ -1217,9 +1217,24 @@ AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt get secret.pdf 
 AEROFTP_CRYPT_PASSWORD=MySecret aeroftp-cli --profile "S3" crypt get photos _ /encrypted . -r
 ```
 
-`crypt init` refuses to run when an overlay config (`.aeroftp-crypt.json`) already exists at the target, because re-init rotates the salt and would permanently orphan every file already encrypted under the old overlay. It exits with code 9 ("already exists") and prints a hint. Pass `--force` to overwrite intentionally (DESTRUCTIVE).
+`crypt init` refuses to run when an overlay config (`.aerocrypt.tsv`, or the legacy `.aeroftp-crypt.json`) already exists at the target, because re-init rotates the salt and would permanently orphan every file already encrypted under the old overlay. It exits with code 9 ("already exists") and prints a hint. Pass `--force` to overwrite intentionally (DESTRUCTIVE).
 
 Encryption: new overlays are written as **AECR v3**. Content is AES-256-GCM-SIV (RFC 8452, 64KB blocks) under a per-file random data key wrapped with AES-256-KW (RFC 3394); filenames are encrypted with AES-256-SIV; the master key is derived with Argon2id (128 MiB / t=4 / p=4) and subkeys via HKDF-SHA256. Each content block binds its index and the total block count (length-binding), and the overlay config carries a key-bound HKDF-SHA256 MAC so its parameters cannot be tampered with. Legacy overlays (v2 GCM-SIV, v1 plain AES-256-GCM) stay readable but are never written. The cloud provider never sees file names or content.
+
+#### Default salt: the password alone opens the vault
+
+```bash
+# Create a default-salt vault (a generated Strong password of 20+ characters is required)
+AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile "S3" crypt init _ /encrypted --use-default-salt --i-understand-linkability --emergency-kit kit.txt
+
+# Marker and keystore config both gone: open the vault from the password alone
+AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile "S3" crypt ls _ /encrypted --use-default-salt
+
+# Record the intent on the profile, so every connect rebuilds what is missing
+AEROFTP_CRYPT_PASSWORD=... aeroftp-cli --profile "S3" crypt bind /encrypted --use-default-salt
+```
+
+`--use-default-salt` replaces the random per-vault salt with the public constant `SHA-256("AeroCrypt default salt v1")`, so the password (and keyfile, when the vault has one) alone derives the master key. When neither the remote marker nor the profile keystore holds the config, `crypt ls`, `crypt get` and `crypt put` with `--use-default-salt` rebuild it in memory, and a profile bound with the default salt (the GUI toggle, or `crypt bind --use-default-salt`) rebuilds it on connect and writes back the marker (headed vaults) and the keystore copy. A rebuild is accepted only after at least one name in the folder decrypts with the derived key: a wrong password, or a vault created with a per-vault salt, is refused (exit 6) and nothing is written, and a marker that exists but could not be probed refuses it too (exit 10). The rebuilt config carries a new random vault ID, so save a new Recovery Kit afterwards. The tradeoff is the one the flag names: the salt is public, so the password has to carry the entropy, and vaults that share a password have linkable encrypted names.
 
 ### vault - AeroVault Encrypted Container
 

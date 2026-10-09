@@ -259,6 +259,12 @@ pub struct OverlayUnlockParams {
     /// marker from the keystore and surfaces a one-shot safety warning
     /// (tracker #421 item #7). Default false = intentional headerless.
     pub with_header: bool,
+    /// AeroCrypt only: the vault uses the public default salt (the binding's
+    /// `useDefaultSalt`). A create bootstraps it with the constant salt, and an
+    /// unlock that finds neither a remote marker nor a keystore config rebuilds
+    /// it from the password, once the names in the scope prove the key
+    /// ([`crate::crypt_overlay_provider::reopen_default_salt_vault`]).
+    pub use_default_salt: bool,
     /// rclone-crypt: the form the password and salt handed to the unlock are
     /// in ([`crate::rclone_crypt::CryptSecretForm`]), `None` when the source
     /// records none (an environment variable, a binding older than the field).
@@ -351,21 +357,41 @@ pub async fn unlock_overlay_keys(
                     .await
                     .map_err(|e| format!("Cannot read AeroCrypt overlay config: {}", e))?;
                 String::from_utf8_lossy(&config_bytes).into_owned()
-            } else {
-                let local = params
-                    .local_config_json
-                    .as_deref()
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-                    .ok_or_else(|| {
-                        format!("Cannot read AeroCrypt overlay config: no overlay at {config_path}")
-                    })?;
+            } else if let Some(local) = params
+                .local_config_json
+                .as_deref()
+                .filter(|s| !s.is_empty())
+            {
                 crate::crypt_overlay_provider::validate_headerless_config_salt(
                     params.profile_id.as_deref().unwrap_or(""),
-                    &local,
+                    local,
                     params.local_config_salt.as_deref(),
                 )?;
-                local
+                local.to_string()
+            } else if params.use_default_salt {
+                // Compare only reads: the rebuilt config stays in memory, the
+                // copies are put back by the next encrypting unlock.
+                use crate::crypt_overlay_provider::{
+                    reopen_default_salt_vault, DefaultSaltReopenError,
+                };
+                match reopen_default_salt_vault(provider, scope, password, keyfile_digest).await {
+                    Ok((cfg, master_key, _)) => {
+                        return Ok(CryptCompareKeys::AeroCrypt {
+                            master_key,
+                            v3_objects: overlay::config_decrypted_size(&cfg, 0).is_some(),
+                        })
+                    }
+                    Err(DefaultSaltReopenError::NothingToVerify) => {
+                        return Err(format!(
+                            "Cannot read AeroCrypt overlay config: no overlay at {config_path}"
+                        ))
+                    }
+                    Err(e) => return Err(e.message(scope)),
+                }
+            } else {
+                return Err(format!(
+                    "Cannot read AeroCrypt overlay config: no overlay at {config_path}"
+                ));
             };
             // Shared with crypt_overlay_provider::derive_aerocrypt_overlay_keys_from_config:
             // v3 KDF + MAC, or v4 keyslot unlock to OMK (raw header for config_mac belt).
@@ -594,9 +620,10 @@ mod tests {
     }
 
     /// Minimal read-only provider for `unlock_overlay_keys`: serves the remote
-    /// `.aeroftp-crypt.json` config via `download_to_bytes` and nothing else
-    /// (the read-side unlock never writes, unlike the encrypting twin's
-    /// MemProvider in `crypt_overlay_provider` tests).
+    /// `.aeroftp-crypt.json` config via `download_to_bytes`, and lists its files
+    /// for the default-salt rebuild, and nothing else (the read-side unlock
+    /// never writes, unlike the encrypting twin's MemProvider in
+    /// `crypt_overlay_provider` tests).
     struct ConfigProvider {
         files: std::collections::HashMap<String, Vec<u8>>,
     }
@@ -623,9 +650,30 @@ mod tests {
         }
         async fn list(
             &mut self,
-            _path: &str,
+            path: &str,
         ) -> Result<Vec<crate::providers::RemoteEntry>, crate::providers::ProviderError> {
-            Ok(Vec::new())
+            let prefix = format!("{}/", path.trim_end_matches('/'));
+            Ok(self
+                .files
+                .iter()
+                .filter_map(|(p, data)| {
+                    let name = p.strip_prefix(&prefix).filter(|n| !n.contains('/'))?;
+                    Some(crate::providers::RemoteEntry {
+                        name: name.to_string(),
+                        path: p.clone(),
+                        is_dir: false,
+                        size: data.len() as u64,
+                        modified: None,
+                        permissions: None,
+                        owner: None,
+                        group: None,
+                        is_symlink: false,
+                        link_target: None,
+                        mime_type: None,
+                        metadata: std::collections::HashMap::new(),
+                    })
+                })
+                .collect())
         }
         async fn pwd(&mut self) -> Result<String, crate::providers::ProviderError> {
             Ok("/".into())
@@ -764,6 +812,7 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         }
@@ -851,6 +900,7 @@ mod tests {
             local_config_json: None,
             local_config_salt: None,
             with_header: false,
+            use_default_salt: false,
             password_form: None,
             salt_form: None,
         };
@@ -860,6 +910,54 @@ mod tests {
             "rclone-crypt must reject a keyfile",
         );
         assert!(err.contains("AeroCrypt feature"), "clear error: {err}");
+    }
+
+    /// The read-only compare unlock reopens a default-salt vault from the
+    /// password when marker and keystore copy are both gone, writes nothing,
+    /// and refuses a wrong password; without the intent it stays "no overlay".
+    #[tokio::test]
+    async fn unlock_overlay_keys_reopens_a_default_salt_vault_from_the_password() {
+        use crate::aerocrypt::{names, overlay};
+        let pw = "Xk7#pQ2$vL9@mN4&wR6!tY8^bH3*zJ5%";
+        let key = overlay::derive_default_salt_master_key(pw, None).unwrap();
+        let wire = names::encrypt_filename(&key, "report.pdf").unwrap();
+        let mut prov = ConfigProvider {
+            files: std::collections::HashMap::from([(format!("/Vault/{wire}"), vec![0u8; 80])]),
+        };
+        let mut params = aerocrypt_params("/Vault");
+        params.use_default_salt = true;
+        match unlock_overlay_keys(&mut prov, &params, pw, "", None).await {
+            Ok(CryptCompareKeys::AeroCrypt {
+                master_key,
+                v3_objects,
+            }) => {
+                assert_eq!(master_key, key);
+                assert!(v3_objects);
+            }
+            Ok(_) => panic!("expected AeroCrypt keys"),
+            Err(e) => panic!("the password alone must reopen it: {e}"),
+        }
+        assert_eq!(prov.files.len(), 1, "compare never writes");
+
+        let err = unlock_err(
+            unlock_overlay_keys(
+                &mut prov,
+                &params,
+                "Another#Strong$Password1234567890",
+                "",
+                None,
+            )
+            .await,
+            "a wrong password must be refused",
+        );
+        assert!(err.contains("None of the 1 names"), "{err}");
+
+        params.use_default_salt = false;
+        let err = unlock_err(
+            unlock_overlay_keys(&mut prov, &params, pw, "", None).await,
+            "without the intent nothing is rebuilt",
+        );
+        assert!(err.contains("no overlay at"), "{err}");
     }
 
     /// Headerless AeroCrypt parity (v4.1.4 headerless-default flip): the MCP /

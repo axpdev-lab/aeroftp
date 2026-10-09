@@ -800,6 +800,52 @@ pub fn init_config_v3_with_keyfile(
     build_config_v3_tsv(salt, master_key, vault_id, true, keyfile_hint, salt_mode)
 }
 
+/// Derive the master key of a default-salt v3 vault from its factors.
+pub fn derive_default_salt_master_key(
+    password: &str,
+    keyfile_digest: Option<&[u8; KEY_SIZE]>,
+) -> Result<[u8; KEY_SIZE], String> {
+    derive_master_key_with_keyfile(
+        &OverlayConfig::v3_bootstrap(AEROCRYPT_DEFAULT_SALT_V1),
+        password,
+        keyfile_digest,
+    )
+}
+
+/// The public config of a default-salt v3 vault for `master_key`, written when
+/// the password-only rebuild has to stand in for a lost marker and keystore
+/// copy. Salt and mode are fixed by the mode itself.
+///
+/// The vault id is random, as at create. Deriving it from the key would make
+/// the rebuild byte-identical to the create, but the id is printed in the
+/// Emergency Kit and shown in the app, which by design carry no password
+/// verifier (the kit omits the config MAC for that reason): an id derived from
+/// the key would let anyone holding the kit, or a screenshot of the id, test
+/// password guesses offline. So a rebuilt config gets a new id and the user is
+/// told to save a new kit.
+pub fn default_salt_config_v3(
+    master_key: &[u8; KEY_SIZE],
+    requires_keyfile: bool,
+) -> Result<String, String> {
+    let vault_id = random_vault_id();
+    if requires_keyfile {
+        init_config_v3_with_keyfile(
+            &AEROCRYPT_DEFAULT_SALT_V1,
+            master_key,
+            &vault_id,
+            None,
+            SaltMode::DefaultV1,
+        )
+    } else {
+        init_config_v3_with_vault_id(
+            &AEROCRYPT_DEFAULT_SALT_V1,
+            master_key,
+            &vault_id,
+            SaltMode::DefaultV1,
+        )
+    }
+}
+
 /// Rebuild a headed v3 marker from parsed local metadata and a verified key.
 /// The salt, keyfile requirement, and vault id are preserved. Older v3
 /// password-only configs without a vault id receive one because current marker
@@ -2789,6 +2835,54 @@ mod tests {
         assert!(!tsv_per.contains("salt_mode"));
         let cfg_per = parse_config(&tsv_per).unwrap();
         verify_config_mac(&cfg_per, &master_per).unwrap();
+    }
+
+    #[test]
+    fn default_salt_config_is_rebuilt_from_the_factors_alone() {
+        // The promise of default-salt mode: the password (with its keyfile, when
+        // it has one) rebuilds a config that opens the vault. Salt and mode are
+        // fixed; only the vault id is random, so the Emergency Kit that prints
+        // it never becomes a password verifier.
+        let pw = "correct-horse-battery-staple-123456789012345678901234567890";
+        let master = derive_default_salt_master_key(pw, None).unwrap();
+        let first = default_salt_config_v3(&master, false).unwrap();
+        let cfg = parse_config(&first).unwrap();
+        match &cfg {
+            OverlayConfig::V3 {
+                salt,
+                vault_id,
+                requires_keyfile,
+                salt_mode,
+                ..
+            } => {
+                assert_eq!(*salt, AEROCRYPT_DEFAULT_SALT_V1);
+                assert!(vault_id.is_some());
+                assert!(!requires_keyfile);
+                assert_eq!(*salt_mode, SaltMode::DefaultV1);
+            }
+            other => panic!("expected v3, got v{}", other.version()),
+        }
+        verify_config_mac(&cfg, &master).unwrap();
+        // A second rebuild opens the same vault under a different id.
+        let again = parse_config(&default_salt_config_v3(&master, false).unwrap()).unwrap();
+        verify_config_mac(&again, &master).unwrap();
+        assert_ne!(
+            cfg.vault_id(),
+            again.vault_id(),
+            "the id must not be derived from the key"
+        );
+
+        // A keyfile vault records the second factor and verifies only under it.
+        let digest = [9u8; KEY_SIZE];
+        let kf_master = derive_default_salt_master_key(pw, Some(&digest)).unwrap();
+        assert_ne!(kf_master, master, "the keyfile must enter the KDF");
+        let kf_cfg = parse_config(&default_salt_config_v3(&kf_master, true).unwrap()).unwrap();
+        assert!(kf_cfg.requires_keyfile());
+        verify_config_mac(&kf_cfg, &kf_master).unwrap();
+        assert!(
+            verify_config_mac(&kf_cfg, &master).is_err(),
+            "the password alone must not verify a keyfile vault"
+        );
     }
 
     #[test]

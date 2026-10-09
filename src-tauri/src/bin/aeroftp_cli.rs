@@ -5476,6 +5476,12 @@ enum CryptCommands {
         /// Keyfile path to store for transparent unlock (keyfile vaults only).
         #[arg(long)]
         keyfile: Option<String>,
+        /// The overlay uses the AeroCrypt default salt. Recorded on the binding,
+        /// so a connect that finds neither the remote marker nor the keystore
+        /// config rebuilds them from the stored password. A re-bind of the same
+        /// scope keeps it when the binding already records it.
+        #[arg(long)]
+        use_default_salt: bool,
     },
     /// Remove the crypt-overlay binding from a saved profile (the overlay
     /// itself and its remote data are untouched; standalone `crypt` commands
@@ -5681,6 +5687,12 @@ enum CryptCommands {
         /// Keyfile, required if the overlay was created with one
         #[arg(long)]
         keyfile: Option<String>,
+        /// The overlay uses the AeroCrypt default salt: when neither the remote
+        /// marker nor the profile keystore holds its config, rebuild it in
+        /// memory from the password (and keyfile). Refused unless names in the
+        /// folder decrypt with it; nothing is written.
+        #[arg(long)]
+        use_default_salt: bool,
     },
     /// Upload a file or directory with encryption (content + names encrypted)
     Put {
@@ -5701,6 +5713,12 @@ enum CryptCommands {
         /// Keyfile, required if the overlay was created with one
         #[arg(long)]
         keyfile: Option<String>,
+        /// The overlay uses the AeroCrypt default salt: when neither the remote
+        /// marker nor the profile keystore holds its config, rebuild it in
+        /// memory from the password (and keyfile). Refused unless names in the
+        /// folder decrypt with it; nothing is written.
+        #[arg(long)]
+        use_default_salt: bool,
     },
     /// Download and decrypt a file or directory from an encrypted overlay
     Get {
@@ -5724,6 +5742,12 @@ enum CryptCommands {
         /// Keyfile, required if the overlay was created with one
         #[arg(long)]
         keyfile: Option<String>,
+        /// The overlay uses the AeroCrypt default salt: when neither the remote
+        /// marker nor the profile keystore holds its config, rebuild it in
+        /// memory from the password (and keyfile). Refused unless names in the
+        /// folder decrypt with it; nothing is written.
+        #[arg(long)]
+        use_default_salt: bool,
     },
 }
 
@@ -29669,6 +29693,8 @@ async fn cli_apply_crypt_overlay(
         .get("withHeader")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let use_default_salt =
+        ftp_client_gui_lib::crypt_overlay_provider::overlay_uses_default_salt(&overlay);
     let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
         kind,
         remote_scope,
@@ -29683,6 +29709,7 @@ async fn cli_apply_crypt_overlay(
             Some(salt.clone())
         },
         with_header,
+        use_default_salt,
         password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
             password_form,
             password_from_env,
@@ -54867,6 +54894,27 @@ async fn load_crypt_config_json(
     format: OutputFormat,
     missing_message: &str,
 ) -> Result<String, i32> {
+    load_or_reopen_crypt_config(provider, base_path, cli, format, missing_message, None).await
+}
+
+/// The overlay config a standalone `crypt` command unlocks with: the remote
+/// marker, else the profile's keystore copy, else, when `reopen` carries the
+/// factors of a default-salt vault (`--use-default-salt`), its config rebuilt
+/// from them and checked against the names it encrypted
+/// ([`ftp_client_gui_lib::crypt_overlay_provider::reopen_default_salt_vault`]).
+/// The rebuild stays in memory: these commands write no metadata, a connect
+/// through a bound profile puts the copies back.
+async fn load_or_reopen_crypt_config(
+    provider: &mut dyn StorageProvider,
+    base_path: &str,
+    cli: &Cli,
+    format: OutputFormat,
+    missing_message: &str,
+    reopen: Option<(&str, Option<&[u8; 32]>)>,
+) -> Result<String, i32> {
+    use ftp_client_gui_lib::crypt_overlay_provider::{
+        reopen_default_salt_vault, DefaultSaltReopenError,
+    };
     match read_remote_crypt_marker(provider, base_path).await {
         Ok(Some(marker)) => return Ok(marker.text),
         Ok(None) => {}
@@ -54880,11 +54928,37 @@ async fn load_crypt_config_json(
             return Err(code);
         }
     }
-    match read_cli_headerless_config(cli, format)? {
-        Some(config_json) => Ok(config_json),
-        None => {
+    if let Some(config_json) = read_cli_headerless_config(cli, format)? {
+        return Ok(config_json);
+    }
+    let Some((password, keyfile_digest)) = reopen else {
+        print_error(format, missing_message, 5);
+        return Err(5);
+    };
+    match reopen_default_salt_vault(provider, base_path, password, keyfile_digest).await {
+        Ok((_, _, config_text)) => {
+            if !cli.quiet {
+                eprintln!(
+                    "No marker or keystore config: rebuilt the default-salt config from the password."
+                );
+            }
+            Ok(config_text)
+        }
+        Err(DefaultSaltReopenError::NothingToVerify) => {
             print_error(format, missing_message, 5);
             Err(5)
+        }
+        Err(e) => {
+            // A key no name accepts is a wrong factor (6, like a config MAC
+            // mismatch); a listing error keeps the provider's own code; a marker
+            // that exists but could not be probed is a server-side problem (10).
+            let code = match &e {
+                DefaultSaltReopenError::WrongKey(_) => 6,
+                DefaultSaltReopenError::ListingFailed(err) => provider_error_to_exit_code(err),
+                _ => 10,
+            };
+            print_error(format, &e.message(base_path), code);
+            Err(code)
         }
     }
 }
@@ -56055,6 +56129,23 @@ fn is_valid_overlay_scope(scope: &str, remote_path: &str) -> bool {
 
 /// Read a saved profile's `initialPath` (the GUI's remote landing path), used
 /// as the default overlay scope for `crypt bind` when no path is given.
+/// The saved profile's `aeroCryptOverlay` binding, when it has one. A profile
+/// set that cannot be read is an error, never "no binding": a re-bind that took
+/// it for absent would overwrite the intents the binding records.
+fn profile_overlay_binding(
+    cli: &Cli,
+    store: &CredentialStore,
+    profile_id: &str,
+) -> Result<Option<serde_json::Value>, String> {
+    let profiles = load_active_user_profiles(cli, store)?;
+    Ok(profiles
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        .and_then(|p| p.get("aeroCryptOverlay"))
+        .filter(|v| v.is_object())
+        .cloned())
+}
+
 fn profile_initial_path(cli: &Cli, store: &CredentialStore, profile_id: &str) -> Option<String> {
     let profiles = load_active_user_profiles(cli, store).ok()?;
     profiles
@@ -56070,6 +56161,10 @@ fn profile_initial_path(cli: &Cli, store: &CredentialStore, profile_id: &str) ->
 /// GUI file panel, sync) auto-decrypts it on connect. Writes the profile's
 /// `aeroCryptOverlay` JSON and stores the per-profile overlay password (+ keyfile
 /// path when supplied). Idempotent: re-binding overwrites the previous binding.
+/// `with_header` is the headed intent; `use_default_salt` is written as
+/// `useDefaultSalt` only when set, so a per-vault binding keeps exactly the JSON
+/// it always had.
+#[allow(clippy::too_many_arguments)]
 fn bind_crypt_overlay_to_profile(
     cli: &Cli,
     store: &CredentialStore,
@@ -56078,32 +56173,10 @@ fn bind_crypt_overlay_to_profile(
     remote_scope: &str,
     password: &str,
     keyfile_path: Option<&str>,
-) -> Result<(), String> {
-    bind_crypt_overlay_to_profile_ex(
-        cli,
-        store,
-        uid,
-        profile_id,
-        remote_scope,
-        password,
-        keyfile_path,
-        false,
-    )
-}
-
-/// Like [`bind_crypt_overlay_to_profile`], with explicit headed intent.
-#[allow(clippy::too_many_arguments)]
-fn bind_crypt_overlay_to_profile_ex(
-    cli: &Cli,
-    store: &CredentialStore,
-    uid: Option<i64>,
-    profile_id: &str,
-    remote_scope: &str,
-    password: &str,
-    keyfile_path: Option<&str>,
     with_header: bool,
+    use_default_salt: bool,
 ) -> Result<(), String> {
-    let binding = serde_json::json!({
+    let mut binding = serde_json::json!({
         "enabled": true,
         "kind": "aerocrypt",
         "remoteScope": remote_scope,
@@ -56111,6 +56184,9 @@ fn bind_crypt_overlay_to_profile_ex(
         "directoryNameEncryption": true,
         "withHeader": with_header,
     });
+    if use_default_salt {
+        binding["useDefaultSalt"] = serde_json::json!(true);
+    }
     update_profile_field_in_vault(cli, store, profile_id, "aeroCryptOverlay", binding)?;
     if !password.is_empty() {
         dual_store_server_cred(
@@ -56145,8 +56221,9 @@ fn bind_after_init(
     password: &str,
     keyfile_path: Option<&str>,
     with_header: bool,
+    use_default_salt: bool,
 ) {
-    match bind_crypt_overlay_to_profile_ex(
+    match bind_crypt_overlay_to_profile(
         cli,
         store,
         uid,
@@ -56155,6 +56232,7 @@ fn bind_after_init(
         password,
         keyfile_path,
         with_header,
+        use_default_salt,
     ) {
         Ok(()) => {
             if !cli.quiet && !matches!(format, OutputFormat::Json) {
@@ -56455,6 +56533,7 @@ async fn cmd_crypt_bind(
     path: &str,
     password: &str,
     keyfile_path: Option<&str>,
+    use_default_salt: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -56505,6 +56584,37 @@ async fn cmd_crypt_bind(
         return 5;
     }
     let scope = resolve_remote_path(&scope);
+    // A re-bind of the SAME scope (to change the password, say) keeps the
+    // intents the binding records for the vault there, so it does not silently
+    // turn a headed vault headerless or lose the default-salt reopen. A new
+    // scope is another folder: nothing carries over, or a connect could heal
+    // the previous vault's marker into it or create a default-salt vault the
+    // user never asked for.
+    let existing = match profile_overlay_binding(cli, &store, &profile_id) {
+        Ok(existing) => existing,
+        Err(e) => {
+            print_error(
+                format,
+                &format!("Cannot read the profile's binding: {e}"),
+                5,
+            );
+            return 5;
+        }
+    };
+    let same_scope = existing.filter(|b| {
+        b.get("remoteScope")
+            .and_then(|v| v.as_str())
+            .is_some_and(|prev| prev.trim_end_matches('/') == scope.trim_end_matches('/'))
+    });
+    let with_header = same_scope
+        .as_ref()
+        .and_then(|b| b.get("withHeader"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let use_default_salt = use_default_salt
+        || same_scope
+            .as_ref()
+            .is_some_and(ftp_client_gui_lib::crypt_overlay_provider::overlay_uses_default_salt);
     if let Err(e) = bind_crypt_overlay_to_profile(
         cli,
         &store,
@@ -56513,6 +56623,8 @@ async fn cmd_crypt_bind(
         scope.trim_end_matches('/'),
         password,
         keyfile_path,
+        with_header,
+        use_default_salt,
     ) {
         print_error(format, &format!("Failed to bind overlay: {}", e), 5);
         return 5;
@@ -56523,6 +56635,7 @@ async fn cmd_crypt_bind(
             "bound": true,
             "profile": profile_query,
             "remoteScope": scope,
+            "useDefaultSalt": use_default_salt,
         }));
     } else if !cli.quiet {
         println!(
@@ -56791,6 +56904,7 @@ async fn cmd_crypt_init(
                         password,
                         keyfile_path,
                         false, // headerless init
+                        use_default_salt,
                     );
                 }
 
@@ -56930,6 +57044,7 @@ async fn cmd_crypt_init(
                                         password,
                                         keyfile_path,
                                         true, // headed init (--with-header)
+                                        use_default_salt,
                                     );
                                     bound = true;
                                 }
@@ -57480,11 +57595,13 @@ async fn cmd_crypt_rotate_slot(
     0
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_ls(
     url: &str,
     path: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    use_default_salt: bool,
     recursive: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -57497,12 +57614,13 @@ async fn cmd_crypt_ls(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
 
-    let config_str = match load_crypt_config_json(
+    let config_str = match load_or_reopen_crypt_config(
         &mut *provider,
         &base_path,
         cli,
         format,
         "No crypt overlay found. Run 'crypt init' first.",
+        use_default_salt.then_some((password, keyfile_digest)),
     )
     .await
     {
@@ -57665,6 +57783,7 @@ async fn cmd_crypt_put(
     remote_path: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    use_default_salt: bool,
     recursive: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -57677,12 +57796,13 @@ async fn cmd_crypt_put(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, remote_path));
 
-    let config_str = match load_crypt_config_json(
+    let config_str = match load_or_reopen_crypt_config(
         &mut *provider,
         &base_path,
         cli,
         format,
         "No crypt overlay found. Run 'crypt init' first.",
+        use_default_salt.then_some((password, keyfile_digest)),
     )
     .await
     {
@@ -57988,6 +58108,7 @@ async fn cmd_crypt_get(
     local_dest: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    use_default_salt: bool,
     recursive: bool,
     cli: &Cli,
     format: OutputFormat,
@@ -58000,12 +58121,13 @@ async fn cmd_crypt_get(
 
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
 
-    let config_str = match load_crypt_config_json(
+    let config_str = match load_or_reopen_crypt_config(
         &mut *provider,
         &base_path,
         cli,
         format,
         "No crypt overlay found.",
+        use_default_salt.then_some((password, keyfile_digest)),
     )
     .await
     {
@@ -61070,6 +61192,9 @@ async fn cli_unlock_crypt_compare_keys(
             Some(salt.clone())
         },
         with_header: false,
+        use_default_salt: ftp_client_gui_lib::crypt_overlay_provider::overlay_uses_default_salt(
+            &overlay,
+        ),
         password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
             password_form,
             password_from_env,
@@ -71638,9 +71763,18 @@ async fn main() {
                     path,
                     password,
                     keyfile,
+                    use_default_salt,
                 } => {
                     let pw = resolve_crypt_password(password).unwrap_or_default();
-                    cmd_crypt_bind(path, &pw, keyfile.as_deref(), &cli, format).await
+                    cmd_crypt_bind(
+                        path,
+                        &pw,
+                        keyfile.as_deref(),
+                        *use_default_salt,
+                        &cli,
+                        format,
+                    )
+                    .await
                 }
                 CryptCommands::Unbind => cmd_crypt_unbind(&cli, format).await,
                 CryptCommands::ToHeaderless {
@@ -71917,6 +72051,7 @@ async fn main() {
                     recursive,
                     password,
                     keyfile,
+                    use_default_salt,
                 } => match read_keyfile_digest(keyfile) {
                     Err(e) => {
                         print_error(format, &e, 6);
@@ -71933,7 +72068,17 @@ async fn main() {
                                 path,
                                 "/",
                             );
-                            cmd_crypt_ls(&u, &dir, &pw, kf.as_ref(), *recursive, &cli, format).await
+                            cmd_crypt_ls(
+                                &u,
+                                &dir,
+                                &pw,
+                                kf.as_ref(),
+                                *use_default_salt,
+                                *recursive,
+                                &cli,
+                                format,
+                            )
+                            .await
                         }
                     }
                 },
@@ -71944,6 +72089,7 @@ async fn main() {
                     recursive,
                     password,
                     keyfile,
+                    use_default_salt,
                 } => match read_keyfile_digest(keyfile) {
                     Err(e) => {
                         print_error(format, &e, 6);
@@ -71966,6 +72112,7 @@ async fn main() {
                                 &dir,
                                 &pw,
                                 kf.as_ref(),
+                                *use_default_salt,
                                 *recursive,
                                 &cli,
                                 format,
@@ -71982,6 +72129,7 @@ async fn main() {
                     recursive,
                     password,
                     keyfile,
+                    use_default_salt,
                 } => match read_keyfile_digest(keyfile) {
                     Err(e) => {
                         print_error(format, &e, 6);
@@ -72005,6 +72153,7 @@ async fn main() {
                                 local,
                                 &pw,
                                 kf.as_ref(),
+                                *use_default_salt,
                                 *recursive,
                                 &cli,
                                 format,

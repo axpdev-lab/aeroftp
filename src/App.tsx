@@ -38,7 +38,8 @@ import {
   SyncDirection, VerifyPolicy, DeltaTransferStats,
   CompareReport, RetryPolicy, SyncJournal
 } from './types';
-import type { CryptSecretForm } from './types';
+import { profileOverlayApplyParams } from './utils/profileOverlayUnlock';
+import type { ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
 import { bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
@@ -109,25 +110,6 @@ interface LocalLocalRunOptions {
   maniac?: boolean;
 }
 
-type ProviderCryptOverlayKind = 'rclone-crypt' | 'aerocrypt';
-
-interface ProviderCryptOverlayApply {
-  kind: ProviderCryptOverlayKind;
-  remoteScope?: string | null;
-  filenameEncryption?: string | null;
-  directoryNameEncryption?: boolean | null;
-  password: string;
-  salt?: string | null;
-  /** rclone-crypt: how `password` / `salt` are written; null = not known (read automatically). */
-  passwordForm?: CryptSecretForm | null;
-  saltForm?: CryptSecretForm | null;
-  /** AeroCrypt Tier 1 optional keyfile second factor (local path, resolved to a digest backend-side). */
-  keyfilePath?: string | null;
-  profileId?: string | null;
-  /** Headed vault: write/heal remote marker when missing (tracker #421 #7). */
-  withHeader?: boolean | null;
-  useDefaultSalt?: boolean | null;
-}
 
 interface ProviderApplyCryptOverlayResult {
   scope: string;
@@ -5979,28 +5961,14 @@ const App: React.FC = () => {
           : '';
         const activated = await activateProviderCryptOverlay(
           { savedServerId },
-          {
-            kind: binding.kind,
-            remoteScope: overlayScope,
-            filenameEncryption: binding.filenameEncryption || 'standard',
-            directoryNameEncryption: binding.directoryNameEncryption ?? true,
+          profileOverlayApplyParams({
+            binding,
+            savedServerId,
+            overlayScope,
             password,
-            salt: salt || null,
-            // No forms here: the backend reads them from the saved profile
-            // (profileId), by the rule every other reader uses.
-            passwordForm: null,
-            saltForm: null,
-            keyfilePath: keyfilePath || null,
-            profileId: savedServerId,
-            // Headed intent from the saved profile: missing remote marker is
-            // healed from the keystore with a one-shot safety toast (#421 #7).
-            withHeader: !!binding.withHeader,
-            // #276: the saved default-salt intent has to travel with the unlock.
-            // Without it the backend defaulted to false and minted a per-vault
-            // random salt on create, so a profile saved with the toggle on came
-            // back with a salt that was not the documented public constant.
-            useDefaultSalt: !!binding.useDefaultSalt,
-          },
+            salt,
+            keyfilePath,
+          }),
           savedServerId,
         );
         if (binding.kind === 'rclone-crypt') {
