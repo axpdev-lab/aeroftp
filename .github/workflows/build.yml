@@ -429,14 +429,16 @@ jobs:
       # conflict with system EGL/Mesa/libavif/GStreamer, causing cascading
       # "undefined symbol" errors and "EGL_BAD_PARAMETER" blank screens.
       #
-      # Fix: remove ALL bundled shared libraries. The AppImage uses system libs
-      # at runtime. Tested on Arch (EndeavourOS) + KDE Wayland + Intel Haswell.
-      # The binary's C API linkage is stable across distros: only the bundled
-      # libs caused ABI conflicts. The user must have webkit2gtk-4.1 installed
-      # (same requirement as the .deb and AUR packages).
+      # Fix: the system libraries win. The bundled ones move to usr/lib/fallback
+      # and are used only where the system lacks a library the binary needs
+      # (no webkit2gtk-4.1 installed, as on the AppImageHub test system), so
+      # the AppImage starts there too instead of failing with "error while
+      # loading shared libraries". Tested on Arch (EndeavourOS) + KDE Wayland +
+      # Intel Haswell (system libs), and on Ubuntu 22.04 and Arch without
+      # WebKitGTK (fallback).
       #
       # Also fixes .DirIcon absolute symlink (AppImageHub spec compliance).
-      - name: Fix AppImage (unbundle libs + DirIcon)
+      - name: Fix AppImage (fallback libs + DirIcon)
         if: matrix.target == 'linux'
         run: |
           APPIMAGE=$(realpath src-tauri/target/release/bundle/appimage/*.AppImage 2>/dev/null | head -1)
@@ -463,12 +465,12 @@ jobs:
           # --- Fix 2: dispatcher layout ---
           "$GITHUB_WORKSPACE/src-tauri/scripts/patch-appimage-dispatch.sh" "$(pwd)" "$GITHUB_WORKSPACE"
 
-          # --- Fix 3: Remove all bundled shared libraries (issue #90) ---
-          # Keeps: binary, icons, desktop file, AppRun, metadata.
-          # Removes: usr/lib/*.so* (WebKitGTK, GStreamer, GLib, etc.)
-          LIB_COUNT=$(find usr/lib -name '*.so*' -type f -o -name '*.so*' -type l 2>/dev/null | wc -l)
-          rm -f usr/lib/lib*.so*
-          echo "Removed $LIB_COUNT bundled shared libraries"
+          # --- Fix 3: bundled shared libraries as fallback only (issue #90) ---
+          # usr/lib/lib*.so* (WebKitGTK, GTK, GLib, ...) move to
+          # usr/lib/fallback; an AppRun hook adds that folder to
+          # LD_LIBRARY_PATH only when ldd finds a library of the binary
+          # missing on the system.
+          "$GITHUB_WORKSPACE/src-tauri/scripts/patch-appimage-lib-fallback.sh" "$(pwd)"
 
           # --- Fix 4: permissions every user can run ---
           # linuxdeploy leaves AppRun.wrapped 0750 (and a 0777 schemas folder,
@@ -543,7 +545,7 @@ jobs:
             exit 1
           fi
           NEW_SIZE=$(du -m "$APPIMAGE" | cut -f1)
-          echo "AppImage re-packaged: ${ORIG_SIZE}MB -> ${NEW_SIZE}MB (system libs only)"
+          echo "AppImage re-packaged: ${ORIG_SIZE}MB -> ${NEW_SIZE}MB (bundled libs as fallback)"
 
           # zsyncmake writes the .zsync into the working directory, not next
           # to the output image; move it alongside the AppImage so the
