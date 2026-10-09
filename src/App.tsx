@@ -6694,6 +6694,14 @@ const App: React.FC = () => {
 
   const activeTransferProtocol = getActiveProviderProtocol();
   const supportsFtpTransferPresets = !!activeTransferProtocol && isFtpProtocol(activeTransferProtocol);
+  // The SITE dialog names the session it talks to: the saved profile's name
+  // and the host, read from the active session (connectionParams holds the
+  // Quick Connect form, which is empty when a saved profile was opened).
+  const activeSiteSession = sessions.find(s => s.id === activeSessionId);
+  const siteSessionLabel = [...new Set([activeSiteSession?.serverName, activeSiteSession?.connectionParams?.server || connectionParams.server].filter(Boolean))]
+    .concat((activeTransferProtocol || '').toUpperCase())
+    .filter(Boolean)
+    .join(' · ');
   // One activity entry per SITE exchange, built from the report: the verb and
   // the outcome, never the arguments (they can carry passwords).
   const logSiteCommand = (report: SiteCommandReport) => {
@@ -17019,7 +17027,7 @@ const App: React.FC = () => {
           <SiteCommandDialog
             isOpen={showSiteCommand && canSendSiteCommand}
             sessionId={activeSessionId}
-            sessionLabel={`${connectionParams.server} · ${(activeTransferProtocol || '').toUpperCase()}`}
+            sessionLabel={siteSessionLabel}
             onClose={(changedFiles) => {
               setShowSiteCommand(false);
               if (changedFiles) loadRemoteFiles(undefined, true);

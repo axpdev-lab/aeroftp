@@ -160,7 +160,7 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                             <Terminal className="text-blue-500" size={20} />
                             {t('siteCommand.title')}
                         </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{sessionLabel}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{sessionLabel}{encrypted === true ? ' · TLS' : ''}</p>
                     </div>
                     <button onClick={close} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors" title={t('common.close')} aria-label={t('common.close')}>
                         <X size={18} className="text-gray-500" />
