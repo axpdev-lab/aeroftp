@@ -9265,7 +9265,12 @@ mod tests {
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let gets = Arc::clone(&gets_for_handler);
                 async move {
-                    if req.method() == Method::GET {
+                    // Read the request body before answering: a reply sent while a
+                    // PUT body is still unread can reset the connection on Windows,
+                    // which failed this test there with NetworkError at the upload.
+                    let method = req.method().clone();
+                    let _ = axum::body::to_bytes(req.into_body(), 1 << 20).await;
+                    if method == Method::GET {
                         let seen = gets.fetch_add(1, Ordering::SeqCst);
                         if seen < 2 {
                             return axum::http::Response::builder()
@@ -9478,14 +9483,19 @@ mod tests {
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let (heads, gets) = (Arc::clone(&heads_h), Arc::clone(&gets_h));
                 async move {
-                    let status = if req.method() == Method::HEAD {
+                    // Read the request body before answering: a reply sent while a
+                    // PUT body is still unread can reset the connection on Windows,
+                    // which failed this test there with NetworkError at the upload.
+                    let method = req.method().clone();
+                    let _ = axum::body::to_bytes(req.into_body(), 1 << 20).await;
+                    let status = if method == Method::HEAD {
                         if heads.fetch_add(1, Ordering::SeqCst) < 2 {
                             404
                         } else {
                             200
                         }
                     } else {
-                        if req.method() == Method::GET {
+                        if method == Method::GET {
                             gets.fetch_add(1, Ordering::SeqCst);
                         }
                         200
