@@ -139,18 +139,18 @@ impl DirectoryProvider {
                 "path contains a NUL byte".to_string(),
             ));
         }
-        let trimmed = path.trim();
         // provider_list_files / provider_change_dir pass "." for "list cwd".
-        if trimmed.is_empty() || trimmed == "." {
+        // Nothing else is trimmed: `report ` and `report` are two files.
+        if path.is_empty() || path == "." {
             return Ok(self.cwd.clone());
         }
-        let base = if trimmed.starts_with('/') {
+        let base = if path.starts_with('/') {
             "/"
         } else {
             &self.cwd
         };
         let mut parts: Vec<&str> = base.split('/').filter(|c| !c.is_empty()).collect();
-        for comp in trimmed.split('/') {
+        for comp in path.split('/') {
             match comp {
                 "" | "." => {}
                 ".." => {
@@ -205,6 +205,25 @@ impl DirectoryProvider {
     fn resolve_existing(&self, vpath: &str) -> Result<PathBuf, ProviderError> {
         let fs = self.fs_path(vpath)?;
         self.contained(&fs)
+    }
+
+    /// The entry a mutation acts on: its folder must exist inside the root,
+    /// and the leaf is the entry itself, not what it points to. Deleting or
+    /// renaming `/alias` acts on the link, and leaves the file it names
+    /// alone; through `resolve_existing` it reached the target instead.
+    fn resolve_entry(&self, vpath: &str) -> Result<PathBuf, ProviderError> {
+        let norm = normalize_virtual_path(vpath)?;
+        let name = leaf_name(&norm)?;
+        let parent = parent_path(&norm)?;
+        let entry = self.resolve_existing(&parent)?.join(&name);
+        std::fs::symlink_metadata(&entry).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ProviderError::NotFound(format!("{vpath}: {e}"))
+            } else {
+                ProviderError::IoError(e)
+            }
+        })?;
+        Ok(entry)
     }
 
     /// Resolve a create target: parent must exist and be contained; leaf is
@@ -606,6 +625,18 @@ impl StorageProvider for DirectoryProvider {
                 "upload source must be a file".to_string(),
             ));
         }
+        // Creating the destination truncates it: when it is the source itself
+        // (the same path, a link to it, or a second hard link), the read that
+        // follows finds nothing and the file is lost while the upload reports
+        // success.
+        if let Ok(occupant) = std::fs::metadata(&dest) {
+            let source = std::fs::metadata(local_path).map_err(ProviderError::IoError)?;
+            if same_file(Path::new(local_path), &dest, &source, &occupant) {
+                return Err(ProviderError::InvalidPath(format!(
+                    "{vpath} is the upload source itself"
+                )));
+            }
+        }
         let total = meta.len();
         let mut reader = tokio::fs::File::open(local_path)
             .await
@@ -672,7 +703,7 @@ impl StorageProvider for DirectoryProvider {
                 self.root_noun()
             )));
         }
-        let fs = self.resolve_existing(&vpath)?;
+        let fs = self.resolve_entry(&vpath)?;
         let meta = tokio::fs::symlink_metadata(&fs)
             .await
             .map_err(|e| ProviderError::NotFound(format!("{vpath}: {e}")))?;
@@ -695,7 +726,7 @@ impl StorageProvider for DirectoryProvider {
                 self.root_noun()
             )));
         }
-        let fs = self.resolve_existing(&vpath)?;
+        let fs = self.resolve_entry(&vpath)?;
         // `remove_dir` never recurses: the operating system refuses a
         // directory that is not empty, which is said as such.
         tokio::fs::remove_dir(&fs).await.map_err(|e| {
@@ -718,7 +749,9 @@ impl StorageProvider for DirectoryProvider {
                 self.root_noun()
             )));
         }
-        let fs = self.resolve_existing(&vpath)?;
+        // On a link `remove_dir_all` removes the link and not the folder it
+        // names.
+        let fs = self.resolve_entry(&vpath)?;
         tokio::fs::remove_dir_all(&fs)
             .await
             .map_err(ProviderError::IoError)?;
@@ -734,7 +767,7 @@ impl StorageProvider for DirectoryProvider {
                 self.root_noun()
             )));
         }
-        let src = self.resolve_existing(&from_v)?;
+        let src = self.resolve_entry(&from_v)?;
         let dest = self.resolve_for_create(&to_v)?;
         if src == dest {
             return Ok(());
@@ -772,7 +805,7 @@ impl StorageProvider for DirectoryProvider {
                 self.root_noun()
             )));
         }
-        let src = self.resolve_existing(&from_v)?;
+        let src = self.resolve_entry(&from_v)?;
         let dest = self.resolve_for_create(&to_v)?;
         match std::fs::symlink_metadata(&dest) {
             Ok(occupant) => {
@@ -1371,5 +1404,78 @@ mod tests {
             .modified()
             .unwrap();
         assert_eq!(stored, then);
+    }
+
+    /// Deleting, renaming or removing a link acts on the link: the file or
+    /// folder it names stays. Through the target, a delete of `/alias`
+    /// removed the file and left the link dangling.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_mutation_on_a_link_acts_on_the_link_not_its_target() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("real.txt"), b"keep").unwrap();
+        std::fs::create_dir(dir.path().join("folder")).unwrap();
+        std::fs::write(dir.path().join("folder/inside.txt"), b"keep").unwrap();
+        let link = |target: &str, name: &str| {
+            std::os::unix::fs::symlink(dir.path().join(target), dir.path().join(name)).unwrap()
+        };
+        link("real.txt", "alias.txt");
+        link("real.txt", "moved-from.txt");
+        link("folder", "folder-link");
+        let mut p = local(dir.path()).await;
+
+        p.delete("/alias.txt").await.unwrap();
+        assert!(dir.path().join("alias.txt").symlink_metadata().is_err());
+        p.rename("/moved-from.txt", "/moved-to.txt").await.unwrap();
+        let moved = dir.path().join("moved-to.txt").symlink_metadata().unwrap();
+        assert!(moved.file_type().is_symlink());
+        p.rmdir_recursive("/folder-link").await.unwrap();
+        assert!(dir.path().join("folder-link").symlink_metadata().is_err());
+
+        assert_eq!(std::fs::read(dir.path().join("real.txt")).unwrap(), b"keep");
+        assert_eq!(
+            std::fs::read(dir.path().join("folder/inside.txt")).unwrap(),
+            b"keep"
+        );
+    }
+
+    /// `report ` and `report` are two files: a path is not trimmed into
+    /// another one.
+    #[tokio::test]
+    async fn names_that_differ_by_spaces_are_different_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("report"), b"plain").unwrap();
+        std::fs::write(dir.path().join("report "), b"spaced").unwrap();
+        let mut p = local(dir.path()).await;
+        assert_eq!(p.download_to_bytes("/report ").await.unwrap(), b"spaced");
+        assert_eq!(p.download_to_bytes("/report").await.unwrap(), b"plain");
+        p.delete("/report ").await.unwrap();
+        assert_eq!(std::fs::read(dir.path().join("report")).unwrap(), b"plain");
+    }
+
+    /// An upload of a file onto itself truncated it and reported success; it
+    /// is refused, by path and through a second hard link, and the file
+    /// keeps its bytes.
+    #[tokio::test]
+    async fn an_upload_onto_its_own_source_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let src = dir.path().join("data.bin");
+        std::fs::write(&src, b"precious").unwrap();
+        let mut p = local(dir.path()).await;
+        let same = p.upload(src.to_str().unwrap(), "/data.bin", None).await;
+        assert!(
+            matches!(same, Err(ProviderError::InvalidPath(_))),
+            "{same:?}"
+        );
+        #[cfg(unix)]
+        {
+            std::fs::hard_link(&src, dir.path().join("twin.bin")).unwrap();
+            let twin = p.upload(src.to_str().unwrap(), "/twin.bin", None).await;
+            assert!(
+                matches!(twin, Err(ProviderError::InvalidPath(_))),
+                "{twin:?}"
+            );
+        }
+        assert_eq!(std::fs::read(&src).unwrap(), b"precious");
     }
 }
