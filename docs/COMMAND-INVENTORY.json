@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 774
+    "tauri_commands": 775
   },
   "mcp": {
     "count": 77,
@@ -951,7 +951,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 448,
+    "name_matched_count": 449,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1461,6 +1461,7 @@
       "restart_app",
       "user_partitions_list_users",
       "user_partitions_load_active_server_profiles",
+      "user_partitions_load_active_server_profiles_scoped",
       "user_partitions_save_active_server_profiles",
       "user_partitions_relocate_server_profile",
       "user_partitions_add_user",
@@ -2061,6 +2062,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 774
+    "count": 775
   }
 }

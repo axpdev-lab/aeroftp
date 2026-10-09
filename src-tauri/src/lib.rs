@@ -19383,6 +19383,7 @@ pub fn run() {
             restart_app,
             user_partitions::user_partitions_list_users,
             user_partitions::user_partitions_load_active_server_profiles,
+            user_partitions::user_partitions_load_active_server_profiles_scoped,
             user_partitions::user_partitions_save_active_server_profiles,
             user_partitions::user_partitions_relocate_server_profile,
             user_partitions::user_partitions_add_user,

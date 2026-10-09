@@ -78,7 +78,7 @@ describe('ConnectionScreen edit sessions', () => {
         // could not read, which the plain read answers with []) returned
         // without a word.
         const save = bodyOf('handleOAuthMetadataSave');
-        expect(save, 'a read-modify-write uses the strict read').toContain('await loadSavedServerProfilesStrict()');
+        expect(save, 'a read-modify-write uses the strict read, bound to its account').toContain('await readSavedServerProfilesForWrite()');
         expect(save, 'no swallowed write').not.toMatch(/storeSavedServerProfiles\([^)]*\)\.catch\(\s*\(\)\s*=>\s*\{\s*\}\s*\)/);
         expect(save).toMatch(/if \(!prevProfile\) \{[^}]*setGitHubAlert\(/);
         // Credential rollback adds a nested catch to the write failure path.
@@ -87,7 +87,7 @@ describe('ConnectionScreen edit sessions', () => {
         expect(save).toContain("logger.warn('Saved profiles could not be written for the OAuth edit Save', err)");
         expect(save).toContain('await credentials.rollback()');
         // The success activity and the editor close come only after the write.
-        const write = save.indexOf('await storeSavedServerProfiles(updated)');
+        const write = save.indexOf('await storeSavedServerProfiles(updated, false, profilesUserId)');
         expect(write).toBeGreaterThan(-1);
         for (const after of ["'PROFILE_SAVE'", 'onFormSaved()']) {
             expect(save.indexOf(after), after).toBeGreaterThan(write);

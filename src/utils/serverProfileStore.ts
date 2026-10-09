@@ -6,6 +6,7 @@ import { secureGet, secureStore } from './secureStorage';
 import {
     accountChangeGeneration,
     loadActiveServerProfiles,
+    loadActiveServerProfilesScoped,
     saveActiveServerProfiles,
 } from './userPartitions';
 
@@ -121,6 +122,36 @@ export const loadSavedServerProfilesStrict = async (): Promise<ServerProfile[]> 
 };
 
 /**
+ * A saved-profile list read for a read-modify-write, with the account it was
+ * read from. `userId` is absent when the list came from the legacy store,
+ * which has no accounts.
+ */
+export interface SavedProfilesRead {
+    profiles: ServerProfile[];
+    userId?: number;
+}
+
+/**
+ * `loadSavedServerProfilesStrict` plus the account the list belongs to. Pass
+ * `userId` to `storeSavedServerProfiles` so the write lands in that account or
+ * is refused (`ACCOUNT_CHANGED`) when another account became active in between:
+ * an edit takes seconds, and a switch from the GUI or the CLI in that window
+ * used to receive the previous account's list.
+ */
+export const readSavedServerProfilesForWrite = async (): Promise<SavedProfilesRead> => {
+    try {
+        await seedLegacyLocalProfilesForPartitionMigration();
+        const scoped = await loadActiveServerProfilesScoped();
+        return { profiles: scoped.profiles, userId: scoped.userId };
+    } catch (error) {
+        if (!canUseLegacyProfileFallback(error)) throw error;
+        const legacy = await loadLegacySavedServerProfiles();
+        if (legacy.length > 0) return { profiles: legacy };
+        throw error;
+    }
+};
+
+/**
  * Persist saved server profiles to the vault and remove any stale
  * localStorage backup. Writing only to the vault prevents bleed-through
  * between co-installed builds (e.g. a portable folder next to an MSI
@@ -151,12 +182,18 @@ export interface ProfilesChangedDetail {
 let profilesWriteGeneration = 0;
 export const savedProfilesGeneration = (): number => profilesWriteGeneration + accountChangeGeneration();
 
-export const storeSavedServerProfiles = async (profiles: ServerProfile[], connectionMetadata = false): Promise<void> => {
+export const storeSavedServerProfiles = async (
+    profiles: ServerProfile[],
+    connectionMetadata = false,
+    expectedUserId?: number,
+): Promise<void> => {
     const accountBefore = accountChangeGeneration();
     try {
-        await saveActiveServerProfiles(profiles);
+        await saveActiveServerProfiles(profiles, expectedUserId);
     } catch (error) {
-        if (!canUseLegacyProfileFallback(error)) throw error;
+        // A list bound to an account never falls back to the legacy store,
+        // which has no accounts.
+        if (expectedUserId !== undefined || !canUseLegacyProfileFallback(error)) throw error;
         await secureStore(SAVED_SERVERS_ACCOUNT, profiles);
     }
     profilesWriteGeneration += 1;
@@ -182,7 +219,15 @@ export const mergeSavedServerProfile = async (
 ): Promise<ServerProfile[]> => {
     let result: ServerProfile[] = [];
     const run = async () => {
-        const profiles = await loadSavedServerProfiles();
+        let read: SavedProfilesRead;
+        try {
+            read = await readSavedServerProfilesForWrite();
+        } catch (error) {
+            // Same outcome as the plain read: nothing reachable to merge into.
+            if (!canUseLegacyProfileFallback(error)) throw error;
+            read = { profiles: [] };
+        }
+        const profiles = read.profiles;
         let found = false;
         const next = profiles.map(profile => {
             if (profile.id !== profileId) return profile;
@@ -190,7 +235,7 @@ export const mergeSavedServerProfile = async (
             return updater(profile);
         });
         result = found ? next : profiles;
-        if (found) await storeSavedServerProfiles(result, connectionMetadata);
+        if (found) await storeSavedServerProfiles(result, connectionMetadata, read.userId);
     };
 
     const queued = profileWriteQueue.then(run, run);

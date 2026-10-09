@@ -15,7 +15,7 @@ import { MyServersTableFooter } from './MyServersTableFooter';
 import { useTranslation } from '../../i18n';
 import { ContextMenu, useContextMenu } from '../ContextMenu';
 import type { ContextMenuItem } from '../ContextMenu';
-import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles, savedProfilesGeneration, PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../../utils/serverProfileStore';
+import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles, savedProfilesGeneration, PROFILES_CHANGED_EVENT, type ProfilesChangedDetail } from '../../utils/serverProfileStore';
 import { getStorageDedupKey } from '../../utils/storageDedup';
 import { useActivityLog } from '../../hooks/useActivityLog';
 import { getProviderById } from '../../providers';
@@ -807,7 +807,7 @@ export function MyServersPanel({
                     : idx;
             if (fromVisible === rawTarget) { dragServerIdRef.current = null; setDragIdx(null); setOverIdx(null); return; }
 
-            const currentServers = await loadSavedServerProfilesStrict();
+            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
             const updated = reorderVisibleInFull(currentServers, visible, fromVisible, rawTarget);
             if (updated.every((s, i) => s.id === currentServers[i]?.id)) {
                 dragServerIdRef.current = null;
@@ -815,7 +815,7 @@ export function MyServersPanel({
                 setOverIdx(null);
                 return;
             }
-            await storeSavedServerProfiles(updated);
+            await storeSavedServerProfiles(updated, false, profilesUserId);
             setServers(updated);
         } catch (err) {
             logger.warn('Saved profile operation failed', err);
@@ -1383,7 +1383,7 @@ export function MyServersPanel({
 
     const handleDuplicate = useCallback(async (server: ServerProfile) => {
         try {
-            const currentServers = await loadSavedServerProfilesStrict();
+            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
             const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
             const dup: ServerProfile = {
                 ...server,
@@ -1404,7 +1404,7 @@ export function MyServersPanel({
             // SavedServers duplicate handler. The list has no id/order sort (array
             // position IS the order), so prepending made the copy jump to the top.
             const updated = [...currentServers, dup];
-            await storeSavedServerProfiles(updated);
+            await storeSavedServerProfiles(updated, false, profilesUserId);
             setServers(updated);
             // Log the same two entries as an edit that overlaps an existing profile,
             // so the duplicate action is traceable: a "potential duplicate" warning
@@ -1442,9 +1442,9 @@ export function MyServersPanel({
         try {
             const trimmed = newName.trim();
             if (trimmed && trimmed !== server.name) {
-                const currentServers = await loadSavedServerProfilesStrict();
+                const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
                 const updated = currentServers.map(s => s.id === server.id ? { ...s, name: trimmed } : s);
-                await storeSavedServerProfiles(updated);
+                await storeSavedServerProfiles(updated, false, profilesUserId);
                 setServers(updated);
             }
             setRenamingId(null);
@@ -1514,9 +1514,9 @@ export function MyServersPanel({
     const confirmDelete = useCallback(async () => {
         try {
             if (!deleteTarget) return;
-            const currentServers = await loadSavedServerProfilesStrict();
+            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
             const updated = currentServers.filter(s => s.id !== deleteTarget.id);
-            await storeSavedServerProfiles(updated);
+            await storeSavedServerProfiles(updated, false, profilesUserId);
             setServers(updated);
             deleteProfileVaultSecrets(deleteTarget.id, deleteTarget.protocol).catch(() => {});
             // Drop the deleted profile from any group it belonged to (#320).

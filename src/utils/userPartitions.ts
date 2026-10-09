@@ -54,8 +54,25 @@ export const listUsers = (): Promise<UserMetadata[]> =>
 export const loadActiveServerProfiles = (): Promise<ServerProfile[]> =>
     invoke<ServerProfile[]>('user_partitions_load_active_server_profiles');
 
-export const saveActiveServerProfiles = (profiles: ServerProfile[]): Promise<void> =>
-    invoke<void>('user_partitions_save_active_server_profiles', { profiles });
+/** The active account's profiles and that account's id, read together. */
+export interface ScopedServerProfiles {
+    userId: number;
+    profiles: ServerProfile[];
+}
+
+export const loadActiveServerProfilesScoped = (): Promise<ScopedServerProfiles> =>
+    invoke<ScopedServerProfiles>('user_partitions_load_active_server_profiles_scoped');
+
+/**
+ * Replace the active account's profiles. With `expectedUserId` (from
+ * {@link loadActiveServerProfilesScoped}) the backend refuses the write with
+ * `ACCOUNT_CHANGED` when another account became active since that read.
+ */
+export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUserId?: number): Promise<void> =>
+    invoke<void>(
+        'user_partitions_save_active_server_profiles',
+        expectedUserId === undefined ? { profiles } : { profiles, expectedUserId },
+    );
 
 export const addUser = (
     name: string,
