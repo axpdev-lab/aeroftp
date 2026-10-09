@@ -401,12 +401,8 @@ export interface Message {
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
-        cost?: number;                 // Estimated USD, from a dated price list at most 90 days old
-        cacheCreationTokens?: number;  // Anthropic: tokens to create cache entry
-        cacheReadTokens?: number;      // Anthropic: tokens read from cache
-        cacheSavings?: number;         // Estimated USD savings from caching
-        priceListDate?: string;        // ISO date of the price list the estimate came from
-        costWithheld?: 'expired' | 'undated'; // The model has prices, but not ones to estimate from
+        cacheCreationTokens?: number;  // Anthropic: tokens written to the prompt cache
+        cacheReadTokens?: number;      // Anthropic: tokens read from the prompt cache
     };
     toolResultData?: ChatResultData;
 }

@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Keresés az összes beszélgetésben...",
                 "searching": "Keresés...",
                 "sessions": "Munkamenetek",
-                "totalCost": "Költség",
                 "totalTokens": "Tokens",
                 "unlimited": "Korlátlan",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Telepítve és kikapcsolva",
                 "presetReady": "Kész"
             },
-            "costEstimates": {
-                "cacheTitle": "A prompt gyorsítótár megtakarítása, becslés: {read} token olvasva, {created} írva",
-                "description": "A tokenek száma a szolgáltatótól származik, és pontos. A költség az AeroFTP árlistája alapján készült becslés, az árlista dátumával együtt jelenik meg, és elmarad, ha az árlista {days} napnál régebbi vagy nincs dátuma. A kiszámlázott összeg a szolgáltató konzoljában található.",
-                "enable": "Költségbecslések megjelenítése",
-                "estimateTitle": "Becslés az AeroFTP {date} dátumú árlistája alapján. A kiszámlázott összeg a szolgáltató konzoljában található.",
-                "expiredTitle": "Nincs becslés: az AeroFTP árlistája ehhez a modellhez {date} dátumú, több mint {days} napja. A tokenek száma pontos, a kiszámlázott összeg a szolgáltató konzoljában található.",
-                "savedEstimateTitle": "Az üzenettel együtt mentett becslés. A kiszámlázott összeg a szolgáltató konzoljában található.",
-                "sumTitle": "Az egyes válaszok becsléseinek összege. A kiszámlázott összeg a szolgáltató konzoljában található.",
-                "title": "Költségbecslések",
-                "undatedTitle": "Nincs becslés: az AeroFTP ehhez a modellhez tartozó áraihoz nem tartozik felülvizsgálati dátum. A tokenek száma pontos, a kiszámlázott összeg a szolgáltató konzoljában található."
+            "tokens": {
+                "breakdown": "{input} bemeneti token, {output} kimeneti token, a szolgáltató számítása szerint",
+                "breakdownCache": "{input} bemeneti token, {output} kimeneti token, {cacheRead} olvasva a prompt gyorsítótárából, {cacheWritten} írva bele, a szolgáltató számítása szerint"
             }
         },
         "archive": {

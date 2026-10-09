@@ -454,7 +454,7 @@ MCP server mode exposes the AeroAgent tool catalog as standard MCP endpoints, en
 - **Conversation branching** (fork/switch/delete)
 - **Chat history** in SQLite with FTS5 full-text search
 - **Export** to Markdown or JSON
-- **Cost tracking** per message and monthly budget
+- **Token counts** per reply and per conversation, as the provider reports them, prompt cache included (no cost estimate: prices change per model and no provider returns them per request)
 - **Keyboard shortcuts**: Ctrl+L (clear), Ctrl+Shift+N (new), Ctrl+Shift+E (export)
 
 ---

@@ -3195,7 +3195,6 @@
                 "searchPlaceholder": "Cerca in tutte le conversazioni...",
                 "searching": "Ricerca in corso...",
                 "sessions": "Sessioni",
-                "totalCost": "Costo",
                 "totalTokens": "Tokens",
                 "unlimited": "Illimitato",
                 "roleAI": "AI",
@@ -3349,16 +3348,9 @@
                 "presetInstalledDisabled": "Installato e disattivato",
                 "presetReady": "Pronto"
             },
-            "costEstimates": {
-                "cacheTitle": "Risparmiato dalla cache del prompt, stimato: {read} token letti, {created} scritti",
-                "description": "Il conteggio dei token viene dal provider ed è esatto. Il costo è una stima dal listino prezzi di AeroFTP, mostrata con la data del listino, e non compare quando il listino ha più di {days} giorni o non ha una data. L'importo addebitato è nella console del tuo provider.",
-                "enable": "Mostra le stime dei costi",
-                "estimateTitle": "Stima dal listino prezzi di AeroFTP del {date}. L'importo addebitato è nella console del tuo provider.",
-                "expiredTitle": "Non stimato: il listino prezzi di AeroFTP per questo modello è del {date}, più di {days} giorni fa. Il conteggio dei token è esatto; l'importo addebitato è nella console del tuo provider.",
-                "savedEstimateTitle": "Stima salvata con questo messaggio. L'importo addebitato è nella console del tuo provider.",
-                "sumTitle": "Somma delle stime di ogni risposta. L'importo addebitato è nella console del tuo provider.",
-                "title": "Stime dei costi",
-                "undatedTitle": "Non stimato: i prezzi di AeroFTP per questo modello non hanno una data di verifica. Il conteggio dei token è esatto; l'importo addebitato è nella console del tuo provider."
+            "tokens": {
+                "breakdown": "{input} in ingresso, {output} in uscita, contati dal provider",
+                "breakdownCache": "{input} in ingresso, {output} in uscita, {cacheRead} letti dalla cache del prompt, {cacheWritten} scritti nella cache, contati dal provider"
             }
         },
         "archive": {

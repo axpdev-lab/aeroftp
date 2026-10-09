@@ -42,9 +42,6 @@ describe('current provider model profiles', () => {
             if (spec.metadataReviewedAt) {
                 expect(Date.parse(`${spec.metadataReviewedAt}T00:00:00Z`)).toBeLessThanOrEqual(reviewedAt);
             }
-            if (spec.priceReviewedAt) {
-                expect(Date.parse(`${spec.priceReviewedAt}T00:00:00Z`)).toBeLessThanOrEqual(reviewedAt);
-            }
         }
     });
 
@@ -262,42 +259,6 @@ describe('model capability resolution', () => {
         expect(saved.capabilitySource).toBe('registry');
     });
 
-    it('replaces the prices an older registry saved into a profile', () => {
-        // Prices are the provider's, never a user edit (the model editor has no
-        // price field): a corrected price must reach models saved before it.
-        const applied = applyRegistryDefaults({
-            name: 'claude-opus-4-7',
-            inputCostPer1k: 0.015,
-            outputCostPer1k: 0.075,
-            priceReviewedAt: '2025-11-01',
-        });
-        expect(applied.inputCostPer1k).toBe(0.005);
-        expect(applied.outputCostPer1k).toBe(0.025);
-        expect(applied.priceReviewedAt).toBe('2026-10-08');
-    });
-
-    it('dates prices only from a price review, never from the capability review', () => {
-        const applied = applyRegistryDefaults({ name: 'gpt-5.6-sol' });
-        expect(applied.capabilitiesVerifiedAt).toBe('2026-09-02');
-        expect(applied.inputCostPer1k).toBeGreaterThan(0);
-        expect(applied.priceReviewedAt).toBeUndefined();
-    });
-
-    it('drops the prices of a saved model the registry no longer lists', () => {
-        const reconciled = reconcilePersistedModel({
-            name: 'claude-3-5-sonnet-20241022',
-            capabilitySource: 'registry',
-            inputCostPer1k: 0.003,
-            outputCostPer1k: 0.015,
-            pricing: { cacheReadMultiplier: 0.1, cacheWriteMultiplier: 1.25 },
-            priceReviewedAt: '2026-01-15',
-        });
-        expect(reconciled.inputCostPer1k).toBeUndefined();
-        expect(reconciled.outputCostPer1k).toBeUndefined();
-        expect(reconciled.pricing).toBeUndefined();
-        expect(reconciled.priceReviewedAt).toBeUndefined();
-    });
-
     it('strips registry labels when renaming a known model to an unknown id', () => {
         const previous = applyRegistryDefaults({
             ...baseModel({ name: 'gpt-5.6-sol' }),
@@ -338,9 +299,6 @@ describe('provider contracts and implemented adapter support', () => {
         expect(spec.nativeCapabilities?.toolCallingTransport).toBe(transport);
         expect(spec.nativeCapabilities?.reasoningEfforts).toEqual(efforts);
         expect(spec.metadataReviewedAt).toBe('2026-09-26');
-        // Flat prices would undercount requests above the documented threshold.
-        expect(spec.inputCostPer1k).toBeUndefined();
-        expect(spec.outputCostPer1k).toBeUndefined();
     });
 
     it.each(['claude-opus-5-5', 'claude-fable-5-1', 'claude-sonnet-5-5'])('preserves the modern Anthropic constraints for %s', name => {
@@ -359,7 +317,6 @@ describe('provider contracts and implemented adapter support', () => {
         expect(MODEL_REGISTRY['grok-4.7'].nativeCapabilities?.reasoningEfforts).toEqual(['low', 'medium', 'high', 'xhigh']);
         expect(MODEL_REGISTRY['kimi-k3'].nativeCapabilities?.reasoningEfforts).toEqual(['low', 'high', 'max']);
         expect(MODEL_REGISTRY['grok-4.7'].maxContextTokens).toBe(500_000);
-        expect(MODEL_REGISTRY['grok-4.7'].inputCostPer1k).toBeUndefined();
         expect(MODEL_REGISTRY['kimi-k3'].nativeCapabilities?.requiresFullAssistantReplay).toBe(true);
         expect(MODEL_REGISTRY['kimi-k3'].nativeCapabilities?.fixedSamplingParameters).toBe(true);
     });
@@ -435,8 +392,6 @@ describe('Anthropic native contract', () => {
     it('lists the current Sonnet and Haiku and no retired model', () => {
         expect(MODEL_REGISTRY['claude-sonnet-5-5']).toBeDefined();
         expect(MODEL_REGISTRY['claude-haiku-5-5']).toBeDefined();
-        // Tiered price: the base rates plus the tier above 100,000 prompt tokens.
-        expect(MODEL_REGISTRY['claude-haiku-5-5'].pricing?.tiers).toEqual([{ aboveTokens: 100000, inputCostPer1k: 0.0005, outputCostPer1k: 0.0025 }]);
         expect(MODEL_REGISTRY['claude-3-5-sonnet-20241022']).toBeUndefined();
     });
 });

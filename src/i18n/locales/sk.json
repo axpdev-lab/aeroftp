@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Hľadať vo všetkých konverzáciách...",
                 "searching": "Vyhlada sa...",
                 "sessions": "Sedenia",
-                "totalCost": "Náklady",
                 "totalTokens": "Tokens",
                 "unlimited": "Neobmedzené",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Nainštalované a vypnuté",
                 "presetReady": "Pripravené"
             },
-            "costEstimates": {
-                "cacheTitle": "Ušetrené vďaka vyrovnávacej pamäti promptu, odhad: {read} tokenov prečítaných, {created} zapísaných",
-                "description": "Počty tokenov pochádzajú od poskytovateľa a sú presné. Cena je odhad podľa cenníka AeroFTP, zobrazuje sa s dátumom tohto cenníka a vynecháva sa, ak je cenník starší ako {days} dní alebo nemá dátum. Fakturovaná suma je v konzole vášho poskytovateľa.",
-                "enable": "Zobrazovať odhady nákladov",
-                "estimateTitle": "Odhad podľa cenníka AeroFTP z {date}. Fakturovaná suma je v konzole vášho poskytovateľa.",
-                "expiredTitle": "Bez odhadu: cenník AeroFTP pre tento model je z {date}, teda starší ako {days} dní. Počty tokenov sú presné; fakturovaná suma je v konzole vášho poskytovateľa.",
-                "savedEstimateTitle": "Odhad uložený s touto správou. Fakturovaná suma je v konzole vášho poskytovateľa.",
-                "sumTitle": "Súčet odhadov jednotlivých odpovedí. Fakturovaná suma je v konzole vášho poskytovateľa.",
-                "title": "Odhady nákladov",
-                "undatedTitle": "Bez odhadu: ceny AeroFTP pre tento model nemajú dátum kontroly. Počty tokenov sú presné; fakturovaná suma je v konzole vášho poskytovateľa."
+            "tokens": {
+                "breakdown": "{input} vstupných tokenov, {output} výstupných tokenov, podľa počtu poskytovateľa",
+                "breakdownCache": "{input} vstupných tokenov, {output} výstupných tokenov, {cacheRead} načítaných z vyrovnávacej pamäte promptu, {cacheWritten} zapísaných do nej, podľa počtu poskytovateľa"
             }
         },
         "archive": {

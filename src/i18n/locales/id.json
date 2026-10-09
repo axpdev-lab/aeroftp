@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Cari di semua percakapan...",
                 "searching": "Mencari...",
                 "sessions": "Sesi",
-                "totalCost": "Biaya",
                 "totalTokens": "Tokens",
                 "unlimited": "Tak Terbatas",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Terpasang dan nonaktif",
                 "presetReady": "Siap"
             },
-            "costEstimates": {
-                "cacheTitle": "Dihemat oleh cache prompt, perkiraan: {read} token dibaca, {created} ditulis",
-                "description": "Jumlah token berasal dari penyedia dan akurat. Biaya adalah perkiraan berdasarkan daftar harga AeroFTP, ditampilkan beserta tanggal daftar tersebut, dan dihilangkan jika daftar berusia lebih dari {days} hari atau tidak bertanggal. Jumlah yang ditagih ada di konsol penyedia Anda.",
-                "enable": "Tampilkan perkiraan biaya",
-                "estimateTitle": "Perkiraan berdasarkan daftar harga AeroFTP tanggal {date}. Jumlah yang ditagih ada di konsol penyedia Anda.",
-                "expiredTitle": "Tidak diperkirakan: daftar harga AeroFTP untuk model ini bertanggal {date}, lebih dari {days} hari yang lalu. Jumlah token akurat; jumlah yang ditagih ada di konsol penyedia Anda.",
-                "savedEstimateTitle": "Perkiraan yang disimpan bersama pesan ini. Jumlah yang ditagih ada di konsol penyedia Anda.",
-                "sumTitle": "Jumlah perkiraan dari setiap balasan. Jumlah yang ditagih ada di konsol penyedia Anda.",
-                "title": "Perkiraan biaya",
-                "undatedTitle": "Tidak diperkirakan: harga AeroFTP untuk model ini tidak memiliki tanggal tinjauan. Jumlah token akurat; jumlah yang ditagih ada di konsol penyedia Anda."
+            "tokens": {
+                "breakdown": "{input} token input, {output} token output, sesuai penghitungan penyedia",
+                "breakdownCache": "{input} token input, {output} token output, {cacheRead} dibaca dari cache prompt, {cacheWritten} ditulis ke dalamnya, sesuai penghitungan penyedia"
             }
         },
         "archive": {

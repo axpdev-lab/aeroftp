@@ -18,7 +18,7 @@ import { secureGetWithFallback } from '../../utils/secureStorage';
 import { ProviderMarketplace } from './ProviderMarketplace';
 import { PluginBrowser } from './PluginBrowser';
 import { McpServersPanel } from './McpServersPanel';
-import { PRICE_LIST_MAX_AGE_DAYS, applyDiscoveredModelDefaults, buildSavedModelRecord, getModelCapabilitySource, lookupModelSpec } from '../../types/aiModelRegistry';
+import { applyDiscoveredModelDefaults, buildSavedModelRecord, getModelCapabilitySource, lookupModelSpec } from '../../types/aiModelRegistry';
 import { CAPABILITY_KEYS, DiscoveredModelInfo, normalizeModelCatalog, providerModelSnapshot, reconcileProviderModels, reconcileProviderNames, resolveProviderModel, withProviderEdit } from '../../types/aiModelDiscovery';
 import { useTranslation } from '../../i18n';
 import { AEROAGENT_VERSION } from '../../utils/aeroagentVersion';
@@ -1839,27 +1839,6 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                     </select>
                                 </div>
                                 <p className="text-[10px] text-gray-500 mt-2 italic">{t('ai.history.retentionHint')}</p>
-                            </div>
-
-                            {/* Cost estimates */}
-                            <div className="bg-gray-800/50 rounded-lg p-4">
-                                <h4 className="text-sm font-medium text-white mb-1">{t('ai.costEstimates.title')}</h4>
-                                <p className="text-[10px] text-gray-500 mb-3">{t('ai.costEstimates.description', { days: PRICE_LIST_MAX_AGE_DAYS })}</p>
-                                <Checkbox
-                                    checked={settings.advancedSettings?.showCostEstimates ?? true}
-                                    onChange={(v) => {
-                                        const newSettings = {
-                                            ...settings,
-                                            advancedSettings: {
-                                                ...settings.advancedSettings,
-                                                showCostEstimates: v,
-                                            },
-                                        };
-                                        setSettings(newSettings);
-                                        saveSettings(newSettings);
-                                    }}
-                                    label={<span className="text-sm text-gray-300">{t('ai.costEstimates.enable')}</span>}
-                                />
                             </div>
                         </div>
                     )}

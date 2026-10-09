@@ -14,7 +14,6 @@ import {
     createConversation, BranchMessage,
 } from '../../utils/chatHistory';
 import { Message } from './aiChatTypes';
-import { exportTokenLine, withoutCost } from './aiChatCostEstimate';
 
 export function useAIChatConversations() {
     const [messages, setMessages] = useState<Message[]>([]);
@@ -107,7 +106,6 @@ export function useAIChatConversations() {
 
         // Update local conversations list
         const totalTokens = msgs.reduce((sum, m) => sum + (m.tokenInfo?.totalTokens || 0), 0);
-        const totalCost = msgs.reduce((sum, m) => sum + (m.tokenInfo?.cost || 0), 0);
         const title = msgs.find(m => m.role === 'user')?.content.slice(0, 60) || 'New Chat';
 
         setConversations(prev => {
@@ -119,7 +117,6 @@ export function useAIChatConversations() {
                     title,
                     updatedAt: new Date().toISOString(),
                     totalTokens,
-                    totalCost,
                 };
                 conversationsRef.current = updated;
                 return updated;
@@ -172,7 +169,6 @@ export function useAIChatConversations() {
                             inputTokens: m.tokens_in,
                             outputTokens: m.tokens_out,
                             totalTokens: m.tokens_in + m.tokens_out,
-                            cost: m.cost,
                         } : undefined,
                     }));
                     setMessages(mapped);
@@ -229,8 +225,7 @@ export function useAIChatConversations() {
     }, []);
 
     // Export conversation
-    // `includeCost` is the `showCostEstimates` setting: off, the file carries tokens only.
-    const exportConversation = useCallback(async (format: 'markdown' | 'json', includeCost: boolean) => {
+    const exportConversation = useCallback(async (format: 'markdown' | 'json') => {
         setShowExportMenu(false);
         if (messages.length === 0) return;
 
@@ -249,8 +244,7 @@ export function useAIChatConversations() {
                     const modelTag = msg.modelInfo ? ` *(${msg.modelInfo.modelName})*` : '';
                     lines.push(`### ${role}${modelTag}`);
                     lines.push(msg.content);
-                    const tokenLine = exportTokenLine(msg.tokenInfo, includeCost);
-                    if (tokenLine) lines.push(tokenLine);
+                    if (msg.tokenInfo?.totalTokens) lines.push(`> ${msg.tokenInfo.totalTokens} tokens`);
                     lines.push('');
                 }
                 lines.push('---');
@@ -270,13 +264,12 @@ export function useAIChatConversations() {
                     exportedAt: new Date().toISOString(),
                     messageCount: messages.length,
                     totalTokens: messages.reduce((sum, m) => sum + (m.tokenInfo?.totalTokens || 0), 0),
-                    ...(includeCost ? { totalCost: messages.reduce((sum, m) => sum + (m.tokenInfo?.cost || 0), 0) } : {}),
                     messages: messages.map(m => ({
                         role: m.role,
                         content: m.content,
                         timestamp: m.timestamp.toISOString(),
                         modelInfo: m.modelInfo || null,
-                        tokenInfo: (includeCost ? m.tokenInfo : withoutCost(m.tokenInfo)) || null,
+                        tokenInfo: m.tokenInfo || null,
                     })),
                     metadata: conv ? {
                         conversationId: conv.id,
@@ -320,7 +313,8 @@ export function useAIChatConversations() {
                 thinking: null,
                 tokens_in: m.tokenInfo?.inputTokens ?? 0,
                 tokens_out: m.tokenInfo?.outputTokens ?? 0,
-                cost: m.tokenInfo?.cost ?? 0,
+                // The column stays for existing databases; AeroFTP no longer estimates a cost.
+                cost: 0,
                 model: m.modelInfo?.modelName ?? null,
                 created_at: m.timestamp.getTime(),
             }));
@@ -397,7 +391,6 @@ export function useAIChatConversations() {
                     inputTokens: m.tokens_in,
                     outputTokens: m.tokens_out,
                     totalTokens: m.tokens_in + m.tokens_out,
-                    cost: m.cost,
                 } : undefined,
             }));
             setMessages(mapped);

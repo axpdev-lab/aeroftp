@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Buscar en todas as conversas...",
                 "searching": "Buscando...",
                 "sessions": "Sesións",
-                "totalCost": "Custo",
                 "totalTokens": "Tokens",
                 "unlimited": "Ilimitado",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Instalado e desactivado",
                 "presetReady": "Listo"
             },
-            "costEstimates": {
-                "cacheTitle": "Aforrado pola caché do prompt, estimado: {read} tokens lidos, {created} escritos",
-                "description": "O reconto de tokens procede do provedor e é exacto. O custo é unha estimación baseada na lista de prezos de AeroFTP, mostrada coa data desa lista, e omítese cando a lista ten máis de {days} días ou non ten data. O importe facturado está na consola do teu provedor.",
-                "enable": "Mostrar estimacións de custo",
-                "estimateTitle": "Estimación baseada na lista de prezos de AeroFTP do {date}. O importe facturado está na consola do teu provedor.",
-                "expiredTitle": "Sen estimar: a lista de prezos de AeroFTP para este modelo é do {date}, de hai máis de {days} días. O reconto de tokens é exacto; o importe facturado está na consola do teu provedor.",
-                "savedEstimateTitle": "Estimación gardada con esta mensaxe. O importe facturado está na consola do teu provedor.",
-                "sumTitle": "Suma das estimacións de cada resposta. O importe facturado está na consola do teu provedor.",
-                "title": "Estimacións de custo",
-                "undatedTitle": "Sen estimar: os prezos de AeroFTP para este modelo non teñen data de revisión. O reconto de tokens é exacto; o importe facturado está na consola do teu provedor."
+            "tokens": {
+                "breakdown": "{input} tokens de entrada, {output} de saída, segundo o reconto do provedor",
+                "breakdownCache": "{input} tokens de entrada, {output} de saída, {cacheRead} lidos da caché do prompt, {cacheWritten} escritos nela, segundo o reconto do provedor"
             }
         },
         "archive": {

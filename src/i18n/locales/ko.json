@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "모든 대화에서 검색...",
                 "searching": "검색 중...",
                 "sessions": "세션",
-                "totalCost": "비용",
                 "totalTokens": "Tokens",
                 "unlimited": "무제한",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "설치됨, 꺼짐",
                 "presetReady": "준비됨"
             },
-            "costEstimates": {
-                "cacheTitle": "프롬프트 캐시로 절약 (추정): 읽은 토큰 {read}개, 기록한 토큰 {created}개",
-                "description": "토큰 수는 제공업체에서 가져오며 정확합니다. 비용은 AeroFTP의 가격표를 기준으로 한 추정치이며, 해당 가격표의 날짜와 함께 표시됩니다. 가격표가 {days}일보다 오래되었거나 날짜가 없으면 표시되지 않습니다. 실제 청구 금액은 제공업체의 콘솔에서 확인하세요.",
-                "enable": "비용 추정 표시",
-                "estimateTitle": "{date} 기준 AeroFTP 가격표를 바탕으로 한 추정치입니다. 실제 청구 금액은 제공업체의 콘솔에서 확인하세요.",
-                "expiredTitle": "추정하지 않음: 이 모델의 AeroFTP 가격표는 {date} 기준으로, {days}일 넘게 지났습니다. 토큰 수는 정확합니다. 실제 청구 금액은 제공업체의 콘솔에서 확인하세요.",
-                "savedEstimateTitle": "이 메시지와 함께 저장된 추정치입니다. 실제 청구 금액은 제공업체의 콘솔에서 확인하세요.",
-                "sumTitle": "각 답변의 추정치 합계입니다. 실제 청구 금액은 제공업체의 콘솔에서 확인하세요.",
-                "title": "비용 추정",
-                "undatedTitle": "추정하지 않음: 이 모델의 AeroFTP 가격에는 검토 날짜가 없습니다. 토큰 수는 정확합니다. 실제 청구 금액은 제공업체의 콘솔에서 확인하세요."
+            "tokens": {
+                "breakdown": "입력 토큰 {input}개, 출력 토큰 {output}개, 제공업체 집계 기준",
+                "breakdownCache": "입력 토큰 {input}개, 출력 토큰 {output}개, 프롬프트 캐시에서 읽음 {cacheRead}개, 프롬프트 캐시에 기록 {cacheWritten}개, 제공업체 집계 기준"
             }
         },
         "archive": {

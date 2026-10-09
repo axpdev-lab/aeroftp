@@ -775,7 +775,7 @@ See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categ
 | Native function calling | Done (v1.6.0) | OpenAI, Anthropic, Gemini; text fallback for Ollama |
 | Streaming responses | Done (v1.6.0) | Incremental rendering via Tauri events |
 | Chat history | Done (v1.6.0) | 50 conversations, 200 msgs each, persisted to disk |
-| Cost tracking | Done (v1.6.0) | Per-message token count + cost estimate |
+| Token counts | Done (v1.6.0) | Per-reply and per-conversation token counts as the provider reports them; the cost estimate was removed in v4.2.3 |
 | Context awareness | Done (v1.7.0) | Provider, server host/port/user, path, selected files |
 | Protocol expertise | Done (v1.7.0) | System prompt with all 14 provider configs, ports, auth |
 | Styled tool display | Done (v1.7.0) | Inline chips with wrench icon replace raw TOOL/ARGS |
@@ -792,7 +792,7 @@ See the full tool breakdown in [AeroAgent Tool Categories](#aeroagent-tool-categ
 | Thought visualization | Done (v2.0.0) | ThinkingBlock for Anthropic/OpenAI/Gemini reasoning |
 | Prompt templates | Done (v2.0.0) | 15 built-in templates via `/` prefix, vault-persisted custom |
 | Multi-file diff | Done (v2.0.0) | PR-style diff with per-file checkboxes |
-| Cost budget tracking | Done (v2.0.0) | Per-provider monthly limits, vault-persisted |
+| Cost budget tracking | Removed (v4.2.3) | Cost estimates were removed; the CLI agent has an exact `--token-limit` |
 | Chat search | Done (v2.0.0) | Ctrl+F with role filter and keyboard navigation |
 | Anthropic prompt caching | Done (v2.0.0) | cache_control ephemeral, 90% read discount |
 | OpenAI structured outputs | Done (v2.0.0) | strict: true for OpenAI/xAI/OpenRouter |

@@ -33,8 +33,7 @@ import { buildToolRegistry, resolveRegisteredTool, resolveMacroStep, ToolExposur
 import { MCP_SERVERS_CHANGED, mcpSnapshotLoader, notifyMcpServersChanged, runMcpTool } from './aiChatMcp';
 import { describeMcpError } from '../AISettings/mcpErrors';
 import { validateToolArgs } from './aiChatToolValidation';
-import { computeTokenInfo, type ModelCostInfo } from './aiChatTokenInfo';
-import { runBudgetedDelegation } from './aiChatDelegationBudget';
+import { computeTokenInfo } from './aiChatTokenInfo';
 import { delegationCardEntries } from './aiChatDelegationCards';
 import { useAIChatImages } from './useAIChatImages';
 import { useAIChatConversations } from './useAIChatConversations';
@@ -65,9 +64,7 @@ import { ChatSearchOverlay, type SearchMatch } from './ChatSearchOverlay';
 import { ChatMessageRow } from './ChatMessageRow';
 import { ChatHistoryManager } from './ChatHistoryManager';
 import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcuts';
-import { initBudgetManager, checkBudget, recordSpending, getConversationCost, type BudgetCheckResult, type ConversationCost } from './CostBudgetManager';
-import { CostBudgetIndicator } from './CostBudgetIndicator';
-import { latestWithheldCost } from './aiChatCostEstimate';
+import { conversationTokenUsage, recordTokenUsage } from './aiChatTokenUsage';
 import { copyText } from '../../utils/clipboard';
 
 /** Maximum autonomous steps: now driven by AGENT_MODE_MAX_STEPS */
@@ -759,13 +756,12 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const [autoStepCount, setAutoStepCount] = useState(0);
     const [macros] = useState<ToolMacro[]>(DEFAULT_MACROS);
 
-    // Phase 4: Search, Templates, Cost Budget
+    // Phase 4: Search, Templates, token count
     const [showSearch, setShowSearch] = useState(false);
     const [showHistoryManager, setShowHistoryManager] = useState(false);
     const [showTemplates, setShowTemplates] = useState(false);
     const [allTemplates, setAllTemplates] = useState<PromptTemplate[]>(DEFAULT_TEMPLATES);
-    const [conversationCost, setConversationCost] = useState<ConversationCost | null>(null);
-    const [budgetCheck, setBudgetCheck] = useState<BudgetCheckResult | null>(null);
+    const [conversationTokens, setConversationTokens] = useState<number | null>(null);
     const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
     const [activeSearchIndex, setActiveSearchIndex] = useState(0);
     const messageListRef = useRef<HTMLDivElement>(null);
@@ -825,15 +821,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         });
     }, [cancelActiveStream]);
 
-    // Wrap startNewChat to also clear pending tool calls, token budget, and cost
+    // Wrap startNewChat to also clear pending tool calls, token budget, and token count
     const startNewChat = useCallback(() => {
         cancelActiveStream();
         setDelegationView(null);
         startNewChatBase();
         setPendingToolCalls([]);
         setTokenBudgetData(null);
-        setConversationCost(null);
-        setBudgetCheck(null);
+        setConversationTokens(null);
     }, [startNewChatBase, cancelActiveStream]);
 
     // Unmount cleanup: abort any stream in flight. Previously closing DevTools
@@ -860,11 +855,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             return raw ? JSON.parse(raw) : null;
         } catch { return null; }
     });
-    const showCostEstimates = cachedAiSettings?.advancedSettings?.showCostEstimates ?? true;
-    const exportChat = useCallback(
-        (format: 'markdown' | 'json') => exportConversation(format, showCostEstimates),
-        [exportConversation, showCostEstimates],
-    );
     // Extreme mode: auto-approve all tools, increased step limit (Cyber + True Dark themes only)
     // Unified Agent Mode: safe → normal → expert → extreme
     const [agentMode, setAgentMode] = useState<AgentMode>(() => {
@@ -926,7 +916,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         aiRequest: Record<string, unknown>;
         messageHistory: Array<Record<string, unknown>>;
         modelInfo: { modelName: string; providerName: string; providerType: AIProviderType };
-        modelDef: ({ supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number } & ModelCostInfo) | undefined;
+        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number } | undefined;
     } | null>(null);
     const streamingMsgIdRef = useRef<string | null>(null);
     const activeStreamIdRef = useRef<string | null>(null);
@@ -999,9 +989,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         return () => { loader.stop(); window.removeEventListener(MCP_SERVERS_CHANGED, load); };
     }, []);
 
-    // Phase 4: Init budget manager + load custom templates on mount
+    // Phase 4: Load custom templates on mount
     useEffect(() => {
-        initBudgetManager();
         loadCustomTemplates().then(custom => {
             if (custom.length > 0) setAllTemplates([...DEFAULT_TEMPLATES, ...custom]);
         });
@@ -1081,7 +1070,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
     const shortcuts = getDefaultShortcuts({
         clearChat: startNewChat,
         newChat: startNewChat,
-        exportChat: () => exportChat('markdown'),
+        exportChat: () => exportConversation('markdown'),
         toggleSearch: () => setShowSearch(prev => !prev),
         focusInput: () => inputRef.current?.focus(),
     });
@@ -2114,7 +2103,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         aiRequest: Record<string, unknown>,
         messageHistory: Array<Record<string, unknown>>,
         modelInfo: { modelName: string; providerName: string; providerType: AIProviderType },
-        modelDef: ({ supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number } & ModelCostInfo) | undefined,
+        modelDef: { supportsStreaming?: boolean; supportsTools?: boolean; supportsThinking?: boolean; supportsParallelTools?: boolean; maxContextTokens?: number } | undefined,
     ) => {
         if (autoStopRef.current || activeTurnRef.current !== aiRequest.turn_scope) return;
         let stepCount = 1;
@@ -2177,7 +2166,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                 if (allToolsParsedMS.length === 0) {
                     // AI responded without a tool call - show final response and stop
-                    const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, undefined, modelDef, response.cache_creation_input_tokens, response.cache_read_input_tokens);
+                    const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, undefined, response.cache_creation_input_tokens, response.cache_read_input_tokens);
 
                     const finalMsg: Message = {
                         id: crypto.randomUUID(),
@@ -2353,17 +2342,18 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             if (!provider) throw new Error(t('ai.noModelsConfigured'));
             const configuredModel = settings.models.find(item => item.id === activeModel.modelId);
             const modelDef = configuredModel ? resolveProviderModel(configuredModel, provider) : undefined;
-            const { result, tokenInfo } = await runBudgetedDelegation(
-                activeModel.providerId, modelDef, activeConversationId || undefined,
-                () => invoke<DelegationResult>('ai_delegate_local', {
-                    requestId,
-                    providerId: activeModel.providerId,
-                    modelName: activeModel.modelName,
-                    root: localPath,
-                    goal,
-                    remoteProfiles: remoteProfiles.map(profile => ({ profileId: profile.id, root: profile.root })),
-                }), setBudgetCheck,
-            );
+            const result = await invoke<DelegationResult>('ai_delegate_local', {
+                requestId,
+                providerId: activeModel.providerId,
+                modelName: activeModel.modelName,
+                root: localPath,
+                goal,
+                remoteProfiles: remoteProfiles.map(profile => ({ profileId: profile.id, root: profile.root })),
+            });
+            // The parent and its workers used these tokens even if the view
+            // was cancelled meanwhile: count them before any check below.
+            const tokenInfo = computeTokenInfo(result.inputTokens, result.outputTokens, undefined);
+            recordTokenUsage(activeConversationId || undefined, tokenInfo?.totalTokens ?? 0);
             if (activeDelegationIdRef.current !== requestId) return;
             if (cancelRequestedDelegationIdRef.current === requestId) {
                 setDelegationView(previous => previous?.requestId === requestId
@@ -2613,13 +2603,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 }
                 recordRequest(provider.id);
 
-                // Phase 4: Budget check before sending
-                const budgetResult = checkBudget(provider.id);
-                setBudgetCheck(budgetResult);
-                if (!budgetResult.allowed) {
-                    throw new Error(budgetResult.message || 'Monthly budget exceeded.');
-                }
-
                 const useNativeTools = modelDef?.supportsTools === true;
                 const useStreaming = modelDef?.supportsStreaming === true;
 
@@ -2828,14 +2811,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                     // Calculate cost. The provider has billed these tokens whether or
                     // not the turn goes on, so record them before any early return.
-                    const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, modelDef, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
+                    const tokenInfo = computeTokenInfo(streamResult.inputTokens, streamResult.outputTokens, undefined, streamResult.cacheCreationTokens, streamResult.cacheReadTokens);
 
-                    // Phase 4: Record spending for cost budget tracking
-                    if (tokenInfo && activeModel) {
-                        // An amount that could not be estimated stays unknown: the budget counts it apart, never as $0.
-                        recordSpending(activeModel.providerId, tokenInfo.cost, tokenInfo.totalTokens ?? 0, activeConversationId || undefined)
-                            .then(result => setBudgetCheck(result));
-                    }
+                    // Every request counts toward the conversation's tokens, tool-loop steps included.
+                    if (tokenInfo) recordTokenUsage(activeConversationId || undefined, tokenInfo.totalTokens ?? 0);
 
                     if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
                     if (streamError !== null || (requiresNativeTurn(aiRequest) && !streamResult.nativeTurn)) {
@@ -2943,14 +2922,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                     );
 
                     // Billed tokens are recorded before any check that can end the turn.
-                    const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, modelDef, response.cache_creation_input_tokens, response.cache_read_input_tokens);
+                    const tokenInfo = computeTokenInfo(response.input_tokens, response.output_tokens, response.tokens_used, response.cache_creation_input_tokens, response.cache_read_input_tokens);
 
-                    // Phase 4: Record spending for cost budget tracking (non-streaming path)
-                    if (tokenInfo && activeModel) {
-                        // An amount that could not be estimated stays unknown: the budget counts it apart, never as $0.
-                        recordSpending(activeModel.providerId, tokenInfo.cost, tokenInfo.totalTokens ?? 0, activeConversationId || undefined)
-                            .then(result => setBudgetCheck(result));
-                    }
+                    // Every request counts toward the conversation's tokens (non-streaming path).
+                    if (tokenInfo) recordTokenUsage(activeConversationId || undefined, tokenInfo.totalTokens ?? 0);
 
                     if (autoStopRef.current || activeTurnRef.current !== turnScope) return;
                     if (requiresNativeTurn(aiRequest) && response.tool_calls?.length && !response.native_turn) throw new Error(t('ai.error.missingNativeToolState'));
@@ -3087,12 +3062,11 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         }
     };
 
-    // Phase 4: Record cost and update conversation cost after each message send
-    // This is triggered by messages array changing (after AI responds)
+    // The conversation's token count, refreshed whenever a reply lands.
     useEffect(() => {
         if (!activeConversationId) return;
-        const cost = getConversationCost(activeConversationId);
-        if (cost) setConversationCost(cost);
+        const usage = conversationTokenUsage(activeConversationId);
+        if (usage) setConversationTokens(usage.tokens);
     }, [messages, activeConversationId]);
 
     return (
@@ -3126,7 +3100,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                 onNewChat={startNewChat}
                 showExportMenu={showExportMenu}
                 onToggleExportMenu={() => setShowExportMenu(!showExportMenu)}
-                onExport={exportChat}
+                onExport={exportConversation}
                 onOpenSettings={() => setShowSettings(true)}
                 onOpenHistoryManager={() => setShowHistoryManager(true)}
                 hasMessages={messages.length > 0}
@@ -3209,7 +3183,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
             {/* Chat History Manager: full-text search + bulk management */}
             <ChatHistoryManager
                 visible={showHistoryManager}
-                showCostEstimates={showCostEstimates}
                 onClose={() => setShowHistoryManager(false)}
                 onSessionDeleted={() => {
                     loadChatHistory(true);
@@ -3367,7 +3340,6 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 isExecutingPlan={executingTransferPlanId === message.id}
                                 editorFilePath={editorFilePath}
                                 editorFileName={editorFileName}
-                                showCostEstimates={showCostEstimates}
                                 onToggleExpand={handleToggleExpand}
                                 onCopy={handleCopyMessage}
                                 onFork={handleForkMessage}
@@ -3831,13 +3803,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                             )}
                         </div>
 
-                        {/* Phase 4: Cost budget indicator (#77) */}
-                        <CostBudgetIndicator
-                            conversationCost={conversationCost}
-                            budgetCheck={budgetCheck}
-                            showCostEstimates={showCostEstimates}
-                            withheldCost={latestWithheldCost(messages)}
-                        />
+                        {/* The conversation's tokens, as the providers reported them */}
+                        {conversationTokens !== null && (
+                            <span className="text-[10px] text-gray-500">{conversationTokens.toLocaleString()} tok</span>
+                        )}
                         {/* AI Disclaimer */}
                         <span className={`text-[10px] ${ct.textMuted}`}>{t('ai.disclaimer')}</span>
                     </div>

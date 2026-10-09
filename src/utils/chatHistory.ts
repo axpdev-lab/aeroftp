@@ -22,7 +22,6 @@ export interface ChatSession {
     model: string | null;
     message_count: number;
     total_tokens: number;
-    total_cost: number;
     project_path: string | null;
     created_at: number;  // Unix timestamp ms
     updated_at: number;
@@ -85,7 +84,6 @@ export interface ChatStats {
     total_sessions: number;
     total_messages: number;
     total_tokens: number;
-    total_cost: number;
     db_size_bytes: number;
 }
 
@@ -107,7 +105,6 @@ export interface ConversationMessage {
         inputTokens?: number;
         outputTokens?: number;
         totalTokens?: number;
-        cost?: number;
     };
 }
 
@@ -118,7 +115,6 @@ export interface Conversation {
     createdAt: string;
     updatedAt: string;
     totalTokens: number;
-    totalCost: number;
     branches?: ConversationBranch[];
     activeBranchId?: string;
 }
@@ -146,11 +142,10 @@ function chatMessageToLegacy(msg: ChatMessage): ConversationMessage {
             providerName: '',
             providerType: '',
         } : undefined,
-        tokenInfo: (msg.tokens_in > 0 || msg.tokens_out > 0 || msg.cost > 0) ? {
+        tokenInfo: (msg.tokens_in > 0 || msg.tokens_out > 0) ? {
             inputTokens: msg.tokens_in,
             outputTokens: msg.tokens_out,
             totalTokens: msg.tokens_in + msg.tokens_out,
-            cost: msg.cost,
         } : undefined,
     };
 }
@@ -163,7 +158,6 @@ function sessionToConversation(data: SessionWithMessages): Conversation {
         createdAt: new Date(data.session.created_at).toISOString(),
         updatedAt: new Date(data.session.updated_at).toISOString(),
         totalTokens: data.session.total_tokens,
-        totalCost: data.session.total_cost,
         branches: data.branches.map(b => ({
             id: b.id,
             name: b.name,
@@ -195,7 +189,6 @@ export async function loadHistory(): Promise<Conversation[]> {
             createdAt: new Date(s.created_at).toISOString(),
             updatedAt: new Date(s.updated_at).toISOString(),
             totalTokens: s.total_tokens,
-            totalCost: s.total_cost,
         }));
     } catch (e) {
         logger.error('Failed to load chat history:', e);
@@ -251,7 +244,8 @@ export async function saveMessage(
             thinking: null,
             tokens_in: msg.tokenInfo?.inputTokens ?? 0,
             tokens_out: msg.tokenInfo?.outputTokens ?? 0,
-            cost: msg.tokenInfo?.cost ?? 0,
+            // The column stays for existing databases; AeroFTP no longer estimates a cost.
+            cost: 0,
             model: msg.modelInfo?.modelName ?? model ?? null,
             created_at: new Date(msg.timestamp).getTime(),
         };
@@ -379,7 +373,8 @@ export async function saveBranchMessage(branchId: string, msg: ConversationMessa
             thinking: null,
             tokens_in: msg.tokenInfo?.inputTokens ?? 0,
             tokens_out: msg.tokenInfo?.outputTokens ?? 0,
-            cost: msg.tokenInfo?.cost ?? 0,
+            // The column stays for existing databases; AeroFTP no longer estimates a cost.
+            cost: 0,
             model: msg.modelInfo?.modelName ?? null,
             created_at: new Date(msg.timestamp).getTime(),
         };
@@ -402,7 +397,6 @@ export function createConversation(firstMessage?: string): Conversation {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         totalTokens: 0,
-        totalCost: 0,
     };
 }
 

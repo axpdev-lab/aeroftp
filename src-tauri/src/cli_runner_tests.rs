@@ -17,7 +17,7 @@ fn config(base_url: String) -> AgentConfig {
         approve_level: 0,
         max_steps: 3,
         plan_only: false,
-        cost_limit: None,
+        token_limit: None,
         usage: Arc::new(Mutex::new(AgentUsage::default())),
     }
 }
@@ -96,6 +96,70 @@ async fn cli_runner_replays_denied_tool_and_accounts_real_stream_usage() {
         assert_eq!(messages.len(), 3);
         let usage = cfg.usage.lock().unwrap();
         assert_eq!((usage.input_tokens, usage.output_tokens, usage.total_tokens), (30, 5, 35));
+    }).await.unwrap();
+}
+
+fn usage_response(
+    input: u32,
+    output: u32,
+    tokens_used: Option<u32>,
+    cache_write: Option<u32>,
+    cache_read: Option<u32>,
+) -> ftp_client_gui_lib::ai::AIResponse {
+    ftp_client_gui_lib::ai::AIResponse {
+        native_turn: None,
+        content: String::new(),
+        model: "fixture".into(),
+        tokens_used,
+        input_tokens: Some(input),
+        output_tokens: Some(output),
+        finish_reason: Some("stop".into()),
+        tool_calls: None,
+        cache_creation_input_tokens: cache_write,
+        cache_read_input_tokens: cache_read,
+    }
+}
+
+#[test]
+fn cli_usage_counts_the_prompt_cache_and_the_token_limit_is_exact() {
+    let mut usage = AgentUsage::default();
+    // Anthropic: prompt-cache writes and reads come apart from input_tokens,
+    // and tokens_used is input plus output only.
+    usage.add(&usage_response(100, 20, Some(120), Some(30), Some(700)));
+    // A provider that reports no cache and no total.
+    usage.add(&usage_response(5, 1, None, None, None));
+    assert_eq!(
+        (
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_write_tokens,
+            usage.cache_read_tokens,
+            usage.total_tokens
+        ),
+        (105, 21, 30, 700, 856)
+    );
+    assert!(usage.check_limit(None).is_ok());
+    assert!(usage.check_limit(Some(856)).is_ok());
+    let error = usage.check_limit(Some(855)).unwrap_err();
+    assert!(error.contains("Token limit exceeded: 856 > 855"), "{error}");
+}
+
+#[tokio::test]
+async fn cli_token_limit_stops_the_agent_once_the_count_passes_it() {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut cfg = config(format!("http://{}", listener.local_addr().unwrap()));
+        cfg.token_limit = Some(40);
+        let server = async {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _ = read_request(&mut socket).await;
+            let done = json!({"choices":[{"delta":{"role":"assistant","content":"Over the limit."},"finish_reason":"stop"}],"usage":{"prompt_tokens":40,"completion_tokens":5}});
+            respond(&mut socket, "200 OK", &format!("data: {done}\n\ndata: [DONE]\n\n")).await;
+        };
+        let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"fixture"})).unwrap()];
+        let (result, ()) = tokio::join!(agent_tool_loop(&cfg, &mut messages, false), server);
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("Token limit exceeded: 45 > 40"), "{error}");
     }).await.unwrap();
 }
 

@@ -2992,7 +2992,6 @@
                 "searchPlaceholder": "Maghanap sa lahat ng pag-uusap...",
                 "searching": "Naghahanap...",
                 "sessions": "Mga Sesyon",
-                "totalCost": "Gastos",
                 "totalTokens": "Tokens",
                 "unlimited": "Walang limitasyon",
                 "roleAI": "AI",
@@ -3150,16 +3149,9 @@
                 "presetInstalledDisabled": "Naka-install at naka-off",
                 "presetReady": "Handa"
             },
-            "costEstimates": {
-                "cacheTitle": "Natipid ng prompt cache, tantiya: {read} token ang nabasa, {created} ang naisulat",
-                "description": "Ang bilang ng token ay mula sa provider at eksakto. Ang gastos ay tantiya mula sa listahan ng presyo ng AeroFTP, ipinapakita kasama ang petsa ng listahang iyon, at hindi isinasama kapag mahigit {days} araw na ang listahan o walang petsa. Ang sinisingil na halaga ay nasa console ng iyong provider.",
-                "enable": "Ipakita ang mga tantiya ng gastos",
-                "estimateTitle": "Tantiya mula sa listahan ng presyo ng AeroFTP noong {date}. Ang sinisingil na halaga ay nasa console ng iyong provider.",
-                "expiredTitle": "Hindi tinantiya: ang listahan ng presyo ng AeroFTP para sa modelong ito ay noong {date}, mahigit {days} araw na ang nakalipas. Eksakto ang bilang ng token; ang sinisingil na halaga ay nasa console ng iyong provider.",
-                "savedEstimateTitle": "Tantiyang na-save kasama ng mensaheng ito. Ang sinisingil na halaga ay nasa console ng iyong provider.",
-                "sumTitle": "Kabuuan ng mga tantiya ng bawat sagot. Ang sinisingil na halaga ay nasa console ng iyong provider.",
-                "title": "Mga tantiya ng gastos",
-                "undatedTitle": "Hindi tinantiya: walang petsa ng pagsusuri ang mga presyo ng AeroFTP para sa modelong ito. Eksakto ang bilang ng token; ang sinisingil na halaga ay nasa console ng iyong provider."
+            "tokens": {
+                "breakdown": "{input} input token, {output} output token, ayon sa bilang ng provider",
+                "breakdownCache": "{input} input token, {output} output token, {cacheRead} nabasa mula sa prompt cache, {cacheWritten} naisulat dito, ayon sa bilang ng provider"
             }
         },
         "archive": {
