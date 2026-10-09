@@ -39,9 +39,17 @@ function isMutatingTool(toolName: string): boolean {
 }
 
 /**
+ * Tools that measure the connection. Each runs alone in its execution level:
+ * a transfer running beside the benchmark or the speed test would be measured
+ * as well, and two measurements side by side halve each other.
+ */
+const CONNECTION_MEASUREMENTS = new Set(['aeroftp_benchmark', 'remote_speed']);
+
+/**
  * Build execution levels using topological ordering based on path dependencies.
  * If tool A reads path X and tool B mutates path X, B depends on A (or vice versa).
- * Mutating tools on the same path are serialized.
+ * Mutating tools on the same path are serialized, and a connection measurement
+ * is serialized against every other call, in the order the model gave.
  */
 export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel[] {
     if (toolCalls.length <= 1) {
@@ -66,6 +74,7 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
     for (let i = 0; i < n; i++) {
         const pathsI = extractPaths(toolCalls[i].args);
         const iMutates = isMutatingTool(toolCalls[i].toolName);
+        const iMeasures = CONNECTION_MEASUREMENTS.has(toolCalls[i].toolName);
 
         for (let j = 0; j < i; j++) {
             const pathsJ = extractPaths(toolCalls[j].args);
@@ -73,7 +82,7 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
 
             // Check for shared paths
             const shared = pathsI.some(p => pathsJ.includes(p));
-            if (shared && (iMutates || jMutates)) {
+            if ((shared && (iMutates || jMutates)) || iMeasures || CONNECTION_MEASUREMENTS.has(toolCalls[j].toolName)) {
                 // i depends on j (j comes first since j < i)
                 deps[i].add(j);
             }
