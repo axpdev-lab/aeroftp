@@ -30,4 +30,16 @@ describe('execution levels', () => {
     it('runs two measurements one after the other, never together', () => {
         expect(ids([call('s', 'remote_speed'), call('b', 'aeroftp_benchmark')])).toEqual([['s'], ['b']]);
     });
+
+    it('orders a measurement after an explicit dependency that points forward', () => {
+        // `a` waits for `bench`: the measurement must not be placed after `a`
+        // because `a` comes first in the list.
+        const a = { ...call('a', 'remote_list', { path: '/a' }), dependsOn: ['bench'] };
+        expect(ids([a, call('bench', 'aeroftp_benchmark')])).toEqual([['bench'], ['a']]);
+    });
+
+    it('serializes two writes to one path in the order their explicit dependencies give', () => {
+        const upload = { ...call('up', 'remote_upload', { path: '/x' }), dependsOn: ['mk'] };
+        expect(ids([upload, call('mk', 'remote_mkdir', { path: '/x' })])).toEqual([['mk'], ['up']]);
+    });
 });

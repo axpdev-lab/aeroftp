@@ -70,7 +70,11 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
         }
     }
 
-    // Build dependency graph
+    // Implicit edges (a write on a shared path, a connection measurement)
+    // follow the order the explicit dependencies give, not the list order: a
+    // `dependsOn` may point forward, and an edge drawn by list order would then
+    // contradict it and close a cycle.
+    const rank = explicitOrder(deps, n);
     for (let i = 0; i < n; i++) {
         const pathsI = extractPaths(toolCalls[i].args);
         const iMutates = isMutatingTool(toolCalls[i].toolName);
@@ -80,11 +84,10 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
             const pathsJ = extractPaths(toolCalls[j].args);
             const jMutates = isMutatingTool(toolCalls[j].toolName);
 
-            // Check for shared paths
             const shared = pathsI.some(p => pathsJ.includes(p));
             if ((shared && (iMutates || jMutates)) || iMeasures || CONNECTION_MEASUREMENTS.has(toolCalls[j].toolName)) {
-                // i depends on j (j comes first since j < i)
-                deps[i].add(j);
+                if (rank[j] < rank[i]) deps[i].add(j);
+                else deps[j].add(i);
             }
         }
     }
@@ -124,6 +127,28 @@ export function buildExecutionLevels(toolCalls: AgentToolCall[]): ExecutionLevel
     }
 
     return levels;
+}
+
+/**
+ * Each call's position in the order its explicit dependencies allow, the list
+ * order breaking ties. Calls caught in a cycle of explicit dependencies keep
+ * their list order; the levels then run them one by one, as before.
+ */
+function explicitOrder(deps: Set<number>[], n: number): number[] {
+    const rank: number[] = new Array(n).fill(-1);
+    let next = 0;
+    while (next < n) {
+        let picked = -1;
+        for (let i = 0; i < n && picked === -1; i++) {
+            if (rank[i] === -1 && [...deps[i]].every(d => rank[d] !== -1)) picked = i;
+        }
+        if (picked === -1) {
+            for (let i = 0; i < n; i++) if (rank[i] === -1) rank[i] = next++;
+            break;
+        }
+        rank[picked] = next++;
+    }
+    return rank;
 }
 
 /** PERF-05: max tool calls run concurrently within a single execution level. */
