@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "gedeeltelijk: scanlimiet bereikt",
             "usedScanUnreadable": "gedeeltelijk, onleesbare mappen: {count}",
             "usedScanFailed": "Scan van gebruikte opslag mislukt",
-            "usedScanEmpty": "Scan van {path} vond geen bestanden; de gecachte waarde is behouden. Controleer het pad of de ondersteuning van de server voor recursieve weergave."
+            "usedScanEmpty": "Scan van {path} vond geen bestanden; de gecachte waarde is behouden. Controleer het pad of de ondersteuning van de server voor recursieve weergave.",
+            "filenBridgeAccountTotal": "Filen Desktop meldt hier niet het totaal van je account: het weergegeven gebruik is de som van de bestanden onder dit pad. De native Filen-verbinding toont het accounttotaal direct."
         },
         "dialogs": {
             "confirmTitle": "Bevestigen",

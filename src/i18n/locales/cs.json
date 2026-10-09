@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "částečně: dosažen limit prohledávání",
             "usedScanUnreadable": "částečně, nečitelné složky: {count}",
             "usedScanFailed": "Prohledání využitého úložiště selhalo",
-            "usedScanEmpty": "Prohledání cesty {path} nenašlo žádné soubory; uložená hodnota byla zachována. Zkontrolujte cestu nebo podporu rekurzivního výpisu na serveru."
+            "usedScanEmpty": "Prohledání cesty {path} nenašlo žádné soubory; uložená hodnota byla zachována. Zkontrolujte cestu nebo podporu rekurzivního výpisu na serveru.",
+            "filenBridgeAccountTotal": "Filen Desktop zde neuvádí celkové využití vašeho účtu: zobrazená využitá hodnota je součet souborů v této cestě. Nativní připojení k Filen zobrazí celkové využití účtu hned."
         },
         "dialogs": {
             "confirmTitle": "Potvrdit",

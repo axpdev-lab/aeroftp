@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "partiel : limite d'analyse atteinte",
             "usedScanUnreadable": "partiel, dossiers illisibles : {count}",
             "usedScanFailed": "Échec de l'analyse du stockage utilisé",
-            "usedScanEmpty": "L'analyse de {path} n'a trouvé aucun fichier ; la valeur en cache a été conservée. Vérifiez le chemin ou la prise en charge du listage récursif par le serveur."
+            "usedScanEmpty": "L'analyse de {path} n'a trouvé aucun fichier ; la valeur en cache a été conservée. Vérifiez le chemin ou la prise en charge du listage récursif par le serveur.",
+            "filenBridgeAccountTotal": "Filen Desktop ne communique pas ici le total de votre compte : le chiffre affiché est la somme des fichiers sous ce chemin. La connexion Filen native affiche immédiatement le total du compte."
         },
         "dialogs": {
             "confirmTitle": "Confirmer",

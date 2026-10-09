@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "một phần: đã đạt giới hạn quét",
             "usedScanUnreadable": "một phần, thư mục không đọc được: {count}",
             "usedScanFailed": "Quét dung lượng đã dùng thất bại",
-            "usedScanEmpty": "Quét đường dẫn {path} không tìm thấy tệp nào; đã giữ giá trị trong bộ nhớ đệm. Hãy kiểm tra đường dẫn hoặc khả năng liệt kê đệ quy của máy chủ."
+            "usedScanEmpty": "Quét đường dẫn {path} không tìm thấy tệp nào; đã giữ giá trị trong bộ nhớ đệm. Hãy kiểm tra đường dẫn hoặc khả năng liệt kê đệ quy của máy chủ.",
+            "filenBridgeAccountTotal": "Filen Desktop không báo cáo tổng dung lượng tài khoản của bạn ở đây: số liệu đã dùng là tổng các tệp dưới đường dẫn này. Kết nối Filen gốc hiển thị tổng dung lượng tài khoản ngay lập tức."
         },
         "dialogs": {
             "confirmTitle": "Xác nhận",

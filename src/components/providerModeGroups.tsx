@@ -190,7 +190,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
                 activeColor: 'text-amber-500',
                 label: 'S3',
                 description:
-                    'S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, bucket "filen".',
+                    'S3-compatible bridge exposed by Filen Desktop on 127.0.0.1:1800 via local.s3.filen.io. Path-style addressing, each top-level Filen folder is a bucket.',
                 badge: 'LOCAL',
                 bridgeKind: 'filen-s3',
             },
@@ -199,7 +199,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
             'WebDAV':
                 'Requires Filen Desktop running and signed in on this machine. The bridge is local-only: nothing leaves the loopback. Use the Native API mode for E2E encryption without Filen Desktop.',
             'S3':
-                'Requires Filen Desktop running and signed in on this machine. On first connect the bridge auto-creates a top-level folder named "filen" on your account: existing files live one level above the bridge view.',
+                'Requires Filen Desktop running and signed in on this machine. Each top-level folder of your Filen drive is a bucket: pick one with Fetch. Files directly in the Filen root are not reachable over S3.',
         },
     },
     {

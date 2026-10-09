@@ -953,31 +953,24 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             || (providerConfig?.defaults?.endpointTemplate ? `es. ${providerConfig.defaults.endpointTemplate.replace(/\{(\w+)\}/g, '<$1>')}` : null)
             || t('protocol.endpointPlaceholder');
 
-        // Hide bucket input for presets that hardcode the bucket (e.g. Filen Desktop S3
-        // exposes only a virtual bucket called "filen"). Keep the value in options.bucket
-        // so the connection logic still has it; just don't surface a confusing input.
-        const hasFixedBucket = !!providerConfig?.defaults?.bucket && !providerConfig?.isGeneric;
-
         return (
             <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
                 <div className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
                     <Bucket size={14} />
                     {providerConfig ? `${providerConfig.name}: ${t('protocol.s3Config')}` : t('protocol.s3Config')}
                 </div>
-                {!hasFixedBucket && (
-                    <DiscoverableTargetField
-                        label={bucketField?.label || t('protocol.bucketNameRequired')}
-                        value={options.bucket || ''}
-                        onChange={(bucket) => onChange({ ...options, bucket })}
-                        onDiscover={discoverS3Targets || (async () => [])}
-                        canDiscover={canDiscoverS3Targets && !!discoverS3Targets}
-                        disabled={disabled}
-                        placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
-                        helpText={!isEditing ? bucketField?.helpText : undefined}
-                        required
-                        resetKey={s3DiscoveryResetKey}
-                    />
-                )}
+                <DiscoverableTargetField
+                    label={bucketField?.label || t('protocol.bucketNameRequired')}
+                    value={options.bucket || ''}
+                    onChange={(bucket) => onChange({ ...options, bucket })}
+                    onDiscover={discoverS3Targets || (async () => [])}
+                    canDiscover={canDiscoverS3Targets && !!discoverS3Targets}
+                    disabled={disabled}
+                    placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
+                    helpText={!isEditing ? bucketField?.helpText : undefined}
+                    required
+                    resetKey={s3DiscoveryResetKey}
+                />
 
                 {/* Session token + AssumeRole below are all optional (AWS STS
                     temporary credentials, issue #301). Per Ehud (discussion #347)

@@ -17,6 +17,7 @@
  */
 
 import type { ConnectionParams } from '../../types';
+import { withFilenBridgeCredentialDefaults } from '../../utils/filenDesktopBridge';
 import { discoveryResetKey } from './DiscoverableTargetField';
 
 /** Providers whose targets (buckets, drives) can be listed before connecting. */
@@ -25,8 +26,9 @@ export type DiscoveryProtocol = 's3' | 'backblaze' | 'kdrive';
 /** The payload `provider_discover_targets` receives, in its snake_case wire shape. */
 export function discoveryRequestParams(
     protocol: DiscoveryProtocol,
-    params: ConnectionParams,
+    rawParams: ConnectionParams,
 ): Record<string, unknown> {
+    const params = withFilenBridgeCredentialDefaults(rawParams);
     const options = params.options || {};
     return {
         protocol,
@@ -41,6 +43,10 @@ export function discoveryRequestParams(
         region: options.region,
         endpoint: options.endpoint,
         path_style: options.pathStyle,
+        // Same default as the connect: a self-signed local bridge (Filen
+        // Desktop S3) or a self-hosted server with verification turned off
+        // must be listable before connecting, not only after (#958).
+        verify_cert: options.verifyCert !== undefined ? options.verifyCert : true,
         session_token: options.sessionToken,
         role_arn: options.roleArn,
         role_external_id: options.roleExternalId,

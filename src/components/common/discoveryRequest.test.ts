@@ -44,6 +44,7 @@ const MUTATIONS: Record<string, ConnectionParams> = {
     region: withOption('region', 'us-east-1'),
     endpoint: withOption('endpoint', 'https://s3.us-east-1.example'),
     path_style: withOption('pathStyle', true),
+    verify_cert: withOption('verifyCert', false),
     session_token: withOption('sessionToken', 'FwoGZXIvYXdzOTHER'),
     role_arn: withOption('roleArn', 'arn:aws:iam::222222222222:role/second'),
     role_external_id: withOption('roleExternalId', 'external-two'),
@@ -108,5 +109,38 @@ describe('discovery reset key', () => {
 
     it('separates the protocols sharing the form', () => {
         expect(discoveryRequestResetKey('s3', BASE)).not.toBe(discoveryRequestResetKey('backblaze', BASE));
+    });
+});
+
+describe('discovery on the Filen Desktop S3 preset (#958)', () => {
+    const FILEN: ConnectionParams = {
+        server: '',
+        username: '',
+        password: '',
+        providerId: 'filen-desktop-s3',
+        options: { endpoint: 'https://local.s3.filen.io:1800', region: 'filen', pathStyle: true, verifyCert: false },
+    };
+
+    it('lists buckets with the default keys the connect would use', () => {
+        const request = discoveryRequestParams('s3', FILEN);
+        expect(request.username).toBe('admin');
+        expect(request.password).toBe('admin');
+    });
+
+    it('keeps keys the user typed', () => {
+        const request = discoveryRequestParams('s3', { ...FILEN, username: 'mine', password: 'secret' });
+        expect(request.username).toBe('mine');
+        expect(request.password).toBe('secret');
+    });
+
+    it('does not verify the self-signed certificate of the local bridge', () => {
+        expect(discoveryRequestParams('s3', FILEN).verify_cert).toBe(false);
+    });
+
+    it('leaves other presets without default keys and verifying certificates', () => {
+        const request = discoveryRequestParams('s3', { ...BASE, username: '', password: '', options: { bucket: 'b' } });
+        expect(request.username).toBe('');
+        expect(request.password).toBe('');
+        expect(request.verify_cert).toBe(true);
     });
 });

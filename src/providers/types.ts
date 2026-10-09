@@ -123,8 +123,6 @@ export interface ProviderConfig {
          *  MEGAcmd port 4443) where the auto-detection would otherwise
          *  pick HTTPS for non-standard ports. */
         webdavScheme?: 'http' | 'https' | 'auto';
-        /** Default S3 bucket (Filen Desktop S3 fixes this to "filen") */
-        bucket?: string;
         /** Pre-set verify-cert flag for local-loopback HTTPS bridges that
          *  use self-signed certs (Filen Desktop S3 over HTTPS). */
         verifyCert?: boolean;

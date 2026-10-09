@@ -1845,7 +1845,8 @@
             "usedScanTruncated": "parziale: limite di scansione raggiunto",
             "usedScanUnreadable": "parziale, cartelle non leggibili: {count}",
             "usedScanFailed": "Scansione dello spazio usato non riuscita",
-            "usedScanEmpty": "La scansione di {path} non ha trovato file; il valore in cache è stato mantenuto. Verifica il percorso o il supporto dell'elenco ricorsivo del server."
+            "usedScanEmpty": "La scansione di {path} non ha trovato file; il valore in cache è stato mantenuto. Verifica il percorso o il supporto dell'elenco ricorsivo del server.",
+            "filenBridgeAccountTotal": "Filen Desktop non fornisce qui il totale del tuo account: il valore usato è la somma dei file presenti in questo percorso. La connessione Filen nativa mostra subito il totale dell'account."
         },
         "aerofile": {
             "dualPanel": "Doppio pannello",

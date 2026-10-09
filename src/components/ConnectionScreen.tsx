@@ -60,6 +60,7 @@ import { useActivityLog } from '../hooks/useActivityLog';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
 import { FILEN_BRIDGE_MAX_LENGTH, FILEN_BRIDGE_REJECTED_CHARACTERS, filenBridgeCredentialError } from '../utils/passwordForge';
+import { isFilenDesktopBridge as isFilenDesktopBridgeProvider } from '../utils/filenDesktopBridge';
 
 // Protocols that can be switched between when editing a saved connection
 const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
@@ -376,7 +377,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const megaMode = getMegaConnectionMode(connectionParams.options);
     const isMegaCmdMode = megaMode === 'megacmd';
     const activeProviderId = connectionParams.providerId || selectedProviderId || undefined;
-    const isFilenDesktopBridge = activeProviderId === 'filen-desktop-webdav' || activeProviderId === 'filen-desktop-s3';
+    const isFilenDesktopBridge = isFilenDesktopBridgeProvider(activeProviderId);
     const filenBridgeCredentialIssue = isFilenDesktopBridge
         ? filenBridgeCredentialError(connectionParams.username) || filenBridgeCredentialError(connectionParams.password)
         : null;
@@ -2522,7 +2523,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 endpoint: resolveS3Endpoint(provider.id, presetDefaultS3Region(provider.id)) ?? undefined,
                                 anonymous: provider.defaults?.anonymous,
                                 webdavScheme: provider.defaults?.webdavScheme,
-                                bucket: provider.defaults?.bucket,
                                 verifyCert: provider.defaults?.verifyCert,
                                 allowCleartextStorage: provider.defaults?.allowCleartextStorage,
                             },
@@ -2589,7 +2589,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         // Propagate WebDAV scheme override (Filen Desktop, MEGAcmd, etc.)
                         // so the backend builds http://... instead of https://...
                         webdavScheme: provider.defaults?.webdavScheme,
-                        bucket: provider.defaults?.bucket,
                         // Local HTTPS bridges (Filen Desktop S3) use self-signed certs
                         verifyCert: provider.defaults?.verifyCert,
                         // Swift catalogs that publish a cleartext object store (Blomp)
@@ -6239,7 +6238,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             presetUnlocked={presetUnlocked}
                                             onPresetUnlock={(field) => setPresetUnlocked(prev => ({ ...prev, [field]: true }))}
                                             discoverS3Targets={() => discoverConnectionTargets('s3')}
-                                            canDiscoverS3Targets={!!connectionParams.username && !!connectionParams.password}
+                                            canDiscoverS3Targets={isFilenDesktopBridge || (!!connectionParams.username && !!connectionParams.password)}
                                             s3DiscoveryResetKey={discoveryRequestResetKey('s3', connectionParams)}
                                         />
                                         {/* Advanced Options: hidden server/port for preset WebDAV, hidden endpoint for preset S3 */}

@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "rhannol: cyrhaeddwyd y terfyn sganio",
             "usedScanUnreadable": "rhannol, ffolderi na ellid eu darllen: {count}",
             "usedScanFailed": "Methodd sgan y storfa a ddefnyddiwyd",
-            "usedScanEmpty": "Ni chanfu sgan {path} unrhyw ffeiliau; cadwyd y ffigur o'r storfa. Gwiriwch y llwybr neu gefnogaeth rhestru ailadroddus y gweinydd."
+            "usedScanEmpty": "Ni chanfu sgan {path} unrhyw ffeiliau; cadwyd y ffigur o'r storfa. Gwiriwch y llwybr neu gefnogaeth rhestru ailadroddus y gweinydd.",
+            "filenBridgeAccountTotal": "Nid yw Filen Desktop yn adrodd cyfanswm eich cyfrif yma: y ffigur a ddefnyddiwyd yw cyfanswm y ffeiliau o dan y llwybr hwn. Mae'r cysylltiad Filen brodorol yn dangos cyfanswm y cyfrif ar unwaith."
         },
         "dialogs": {
             "confirmTitle": "Cadarnhau",

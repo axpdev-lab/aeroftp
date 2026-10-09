@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "teilweise: Scan-Limit erreicht",
             "usedScanUnreadable": "teilweise, nicht lesbare Ordner: {count}",
             "usedScanFailed": "Scan des belegten Speichers fehlgeschlagen",
-            "usedScanEmpty": "Der Scan von {path} fand keine Dateien; der zwischengespeicherte Wert wurde beibehalten. Prüfen Sie den Pfad oder die Unterstützung rekursiver Auflistung durch den Server."
+            "usedScanEmpty": "Der Scan von {path} fand keine Dateien; der zwischengespeicherte Wert wurde beibehalten. Prüfen Sie den Pfad oder die Unterstützung rekursiver Auflistung durch den Server.",
+            "filenBridgeAccountTotal": "Filen Desktop meldet hier nicht den Gesamtwert Ihres Kontos: Der angezeigte belegte Speicher ist die Summe der Dateien unter diesem Pfad. Die native Filen-Verbindung zeigt den Kontogesamtwert sofort an."
         },
         "dialogs": {
             "confirmTitle": "Bestätigen",

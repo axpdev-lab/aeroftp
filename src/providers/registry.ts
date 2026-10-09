@@ -1286,7 +1286,7 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'filen-desktop-s3',
         name: 'Filen Desktop (local S3)',
-        description: 'Local S3-compatible bridge to a logged-in Filen Desktop instance. Default port 1800, runs on 127.0.0.1 via local.s3.filen.io. Requires path-style addressing and bucket "filen".',
+        description: 'Local S3-compatible bridge to a logged-in Filen Desktop instance. Default port 1800, runs on 127.0.0.1 via local.s3.filen.io. Path-style addressing; each top-level folder of your Filen drive is a bucket.',
         protocol: 's3',
         category: 's3',
         icon: 'HardDrive',
@@ -1305,12 +1305,17 @@ export const PROVIDERS: ProviderConfig[] = [
                 placeholder: 'admin',
                 helpText: 'Set in Filen Desktop > Network Drive > S3. Maximum 32 characters; . , : ; " \' \\ / | _ - are rejected. Not your Filen account password. Leave empty to try "admin".',
             },
+            {
+                ...COMMON_FIELDS.bucket,
+                label: 'Bucket (top-level Filen folder)',
+                placeholder: 'Press Fetch to list your folders',
+                helpText: 'Filen Desktop serves every top-level folder of your Filen drive as an S3 bucket. Pick the folder to open. Files directly in the Filen root are not reachable over S3: use the native Filen connection or the Filen Desktop WebDAV bridge for those.',
+            },
         ],
         defaults: {
             port: 1800,
             endpoint: 'https://local.s3.filen.io:1800',
             region: 'filen',
-            bucket: 'filen',
             pathStyle: true,
             // Filen Desktop S3 in HTTPS uses a self-signed certificate
             // (loopback). Disable cert verification by default for this preset.
@@ -1327,8 +1332,8 @@ export const PROVIDERS: ProviderConfig[] = [
             'Leave the Access key and Secret key blank to use Filen Desktop\'s default "admin"/"admin"; AeroFTP fills them automatically (it does not store them silently)',
             'Toggle "Enabled" and pick port 1800 (default) or a custom one',
             'Default in Filen Desktop is HTTPS with a self-signed certificate; this preset matches that. If you switched Filen Desktop to plain HTTP, open Edit and change the endpoint scheme to http://',
-            'Region stays "filen" and bucket is hardcoded to "filen" (handled automatically)',
-            'On first connection the bridge auto-creates a top-level folder named after the bucket ("filen") on your Filen account if one with that name does not already exist at the root: it does NOT map to the account root itself. Your existing files live one level above the bridge view.',
+            'Region stays "filen" (handled automatically)',
+            'Enter the keys, then press Fetch next to Bucket: Filen Desktop lists every top-level folder of your Filen drive as a bucket. Pick the one to open. Files directly in the Filen root are not reachable over S3.',
             'For full feature parity (storage quota, trash, share-link passwords, versioning, file/folder passwords, TOTP passthrough) connect through the native Filen API attachment instead: it covers everything this S3 bridge cannot expose.',
             'Keep Filen Desktop running while you connect from AeroFTP',
         ],

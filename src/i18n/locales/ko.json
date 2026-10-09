@@ -1405,7 +1405,8 @@
             "usedScanTruncated": "부분: 스캔 한도에 도달함",
             "usedScanUnreadable": "부분, 읽을 수 없는 폴더: {count}",
             "usedScanFailed": "사용 용량 스캔 실패",
-            "usedScanEmpty": "{path} 스캔에서 파일을 찾지 못했습니다. 캐시된 값이 유지되었습니다. 경로 또는 서버의 재귀 목록 지원을 확인하세요."
+            "usedScanEmpty": "{path} 스캔에서 파일을 찾지 못했습니다. 캐시된 값이 유지되었습니다. 경로 또는 서버의 재귀 목록 지원을 확인하세요.",
+            "filenBridgeAccountTotal": "Filen Desktop은 여기서 계정 전체 사용량을 알려 주지 않습니다. 표시된 사용량은 이 경로 아래 파일들의 합계입니다. 기본 Filen 연결에서는 계정 전체 사용량을 바로 확인할 수 있습니다."
         },
         "dialogs": {
             "confirmTitle": "확인",
