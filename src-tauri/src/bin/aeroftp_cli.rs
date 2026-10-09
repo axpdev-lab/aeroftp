@@ -17482,6 +17482,10 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
     // profile through the --group filter and any sort, so every listing shows
     // the number a command accepts instead of a row position.
     let mut numbers: Vec<usize> = (1..=profiles.len()).collect();
+    // The whole list in saved order, kept before the --group filter: the
+    // interactive loop resolves numbers by position in it, so it must be the
+    // same snapshot the numbers above were taken from.
+    let saved_order = profiles.clone();
 
     // --group filter (#320): keep only profiles that belong to the named group
     // (case-insensitive). The CLI analogue of selecting a GUI group chip.
@@ -17647,7 +17651,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
             );
         }
     } else {
-        return render_profiles_text(cli, &store, profiles, numbers, &overrides);
+        return render_profiles_text(cli, &store, profiles, numbers, saved_order, &overrides);
     }
 
     0
@@ -19541,6 +19545,7 @@ fn render_profiles_text(
     store: &CredentialStore,
     profiles: Vec<serde_json::Value>,
     numbers: Vec<usize>,
+    saved_order: Vec<serde_json::Value>,
     overrides: &ProfilesViewOverrides,
 ) -> i32 {
     let color_on = use_color();
@@ -20069,13 +20074,10 @@ fn render_profiles_text(
         && std::io::stderr().is_terminal()
     {
         // The loop resolves numbers by position in its list, so it gets the
-        // whole saved order: the numbers the table printed (and the `tui`
-        // navigator's selectors) then name the same profiles inside the loop.
-        let saved_order = load_active_user_profiles(cli, store).unwrap_or_else(|_| {
-            let mut rows = sorted;
-            rows.sort_by_key(|(n, _)| *n);
-            rows.into_iter().map(|(_, p)| p).collect()
-        });
+        // whole saved order the table's numbers were taken from (not the
+        // filtered rows, not a fresh read another session may have reordered):
+        // the numbers the table printed and the `tui` navigator's selectors
+        // then name the same profiles inside the loop.
         return interactive_profiles_loop(
             cli,
             store,
