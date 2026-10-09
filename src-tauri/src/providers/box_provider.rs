@@ -92,9 +92,6 @@ fn box_is_rate_limited(status: u16) -> bool {
     status == 429 || status == 503
 }
 
-/// Compute the marker substring for a Box rate-limit response. Pure-fn
-/// so the test exercises the header-parsing branches without any HTTP
-/// scaffolding.
 /// How many times a commit answered 202 Accepted is sent again, and how
 /// long the whole wait may last, before the upload is reported as failed.
 const BOX_COMMIT_MAX_ATTEMPTS: u32 = 30;
@@ -104,6 +101,9 @@ const BOX_COMMIT_MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(
 const BOX_COMMIT_DEFAULT_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
 const BOX_COMMIT_WAIT_CAP: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Compute the marker substring for a Box rate-limit response. Pure-fn
+/// so the test exercises the header-parsing branches without any HTTP
+/// scaffolding.
 fn box_retry_marker_tail(status: u16, retry_header: Option<&str>) -> Option<String> {
     if !box_is_rate_limited(status) {
         return None;
@@ -1622,6 +1622,8 @@ impl BoxProvider {
                 .and_then(|v| v.to_str().ok())
                 .map(String::from);
             if status.as_u16() == 202 {
+                // Retry-After in seconds; an HTTP-date, which Box is not seen
+                // to send, falls back to the default wait.
                 let wait = retry_header
                     .as_deref()
                     .and_then(super::retry_after::parse_retry_after_seconds)
