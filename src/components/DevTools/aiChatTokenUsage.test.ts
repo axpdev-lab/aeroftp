@@ -36,17 +36,36 @@ describe('the token count of a conversation', () => {
 });
 
 describe('the chat counts the tokens of every model request', () => {
-    it('records each request before any early return, tool-loop steps included', () => {
-        // A request that ends in a tool call has no message of its own: unless
-        // its tokens are recorded where it returns, the count misses it.
-        const requests = [...chatSource.matchAll(/chatRequestsRef\.current\.call</g)].map(match => match.index!);
-        expect(requests.length).toBeGreaterThanOrEqual(2);
-        for (const at of requests) {
-            const firstReturn = chatSource.indexOf('if (autoStopRef.current', at);
-            const recorded = chatSource.indexOf('recordTokenUsage(', at);
-            const line = chatSource.slice(0, at).split('\n').length;
-            expect(recorded, `request at AIChat.tsx:${line} records no tokens`).toBeGreaterThan(at);
-            expect(recorded, `request at AIChat.tsx:${line} records its tokens after an early return`).toBeLessThan(firstReturn);
+    // Each kind of request the chat sends, with the first early return its
+    // flow can take once the response is in. A request whose tokens are not
+    // recorded before that return goes uncounted when the turn stops there,
+    // and a tool-loop step has no message of its own to carry them later.
+    const sites = [
+        { request: 'chatRequestsRef.current.call<', earlyReturn: 'if (autoStopRef.current' },
+        { request: "invoke('ai_chat_stream'", earlyReturn: 'if (autoStopRef.current || activeTurnRef.current !== turnScope) return;' },
+        { request: "invoke<DelegationResult>('ai_delegate_local'", earlyReturn: 'if (activeDelegationIdRef.current !== requestId) return;' },
+    ];
+    const at = (needle: string) => {
+        const found: number[] = [];
+        for (let i = chatSource.indexOf(needle); i !== -1; i = chatSource.indexOf(needle, i + 1)) found.push(i);
+        return found;
+    };
+    const line = (index: number) => chatSource.slice(0, index).split('\n').length;
+
+    it('knows every request the chat sends', () => {
+        // Two calls (the tool loop and the non-streaming turn), the stream, the
+        // delegation. A request added, removed or renamed changes this count.
+        expect(sites.reduce((n, site) => n + at(site.request).length, 0)).toBe(4);
+    });
+
+    it('records each one before its first early return, tool-loop steps included', () => {
+        for (const site of sites) {
+            for (const request of at(site.request)) {
+                const earlyReturn = chatSource.indexOf(site.earlyReturn, request);
+                const recorded = chatSource.indexOf('recordTokenUsage(', request);
+                expect(earlyReturn, `no early return found after AIChat.tsx:${line(request)}`).toBeGreaterThan(request);
+                expect(recorded, `request at AIChat.tsx:${line(request)} records its tokens after an early return`).toBeLessThan(earlyReturn);
+            }
         }
     });
 });
