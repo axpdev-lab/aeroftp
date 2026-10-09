@@ -17,8 +17,14 @@ fn first_quiet_stderr_line(mode: &str) -> Option<String> {
         .args(["--quiet", "serve", mode])
         .arg(folder.path())
         .args(["--addr", "0.0.0.0:0", "--allow-remote-bind"])
+        // The config dir is isolated on every platform (`dirs` reads
+        // XDG/HOME on Unix, APPDATA/LOCALAPPDATA on Windows), and no log
+        // filter is inherited: the first stderr line must be the CLI's own.
         .env("XDG_CONFIG_HOME", config.path())
         .env("HOME", config.path())
+        .env("APPDATA", config.path())
+        .env("LOCALAPPDATA", config.path())
+        .env_remove("RUST_LOG")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
