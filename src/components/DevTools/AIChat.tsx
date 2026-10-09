@@ -64,7 +64,7 @@ import { ChatSearchOverlay, type SearchMatch } from './ChatSearchOverlay';
 import { ChatMessageRow } from './ChatMessageRow';
 import { ChatHistoryManager } from './ChatHistoryManager';
 import { useKeyboardShortcuts, getDefaultShortcuts } from './useKeyboardShortcuts';
-import { conversationTokenUsage, recordTokenUsage } from './aiChatTokenUsage';
+import { conversationTokenUsage, recordTokenUsage, subscribeTokenUsage } from './aiChatTokenUsage';
 import { copyText } from '../../utils/clipboard';
 
 /** Maximum autonomous steps: now driven by AGENT_MODE_MAX_STEPS */
@@ -3071,11 +3071,14 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         }
     };
 
-    // The conversation's token count, refreshed whenever a reply lands or the
-    // conversation changes; a chat not saved yet shows its tokens too.
+    // The conversation's token count: refreshed on every recorded request
+    // (a cancelled delegation adds no message) and when the conversation
+    // changes; a chat not saved yet shows its tokens too.
     useEffect(() => {
-        setConversationTokens(conversationTokenUsage(conversationUsageKey())?.tokens ?? null);
-    }, [messages, activeConversationId, conversationUsageKey]);
+        const refresh = () => setConversationTokens(conversationTokenUsage(conversationUsageKey())?.tokens ?? null);
+        refresh();
+        return subscribeTokenUsage(refresh);
+    }, [activeConversationId, conversationUsageKey]);
 
     return (
         <div

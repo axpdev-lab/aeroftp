@@ -33,10 +33,20 @@ function plus(entry: TokenUsage | undefined, tokens: number, requests: number): 
 
 const resolve = (key: string) => aliases.get(key) ?? key;
 
+const listeners = new Set<() => void>();
+const changed = () => listeners.forEach(listener => listener());
+
+/** Called after every change, so a display can refresh without waiting for a message. */
+export function subscribeTokenUsage(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+}
+
 /** One request's tokens, under the key its chat had when the request started. */
 export function recordTokenUsage(key: string, tokens: number): void {
     const target = resolve(key);
     usage.set(target, plus(usage.get(target), tokens, 1));
+    changed();
 }
 
 export function conversationTokenUsage(key: string): TokenUsage | null {
@@ -49,7 +59,9 @@ export function bindTokenUsage(chatKey: string, conversationId: string): void {
     if (chatKey === conversationId) return;
     aliases.set(chatKey, conversationId);
     const counted = usage.get(chatKey);
-    if (!counted) return;
-    usage.delete(chatKey);
-    usage.set(conversationId, plus(usage.get(conversationId), counted.tokens, counted.requests));
+    if (counted) {
+        usage.delete(chatKey);
+        usage.set(conversationId, plus(usage.get(conversationId), counted.tokens, counted.requests));
+    }
+    changed();
 }

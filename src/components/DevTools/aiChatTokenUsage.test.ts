@@ -41,6 +41,19 @@ describe('the token count of a conversation', () => {
         expect(usage.conversationTokenUsage('chat-key')).toEqual({ tokens: 125, requests: 3 });
     });
 
+    it('tells its listeners when a count changes, so the footer needs no new message to refresh', async () => {
+        // A cancelled delegation records its tokens and adds no message.
+        const usage = await import('./aiChatTokenUsage');
+        const seen: number[] = [];
+        const stop = usage.subscribeTokenUsage(() => seen.push(usage.conversationTokenUsage('conv')?.tokens ?? 0));
+        usage.recordTokenUsage('chat-key', 10);
+        usage.bindTokenUsage('chat-key', 'conv');
+        usage.recordTokenUsage('conv', 5);
+        stop();
+        usage.recordTokenUsage('conv', 1);
+        expect(seen).toEqual([0, 10, 15]);
+    });
+
     it('keeps two chats apart', async () => {
         const usage = await import('./aiChatTokenUsage');
         usage.recordTokenUsage('first-key', 100);
