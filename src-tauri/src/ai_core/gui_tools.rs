@@ -146,7 +146,7 @@ pub async fn dispatch_gui_tool(
             let parameters: serde_json::Map<String, Value> = object.iter()
                 .filter(|(key, _)| !["intent", "timeout_ms", "if_revision"].contains(&key.as_str()))
                 .map(|(key, value)| (key.clone(), value.clone())).collect();
-            crate::gui_controller::request_intent(&app, name, Value::Object(parameters), timeout_ms, if_revision).await
+            crate::gui_controller::request_intent(&app, name, Value::Object(parameters), timeout_ms, if_revision, ctx.session_id()).await
         }
         "set_theme" => {
 

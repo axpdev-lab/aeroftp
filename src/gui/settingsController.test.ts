@@ -168,7 +168,7 @@ const run = (name: string, args?: Record<string, unknown>, extra?: Record<string
     const id = `approved-${++nextId}`;
     store.requests.set(id, { user: store.user, area: args?.area as string, set: args?.set as Record<string, unknown>,
         cancelled: false, deadline: Date.now() + Number(extra?.timeout_ms ?? 10000) });
-    return controller.run({ name, args, pace: 'fast', ...extra }, 'AeroAgent', Infinity, id);
+    return controller.run({ name, args, pace: 'fast', ...extra }, { id: 'aeroagent:local', kind: 'aeroagent', label: 'AeroAgent' }, Infinity, id);
 };
 
 const SECRET_ACCOUNTS = /^(?!config_(app|ai)_settings$)/;

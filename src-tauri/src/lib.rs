@@ -19512,6 +19512,10 @@ pub fn run() {
             ai_tools::grant_ai_tool_approval,
             ai_approval_window::ai_approval_prompt,
             ai_approval_window::ai_approval_decide,
+            #[cfg(debug_assertions)]
+            gui_controller::gui_dev_session_begin,
+            #[cfg(debug_assertions)]
+            gui_controller::gui_dev_session_end,
             gui_controller::gui_intent_claim,
             gui_controller::gui_intent_result,
             gui_controller::gui_intent_check,

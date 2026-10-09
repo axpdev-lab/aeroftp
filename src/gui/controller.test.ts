@@ -171,7 +171,7 @@ it('bounds Stop even when its original handler does not settle', async () => {
 
 
 it('honors a broker deadline shorter than the validated request timeout', async () => {
-    expect((await controller.run({ name: 'disconnect', timeout_ms: 10000 }, 'AeroAgent', Date.now() + 40)).error).toBe('gui_timeout');
+    expect((await controller.run({ name: 'disconnect', timeout_ms: 10000 }, { id: 'aeroagent:local', kind: 'aeroagent', label: 'AeroAgent' }, Date.now() + 40)).error).toBe('gui_timeout');
     expect(handlers.disconnect).not.toHaveBeenCalled();
 });
 
@@ -287,4 +287,30 @@ it('expiry cancels the bound connect and never reveals backend errors or secret 
     const reply = await pending; expect(reply.error).toBe('gui_timeout'); expect(cancel).toHaveBeenCalledOnce();
     expect(JSON.stringify(reply)).not.toContain('PRIVATE');
     release(); await new Promise(resolve => setTimeout(resolve, 35));
+});
+
+it('keys leases by stable actor ID, allowing same-session commands but refusing a same-name competitor', async () => {
+    const actor = { id: 'dev:first', kind: 'dev' as const, label: 'Codex' };
+    const request = { name: 'refresh', args: { panel: 'local' }, pace: 'fast' as const };
+    expect((await controller.run(request, actor)).ok).toBe(true);
+    expect((await controller.run(request, { ...actor })).ok).toBe(true);
+    expect((await controller.run(request, { ...actor, id: 'dev:second' })).error).toBe('busy');
+    expect((await controller.run({ name: 'state' }, { ...actor, id: 'dev:second' })).ok).toBe(true);
+    controller.releaseActor('dev:second');
+    expect((await controller.run(request, { ...actor, id: 'dev:second' })).error).toBe('busy');
+    controller.releaseActor('dev:first');
+    expect((await controller.run(request, { ...actor, id: 'dev:second' })).ok).toBe(true);
+});
+it('captures actor before yielding; invalid labels and forged fields never dispatch', async () => {
+    const actor = { id: 'dev:first', kind: 'dev' as const, label: 'Codex' };
+    const pending = controller.run({ name: 'refresh', args: { panel: 'local' } }, actor);
+    actor.id = 'dev:changed'; actor.label = 'changed';
+    expect((await pending).ok).toBe(true);
+    expect(changed.mock.calls[changed.mock.calls.length - 1]?.[0]?.owner).toEqual({ id: 'dev:first', kind: 'dev', label: 'Codex' });
+    expect(audit).toHaveBeenLastCalledWith('refresh', true, 'Codex');
+    for (const bad of [{ ...actor, label: 'x\nSpoof' }, { ...actor, label: '\u202eCodex' }, { ...actor, label: 'é'.repeat(49) },
+        { ...actor, id: '' }, { ...actor, password: 'SENTINEL' }]) {
+        expect((await controller.run({ name: 'disconnect' }, bad)).error).toBe('invalid_args');
+    }
+    expect(handlers.disconnect).not.toHaveBeenCalled();
 });

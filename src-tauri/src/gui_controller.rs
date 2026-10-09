@@ -67,7 +67,137 @@ async fn scope(app: &tauri::AppHandle) -> Result<Scope, String> {
     .map_err(|_| "gui_scope_unavailable".to_string())?
 }
 
+/// Public display metadata is separate from the stable caller identity.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct GuiActor {
+    pub(crate) id: String,
+    pub(crate) kind: &'static str,
+    pub(crate) label: String,
+}
+impl GuiActor {
+    fn aeroagent(session_id: Option<&str>) -> Self {
+        use sha2::{Digest, Sha256};
+        // A caller without a session must never inherit another caller's idle lease.
+        let fallback = uuid::Uuid::new_v4().to_string();
+        let session = session_id.filter(|s| !s.is_empty()).unwrap_or(&fallback);
+        Self {
+            id: format!("aeroagent:{:x}", Sha256::digest(session.as_bytes())),
+            kind: "aeroagent",
+            label: "AeroAgent".into(),
+        }
+    }
+}
+#[cfg(debug_assertions)]
+mod dev_sessions {
+    use super::*;
+    struct DevSession {
+        scope: Scope,
+        actor: GuiActor,
+        expires: Instant,
+    }
+    static SESSIONS: LazyLock<Mutex<HashMap<String, DevSession>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    fn sessions() -> std::sync::MutexGuard<'static, HashMap<String, DevSession>> {
+        SESSIONS.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    fn prune(map: &mut HashMap<String, DevSession>, current: Scope) {
+        map.retain(|_, s| s.scope == current && s.expires > Instant::now());
+    }
+    pub(super) fn label(input: &str) -> Result<String, String> {
+        if input.len() > 512 {
+            return Err("invalid_actor".into());
+        }
+        let clean: String = input.chars().filter(|c| !c.is_control() &&
+            !matches!(*c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')).collect();
+        let clean = clean.trim();
+        if clean.is_empty() || clean.len() > 96 {
+            return Err("invalid_actor".into());
+        }
+        Ok(clean.into())
+    }
+    pub(super) fn begin(current: Scope, input: &str) -> Result<Value, String> {
+        let label = label(input)?;
+        let mut map = sessions();
+        prune(&mut map, current);
+        if map.len() >= 32 {
+            return Err("busy".into());
+        }
+        let id = format!("gui-dev-{}", uuid::Uuid::new_v4());
+        let actor = GuiActor {
+            id: id.clone(),
+            kind: "dev",
+            label,
+        };
+        map.insert(
+            id.clone(),
+            DevSession {
+                scope: current,
+                actor: actor.clone(),
+                expires: Instant::now() + Duration::from_secs(3600),
+            },
+        );
+        Ok(json!({ "session_id": id, "actor": actor }))
+    }
+    pub(super) fn actor(current: Scope, id: &str) -> Result<GuiActor, String> {
+        let mut map = sessions();
+        prune(&mut map, current);
+        let session = map.get_mut(id).ok_or("gui_session_expired")?;
+        session.expires = Instant::now() + Duration::from_secs(3600);
+        Ok(session.actor.clone())
+    }
+    pub(super) fn end(current: Scope, id: &str) -> Option<GuiActor> {
+        let mut map = sessions();
+        prune(&mut map, current);
+        map.remove(id).map(|s| s.actor)
+    }
+}
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub async fn gui_dev_session_begin(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    label: String,
+) -> Result<Value, String> {
+    check_window(window.label())?;
+    let current = scope(&app).await?;
+    if !current.unlocked {
+        return Err("locked".into());
+    }
+    dev_sessions::begin(current, &label)
+}
+#[cfg(debug_assertions)]
+fn validate_dev_session_id(id: &str) -> Result<(), String> {
+    let valid = id
+        .strip_prefix("gui-dev-")
+        .and_then(|value| {
+            uuid::Uuid::parse_str(value)
+                .ok()
+                .filter(|uuid| uuid.hyphenated().to_string() == value)
+        })
+        .is_some();
+    if valid {
+        Ok(())
+    } else {
+        Err("invalid_args".into())
+    }
+}
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub async fn gui_dev_session_end(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    session_id: String,
+) -> Result<(), String> {
+    check_window(window.label())?;
+    validate_dev_session_id(&session_id)?;
+    // Cleanup remains possible after expiry or an account/unlock generation change.
+    // UUID identity ensures an old finish cannot release a newer actor's lease.
+    let _ = dev_sessions::end(scope(&app).await?, &session_id);
+    app.emit_to("main", "gui-actor-ended", json!({ "actor_id": session_id }))
+        .map_err(|_| "gui_unavailable".to_string())
+}
 struct Pending {
+    actor: GuiActor,
     deadline: Instant,
     scope: Scope,
     claimed: bool,
@@ -435,6 +565,7 @@ pub(crate) async fn request_intent(
     args: Value,
     timeout_ms: u64,
     if_revision: Option<u64>,
+    session_id: Option<&str>,
 ) -> Result<Value, String> {
     if !INTENTS.contains(&name) {
         return Err("unsupported_intent".into());
@@ -452,6 +583,12 @@ pub(crate) async fn request_intent(
     if !current.unlocked && !["state", "wait", "stop"].contains(&name) {
         return Err("locked".into());
     }
+    let actor = GuiActor::aeroagent(session_id);
+    #[cfg(debug_assertions)]
+    let actor = match session_id.filter(|id| id.starts_with("gui-dev-")) {
+        Some(id) => dev_sessions::actor(current, id)?,
+        None => actor,
+    };
     let id = uuid::Uuid::new_v4().to_string();
     let settings_delta = if name == "settings_update" {
         Some(crate::gui_settings::SettingsDelta::from_args(&args)?)
@@ -467,6 +604,7 @@ pub(crate) async fn request_intent(
         map.insert(
             id.clone(),
             Pending {
+                actor,
                 deadline: Instant::now() + Duration::from_millis(timeout_ms),
                 scope: current,
                 claimed: false,
@@ -509,11 +647,13 @@ pub async fn gui_intent_claim(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     id: String,
-) -> Result<u64, String> {
+) -> Result<Value, String> {
     check_window(window.label())?;
     let current = scope(&app).await?;
     let mut map = pending();
-    claim_entry(map.get_mut(&id).ok_or("gui_unknown_request")?, current)
+    let entry = map.get_mut(&id).ok_or("gui_unknown_request")?;
+    let remaining = claim_entry(entry, current)?;
+    Ok(json!({ "remaining_ms": remaining, "actor": entry.actor }))
 }
 
 /// Recheck the original claimed request before each awaited frontend Settings step.
@@ -642,6 +782,74 @@ mod tests {
         json!({ "ok": true, "error": null, "snapshot": { "schema_version": 1, "state_revision": 1,
             "version": "test", "locked": true, "blocked": true, "view": "other", "connected": false,
             "active_session_id": null, "sessions": [], "panels": {}, "queue": { "active": 0, "pending": 0, "failed": 0 } } })
+    }
+    #[test]
+    fn gui_actor_identity_is_session_bound_without_exposing_the_session_key() {
+        let first = GuiActor::aeroagent(Some("private-session-one"));
+        let same = GuiActor::aeroagent(Some("private-session-one"));
+        let second = GuiActor::aeroagent(Some("private-session-two"));
+        assert_eq!(first.id, same.id);
+        assert_ne!(first.id, second.id);
+        assert!(!serde_json::to_string(&first)
+            .unwrap()
+            .contains("private-session"));
+        assert_ne!(GuiActor::aeroagent(None).id, GuiActor::aeroagent(None).id);
+    }
+    #[cfg(debug_assertions)]
+    #[test]
+    fn gui_dev_sessions_sanitize_names_and_expire_across_account_and_unlock_changes() {
+        assert_eq!(dev_sessions::label("  Co\u{202e}dex\n  ").unwrap(), "Codex");
+        assert!(dev_sessions::label("\n\u{202e}").is_err());
+        assert!(dev_sessions::label(&"é".repeat(49)).is_err());
+        let current = Scope {
+            user: Some(9123),
+            unlocked: true,
+            vault_generation: 7,
+            partition_generation: 3,
+        };
+        let first = dev_sessions::begin(current, "Codex").unwrap();
+        let second = dev_sessions::begin(current, "Codex").unwrap();
+        let first_id = first["session_id"].as_str().unwrap();
+        let second_id = second["session_id"].as_str().unwrap();
+        assert_ne!(first_id, second_id);
+        assert_eq!(
+            dev_sessions::actor(current, first_id).unwrap().label,
+            "Codex"
+        );
+        dev_sessions::end(current, first_id).unwrap();
+        assert!(dev_sessions::end(current, first_id).is_none());
+        assert!(dev_sessions::actor(current, first_id).is_err());
+        assert!(dev_sessions::actor(
+            Scope {
+                vault_generation: 8,
+                ..current
+            },
+            second_id
+        )
+        .is_err());
+        assert!(dev_sessions::end(current, second_id).is_none());
+        let third = dev_sessions::begin(current, "Claude").unwrap();
+        assert!(dev_sessions::actor(
+            Scope {
+                user: Some(9124),
+                ..current
+            },
+            third["session_id"].as_str().unwrap()
+        )
+        .is_err());
+    }
+    #[cfg(debug_assertions)]
+    #[test]
+    fn developer_cleanup_refuses_other_namespaces_but_accepts_stale_ids() {
+        assert!(validate_dev_session_id("gui-dev-00000000-0000-4000-8000-000000000000").is_ok());
+        for id in [
+            "aeroagent:abc",
+            "gui-dev-",
+            "gui-dev-00000000000040008000000000000000",
+            "gui-dev-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+        ] {
+            assert!(validate_dev_session_id(id).is_err());
+        }
     }
     #[test]
     fn gui_controller_replies_reject_secrets_and_locked_data() {
@@ -786,6 +994,7 @@ mod tests {
             partition_generation: 1,
         };
         let mut entry = Pending {
+            actor: GuiActor::aeroagent(Some("test")),
             deadline: Instant::now() + Duration::from_secs(1),
             scope: original,
             claimed: false,
@@ -817,6 +1026,7 @@ mod tests {
             partition_generation: 1,
         };
         let mut entry = Pending {
+            actor: GuiActor::aeroagent(Some("test")),
             deadline: Instant::now() + Duration::from_secs(2),
             scope: original,
             claimed: false,
@@ -869,6 +1079,7 @@ mod tests {
         map.insert(
             "issued".into(),
             Pending {
+                actor: GuiActor::aeroagent(Some("test")),
                 deadline: Instant::now() + Duration::from_secs(2),
                 scope: original,
                 claimed: false,

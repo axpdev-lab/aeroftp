@@ -19,7 +19,7 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async (name: string, han
     bridge.callbacks.set(name, handler);
     return () => { if (bridge.callbacks.get(name) === handler) bridge.callbacks.delete(name); };
 }) }));
-vi.mock('../i18n', () => ({ useTranslation: () => (key: string) => key }));
+vi.mock('../i18n', () => ({ useTranslation: () => (key: string, args?: { agent?: string }) => `${key}${args?.agent ? ':' + args.agent : ''}` }));
 
 let root: Root;
 let host: HTMLDivElement;
@@ -37,7 +37,7 @@ beforeEach(() => {
         queue: { active: 0, pending: 0, failed: 0 } };
     handlers = { showView: vi.fn(), navigate: vi.fn(async (_panel, path: string) => path), refresh: vi.fn(async () => {}),
         select: vi.fn(), disconnect: vi.fn(async () => {}), stop: vi.fn(async () => {}) };
-    bridge.invoke.mockReset().mockImplementation(async name => name === 'gui_intent_claim' ? 2000 : undefined);
+    bridge.invoke.mockReset().mockImplementation(async name => name === 'gui_intent_claim' ? { remaining_ms: 2000, actor: { id: 'agent:test', kind: 'aeroagent', label: 'AeroAgent' } } : undefined);
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); audit.mockClear(); });
@@ -213,7 +213,7 @@ it('records committed intermediate state even when a path changes back before th
 
 it('accepts a satisfied minimum-timeout wait without rewriting it to invalid arguments', async () => {
     await mount();
-    bridge.invoke.mockResolvedValueOnce(90);
+    bridge.invoke.mockResolvedValueOnce({ remaining_ms: 90, actor: { id: 'agent:test', kind: 'aeroagent', label: 'AeroAgent' } });
     await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
         id: 'short-wait', expires_at: Date.now() + 100, request: { name: 'wait', args: { condition: 'connected' }, timeout_ms: 100 },
     } }));
@@ -240,16 +240,48 @@ it('waits for a fresh React commit when same-path refresh settles before its set
 
 it('does not act after a delayed claim outlives the absolute broker expiry', async () => {
     await mount();
-    let claim!: (remaining: number) => void;
-    bridge.invoke.mockImplementationOnce(() => new Promise<number>(resolve => { claim = resolve; }));
+    let claim!: (remaining: unknown) => void;
+    bridge.invoke.mockImplementationOnce(() => new Promise<unknown>(resolve => { claim = resolve; }));
     const expiresAt = Date.now() + 80;
     await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
         id: 'delayed-expired', expires_at: expiresAt, request: { name: 'disconnect', pace: 'fast' },
     } }));
     await until(() => Date.now() > expiresAt);
-    await act(async () => claim(2000));
+    await act(async () => claim({ remaining_ms: 2000, actor: { id: 'agent:test', kind: 'aeroagent', label: 'AeroAgent' } }));
     await until(() => bridge.invoke.mock.calls.some(([name]) => name === 'gui_intent_result'));
     expect(handlers.disconnect).not.toHaveBeenCalled();
     const result = bridge.invoke.mock.calls.find(([name]) => name === 'gui_intent_result')![1];
     expect(result.payload).toMatchObject({ ok: false, error: 'gui_timeout' });
+});
+
+it('uses backend-claimed actor, not event metadata, and only releases that actor on finish', async () => {
+    await mount();
+    bridge.invoke.mockImplementation(async name => name === 'gui_intent_claim' ? {
+        remaining_ms: 2000, actor: { id: 'gui-dev-first', kind: 'dev', label: 'Codex' },
+    } : undefined);
+    await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
+        id: 'claimed-actor', expires_at: Date.now() + 2000,
+        actor: { id: 'forged', kind: 'dev', label: 'Spoofed' }, request: { name: 'refresh', args: { panel: 'local' } },
+    } }));
+    await until(() => bridge.invoke.mock.calls.some(([name]) => name === 'gui_intent_result'));
+    expect(host.textContent).toContain('Codex'); expect(host.textContent).not.toContain('Spoofed');
+    await act(async () => bridge.callbacks.get('gui-actor-ended')!({ payload: { actor_id: 'foreign' } }));
+    expect(host.querySelector('[role="status"]')).not.toBeNull();
+    await act(async () => bridge.callbacks.get('gui-actor-ended')!({ payload: { actor_id: 'gui-dev-first' } }));
+    expect(host.querySelector('[role="status"]')).toBeNull();
+    expect(audit).toHaveBeenCalledWith('refresh', true, 'Codex');
+});
+
+it('does not run a request whose dev actor ended while its claim was in flight', async () => {
+    await mount();
+    let claim!: (value: unknown) => void;
+    bridge.invoke.mockImplementationOnce(() => new Promise<unknown>(resolve => { claim = resolve; }));
+    await act(async () => bridge.callbacks.get('gui-intent')!({ payload: {
+        id: 'ended-before-claim', expires_at: Date.now() + 2000, request: { name: 'disconnect', pace: 'fast' },
+    } }));
+    await act(async () => bridge.callbacks.get('gui-actor-ended')!({ payload: { actor_id: 'gui-dev-ended' } }));
+    await act(async () => claim({ remaining_ms: 2000, actor: { id: 'gui-dev-ended', kind: 'dev', label: 'Codex' } }));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
+    expect(handlers.disconnect).not.toHaveBeenCalled();
+    expect(host.querySelector('[role="status"]')).toBeNull();
 });

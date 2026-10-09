@@ -92,7 +92,17 @@ export interface GuiRequest {
     if_revision?: number; pace?: 'watch' | 'fast';
 }
 export interface GuiReply { ok: boolean; error: GuiErrorCode | null; snapshot: GuiSnapshot; }
-export interface GuiLease { owner: string; intent: GuiIntent | null; panel?: GuiPanel; }
+export interface GuiActor { readonly id: string; readonly kind: 'aeroagent' | 'dev' | 'external'; readonly label: string; }
+export const LOCAL_GUI_ACTOR: GuiActor = { id: 'aeroagent:local', kind: 'aeroagent', label: 'AeroAgent' };
+export function validateGuiActor(actor: GuiActor): void {
+    record(actor);
+    keys(actor as unknown as Record<string, unknown>, ['id', 'kind', 'label']);
+    if (typeof actor.id !== 'string' || !/^[A-Za-z0-9:_-]{1,128}$/.test(actor.id) ||
+        !['aeroagent', 'dev', 'external'].includes(actor.kind) || typeof actor.label !== 'string' ||
+        !actor.label.trim() || new TextEncoder().encode(actor.label).length > 96 ||
+        /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(actor.label)) throw new GuiError('invalid_args');
+}
+export interface GuiLease { owner: GuiActor; intent: GuiIntent | null; panel?: GuiPanel; }
 
 function record(value: unknown): asserts value is Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new GuiError('invalid_args');
@@ -182,6 +192,7 @@ export class GuiController {
         this.settingsScope?.cancel(new GuiError('lease_interrupted'));
         this.epoch++; this.lease = null; clearTimeout(this.expiry); this.changed(null);
     }
+    releaseActor(id: string): void { if (this.lease?.owner.id === id) this.interrupt(); }
     dispose(): void { this.disposed = true; this.interrupt(); }
     private guard(epoch: number, deadline: number, checkEpoch = true): void {
         if (this.disposed || (checkEpoch && epoch !== this.epoch)) throw new GuiError('lease_interrupted');
@@ -195,7 +206,7 @@ export class GuiController {
         }
         this.guard(epoch, deadline, checkEpoch);
     }
-    async run(input: GuiRequest, owner = 'AeroAgent', brokerDeadline = Infinity, brokerId?: string): Promise<GuiReply> {
+    async run(input: GuiRequest, owner: GuiActor = LOCAL_GUI_ACTOR, brokerDeadline = Infinity, brokerId?: string): Promise<GuiReply> {
         let intent: GuiIntent | undefined;
         let ownsLane = false;
         let laneEpoch: number | undefined;
@@ -207,6 +218,8 @@ export class GuiController {
         if (this.pending >= 16) return { ok: false, error: 'busy', snapshot: this.state() };
         this.pending++;
         try {
+            validateGuiActor(owner);
+            owner = Object.freeze({ ...owner });
             intent = validateGuiRequest(input);
             // Copy only validated request data before any asynchronous boundary.
             const request = structuredClone(input);
@@ -248,7 +261,7 @@ export class GuiController {
             // own typed operations run; every other mutation stays blocked.
             if (snapshot.settings?.open && !(SETTINGS_INTENTS as readonly string[]).includes(intent)) throw new GuiError('blocked');
             if (intent !== 'tools_read' && (TOOLS_INTENTS as readonly string[]).includes(intent) && snapshot.tools?.protected) throw new GuiError('blocked');
-            if (this.busy || (this.lease && this.lease.owner !== owner)) throw new GuiError('busy');
+            if (this.busy || (this.lease && this.lease.owner.id !== owner.id)) throw new GuiError('busy');
             if ((intent === 'navigate' || intent === 'refresh' || intent === 'select') &&
                 (!snapshot.panels[panelArg(args)] || snapshot.panels[panelArg(args)]?.loading)) throw new GuiError('blocked');
             if (args.panel === 'remote' && !snapshot.connected) throw new GuiError('not_connected');
@@ -390,7 +403,7 @@ export class GuiController {
             if (this.connectScope === connectScope) this.connectScope = null;
             this.pending--;
             if (ownsLane && handlerSettled) this.busy = false;
-            if (intent) this.audit(intent, succeeded, owner);
+            if (intent) this.audit(intent, succeeded, owner.label);
         }
     }
 }
