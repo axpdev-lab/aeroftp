@@ -436,24 +436,78 @@ fn classify_volume(mount_point: &str, fs_type: &str) -> String {
 fn get_disk_space(mount_point: &str) -> (u64, u64) {
     // Unescape octal sequences in mount point (e.g. \040 for space)
     let unescaped = unescape_octal(mount_point);
-    let c_path = match std::ffi::CString::new(unescaped.as_bytes()) {
-        Ok(p) => p,
-        Err(_) => return (0, 0),
-    };
+    filesystem_space(Path::new(&unescaped))
+        .map(|space| (space.total, space.available))
+        .unwrap_or((0, 0))
+}
+
+/// The size of the filesystem that holds a path, in bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FilesystemSpace {
+    pub total: u64,
+    /// Free blocks, including those reserved for the superuser.
+    pub free: u64,
+    /// Free bytes this user can write.
+    pub available: u64,
+}
+
+/// The size of the filesystem holding `path` (any file or folder on it), from
+/// `statvfs(2)`: no subprocess.
+#[cfg(unix)]
+pub fn filesystem_space(path: &Path) -> std::io::Result<FilesystemSpace> {
+    use std::os::unix::ffi::OsStrExt;
+    let c_path = std::ffi::CString::new(path.as_os_str().as_bytes())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
     // SAFETY: c_path is a valid NUL-terminated CString, stat is zero-initialized
     // and passed by mutable pointer. statvfs only writes to the provided buffer.
-    unsafe {
+    let stat = unsafe {
         let mut stat: libc::statvfs = std::mem::zeroed();
-        if libc::statvfs(c_path.as_ptr(), &mut stat) == 0 {
-            #[allow(clippy::unnecessary_cast)]
-            let total = stat.f_blocks as u64 * stat.f_frsize as u64;
-            #[allow(clippy::unnecessary_cast)]
-            let free = stat.f_bavail as u64 * stat.f_frsize as u64;
-            (total, free)
-        } else {
-            (0, 0)
+        if libc::statvfs(c_path.as_ptr(), &mut stat) != 0 {
+            return Err(std::io::Error::last_os_error());
         }
+        stat
+    };
+    #[allow(clippy::unnecessary_cast)]
+    let block = stat.f_frsize as u64;
+    #[allow(clippy::unnecessary_cast)]
+    Ok(FilesystemSpace {
+        total: stat.f_blocks as u64 * block,
+        free: stat.f_bfree as u64 * block,
+        available: stat.f_bavail as u64 * block,
+    })
+}
+
+/// The size of the volume holding `path` (any file or folder on it), from
+/// `GetDiskFreeSpaceExW`.
+#[cfg(windows)]
+pub fn filesystem_space(path: &Path) -> std::io::Result<FilesystemSpace> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let mut available = 0u64;
+    let mut total = 0u64;
+    let mut free = 0u64;
+    // SAFETY: `wide` is NUL-terminated and outlives the call; the three
+    // out-pointers are valid u64 locals the call only writes.
+    unsafe {
+        GetDiskFreeSpaceExW(
+            PCWSTR(wide.as_ptr()),
+            Some(&mut available as *mut u64),
+            Some(&mut total as *mut u64),
+            Some(&mut free as *mut u64),
+        )
     }
+    .map_err(|e| std::io::Error::other(e.to_string()))?;
+    Ok(FilesystemSpace {
+        total,
+        free,
+        available,
+    })
 }
 
 /// Build a map of device paths to volume labels from /dev/disk/by-label/.

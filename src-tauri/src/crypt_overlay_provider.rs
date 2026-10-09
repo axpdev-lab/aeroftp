@@ -1892,9 +1892,10 @@ fn local_headerless_config_from_params(
 /// rebuild one) and must not mistake "could not look" for "nothing there".
 /// `Ok(None)` is a scope confirmed absent.
 ///
-/// A listing `NotFound` alone is not that confirmation: SFTP maps every
-/// listing failure except a timeout to `NotFound`, a permission denial
-/// included, and other providers are not uniform either. So a `NotFound` is
+/// A listing `NotFound` alone is not that confirmation: a provider may report a
+/// folder it cannot read as `NotFound` (SFTP did for every listing failure but
+/// a timeout until it kept `NotFound` for `NO_SUCH_FILE`), and providers are
+/// not uniform. So a `NotFound` is
 /// checked with `exists()`, and only a scope that `exists()` also reports
 /// absent counts as absent; one that exists, or whose check fails, is an
 /// error, so the caller refuses over contents it could not inspect.
@@ -3785,8 +3786,8 @@ mod tests {
         /// Behave like an FTP server without MLSD whose `LIST -a` failed:
         /// `exists()` and `list()` miss dotfiles, a download still finds them.
         hide_dotfiles: bool,
-        /// Every listing answers `NotFound`, as SFTP does for a folder it is not
-        /// allowed to read.
+        /// Every listing answers `NotFound`, as a provider does when it cannot tell
+        /// a folder it may not read from a missing one.
         listing_says_not_found: bool,
         /// Downloads of dotfiles fail with this error, as on a remote that stopped
         /// answering or a marker the server will not let us read.
@@ -5230,7 +5231,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_listing_not_found_on_an_existing_scope_never_creates_or_rebuilds() {
-        // SFTP reports a folder it may not read as NotFound. Taken at its word,
+        // Some providers report a folder they may not read as NotFound (SFTP did
+        // until it kept NotFound for NO_SUCH_FILE). Taken at its word,
         // the rebuild saw "nothing to verify" and the GUI bootstrap minted a new
         // vault over files it never saw. The folder exists, so both refuse and
         // nothing is written.
