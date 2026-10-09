@@ -42,7 +42,7 @@ import { secureGetWithFallback } from '../utils/secureStorage';
 import { loadOAuthClientCredentials } from '../utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable } from '../utils/oauthKeysMissing';
 import { dispatchMasterPasswordChanged } from '../utils/masterPasswordEvents';
-import { loadSavedServerProfiles, loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfiles, readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../utils/serverProfileStore';
 import { appendImportedProfiles } from './bridge/bridgeImportCommit';
 import {
     DEFAULT_APP_FONT_FAMILY,
@@ -819,12 +819,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             const scope = await bindSettingsScope(new ConnectScope(() => { if (!panelOpen.current) throw new GuiError('lease_interrupted'); }));
             // General settings must not replace a newer/unavailable partition
             // with the list captured when this dialog was opened.
-            const currentServers = await loadSavedServerProfilesStrict();
+            const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
             const committed = await updateAppSettings(existing => mergeAppSettingsDraft(base, captured,
                 { ...base, ...(existing || {}) }) as unknown as Record<string, unknown>, scope, true) as unknown as AppSettings;
             settingsBase.current = committed;
             setSettings(current => mergeAppSettingsDraft(captured, current, committed));
-            await storeSavedServerProfiles(currentServers);
+            await storeSavedServerProfiles(currentServers, false, profilesUserId);
             // Save OAuth secrets to secure credential store sequentially (avoid vault write races)
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {

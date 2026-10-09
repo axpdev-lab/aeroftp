@@ -54,8 +54,25 @@ export const listUsers = (): Promise<UserMetadata[]> =>
 export const loadActiveServerProfiles = (): Promise<ServerProfile[]> =>
     invoke<ServerProfile[]>('user_partitions_load_active_server_profiles');
 
-export const saveActiveServerProfiles = (profiles: ServerProfile[]): Promise<void> =>
-    invoke<void>('user_partitions_save_active_server_profiles', { profiles });
+/** The active account's profiles and that account's id, read together. */
+export interface ScopedServerProfiles {
+    userId: number;
+    profiles: ServerProfile[];
+}
+
+export const loadActiveServerProfilesScoped = (): Promise<ScopedServerProfiles> =>
+    invoke<ScopedServerProfiles>('user_partitions_load_active_server_profiles_scoped');
+
+/**
+ * Replace the active account's profiles. With `expectedUserId` (from
+ * {@link loadActiveServerProfilesScoped}) the backend refuses the write with
+ * `ACCOUNT_CHANGED` when another account became active since that read.
+ */
+export const saveActiveServerProfiles = (profiles: ServerProfile[], expectedUserId?: number): Promise<void> =>
+    invoke<void>(
+        'user_partitions_save_active_server_profiles',
+        expectedUserId === undefined ? { profiles } : { profiles, expectedUserId },
+    );
 
 export const addUser = (
     name: string,
@@ -81,14 +98,29 @@ export const copyUser = (
 ): Promise<UserMetadata> =>
     invoke<UserMetadata>('user_partitions_copy_user', { sourceUserId, newName });
 
+// Counts account switches and locks, bumped when one starts and again when it
+// settles. A profile list read or written across a change may belong to the
+// other account, so its reader compares the count at both ends.
+let accountChanges = 0;
+export const accountChangeGeneration = (): number => accountChanges;
+
+const changingAccount = async <T>(run: () => Promise<T>): Promise<T> => {
+    accountChanges += 1;
+    try {
+        return await run();
+    } finally {
+        accountChanges += 1;
+    }
+};
+
 export const unlockUser = (
     userId: number,
     passphrase?: string | null,
 ): Promise<UserUnlockStatus> =>
-    invoke<UserUnlockStatus>('user_partitions_unlock_user', { userId, passphrase });
+    changingAccount(() => invoke<UserUnlockStatus>('user_partitions_unlock_user', { userId, passphrase }));
 
 export const lockUserSession = (): Promise<void> =>
-    invoke<void>('user_partitions_lock_session');
+    changingAccount(() => invoke<void>('user_partitions_lock_session'));
 
 export const getUnlockStatus = (): Promise<UserUnlockStatus> =>
     invoke<UserUnlockStatus>('user_partitions_unlock_status');

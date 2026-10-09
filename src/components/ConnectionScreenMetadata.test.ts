@@ -51,9 +51,12 @@ beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.log.mockReset();
     onFormSaved = vi.fn<() => void>();
-    mocks.invoke.mockImplementation(async (command: string, args?: { profiles?: ServerProfile[] }) => {
+    mocks.invoke.mockImplementation(async (command: string, args?: { profiles?: ServerProfile[]; expectedUserId?: number }) => {
         if (command === 'user_partitions_load_active_server_profiles') return structuredClone(profiles);
+        if (command === 'user_partitions_load_active_server_profiles_scoped') return { userId: 1, profiles: structuredClone(profiles) };
         if (command === 'user_partitions_save_active_server_profiles') {
+            // Every edit Save writes back to the account it read.
+            expect(args!.expectedUserId).toBe(1);
             // Match the vault's JSON roundtrip, including removal of undefined fields.
             profiles = JSON.parse(JSON.stringify(args!.profiles));
             return;

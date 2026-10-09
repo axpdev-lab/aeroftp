@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { ServerProfile } from '../../types';
-import { loadSavedServerProfilesStrict, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 export interface CommitOutcome {
     added: number;
@@ -22,7 +22,7 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  *
  * Two properties every import callback needs, and three of the four call sites
  * had both wrong. The vault is the only ground truth, read through
- * `loadSavedServerProfilesStrict` so that an empty result means an empty vault
+ * `readSavedServerProfilesForWrite` so that an empty result means an empty vault
  * and never a vault that could not be reached; it can be empty precisely
  * because `commitImportedServers` has just removed the profiles it is
  * replacing, and falling back to the component's own snapshot in that case puts
@@ -32,9 +32,9 @@ export const bridgeProfileKey = (s: Pick<ServerProfile, 'host' | 'port' | 'usern
  * them.
  */
 export async function appendImportedProfiles(newServers: ServerProfile[]): Promise<ServerProfile[]> {
-    const current = await loadSavedServerProfilesStrict();
+    const { profiles: current, userId } = await readSavedServerProfilesForWrite();
     const merged = [...current, ...newServers];
-    await storeSavedServerProfiles(merged);
+    await storeSavedServerProfiles(merged, false, userId);
     return merged;
 }
 
@@ -61,8 +61,9 @@ export async function commitImportedServers(
     // profiles yet reads as an empty list, not as a failure, so refusing here
     // costs a first import nothing.
     let backup: ServerProfile[];
+    let backupUserId: number | undefined;
     try {
-        backup = await loadSavedServerProfilesStrict();
+        ({ profiles: backup, userId: backupUserId } = await readSavedServerProfilesForWrite());
     } catch {
         return {
             added: 0,
@@ -75,7 +76,7 @@ export async function commitImportedServers(
         if (updated.length > 0 && backup.length > 0) {
             const updatedKeys = new Set(updated.map(key));
             const filtered = backup.filter(s => !updatedKeys.has(key(s)));
-            await storeSavedServerProfiles(filtered);
+            await storeSavedServerProfiles(filtered, false, backupUserId);
         }
         await onImport([...updated, ...added]);
     } catch {
@@ -83,7 +84,7 @@ export async function commitImportedServers(
         // made when the rollback actually succeeded. A failed restore leaves the
         // profiles this call removed gone, and saying nothing happened would
         // send the user away from the one screen they need to look at.
-        const restored = await storeSavedServerProfiles(backup).then(() => true, () => false);
+        const restored = await storeSavedServerProfiles(backup, false, backupUserId).then(() => true, () => false);
         return {
             added: 0,
             updated: 0,

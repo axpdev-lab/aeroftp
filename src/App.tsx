@@ -465,7 +465,7 @@ import {
   PROFILES_CHANGED_EVENT,
 } from './utils/serverProfileStore';
 import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
-import { loadSavedServerProfilesStrict } from './utils/serverProfileStore';
+import { readSavedServerProfilesForWrite } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
 import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
@@ -2037,7 +2037,7 @@ const App: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
-        const profiles = await loadSavedServerProfilesStrict();
+        const { profiles: profiles, userId: profilesUserId } = await readSavedServerProfilesForWrite();
         const { migrated, changed } = await migrateFilenApiKeysToVault(
           profiles,
           (account, key) => invoke('store_credential', { account, password: key }) as Promise<void>,
@@ -2045,7 +2045,7 @@ const App: React.FC = () => {
         );
         if (cancelled) return;
         if (changed) {
-          await storeSavedServerProfiles(migrated);
+          await storeSavedServerProfiles(migrated, false, profilesUserId);
           setServersRefreshKey(k => k + 1);
         }
         if (migrated.every((p) => !p.options?.filen_api_key)) {
@@ -8197,12 +8197,12 @@ const App: React.FC = () => {
     ));
     // Update saved servers in vault (localStorage may be empty after vault migration)
     try {
-      const servers = await loadSavedServerProfilesStrict();
+      const { profiles: servers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
       if (servers) {
         const idx = servers.findIndex(s => s.id === serverId || s.name === serverId || s.host === serverId);
         if (idx !== -1) {
           servers[idx].faviconUrl = faviconUrl;
-          await storeSavedServerProfiles(servers);
+          await storeSavedServerProfiles(servers, false, profilesUserId);
           setServersRefreshKey(k => k + 1);
         }
       }
@@ -14754,7 +14754,7 @@ const App: React.FC = () => {
   const mergeImportedServerProfiles = useCallback(async (importedServers: ImportedServerProfile[]) => {
     // Strict: this merge writes the whole list back, so a partition it could
     // not read must not arrive here as an empty one.
-    const currentServers = await loadSavedServerProfilesStrict();
+    const { profiles: currentServers, userId: profilesUserId } = await readSavedServerProfilesForWrite();
     const existingIds = new Set(currentServers.map(s => s.id));
 
     const newServers: ServerProfile[] = importedServers
@@ -14792,7 +14792,7 @@ const App: React.FC = () => {
       }));
 
     if (newServers.length > 0) {
-      await storeSavedServerProfiles([...currentServers, ...newServers]);
+      await storeSavedServerProfiles([...currentServers, ...newServers], false, profilesUserId);
       setServersRefreshKey(k => k + 1);
     }
 
@@ -16650,12 +16650,10 @@ const App: React.FC = () => {
               // the queued plan from dispatching.
               (async () => {
                 try {
-                  const profiles = await loadSavedServerProfiles();
-                  const idx = profiles.findIndex((p) => p.id === prompt.profileId);
-                  if (idx >= 0) {
-                    profiles[idx] = { ...profiles[idx], skipDeltaEligibilityPrompt: true };
-                    await storeSavedServerProfiles(profiles);
-                  }
+                  await mergeSavedServerProfile(prompt.profileId, (profile) => ({
+                    ...profile,
+                    skipDeltaEligibilityPrompt: true,
+                  }));
                 } catch (err) {
                   if (debugMode) {
                     // eslint-disable-next-line no-console

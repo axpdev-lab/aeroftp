@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { ConnectionParams, ServerProfile } from '../../types';
 import { IntroHubHeader, FormTab } from './IntroHubHeader';
 import { applyFormTabReorder } from './formTabReorder';
+import { findOpenEditTab, markEditSessionEnded } from './editFormTabs';
 import { MyServersPanel } from './MyServersPanel';
 import { DiscoverPanel } from './DiscoverPanel';
 import { PortableIsolationBanner } from './PortableIsolationBanner';
@@ -30,6 +31,7 @@ interface FormTabState extends FormTab {
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
     originTab?: string;
+    editSessionEnded?: boolean;
     /** Original label set at tab creation: used as fallback when server field is empty */
     defaultLabel: string;
     /** User-typed connection name: takes priority over server-derived label */
@@ -264,8 +266,10 @@ export function IntroHub(props: IntroHubProps) {
 
     // Create a form tab for editing a saved server
     const handleEdit = useCallback((profile: ServerProfile) => {
-        // If already editing this server, switch to existing tab
-        const existing = formTabs.find(ft => ft.editingProfile?.id === profile.id);
+        // If a tab is still editing this server, switch to it (its draft may
+        // be unsaved). A tab whose edit session ended no longer edits the
+        // profile, so Edit opens a fresh tab from the current profile.
+        const existing = findOpenEditTab(formTabs, profile.id);
         if (existing) {
             setActiveTab(existing.id);
             return;
@@ -496,6 +500,7 @@ export function IntroHub(props: IntroHubProps) {
                             onQuickConnectDirsChange={(dirs) => updateFormTabDirs(formTab.id, dirs)}
                             onTabLabelChange={(name) => updateFormTabLabel(formTab.id, name)}
                             editingProfile={formTab.editingProfile}
+                            onEditSessionEnd={() => setFormTabs(prev => markEditSessionEnded(prev, formTab.id))}
                             onConnect={(overrideParams) => {
                                 // Pass params directly to avoid stale React state (#81).
                                 // Forward the override ConnectionScreen hands us (it carries
