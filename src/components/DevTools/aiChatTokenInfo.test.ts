@@ -82,11 +82,18 @@ describe('the date of the price list', () => {
     });
 
     it('says nothing about cost for a model without prices', () => {
-        for (const model of [undefined, {}, { inputCostPer1k: 0, outputCostPer1k: 0, priceReviewedAt: '2026-10-08' }]) {
+        for (const model of [undefined, {}]) {
             const info = computeTokenInfo(1000, 1000, undefined, model, 0, 0, NOW)!;
             expect(info.cost).toBeUndefined();
             expect(info.costWithheld).toBeUndefined();
         }
+    });
+
+    it('prices a free model at zero, a known amount rather than an unknown one', () => {
+        // A local model: nothing to estimate and nothing to date.
+        const info = computeTokenInfo(1000, 1000, undefined, { inputCostPer1k: 0, outputCostPer1k: 0 }, 0, 0, NOW)!;
+        expect(info.cost).toBe(0);
+        expect(info.costWithheld).toBeUndefined();
     });
 
     it('reads a date it cannot parse as no date, and a date ahead of the clock as current', () => {
@@ -94,6 +101,25 @@ describe('the date of the price list', () => {
         expect(priceListStatus('next week', NOW)).toBe('undated');
         expect(priceListStatus('2026-13-45', NOW)).toBe('undated');
         expect(priceListStatus('2026-10-20', NOW)).toBe('current');
+    });
+});
+
+describe('the token count', () => {
+    const sonnet = spec('claude-sonnet-5-5');
+
+    it('counts the cached input Anthropic reports apart from input_tokens', () => {
+        // Streaming: no provider total, the sum is ours.
+        const streamed = computeTokenInfo(3429, 414, undefined, sonnet, 120, 6763, NOW)!;
+        expect(streamed.totalTokens).toBe(3429 + 414 + 120 + 6763);
+        // Non-streaming: the backend's tokens_used is input plus output only.
+        const whole = computeTokenInfo(3429, 414, 3429 + 414, sonnet, 120, 6763, NOW)!;
+        expect(whole.totalTokens).toBe(3429 + 414 + 120 + 6763);
+    });
+
+    it('keeps a reply whose usage is all cached input', () => {
+        const info = computeTokenInfo(0, 0, undefined, sonnet, 0, 5000, NOW);
+        expect(info?.totalTokens).toBe(5000);
+        expect(info?.cost).toBeGreaterThan(0);
     });
 });
 

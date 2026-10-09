@@ -20,10 +20,10 @@ describe('delegation spending', () => {
         expect(mocks.record).toHaveBeenCalledWith('provider', 3.5, 1500, 'chat');
         expect(result.tokenInfo?.cost).toBe(3.5); expect(result.result.answer).toBe('done');
     });
-    it('records the tokens but no money when the prices carry no review date', async () => {
+    it('records the tokens and an unknown amount, not $0, when the prices carry no review date', async () => {
         const dispatch = vi.fn(async () => ({ answer: 'done', inputTokens: 1000, outputTokens: 500 }));
         const result = await runBudgetedDelegation('provider', { inputCostPer1k: 2, outputCostPer1k: 3 }, 'chat', dispatch, vi.fn());
-        expect(mocks.record).toHaveBeenCalledWith('provider', 0, 1500, 'chat');
+        expect(mocks.record).toHaveBeenCalledWith('provider', undefined, 1500, 'chat');
         expect(result.tokenInfo?.cost).toBeUndefined(); expect(result.tokenInfo?.costWithheld).toBe('undated');
     });
     it('does not invent provider usage when dispatch fails', async () => {

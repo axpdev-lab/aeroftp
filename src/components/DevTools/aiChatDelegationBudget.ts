@@ -14,7 +14,8 @@ export async function runBudgetedDelegation<T extends { inputTokens: number; out
     const tokenInfo = computeTokenInfo(result.inputTokens, result.outputTokens, undefined, model);
     // Successful calls have been billed even if the view was cancelled while
     // they completed. Record usage before the caller's view/current-turn checks.
-    const updated = await recordSpending(providerId, tokenInfo?.cost || 0,
+    // No usage means no cost; usage without an estimate stays unknown.
+    const updated = await recordSpending(providerId, tokenInfo ? tokenInfo.cost : 0,
         result.inputTokens + result.outputTokens, conversationId);
     onBudget(updated);
     return { result, tokenInfo };

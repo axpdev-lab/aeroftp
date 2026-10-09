@@ -103,12 +103,11 @@ export function computeTokenInfo(
     cacheReadTokens?: number,
     now: Date = new Date(),
 ): Message['tokenInfo'] | undefined {
-    if (!inputTokens && !outputTokens && !tokensUsed) return undefined;
-
     const input = inputTokens || 0;
     const output = outputTokens || 0;
     const written = cacheCreationTokens || 0;
     const read = cacheReadTokens || 0;
+    if (!input && !output && !tokensUsed && !written && !read) return undefined;
     const pricing = modelCost?.pricing;
 
     let cost: number | undefined;
@@ -151,10 +150,16 @@ export function computeTokenInfo(
     const tokens = {
         inputTokens,
         outputTokens,
-        totalTokens: tokensUsed ?? (input + output),
+        // Anthropic reports cache writes and reads apart from `input_tokens`,
+        // and the backend's `tokens_used` is input plus output only; no other
+        // provider fills the cache fields, so adding them never counts twice.
+        totalTokens: (tokensUsed ?? (input + output)) + written + read,
         cacheCreationTokens,
         cacheReadTokens,
     };
+    // A model priced at zero (a local one) costs nothing: a known amount,
+    // with no price list to date.
+    if (modelCost?.inputCostPer1k === 0 && modelCost?.outputCostPer1k === 0) return { ...tokens, cost: 0 };
     if (cost === undefined) return tokens;
     // The tokens are the provider's count; the money is ours, from a price
     // list that ages. Without a date, or past 90 days, no amount is shown,

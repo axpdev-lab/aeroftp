@@ -2832,9 +2832,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                     // Phase 4: Record spending for cost budget tracking
                     if (tokenInfo && activeModel) {
-                        const cost = tokenInfo.cost || 0;
-                        const tokens = (streamResult.inputTokens || 0) + (streamResult.outputTokens || 0);
-                        recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                        // An amount that could not be estimated stays unknown: the budget counts it apart, never as $0.
+                        recordSpending(activeModel.providerId, tokenInfo.cost, tokenInfo.totalTokens ?? 0, activeConversationId || undefined)
                             .then(result => setBudgetCheck(result));
                     }
 
@@ -2948,9 +2947,8 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
 
                     // Phase 4: Record spending for cost budget tracking (non-streaming path)
                     if (tokenInfo && activeModel) {
-                        const cost = tokenInfo.cost || 0;
-                        const tokens = response.tokens_used || ((response.input_tokens || 0) + (response.output_tokens || 0));
-                        recordSpending(activeModel.providerId, cost, tokens, activeConversationId || undefined)
+                        // An amount that could not be estimated stays unknown: the budget counts it apart, never as $0.
+                        recordSpending(activeModel.providerId, tokenInfo.cost, tokenInfo.totalTokens ?? 0, activeConversationId || undefined)
                             .then(result => setBudgetCheck(result));
                     }
 
