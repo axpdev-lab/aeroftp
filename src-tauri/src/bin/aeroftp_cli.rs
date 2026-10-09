@@ -27562,6 +27562,7 @@ fn cmd_agent_info(cli: &Cli, redact_identifiers: bool) -> i32 {
         "twake",
         "github",
         "gitlab",
+        "local",
     ]
     .into_iter()
     .map(|protocol| {

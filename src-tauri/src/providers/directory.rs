@@ -120,6 +120,22 @@ impl DirectoryProvider {
         }
     }
 
+    /// What a local folder declares: the whole-file, single-slot surface,
+    /// plus what the methods of this provider implement for it (resume,
+    /// server copy, computed digests). It needs no connection, so agent-info
+    /// reads the same value for `local` without opening a folder.
+    pub fn local_transfer_capabilities() -> TransferCapabilities {
+        let mut caps = MtpProvider::honest_transfer_capabilities();
+        caps.preferred_download_segments = Some(
+            crate::transfer_settings::download_segments_preference_for(ProviderType::Local),
+        );
+        caps.resume_download = Capability::Supported;
+        caps.resume_upload = Capability::Supported;
+        caps.server_side_copy = Capability::Supported;
+        caps.server_checksum = Capability::Supported;
+        caps
+    }
+
     fn is_local(&self) -> bool {
         self.identity == DirectoryIdentity::Local
     }
@@ -965,11 +981,19 @@ impl StorageProvider for DirectoryProvider {
     /// destination and renamed onto it, so a reader never sees half a file
     /// and an interrupted copy leaves the destination as it was. A file at
     /// the destination is replaced, as `cp` does; a folder there is refused.
+    /// A link at the destination is written through to the file it names
+    /// (inside the root), as `cp` and `upload` do, instead of being replaced.
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.local_only("server_copy")?;
         let (_, src) = self.resolve_file(from)?;
         let to_v = self.virtual_path(to)?;
-        let dest = self.resolve_for_create(&to_v)?;
+        let mut dest = self.resolve_for_create(&to_v)?;
+        if dest
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            dest = self.contained(&dest)?;
+        }
         if dest.is_dir() {
             return Err(ProviderError::AlreadyExists(format!(
                 "{to_v} is a directory"
@@ -1030,21 +1054,17 @@ impl StorageProvider for DirectoryProvider {
     }
 
     fn transfer_capabilities(&self) -> TransferCapabilities {
-        // Same honest surface as exclusive libmtp: whole-file, single slot.
-        // Nothing here ranges, resumes or runs in parallel yet, and a
-        // capability is declared only where the code above provides it.
-        let mut caps = MtpProvider::honest_transfer_capabilities();
-        caps.preferred_download_segments = Some(
-            crate::transfer_settings::download_segments_preference_for(self.provider_type()),
-        );
-        if self.is_local() {
-            // What the methods above implement for a local folder.
-            caps.resume_download = Capability::Supported;
-            caps.resume_upload = Capability::Supported;
-            caps.server_side_copy = Capability::Supported;
-            caps.server_checksum = Capability::Supported;
+        match self.identity {
+            // Same honest surface as exclusive libmtp: whole-file, single slot.
+            DirectoryIdentity::Mtp { .. } => {
+                let mut caps = MtpProvider::honest_transfer_capabilities();
+                caps.preferred_download_segments = Some(
+                    crate::transfer_settings::download_segments_preference_for(ProviderType::Mtp),
+                );
+                caps
+            }
+            DirectoryIdentity::Local => Self::local_transfer_capabilities(),
         }
-        caps
     }
 
     fn supports_delta_sync(&self) -> bool {
@@ -1867,5 +1887,35 @@ mod tests {
         let phone = connected(dir.path()).await;
         let caps = phone.transfer_capabilities();
         assert!(!caps.resume_download.is_available() && !caps.server_checksum.is_available());
+    }
+
+    /// agent-info answers for `local` with what the provider declares, not
+    /// with capabilities derived from generic hints.
+    #[tokio::test]
+    async fn agent_info_and_the_provider_declare_the_same_local_capabilities() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let p = local(dir.path()).await;
+        let live = serde_json::to_value(p.transfer_capabilities()).unwrap();
+        let declared = serde_json::to_value(
+            crate::agent_session::transfer_capabilities_for_protocol("local").expect("local"),
+        )
+        .unwrap();
+        assert_eq!(declared, live);
+    }
+
+    /// A copy onto a link writes the file the link names, as `cp` and
+    /// `upload` do; the link stays a link.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_copy_onto_a_link_writes_the_file_it_names() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), b"new").unwrap();
+        std::fs::write(dir.path().join("b.txt"), b"old").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("b.txt"), dir.path().join("l.txt")).unwrap();
+        let mut p = local(dir.path()).await;
+        p.server_copy("/a.txt", "/l.txt").await.unwrap();
+        assert_eq!(std::fs::read(dir.path().join("b.txt")).unwrap(), b"new");
+        let link = dir.path().join("l.txt").symlink_metadata().unwrap();
+        assert!(link.file_type().is_symlink());
     }
 }
