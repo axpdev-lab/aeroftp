@@ -931,9 +931,15 @@ impl StorageProvider for ProtonCliProvider {
         let remote = self.resolve_path(remote_path);
         let parent = parent_of(&remote);
         ensure_parent_writable(&parent)?;
-        if let Some(ref cb) = on_progress {
-            cb(0, 0);
-        }
+        // The official CLI writes no progress outside its debug log, which is
+        // not a stable interface and carries the blocks' upload tokens, so the
+        // bar opens at 0 and reaches 100 when the CLI has returned. It used to
+        // open with `(0, 0)`, which reads as an empty upload already done.
+        let size = std::fs::metadata(local_path)
+            .map_err(ProviderError::IoError)?
+            .len();
+        let progress = super::upload_progress::UploadProgress::new(on_progress, size);
+        progress.start();
         let local_cli = normalize_local_path_for_cli(local_path);
         let local_name = basename(&local_cli.replace('\\', "/"));
         let dest_name = basename(&remote);
@@ -963,12 +969,7 @@ impl StorageProvider for ProtonCliProvider {
         }
         result.map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
 
-        if let Some(ref cb) = on_progress {
-            match std::fs::metadata(local_path) {
-                Ok(meta) => cb(meta.len(), meta.len()),
-                Err(_) => cb(1, 1),
-            }
-        }
+        progress.complete();
         Ok(())
     }
 

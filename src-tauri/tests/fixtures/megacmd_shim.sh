@@ -1,6 +1,6 @@
 #!/bin/sh
-# Stand-in for MEGAcmd's `mega-ls` and `mega-mv`, used by the rename tests in
-# src/providers/mega.rs, which link both names to this one file. It is a
+# Stand-in for MEGAcmd's `mega-ls`, `mega-mv`, `mega-rm` and `mega-put`, used
+# by the tests in src/providers/mega.rs, which link the names to this one file. It is a
 # checked-in executable on purpose: a test that writes a script and then runs
 # it can fail with ETXTBSY (see `link_shim` in src/providers/proton.rs).
 #
@@ -58,6 +58,36 @@ case "$(basename "$0")" in
         ;;
     mega-mv)
         echo "$1 $2" >> "$here/mv.log"
+        ;;
+    mega-put)
+        # Progress lines as MEGAcmd 2.6 writes them through a pipe: on
+        # stderr, each ended by a NUL and a carriage return, at 10, 50 and 90
+        # percent; then "Upload finished" on stdout and the last line. A file put-fails makes it refuse after two progress lines; a file put-slow spaces
+        # five lines 0.4 s apart (2 s in all); a file put-stalls prints one
+        # line and then says nothing for 3 s.
+        if [ -f "$here/put-fails" ]; then
+            printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
+            printf 'TRANSFERRING ||####..........||(6/30 MB:  20.00 %%) \000\r' >&2
+            echo "Upload failed: Access denied" >&2
+            exit 2
+        fi
+        if [ -f "$here/put-stalls" ]; then
+            printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
+            sleep 3
+            exit 0
+        fi
+        if [ -f "$here/put-slow" ]; then
+            for p in 10.00 30.00 50.00 70.00 90.00; do
+                printf 'TRANSFERRING ||####..........||(9/30 MB:  %s %%) \000\r' "$p" >&2
+                sleep 0.4
+            done
+        else
+            for p in 10.00 50.00 90.00; do
+                printf 'TRANSFERRING ||####..........||(9/30 MB:  %s %%) \000\r' "$p" >&2
+            done
+        fi
+        printf '\nUpload finished: %s\n' "$2"
+        printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
         ;;
     *)
         echo "unhandled $0 $*" >&2
