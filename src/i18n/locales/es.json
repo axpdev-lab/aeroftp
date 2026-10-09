@@ -6151,7 +6151,25 @@
                 "settings_open": "Abrir configuración",
                 "settings_read": "Inspeccionar configuración",
                 "settings_update": "Actualizar configuración",
-                "settings_close": "Cerrar configuración"
+                "settings_close": "Cerrar configuración",
+                "tools_open": "Abrir herramientas",
+                "tools_read": "Inspeccionar herramientas",
+                "tools_close": "Cerrar herramientas"
+            },
+            "speed": "Velocidad de control",
+            "pause": "Pausar",
+            "resume": "Reanudar",
+            "paused": "En pausa",
+            "preferences": "Control del agente",
+            "defaultSpeed": "Velocidad de control predeterminada (%)",
+            "presets": "Velocidades predefinidas (%)",
+            "preset": "Preajuste {index}",
+            "fallback": "Acción mostrada en la insignia",
+            "preferencesDescription": "Los cambios aquí se aplican a futuras sesiones. Usa la insignia para ajustar la sesión actual.",
+            "speedSource": {
+                "default": "Valor predeterminado de ajustes",
+                "agent": "Solicitada para esta sesión",
+                "human": "Modificada por ti"
             }
         }
     }

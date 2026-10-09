@@ -36,7 +36,7 @@ When the user explicitly requests visible work in the AeroFTP GUI, use the seman
 |------|-----------|----------|
 | `gui_state` | `{}` | Safe snapshot of the main window; no credentials |
 | `gui_wait` | `condition`, optional `timeout_ms` | Wait for `connected`, `disconnected`, `idle` or `unlocked` |
-| `gui_run` | `intent` plus the fields below; optional `if_revision`, `timeout_ms` | Approved GUI action through the normal UI handlers |
+| `gui_run` | `intent` plus the fields below; optional `if_revision`, `timeout_ms`, initial `speed_percent` | Approved GUI action through the normal UI handlers |
 
 The current closed action catalog is:
 
@@ -78,12 +78,16 @@ Replies contain `ok`, a bounded `error` code and `snapshot`. The snapshot includ
 
 Handle outcomes explicitly:
 
+- `paused`: no new handler was dispatched. Wait for the human to Resume, observe state, then obtain a fresh approved request; Resume never replays the refused request. An action already dispatched before Pause returns its actual outcome.
+- `speed_locked`: the initial session speed has already been established or the human has overridden it. Omit the speed field on subsequent requests.
 - `pending_human`: a host-key confirmation, locked overlay or other human step needs attention. Agent control yields; do not answer secret/security prompts automatically. After the human resolves it, observe state and obtain a fresh approved request. A late answer cannot revive the interrupted request.
 - `stale_state`, `busy`, `blocked`: observe current state and the blocking condition before considering another action. Do not guess or race it.
 - `locked`: let the user unlock through the ordinary GUI. Never read or fill the master-password field through controller tools.
 - `lease_interrupted`, `gui_timeout`, `action_failed`: report the outcome and inspect current state. Do not automatically retry a cancelled or timed-out mutation; its underlying work may still be settling.
 
 The control banner identifies agent activity and exposes Stop. Trusted human input, account/profile changes and lock interrupt control. Stop remains available while locked or busy. Transfers retain the app's existing soft-first/hard-second Stop behavior; per-queue-item stopping is not part of this catalog.
+
+The presentation cursor only illustrates semantic actions; it never clicks a DOM element. `snapshot.control`, when unlocked and a lease is visible, contains bounded `speed_percent`, `speed_source` (`default`, `agent`, `human`), `paused` and `phase`. Presentation changes do not change the application `state_revision`. On the first mutating request of a logical session, `speed_percent` may be an integer from 10 to 400 **only when the user explicitly requested that session speed**. Omit it to use Settings. Observations and Stop never accept speed. Idle expiry, an error or Stop do not reopen this initial choice. Lock/account boundaries end the session. Only the human may adjust the badge slider, Pause/Resume or Settings defaults/presets; these are excluded from public agent tools and settings deltas. Human speed changes apply at the next presentation phase and never persist as a default. DEV scripts retain full test access.
 
 General Settings accepts only booleans `showHiddenFiles`, `showStatusBar`, `showTransferProgress`, `compactMode`, `swapPanels`, `sortFoldersFirst`, `showFileExtensions`, `showToastNotifications`, `discoverHealthCheck`; integers `fontSize` (10–22), `introHubIconSize` (18–32); choices `dateFormat` (`localized`, `iso`, `dmy`, `mdy`), `cardLayout` (`compact`, `detailed`), `favoriteMarker` (`star`, `heart`), and `fontFamily` (`'Inter', system-ui, sans-serif`, `system-ui, -apple-system, sans-serif`, `'FiraGO', sans-serif`, `'Noto Sans', sans-serif`, `'JetBrains Mono', monospace`). Deletion confirmation, security, backup, cloud credentials, transfer policy, paths, sharing and startup settings are excluded. An owned general panel must remain on its safe tab; a human-opened or sensitive dialog blocks agent control.
 

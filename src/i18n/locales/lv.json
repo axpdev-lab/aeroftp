@@ -6151,7 +6151,25 @@
                 "settings_open": "Atvērt iestatījumus",
                 "settings_read": "Pārbaudīt iestatījumus",
                 "settings_update": "Atjaunināt iestatījumus",
-                "settings_close": "Aizvērt iestatījumus"
+                "settings_close": "Aizvērt iestatījumus",
+                "tools_open": "Atvērt rīkus",
+                "tools_read": "Apskatīt rīkus",
+                "tools_close": "Aizvērt rīkus"
+            },
+            "speed": "Vadības ātrums",
+            "pause": "Pauzēt",
+            "resume": "Turpināt",
+            "paused": "Pauzēts",
+            "preferences": "Aģenta vadība",
+            "defaultSpeed": "Noklusējuma vadības ātrums (%)",
+            "presets": "Ātruma priekšiestatījumi (%)",
+            "preset": "Priekšiestatījums {index}",
+            "fallback": "Žetonā parādītā darbība",
+            "preferencesDescription": "Šeit veiktās izmaiņas attiecas uz turpmākajām sesijām. Izmantojiet žetonu, lai pielāgotu pašreizējo sesiju.",
+            "speedSource": {
+                "default": "Iestatījumu noklusējums",
+                "agent": "Pieprasīts šai sesijai",
+                "human": "Jūsu mainīts"
             }
         }
     }

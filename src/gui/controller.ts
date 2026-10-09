@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { isGuiSpeed, normalizeGuiPresentation, phaseDuration, type GuiControl, type GuiPhase, type GuiPresentationSettings } from './presentation';
 import { ConnectScope, type ProfileConnectOutcome } from './connectScope';
 import { TOOLS_INTENTS, TOOL_PANELS, buildToolsProjection, type ToolPanel, type GuiToolsProjection } from './toolsSchema';
 import { GuiError, type GuiErrorCode } from './errors';
@@ -38,6 +39,7 @@ export interface GuiSnapshot {
     queue: { active: number; pending: number; failed: number };
     settings?: GuiSettingsProjection;
     tools?: GuiToolsProjection;
+    control?: GuiControl;
 }
 const boundedText = (value: string) => value.slice(0, 4096);
 /** Explicit projection: never spread a session, credential form or provider options. */
@@ -89,7 +91,7 @@ export interface GuiHandlers {
 }
 export interface GuiRequest {
     name: string; args?: Record<string, unknown>; timeout_ms?: number;
-    if_revision?: number; pace?: 'watch' | 'fast';
+    if_revision?: number; pace?: 'watch' | 'fast'; speed_percent?: number;
 }
 export interface GuiReply { ok: boolean; error: GuiErrorCode | null; snapshot: GuiSnapshot; }
 export interface GuiActor { readonly id: string; readonly kind: 'aeroagent' | 'dev' | 'external'; readonly label: string; }
@@ -102,7 +104,7 @@ export function validateGuiActor(actor: GuiActor): void {
         !actor.label.trim() || new TextEncoder().encode(actor.label).length > 96 ||
         /[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(actor.label)) throw new GuiError('invalid_args');
 }
-export interface GuiLease { owner: GuiActor; intent: GuiIntent | null; panel?: GuiPanel; }
+export interface GuiLease { owner: GuiActor; intent: GuiIntent | null; panel?: GuiPanel; control?: GuiControl; request?: GuiRequest; durationMs?: number; }
 
 function record(value: unknown): asserts value is Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new GuiError('invalid_args');
@@ -115,11 +117,12 @@ function panelArg(args: Record<string, unknown>): GuiPanel {
     return args.panel as GuiPanel;
 }
 export function validateGuiRequest(request: GuiRequest): GuiIntent {
-    record(request); keys(request as unknown as Record<string, unknown>, ['name', 'args', 'timeout_ms', 'if_revision', 'pace']);
+    record(request); keys(request as unknown as Record<string, unknown>, ['name', 'args', 'timeout_ms', 'if_revision', 'pace', 'speed_percent']);
     if (!GUI_INTENTS.includes(request.name as GuiIntent)) throw new GuiError('unsupported_intent');
     if (request.timeout_ms !== undefined && (!Number.isInteger(request.timeout_ms) || request.timeout_ms < 100 || request.timeout_ms > 30000)) throw new GuiError('invalid_args');
     if (request.if_revision !== undefined && (!Number.isSafeInteger(request.if_revision) || request.if_revision < 0)) throw new GuiError('invalid_args');
     if (request.pace !== undefined && request.pace !== 'watch' && request.pace !== 'fast') throw new GuiError('invalid_args');
+    if (request.speed_percent !== undefined && (!isGuiSpeed(request.speed_percent) || ['state', 'wait', 'settings_read', 'tools_read', 'stop'].includes(request.name))) throw new GuiError('invalid_args');
     const args = request.args === undefined ? {} : request.args; record(args);
     switch (request.name) {
         case 'state': case 'stop': case 'disconnect': keys(args, []); break;
@@ -173,18 +176,22 @@ export class GuiController {
     private disposed = false;
     private pending = 0;
     private lease: GuiLease | null = null;
+    // Never evict a live-lifetime tombstone: idle/failure/Stop must not reopen speed selection.
+    private sessions = new Map<string, GuiControl & { started: boolean }>();
     private connectScope: ConnectScope | null = null;
     private settingsScope: ConnectScope | null = null;
     private expiry: ReturnType<typeof setTimeout> | undefined;
     constructor(private readonly source: () => GuiSource, private readonly handlers: () => GuiHandlers,
         private readonly changed: (lease: GuiLease | null) => void,
-        private readonly audit: (intent: GuiIntent, ok: boolean, owner: string) => void = () => {}) {}
+        private readonly audit: (intent: GuiIntent, ok: boolean, owner: string) => void = () => {},
+        private readonly preferences: () => GuiPresentationSettings = () => normalizeGuiPresentation(undefined)) {}
     get connecting(): boolean { return this.connectScope !== null; }
     state(): GuiSnapshot {
         const snapshot = buildGuiSnapshot(this.source());
         const fingerprint = JSON.stringify(snapshot);
         if (fingerprint !== this.fingerprint) { this.revision++; this.fingerprint = fingerprint; }
         snapshot.state_revision = this.revision;
+        if (!snapshot.locked && this.lease?.control) snapshot.control = { ...this.lease.control };
         return snapshot;
     }
     interrupt(): void {
@@ -192,7 +199,47 @@ export class GuiController {
         this.settingsScope?.cancel(new GuiError('lease_interrupted'));
         this.epoch++; this.lease = null; clearTimeout(this.expiry); this.changed(null);
     }
-    releaseActor(id: string): void { if (this.lease?.owner.id === id) this.interrupt(); }
+    private publish(): void {
+        if (this.lease) {
+            const { started: _started, ...control } = this.sessions.get(this.lease.owner.id)!;
+            this.lease = { ...this.lease, control };
+        }
+        this.changed(this.lease);
+    }
+    setHumanSpeed(value: number): void {
+        if (!isGuiSpeed(value) || !this.lease) return;
+        const control = this.sessions.get(this.lease.owner.id)!;
+        control.speed_percent = value; control.speed_source = 'human'; this.publish();
+    }
+    setPaused(value: boolean): void {
+        if (!this.lease) return;
+        this.sessions.get(this.lease.owner.id)!.paused = value; this.publish();
+    }
+    // Called by the debug-only native end event after the backend invalidates its handle.
+    // Ended DEV handles cannot be reused, so their tombstones need not occupy the cap.
+    releaseActor(id: string): void {
+        if (this.lease?.owner.id === id) this.interrupt();
+        this.sessions.delete(id);
+    }
+    private retain(): void {
+        clearTimeout(this.expiry);
+        this.expiry = setTimeout(() => this.interrupt(), 60000);
+    }
+    private async present(phase: GuiPhase, request: GuiRequest, owner: GuiActor, epoch: number, deadline: number): Promise<void> {
+        const control = this.sessions.get(owner.id)!;
+        control.phase = phase;
+        const ms = request.pace === 'fast' && control.speed_source !== 'human' ? 0 : phaseDuration(phase, control.speed_percent);
+        if (this.lease) this.lease = { ...this.lease, durationMs: ms };
+        this.publish();
+        const end = Date.now() + ms;
+        while (Date.now() < end) {
+            if (control.paused) throw new GuiError('paused');
+            await this.delay(Math.min(25, end - Date.now()), epoch, deadline);
+        }
+        this.guard(epoch, deadline);
+        if (control.paused) throw new GuiError('paused');
+    }
+    resetSessions(): void { this.interrupt(); this.sessions.clear(); }
     dispose(): void { this.disposed = true; this.interrupt(); }
     private guard(epoch: number, deadline: number, checkEpoch = true): void {
         if (this.disposed || (checkEpoch && epoch !== this.epoch)) throw new GuiError('lease_interrupted');
@@ -265,11 +312,32 @@ export class GuiController {
             if ((intent === 'navigate' || intent === 'refresh' || intent === 'select') &&
                 (!snapshot.panels[panelArg(args)] || snapshot.panels[panelArg(args)]?.loading)) throw new GuiError('blocked');
             if (args.panel === 'remote' && !snapshot.connected) throw new GuiError('not_connected');
+            let control = this.sessions.get(owner.id);
+            if (request.speed_percent !== undefined && control && (control.started || control.speed_source === 'human')) throw new GuiError('speed_locked');
+            if (!control) {
+                if (this.sessions.size >= 256) throw new GuiError('busy');
+                control = { speed_percent: request.speed_percent ?? normalizeGuiPresentation(this.preferences()).defaultSpeed,
+                    speed_source: request.speed_percent === undefined ? 'default' : 'agent', paused: false, phase: 'ready', started: false };
+                this.sessions.set(owner.id, control);
+            }
+            if (!['settings_read', 'tools_read'].includes(intent) && !control.started) {
+                if (request.speed_percent !== undefined) { control.speed_percent = request.speed_percent; control.speed_source = 'agent'; }
+                else if (control.speed_source === 'default') control.speed_percent = normalizeGuiPresentation(this.preferences()).defaultSpeed;
+                control.started = true;
+            }
+            if (control.paused) {
+                this.lease = { owner, intent: null }; this.publish(); this.retain();
+                throw new GuiError('paused');
+            }
             this.busy = true; ownsLane = true; laneEpoch = epoch;
-            this.lease = { owner, intent, ...(args.panel ? { panel: panelArg(args) } : {}) }; clearTimeout(this.expiry); this.changed(this.lease);
+            this.lease = { owner, intent, request, ...(args.panel ? { panel: panelArg(args) } : {}) }; clearTimeout(this.expiry); this.publish();
             // Watch pace yields after the banner renders. Revalidate before acting.
-            await this.delay(request.pace === 'fast' ? 0 : 250, epoch, deadline);
+            await this.present('move', request, owner, epoch, deadline);
+            await this.present('press', request, owner, epoch, deadline);
             if (this.state().state_revision !== snapshot.state_revision) throw new GuiError('stale_state');
+            if (this.source().locked) throw new GuiError('locked');
+            if (this.source().blocked) throw new GuiError('blocked');
+            control.phase = 'running'; this.publish();
             const h = this.handlers();
             handlerSettled = false;
             let handlerError: unknown;
@@ -384,9 +452,17 @@ export class GuiController {
             // A handler can already have acted when cancellation or timeout arrives.
             // Keep the mutation lane owned until that handler actually settles.
             this.guard(epoch, deadline);
-            this.lease = { owner, intent: null }; this.changed(this.lease);
-            this.expiry = setTimeout(() => this.interrupt(), 60000);
+            // The committed result is final. Reading dwell may be shortened, never turn success into timeout/cancellation.
             succeeded = true;
+            control.phase = 'dwell'; this.publish();
+            const dwell = request.pace === 'fast' && control.speed_source !== 'human' ? 0 : phaseDuration('dwell', control.speed_percent);
+            const end = Date.now() + Math.min(dwell, Math.max(0, deadline - Date.now() - 100));
+            while (Date.now() < end && epoch === this.epoch && !control.paused) {
+                await new Promise(resolve => setTimeout(resolve, Math.min(25, end - Date.now())));
+            }
+            if (epoch === this.epoch) {
+                control.phase = 'ready'; this.lease = { owner, intent: null }; this.publish(); this.retain();
+            }
             return { ok: true, error: null, snapshot: this.state() };
         } catch (error) {
             settingsScope?.cancel(error instanceof GuiError ? error : new GuiError('action_failed'));
@@ -395,7 +471,12 @@ export class GuiController {
                 connectScope.cancel(error instanceof GuiError ? error : new GuiError('action_failed'));
             }
             if (this.connectScope === connectScope) this.connectScope = null;
-            if (ownsLane && laneEpoch === this.epoch) this.interrupt();
+            if (ownsLane && laneEpoch === this.epoch) {
+                if (error instanceof GuiError && error.code === 'paused') {
+                    this.sessions.get(owner.id)!.phase = 'ready';
+                    this.lease = { owner, intent: null }; this.publish(); this.retain();
+                } else this.interrupt();
+            }
             return { ok: false, error: error instanceof GuiError ? error.code : 'action_failed', snapshot: this.state() };
         } finally {
             if (this.settingsScope === settingsScope) this.settingsScope = null;

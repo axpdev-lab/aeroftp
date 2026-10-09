@@ -6170,7 +6170,25 @@
                 "settings_open": "Ireki ezarpenak",
                 "settings_read": "Ikuskatu ezarpenak",
                 "settings_update": "Eguneratu ezarpenak",
-                "settings_close": "Itxi ezarpenak"
+                "settings_close": "Itxi ezarpenak",
+                "tools_open": "Ireki tresnak",
+                "tools_read": "Ikuskatu tresnak",
+                "tools_close": "Itxi tresnak"
+            },
+            "speed": "Kontrol-abiadura",
+            "pause": "Pausatu",
+            "resume": "Jarraitu",
+            "paused": "Pausatuta",
+            "preferences": "Agentearen kontrola",
+            "defaultSpeed": "Kontrol-abiadura lehenetsia (%)",
+            "presets": "Abiadura-aurrezarpenak (%)",
+            "preset": "Aurrezarpena {index}",
+            "fallback": "Bereizgarrian erakutsitako ekintza",
+            "preferencesDescription": "Hemengo aldaketak etorkizuneko saioei aplikatzen zaizkie. Erabili bereizgarria uneko saioa doitzeko.",
+            "speedSource": {
+                "default": "Ezarpenetako balio lehenetsia",
+                "agent": "Saio honetarako eskatua",
+                "human": "Zuk aldatua"
             }
         }
     }

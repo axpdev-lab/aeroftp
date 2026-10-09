@@ -6151,7 +6151,25 @@
                 "settings_open": "Mở cài đặt",
                 "settings_read": "Kiểm tra cài đặt",
                 "settings_update": "Cập nhật cài đặt",
-                "settings_close": "Đóng cài đặt"
+                "settings_close": "Đóng cài đặt",
+                "tools_open": "Mở công cụ",
+                "tools_read": "Kiểm tra công cụ",
+                "tools_close": "Đóng công cụ"
+            },
+            "speed": "Tốc độ điều khiển",
+            "pause": "Tạm dừng",
+            "resume": "Tiếp tục",
+            "paused": "Đã tạm dừng",
+            "preferences": "Điều khiển của tác nhân",
+            "defaultSpeed": "Tốc độ điều khiển mặc định (%)",
+            "presets": "Thiết lập sẵn tốc độ (%)",
+            "preset": "Thiết lập sẵn {index}",
+            "fallback": "Thao tác hiển thị trên huy hiệu",
+            "preferencesDescription": "Các thay đổi tại đây áp dụng cho những phiên sau. Dùng huy hiệu để điều chỉnh phiên hiện tại.",
+            "speedSource": {
+                "default": "Mặc định trong cài đặt",
+                "agent": "Được yêu cầu cho phiên này",
+                "human": "Do bạn thay đổi"
             }
         }
     }

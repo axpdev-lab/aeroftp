@@ -6151,7 +6151,25 @@
                 "settings_open": "Buka tetapan",
                 "settings_read": "Periksa tetapan",
                 "settings_update": "Kemas kini tetapan",
-                "settings_close": "Tutup tetapan"
+                "settings_close": "Tutup tetapan",
+                "tools_open": "Buka alat",
+                "tools_read": "Periksa alat",
+                "tools_close": "Tutup alat"
+            },
+            "speed": "Kelajuan kawalan",
+            "pause": "Jeda",
+            "resume": "Sambung semula",
+            "paused": "Dijeda",
+            "preferences": "Kawalan ejen",
+            "defaultSpeed": "Kelajuan kawalan lalai (%)",
+            "presets": "Pratetap kelajuan (%)",
+            "preset": "Pratetap {index}",
+            "fallback": "Tindakan yang dipaparkan dalam lencana",
+            "preferencesDescription": "Perubahan di sini terpakai pada sesi akan datang. Gunakan lencana untuk melaraskan sesi semasa.",
+            "speedSource": {
+                "default": "Lalai daripada tetapan",
+                "agent": "Diminta untuk sesi ini",
+                "human": "Diubah oleh anda"
             }
         }
     }

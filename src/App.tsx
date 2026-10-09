@@ -1901,7 +1901,7 @@ const App: React.FC = () => {
         writeUsersListCache(users);
         // Notify UserDropdown (mounted before vault was ready) so it re-runs
         // its refresh and renders the avatar now that MU IPC is available.
-        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+        window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { accountChanged: true } }));
         if (users.length === 0) { setAccountLockState('ready'); return; }
         // Default-account fast path (discussion #270): decideBootAccountAction
         // (in userPartitions) decides whether to enter directly, show the picker,
@@ -1929,7 +1929,7 @@ const App: React.FC = () => {
           try {
             await unlockUser(action.userId, null);
             if (cancelled) return;
-            window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT));
+            window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { accountChanged: true } }));
             setAccountLockState('ready');
             return;
           } catch (err) {
@@ -16148,13 +16148,13 @@ const App: React.FC = () => {
     }),
   }, (intent, ok, owner) => activityLog.log(ok ? 'INFO' : 'ERROR',
     `${t('guiController.banner', { agent: owner })}: ${intent === 'stop' ? t('guiController.stopped') : t(intent === 'tools_open' ? 'common.open' : intent === 'tools_close' ? 'common.close' : intent === 'tools_read' ? 'guiController.actions.state' : intent === 'connect' ? 'common.connect' : `guiController.actions.${intent}`)}`,
-    ok ? 'success' : 'error'));
+    ok ? 'success' : 'error'), settings.guiPresentation);
   lockControllerInterrupt.current = guiController.interrupt;
 
   return (
     <>
       {lockNow.error && !isAppLocked && accountLockState !== 'needed' && <LockNowError error={lockNow.error} onClose={lockNow.dismissError} />}
-      <GuiControllerBanner lease={guiController.lease} onStop={() => { void guiController.stop(); }} />
+      <GuiControllerBanner lease={guiController.lease} preferences={settings.guiPresentation} onSpeed={guiController.setSpeed} onPause={guiController.setPaused} onStop={() => { void guiController.stop(); }} />
       {/* Lock Screen - shown when app is locked with master password */}
       {isAppLocked && (masterPasswordSet || autoKeyringTotpRequired) && (
         <LockScreen

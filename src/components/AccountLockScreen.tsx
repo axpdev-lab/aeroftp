@@ -153,7 +153,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
             } else if (!skipWelcome) {
                 writeDefaultAccountId(null);
             }
-            try { window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT)); } catch { /* best effort */ }
+            try { window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { accountChanged: true } })); } catch { /* best effort */ }
             onContinue();
         } catch (err) {
             const lockedUntil = parseLockedOut(err);

@@ -6151,7 +6151,25 @@
                 "settings_open": "Otwórz ustawienia",
                 "settings_read": "Sprawdź ustawienia",
                 "settings_update": "Zaktualizuj ustawienia",
-                "settings_close": "Zamknij ustawienia"
+                "settings_close": "Zamknij ustawienia",
+                "tools_open": "Otwórz narzędzia",
+                "tools_read": "Sprawdź narzędzia",
+                "tools_close": "Zamknij narzędzia"
+            },
+            "speed": "Szybkość sterowania",
+            "pause": "Wstrzymaj",
+            "resume": "Wznów",
+            "paused": "Wstrzymano",
+            "preferences": "Sterowanie przez agenta",
+            "defaultSpeed": "Domyślna szybkość sterowania (%)",
+            "presets": "Ustawienia szybkości (%)",
+            "preset": "Ustawienie {index}",
+            "fallback": "Działanie widoczne na plakietce",
+            "preferencesDescription": "Zmiany tutaj dotyczą przyszłych sesji. Użyj plakietki, aby dostosować bieżącą sesję.",
+            "speedSource": {
+                "default": "Domyślna z ustawień",
+                "agent": "Zażądana dla tej sesji",
+                "human": "Zmieniona przez Ciebie"
             }
         }
     }

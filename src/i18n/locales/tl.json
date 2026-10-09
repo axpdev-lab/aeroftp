@@ -6170,7 +6170,25 @@
                 "settings_open": "Buksan ang mga setting",
                 "settings_read": "Suriin ang mga setting",
                 "settings_update": "I-update ang mga setting",
-                "settings_close": "Isara ang mga setting"
+                "settings_close": "Isara ang mga setting",
+                "tools_open": "Buksan ang mga tool",
+                "tools_read": "Suriin ang mga tool",
+                "tools_close": "Isara ang mga tool"
+            },
+            "speed": "Bilis ng kontrol",
+            "pause": "I-pause",
+            "resume": "Ipagpatuloy",
+            "paused": "Naka-pause",
+            "preferences": "Kontrol ng ahente",
+            "defaultSpeed": "Default na bilis ng kontrol (%)",
+            "presets": "Mga preset ng bilis (%)",
+            "preset": "Preset {index}",
+            "fallback": "Aksyong ipinapakita sa badge",
+            "preferencesDescription": "Ang mga pagbabago rito ay para sa mga susunod na sesyon. Gamitin ang badge para ayusin ang kasalukuyang sesyon.",
+            "speedSource": {
+                "default": "Default mula sa mga setting",
+                "agent": "Hiniling para sa sesyong ito",
+                "human": "Binago mo"
             }
         }
     }

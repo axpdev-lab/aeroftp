@@ -14,6 +14,7 @@
  * Returns: All settings as individual state values + their setters + SETTINGS_KEY constant
  */
 
+import { normalizeGuiPresentation, DEFAULT_GUI_PRESENTATION, type GuiPresentationSettings } from '../gui/presentation';
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { secureGetWithFallback } from '../utils/secureStorage';
@@ -65,6 +66,7 @@ export const clampIntroHubIconSize = (value: unknown): number => {
 };
 
 export interface AppSettings {
+  guiPresentation: GuiPresentationSettings;
   compactMode: boolean;
   showHiddenFiles: boolean;
   showToastNotifications: boolean;
@@ -134,6 +136,7 @@ export interface AppSettings {
 export const ALL_COLUMNS = ['name', 'size', 'type', 'permissions', 'modified'];
 
 const DEFAULTS: AppSettings = {
+  guiPresentation: DEFAULT_GUI_PRESENTATION,
   compactMode: false,
   showHiddenFiles: true,
   showToastNotifications: false,
@@ -171,6 +174,7 @@ const DEFAULTS: AppSettings = {
 };
 
 export const useSettings = () => {
+  const [guiPresentation, setGuiPresentation] = useState(DEFAULT_GUI_PRESENTATION);
   const [compactMode, setCompactMode] = useState(DEFAULTS.compactMode);
   const [showHiddenFiles, setShowHiddenFiles] = useState(DEFAULTS.showHiddenFiles);
   const [showToastNotifications, setShowToastNotifications] = useState(DEFAULTS.showToastNotifications);
@@ -208,6 +212,7 @@ export const useSettings = () => {
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   const applySettings = useCallback((parsed: Record<string, unknown>) => {
+    if ('guiPresentation' in parsed) setGuiPresentation(normalizeGuiPresentation(parsed.guiPresentation));
     if (typeof parsed.compactMode === 'boolean') setCompactMode(parsed.compactMode);
     if (typeof parsed.showHiddenFiles === 'boolean') setShowHiddenFiles(parsed.showHiddenFiles);
     if (typeof parsed.showToastNotifications === 'boolean') setShowToastNotifications(parsed.showToastNotifications);
@@ -318,6 +323,7 @@ export const useSettings = () => {
   }, [applySettings]);
 
   return {
+    guiPresentation,
     // Settings state
     compactMode,
     showHiddenFiles,

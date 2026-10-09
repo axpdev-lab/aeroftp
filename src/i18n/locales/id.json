@@ -6151,7 +6151,25 @@
                 "settings_open": "Buka pengaturan",
                 "settings_read": "Periksa pengaturan",
                 "settings_update": "Perbarui pengaturan",
-                "settings_close": "Tutup pengaturan"
+                "settings_close": "Tutup pengaturan",
+                "tools_open": "Buka alat",
+                "tools_read": "Periksa alat",
+                "tools_close": "Tutup alat"
+            },
+            "speed": "Kecepatan kontrol",
+            "pause": "Jeda",
+            "resume": "Lanjutkan",
+            "paused": "Dijeda",
+            "preferences": "Kontrol agen",
+            "defaultSpeed": "Kecepatan kontrol bawaan (%)",
+            "presets": "Preset kecepatan (%)",
+            "preset": "Preset {index}",
+            "fallback": "Tindakan yang ditampilkan di lencana",
+            "preferencesDescription": "Perubahan di sini berlaku untuk sesi mendatang. Gunakan lencana untuk menyesuaikan sesi saat ini.",
+            "speedSource": {
+                "default": "Default dari pengaturan",
+                "agent": "Diminta untuk sesi ini",
+                "human": "Diubah oleh Anda"
             }
         }
     }

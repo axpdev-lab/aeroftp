@@ -6151,7 +6151,25 @@
                 "settings_open": "Fungua mipangilio",
                 "settings_read": "Kagua mipangilio",
                 "settings_update": "Sasisha mipangilio",
-                "settings_close": "Funga mipangilio"
+                "settings_close": "Funga mipangilio",
+                "tools_open": "Fungua zana",
+                "tools_read": "Kagua zana",
+                "tools_close": "Funga zana"
+            },
+            "speed": "Kasi ya udhibiti",
+            "pause": "Sitisha",
+            "resume": "Endelea",
+            "paused": "Imesitishwa",
+            "preferences": "Udhibiti wa wakala",
+            "defaultSpeed": "Kasi chaguomsingi ya udhibiti (%)",
+            "presets": "Mipangilio ya awali ya kasi (%)",
+            "preset": "Mpangilio wa awali {index}",
+            "fallback": "Kitendo kinachoonyeshwa kwenye beji",
+            "preferencesDescription": "Mabadiliko hapa yanatumika kwa vipindi vijavyo. Tumia beji kurekebisha kipindi cha sasa.",
+            "speedSource": {
+                "default": "Chaguo-msingi la mipangilio",
+                "agent": "Imeombwa kwa kipindi hiki",
+                "human": "Imebadilishwa na wewe"
             }
         }
     }

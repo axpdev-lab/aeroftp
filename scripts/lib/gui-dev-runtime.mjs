@@ -82,7 +82,8 @@ export function requestBody(request, sessionId) {
         const args = name === 'state' ? {} : { ...request.args,
             ...(name === 'wait' ? {} : { intent: name }),
             ...(request.timeout_ms === undefined ? {} : { timeout_ms: request.timeout_ms }),
-            ...(request.if_revision === undefined ? {} : { if_revision: request.if_revision }) };
+            ...(request.if_revision === undefined ? {} : { if_revision: request.if_revision }),
+            ...(request.speed_percent === undefined ? {} : { speed_percent: request.speed_percent }) };
         const sessionId = ${JSON.stringify(sessionId)};
         const prepared = await invoke('prepare_ai_tool_approval', { toolName, args, sessionId });
         let approvalGrantId;

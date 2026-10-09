@@ -6151,7 +6151,25 @@
                 "settings_open": "Instellingen openen",
                 "settings_read": "Instellingen inspecteren",
                 "settings_update": "Instellingen bijwerken",
-                "settings_close": "Instellingen sluiten"
+                "settings_close": "Instellingen sluiten",
+                "tools_open": "Tools openen",
+                "tools_read": "Tools inspecteren",
+                "tools_close": "Tools sluiten"
+            },
+            "speed": "Besturingssnelheid",
+            "pause": "Pauzeren",
+            "resume": "Hervatten",
+            "paused": "Gepauzeerd",
+            "preferences": "Agentbesturing",
+            "defaultSpeed": "Standaard besturingssnelheid (%)",
+            "presets": "Snelheidsvoorinstellingen (%)",
+            "preset": "Voorinstelling {index}",
+            "fallback": "Actie weergegeven in de badge",
+            "preferencesDescription": "Wijzigingen hier gelden voor toekomstige sessies. Gebruik de badge om de huidige sessie aan te passen.",
+            "speedSource": {
+                "default": "Standaard uit instellingen",
+                "agent": "Aangevraagd voor deze sessie",
+                "human": "Door jou gewijzigd"
             }
         }
     }

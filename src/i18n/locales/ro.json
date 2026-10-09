@@ -6151,7 +6151,25 @@
                 "settings_open": "Deschide setările",
                 "settings_read": "Inspectează setările",
                 "settings_update": "Actualizează setările",
-                "settings_close": "Închide setările"
+                "settings_close": "Închide setările",
+                "tools_open": "Deschide instrumentele",
+                "tools_read": "Inspectează instrumentele",
+                "tools_close": "Închide instrumentele"
+            },
+            "speed": "Viteză de control",
+            "pause": "Pauză",
+            "resume": "Reia",
+            "paused": "În pauză",
+            "preferences": "Control prin agent",
+            "defaultSpeed": "Viteză de control implicită (%)",
+            "presets": "Presetări de viteză (%)",
+            "preset": "Presetare {index}",
+            "fallback": "Acțiune afișată în insignă",
+            "preferencesDescription": "Modificările de aici se aplică sesiunilor viitoare. Folosește insigna pentru a ajusta sesiunea curentă.",
+            "speedSource": {
+                "default": "Valoare implicită din setări",
+                "agent": "Solicitată pentru această sesiune",
+                "human": "Modificată de tine"
             }
         }
     }

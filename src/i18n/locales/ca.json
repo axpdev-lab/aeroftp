@@ -6170,7 +6170,25 @@
                 "settings_open": "Obrir la configuració",
                 "settings_read": "Inspeccionar la configuració",
                 "settings_update": "Actualitzar la configuració",
-                "settings_close": "Tancar la configuració"
+                "settings_close": "Tancar la configuració",
+                "tools_open": "Obre les eines",
+                "tools_read": "Inspecciona les eines",
+                "tools_close": "Tanca les eines"
+            },
+            "speed": "Velocitat de control",
+            "pause": "Pausa",
+            "resume": "Reprèn",
+            "paused": "En pausa",
+            "preferences": "Control de l’agent",
+            "defaultSpeed": "Velocitat de control per defecte (%)",
+            "presets": "Valors predefinits de velocitat (%)",
+            "preset": "Predefinit {index}",
+            "fallback": "Acció mostrada al distintiu",
+            "preferencesDescription": "Els canvis aquí s’apliquen a les sessions futures. Fes servir el distintiu per ajustar la sessió actual.",
+            "speedSource": {
+                "default": "Valor predeterminat de la configuració",
+                "agent": "Sol·licitada per a aquesta sessió",
+                "human": "Modificada per tu"
             }
         }
     }
