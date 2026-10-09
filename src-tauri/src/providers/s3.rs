@@ -9568,7 +9568,12 @@ mod tests {
                 move |req: axum::extract::Request| {
                     let gets = Arc::clone(&gets_for_handler);
                     async move {
-                        if req.method() == Method::GET {
+                        // Read the request body before answering, as in the other
+                        // markerless fixtures: an unread PUT body can reset the
+                        // connection on Windows (NetworkError at the upload).
+                        let method = req.method().clone();
+                        let _ = axum::body::to_bytes(req.into_body(), 1 << 20).await;
+                        if method == Method::GET {
                             gets.fetch_add(1, Ordering::SeqCst);
                             return axum::http::Response::builder()
                                 .status(404)
