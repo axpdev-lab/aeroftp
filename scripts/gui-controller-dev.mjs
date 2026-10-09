@@ -4,7 +4,7 @@
 // Complete Linux DEV driver; never bundled into the application.
 import { readFileSync, writeFileSync, unlinkSync, existsSync, openSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { evaluate, inspectorPort } from './lib/gui-inspector.mjs';
+import { evaluate, inspectorPort, scriptTimeout } from './lib/gui-inspector.mjs';
 import { fixtureRoot, inspectFixture, readSession, requestBody } from './lib/gui-dev-runtime.mjs';
 
 const usage = `Owned AeroFTP DEV controller (Node 22+, Linux)
@@ -15,6 +15,7 @@ const usage = `Owned AeroFTP DEV controller (Node 22+, Linux)
   --unlock            Uses AEROFTP_GUI_TEST_MASTER, never prints it
   --help
 Required: AEROFTP_GUI_TEST_ROOT. Optional: INSPECTOR_PORT (9222).
+Full scripts: AEROFTP_GUI_SCRIPT_TIMEOUT_MS (55000, 100..3600000); broker deadlines are unchanged.
 Request: {"name":"show_view","args":{"view":"servers"},"timeout_ms":10000}
 This is the DEV envelope, not public gui_run's {"intent":...}.
 No automatic retries. begin/request/finish share one session; other scripts are serialized.`;
@@ -87,7 +88,7 @@ async function main() {
                 }
                 return { unlocked: true };`;
         }
-        const result = await evaluate(body, { port });
+        const result = await evaluate(body, { port, timeoutMs: mode === '--js' ? scriptTimeout(process.env.AEROFTP_GUI_SCRIPT_TIMEOUT_MS) : 55000 });
         if (mode === '--begin') {
             try {
                 writeFileSync(sessionPath, JSON.stringify({ schema_version: 1, ...fixture, ...result }) + '\n', { flag: 'wx', mode: 0o600 });

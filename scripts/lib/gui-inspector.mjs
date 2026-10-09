@@ -8,6 +8,13 @@ export function inspectorPort(value = '9222') {
     return Number(value);
 }
 
+export function scriptTimeout(value = '55000') {
+    if (!/^\d{1,7}$/.test(String(value)) || Number(value) < 100 || Number(value) > 3600000) {
+        throw Error('AEROFTP_GUI_SCRIPT_TIMEOUT_MS must be an integer from 100 to 3600000');
+    }
+    return Number(value);
+}
+
 /** WebKit lacks awaitPromise. Evaluate in a page target and poll a unique result slot. */
 export async function evaluate(body, { port = inspectorPort(process.env.INSPECTOR_PORT), timeoutMs = 55000 } = {}) {
     const ws = new WebSocket(`ws://127.0.0.1:${inspectorPort(port)}/socket/1/1/WebPage`);

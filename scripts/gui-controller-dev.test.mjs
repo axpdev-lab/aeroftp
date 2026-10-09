@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { inspectorPort } from './lib/gui-inspector.mjs';
+import { inspectorPort, scriptTimeout } from './lib/gui-inspector.mjs';
 import { fixtureRoot, inspectorPid, developmentCheckout, validateFixtureEnvironment, readSession, requestBody } from './lib/gui-dev-runtime.mjs';
 
 test('ports stay bounded, integral and loopback-only', () => {
@@ -17,6 +17,11 @@ test('ports stay bounded, integral and loopback-only', () => {
 test('requires explicit dedicated absolute fixture storage', () => {
     for (const value of [undefined, '', './fixture', '/', '/tmp', '/home']) assert.throws(() => fixtureRoot(value));
     assert.equal(fixtureRoot('/tmp/team-dev/fixture'), '/tmp/team-dev/fixture');
+});
+test('long DEV scripts preserve legacy timeouts without unbounded or malformed waits', () => {
+    assert.equal(scriptTimeout(), 55000);
+    assert.equal(scriptTimeout('90000'), 90000);
+    for (const value of ['0', '99', '3600001', '-1', '90000x', 'NaN']) assert.throws(() => scriptTimeout(value));
 });
 test('both XDG and isolated HOME recipes pass; owner-home and symlink redirection fail', () => {
     const root = mkdtempSync(join(tmpdir(), 'gui-runtime-test-'));
