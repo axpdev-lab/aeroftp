@@ -3065,11 +3065,10 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
         }
     };
 
-    // The conversation's token count, refreshed whenever a reply lands.
+    // The conversation's token count, refreshed whenever a reply lands or the
+    // conversation changes; a chat not saved yet shows its tokens too.
     useEffect(() => {
-        if (!activeConversationId) return;
-        const usage = conversationTokenUsage(activeConversationId);
-        if (usage) setConversationTokens(usage.tokens);
+        setConversationTokens(conversationTokenUsage(activeConversationId)?.tokens ?? null);
     }, [messages, activeConversationId]);
 
     return (

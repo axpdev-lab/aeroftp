@@ -28,10 +28,26 @@ describe('the token count of a conversation', () => {
         expect(usage.conversationTokenUsage('c')?.tokens).toBe(Number.MAX_SAFE_INTEGER);
     });
 
-    it('counts nothing for a request outside any conversation', async () => {
+    it('keeps the tokens of a chat not saved yet and hands them to its conversation', async () => {
+        // The first replies of a new chat arrive before the delayed save gives
+        // it an id; they must not be dropped.
         const usage = await import('./aiChatTokenUsage');
         usage.recordTokenUsage(undefined, 100);
-        expect(usage.conversationTokenUsage('')).toBeNull();
+        usage.recordTokenUsage(undefined, 20);
+        expect(usage.conversationTokenUsage(null)).toEqual({ tokens: 120, requests: 2 });
+        usage.adoptPendingTokenUsage('new');
+        expect(usage.conversationTokenUsage('new')).toEqual({ tokens: 120, requests: 2 });
+        expect(usage.conversationTokenUsage(null)).toBeNull();
+        usage.recordTokenUsage('new', 5);
+        expect(usage.conversationTokenUsage('new')).toEqual({ tokens: 125, requests: 3 });
+    });
+
+    it('drops the tokens of an unsaved chat left for another one', async () => {
+        const usage = await import('./aiChatTokenUsage');
+        usage.recordTokenUsage(undefined, 100);
+        usage.discardPendingTokenUsage();
+        usage.adoptPendingTokenUsage('other');
+        expect(usage.conversationTokenUsage('other')).toBeNull();
     });
 });
 

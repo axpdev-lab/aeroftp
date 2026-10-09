@@ -14,6 +14,9 @@ export interface TokenUsage {
 }
 
 const usage = new Map<string, TokenUsage>();
+// A new chat gets its id from the delayed save, after its first replies:
+// their tokens wait here, then move to the conversation the save creates.
+let pending: TokenUsage | null = null;
 
 /** Finite, never negative, saturating at the largest safe integer. */
 function add(current: number, delta: number): number {
@@ -21,13 +24,34 @@ function add(current: number, delta: number): number {
     return Math.min(Number.MAX_SAFE_INTEGER, current + safe);
 }
 
-export function recordTokenUsage(conversationId: string | undefined, tokens: number): void {
-    if (!conversationId) return;
-    const entry = usage.get(conversationId) ?? { tokens: 0, requests: 0 };
-    usage.set(conversationId, { tokens: add(entry.tokens, tokens), requests: add(entry.requests, 1) });
+function plus(entry: TokenUsage | null | undefined, tokens: number, requests: number): TokenUsage {
+    const base = entry ?? { tokens: 0, requests: 0 };
+    return { tokens: add(base.tokens, tokens), requests: add(base.requests, requests) };
 }
 
-export function conversationTokenUsage(conversationId: string): TokenUsage | null {
-    const entry = usage.get(conversationId);
+/** One request's tokens; `undefined` is the chat that has no id yet. */
+export function recordTokenUsage(conversationId: string | undefined, tokens: number): void {
+    if (!conversationId) {
+        pending = plus(pending, tokens, 1);
+        return;
+    }
+    usage.set(conversationId, plus(usage.get(conversationId), tokens, 1));
+}
+
+/** A conversation's tokens; `null` is the chat that has no id yet. */
+export function conversationTokenUsage(conversationId: string | null): TokenUsage | null {
+    const entry = conversationId ? usage.get(conversationId) : pending;
     return entry ? { ...entry } : null;
+}
+
+/** The save just gave the new chat its id: its tokens so far are that conversation's. */
+export function adoptPendingTokenUsage(conversationId: string): void {
+    if (!pending) return;
+    usage.set(conversationId, plus(usage.get(conversationId), pending.tokens, pending.requests));
+    pending = null;
+}
+
+/** The unsaved chat was left (new chat, another conversation): its tokens belong to no other. */
+export function discardPendingTokenUsage(): void {
+    pending = null;
 }

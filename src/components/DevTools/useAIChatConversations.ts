@@ -14,6 +14,7 @@ import {
     createConversation, BranchMessage,
 } from '../../utils/chatHistory';
 import { Message } from './aiChatTypes';
+import { adoptPendingTokenUsage, discardPendingTokenUsage } from './aiChatTokenUsage';
 
 export function useAIChatConversations() {
     const [messages, setMessages] = useState<Message[]>([]);
@@ -48,6 +49,7 @@ export function useAIChatConversations() {
             convId = newConv.id;
             setActiveConversationId(convId);
             activeConversationIdRef.current = convId;
+            adoptPendingTokenUsage(convId);
             titleSavedRef.current = false;
 
             const title = msgs.find(m => m.role === 'user')?.content.slice(0, 60) || 'New Chat';
@@ -128,6 +130,7 @@ export function useAIChatConversations() {
     // New chat: resets messages and conversation ID.
     // Note: AIChat.tsx should wrap this to also clear pendingToolCalls.
     const startNewChat = useCallback(() => {
+        discardPendingTokenUsage();
         setMessages([]);
         setActiveConversationId(null);
         setActiveBranchId(null);
@@ -137,6 +140,7 @@ export function useAIChatConversations() {
 
     // Switch conversation: loads full messages from SQLite
     const switchConversation = useCallback(async (conv: Conversation) => {
+        discardPendingTokenUsage();
         setActiveConversationId(conv.id);
         titleSavedRef.current = true; // Already has a title
 
