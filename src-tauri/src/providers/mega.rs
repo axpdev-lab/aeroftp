@@ -325,15 +325,16 @@ impl MegaCmdProvider {
                 (true, Ok(0)) | (true, Err(_)) => out_open = false,
                 (false, Ok(0)) | (false, Err(_)) => err_open = false,
                 (true, Ok(n)) => {
-                    stdout.extend_from_slice(&out_buf[..n]);
-                    Self::feed_progress(&mut out_line, &out_buf[..n], on_percent);
+                    Self::feed_progress(&mut out_line, &mut stdout, &out_buf[..n], on_percent);
                 }
                 (false, Ok(n)) => {
-                    stderr.extend_from_slice(&err_buf[..n]);
-                    Self::feed_progress(&mut err_line, &err_buf[..n], on_percent);
+                    Self::feed_progress(&mut err_line, &mut stderr, &err_buf[..n], on_percent);
                 }
             }
         }
+        // A last line with no line end is kept as it is.
+        stdout.append(&mut out_line);
+        stderr.append(&mut err_line);
         let status = tokio::time::timeout(idle, child.wait())
             .await
             .map_err(|_| None)?
@@ -346,12 +347,24 @@ impl MegaCmdProvider {
     }
 
     /// Split `bytes` into lines on `\r` and `\n`, carrying a partial line
-    /// in `line`, and hand every progress line's percentage to `on_percent`.
-    fn feed_progress(line: &mut Vec<u8>, bytes: &[u8], on_percent: &(dyn Fn(f64) + Sync)) {
+    /// in `line`: every progress line's percentage goes to `on_percent`, and
+    /// every other line is kept in `kept`. The progress lines stay out of the
+    /// captured output, which becomes the error message when the command
+    /// fails: a long transfer writes thousands of them, and the real error
+    /// would sit at the end of an unreadable message.
+    fn feed_progress(
+        line: &mut Vec<u8>,
+        kept: &mut Vec<u8>,
+        bytes: &[u8],
+        on_percent: &(dyn Fn(f64) + Sync),
+    ) {
         for &byte in bytes {
             if byte == b'\r' || byte == b'\n' {
                 if let Some(percent) = Self::transfer_percent(line) {
                     on_percent(percent);
+                } else if !line.is_empty() {
+                    kept.append(line);
+                    kept.push(b'\n');
                 }
                 line.clear();
             } else {
@@ -1723,11 +1736,15 @@ mod tests {
 
         std::fs::write(dir.path().join("put-fails"), b"").unwrap();
         let (outcome, updates) = put_through_stand_in(&mut provider).await;
-        assert!(outcome.is_err());
         assert!(
             updates.iter().all(|&(sent, total)| sent < total),
             "{updates:?}"
         );
+        // The progress lines written before the failure stay out of the
+        // error, which carries MEGAcmd's own message.
+        let message = outcome.expect_err("a refused put fails").to_string();
+        assert!(message.contains("Access denied"), "{message}");
+        assert!(!message.contains("TRANSFERRING"), "{message}");
     }
 
     /// A transfer is cut after a silence, not after a fixed total: a put

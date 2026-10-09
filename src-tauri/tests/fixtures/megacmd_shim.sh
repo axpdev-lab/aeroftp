@@ -62,10 +62,12 @@ case "$(basename "$0")" in
     mega-put)
         # Progress lines as MEGAcmd 2.6 writes them through a pipe: on
         # stderr, each ended by a NUL and a carriage return, at 10, 50 and 90
-        # percent; then "Upload finished" on stdout and the last line. A file put-fails makes it refuse; a file put-slow spaces
+        # percent; then "Upload finished" on stdout and the last line. A file put-fails makes it refuse after two progress lines; a file put-slow spaces
         # five lines 0.4 s apart (2 s in all); a file put-stalls prints one
         # line and then says nothing for 3 s.
         if [ -f "$here/put-fails" ]; then
+            printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
+            printf 'TRANSFERRING ||####..........||(6/30 MB:  20.00 %%) \000\r' >&2
             echo "Upload failed: Access denied" >&2
             exit 2
         fi
