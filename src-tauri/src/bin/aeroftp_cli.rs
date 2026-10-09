@@ -12976,6 +12976,61 @@ fn mirror_profiles_to_legacy_blob_if_active(
     }
 }
 
+fn profile_ids(profiles: &[serde_json::Value]) -> Vec<String> {
+    profiles
+        .iter()
+        .map(|p| {
+            p.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect()
+}
+
+/// Move the profile at `src` to `dst` (0-based) when `profiles` still has
+/// exactly the ids the caller listed, in that order. `false` leaves it as is.
+fn apply_reorder_if_unchanged(
+    profiles: &mut Vec<serde_json::Value>,
+    expected_ids: &[String],
+    src: usize,
+    dst: usize,
+) -> bool {
+    if profile_ids(profiles) != expected_ids || src >= profiles.len() || dst >= profiles.len() {
+        return false;
+    }
+    let profile = profiles.remove(src);
+    profiles.insert(dst, profile);
+    true
+}
+
+/// Persist a move of the active user's profile at `src` to `dst`, checked and
+/// written inside one IMMEDIATE vault transaction against `expected_ids` (the
+/// saved order the caller showed). `Ok(None)` when another session changed the
+/// saved order meanwhile: nothing is written.
+fn reorder_saved_profiles(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    expected_ids: &[String],
+    src: usize,
+    dst: usize,
+) -> Result<Option<Vec<serde_json::Value>>, String> {
+    use ftp_client_gui_lib::user_partitions;
+    let target = match ensure_active_user_unlocked(cli, store)? {
+        Some(t) => t,
+        None => return Err("NO_ACTIVE_USER".to_string()),
+    };
+    let (stored, written) =
+        user_partitions::cli_update_server_profiles_for_user(store, target.id, |profiles| {
+            apply_reorder_if_unchanged(profiles, expected_ids, src, dst)
+        })?;
+    if !written {
+        return Ok(None);
+    }
+    mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
+    Ok(Some(stored))
+}
+
 fn save_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -22258,34 +22313,6 @@ fn interactive_profiles_loop(
                 );
                 continue;
             }
-            // The list this loop holds is the saved order; refuse when the
-            // vault changed under it (another session), comparing ids
-            // positionally, so the move never persists a stale order.
-            let stored_ids: Vec<String> = load_active_user_profiles(cli, store)
-                .unwrap_or_default()
-                .iter()
-                .map(|p| {
-                    p.get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                })
-                .collect();
-            let current_ids: Vec<String> = current
-                .iter()
-                .map(|p| {
-                    p.get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                })
-                .collect();
-            if stored_ids != current_ids {
-                eprintln!(
-                    "The saved profile order changed since this list was loaded. Refresh (`.`) and try again."
-                );
-                continue;
-            }
             // Clamp to the table size and translate to a 0-based final index.
             let dst = (target_1based - 1).min(current.len().saturating_sub(1));
             if dst == src {
@@ -22297,18 +22324,20 @@ fn interactive_profiles_loop(
                 .and_then(|v| v.as_str())
                 .unwrap_or("?")
                 .to_string();
-            let snapshot = current.clone();
-            let profile = current.remove(src);
-            current.insert(dst, profile);
-            match save_active_user_profiles(cli, store, &current) {
-                Ok(()) => {
+            // The list this loop holds is the saved order. The move is checked
+            // and written in one vault transaction, so a reorder made by
+            // another session meanwhile is refused instead of overwritten.
+            let expected = profile_ids(&current);
+            match reorder_saved_profiles(cli, store, &expected, src, dst) {
+                Ok(Some(stored)) => {
+                    current = stored;
                     eprintln!("Moved '{}' to #{}.", name, dst + 1);
                     print_profiles_summary_with_reorder(&current, src, dst);
                 }
-                Err(e) => {
-                    current = snapshot;
-                    eprintln!("Move failed to persist: {}. Order unchanged.", e);
-                }
+                Ok(None) => eprintln!(
+                    "The saved profile order changed since this list was loaded. Refresh (`.`) and try again."
+                ),
+                Err(e) => eprintln!("Move failed to persist: {}. Order unchanged.", e),
             }
             continue;
         }
@@ -78905,6 +78934,26 @@ mod tests {
                 );
             }
         }
+    }
+
+    // `# <sel> <N>` read the saved ids, then wrote the moved list in a second
+    // step: a reorder by another session in between was overwritten. The
+    // check now runs on the list the vault transaction reads.
+    #[test]
+    fn a_reorder_applies_only_to_the_saved_order_it_was_shown() {
+        let with_id = |id: &str| json!({"id": id, "name": id});
+        let shown: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+
+        let mut unchanged = vec![with_id("a"), with_id("b"), with_id("c")];
+        assert!(apply_reorder_if_unchanged(&mut unchanged, &shown, 2, 0));
+        assert_eq!(profile_ids(&unchanged), ["c", "a", "b"]);
+
+        let mut reordered_elsewhere = vec![with_id("b"), with_id("a"), with_id("c")];
+        assert!(
+            !apply_reorder_if_unchanged(&mut reordered_elsewhere, &shown, 2, 0),
+            "a move was applied over a saved order another session had changed"
+        );
+        assert_eq!(profile_ids(&reordered_elsewhere), ["b", "a", "c"]);
     }
 
     #[test]
