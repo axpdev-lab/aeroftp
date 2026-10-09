@@ -474,6 +474,9 @@ pub enum WorkerEvent {
     /// the reply code (never the arguments), `lines` the reply as received,
     /// or what is known when no reply came.
     SiteReply {
+        /// The session the command was sent on: a reply that arrives after
+        /// a disconnect or a switch is dropped by the identity guard.
+        identity: Option<TuiSessionIdentity>,
         title: String,
         lines: Vec<String>,
     },

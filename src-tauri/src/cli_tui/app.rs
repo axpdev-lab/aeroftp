@@ -3038,7 +3038,7 @@ impl AppState {
             } => {
                 self.status = format!("Quota refresh failed: {}", message);
             }
-            WorkerEvent::SiteReply { title, lines } => {
+            WorkerEvent::SiteReply { title, lines, .. } => {
                 let lines: Vec<String> = lines
                     .iter()
                     .map(|line| {
@@ -3405,7 +3405,8 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         }
         WorkerEvent::SessionReady { identity, .. }
         | WorkerEvent::ListReady { identity, .. }
-        | WorkerEvent::StatReady { identity, .. } => identity.as_ref(),
+        | WorkerEvent::StatReady { identity, .. }
+        | WorkerEvent::SiteReply { identity, .. } => identity.as_ref(),
         WorkerEvent::Idle
         | WorkerEvent::PathReady { .. }
         | WorkerEvent::TransferProgress { .. }
@@ -3419,8 +3420,7 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         | WorkerEvent::FileContent { .. }
         | WorkerEvent::DirSize { .. }
         | WorkerEvent::EditReady { .. }
-        | WorkerEvent::EditDone { .. }
-        | WorkerEvent::SiteReply { .. } => None,
+        | WorkerEvent::EditDone { .. } => None,
     }
 }
 
@@ -5120,6 +5120,34 @@ mod tests {
         assert_eq!(app.session.phase, TuiSessionPhase::Connected);
         assert_eq!(app.focus, TuiFocus::Browser);
         app
+    }
+
+    #[test]
+    fn a_site_reply_opens_only_for_the_session_it_was_sent_on() {
+        let mut app = connected_app_with_listing();
+        app.apply_worker_event(WorkerEvent::SiteReply {
+            identity: Some(sample_identity()),
+            title: "SITE WHO - 200".to_string(),
+            lines: vec!["200 \u{1b}[1mok\u{1b}[0m".to_string()],
+        });
+        match &app.overlay {
+            TuiOverlay::Pager(_) => {}
+            other => panic!("the reply to this session opens the pager, got {other:?}"),
+        }
+
+        let mut app = connected_app_with_listing();
+        let mut other = sample_identity();
+        other.profile_selector = "2".to_string();
+        other.host = "other.example.com".to_string();
+        app.apply_worker_event(WorkerEvent::SiteReply {
+            identity: Some(other),
+            title: "SITE WHO - 200".to_string(),
+            lines: vec!["200 ok".to_string()],
+        });
+        assert!(
+            !matches!(app.overlay, TuiOverlay::Pager(_)),
+            "a reply that belongs to another session must not open its pager here"
+        );
     }
 
     // --- B3 command palette ------------------------------------------------

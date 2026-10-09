@@ -171,6 +171,7 @@ mod only_main_window_tests {
             "get_credential",
             "ai_delegate_local",
             "ai_cancel_delegation",
+            "provider_site_command",
         ] {
             assert!(super::only_main_window("main", command).is_ok());
             for label in ["extract", "extract-2", "splashscreen", ""] {

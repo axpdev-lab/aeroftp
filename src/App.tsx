@@ -6710,7 +6710,13 @@ const App: React.FC = () => {
   // the outcome, never the arguments (they can carry passwords).
   const logSiteCommand = (report: SiteCommandReport) => {
     if (report.outcome === 'replied') {
-      humanLog.logRaw('activity.site_replied', 'INFO', { command: report.command, code: report.code ?? 0 }, (report.code ?? 0) >= 400 ? 'error' : 'success');
+      // 2xx closes the exchange, 4xx/5xx refuse it; a 1xx/3xx asks for more,
+      // so it is neutral rather than a success. Even a 2xx is not proof that
+      // the command worked (glFTPd answers 200 to refusals): the entry says
+      // what the server replied, nothing more.
+      const code = report.code ?? 0;
+      const status = code >= 400 ? 'error' : code >= 200 && code < 300 ? 'success' : 'pending';
+      humanLog.log('INFO', t('activity.site_replied', { command: report.command, code }), status);
     } else if (report.outcome === 'unknown') {
       humanLog.logRaw('activity.site_unknown', 'INFO', { command: report.command }, 'error');
     } else {
@@ -8106,7 +8112,9 @@ const App: React.FC = () => {
     quotaConnectionRef.current++;
     setStorageQuota(null);
     const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
-    // The SITE transcript and history live in memory for the session only.
+    // The SITE transcript and history live in memory for the session only, and
+    // a disconnect closes every tab (Close All included), so all of them go.
+    sessions.forEach(session => forgetSiteSession(session.id));
     if (activeSessionId) forgetSiteSession(activeSessionId);
     // The AeroSync dialog holds a Compare scan of THIS remote, so it stops
     // meaning anything the moment the session goes away: its entries point at

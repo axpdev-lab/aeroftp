@@ -67,14 +67,24 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
         setTranscript(siteTranscript(sessionId));
         changedFiles.current = false;
         setEncrypted(null);
+        // A status that resolves after this opening ended belongs to another
+        // session: it must not clear the warning of the current one.
+        let current = true;
         invoke<SiteSessionStatus>('provider_site_session')
-            .then(status => setEncrypted(status.encrypted))
-            .catch(() => setEncrypted(null));
+            .then(status => { if (current) setEncrypted(status.encrypted); })
+            .catch(() => { if (current) setEncrypted(null); });
+        const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         document.documentElement.classList.add('modal-open');
         const focus = window.setTimeout(() => inputRef.current?.focus(), 0);
         return () => {
+            current = false;
             window.clearTimeout(focus);
             document.documentElement.classList.remove('modal-open');
+            // A draft can hold a password (CHPASS alice ...): it does not
+            // outlive the dialog, sent or not.
+            setLine('');
+            setHistoryIndex(null);
+            opener?.focus();
         };
     }, [isOpen, sessionId]);
 

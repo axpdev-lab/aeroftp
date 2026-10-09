@@ -6076,11 +6076,16 @@ const SITE_BUSY_WAIT: Duration = Duration::from_secs(5);
 /// A command that may have reached the server is never sent again.
 #[tauri::command]
 pub async fn provider_site_command(
+    webview: tauri::Webview,
     state: State<'_, ProviderState>,
     args: String,
     timeout_secs: Option<u64>,
 ) -> Result<crate::providers::ftp_site::SiteCommandReport, String> {
     use crate::providers::ftp_site::{self, NotSentReason, SiteOptions, SiteRun};
+
+    // A SITE command can change accounts on the server: only the main window
+    // sends one, whatever runs in a secondary webview.
+    crate::only_main_window(webview.label(), "provider_site_command")?;
 
     let opts = timeout_secs
         .map(SiteOptions::with_reply_timeout_secs)

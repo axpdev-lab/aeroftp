@@ -28,6 +28,7 @@ describe('SITE command helpers', () => {
         expect(stripAnsi('\u001b[1;31m200\u001b[0m- red')).toBe('200- red');
         expect(replyText(['200- a', '200 b'], true)).toBe(' a\nb');
         expect(replyText(['200- a', '200 b'], false)).toBe('200- a\n200 b');
+        expect(replyText(['\u001b[1;31m200\u001b[0m- red'], true)).toBe(' red');
     });
 
     it('refreshes the listing unless the verb only reads or nothing was sent', () => {

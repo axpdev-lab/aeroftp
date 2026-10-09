@@ -89,7 +89,9 @@ export function stripAnsi(line: string): string {
 
 /** The reply as display text, honouring the "hide reply codes" toggle. */
 export function replyText(lines: string[], hideCodes: boolean): string {
-    return lines.map(line => stripAnsi(hideCodes ? withoutReplyCode(line) : line)).join('\n');
+    // Colours first: a coloured prefix (glFTPd SITE COLOR) is not a code until
+    // its escape sequences are gone.
+    return lines.map(line => (hideCodes ? withoutReplyCode(stripAnsi(line)) : stripAnsi(line))).join('\n');
 }
 
 /** Whether a command may have changed files, so the remote list should be refreshed. */

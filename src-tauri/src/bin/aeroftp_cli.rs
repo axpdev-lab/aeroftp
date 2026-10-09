@@ -18749,7 +18749,7 @@ async fn run_cli_tui_worker(
                     &ftp_client_gui_lib::providers::ftp_site::SiteOptions::default(),
                 )
                 .await;
-                let _ = event_tx.send(site_worker_event(&run, &provider_type));
+                let _ = event_tx.send(site_worker_event(&run, &provider_type, active_identity));
             }
             WorkerCommand::Remove { path, recursive } => {
                 let active_identity = session
@@ -44227,6 +44227,7 @@ fn site_failure_message(
 fn site_worker_event(
     run: &ftp_client_gui_lib::providers::ftp_site::SiteRun,
     provider_type: &str,
+    identity: Option<cli_tui::session::TuiSessionIdentity>,
 ) -> cli_tui::worker::WorkerEvent {
     use ftp_client_gui_lib::providers::ftp_site::SiteOutcome;
     let (title, lines) = match &run.outcome {
@@ -44254,7 +44255,11 @@ fn site_worker_event(
             vec![site_failure_message(run, provider_type)],
         ),
     };
-    cli_tui::worker::WorkerEvent::SiteReply { title, lines }
+    cli_tui::worker::WorkerEvent::SiteReply {
+        identity,
+        title,
+        lines,
+    }
 }
 
 /// `aeroftp-cli site`: send SITE commands through an FTP/FTPS session and
@@ -44351,7 +44356,10 @@ async fn cmd_site(
                 } => {
                     for reply_line in &reply.lines {
                         if opts.strip_codes {
-                            println!("{}", ftp_site::without_reply_code(reply_line));
+                            // Colours go first: a coloured prefix is not a
+                            // code until its escape sequences are removed.
+                            let plain = ftp_site::strip_ansi(reply_line);
+                            println!("{}", ftp_site::without_reply_code(&plain));
                         } else {
                             println!("{reply_line}");
                         }
