@@ -1202,6 +1202,9 @@ impl StorageProvider for DropboxProvider {
         const UPLOAD_SESSION_THRESHOLD: u64 = 150 * 1024 * 1024; // 150MB
 
         if file_size > UPLOAD_SESSION_THRESHOLD {
+            // Each appended chunk moves the bar; 100 percent waits for the
+            // session's finish (see `UploadProgress`).
+            let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
             // Upload session for large files: read chunks from file, not all in memory
             const CHUNK_SIZE: u64 = 128 * 1024 * 1024; // 128MB
             let mut file = tokio::fs::File::open(local_path)
@@ -1215,7 +1218,7 @@ impl StorageProvider for DropboxProvider {
                 .await
                 .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
 
-            let start_url = format!("{}/files/upload_session/start", CONTENT_BASE);
+            let start_url = format!("{}/files/upload_session/start", self.content_api_base());
             let start_arg = serde_json::json!({
                 "close": first_chunk_size as u64 >= file_size
             });
@@ -1248,9 +1251,7 @@ impl StorageProvider for DropboxProvider {
                 .await
                 .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
-            if let Some(ref progress) = on_progress {
-                progress(first_chunk_size as u64, file_size);
-            }
+            progress.report(first_chunk_size as u64);
 
             // Step 2: Append remaining chunks (read from file, not memory)
             let mut offset = first_chunk_size as u64;
@@ -1262,7 +1263,8 @@ impl StorageProvider for DropboxProvider {
                     .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
                 let is_last = offset + chunk_size as u64 >= file_size;
 
-                let append_url = format!("{}/files/upload_session/append_v2", CONTENT_BASE);
+                let append_url =
+                    format!("{}/files/upload_session/append_v2", self.content_api_base());
                 let append_arg = serde_json::json!({
                     "cursor": {
                         "session_id": session.session_id,
@@ -1292,13 +1294,11 @@ impl StorageProvider for DropboxProvider {
 
                 offset += chunk_size as u64;
 
-                if let Some(ref progress) = on_progress {
-                    progress(offset, file_size);
-                }
+                progress.report(offset);
             }
 
             // Step 3: Finish session
-            let finish_url = format!("{}/files/upload_session/finish", CONTENT_BASE);
+            let finish_url = format!("{}/files/upload_session/finish", self.content_api_base());
             let finish_arg = serde_json::json!({
                 "cursor": {
                     "session_id": session.session_id,
@@ -1329,16 +1329,17 @@ impl StorageProvider for DropboxProvider {
                     sanitize_api_error(&text)
                 )));
             }
+            progress.complete();
         } else {
-            // Simple upload: stream file content without loading into memory
+            // Simple upload: stream file content without loading into memory.
+            // The body reports the bytes as they go out; 100 percent waits
+            // for Dropbox's answer (see `UploadProgress`).
+            let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
+            progress.start();
             let file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Open error: {}", e)))?;
-            let stream = tokio_util::io::ReaderStream::new(file);
-            let body = reqwest::Body::wrap_stream(crate::transfer_dag::throttle::throttle_stream(
-                stream,
-                crate::transfer_dag::governor::TransferDirection::Upload,
-            ));
+            let body = progress.file_body(file);
 
             let arg = serde_json::json!({
                 "path": path,
@@ -1347,7 +1348,7 @@ impl StorageProvider for DropboxProvider {
                 "mute": false
             });
 
-            let url = format!("{}/files/upload", CONTENT_BASE);
+            let url = format!("{}/files/upload", self.content_api_base());
 
             let response = self
                 .client
@@ -1368,6 +1369,7 @@ impl StorageProvider for DropboxProvider {
                     sanitize_api_error(&text)
                 )));
             }
+            progress.complete();
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
@@ -3198,6 +3200,45 @@ mod tests {
         let mut provider = fixture_connected();
         assert!(!provider.supports_atomic_replace().await.unwrap());
         assert!(provider.replace_sets_aside());
+    }
+
+    /// Upload a 300 KB file through `files/upload` to a local fixture
+    /// answering `status`; returns the outcome and the progress updates.
+    async fn simple_upload_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::post("/files/upload", status, "{}")]).await;
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(base);
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the simple upload, every file up to 150 MB, reported nothing at
+    /// all, not even the total. The bar now follows the bytes going out and
+    /// reaches 100 only on success.
+    #[tokio::test]
+    async fn simple_upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = simple_upload_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = simple_upload_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     fn fixture_connected() -> DropboxProvider {

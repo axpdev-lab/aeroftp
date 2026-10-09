@@ -102,6 +102,46 @@ use crate::transfer_multipart::{clone_multipart_worker, MultipartFileState, Mult
 /// [`StorageProvider::download`] / [`StorageProvider::upload`].
 pub type ProgressCallback = Box<dyn Fn(u64, u64) + Send>;
 
+/// Progress of a native multipart upload, counted on the parts the server has
+/// acknowledged. The parts go out from separate `UploadPart` nodes, none of
+/// which holds the caller's callback, so a fanned-out upload used to report
+/// nothing at all, not even its end, in the CLI and in the GUI alike. Each
+/// acknowledged part, and each part a resumed run already holds a receipt
+/// for, adds its length; the total is reported only once the session is
+/// committed, so a failed commit never shows a completed upload.
+struct PartProgress {
+    callback: StdMutex<ProgressCallback>,
+    total: u64,
+    acknowledged: AtomicU64,
+}
+
+impl PartProgress {
+    fn new(callback: ProgressCallback, total: u64) -> Self {
+        callback(0, total);
+        Self {
+            callback: StdMutex::new(callback),
+            total,
+            acknowledged: AtomicU64::new(0),
+        }
+    }
+
+    fn part_done(&self, len: u64) {
+        // Parts run in parallel: the count is taken under the callback's lock,
+        // so two parts finishing together report in the order they counted
+        // and the bar never goes back.
+        let callback = self.callback.lock().unwrap_or_else(|e| e.into_inner());
+        let now = self.acknowledged.fetch_add(len, Ordering::SeqCst) + len;
+        if now < self.total {
+            callback(now, self.total);
+        }
+    }
+
+    fn committed(&self) {
+        let callback = self.callback.lock().unwrap_or_else(|e| e.into_inner());
+        callback(self.total, self.total);
+    }
+}
+
 /// The connected-provider handle shared between the GUI command state and the
 /// spawned DAG node tasks. `Option` because a session may be disconnected.
 pub type SharedProvider = Arc<Mutex<Option<Box<dyn StorageProvider>>>>;
@@ -871,6 +911,15 @@ pub async fn execute_single_file_dag(
     } else {
         (None, None)
     };
+    // A fanned-out upload reports through the parts, not through a transfer
+    // node: the callback leaves the slot here, before any node runs.
+    let part_progress: Option<Arc<PartProgress>> = multipart_state.as_ref().and_then(|state| {
+        progress_slot
+            .lock()
+            .expect("progress slot poisoned")
+            .take()
+            .map(|callback| Arc::new(PartProgress::new(callback, state.layout().total_size)))
+    });
 
     let runner: Arc<dyn DagNodeRunner> = {
         let provider = Arc::clone(&provider);
@@ -882,6 +931,7 @@ pub async fn execute_single_file_dag(
         let report_size = Arc::clone(&report_size);
         let multipart_state = multipart_state.clone();
         let durable_checkpoint = durable_checkpoint.clone();
+        let part_progress = part_progress.clone();
         let cancel_token = cancel_token.clone();
         let bytes_total = Arc::clone(&bytes_total);
         let wire_bytes_total = Arc::clone(&wire_bytes_total);
@@ -895,6 +945,7 @@ pub async fn execute_single_file_dag(
             let report_size = Arc::clone(&report_size);
             let multipart_state = multipart_state.clone();
             let durable_checkpoint = durable_checkpoint.clone();
+            let part_progress = part_progress.clone();
             let cancel_token = cancel_token.clone();
             let bytes_total = Arc::clone(&bytes_total);
             let wire_bytes_total = Arc::clone(&wire_bytes_total);
@@ -1010,6 +1061,12 @@ pub async fn execute_single_file_dag(
                                 .expect("checkpoint mutex poisoned")
                                 .has_receipt(part_number)
                         }) {
+                            if let (Some(progress), Ok((_, len))) = (
+                                part_progress.as_ref(),
+                                state.layout().part_range(part_number),
+                            ) {
+                                progress.part_done(len);
+                            }
                             return NodeOutcome::Completed;
                         }
                         // 1. Lazy begin through the same once-guarded file state
@@ -1161,6 +1218,9 @@ pub async fn execute_single_file_dag(
                                         // run return early above and
                                         // contribute 0 to the wire total.
                                         wire_bytes_total.fetch_add(len, Ordering::SeqCst);
+                                        if let Some(progress) = part_progress.as_ref() {
+                                            progress.part_done(len);
+                                        }
                                         NodeOutcome::Completed
                                     }
                                     Err(failure) => record_failure(
@@ -1297,6 +1357,9 @@ pub async fn execute_single_file_dag(
                                         // actually re-uploaded.
                                         bytes_total
                                             .store(state.layout().total_size, Ordering::SeqCst);
+                                        if let Some(progress) = part_progress.as_ref() {
+                                            progress.committed();
+                                        }
                                         NodeOutcome::Completed
                                     }
                                     Err(e) => record_failure(&first_error, e, FailureScope::File),
@@ -2699,6 +2762,83 @@ mod tests {
             "the provider session is finalized only after the durable verified fact"
         );
         assert!(!*multipart_aborted.lock().unwrap());
+    }
+
+    /// Run a native-multipart upload of `on_disk` bytes declared as
+    /// `declared`, 10-byte parts, recording the progress updates.
+    async fn multipart_progress_run(
+        on_disk: &[u8],
+        declared: u64,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("source.bin");
+        std::fs::write(&local, on_disk).expect("write source");
+        let mock = SlowMockProvider::new(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+        )
+        .with_multipart_state(
+            Arc::new(StdMutex::new(false)),
+            Arc::new(StdMutex::new(false)),
+            Arc::new(AtomicU64::new(0)),
+        );
+        let arc: SharedProvider = Arc::new(Mutex::new(Some(
+            Box::new(mock) as Box<dyn crate::providers::StorageProvider>
+        )));
+        let caps = TransferCapabilities {
+            multipart_upload: Capability::Supported,
+            preferred_chunk_size: Some(10),
+            multipart_threshold: 0,
+            max_chunk_slots: Some(1),
+            ..TransferCapabilities::default()
+        };
+        let built = TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, declared);
+        assert!(built.profile.upload_parts > 1);
+        let updates: Arc<StdMutex<Vec<(u64, u64)>>> = Arc::default();
+        let seen = Arc::clone(&updates);
+        let res = execute_single_file_dag(
+            &built,
+            arc,
+            "/remote.bin".to_string(),
+            local.to_string_lossy().to_string(),
+            None,
+            Some(Box::new(move |sent, total| {
+                seen.lock().unwrap().push((sent, total));
+            })),
+            Arc::new(crate::transfer_dag::NoopDagObserver) as Arc<dyn DagObserver>,
+            Arc::new(AtomicU64::new(declared)),
+            declared,
+            Some(CancellationToken::new()),
+            test_checkpoint_store(dir.path()),
+        )
+        .await;
+        let updates = updates.lock().unwrap().clone();
+        (res, updates)
+    }
+
+    /// #368: a fanned-out upload handed the callback to no node, so the CLI
+    /// `put` and the GUI single-file upload showed nothing until the end, and
+    /// not even the end. Each acknowledged part now moves the bar, and the
+    /// total comes only with the commit.
+    #[tokio::test]
+    async fn multipart_upload_reports_each_acknowledged_part_then_the_commit() {
+        let (res, updates) = multipart_progress_run(b"0123456789abcdefghijKLMNOPQRST", 30).await;
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(updates, [(0, 30), (10, 30), (20, 30), (30, 30)]);
+    }
+
+    /// A multipart upload that fails before its commit never reports the
+    /// total: the bar stops on the parts the server acknowledged.
+    #[tokio::test]
+    async fn a_multipart_upload_that_is_not_committed_never_reports_completion() {
+        // 25 bytes on disk, 20 declared: VerifyChecksum blocks the commit.
+        let (res, updates) = multipart_progress_run(b"0123456789abcdefghijKLMNO", 20).await;
+        assert!(res.is_err());
+        assert!(updates.first() == Some(&(0, 20)), "{updates:?}");
+        assert!(
+            updates.iter().all(|&(sent, total)| sent < total),
+            "{updates:?}"
+        );
     }
 
     /// A native-multipart payload that fails the real VerifyChecksum node never

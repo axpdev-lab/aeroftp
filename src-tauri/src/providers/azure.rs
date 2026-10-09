@@ -2229,7 +2229,8 @@ impl StorageProvider for AzureProvider {
 /// Private upload helper methods (outside trait impl to avoid async_trait limitations)
 impl AzureProvider {
     /// Single Put Blob upload for files <= BLOCK_UPLOAD_THRESHOLD.
-    /// AZ-003: Reports progress after completion.
+    /// AZ-003: the body reports the bytes as they go out; 100 percent waits
+    /// for Azure's answer (see `UploadProgress`).
     async fn upload_single(
         &self,
         local_path: &str,
@@ -2237,14 +2238,12 @@ impl AzureProvider {
         file_len: u64,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        let progress = super::upload_progress::UploadProgress::new(progress, file_len);
+        progress.start();
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let stream = crate::transfer_dag::throttle::throttle_stream(
-            tokio_util::io::ReaderStream::new(file),
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        );
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = progress.file_body(file);
 
         let mut headers = HeaderMap::new();
         let now = chrono::Utc::now()
@@ -2301,10 +2300,7 @@ impl AzureProvider {
             )));
         }
 
-        // AZ-003: Report completion
-        if let Some(ref cb) = progress {
-            cb(file_len, file_len);
-        }
+        progress.complete();
 
         Ok(())
     }
@@ -2328,6 +2324,9 @@ impl AzureProvider {
         file_len: u64,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        // Each acknowledged block moves the bar; 100 percent waits for Put
+        // Block List (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(progress, file_len);
         let concurrency = self.effective_upload_concurrency().max(1);
         let mut file = tokio::fs::File::open(local_path)
             .await
@@ -2381,9 +2380,7 @@ impl AzureProvider {
                 let _ = idx; // index is implicit in append order on serial path
                 block_ids.push(id);
                 bytes_uploaded += data_len;
-                if let Some(ref cb) = progress {
-                    cb(bytes_uploaded, file_len);
-                }
+                progress.report(bytes_uploaded);
             } else {
                 let mut joinset = tokio::task::JoinSet::new();
                 for (idx, id, data) in batch.into_iter() {
@@ -2419,9 +2416,7 @@ impl AzureProvider {
                 for (_, id, data_len) in completed.into_iter() {
                     block_ids.push(id);
                     bytes_uploaded += data_len;
-                    if let Some(ref cb) = progress {
-                        cb(bytes_uploaded, file_len);
-                    }
+                    progress.report(bytes_uploaded);
                 }
             }
         }
@@ -2435,10 +2430,8 @@ impl AzureProvider {
         // Commit all blocks
         self.put_block_list(blob_url, &block_ids).await?;
 
-        // AZ-003: Final progress report
-        if let Some(ref cb) = progress {
-            cb(file_len, file_len);
-        }
+        // AZ-003: the blocks are committed
+        progress.complete();
 
         debug!(
             "Block upload complete: {} blocks, {} bytes",
@@ -2892,6 +2885,45 @@ mod tests {
         let mut provider = AzureProvider::new(config);
         provider.connected = true;
         (provider, log)
+    }
+
+    /// Upload a 300 KB file through Put Blob to a local fixture answering
+    /// `status`; returns the outcome and the progress updates.
+    async fn put_blob_against_fixture(status: u16) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::put("/mycontainer/f.dat", status, "")]).await;
+        let mut config = test_config();
+        config.endpoint = Some(base);
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: Put Blob, every upload up to the 100 MiB block threshold,
+    /// reported only the total after Azure's answer. The bar now follows the
+    /// bytes going out and reaches 100 only on success.
+    #[tokio::test]
+    async fn put_blob_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = put_blob_against_fixture(201).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = put_blob_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     /// On a hierarchical-namespace account a directory's HEAD is 200 and

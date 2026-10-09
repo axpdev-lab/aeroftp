@@ -1774,8 +1774,13 @@ impl StorageProvider for GoogleDriveProvider {
                 }
             }
         } else {
-            // Simple multipart upload for small files (<=5MB, OK to buffer)
-            let content = tokio::fs::read(local_path)
+            // Simple multipart upload for files up to 5 MB: the metadata part,
+            // then the file streamed from disk. The file reports its bytes as
+            // they go out; 100 percent waits for Drive's answer (see
+            // `UploadProgress`).
+            let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+            progress.start();
+            let file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
 
@@ -1789,15 +1794,25 @@ impl StorageProvider for GoogleDriveProvider {
             };
 
             let boundary = "aeroftp_boundary";
-            let mut body = Vec::new();
-            body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-            body.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
-            body.extend_from_slice(metadata.to_string().as_bytes());
-            body.extend_from_slice(b"\r\n");
-            body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-            body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
-            body.extend_from_slice(&content);
-            body.extend_from_slice(format!("\r\n--{}--", boundary).as_bytes());
+            let mut head = Vec::new();
+            head.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            head.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
+            head.extend_from_slice(metadata.to_string().as_bytes());
+            head.extend_from_slice(b"\r\n");
+            head.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            head.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+            let tail = format!("\r\n--{}--", boundary).into_bytes();
+            let body_len = head.len() as u64 + total_size + tail.len() as u64;
+            use futures_util::StreamExt;
+            let body = reqwest::Body::wrap_stream(
+                futures_util::stream::once(async move {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from(head))
+                })
+                .chain(progress.file_stream(file))
+                .chain(futures_util::stream::once(async move {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from(tail))
+                })),
+            );
 
             let url = if let Some(ref fid) = existing_file_id {
                 format!("{}/files/{}?uploadType=multipart", self.upload_api(), fid)
@@ -1817,6 +1832,9 @@ impl StorageProvider for GoogleDriveProvider {
                     CONTENT_TYPE,
                     format!("multipart/related; boundary={}", boundary),
                 )
+                // A streamed body under an explicit length goes out unchunked,
+                // as the buffer it replaces did.
+                .header(reqwest::header::CONTENT_LENGTH, body_len)
                 .body(body)
                 .send()
                 .await
@@ -1830,9 +1848,7 @@ impl StorageProvider for GoogleDriveProvider {
                 )));
             }
 
-            if let Some(ref cb) = on_progress {
-                cb(total_size, total_size);
-            }
+            progress.complete();
         }
 
         info!("Uploaded {} to {}", local_path, remote_path);
@@ -3176,6 +3192,52 @@ mod tests {
 
     fn test_provider() -> GoogleDriveProvider {
         GoogleDriveProvider::new(GoogleDriveConfig::new("cid", "csec"))
+    }
+
+    /// Upload a 300 KB file through the multipart upload to a local double
+    /// answering `status`; returns the outcome and the progress updates.
+    async fn simple_upload_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![
+            Route::get("/drive/v3/files", 200, r#"{"files":[]}"#),
+            Route::post("/upload/drive/v3/files", status, r#"{"id":"F"}"#),
+        ])
+        .await;
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(base);
+        provider.test_access_token = Some("t".to_string());
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the multipart upload, every file up to 5 MB, was read whole into
+    /// memory and reported only the total after Drive's answer. It now
+    /// streams from disk, the bar follows the bytes going out and reaches 100
+    /// only on success.
+    #[tokio::test]
+    async fn simple_upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = simple_upload_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = simple_upload_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     /// A Drive API double holding `tree` as `(id, name, parent id)`, a name

@@ -646,6 +646,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: true,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("build the S3 provider");
         provider

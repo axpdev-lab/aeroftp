@@ -3070,6 +3070,9 @@ impl S3Provider {
     ) -> Result<(), ProviderError> {
         use tokio::io::AsyncReadExt;
 
+        // Each acknowledged part moves the bar; 100 percent waits for
+        // CompleteMultipartUpload (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
         let mut baseline = self.begin_baseline(key, total_size).await;
 
         // UPLOAD-01: Detect MIME type from filename for multipart uploads
@@ -3155,9 +3158,7 @@ impl S3Provider {
                     Ok(Ok((pn, etag, data_len))) => {
                         parts.push((pn, etag));
                         uploaded += data_len;
-                        if let Some(ref progress) = on_progress {
-                            progress(uploaded, total_size);
-                        }
+                        progress.report(uploaded);
                     }
                     Ok(Err(e)) => {
                         joinset.abort_all();
@@ -3194,6 +3195,7 @@ impl S3Provider {
         };
         abort_guard.disarm();
         self.save_baseline(key, baseline, etag).await;
+        progress.complete();
         Ok(())
     }
 
@@ -3586,6 +3588,9 @@ impl S3Provider {
             .filter(|p| !p.is_copy())
             .map(crate::providers::s3_delta_plan::DeltaPart::byte_len)
             .sum();
+        // Each acknowledged PUT part moves the bar; 100 percent waits for
+        // CompleteMultipartUpload (see `UploadProgress`).
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_wire);
 
         let copy_source = format!("/{}/{}", self.config.bucket, encode_s3_key_path(key));
 
@@ -3693,9 +3698,7 @@ impl S3Provider {
                     Ok(Ok((pn, etag, wire))) => {
                         parts.push((pn, etag));
                         uploaded_wire += wire;
-                        if let Some(ref progress) = on_progress {
-                            progress(uploaded_wire, total_wire);
-                        }
+                        progress.report(uploaded_wire);
                     }
                     Ok(Err(e)) => {
                         joinset.abort_all();
@@ -3737,6 +3740,7 @@ impl S3Provider {
             }
         };
         abort_guard.disarm();
+        progress.complete();
 
         info!(
             "Delta multipart uploaded {} ({} bytes over the wire, {} parts)",
@@ -4127,6 +4131,31 @@ impl S3Provider {
             if now >= deadline {
                 self.forget_markerless_upload(key);
                 return Ok(response);
+            }
+            tokio::time::sleep(pause.min(deadline.saturating_duration_since(now))).await;
+            pause = (pause * 2).min(std::time::Duration::from_secs(2));
+        }
+    }
+
+    /// HEAD `key` until it answers, when this session just uploaded it on a
+    /// preset that skips directory markers. Returns the time spent, or `None`
+    /// when no wait applied. The record is kept, so the GET that follows
+    /// still waits if the object disappears again.
+    async fn wait_for_own_markerless_upload(
+        &self,
+        key: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        if !self.markerless_upload_is_fresh(key) {
+            return Ok(None);
+        }
+        let started = tokio::time::Instant::now();
+        let deadline = started + Self::MARKERLESS_WRITE_BACK_WAIT;
+        let mut pause = std::time::Duration::from_millis(250);
+        loop {
+            let response = self.s3_request(Method::HEAD, key, None, None).await?;
+            let now = tokio::time::Instant::now();
+            if response.status() != StatusCode::NOT_FOUND || now >= deadline {
+                return Ok(Some(now - started));
             }
             tokio::time::sleep(pause.min(deadline.saturating_duration_since(now))).await;
             pause = (pause * 2).min(std::time::Duration::from_secs(2));
@@ -4845,6 +4874,23 @@ impl StorageProvider for S3Provider {
         self.cd("..").await
     }
 
+    async fn wait_until_readable(
+        &mut self,
+        path: &str,
+    ) -> Result<Option<std::time::Duration>, ProviderError> {
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let key = path.trim_start_matches('/');
+        self.wait_for_own_markerless_upload(key).await
+    }
+
+    fn measurement_note(&self) -> Option<&'static str> {
+        self.config
+            .filen_desktop_bridge
+            .then_some(super::FILEN_DESKTOP_BRIDGE_NOTE)
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -5158,8 +5204,12 @@ impl StorageProvider for S3Provider {
                 .await;
         }
 
-        // Streaming upload for small files (< 5MB)
+        // Streaming upload for files up to the multipart threshold. The body
+        // reports the bytes as they go out; 100 percent waits for the
+        // server's answer (see `UploadProgress`).
         use tokio_util::io::ReaderStream;
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+        progress.start();
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
@@ -5186,7 +5236,7 @@ impl StorageProvider for S3Provider {
             source,
             crate::transfer_dag::governor::TransferDirection::Upload,
         );
-        let body = reqwest::Body::wrap_stream(stream);
+        let body = reqwest::Body::wrap_stream(progress.track(stream));
 
         // Build the request manually with streaming body (cannot use s3_request helper for streaming)
         let url = self.build_url(key);
@@ -5229,9 +5279,7 @@ impl StorageProvider for S3Provider {
                 let finished = hasher.lock().unwrap_or_else(|e| e.into_inner()).take();
                 self.save_baseline(key, baseline_store.zip(finished), etag)
                     .await;
-                if let Some(progress) = on_progress {
-                    progress(total_size, total_size);
-                }
+                progress.complete();
                 self.note_markerless_upload(key);
                 Ok(())
             }
@@ -8355,6 +8403,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8612,6 +8661,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -8808,6 +8858,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8857,6 +8908,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -8889,6 +8941,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -9018,6 +9071,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider");
 
@@ -9064,6 +9118,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
 
@@ -9119,6 +9174,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -9251,6 +9307,240 @@ mod tests {
         server.abort();
         assert_eq!(std::fs::read(&dst).unwrap(), b"ok");
         assert_eq!(gets.load(Ordering::SeqCst), 3, "two 404s, then the object");
+        let _ = std::fs::remove_file(&src);
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    /// Upload a 300 KB file through the single PUT to a local fixture
+    /// answering `status`; returns the outcome and the progress updates.
+    async fn single_put_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::put("/test-bucket/f.dat", status, "")]).await;
+        let mut provider = make_provider(Some(&base));
+        provider.config.skip_dir_markers = true;
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the single PUT, every upload up to the 200 MiB multipart
+    /// threshold, reported nothing until the answer and then the total. The
+    /// bar now follows the bytes going out and reaches 100 only on success.
+    #[tokio::test]
+    async fn single_put_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = single_put_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = single_put_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
+    }
+
+    /// Upload 12 MiB in 5 MiB parts through the native multipart path to a
+    /// local double whose CompleteMultipartUpload answers `complete_status`;
+    /// returns the outcome and the progress updates.
+    async fn multipart_against_fixture(
+        complete_status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, temp_file};
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| async move {
+                let query = req.uri().query().unwrap_or("").to_string();
+                let method = req.method().clone();
+                let _ = axum::body::to_bytes(req.into_body(), 64 << 20).await;
+                let reply = axum::response::Response::builder();
+                match method.as_str() {
+                    "POST" if query.starts_with("uploads") => reply
+                        .status(200)
+                        .body(axum::body::Body::from(
+                            "<InitiateMultipartUploadResult><UploadId>U</UploadId>\
+                             </InitiateMultipartUploadResult>",
+                        ))
+                        .unwrap(),
+                    "PUT" => reply
+                        .status(200)
+                        .header("etag", "\"e\"")
+                        .body(axum::body::Body::empty())
+                        .unwrap(),
+                    "POST" => reply
+                        .status(complete_status)
+                        .body(axum::body::Body::from(
+                            "<CompleteMultipartUploadResult><ETag>\"x\"</ETag>\
+                             </CompleteMultipartUploadResult>",
+                        ))
+                        .unwrap(),
+                    _ => reply.status(204).body(axum::body::Body::empty()).unwrap(),
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.upload_chunk_override = Some(5 * 1024 * 1024);
+        let file = temp_file(12 * 1024 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload_multipart_streaming(
+                "f.dat",
+                file.path().to_str().unwrap(),
+                12 * 1024 * 1024,
+                Some(callback),
+            )
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// Review of #1122: the last acknowledged part reported the total before
+    /// CompleteMultipartUpload ran, so a failed commit had shown 100 percent.
+    /// The parts move the bar; the total comes only with the commit.
+    #[tokio::test]
+    async fn multipart_reports_the_total_only_after_the_commit() {
+        const MIB: u64 = 1024 * 1024;
+        // Parts may be acknowledged in any order; what holds is the shape.
+        let (outcome, updates) = multipart_against_fixture(200).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.len(),
+            3,
+            "two parts below the total, then the commit: {updates:?}"
+        );
+        assert!(updates.windows(2).all(|w| w[0].0 < w[1].0), "{updates:?}");
+        assert!(updates[..2]
+            .iter()
+            .all(|&(sent, t)| t == 12 * MIB && sent < t));
+        assert_eq!(updates.last(), Some(&(12 * MIB, 12 * MIB)));
+
+        let (outcome, updates) = multipart_against_fixture(400).await;
+        assert!(outcome.is_err());
+        assert_eq!(updates.len(), 2, "{updates:?}");
+        assert!(updates.iter().all(|&(sent, t)| sent < t), "{updates:?}");
+    }
+
+    /// #368: a benchmark on the Filen Desktop preset says it measured the
+    /// local bridge; any other S3 profile prints no note.
+    #[test]
+    fn measurement_note_names_the_filen_desktop_bridge_only() {
+        let mut config = S3Config::from_provider_config(&super::super::ProviderConfig {
+            name: "filen".to_string(),
+            provider_type: ProviderType::S3,
+            host: "https://127.0.0.1:1800".to_string(),
+            port: None,
+            username: Some("key".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra: std::collections::HashMap::from([
+                ("bucket".to_string(), "filen".to_string()),
+                ("provider_id".to_string(), "filen-desktop-s3".to_string()),
+            ]),
+        })
+        .unwrap();
+        assert_eq!(
+            S3Provider::new(config.clone()).unwrap().measurement_note(),
+            Some(super::super::FILEN_DESKTOP_BRIDGE_NOTE)
+        );
+        config.filen_desktop_bridge = false;
+        assert_eq!(S3Provider::new(config).unwrap().measurement_note(), None);
+    }
+
+    /// A benchmark waits for the write-back BEFORE it starts the download
+    /// clock (#368: 10 MB at "5 Mbps" was 15 s of waiting). The wait is
+    /// returned, so the caller can report it apart, and the download that
+    /// follows finds the object on its first GET.
+    #[tokio::test]
+    async fn wait_until_readable_waits_out_the_write_back_before_the_download() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let heads = Arc::new(AtomicUsize::new(0));
+        let gets = Arc::new(AtomicUsize::new(0));
+        let (heads_h, gets_h) = (Arc::clone(&heads), Arc::clone(&gets));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (heads, gets) = (Arc::clone(&heads_h), Arc::clone(&gets_h));
+                async move {
+                    let status = if req.method() == Method::HEAD {
+                        if heads.fetch_add(1, Ordering::SeqCst) < 2 {
+                            404
+                        } else {
+                            200
+                        }
+                    } else {
+                        if req.method() == Method::GET {
+                            gets.fetch_add(1, Ordering::SeqCst);
+                        }
+                        200
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .header("content-length", "2")
+                        .body(axum::body::Body::from(if status == 200 {
+                            "ok"
+                        } else {
+                            ""
+                        }))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let src = std::env::temp_dir().join(format!("aero-wr-src-{}", std::process::id()));
+        let dst = std::env::temp_dir().join(format!("aero-wr-dst-{}", std::process::id()));
+        std::fs::write(&src, b"hi").unwrap();
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.config.skip_dir_markers = true;
+        provider.connected = true;
+        provider
+            .upload(src.to_str().unwrap(), "/fresh.dat", None)
+            .await
+            .expect("upload");
+
+        // A key this session did not upload: no wait, no request.
+        assert_eq!(
+            provider.wait_until_readable("/other.dat").await.unwrap(),
+            None
+        );
+        assert_eq!(heads.load(Ordering::SeqCst), 0);
+
+        let waited = provider
+            .wait_until_readable("/fresh.dat")
+            .await
+            .unwrap()
+            .expect("a fresh upload on a markerless preset is waited for");
+        assert!(waited > std::time::Duration::ZERO, "{waited:?}");
+        assert_eq!(heads.load(Ordering::SeqCst), 3, "two 404s, then the object");
+        provider
+            .download("/fresh.dat", dst.to_str().unwrap(), None)
+            .await
+            .expect("download");
+        server.abort();
+        assert_eq!(
+            gets.load(Ordering::SeqCst),
+            1,
+            "the download needs no retry"
+        );
         let _ = std::fs::remove_file(&src);
         let _ = std::fs::remove_file(&dst);
     }
@@ -10174,6 +10464,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("Failed to create S3Provider")
     }
@@ -10492,6 +10783,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("create provider");
         let result = StorageProvider::connect(&mut provider).await;
@@ -10552,6 +10844,7 @@ mod tests {
             verify_cert: false,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         assert!(provider.is_filen_s3_endpoint());
@@ -10688,6 +10981,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         assert!(!provider.is_filen_s3_endpoint());
@@ -12169,6 +12463,7 @@ mod tests {
             // on for everything else.
             allow_cleartext_endpoint: true,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("live provider");
         provider.connected = true;
@@ -13011,6 +13306,7 @@ mod tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
 
@@ -13455,6 +13751,7 @@ mod documented_limits_tests {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("S3Provider")
     }
@@ -13517,6 +13814,7 @@ mod recorded_list_fixture {
             verify_cert: true,
             allow_cleartext_endpoint: false,
             skip_dir_markers: false,
+            filen_desktop_bridge: false,
         })
         .expect("provider");
         let xml = include_str!("fixtures/quickxml/s3-list-objects-v2.xml");

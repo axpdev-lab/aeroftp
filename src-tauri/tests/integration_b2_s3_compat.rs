@@ -127,6 +127,7 @@ fn make_provider(c: &Creds) -> S3Provider {
         verify_cert: true,
         allow_cleartext_endpoint: false,
         skip_dir_markers: false,
+        filen_desktop_bridge: false,
     })
     .expect("build S3 provider for the B2 S3-compatible endpoint")
 }

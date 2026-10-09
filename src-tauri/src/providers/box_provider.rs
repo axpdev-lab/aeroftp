@@ -1453,13 +1453,12 @@ impl BoxProvider {
     }
 
     /// Upload data in chunks via a Box upload session, then commit
-    #[allow(clippy::type_complexity)]
     async fn chunked_upload_session(
         &self,
         session_resp: reqwest::Response,
         local_path: &str,
         total_size: u64,
-        on_progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>>,
+        progress: &super::upload_progress::UploadProgress,
     ) -> Result<(), ProviderError> {
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
         use sha1::{Digest, Sha1};
@@ -1563,11 +1562,7 @@ impl BoxProvider {
             }
 
             offset = end;
-            if let Some(ref cb) = on_progress {
-                if let Ok(f) = cb.lock() {
-                    f(offset, total_size);
-                }
-            }
+            progress.report(offset);
         }
 
         // Commit
@@ -1594,6 +1589,7 @@ impl BoxProvider {
             )));
         }
 
+        progress.complete();
         Ok(())
     }
 }
@@ -1938,9 +1934,10 @@ impl StorageProvider for BoxProvider {
         const CHUNKED_THRESHOLD: u64 = 50 * 1024 * 1024; // 50MB
 
         if total_size > CHUNKED_THRESHOLD {
-            // Chunked upload session for large files: stream from file handle
-            let progress: Option<std::sync::Arc<std::sync::Mutex<Box<dyn Fn(u64, u64) + Send>>>> =
-                on_progress.map(|cb| std::sync::Arc::new(std::sync::Mutex::new(cb)));
+            // Chunked upload session for large files: stream from file handle.
+            // Each acknowledged part moves the bar; 100 percent waits for the
+            // commit (see `UploadProgress`).
+            let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
             let token = self.get_token().await?;
 
             // Step 1: Create upload session
@@ -1992,7 +1989,7 @@ impl StorageProvider for BoxProvider {
                     }
 
                     return self
-                        .chunked_upload_session(ver_resp, local_path, total_size, progress.clone())
+                        .chunked_upload_session(ver_resp, local_path, total_size, &progress)
                         .await;
                 }
                 return Err(ProviderError::TransferFailed(format!(
@@ -2002,14 +1999,20 @@ impl StorageProvider for BoxProvider {
             }
 
             return self
-                .chunked_upload_session(session_resp, local_path, total_size, progress)
+                .chunked_upload_session(session_resp, local_path, total_size, &progress)
                 .await;
         }
 
-        // Simple multipart upload for small files (<=50MB, OK to buffer)
-        let data = tokio::fs::read(local_path)
+        // Simple multipart upload for files up to 50 MB, streamed from disk.
+        // The body reports the bytes as they go out; 100 percent waits for
+        // Box's answer (see `UploadProgress`). An unreadable file fails here
+        // with its own IO error, before a request is built around it.
+        tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
+        let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+        progress.start();
+        let local = std::path::Path::new(local_path);
         let token = self.get_token().await?;
         let attributes = serde_json::json!({
             "name": file_name,
@@ -2020,7 +2023,11 @@ impl StorageProvider for BoxProvider {
             .text("attributes", attributes.to_string())
             .part(
                 "file",
-                reqwest::multipart::Part::bytes(data).file_name(file_name.to_string()),
+                reqwest::multipart::Part::stream_with_length(
+                    progress.reopened_file_body(local),
+                    total_size,
+                )
+                .file_name(file_name.to_string()),
             );
 
         let url = format!("{}/files/content", self.upload_api_base());
@@ -2036,15 +2043,18 @@ impl StorageProvider for BoxProvider {
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
             if body.contains("item_name_in_use") {
+                // A new version: the whole file again, the bar holding where
+                // the refused attempt left it until this one passes it.
                 let file_id = self.resolve_file_id(remote_path).await?;
-                let data2 = tokio::fs::read(local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
                 let token2 = self.get_token().await?;
 
                 let form2 = reqwest::multipart::Form::new().part(
                     "file",
-                    reqwest::multipart::Part::bytes(data2).file_name(file_name.to_string()),
+                    reqwest::multipart::Part::stream_with_length(
+                        progress.reopened_file_body(local),
+                        total_size,
+                    )
+                    .file_name(file_name.to_string()),
                 );
 
                 let url2 = format!("{}/files/{}/content", self.upload_api_base(), file_id);
@@ -2071,9 +2081,7 @@ impl StorageProvider for BoxProvider {
             }
         }
 
-        if let Some(ref cb) = on_progress {
-            cb(total_size, total_size);
-        }
+        progress.complete();
         Ok(())
     }
 
@@ -3306,6 +3314,46 @@ mod tests {
 
     fn demo_cfg() -> BoxConfig {
         BoxConfig::new("client-id", "client-secret")
+    }
+
+    /// Upload a 300 KB file through `files/content` to a local fixture
+    /// answering `status`; returns the outcome and the progress updates.
+    async fn small_upload_against_fixture(
+        status: u16,
+    ) -> (Result<(), ProviderError>, Vec<(u64, u64)>) {
+        use crate::providers::upload_progress::fixture::{recorder, serve, temp_file, Route};
+        let (base, server) = serve(vec![Route::post("/files/content", status, "{}")]).await;
+        let mut provider = fixture_connected();
+        provider.upload_base_override = Some(base);
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+            .await;
+        server.abort();
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates)
+    }
+
+    /// #368: the multipart upload, every file up to 50 MB, was read whole
+    /// into memory and reported only the total after Box's answer. It now
+    /// streams from disk, the bar follows the bytes going out and reaches 100
+    /// only on success.
+    #[tokio::test]
+    async fn small_upload_reports_real_progress() {
+        use crate::providers::upload_progress::fixture::assert_real_progress;
+        let (outcome, updates) = small_upload_against_fixture(201).await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates.first(),
+            Some(&(0, 300 * 1024)),
+            "the bar opens at 0"
+        );
+        assert_real_progress(&updates, 300 * 1024, true);
+
+        let (outcome, updates) = small_upload_against_fixture(500).await;
+        assert!(outcome.is_err());
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     fn fixture_connected() -> BoxProvider {

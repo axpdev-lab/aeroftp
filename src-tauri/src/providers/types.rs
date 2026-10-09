@@ -881,6 +881,10 @@ pub struct S3Config {
     /// `extra["s3_dir_markers"]` is `false`. An explicit `true` writes markers
     /// even on that preset.
     pub skip_dir_markers: bool,
+    /// The `filen-desktop-s3` preset: the endpoint is Filen Desktop's local
+    /// `rclone serve s3`, which answers from its own cache and sends uploads
+    /// on to Filen afterwards, so a benchmark measures the bridge, not Filen.
+    pub filen_desktop_bridge: bool,
 }
 
 impl S3Config {
@@ -948,6 +952,7 @@ impl S3Config {
             .unwrap_or(false);
 
         let skip_dir_markers = s3_skip_dir_markers(config);
+        let filen_desktop_bridge = s3_provider_id(config) == Some("filen-desktop-s3");
 
         let session_token = config
             .extra
@@ -1003,6 +1008,7 @@ impl S3Config {
             verify_cert,
             allow_cleartext_endpoint,
             skip_dir_markers,
+            filen_desktop_bridge,
         })
     }
 
@@ -2964,6 +2970,21 @@ mod s3_config_assume_role_tests {
             "a blank provider_id must not hide filen-desktop-s3"
         );
         assert!(!cfg.needs_dir_marker());
+    }
+
+    /// #368: only the Filen Desktop preset is the local bridge whose figures
+    /// need the note. A custom profile that merely skips markers (any
+    /// `rclone serve s3`) is not Filen Desktop, and an explicit
+    /// `s3_dir_markers=true` does not stop the preset from being one.
+    #[test]
+    fn only_the_filen_desktop_preset_is_the_filen_bridge() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("bucket".to_string(), "filen".to_string());
+        extra.insert("s3_dir_markers".to_string(), "false".to_string());
+        assert!(!s3_cfg(extra.clone()).filen_desktop_bridge);
+        extra.insert("provider_id".to_string(), "filen-desktop-s3".to_string());
+        extra.insert("s3_dir_markers".to_string(), "true".to_string());
+        assert!(s3_cfg(extra).filen_desktop_bridge);
     }
 
     #[test]
