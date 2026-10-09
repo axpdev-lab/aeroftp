@@ -70,6 +70,14 @@ if [ ! -e "$FALLBACK_DIR/libwebkit2gtk-4.1.so.0" ]; then
     exit 1
 fi
 
+# The hook is all or nothing: one missing library puts the whole fallback,
+# WebKitGTK and GTK included, ahead of the system copies. That never happens
+# on a system with WebKitGTK 4.1: every library aeroftp.bin links (and
+# aeroftp-cli links a subset of them) is WebKitGTK 4.1 itself, one of its
+# dependencies or part of the base system. Measured with ldd on minimal
+# webkit2gtk-4.1 installs of Ubuntu 22.04 and 24.04, Arch and Fedora: no
+# library missing. The tray libraries are loaded with dlopen at runtime and
+# never trigger it.
 mkdir -p "$(dirname "$HOOK")"
 cat > "$HOOK" <<'EOF'
 #! /usr/bin/env bash
