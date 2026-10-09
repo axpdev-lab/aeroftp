@@ -558,7 +558,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 775
+    "tauri_commands": 776
   },
   "mcp": {
     "count": 77,
@@ -1133,6 +1133,7 @@
       "provider_change_dir",
       "provider_detect_aero_remote",
       "provider_chmod",
+      "provider_connection_generation",
       "provider_checksum",
       "provider_checksum_capability",
       "provider_keep_alive",
@@ -1280,7 +1281,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 326,
+    "name_unmatched_count": 327,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1743,6 +1744,7 @@
       "provider_delete_dir",
       "provider_rename",
       "provider_chmod",
+      "provider_connection_generation",
       "provider_server_copy",
       "provider_checksum",
       "provider_checksum_capability",
@@ -2062,6 +2064,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 775
+    "count": 776
   }
 }

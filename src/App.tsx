@@ -945,7 +945,7 @@ const App: React.FC = () => {
   // Refs for keyboard navigation (sorted arrays defined later via useMemo)
   const sortedLocalFilesRef = useRef<LocalFile[]>([]);
   const sortedRemoteFilesRef = useRef<RemoteFile[]>([]);
-  const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean, sessionId: string | null } | null>(null);
+  const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean, sessionId: string | null, generation: number | null } | null>(null);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
   // #401: synchronous in-flight latches. A second double-click (e.g. on "Parent
@@ -13958,7 +13958,13 @@ const App: React.FC = () => {
           setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
         }
       }] : []),
-      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true, sessionId: activeSessionId }), disabled: count > 1 }] : []),
+      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
+        // The backend connection this listing came from; provider_chmod refuses
+        // to act once another connection has taken the slot.
+        const sessionId = activeSessionId;
+        const generation = await invoke<number>('provider_connection_generation').catch(() => null);
+        setPermissionsDialog({ file, visible: true, sessionId, generation });
+      }, disabled: count > 1 }] : []),
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => openRemoteProperties('general')
       },
@@ -16993,17 +16999,25 @@ const App: React.FC = () => {
               // provider_chmod acts on whatever session the backend holds now. A
               // tab switch or reconnect since the dialog opened would apply this
               // path from the old listing to another server, so refuse instead.
-              if (remoteConnectPhaseRef.current || permissionsDialog.sessionId !== activeSessionId) {
+              const sessionChanged = () => {
                 setPermissionsDialog(null);
                 notify.error(t('common.failed'), t('toast.permissionsSessionChanged'));
+              };
+              if (remoteConnectPhaseRef.current || permissionsDialog.sessionId !== activeSessionId || permissionsDialog.generation === null) {
+                sessionChanged();
                 return;
               }
               try {
-                await invoke('provider_chmod', { path: permissionsDialog.file.path, mode });
+                // The backend re-checks the generation under the provider lock, so a
+                // switch that lands after the check above is refused there too.
+                await invoke('provider_chmod', { path: permissionsDialog.file.path, mode, generation: permissionsDialog.generation });
                 notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));
                 await loadRemoteFiles(undefined, true);
                 setPermissionsDialog(null);
-              } catch (e) { notify.error(t('common.failed'), String(e)); }
+              } catch (e) {
+                if (String(e).startsWith('CONNECTION_CHANGED')) sessionChanged();
+                else notify.error(t('common.failed'), String(e));
+              }
             }
           }}
           fileName={permissionsDialog?.file.name || ''}

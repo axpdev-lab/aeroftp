@@ -15,8 +15,11 @@ import APP from '../App.tsx?raw';
  * The property checked here, on the real syntax tree (oxc, via rolldown):
  * every function that calls `invoke('provider_chmod', ...)` first runs an
  * `if` whose test reads both `remoteConnectPhaseRef` and `activeSessionId`
- * and whose branch returns; and every `setPermissionsDialog({...})` that
- * opens the dialog records the `sessionId` it was opened on.
+ * and whose branch returns, and passes the connection `generation` the
+ * backend re-checks under its provider lock (the frontend check alone
+ * races a switch that lands while the command waits for the lock); every
+ * `setPermissionsDialog({...})` that opens the dialog records the
+ * `sessionId` and the `generation` it was opened on.
  */
 
 type Node = { type: string; start: number; end: number; [key: string]: unknown };
@@ -110,11 +113,20 @@ describe('Permissions dialog session binding', () => {
     }
   });
 
+  it('hands the backend the connection generation to re-check under its lock', () => {
+    for (const { call } of found.chmodCalls) {
+      const args = (call.arguments as Node[])[1];
+      const keys = args?.type === 'ObjectExpression' ? (args.properties as Node[]).map(p => ((p.key as Node)?.name as string) ?? '') : [];
+      expect(keys, 'provider_chmod is called without the generation, so a switch during the call reaches the new connection').toContain('generation');
+    }
+  });
+
   it('records the session every time the dialog opens', () => {
     for (const arg of found.dialogOpens) {
       const keys = (arg.properties as Node[]).map(p => ((p.key as Node)?.name as string) ?? '');
       if (!keys.includes('visible')) continue;
       expect(keys, 'the Permissions dialog opens without the session it belongs to').toContain('sessionId');
+      expect(keys, 'the Permissions dialog opens without the connection generation it belongs to').toContain('generation');
     }
   });
 });

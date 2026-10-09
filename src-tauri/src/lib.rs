@@ -19683,6 +19683,7 @@ pub fn run() {
             provider_commands::provider_delete_dir,
             provider_commands::provider_rename,
             provider_commands::provider_chmod,
+            provider_commands::provider_connection_generation,
             provider_commands::provider_server_copy,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
