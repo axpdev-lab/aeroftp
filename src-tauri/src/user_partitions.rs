@@ -1527,18 +1527,34 @@ pub fn list_active_server_profiles_scoped(
 /// was active. A read-modify-write takes seconds, and an account switched in
 /// between (GUI or CLI) would otherwise receive the other account's list, so
 /// the write is refused with [`ACCOUNT_CHANGED`] unless `expected_user` is
-/// still active, and it targets `expected_user` explicitly: a switch that lands
-/// after the check cannot redirect it.
+/// still active when it commits: the check and the rows share one IMMEDIATE
+/// transaction, which an account switch (a `global_state` write) cannot
+/// interleave. The transaction opens inside [`with_user_dek`], after the
+/// session lock, the same order every partition writer takes.
 pub fn replace_expected_server_profiles(
     conn: &mut Connection,
     root_key: &[u8; 32],
     expected_user: i64,
     profiles: &[Value],
 ) -> Result<(), String> {
+    let conn: &Connection = conn;
+    // Answer a switch away from a locked account as ACCOUNT_CHANGED, before
+    // its DEK lookup can fail as USER_LOCKED.
     if active_user_id(conn)? != Some(expected_user) {
         return Err(ACCOUNT_CHANGED.to_string());
     }
-    replace_server_profiles_for(conn, root_key, expected_user, profiles)
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, expected_user, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start expected profile replace: {e}"))?;
+        if active_user_id(&tx)? != Some(user_id) {
+            return Err(ACCOUNT_CHANGED.to_string());
+        }
+        insert_profiles_with_dek(&tx, &root_secret, user_id, dek, profiles)?;
+        tx.commit()
+            .map_err(|e| format!("Commit expected profile replace: {e}"))
+    })
 }
 
 /// Read server profiles for a specific user id without changing active_user_id.
