@@ -20,6 +20,7 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom, ChevronLeft, ChevronRight, Undo2, Redo2, Save } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect } from '../types';
 import type { ImageResult } from '../types';
 import { useI18n } from '../../../i18n';
@@ -183,10 +184,14 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     // Track previous src to avoid resetting on initial load
     const prevSrcRef = React.useRef<string>(imageSrc);
+    // Paging in the gallery: the picture leaving stays under the new one until
+    // that one is drawn, then the new one fades in over it. No empty frame.
+    const [outgoingSrc, setOutgoingSrc] = useState<string | null>(null);
 
     // Reset state only when switching to a DIFFERENT image (not on initial load)
     useEffect(() => {
         if (prevSrcRef.current && prevSrcRef.current !== imageSrc && imageSrc) {
+            if (!imageError) setOutgoingSrc(prevSrcRef.current);
             setZoom(1);
             setRotation(0);
             setPosition({ x: 0, y: 0 });
@@ -201,6 +206,8 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             setReloadedSrc(null);
         }
         prevSrcRef.current = imageSrc;
+        // Only on a change of picture.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [imageSrc, resetEdits]);
 
     // A URL this viewer made is released when it is replaced or unmounted.
@@ -285,8 +292,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     }, [editMode, exitGuard]);
 
     // Handle image load
+    const outgoingTimer = useRef<number | undefined>(undefined);
+    useEffect(() => () => window.clearTimeout(outgoingTimer.current), []);
     const handleImageLoad = useCallback(() => {
         setImageLoaded(true);
+        window.clearTimeout(outgoingTimer.current);
+        outgoingTimer.current = window.setTimeout(() => setOutgoingSrc(null), 160);
         // The size of the file, not of the cropped preview.
         if (imageRef.current && imageRef.current.getAttribute('src') === baseSrcRef.current) {
             setMetadata({
@@ -377,6 +388,39 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         setPosition(np);
     }, []);
 
+    // Zoom from a button moves smoothly; a gesture follows the fingers, so the
+    // transition is off while one runs and while dragging.
+    const [gestureActive, setGestureActive] = useState(false);
+    const gestureTimer = useRef<number | undefined>(undefined);
+    const markGesture = useCallback(() => {
+        setGestureActive(true);
+        window.clearTimeout(gestureTimer.current);
+        gestureTimer.current = window.setTimeout(() => setGestureActive(false), 200);
+    }, []);
+    useEffect(() => () => window.clearTimeout(gestureTimer.current), []);
+
+    // Linux: WebKitGTK keeps a touchpad pinch for itself, so the backend takes
+    // it and sends it here (webview_pinch.rs).
+    useEffect(() => {
+        let base = 1;
+        let unlisten: (() => void) | undefined;
+        let disposed = false;
+        listen<{ phase: string; scale: number; x: number; y: number }>('touchpad-pinch', ({ payload }) => {
+            if (wheelState.current.cropMode) return;
+            if (payload.phase === 'begin') {
+                base = zoomRef.current;
+                return;
+            }
+            if (payload.phase !== 'update') return;
+            markGesture();
+            zoomAt(payload.x, payload.y, (base * payload.scale) / zoomRef.current);
+        }).then((fn) => {
+            if (disposed) fn();
+            else unlisten = fn;
+        }).catch(() => undefined);
+        return () => { disposed = true; unlisten?.(); };
+    }, [zoomAt, markGesture]);
+
     const swipe = useRef<{ dx: number; locked: boolean; timer: number | undefined }>({ dx: 0, locked: false, timer: undefined });
     useEffect(() => {
         const el = containerRef.current;
@@ -395,6 +439,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 return;
             }
             e.preventDefault();
+            markGesture();
             if (e.ctrlKey) {
                 zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
                 return;
@@ -436,6 +481,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         const onGestureStart = (e: Event) => { e.preventDefault(); gestureStart = zoomRef.current; };
         const onGestureChange = (e: Event) => {
             e.preventDefault();
+            markGesture();
             if (wheelState.current.cropMode) return;
             const g = e as Event & { scale?: number; clientX?: number; clientY?: number };
             if (!g.scale) return;
@@ -451,7 +497,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             window.clearTimeout(swipe.current.timer);
         };
         // The container exists once there is a picture to show.
-    }, [zoomAt, !!imageSrc]);
+    }, [zoomAt, markGesture, !!imageSrc]);
 
     // Drag handlers for panning
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -860,7 +906,20 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     onMouseLeave={handleMouseUp}
                 >
                     {/* Loading indicator */}
-                    {!imageLoaded && !imageError && (
+                    {/* The picture leaving, under the one arriving */}
+                    {outgoingSrc && !imageError && (
+                        <img
+                            src={outgoingSrc}
+                            alt=""
+                            aria-hidden
+                            data-image-outgoing
+                            className="absolute max-w-full max-h-full select-none pointer-events-none"
+                            style={{ objectFit: 'contain' }}
+                            draggable={false}
+                        />
+                    )}
+
+                    {!imageLoaded && !imageError && !outgoingSrc && (
                         <div className="absolute inset-0 flex items-center justify-center">
                             <div className="w-10 h-10 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                         </div>
@@ -880,9 +939,14 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         src={displaySrc}
                         alt={file.name}
                         onClick={handleColorPick}
-                        className={`max-w-full max-h-full transition-opacity duration-300 select-none ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+                        className={`relative max-w-full max-h-full select-none ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                         style={{
                             transform: imageTransform,
+                            // Transform only: the compositor animates it without layout.
+                            transition: isDragging || gestureActive || cropMode
+                                ? 'opacity 150ms ease-out'
+                                : 'opacity 150ms ease-out, transform 180ms cubic-bezier(0.2, 0.7, 0.2, 1)',
+                            willChange: zoom !== 1 || isDragging ? 'transform' : undefined,
                             transformOrigin: 'center center',
                             objectFit: (isFitToScreen || cropMode) ? 'contain' : 'none',
                             filter: cssFilter,

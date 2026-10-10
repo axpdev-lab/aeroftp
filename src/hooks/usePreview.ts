@@ -182,42 +182,49 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     }
   }, [notify]);
 
-  // Open Universal Preview Modal (for media files)
-  const loadAndShow = useCallback(async (file: RemoteFile | LocalFile, isRemote: boolean) => {
+  // Pictures of the gallery already read and decoded, so paging shows the
+  // next one at once and the neighbours are ready before they are asked for.
+  // Only images: a video or a PDF is read when it is opened.
+  const imageCache = useRef(new Map<string, Promise<PreviewFileData>>());
+  const shownImageKey = useRef<string | null>(null);
+  const showRequest = useRef(0);
+  const IMAGE_CACHE_MAX = 6;
+
+  const releaseImage = useCallback((key: string) => {
+    const entry = imageCache.current.get(key);
+    imageCache.current.delete(key);
+    void entry?.then((d) => { if (d.blobUrl?.startsWith('blob:')) URL.revokeObjectURL(d.blobUrl); }).catch(() => undefined);
+  }, []);
+
+  const releaseAllImages = useCallback(() => {
+    for (const key of [...imageCache.current.keys()]) releaseImage(key);
+    shownImageKey.current = null;
+  }, [releaseImage]);
+
+  useEffect(() => releaseAllImages, [releaseAllImages]);
+
+  // A picture saved over (AeroImage Replace) is read again next time.
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      const path = (e as CustomEvent<{ path?: string }>).detail?.path;
+      if (path) releaseImage(`l:${path}`);
+    };
+    window.addEventListener('file-changed', onChanged);
+    return () => window.removeEventListener('file-changed', onChanged);
+  }, [releaseImage]);
+
+  // Read a file's bytes for the preview. Throws on failure.
+  const fetchPreviewData = useCallback(async (file: RemoteFile | LocalFile, isRemote: boolean): Promise<PreviewFileData> => {
     const filePath = isRemote ? (file as RemoteFile).path : (file as LocalFile).path;
     const category = getPreviewCategory(file.name);
     const ext = file.name.split('.').pop()?.toLowerCase() || '';
-    const fileSize = file.size || 0;
-    const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
-
-    // Header metadata shown regardless of load outcome (skeleton / error / ready).
     const baseFile: PreviewFileData = {
       name: file.name,
       path: filePath,
-      size: fileSize,
+      size: file.size || 0,
       isRemote,
       modified: file.modified || undefined,
     };
-
-    // Starting a new preview: free the previous blob URL.
-    if (currentBlobUrlRef.current) {
-      URL.revokeObjectURL(currentBlobUrlRef.current);
-      currentBlobUrlRef.current = null;
-    }
-
-    // H29: reject binary preview over 25 MB (memory amplification). Show it in
-    // the modal, not just a transient toast that hides in the activity log (#128).
-    const needsBinaryPreview = category !== 'text' && category !== 'markdown' && category !== 'code';
-    if (needsBinaryPreview && fileSize > MAX_PREVIEW_SIZE_BYTES) {
-      setUniversalPreviewFile({ ...baseFile, error: `File too large for preview (${sizeMB} MB). Maximum is 25 MB.` });
-      setUniversalPreviewOpen(true);
-      return;
-    }
-
-    // Open the modal immediately with a skeleton, then fetch the bytes in the
-    // background and swap them in when ready (#128).
-    setUniversalPreviewFile({ ...baseFile, loading: true });
-    setUniversalPreviewOpen(true);
 
     const mimeMap: Record<string, string> = {
       jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
@@ -239,61 +246,142 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
       return byteArray.buffer as ArrayBuffer;
     };
 
-    try {
-      let blobUrl: string | undefined;
-      let content: string | undefined;
+    let blobUrl: string | undefined;
+    let content: string | undefined;
 
-      if (!isRemote) {
-        if (category === 'text' || category === 'markdown' || category === 'code') {
-          content = await invoke<string>('read_local_file', { path: filePath });
-        } else if (category === 'audio' || category === 'video') {
-          const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
-          const mimeType = mimeMap[ext] || (category === 'audio' ? 'audio/mpeg' : 'video/mp4');
+    if (!isRemote) {
+      if (category === 'text' || category === 'markdown' || category === 'code') {
+        content = await invoke<string>('read_local_file', { path: filePath });
+      } else if (category === 'audio' || category === 'video') {
+        const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
+        const mimeType = mimeMap[ext] || (category === 'audio' ? 'audio/mpeg' : 'video/mp4');
+        const byteArray = base64ToArrayBuffer(base64);
+        const blob = new Blob([byteArray], { type: mimeType });
+        blobUrl = URL.createObjectURL(blob);
+      } else {
+        const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
+        const mimeType = mimeMap[ext] || 'application/octet-stream';
+        // H27: Sanitize SVG content before creating blob
+        if (ext === 'svg') {
+          const rawSvg = atob(base64);
+          const cleanSvg = sanitizeSvg(rawSvg);
+          const blob = new Blob([cleanSvg], { type: mimeType });
+          blobUrl = URL.createObjectURL(blob);
+        } else {
           const byteArray = base64ToArrayBuffer(base64);
           const blob = new Blob([byteArray], { type: mimeType });
           blobUrl = URL.createObjectURL(blob);
-        } else {
-          const base64 = await invoke<string>('read_local_file_base64', { path: filePath });
-          const mimeType = mimeMap[ext] || 'application/octet-stream';
-          // H27: Sanitize SVG content before creating blob
-          if (ext === 'svg') {
-            const rawSvg = atob(base64);
-            const cleanSvg = sanitizeSvg(rawSvg);
-            const blob = new Blob([cleanSvg], { type: mimeType });
-            blobUrl = URL.createObjectURL(blob);
-          } else {
-            const byteArray = base64ToArrayBuffer(base64);
-            const blob = new Blob([byteArray], { type: mimeType });
-            blobUrl = URL.createObjectURL(blob);
-          }
-        }
-      } else {
-        if (category === 'text' || category === 'markdown' || category === 'code') {
-          content = await invoke<string>('preview_remote_file', { path: filePath });
-        } else if (category === 'image') {
-          // #128 item B: pass the UI's preview cap so the backend uses the same
-          // 25 MB limit (it previously hard-capped at 10 MB, rejecting full-res
-          // photos the UI had already accepted).
-          const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath, maxSizeMb: MAX_PREVIEW_SIZE_BYTES / (1024 * 1024) });
-          // H27: Sanitize SVG content from remote sources
-          if (ext === 'svg') {
-            const rawSvg = atob(base64);
-            const cleanSvg = sanitizeSvg(rawSvg);
-            blobUrl = `data:${mimeMap[ext] || 'image/svg+xml'};base64,${btoa(cleanSvg)}`;
-          } else {
-            blobUrl = `data:${mimeMap[ext] || 'image/png'};base64,${base64}`;
-          }
         }
       }
+    } else {
+      if (category === 'text' || category === 'markdown' || category === 'code') {
+        content = await invoke<string>('preview_remote_file', { path: filePath });
+      } else if (category === 'image') {
+        // #128 item B: pass the UI's preview cap so the backend uses the same
+        // 25 MB limit (it previously hard-capped at 10 MB, rejecting full-res
+        // photos the UI had already accepted).
+        const base64 = await invoke<string>('ftp_read_file_base64', { path: filePath, maxSizeMb: MAX_PREVIEW_SIZE_BYTES / (1024 * 1024) });
+        // H27: Sanitize SVG content from remote sources
+        if (ext === 'svg') {
+          const rawSvg = atob(base64);
+          const cleanSvg = sanitizeSvg(rawSvg);
+          blobUrl = `data:${mimeMap[ext] || 'image/svg+xml'};base64,${btoa(cleanSvg)}`;
+        } else {
+          blobUrl = `data:${mimeMap[ext] || 'image/png'};base64,${base64}`;
+        }
+      }
+    }
 
-      currentBlobUrlRef.current = blobUrl?.startsWith('blob:') ? blobUrl : null;
-      setUniversalPreviewFile({ ...baseFile, mimeType: mimeMap[ext], content, blobUrl, loading: false });
+    return { ...baseFile, mimeType: mimeMap[ext], content, blobUrl, loading: false };
+  }, []);
+
+  /** The cached (read and decoded) picture, reading it when it is not there. */
+  const cachedImage = useCallback((file: RemoteFile | LocalFile, isRemote: boolean): Promise<PreviewFileData> => {
+    const key = `${isRemote ? 'r' : 'l'}:${(file as { path: string }).path}`;
+    const hit = imageCache.current.get(key);
+    if (hit) {
+      // Most recently used last.
+      imageCache.current.delete(key);
+      imageCache.current.set(key, hit);
+      return hit;
+    }
+    const pending = fetchPreviewData(file, isRemote).then(async (data) => {
+      if (data.blobUrl) {
+        const img = new Image();
+        img.src = data.blobUrl;
+        await img.decode().catch(() => undefined);
+      }
+      return data;
+    });
+    pending.catch(() => { if (imageCache.current.get(key) === pending) imageCache.current.delete(key); });
+    imageCache.current.set(key, pending);
+    for (const old of imageCache.current.keys()) {
+      if (imageCache.current.size <= IMAGE_CACHE_MAX) break;
+      if (old !== key && old !== shownImageKey.current) releaseImage(old);
+    }
+    return pending;
+  }, [fetchPreviewData, releaseImage]);
+
+  // Open Universal Preview Modal (for media files). `keepCurrent`: paging in
+  // the gallery keeps the picture on screen until the next one is ready,
+  // instead of an empty frame.
+  const loadAndShow = useCallback(async (file: RemoteFile | LocalFile, isRemote: boolean, keepCurrent = false) => {
+    const request = ++showRequest.current;
+    const filePath = isRemote ? (file as RemoteFile).path : (file as LocalFile).path;
+    const category = getPreviewCategory(file.name);
+    const fileSize = file.size || 0;
+    const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
+
+    // Header metadata shown regardless of load outcome (skeleton / error / ready).
+    const baseFile: PreviewFileData = {
+      name: file.name,
+      path: filePath,
+      size: fileSize,
+      isRemote,
+      modified: file.modified || undefined,
+    };
+
+    // Starting a new preview: free the previous blob URL (cached pictures
+    // are freed by the cache).
+    if (currentBlobUrlRef.current) {
+      URL.revokeObjectURL(currentBlobUrlRef.current);
+      currentBlobUrlRef.current = null;
+    }
+
+    // H29: reject binary preview over 25 MB (memory amplification). Show it in
+    // the modal, not just a transient toast that hides in the activity log (#128).
+    const needsBinaryPreview = category !== 'text' && category !== 'markdown' && category !== 'code';
+    if (needsBinaryPreview && fileSize > MAX_PREVIEW_SIZE_BYTES) {
+      setUniversalPreviewFile({ ...baseFile, error: `File too large for preview (${sizeMB} MB). Maximum is 25 MB.` });
+      setUniversalPreviewOpen(true);
+      return;
+    }
+
+    const isImage = category === 'image';
+    // Open the modal immediately with a skeleton, then fetch the bytes in the
+    // background and swap them in when ready (#128). Paging keeps the picture.
+    if (!keepCurrent) setUniversalPreviewFile({ ...baseFile, loading: true });
+    setUniversalPreviewOpen(true);
+
+    try {
+      const data = isImage ? await cachedImage(file, isRemote) : await fetchPreviewData(file, isRemote);
+      if (request !== showRequest.current) {
+        if (!isImage && data.blobUrl?.startsWith('blob:')) URL.revokeObjectURL(data.blobUrl);
+        return;
+      }
+      if (isImage) {
+        shownImageKey.current = `${isRemote ? 'r' : 'l'}:${filePath}`;
+      } else {
+        currentBlobUrlRef.current = data.blobUrl?.startsWith('blob:') ? data.blobUrl : null;
+      }
+      setUniversalPreviewFile(data);
     } catch (error) {
+      if (request !== showRequest.current) return;
       // Surface the failure inside the modal, not only as a toast that hides in
       // the activity log (#128).
       setUniversalPreviewFile({ ...baseFile, error: String(error), loading: false });
     }
-  }, []);
+  }, [cachedImage, fetchPreviewData]);
 
   // Open a preview and, when the folder holds other files of the SAME kind,
   // build a gallery so the on-screen arrows, the toolbar buttons, the ← →
@@ -342,15 +430,31 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     if (galleryIndex < 0 || galleryFiles.length < 2) return;
     const ni = galleryStep(galleryIndex, galleryFiles.length, -1);
     setGalleryIndex(ni);
-    void loadAndShow(galleryFiles[ni], galleryIsRemote);
+    void loadAndShow(galleryFiles[ni], galleryIsRemote, true);
   }, [galleryIndex, galleryFiles, galleryIsRemote, loadAndShow]);
 
   const previewNext = useCallback(() => {
     if (galleryIndex < 0 || galleryFiles.length < 2) return;
     const ni = galleryStep(galleryIndex, galleryFiles.length, 1);
     setGalleryIndex(ni);
-    void loadAndShow(galleryFiles[ni], galleryIsRemote);
+    void loadAndShow(galleryFiles[ni], galleryIsRemote, true);
   }, [galleryIndex, galleryFiles, galleryIsRemote, loadAndShow]);
+
+  // Read the pictures on both sides of the one shown, so the next swipe or
+  // arrow shows it at once. Local files only on both sides; a remote folder
+  // only ahead, to keep the traffic down.
+  useEffect(() => {
+    if (!universalPreviewOpen || galleryIndex < 0 || galleryFiles.length < 2) return;
+    const shown = galleryFiles[galleryIndex];
+    if (getPreviewCategory(shown.name) !== 'image') return;
+    const sides = galleryIsRemote ? [1] : [1, -1];
+    for (const d of sides) {
+      const next = galleryFiles[galleryStep(galleryIndex, galleryFiles.length, d as 1 | -1)];
+      if (next && (next.size || 0) <= MAX_PREVIEW_SIZE_BYTES) {
+        void cachedImage(next, galleryIsRemote).catch(() => undefined);
+      }
+    }
+  }, [universalPreviewOpen, galleryIndex, galleryFiles, galleryIsRemote, cachedImage]);
 
   // Close Universal Preview (cleanup blob URL)
   const closeUniversalPreview = useCallback(() => {
@@ -360,10 +464,12 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     }
     setUniversalPreviewOpen(false);
     setUniversalPreviewFile(null);
+    showRequest.current++;
+    releaseAllImages();
     galleryRequest.current++;
     setGalleryFiles([]);
     setGalleryIndex(-1);
-  }, []);
+  }, [releaseAllImages]);
 
   return {
     // Sidebar preview

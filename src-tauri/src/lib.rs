@@ -211,6 +211,8 @@ pub mod rsync_over_ssh;
 mod ssh_exec;
 pub mod util;
 #[cfg(target_os = "linux")]
+mod webview_pinch;
+#[cfg(target_os = "linux")]
 mod webview_recovery;
 // Strada C: native rsync prototype (dev-only, gitignored, feature-gated).
 // Does not affect production builds. See `src/aerorsync/README.md`.
@@ -18651,6 +18653,10 @@ pub fn run() {
             // until the app is restarted from the tray.
             #[cfg(target_os = "linux")]
             webview_recovery::install(&_main);
+            // A touchpad pinch magnified the whole window: hand it to the
+            // frontend instead (#1075).
+            #[cfg(target_os = "linux")]
+            webview_pinch::install(&_main);
 
             let accel = |shortcut: &'static str| -> Option<&'static str> {
                 #[cfg(target_os = "linux")]
