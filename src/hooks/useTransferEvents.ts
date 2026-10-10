@@ -128,7 +128,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // Latest real aggregate byte totals for the active batch toast, from the
   // `transfer_batch_progress` snapshot. Drives an honest byte-based aggregate
   // ETA (completed-file bytes from here + in-flight lane partials, over the
-  // summed instantaneous lane speed). Null until the first snapshot arrives.
+  // summed current lane speed). Null until the first snapshot arrives.
   const toastBatchBytesRef = useRef<{ total: number; completed: number } | null>(null);
 
   useEffect(() => {
@@ -646,8 +646,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
             }
             // Honest byte-based aggregate ETA: real remaining bytes
             // (total - completed-file bytes - in-flight lane partials) over the
-            // summed instantaneous lane speed. Falls back to the backend value
-            // (0) until the first batch-bytes snapshot and a non-zero speed.
+            // summed lane speed. Each lane's speed_bps is the rate over the last
+            // 3 s (SpeedMeter, transfer_speed.rs), not the average since the
+            // file started, so the ETA follows a change of pace. Falls back to
+            // the backend value (0) until the first batch-bytes snapshot and a
+            // non-zero speed.
             let aggregatedEta = data.progress.eta_seconds;
             const batchBytes = toastBatchBytesRef.current;
             if (batchBytes && batchBytes.total > 0 && aggregatedSpeed > 0) {

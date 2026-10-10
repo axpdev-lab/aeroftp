@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { dispatchTransferToast } from '../components/Transfer/TransferToastContainer';
 import type { TransferProgress } from '../components/Transfer';
+import { nextFrameSpeed, type FrameSpeed } from './frameSpeed';
 
 /**
  * Archives at or above this size get the global transfer toast as a progress
@@ -66,9 +67,9 @@ export async function runExtractWithToast<T>(
 
     const transferId = `extract-${++extractToastSeq}`;
     let extractedTotal = 0;
-    let lastT = performance.now();
-    let lastBytes = 0;
-    let speed = 0; // EMA bytes/sec, derived from successive determinate frames
+    // Current speed (EMA bytes/sec) from successive determinate frames; the
+    // first anchor is the start of the extract at 0 bytes.
+    let frameSpeed: FrameSpeed = nextFrameSpeed(null, performance.now(), 0);
 
     const indeterminateSummary = (): TransferProgress => ({
         transfer_id: transferId,
@@ -92,14 +93,8 @@ export async function runExtractWithToast<T>(
             return;
         }
         extractedTotal = Math.max(extractedTotal, f.total);
-        const now = performance.now();
-        const dt = (now - lastT) / 1000;
-        if (dt > 0.05 && f.transferred >= lastBytes) {
-            const inst = (f.transferred - lastBytes) / dt;
-            speed = speed === 0 ? inst : speed * 0.6 + inst * 0.4;
-        }
-        lastT = now;
-        lastBytes = f.transferred;
+        frameSpeed = nextFrameSpeed(frameSpeed, performance.now(), f.transferred);
+        const speed = frameSpeed.bps;
         const remaining = Math.max(0, f.total - f.transferred);
         const eta = speed > 0 && remaining > 0 ? remaining / speed : 0;
         dispatchTransferToast({
