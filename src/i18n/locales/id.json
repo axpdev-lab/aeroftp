@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Waktu koneksi habis. Server tidak pernah merespons dan upaya dibatalkan.",
             "transferFailed": "Transfer gagal",
             "navigationFailed": "Navigasi gagal: {error}",
-            "transferComplete": "{count} berkas disalin"
+            "transferComplete": "{count} berkas disalin",
+            "permissionsSessionChanged": "Koneksi berubah sejak dialog ini dibuka, jadi tidak ada yang diubah. Buka Izin lagi pada koneksi saat ini."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -3956,7 +3957,8 @@
             "public": "Publik",
             "read": "Baca",
             "title": "Izin",
-            "write": "Tulis"
+            "write": "Tulis",
+            "currentUnknown": "Mode saat ini tidak dapat dibaca; nilai di bawah dimulai dari 644."
         },
         "preview": {
             "audio": {

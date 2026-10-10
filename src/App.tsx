@@ -949,7 +949,12 @@ const App: React.FC = () => {
   // Refs for keyboard navigation (sorted arrays defined later via useMemo)
   const sortedLocalFilesRef = useRef<LocalFile[]>([]);
   const sortedRemoteFilesRef = useRef<RemoteFile[]>([]);
-  const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean } | null>(null);
+  const [permissionsDialog, setPermissionsDialog] = useState<{ file: RemoteFile, visible: boolean, sessionId: string | null, generation: number, openId: number } | null>(null);
+  // Latest Permissions opening: an earlier one whose generation lookup lands
+  // later must not replace the dialog of the file picked after it.
+  const permissionsOpenSeqRef = useRef(0);
+  // A permissions change in flight: a second Apply does not send another one.
+  const permissionsSavingRef = useRef(false);
   const [showSiteCommand, setShowSiteCommand] = useState(false);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
@@ -14008,7 +14013,21 @@ const App: React.FC = () => {
           setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
         }
       }] : []),
-      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: () => setPermissionsDialog({ file, visible: true }), disabled: count > 1 }] : []),
+      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
+        // The backend connection this listing came from; provider_chmod refuses
+        // to act once another connection has taken the slot.
+        const sessionId = activeSessionId;
+        const seq = ++permissionsOpenSeqRef.current;
+        let generation: number;
+        try {
+          generation = await invoke<number>('provider_connection_generation');
+        } catch (e) {
+          if (seq === permissionsOpenSeqRef.current) notify.error(t('common.failed'), String(e));
+          return;
+        }
+        if (seq !== permissionsOpenSeqRef.current) return;
+        setPermissionsDialog({ file, visible: true, sessionId, generation, openId: seq });
+      }, disabled: count > 1 }] : []),
       {
         label: t('contextMenu.properties'), icon: <Info size={14} />, action: () => openRemoteProperties('general')
       },
@@ -17053,17 +17072,40 @@ const App: React.FC = () => {
           />
         )}
         <PermissionsDialog
+          // One instance per opening, so a mode edited for one file never
+          // carries over to the next one opened.
+          key={permissionsDialog ? `permissions-${permissionsDialog.openId}` : 'permissions-closed'}
           isOpen={permissionsDialog?.visible || false}
           onClose={() => setPermissionsDialog(null)}
           onSave={async (mode) => {
-            if (permissionsDialog?.file) {
-              try {
-                await invoke('chmod_remote_file', { path: permissionsDialog.file.path, mode });
-                notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: permissionsDialog.file.name, mode }));
-                await loadRemoteFiles(undefined, true);
-                setPermissionsDialog(null);
-              } catch (e) { notify.error(t('common.failed'), String(e)); }
+            const dialog = permissionsDialog;
+            if (!dialog?.file || permissionsSavingRef.current) return;
+            // provider_chmod acts on whatever session the backend holds now. A
+            // tab switch or reconnect since the dialog opened would apply this
+            // path from the old listing to another server, so refuse instead.
+            const sessionChanged = () => {
+              setPermissionsDialog(null);
+              notify.error(t('common.failed'), t('toast.permissionsSessionChanged'));
+            };
+            if (remoteConnectPhaseRef.current || dialog.sessionId !== activeSessionId) {
+              sessionChanged();
+              return;
             }
+            permissionsSavingRef.current = true;
+            try {
+              // The backend re-checks the generation under the provider lock, so a
+              // switch that lands after the check above is refused there too.
+              await invoke('provider_chmod', { path: dialog.file.path, mode, generation: dialog.generation });
+            } catch (e) {
+              if (String(e).startsWith('CONNECTION_CHANGED')) sessionChanged();
+              else notify.error(t('common.failed'), String(e));
+              return;
+            } finally {
+              permissionsSavingRef.current = false;
+            }
+            setPermissionsDialog(null);
+            notify.success(t('toast.permissionsUpdated'), t('toast.permissionsUpdatedDesc', { name: dialog.file.name, mode }));
+            void loadRemoteFiles(undefined, true);
           }}
           fileName={permissionsDialog?.file.name || ''}
           currentPermissions={permissionsDialog?.file.permissions || undefined}

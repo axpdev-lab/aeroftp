@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Przekroczono limit czasu połączenia. Serwer nie odpowiedział, a próba została przerwana.",
             "transferFailed": "Transfer nie powiódł się",
             "navigationFailed": "Nawigacja nie powiodła się: {error}",
-            "transferComplete": "Skopiowano {count} plików"
+            "transferComplete": "Skopiowano {count} plików",
+            "permissionsSessionChanged": "Połączenie zmieniło się od otwarcia tego okna, więc nic nie zostało zmienione. Otwórz Uprawnienia ponownie na bieżącym połączeniu."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -3956,7 +3957,8 @@
             "public": "Publiczny",
             "read": "Odczyt",
             "title": "Uprawnienia",
-            "write": "Zapis"
+            "write": "Zapis",
+            "currentUnknown": "Nie udało się odczytać bieżącego trybu; poniższe wartości zaczynają się od 644."
         },
         "preview": {
             "audio": {

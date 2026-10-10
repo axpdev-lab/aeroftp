@@ -2043,7 +2043,8 @@
             "connectTimedOut": "Timeout della connessione. Il server non ha mai risposto e il tentativo è stato annullato.",
             "transferFailed": "Trasferimento non riuscito",
             "navigationFailed": "Navigazione non riuscita: {error}",
-            "transferComplete": "{count} file copiati"
+            "transferComplete": "{count} file copiati",
+            "permissionsSessionChanged": "La connessione è cambiata da quando questa finestra è stata aperta, quindi non è stato modificato nulla. Riapri Permessi sulla connessione corrente."
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -4390,7 +4391,8 @@
             "group": "Gruppo",
             "public": "Pubblico",
             "octal": "Valore Numerico (Ottale)",
-            "apply": "Applica"
+            "apply": "Applica",
+            "currentUnknown": "Impossibile leggere la modalità attuale dei permessi; i valori qui sotto partono da 644."
         },
         "opendrive": {
             "privacyTitle": "Privacy OpenDrive",

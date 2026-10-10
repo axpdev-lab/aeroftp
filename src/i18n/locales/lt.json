@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Baigėsi ryšio skirtasis laikas. Serveris taip ir neatsakė, o bandymas buvo nutrauktas.",
             "transferFailed": "Perdavimas nepavyko",
             "navigationFailed": "Nepavyko naršyti: {error}",
-            "transferComplete": "Nukopijuota failų: {count}"
+            "transferComplete": "Nukopijuota failų: {count}",
+            "permissionsSessionChanged": "Ryšys pasikeitė nuo šio dialogo atidarymo, todėl niekas nebuvo pakeista. Atidarykite Teises dar kartą dabartiniame ryšyje."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kūrėjų įrankių rinkinys.",
@@ -3956,7 +3957,8 @@
             "public": "Viešas",
             "read": "Skaityti",
             "title": "Leidimai",
-            "write": "Rašyti"
+            "write": "Rašyti",
+            "currentUnknown": "Nepavyko nuskaityti dabartinio teisių režimo; žemiau pateiktos reikšmės prasideda nuo 644."
         },
         "preview": {
             "audio": {

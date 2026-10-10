@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Anslutningen fick timeout. Servern svarade aldrig och försöket avbröts.",
             "transferFailed": "Överföringen misslyckades",
             "navigationFailed": "Navigeringen misslyckades: {error}",
-            "transferComplete": "{count} fil(er) kopierade"
+            "transferComplete": "{count} fil(er) kopierade",
+            "permissionsSessionChanged": "Anslutningen har ändrats sedan den här dialogrutan öppnades, så ingenting ändrades. Öppna Behörigheter igen på den aktuella anslutningen."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -3956,7 +3957,8 @@
             "public": "Offentlig",
             "read": "Läs",
             "title": "Behörigheter",
-            "write": "Skriv"
+            "write": "Skriv",
+            "currentUnknown": "Det aktuella behörighetsläget kunde inte läsas; värdena nedan utgår från 644."
         },
         "preview": {
             "audio": {

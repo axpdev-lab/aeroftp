@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Cyrhaeddwyd terfyn amser y cysylltiad. Ni wnaeth y gweinydd ymateb erioed a chafodd y cais ei ddiddymu.",
             "transferFailed": "Methodd y trosglwyddo",
             "navigationFailed": "Methodd y llywio: {error}",
-            "transferComplete": "Copïwyd {count} ffeil"
+            "transferComplete": "Copïwyd {count} ffeil",
+            "permissionsSessionChanged": "Mae'r cysylltiad wedi newid ers agor y deialog hwn, felly ni newidiwyd dim. Agorwch Caniatadau eto ar y cysylltiad cyfredol."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -3956,7 +3957,8 @@
             "public": "Cyhoeddus",
             "read": "Darllen",
             "title": "Caniatadau",
-            "write": "Ysgrifennu"
+            "write": "Ysgrifennu",
+            "currentUnknown": "Doedd dim modd darllen y modd cyfredol; mae'r gwerthoedd isod yn dechrau o 644."
         },
         "preview": {
             "audio": {

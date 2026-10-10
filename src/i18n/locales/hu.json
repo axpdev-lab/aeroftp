@@ -1520,7 +1520,8 @@
             "connectTimedOut": "A kapcsolat időtúllépés miatt megszakadt. A kiszolgáló soha nem válaszolt, és a próbálkozás megszakadt.",
             "transferFailed": "Az átvitel sikertelen",
             "navigationFailed": "A navigáció sikertelen: {error}",
-            "transferComplete": "{count} fájl másolva"
+            "transferComplete": "{count} fájl másolva",
+            "permissionsSessionChanged": "A kapcsolat megváltozott a párbeszédablak megnyitása óta, ezért semmi sem változott. Nyissa meg újra a Jogosultságokat az aktuális kapcsolaton."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -3956,7 +3957,8 @@
             "public": "Nyilvános",
             "read": "Olvasás",
             "title": "Jogosultságok",
-            "write": "Írás"
+            "write": "Írás",
+            "currentUnknown": "Az aktuális jogosultsági módot nem sikerült beolvasni; az alábbi értékek 644-ről indulnak."
         },
         "preview": {
             "audio": {

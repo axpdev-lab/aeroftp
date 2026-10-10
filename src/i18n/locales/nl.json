@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Time-out van de verbinding. De server heeft nooit gereageerd en de poging is afgebroken.",
             "transferFailed": "Overdracht mislukt",
             "navigationFailed": "Navigatie mislukt: {error}",
-            "transferComplete": "{count} bestand(en) gekopieerd"
+            "transferComplete": "{count} bestand(en) gekopieerd",
+            "permissionsSessionChanged": "De verbinding is gewijzigd sinds dit dialoogvenster werd geopend, dus er is niets gewijzigd. Open Rechten opnieuw op de huidige verbinding."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -3956,7 +3957,8 @@
             "public": "Publiek",
             "read": "Lezen",
             "title": "Rechten",
-            "write": "Schrijven"
+            "write": "Schrijven",
+            "currentUnknown": "De huidige bestandsmodus kon niet worden gelezen; de onderstaande waarden beginnen bij 644."
         },
         "preview": {
             "audio": {

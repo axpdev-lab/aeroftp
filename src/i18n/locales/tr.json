@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Bağlantı zaman aşımına uğradı. Sunucu hiç yanıt vermedi ve deneme iptal edildi.",
             "transferFailed": "Aktarım başarısız",
             "navigationFailed": "Gezinme başarısız: {error}",
-            "transferComplete": "{count} dosya kopyalandı"
+            "transferComplete": "{count} dosya kopyalandı",
+            "permissionsSessionChanged": "Bu iletişim kutusu açıldığından beri bağlantı değişti, bu yüzden hiçbir şey değiştirilmedi. İzinler'i geçerli bağlantıda yeniden açın."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -3956,7 +3957,8 @@
             "public": "Herkese Açık",
             "read": "Oku",
             "title": "İzinler",
-            "write": "Yaz"
+            "write": "Yaz",
+            "currentUnknown": "Geçerli mod okunamadı; aşağıdaki değerler 644 ile başlar."
         },
         "preview": {
             "audio": {

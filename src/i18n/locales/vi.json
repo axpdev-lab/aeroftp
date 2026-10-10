@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Kết nối đã hết thời gian chờ. Máy chủ không bao giờ phản hồi và nỗ lực đã bị hủy bỏ.",
             "transferFailed": "Truyền thất bại",
             "navigationFailed": "Điều hướng thất bại: {error}",
-            "transferComplete": "Đã sao chép {count} tệp"
+            "transferComplete": "Đã sao chép {count} tệp",
+            "permissionsSessionChanged": "Kết nối đã thay đổi kể từ khi hộp thoại này được mở, nên không có gì được thay đổi. Hãy mở lại Quyền trên kết nối hiện tại."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -3956,7 +3957,8 @@
             "public": "Công khai",
             "read": "Đọc",
             "title": "Quyền hạn",
-            "write": "Ghi"
+            "write": "Ghi",
+            "currentUnknown": "Không đọc được chế độ hiện tại; các giá trị bên dưới bắt đầu từ 644."
         },
         "preview": {
             "audio": {

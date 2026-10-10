@@ -1520,7 +1520,8 @@
             "connectTimedOut": "S'ha esgotat el temps d'espera de la connexió. El servidor no ha respost mai i l'intent s'ha cancel·lat.",
             "transferFailed": "La transferència ha fallat",
             "navigationFailed": "Ha fallat la navegació: {error}",
-            "transferComplete": "{count} fitxers copiats"
+            "transferComplete": "{count} fitxers copiats",
+            "permissionsSessionChanged": "La connexió ha canviat des que es va obrir aquest diàleg, així que no s'ha canviat res. Torna a obrir Permisos a la connexió actual."
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -3956,7 +3957,8 @@
             "public": "Públic",
             "read": "Lectura",
             "title": "Permisos",
-            "write": "Escriptura"
+            "write": "Escriptura",
+            "currentUnknown": "No s'ha pogut llegir el mode actual; els valors següents parteixen de 644."
         },
         "preview": {
             "audio": {

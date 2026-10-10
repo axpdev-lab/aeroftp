@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Délai de connexion dépassé. Le serveur n'a jamais répondu et la tentative a été abandonnée.",
             "transferFailed": "Échec du transfert",
             "navigationFailed": "Échec de la navigation : {error}",
-            "transferComplete": "{count} fichier(s) copié(s)"
+            "transferComplete": "{count} fichier(s) copié(s)",
+            "permissionsSessionChanged": "La connexion a changé depuis l'ouverture de cette boîte de dialogue, donc rien n'a été modifié. Rouvrez Permissions sur la connexion actuelle."
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -3956,7 +3957,8 @@
             "public": "Public",
             "read": "Lecture",
             "title": "Permissions",
-            "write": "Écriture"
+            "write": "Écriture",
+            "currentUnknown": "Le mode actuel n'a pas pu être lu ; les valeurs ci-dessous partent de 644."
         },
         "preview": {
             "audio": {

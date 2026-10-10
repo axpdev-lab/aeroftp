@@ -2618,6 +2618,7 @@
         },
         "permissions": {
             "apply": "Apply",
+            "currentUnknown": "The current mode could not be read; the values below start from 644.",
             "execute": "Execute",
             "group": "Group",
             "octal": "Numeric Value (Octal)",
@@ -4252,6 +4253,7 @@
             "pathCopied": "Path copied to clipboard",
             "permissionsUpdated": "Permissions Updated",
             "permissionsUpdatedDesc": "{name} → {mode}",
+            "permissionsSessionChanged": "The connection changed since this dialog was opened, so nothing was changed. Open Permissions again on the current connection.",
             "reconnected": "Reconnected",
             "reconnecting": "Reconnecting...",
             "renamed": "Renamed",

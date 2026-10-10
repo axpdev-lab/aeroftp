@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Muda wa muunganisho umeisha. Seva haikujibu kamwe na jaribio limeghairiwa.",
             "transferFailed": "Uhamishaji umeshindwa",
             "navigationFailed": "Urambazaji umeshindwa: {error}",
-            "transferComplete": "Faili {count} zimenakiliwa"
+            "transferComplete": "Faili {count} zimenakiliwa",
+            "permissionsSessionChanged": "Muunganisho umebadilika tangu kisanduku hiki cha mazungumzo kifunguliwe, kwa hivyo hakuna kilichobadilishwa. Fungua Ruhusa tena kwenye muunganisho wa sasa."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -3956,7 +3957,8 @@
             "public": "Umma",
             "read": "Soma",
             "title": "Ruhusa",
-            "write": "Andika"
+            "write": "Andika",
+            "currentUnknown": "Hali ya sasa ya ruhusa haikuweza kusomwa; thamani zilizo hapa chini zinaanzia 644."
         },
         "preview": {
             "audio": {

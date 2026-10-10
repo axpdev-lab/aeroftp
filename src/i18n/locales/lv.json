@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Iestājās savienojuma noildze. Serveris nekad neatbildēja, un mēģinājums tika pārtraukts.",
             "transferFailed": "Pārsūtīšana neizdevās",
             "navigationFailed": "Navigācija neizdevās: {error}",
-            "transferComplete": "Nokopēti {count} faili"
+            "transferComplete": "Nokopēti {count} faili",
+            "permissionsSessionChanged": "Savienojums ir mainījies kopš šī dialoga atvēršanas, tāpēc nekas netika mainīts. Atveriet Atļaujas vēlreiz pašreizējā savienojumā."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -3956,7 +3957,8 @@
             "public": "Publiski",
             "read": "Lasīt",
             "title": "Atļaujas",
-            "write": "Rakstīt"
+            "write": "Rakstīt",
+            "currentUnknown": "Neizdevās nolasīt pašreizējo režīmu; tālāk norādītās vērtības sākas no 644."
         },
         "preview": {
             "audio": {

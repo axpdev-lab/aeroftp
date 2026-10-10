@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Časovna omejitev povezave je potekla. Strežnik se ni nikoli odzval in poskus je bil prekinjen.",
             "transferFailed": "Prenos ni uspel",
             "navigationFailed": "Krmarjenje ni uspelo: {error}",
-            "transferComplete": "Kopiranih {count} datotek"
+            "transferComplete": "Kopiranih {count} datotek",
+            "permissionsSessionChanged": "Povezava se je spremenila, odkar je bilo to pogovorno okno odprto, zato ni bilo nič spremenjeno. Znova odprite Dovoljenja na trenutni povezavi."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -3956,7 +3957,8 @@
             "public": "Javno",
             "read": "Branje",
             "title": "Dovoljenja",
-            "write": "Pisanje"
+            "write": "Pisanje",
+            "currentUnknown": "Trenutnega načina ni bilo mogoče prebrati; spodnje vrednosti se začnejo pri 644."
         },
         "preview": {
             "audio": {

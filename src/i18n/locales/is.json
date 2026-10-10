@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Tíminn fyrir tengingu rann út. Þjónninn svaraði aldrei og tilraunin var stöðvuð.",
             "transferFailed": "Flutningur mistókst",
             "navigationFailed": "Flakk mistókst: {error}",
-            "transferComplete": "{count} skrár afritaðar"
+            "transferComplete": "{count} skrár afritaðar",
+            "permissionsSessionChanged": "Tengingin breyttist eftir að þessi gluggi var opnaður, þannig að engu var breytt. Opnaðu Heimildir aftur á núverandi tengingu."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -3956,7 +3957,8 @@
             "public": "Opinbert",
             "read": "Lesa",
             "title": "Heimildir",
-            "write": "Skrifa"
+            "write": "Skrifa",
+            "currentUnknown": "Ekki tókst að lesa núverandi heimildir; gildin hér að neðan byrja á 644."
         },
         "preview": {
             "audio": {

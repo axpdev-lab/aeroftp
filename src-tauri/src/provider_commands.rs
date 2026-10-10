@@ -5944,6 +5944,70 @@ pub async fn provider_rename(
     Ok(())
 }
 
+/// Prefix of the error [`provider_chmod`] returns when the connection is no
+/// longer the one the caller read with [`provider_connection_generation`].
+pub const CONNECTION_CHANGED_MARKER: &str = "CONNECTION_CHANGED";
+
+/// The live connection generation. Every connect, disconnect and provider swap
+/// bumps it while holding the provider lock, so a dialog that reads it when it
+/// opens can ask a later command to act only on that same connection.
+#[tauri::command]
+pub async fn provider_connection_generation(
+    state: State<'_, ProviderState>,
+) -> Result<u64, String> {
+    Ok(state.connection_generation.load(Ordering::SeqCst))
+}
+
+/// Change a remote entry's permission bits through the active provider
+/// session, the one every FTP, FTPS and SFTP connection uses since v3.1.5.
+/// `mode` is what the Permissions dialog sends: octal (`644`, `0755`), or
+/// `rwx` letters. `generation` is what [`provider_connection_generation`]
+/// answered when the dialog opened: a tab switch or reconnect since then makes
+/// the path belong to another server, so the change is refused.
+///
+/// No `guard_no_raw_crypt_write`: that guard keeps plaintext content and names
+/// out of an encrypted store, and a mode change writes neither. With the
+/// overlay wrapped the decorator maps the path; unwrapped, the panel lists the
+/// raw names and the path is one of them.
+#[tauri::command]
+pub async fn provider_chmod(
+    state: State<'_, ProviderState>,
+    path: String,
+    mode: String,
+    generation: u64,
+) -> Result<(), String> {
+    provider_chmod_inner(&state, &path, &mode, generation).await
+}
+
+async fn provider_chmod_inner(
+    state: &ProviderState,
+    path: &str,
+    mode: &str,
+    generation: u64,
+) -> Result<(), String> {
+    let bits = crate::providers::permission_mode(mode)
+        .ok_or_else(|| format!("Invalid permission mode: {mode}"))?;
+
+    let mut provider_lock = state.provider.lock().await;
+    // Checked under the provider lock: a connect or disconnect bumps the
+    // generation while holding it, so no swap can slip in after this check.
+    if state.connection_generation.load(Ordering::SeqCst) != generation {
+        return Err(format!(
+            "{CONNECTION_CHANGED_MARKER}: the connection changed since the permissions were read; nothing was changed"
+        ));
+    }
+    let provider = provider_lock
+        .as_mut()
+        .ok_or("Not connected to any provider")?;
+
+    info!("Changing permissions: {} -> {:o}", path, bits);
+
+    provider
+        .chmod(path, bits)
+        .await
+        .map_err(|e| format!("Failed to change permissions: {}", e))
+}
+
 /// Capability-shaped copy through the production transfer DAG.
 ///
 /// The graph exposes either one native `ServerSideCopy` core or an explicit
@@ -16713,5 +16777,110 @@ mod tests {
             "drain returned much later than its timeout: {:?}",
             elapsed
         );
+    }
+}
+
+#[cfg(test)]
+mod provider_chmod_tests {
+    use super::*;
+    use crate::providers::edit_replace_tests::EditFake;
+
+    fn state_with(fake: EditFake) -> ProviderState {
+        let state = ProviderState::new();
+        *state.provider.try_lock().unwrap() = Some(Box::new(fake));
+        state
+    }
+
+    async fn mode_of(state: &ProviderState, path: &str) -> Option<u32> {
+        let mut guard = state.provider.lock().await;
+        let fake = guard
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<EditFake>()
+            .unwrap();
+        fake.modes.get(path).copied()
+    }
+
+    // The Permissions dialog used to reach a legacy FTP manager that no
+    // FTP, FTPS or SFTP connection opens since v3.1.5, so every save failed
+    // with "Not connected". It must reach the session the panel lists from.
+    #[tokio::test]
+    async fn the_dialog_mode_reaches_the_active_provider_session() {
+        let state = state_with(EditFake::new(true, false));
+
+        assert_eq!(
+            provider_chmod_inner(&state, "/t.txt", "755", 0).await,
+            Ok(()),
+            "the Permissions dialog's save did not reach the connected provider session"
+        );
+        assert_eq!(mode_of(&state, "/t.txt").await, Some(0o755));
+
+        assert_eq!(
+            provider_chmod_inner(&state, "/t.txt", "rw-r-----", 0).await,
+            Ok(()),
+            "a mode written as rwx letters did not reach the provider session"
+        );
+        assert_eq!(mode_of(&state, "/t.txt").await, Some(0o640));
+    }
+
+    #[tokio::test]
+    async fn a_mode_that_is_not_a_mode_is_refused_before_the_server() {
+        let state = state_with(EditFake::new(true, false));
+
+        let e = provider_chmod_inner(&state, "/t.txt", "9z9", 0)
+            .await
+            .unwrap_err();
+        assert_eq!(e, "Invalid permission mode: 9z9");
+        assert_eq!(mode_of(&state, "/t.txt").await, None);
+    }
+
+    // #1144 review: the dialog's session check ran in the frontend, before
+    // the command waited for the provider lock, so a tab switch landing in
+    // between applied the old path to the new connection.
+    #[tokio::test]
+    async fn a_change_after_the_connection_changed_is_refused_under_the_lock() {
+        let state = state_with(EditFake::new(true, false));
+        let opened_on = state.connection_generation.load(Ordering::SeqCst);
+        // A connect, disconnect or swap since the dialog opened.
+        state.invalidate_overlay_key_cache();
+
+        let e = provider_chmod_inner(&state, "/t.txt", "600", opened_on)
+            .await
+            .expect_err("a permissions change opened on another connection reached the provider");
+        assert!(
+            e.starts_with(CONNECTION_CHANGED_MARKER),
+            "a permissions change opened on another connection was not refused: {e}"
+        );
+        assert_eq!(
+            mode_of(&state, "/t.txt").await,
+            None,
+            "the stale change reached the provider"
+        );
+
+        let live = state.connection_generation.load(Ordering::SeqCst);
+        assert_eq!(
+            provider_chmod_inner(&state, "/t.txt", "600", live).await,
+            Ok(())
+        );
+        assert_eq!(mode_of(&state, "/t.txt").await, Some(0o600));
+    }
+
+    #[tokio::test]
+    async fn the_server_refusal_and_a_missing_session_are_reported() {
+        let mut fake = EditFake::new(true, false);
+        fake.chmod_fails_with = Some("550 SITE CHMOD command failed".to_string());
+        let state = state_with(fake);
+        let e = provider_chmod_inner(&state, "/t.txt", "644", 0)
+            .await
+            .unwrap_err();
+        assert!(e.starts_with("Failed to change permissions: "), "{e}");
+        assert!(e.contains("550 SITE CHMOD command failed"), "{e}");
+
+        let none = ProviderState::new();
+        let e = provider_chmod_inner(&none, "/t.txt", "644", 0)
+            .await
+            .unwrap_err();
+        assert_eq!(e, "Not connected to any provider");
     }
 }

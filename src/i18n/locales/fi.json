@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Yhteyden aikakatkaisu. Palvelin ei koskaan vastannut ja yritys keskeytettiin.",
             "transferFailed": "Siirto epäonnistui",
             "navigationFailed": "Siirtyminen epäonnistui: {error}",
-            "transferComplete": "{count} tiedostoa kopioitu"
+            "transferComplete": "{count} tiedostoa kopioitu",
+            "permissionsSessionChanged": "Yhteys on muuttunut tämän valintaikkunan avaamisen jälkeen, joten mitään ei muutettu. Avaa Oikeudet uudelleen nykyisellä yhteydellä."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -3956,7 +3957,8 @@
             "public": "Julkinen",
             "read": "Lue",
             "title": "Oikeudet",
-            "write": "Kirjoita"
+            "write": "Kirjoita",
+            "currentUnknown": "Nykyistä käyttöoikeustilaa ei voitu lukea; alla olevat arvot alkavat arvosta 644."
         },
         "preview": {
             "audio": {

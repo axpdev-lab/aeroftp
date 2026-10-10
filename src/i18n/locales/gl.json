@@ -1520,7 +1520,8 @@
             "connectTimedOut": "Esgotouse o tempo de conexión. O servidor nunca respondeu e o intento foi cancelado.",
             "transferFailed": "Produciuse un erro na transferencia",
             "navigationFailed": "Fallou a navegación: {error}",
-            "transferComplete": "{count} ficheiros copiados"
+            "transferComplete": "{count} ficheiros copiados",
+            "permissionsSessionChanged": "A conexión cambiou desde que se abriu este diálogo, polo que non se cambiou nada. Abre Permisos de novo na conexión actual."
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -3956,7 +3957,8 @@
             "public": "Público",
             "read": "Lectura",
             "title": "Permisos",
-            "write": "Escritura"
+            "write": "Escritura",
+            "currentUnknown": "Non se puido ler o modo actual; os valores de abaixo parten de 644."
         },
         "preview": {
             "audio": {
