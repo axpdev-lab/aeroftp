@@ -1146,8 +1146,7 @@ impl ProviderDownloadExecutor {
         let local_path = entry.local_path.clone();
         let file_size = entry.size;
         let cancel_token = self.cancel_token.clone();
-        let dl_start = std::time::Instant::now();
-        let speed_meter = crate::transfer_speed::SpeedMeter::starting_at(dl_start);
+        let speed_meter = crate::transfer_speed::SpeedMeter::new();
 
         let tmp_path = format!("{}.aerotmp", local_path);
         let partial_offset = if resumes_from_the_temporary(
@@ -1178,13 +1177,7 @@ impl ProviderDownloadExecutor {
         );
         if attempt == 0 && partial_offset == 0 && requested_segments > 1 {
             if let Some(segmented_result) = self
-                .try_segmented_download_attempt(
-                    provider,
-                    entry,
-                    file_transfer_id,
-                    dl_start,
-                    file_size,
-                )
+                .try_segmented_download_attempt(provider, entry, file_transfer_id, file_size)
                 .await
             {
                 return segmented_result;
@@ -1288,7 +1281,6 @@ impl ProviderDownloadExecutor {
         primary: &mut dyn StorageProvider,
         entry: &TransferEntry,
         file_transfer_id: &str,
-        dl_start: std::time::Instant,
         file_size: u64,
     ) -> Option<Result<(), String>> {
         // R21: the threshold folds the caller's cutoff (explicit, or the
@@ -1326,7 +1318,7 @@ impl ProviderDownloadExecutor {
         let remote_path_for_progress = entry.remote_path.clone();
         let cancel_for_progress = self.cancel_token.clone();
         let total_for_progress = file_size;
-        let speed_meter = crate::transfer_speed::SpeedMeter::starting_at(dl_start);
+        let speed_meter = crate::transfer_speed::SpeedMeter::new();
         let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
             Some(Box::new(move |transferred, total| {
                 if cancel_for_progress.is_cancelled() {

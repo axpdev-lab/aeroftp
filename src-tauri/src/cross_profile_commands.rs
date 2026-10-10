@@ -661,7 +661,7 @@ pub async fn cross_profile_execute(
             skip_existing: stored.request.skip_existing,
             cancel_token: cancelled.clone(),
             total,
-            speed_meter: crate::transfer_speed::SpeedMeter::starting_at(start),
+            speed_meter: crate::transfer_speed::SpeedMeter::new(),
             counters: counters.clone(),
         });
         let entries = plan
