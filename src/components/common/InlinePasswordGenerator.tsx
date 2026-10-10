@@ -50,8 +50,12 @@ export const InlinePasswordGenerator: React.FC<InlinePasswordGeneratorProps> = (
         : t('cyberTools.pwdGenerateInline');
 
     return (
+        // Out of the Tab order, like the show-password eye beside it: Tab from
+        // a password field goes on to the next field, not to the icons inside
+        // this one.
         <button
             type="button"
+            tabIndex={-1}
             onClick={generate}
             disabled={disabled || status === 'loading'}
             className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-all hover:bg-cyan-500/10 hover:text-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-cyan-300 ${className}`}

@@ -430,10 +430,11 @@ fn encode_plain_target(
     Ok(norm_abs(target))
 }
 
-/// Decrypt an on-wire path for display, decoding each component as a directory
-/// (every prefix of a path is a directory) and leaving undecryptable components
-/// verbatim. Used to render `pwd` and rebuild listing paths in the plaintext
-/// domain.
+/// Decrypt an on-wire path, decoding each component as a directory (every
+/// prefix of a path is a directory) and leaving undecryptable components
+/// verbatim. Test helper: the overlay itself renders `pwd` and listing paths
+/// with [`decode_scoped`], which leaves the anchor as it is (#1077).
+#[cfg(test)]
 fn decode_path(keys: &OverlayKeys, encrypted_path: &str) -> String {
     decode_entry_path(keys, encrypted_path, true)
 }
@@ -466,6 +467,33 @@ fn decode_entry_path(keys: &OverlayKeys, encrypted_path: &str, leaf_is_dir: bool
         format!("/{}", joined)
     } else {
         joined
+    }
+}
+
+/// Decrypt an on-wire path for display, mirroring [`encode_plain_target`]:
+/// only the components strictly below the anchor are ciphertext. The anchor
+/// itself is a name on the server, written there as it is, and so is
+/// everything at, above or outside it.
+///
+/// [`decode_entry_path`] alone decrypts every component it can. That is right
+/// below the anchor, but wrong for the anchor: when the anchor's own name is
+/// ciphertext (an Overlays Path set to an rclone-encrypted folder name, #1077)
+/// it was decrypted on the way back while the way out kept it, so `pwd` never
+/// matched the Overlays Path (the Crypt toggle disappeared) and the children
+/// came back under a path that does not exist on the server (a subfolder
+/// opened with an error). A plaintext name above the anchor that happens to
+/// decode as ciphertext was rewritten the same way.
+fn decode_scoped(keys: &OverlayKeys, scope: &str, wire_path: &str, leaf_is_dir: bool) -> String {
+    if scope.is_empty() || !wire_path.starts_with('/') {
+        return decode_entry_path(keys, wire_path, leaf_is_dir);
+    }
+    let w = norm_abs(wire_path);
+    if w == scope {
+        return w;
+    }
+    match w.strip_prefix(&format!("{}/", scope)) {
+        Some(below) => format!("{}/{}", scope, decode_entry_path(keys, below, leaf_is_dir)),
+        None => w,
     }
 }
 
@@ -509,7 +537,7 @@ impl CryptOverlayProvider {
                     continue;
                 };
                 decrypted_rows += 1;
-                let plain_path = decode_entry_path(&self.keys, &entry.path, entry.is_dir);
+                let plain_path = decode_scoped(&self.keys, &self.scope, &entry.path, entry.is_dir);
                 let size = if entry.is_dir {
                     0
                 } else {
@@ -978,7 +1006,7 @@ impl StorageProvider for CryptOverlayProvider {
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         let enc = self.inner.pwd().await?;
-        Ok(decode_path(&self.keys, &enc))
+        Ok(decode_scoped(&self.keys, &self.scope, &enc, true))
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -1208,7 +1236,7 @@ impl StorageProvider for CryptOverlayProvider {
             entry.name
         };
         let plain_path = if is_enc {
-            decode_entry_path(&self.keys, &entry.path, entry.is_dir)
+            decode_scoped(&self.keys, &self.scope, &entry.path, entry.is_dir)
         } else {
             entry.path
         };
@@ -1663,6 +1691,8 @@ pub fn decode_overlay_trash_keys(provider: &mut dyn StorageProvider, entries: &m
     };
     for entry in entries.iter_mut() {
         // A trash row is always an object (file) leaf, never a directory.
+        // Display only: every component that decodes is shown decrypted, the
+        // key itself stays raw for restore and purge.
         entry.display_key = decode_entry_path(&overlay.keys, &entry.key, false);
     }
 }
@@ -3460,6 +3490,81 @@ mod tests {
             let mixed = format!("{}/foreign", enc);
             let dec_mixed = decode_path(&keys, &mixed);
             assert!(dec_mixed.starts_with("/Vault/x/y/"));
+        }
+    }
+
+    /// #1077: the Overlays Path is a folder whose own name is ciphertext (an
+    /// rclone-encrypted folder name typed as the anchor). The anchor is kept
+    /// as it is on the server on the way back too: `pwd` matches the Overlays
+    /// Path (the GUI shows the Crypt toggle) and a child's path opens it.
+    #[tokio::test]
+    async fn an_anchor_whose_name_is_ciphertext_stays_as_it_is_on_the_way_back() {
+        for (label, keys) in both_kinds() {
+            let cipher = keys.encode_name("cartella-cifrata", true).unwrap();
+            let scope = format!("/aeroftp-1077/{cipher}");
+            let mut provider =
+                CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, &scope);
+
+            provider.mkdir(&format!("{scope}/sub1")).await.unwrap();
+            provider.cd(&scope).await.unwrap();
+            assert_eq!(
+                provider.pwd().await.unwrap(),
+                scope,
+                "{label}: pwd is the Overlays Path"
+            );
+
+            let listed = provider.list(&scope).await.unwrap();
+            let sub = listed
+                .iter()
+                .find(|e| e.name == "sub1")
+                .unwrap_or_else(|| panic!("{label}: sub1 listed"));
+            assert_eq!(
+                sub.path,
+                format!("{scope}/sub1"),
+                "{label}: child path under the anchor as stored"
+            );
+
+            // Opening the child by the path the listing gave lands on the
+            // stored folder, not on a decrypted name the server does not have.
+            provider.cd(&sub.path).await.unwrap();
+            assert_eq!(
+                provider.pwd().await.unwrap(),
+                sub.path,
+                "{label}: pwd inside the child"
+            );
+        }
+    }
+
+    #[test]
+    fn decode_scoped_decrypts_only_below_the_anchor() {
+        for (label, keys) in both_kinds() {
+            let cipher = keys.encode_name("cartella-cifrata", true).unwrap();
+            let child = keys.encode_name("sub1", true).unwrap();
+            let scope = format!("/top/{cipher}");
+            assert_eq!(decode_scoped(&keys, &scope, &scope, true), scope, "{label}");
+            assert_eq!(
+                decode_scoped(&keys, &scope, &format!("{scope}/{child}"), true),
+                format!("{scope}/sub1"),
+                "{label}"
+            );
+            // Above or beside the anchor every name is as on the server, even
+            // one that would decode as ciphertext.
+            assert_eq!(
+                decode_scoped(&keys, &scope, &format!("/{cipher}"), true),
+                format!("/{cipher}"),
+                "{label}"
+            );
+            assert_eq!(
+                decode_scoped(&keys, &scope, "/top", true),
+                "/top",
+                "{label}"
+            );
+            // A whole-remote overlay still decodes every component.
+            assert_eq!(
+                decode_scoped(&keys, "", &format!("/{cipher}/{child}"), true),
+                "/cartella-cifrata/sub1",
+                "{label}"
+            );
         }
     }
 
