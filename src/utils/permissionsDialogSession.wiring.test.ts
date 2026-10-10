@@ -113,6 +113,13 @@ describe('Permissions dialog session binding', () => {
     }
   });
 
+  it('sends one change per Apply while a change is in flight', () => {
+    for (const { fn, call } of found.chmodCalls) {
+      const guarded = guardsBefore(fn, call).some(guard => identifiers(guard.test as Node).has('permissionsSavingRef') && returns(guard.consequent as Node));
+      expect(guarded, 'a second Apply while a permissions change is in flight sends another one').toBe(true);
+    }
+  });
+
   it('hands the backend the connection generation to re-check under its lock', () => {
     for (const { call } of found.chmodCalls) {
       const args = (call.arguments as Node[])[1];
@@ -140,6 +147,21 @@ describe('Permissions dialog session binding', () => {
     for (const { fn, call } of opens) {
       const guarded = guardsBefore(fn, call).some(guard => identifiers(guard.test as Node).has('permissionsOpenSeqRef') && returns(guard.consequent as Node));
       expect(guarded, 'an earlier Permissions opening that resolves late can replace the dialog of the file picked after it').toBe(true);
+    }
+  });
+
+  it('mounts one dialog per opening', () => {
+    const { program } = parseSync('App.tsx', APP);
+    const tags: Node[] = [];
+    const visit = (node: Node) => {
+      if (node.type === 'JSXOpeningElement' && (node.name as Node)?.type === 'JSXIdentifier' && (node.name as Node).name === 'PermissionsDialog') tags.push(node);
+      for (const child of children(node)) visit(child);
+    };
+    visit(program as unknown as Node);
+    expect(tags.length).toBeGreaterThan(0);
+    for (const tag of tags) {
+      const attrs = (tag.attributes as Node[]).map(a => ((a.name as Node)?.name as string) ?? '');
+      expect(attrs, 'the Permissions dialog is reused across openings, so a mode edited for one file carries over to the next').toContain('key');
     }
   });
 

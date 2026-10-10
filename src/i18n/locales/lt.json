@@ -3957,7 +3957,8 @@
             "public": "Viešas",
             "read": "Skaityti",
             "title": "Leidimai",
-            "write": "Rašyti"
+            "write": "Rašyti",
+            "currentUnknown": "Nepavyko nuskaityti dabartinio teisių režimo; žemiau pateiktos reikšmės prasideda nuo 644."
         },
         "preview": {
             "audio": {

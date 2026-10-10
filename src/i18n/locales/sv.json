@@ -3957,7 +3957,8 @@
             "public": "Offentlig",
             "read": "Läs",
             "title": "Behörigheter",
-            "write": "Skriv"
+            "write": "Skriv",
+            "currentUnknown": "Det aktuella behörighetsläget kunde inte läsas; värdena nedan utgår från 644."
         },
         "preview": {
             "audio": {

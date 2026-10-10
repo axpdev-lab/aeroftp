@@ -3957,7 +3957,8 @@
             "public": "Públic",
             "read": "Lectura",
             "title": "Permisos",
-            "write": "Escriptura"
+            "write": "Escriptura",
+            "currentUnknown": "No s'ha pogut llegir el mode actual; els valors següents parteixen de 644."
         },
         "preview": {
             "audio": {

@@ -3957,7 +3957,8 @@
             "public": "Publiko",
             "read": "Basahin",
             "title": "Mga Permiso",
-            "write": "Isulat"
+            "write": "Isulat",
+            "currentUnknown": "Hindi nabasa ang kasalukuyang mode; ang mga halaga sa ibaba ay nagsisimula sa 644."
         },
         "preview": {
             "audio": {

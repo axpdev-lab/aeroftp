@@ -3957,7 +3957,8 @@
             "public": "Publikoa",
             "read": "Irakurri",
             "title": "Baimenak",
-            "write": "Idatzi"
+            "write": "Idatzi",
+            "currentUnknown": "Uneko modua ezin izan da irakurri; beheko balioak 644 balioarekin hasten dira."
         },
         "preview": {
             "audio": {

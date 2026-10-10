@@ -3957,7 +3957,8 @@
             "public": "Umma",
             "read": "Soma",
             "title": "Ruhusa",
-            "write": "Andika"
+            "write": "Andika",
+            "currentUnknown": "Hali ya sasa ya ruhusa haikuweza kusomwa; thamani zilizo hapa chini zinaanzia 644."
         },
         "preview": {
             "audio": {

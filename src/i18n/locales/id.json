@@ -3957,7 +3957,8 @@
             "public": "Publik",
             "read": "Baca",
             "title": "Izin",
-            "write": "Tulis"
+            "write": "Tulis",
+            "currentUnknown": "Mode saat ini tidak dapat dibaca; nilai di bawah dimulai dari 644."
         },
         "preview": {
             "audio": {

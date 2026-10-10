@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Check, Shield } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { flagsFromOctal, isCompleteOctal, octalFromFlags, parsePermissions, toggleFlag, type PermissionFlags, type PermissionTriple } from './permissionsMode';
 
 interface PermissionsDialogProps {
     isOpen: boolean;
@@ -16,15 +17,17 @@ interface PermissionsDialogProps {
     currentPermissions?: string; // e.g. "drwxr-xr-x" or "755"
 }
 
+/**
+ * Mount one instance per opening (the caller keys it): the starting mode is
+ * read from `currentPermissions` once, so a value edited for one file can
+ * never carry over to the next one.
+ */
 export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, onClose, onSave, fileName, currentPermissions }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const [octal, setOctal] = useState('755');
-    const [flags, setFlags] = useState({
-        owner: { read: true, write: true, execute: true },
-        group: { read: true, write: false, execute: true },
-        others: { read: true, write: false, execute: true }
-    });
+    const [initial] = useState(() => parsePermissions(currentPermissions));
+    const [octal, setOctal] = useState(initial.octal);
+    const [flags, setFlags] = useState<PermissionFlags>(initial.flags);
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {
@@ -34,83 +37,21 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
         }
     }, [isOpen]);
 
-    // Parse initial permissions
-    useEffect(() => {
-        if (isOpen && currentPermissions) {
-            // If it looks like unix style "drwxr-xr-x"
-            if (currentPermissions.length >= 10) {
-                const p = currentPermissions.substring(1); // skip 'd' or '-'
-                const newFlags = {
-                    owner: {
-                        read: p[0] === 'r',
-                        write: p[1] === 'w',
-                        execute: p[2] === 'x'
-                    },
-                    group: {
-                        read: p[3] === 'r',
-                        write: p[4] === 'w',
-                        execute: p[5] === 'x'
-                    },
-                    others: {
-                        read: p[6] === 'r',
-                        write: p[7] === 'w',
-                        execute: p[8] === 'x'
-                    }
-                };
-                setFlags(newFlags);
-                updateOctal(newFlags);
-            }
-            // If it looks like octal "644"
-            else if (/^[0-7]{3}$/.test(currentPermissions)) {
-                setOctal(currentPermissions);
-                updateFlagsFromOctal(currentPermissions);
-            }
-        }
-    }, [isOpen, currentPermissions]);
-
-    const updateOctal = (currentFlags: typeof flags) => {
-        const calc = (f: { read: boolean, write: boolean, execute: boolean }) =>
-            (f.read ? 4 : 0) + (f.write ? 2 : 0) + (f.execute ? 1 : 0);
-
-        const o = calc(currentFlags.owner);
-        const g = calc(currentFlags.group);
-        const ot = calc(currentFlags.others);
-        setOctal(`${o}${g}${ot}`);
-    };
-
-    const updateFlagsFromOctal = (oct: string) => {
-        if (!/^[0-7]{3}$/.test(oct)) return;
-
-        const parseDigit = (d: string) => {
-            const v = parseInt(d);
-            return {
-                read: (v & 4) !== 0,
-                write: (v & 2) !== 0,
-                execute: (v & 1) !== 0
-            };
-        };
-
-        setFlags({
-            owner: parseDigit(oct[0]),
-            group: parseDigit(oct[1]),
-            others: parseDigit(oct[2])
-        });
-    };
-
     const handleOctalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
-        if (val.length <= 3) {
+        if (val.length <= 3 && /^[0-7]*$/.test(val)) {
             setOctal(val);
-            if (val.length === 3) updateFlagsFromOctal(val);
+            if (isCompleteOctal(val)) setFlags(flagsFromOctal(val));
         }
     };
 
-    const toggle = (section: 'owner' | 'group' | 'others', type: 'read' | 'write' | 'execute') => {
-        const newFlags = { ...flags };
-        newFlags[section][type] = !newFlags[section][type];
-        setFlags(newFlags);
-        updateOctal(newFlags);
+    const toggle = (section: keyof PermissionFlags, kind: keyof PermissionTriple) => {
+        const next = toggleFlag(flags, section, kind);
+        setFlags(next);
+        setOctal(octalFromFlags(next));
     };
+
+    const complete = isCompleteOctal(octal);
 
     if (!isOpen) return null;
 
@@ -161,7 +102,10 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
 
                     {/* Octal Input */}
                     <div className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('permissions.octal')}</span>
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {t('permissions.octal')}
+                            {!initial.known && <span className="block text-xs font-normal text-amber-600 dark:text-amber-400 mt-1">{t('permissions.currentUnknown')}</span>}
+                        </span>
                         <input
                             type="text"
                             value={octal}
@@ -176,7 +120,7 @@ export const PermissionsDialog: React.FC<PermissionsDialogProps> = ({ isOpen, on
                         <button onClick={onClose} className="flex-1 px-4 py-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg font-medium transition-colors">
                             {t('common.cancel')}
                         </button>
-                        <button onClick={() => onSave(octal)} className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20">
+                        <button onClick={() => { if (complete) onSave(octal); }} disabled={!complete} className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20">
                             <Check size={18} /> {t('permissions.apply')}
                         </button>
                     </div>

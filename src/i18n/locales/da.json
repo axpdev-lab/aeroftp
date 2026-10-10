@@ -3957,7 +3957,8 @@
             "public": "Offentlig",
             "read": "Læs",
             "title": "Rettigheder",
-            "write": "Skriv"
+            "write": "Skriv",
+            "currentUnknown": "Den aktuelle rettighedstilstand kunne ikke læses; værdierne nedenfor starter fra 644."
         },
         "preview": {
             "audio": {

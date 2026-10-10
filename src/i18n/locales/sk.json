@@ -3957,7 +3957,8 @@
             "public": "Verejný",
             "read": "Čítanie",
             "title": "Oprávnenia",
-            "write": "Zápis"
+            "write": "Zápis",
+            "currentUnknown": "Aktuálny režim sa nepodarilo prečítať; hodnoty nižšie vychádzajú z 644."
         },
         "preview": {
             "audio": {

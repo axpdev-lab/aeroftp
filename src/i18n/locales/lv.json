@@ -3957,7 +3957,8 @@
             "public": "Publiski",
             "read": "Lasīt",
             "title": "Atļaujas",
-            "write": "Rakstīt"
+            "write": "Rakstīt",
+            "currentUnknown": "Neizdevās nolasīt pašreizējo režīmu; tālāk norādītās vērtības sākas no 644."
         },
         "preview": {
             "audio": {

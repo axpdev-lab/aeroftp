@@ -3957,7 +3957,8 @@
             "public": "Cyhoeddus",
             "read": "Darllen",
             "title": "Caniatadau",
-            "write": "Ysgrifennu"
+            "write": "Ysgrifennu",
+            "currentUnknown": "Doedd dim modd darllen y modd cyfredol; mae'r gwerthoedd isod yn dechrau o 644."
         },
         "preview": {
             "audio": {

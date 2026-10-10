@@ -3957,7 +3957,8 @@
             "public": "Opinbert",
             "read": "Lesa",
             "title": "Heimildir",
-            "write": "Skrifa"
+            "write": "Skrifa",
+            "currentUnknown": "Ekki tókst að lesa núverandi heimildir; gildin hér að neðan byrja á 644."
         },
         "preview": {
             "audio": {

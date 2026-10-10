@@ -3957,7 +3957,8 @@
             "public": "Công khai",
             "read": "Đọc",
             "title": "Quyền hạn",
-            "write": "Ghi"
+            "write": "Ghi",
+            "currentUnknown": "Không đọc được chế độ hiện tại; các giá trị bên dưới bắt đầu từ 644."
         },
         "preview": {
             "audio": {

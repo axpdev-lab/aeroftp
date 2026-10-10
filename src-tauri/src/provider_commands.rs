@@ -5964,6 +5964,11 @@ pub async fn provider_connection_generation(
 /// `rwx` letters. `generation` is what [`provider_connection_generation`]
 /// answered when the dialog opened: a tab switch or reconnect since then makes
 /// the path belong to another server, so the change is refused.
+///
+/// No `guard_no_raw_crypt_write`: that guard keeps plaintext content and names
+/// out of an encrypted store, and a mode change writes neither. With the
+/// overlay wrapped the decorator maps the path; unwrapped, the panel lists the
+/// raw names and the path is one of them.
 #[tauri::command]
 pub async fn provider_chmod(
     state: State<'_, ProviderState>,

@@ -3957,7 +3957,8 @@
             "public": "Offentlig",
             "read": "Les",
             "title": "Tillatelser",
-            "write": "Skriv"
+            "write": "Skriv",
+            "currentUnknown": "Gjeldende modus kunne ikke leses; verdiene nedenfor starter fra 644."
         },
         "preview": {
             "audio": {

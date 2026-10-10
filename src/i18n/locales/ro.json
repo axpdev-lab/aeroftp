@@ -3957,7 +3957,8 @@
             "public": "Public",
             "read": "Citire",
             "title": "Permisiuni",
-            "write": "Scriere"
+            "write": "Scriere",
+            "currentUnknown": "Modul curent nu a putut fi citit; valorile de mai jos pornesc de la 644."
         },
         "preview": {
             "audio": {

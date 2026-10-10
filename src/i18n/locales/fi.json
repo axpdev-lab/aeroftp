@@ -3957,7 +3957,8 @@
             "public": "Julkinen",
             "read": "Lue",
             "title": "Oikeudet",
-            "write": "Kirjoita"
+            "write": "Kirjoita",
+            "currentUnknown": "Nykyistä käyttöoikeustilaa ei voitu lukea; alla olevat arvot alkavat arvosta 644."
         },
         "preview": {
             "audio": {

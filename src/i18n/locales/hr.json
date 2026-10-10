@@ -3957,7 +3957,8 @@
             "public": "Javno",
             "read": "Čitanje",
             "title": "Dozvole",
-            "write": "Pisanje"
+            "write": "Pisanje",
+            "currentUnknown": "Trenutni način dozvola nije bilo moguće pročitati; vrijednosti u nastavku počinju od 644."
         },
         "preview": {
             "audio": {

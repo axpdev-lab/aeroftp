@@ -3957,7 +3957,8 @@
             "public": "Herkese Açık",
             "read": "Oku",
             "title": "İzinler",
-            "write": "Yaz"
+            "write": "Yaz",
+            "currentUnknown": "Geçerli mod okunamadı; aşağıdaki değerler 644 ile başlar."
         },
         "preview": {
             "audio": {

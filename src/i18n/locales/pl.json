@@ -3957,7 +3957,8 @@
             "public": "Publiczny",
             "read": "Odczyt",
             "title": "Uprawnienia",
-            "write": "Zapis"
+            "write": "Zapis",
+            "currentUnknown": "Nie udało się odczytać bieżącego trybu; poniższe wartości zaczynają się od 644."
         },
         "preview": {
             "audio": {

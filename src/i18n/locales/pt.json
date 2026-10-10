@@ -3957,7 +3957,8 @@
             "public": "Público",
             "read": "Leitura",
             "title": "Permissões",
-            "write": "Escrita"
+            "write": "Escrita",
+            "currentUnknown": "Não foi possível ler o modo atual; os valores abaixo partem de 644."
         },
         "preview": {
             "audio": {

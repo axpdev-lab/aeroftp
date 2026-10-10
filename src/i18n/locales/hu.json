@@ -3957,7 +3957,8 @@
             "public": "Nyilvános",
             "read": "Olvasás",
             "title": "Jogosultságok",
-            "write": "Írás"
+            "write": "Írás",
+            "currentUnknown": "Az aktuális jogosultsági módot nem sikerült beolvasni; az alábbi értékek 644-ről indulnak."
         },
         "preview": {
             "audio": {

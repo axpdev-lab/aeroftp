@@ -3957,7 +3957,8 @@
             "public": "Avalik",
             "read": "Loe",
             "title": "Õigused",
-            "write": "Kirjuta"
+            "write": "Kirjuta",
+            "currentUnknown": "Praegust õiguste režiimi ei õnnestunud lugeda; allolevad väärtused algavad väärtusest 644."
         },
         "preview": {
             "audio": {

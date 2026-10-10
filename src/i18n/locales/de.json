@@ -3957,7 +3957,8 @@
             "public": "Öffentlich",
             "read": "Lesen",
             "title": "Berechtigungen",
-            "write": "Schreiben"
+            "write": "Schreiben",
+            "currentUnknown": "Der aktuelle Dateimodus konnte nicht gelesen werden; die folgenden Werte beginnen bei 644."
         },
         "preview": {
             "audio": {

@@ -3957,7 +3957,8 @@
             "public": "Javno",
             "read": "Branje",
             "title": "Dovoljenja",
-            "write": "Pisanje"
+            "write": "Pisanje",
+            "currentUnknown": "Trenutnega načina ni bilo mogoče prebrati; spodnje vrednosti se začnejo pri 644."
         },
         "preview": {
             "audio": {

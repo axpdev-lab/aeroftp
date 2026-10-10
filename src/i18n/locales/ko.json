@@ -3957,7 +3957,8 @@
             "public": "공개",
             "read": "읽기",
             "title": "권한",
-            "write": "쓰기"
+            "write": "쓰기",
+            "currentUnknown": "현재 권한 모드를 읽을 수 없어 아래 값은 644에서 시작합니다."
         },
         "preview": {
             "audio": {

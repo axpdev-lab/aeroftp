@@ -3957,7 +3957,8 @@
             "public": "Awam",
             "read": "Baca",
             "title": "Kebenaran",
-            "write": "Tulis"
+            "write": "Tulis",
+            "currentUnknown": "Mod semasa tidak dapat dibaca; nilai di bawah bermula daripada 644."
         },
         "preview": {
             "audio": {

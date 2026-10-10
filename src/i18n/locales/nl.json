@@ -3957,7 +3957,8 @@
             "public": "Publiek",
             "read": "Lezen",
             "title": "Rechten",
-            "write": "Schrijven"
+            "write": "Schrijven",
+            "currentUnknown": "De huidige bestandsmodus kon niet worden gelezen; de onderstaande waarden beginnen bij 644."
         },
         "preview": {
             "audio": {
