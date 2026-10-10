@@ -23,16 +23,19 @@
 #      warnings are printed for a human to judge one by one. Those are NOT
 #      failed on: dynamic loading legitimately looks like an unused library,
 #      and #465 asks for them to be assessed individually rather than
-#      blanket-ignored. A linter that cannot run (no build provider, no
-#      network) leaves the gate green but says the lint half is UNVERIFIED,
-#      never OK. Tested with stub tools: .github/scripts/test_snap_gpu_lint_check.py.
+#      blanket-ignored. On disposable GitHub-hosted runners it uses sudo to
+#      access the build action's LXD provider and lint inside core22; failure
+#      to run is an environment error. Elsewhere an unavailable
+#      linter leaves the lint half UNVERIFIED, never OK. Tested with stub
+#      tools: .github/scripts/test_snap_gpu_lint_check.py.
 #
 # Usage:
 #   scripts/snap-gpu-lint-check.sh <snap-file>
 #   scripts/snap-gpu-lint-check.sh <snap-file> --no-snapcraft   # content only
 #
 # Exit codes: 0 = no provider-owned GPU userspace inside the snap,
-#             1 = the snap ships its own, 2 = usage / environment error.
+#             1 = the snap ships its own, 2 = usage / environment error
+#             (including an unverified lint on a GitHub-hosted runner).
 
 set -euo pipefail
 
@@ -165,7 +168,19 @@ if [ "$RUN_SNAPCRAFT" -eq 0 ]; then
   exit 0
 fi
 
-if ! command -v snapcraft >/dev/null 2>&1; then
+# Elevate only on the disposable GitHub-hosted runner, never on a developer
+# machine or a self-hosted runner. snapcore/action-build already sets up LXD,
+# but its new lxd group membership does not reach later workflow steps.
+HOSTED_LINT=0
+if [ "${GITHUB_ACTIONS:-}" = true ] && [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; then
+  HOSTED_LINT=1
+fi
+
+if ! SNAPCRAFT="$(command -v snapcraft)"; then
+  if [ "$HOSTED_LINT" -eq 1 ]; then
+    echo "::error::snapcraft not on PATH; hosted-runner lint is UNVERIFIED"
+    exit 2
+  fi
   echo "note: snapcraft not on PATH, skipping the linter pass (content check already passed)"
   exit 0
 fi
@@ -173,11 +188,19 @@ fi
 echo
 echo "Running snapcraft lint ..."
 LINT_OUT="$TMP/lint.txt"
-# The linter is allowed to fail: it needs a build instance and may be
-# unavailable on a given runner. Its absence must not turn a green content
-# check into a red gate, and its presence must not hide a gpu: warning.
+# Keep lint inside its core22 build instance. Managed mode on an Ubuntu 24.04
+# host starts the GPU linter but breaks library checks: their LD_LIBRARY_PATH
+# points at core22's libc, which cannot load the host's newer /bin/bash.
+# sudo grants access to LXD without relying on a refreshed login group list.
+# Preserve PATH for LXD helpers in /snap/bin, outside sudo's secure_path.
 LINT_RC=0
-snapcraft lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+if [ "$HOSTED_LINT" -eq 1 ]; then
+  echo "Using LXD lint on the GitHub-hosted runner (sudo, core22 instance)."
+  sudo -n env -u CRAFT_MANAGED_MODE "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=lxd \
+    "$SNAPCRAFT" lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+else
+  "$SNAPCRAFT" lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+fi
 if [ "$LINT_RC" -ne 0 ]; then
   echo "note: snapcraft lint exited $LINT_RC; output follows"
 fi
@@ -204,6 +227,10 @@ if [ "$LINT_RC" -ne 0 ] && ! grep -qE "^${STAMP}[[:space:]]*Lint (OK|warnings|er
   reason="${reason//%/%25}"
   echo
   echo "::warning::snapcraft lint did not run (${reason:-exit $LINT_RC, no output}); the gpu:/library: lint half of #465 criterion 5 is UNVERIFIED in this run"
+  if [ "$HOSTED_LINT" -eq 1 ]; then
+    echo "::error::snapcraft lint must run on the GitHub-hosted runner"
+    exit 2
+  fi
   exit 0
 fi
 
@@ -214,6 +241,14 @@ if grep -qE "^${STAMP}[[:space:]]*(-[[:space:]]*)?gpu:" "$LINT_OUT"; then
   echo
   echo "::error::snapcraft lint still reports gpu: warnings, listed above."
   exit 1
+fi
+
+# A report and even a zero exit can coexist with failed library checks.
+# Seen in the first real managed-mode run: 662 /bin/bash GLIBC loader errors
+# followed by "Lint warnings:" and exit 0. Never print OK over that failure.
+if grep -qE ': .*version .+ not found \(required by ' "$LINT_OUT"; then
+  echo "::error::snapcraft library checks encountered loader errors; lint is UNVERIFIED"
+  exit 2
 fi
 
 if grep -qE "^${STAMP}[[:space:]]*(-[[:space:]]*)?library:" "$LINT_OUT"; then
