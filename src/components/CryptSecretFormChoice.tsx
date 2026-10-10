@@ -52,12 +52,14 @@ export const CryptSecretFormChoice: React.FC<Props> = ({ legend, value, onChange
     };
     const option = (form: CryptSecretForm, label: string) => (
         <label className="flex items-center gap-1.5">
+            {/* A visible focus ring: without it Tab seemed to stop here. */}
             <input
                 type="radio"
                 name={name}
                 checked={value === form}
                 disabled={disabled}
                 onChange={() => choose(form)}
+                className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 focus-visible:ring-offset-1 focus-visible:ring-offset-transparent rounded-full"
             />
             <span>{label}</span>
         </label>
