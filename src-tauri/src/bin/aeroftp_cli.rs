@@ -1991,9 +1991,9 @@ enum Commands {
         #[arg(long)]
         first: bool,
         /// On a server whose replace sets the previous file aside (MEGA
-        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive): set it aside, move
-        /// the new one into its place, then delete the old one. There is a
-        /// short moment with no file. Without this flag such a server refuses
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, WebDAV):
+        /// set it aside, move the new one into its place, then delete the old
+        /// one. There is a short moment with no file. Without this flag such a server refuses
         /// the edit and nothing is written; any other server that cannot
         /// replace in one step refuses it with the flag too.
         #[arg(long)]
