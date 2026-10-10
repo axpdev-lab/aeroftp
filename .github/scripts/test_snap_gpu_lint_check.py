@@ -43,7 +43,7 @@ def stub(path, body):
 
 class SnapLintPassTests(unittest.TestCase):
     def run_gate(self, lint_output, lint_rc, *, hosted=False, self_hosted=False,
-                 sudo_rc=0, no_snapcraft=False):
+                 sudo_rc=0, no_snapcraft=False, inherited_managed=False):
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             bin_dir = tmp / 'bin'
@@ -59,6 +59,7 @@ class SnapLintPassTests(unittest.TestCase):
             stub(bin_dir / 'unsquashfs', f'cat "{tmp / "listing.txt"}"\n')
             stub(bin_dir / 'snapcraft', (
                 f'printf "test-managed=%s\\n" "${{CRAFT_MANAGED_MODE:-unset}}" >> "{trace}"\n'
+                f'printf "test-provider=%s\\n" "${{SNAPCRAFT_BUILD_ENVIRONMENT:-unset}}" >> "{trace}"\n'
                 f'printf "test-snap=%s\\n" "$2" >> "{trace}"\n'
                 f'cat "{tmp / "lint.txt"}"\nexit {lint_rc}\n'
             ))
@@ -73,25 +74,46 @@ class SnapLintPassTests(unittest.TestCase):
             snap = tmp / 'aero ftp.snap'
             snap.write_bytes(b'not read by the stub')
             env = dict(os.environ, PATH=str(bin_dir))
-            for key in ('GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'CRAFT_MANAGED_MODE'):
+            for key in ('GITHUB_ACTIONS', 'RUNNER_ENVIRONMENT', 'CRAFT_MANAGED_MODE', 'SNAPCRAFT_BUILD_ENVIRONMENT'):
                 env.pop(key, None)
             if hosted or self_hosted:
                 env.update(GITHUB_ACTIONS='true', RUNNER_ENVIRONMENT=(
                     'github-hosted' if hosted else 'self-hosted'
                 ))
+            if inherited_managed:
+                env['CRAFT_MANAGED_MODE'] = '1'
             result = subprocess.run(
                 ['bash', str(SCRIPT), str(snap)],
                 capture_output=True, text=True, env=env, check=False,
             )
             return result.returncode, result.stdout + result.stderr + trace.read_text()
 
-    def test_hosted_runner_uses_sudo_and_managed_mode(self):
+    def test_hosted_runner_uses_sudo_and_lxd(self):
         rc, out = self.run_gate('Running linter.\n', 0, hosted=True)
         self.assertEqual(rc, 0, out)
-        self.assertIn('test-sudo=-n env CRAFT_MANAGED_MODE=1 ', out)
-        self.assertIn('test-managed=1', out)
+        self.assertIn('test-sudo=-n env -u CRAFT_MANAGED_MODE PATH=', out)
+        self.assertIn('test-managed=unset', out)
+        self.assertIn('test-provider=lxd', out)
         self.assertRegex(out, r'test-snap=/[^\n]+/aero ftp\.snap\n')
         self.assertIn('OK: snapcraft lint ran', out)
+
+    def test_hosted_runner_clears_inherited_managed_mode(self):
+        rc, out = self.run_gate('Running linter.\n', 0, hosted=True, inherited_managed=True)
+        self.assertEqual(rc, 0, out)
+        self.assertIn('test-managed=unset', out)
+        self.assertIn('test-provider=lxd', out)
+
+    def test_loader_errors_make_lint_unverified_even_with_a_report(self):
+        report = (
+            "Running linter: library\n"
+            "/bin/bash: /snap/core22/current/lib/x86_64-linux-gnu/libc.so.6: "
+            "version `GLIBC_2.38' not found (required by /bin/bash)\n"
+            "Lint warnings:\n- library: libfoo.so.1: unused library.\n"
+        )
+        rc, out = self.run_gate(report, 0, hosted=True)
+        self.assertEqual(rc, 2, out)
+        self.assertIn('UNVERIFIED', out)
+        self.assertNotIn('OK: snapcraft lint', out)
 
     def test_local_lint_keeps_the_build_provider(self):
         rc, out = self.run_gate('Running linter.\n', 0)

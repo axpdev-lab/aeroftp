@@ -23,9 +23,9 @@
 #      warnings are printed for a human to judge one by one. Those are NOT
 #      failed on: dynamic loading legitimately looks like an unused library,
 #      and #465 asks for them to be assessed individually rather than
-#      blanket-ignored. On disposable GitHub-hosted runners it installs the
-#      snap with sudo in managed mode, without starting a build provider, and
-#      failure to run is an environment error. Elsewhere an unavailable
+#      blanket-ignored. On disposable GitHub-hosted runners it uses sudo to
+#      access the build action's LXD provider and lint inside core22; failure
+#      to run is an environment error. Elsewhere an unavailable
 #      linter leaves the lint half UNVERIFIED, never OK. Tested with stub
 #      tools: .github/scripts/test_snap_gpu_lint_check.py.
 #
@@ -168,9 +168,9 @@ if [ "$RUN_SNAPCRAFT" -eq 0 ]; then
   exit 0
 fi
 
-# Managed lint installs the snap on the host. Opt in only on the disposable
-# GitHub-hosted runner, never on a developer machine or a self-hosted runner.
-# G2 already installs the same artifact on these runners immediately after G4.
+# Elevate only on the disposable GitHub-hosted runner, never on a developer
+# machine or a self-hosted runner. snapcore/action-build already sets up LXD,
+# but its new lxd group membership does not reach later workflow steps.
 HOSTED_LINT=0
 if [ "${GITHUB_ACTIONS:-}" = true ] && [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; then
   HOSTED_LINT=1
@@ -188,14 +188,16 @@ fi
 echo
 echo "Running snapcraft lint ..."
 LINT_OUT="$TMP/lint.txt"
-# snapcraft's lint command skips its build instance only in managed mode.
-# Set the variable AFTER sudo (which otherwise strips it), and resolve the
-# executable before sudo so /snap/bin need not be in root's secure_path.
-# Keep the normal build provider outside disposable hosted CI.
+# Keep lint inside its core22 build instance. Managed mode on an Ubuntu 24.04
+# host starts the GPU linter but breaks library checks: their LD_LIBRARY_PATH
+# points at core22's libc, which cannot load the host's newer /bin/bash.
+# sudo grants access to LXD without relying on a refreshed login group list.
+# Preserve PATH for LXD helpers in /snap/bin, outside sudo's secure_path.
 LINT_RC=0
 if [ "$HOSTED_LINT" -eq 1 ]; then
-  echo "Using managed lint on the GitHub-hosted runner (sudo snap install)."
-  sudo -n env CRAFT_MANAGED_MODE=1 "$SNAPCRAFT" lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+  echo "Using LXD lint on the GitHub-hosted runner (sudo, core22 instance)."
+  sudo -n env -u CRAFT_MANAGED_MODE "PATH=$PATH" SNAPCRAFT_BUILD_ENVIRONMENT=lxd \
+    "$SNAPCRAFT" lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
 else
   "$SNAPCRAFT" lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
 fi
@@ -239,6 +241,14 @@ if grep -qE "^${STAMP}[[:space:]]*(-[[:space:]]*)?gpu:" "$LINT_OUT"; then
   echo
   echo "::error::snapcraft lint still reports gpu: warnings, listed above."
   exit 1
+fi
+
+# A report and even a zero exit can coexist with failed library checks.
+# Seen in the first real managed-mode run: 662 /bin/bash GLIBC loader errors
+# followed by "Lint warnings:" and exit 0. Never print OK over that failure.
+if grep -qE ': .*version .+ not found \(required by ' "$LINT_OUT"; then
+  echo "::error::snapcraft library checks encountered loader errors; lint is UNVERIFIED"
+  exit 2
 fi
 
 if grep -qE "^${STAMP}[[:space:]]*(-[[:space:]]*)?library:" "$LINT_OUT"; then
