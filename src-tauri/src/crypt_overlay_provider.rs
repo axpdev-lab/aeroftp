@@ -1235,10 +1235,16 @@ impl StorageProvider for CryptOverlayProvider {
         } else {
             entry.name
         };
-        let plain_path = if is_enc {
+        // Decode as the target was encoded: a relative target is encrypted in
+        // full (it resolves against the current directory, wherever that is),
+        // so the path the provider returns for it is decrypted in full too; an
+        // absolute one only below the anchor.
+        let plain_path = if !is_enc {
+            entry.path
+        } else if path.starts_with('/') {
             decode_scoped(&self.keys, &self.scope, &entry.path, entry.is_dir)
         } else {
-            entry.path
+            decode_entry_path(&self.keys, &entry.path, entry.is_dir)
         };
         let size = if entry.is_dir {
             0
@@ -3531,6 +3537,34 @@ mod tests {
                 provider.pwd().await.unwrap(),
                 sub.path,
                 "{label}: pwd inside the child"
+            );
+        }
+    }
+
+    /// A relative target is encrypted in full by the mapper, wherever the
+    /// current directory is, so `stat` decrypts the path the provider returns
+    /// for it in full as well, not only below the anchor.
+    #[tokio::test]
+    async fn stat_of_a_relative_target_decodes_the_returned_path() {
+        for (label, keys) in both_kinds() {
+            let enc = keys.encode_name("report", true).unwrap();
+            let mut provider =
+                CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "/Vault");
+            provider
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap()
+                .dirs
+                .lock()
+                .unwrap()
+                .push(format!("/Other/{enc}"));
+            provider.cd("/Other").await.unwrap();
+            let entry = provider.stat("report").await.unwrap();
+            assert_eq!(entry.name, "report", "{label}");
+            assert_eq!(
+                entry.path, "/Other/report",
+                "{label}: path decoded like the name"
             );
         }
     }

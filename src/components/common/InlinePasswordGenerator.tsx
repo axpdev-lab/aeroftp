@@ -22,6 +22,7 @@ export const InlinePasswordGenerator: React.FC<InlinePasswordGeneratorProps> = (
     const t = useTranslation();
     const [status, setStatus] = useState<'idle' | 'loading' | 'done'>('idle');
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
 
     useEffect(() => () => {
         if (timerRef.current) clearTimeout(timerRef.current);
@@ -45,17 +46,34 @@ export const InlinePasswordGenerator: React.FC<InlinePasswordGeneratorProps> = (
         }
     }, [disabled, onGenerated, preset, status]);
 
-    const title = preset === 'compatible'
+    // The button is out of the Tab order (below), so the field it sits in
+    // gets the keyboard way to it: Alt+G while typing there generates.
+    useEffect(() => {
+        const field = buttonRef.current?.parentElement?.querySelector('input');
+        if (!field) return undefined;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.altKey && !e.ctrlKey && !e.metaKey && e.key.toLowerCase() === 'g') {
+                e.preventDefault();
+                void generate();
+            }
+        };
+        field.addEventListener('keydown', onKey);
+        return () => field.removeEventListener('keydown', onKey);
+    }, [generate]);
+
+    const title = `${preset === 'compatible'
         ? t('cyberTools.pwdGenerateCompatibleInline')
-        : t('cyberTools.pwdGenerateInline');
+        : t('cyberTools.pwdGenerateInline')} (Alt+G)`;
 
     return (
         // Out of the Tab order, like the show-password eye beside it: Tab from
         // a password field goes on to the next field, not to the icons inside
-        // this one.
+        // this one. Keyboard users generate with Alt+G from the field.
         <button
+            ref={buttonRef}
             type="button"
             tabIndex={-1}
+            aria-keyshortcuts="Alt+G"
             onClick={generate}
             disabled={disabled || status === 'loading'}
             className={`inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-all hover:bg-cyan-500/10 hover:text-cyan-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/60 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-cyan-300 ${className}`}
