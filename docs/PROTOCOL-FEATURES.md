@@ -227,6 +227,7 @@ buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
 | **Workspace Export** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | **Change Tracking** | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | **MLSD/MLST** | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| **SITE Commands**§ | Yes | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
 | **Speed Limit** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
 | **Import Link** | - | - | - | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - |
 | **Multipart Upload** | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
@@ -240,6 +241,7 @@ buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
 
 †FileLu Server Copy = server-side clone (`filelu_clone_file`)
 ‡Box Enterprise only (Business/Enterprise plan required)
+§`SITE <command>` through the open session (Connection > SITE Command..., `aeroftp-cli site`, `:site` in the TUI): the reply is shown whole with its code; a command is never sent twice; arguments and replies are not logged.
 
 ---
 
