@@ -3323,6 +3323,7 @@ mod tests {
     /// exact inbound shape of a symlink upload (flist-only, no
     /// signature/delta phases; see
     /// `native_driver::tests::driver_upload_symlink_emits_flist_only_and_finishes_noop`).
+    #[cfg(unix)]
     fn symlink_upload_session_inbound() -> Vec<u8> {
         use crate::aerorsync::real_wire::{
             encode_server_preamble, MuxHeader, MuxTag, ServerPreamble,
@@ -3418,6 +3419,7 @@ mod tests {
     /// then directly the sender finish tail (3 NDX_DONE + SummaryFrame +
     /// trailing marker). No signature echo and no delta stream: the
     /// generator never requests symlinks.
+    #[cfg(unix)]
     fn symlink_download_session_inbound(link_name: &str, target: &str) -> Vec<u8> {
         use crate::aerorsync::real_wire::{
             encode_file_list_entry, encode_file_list_terminator, encode_server_preamble,

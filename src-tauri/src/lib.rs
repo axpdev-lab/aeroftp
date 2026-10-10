@@ -6997,7 +6997,6 @@ async fn copy_dir_recursive(
 mod rename_local_exdev_tests {
     use super::{copy_then_delete_local, is_cross_device_rename_error, rename_local_file_inner};
     use std::io::{Error, ErrorKind};
-    use std::path::Path;
 
     #[test]
     fn detects_crosses_devices_kind() {
@@ -7109,7 +7108,6 @@ mod rename_local_exdev_tests {
         );
         // Sanity: absolute path required
         assert!(crate::filesystem::validate_path("mtp:host=foo").is_err());
-        let _ = Path::new(p); // keep Path in scope for clarity in failure dumps
     }
 }
 

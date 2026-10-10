@@ -490,15 +490,16 @@ pub fn apply_access_acl_fd(
 
 // Test-only seam lives after production so the unsafe-surface pin, which
 // stops at the first column-0 `#[cfg(test)]`, still counts the libacl FFI.
-#[cfg(test)]
+// Linux only, like the libacl `apply_access_acl_fd` that reads it.
+#[cfg(all(test, target_os = "linux"))]
 use std::cell::Cell;
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 thread_local! {
     static FORCE_ENOTSUP: Cell<bool> = const { Cell::new(false) };
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 fn forced_enotsup() -> bool {
     FORCE_ENOTSUP.with(Cell::get)
 }
@@ -507,6 +508,7 @@ fn forced_enotsup() -> bool {
 mod tests {
     use super::*;
 
+    #[cfg(target_os = "linux")]
     fn with_forced_enotsup<T>(f: impl FnOnce() -> T) -> T {
         FORCE_ENOTSUP.with(|flag| flag.set(true));
         let result = f();

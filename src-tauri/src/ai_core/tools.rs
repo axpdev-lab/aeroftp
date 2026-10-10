@@ -2675,6 +2675,7 @@ mod tests {
     }
 
     /// Run a tool the way an agent on the CLI does, and return its output.
+    #[cfg(unix)]
     async fn run_cli_tool(name: &str, args: Value) -> Value {
         dispatch_tool(&mock_ctx(Surfaces::CLI), name, &args)
             .await
