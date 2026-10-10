@@ -1147,6 +1147,7 @@ impl ProviderDownloadExecutor {
         let file_size = entry.size;
         let cancel_token = self.cancel_token.clone();
         let dl_start = std::time::Instant::now();
+        let speed_meter = crate::transfer_speed::SpeedMeter::starting_at(dl_start);
 
         let tmp_path = format!("{}.aerotmp", local_path);
         let partial_offset = if resumes_from_the_temporary(
@@ -1200,12 +1201,7 @@ impl ProviderDownloadExecutor {
                 } else {
                     0
                 };
-                let elapsed = dl_start.elapsed().as_secs_f64();
-                let speed = if elapsed > 0.1 {
-                    (transferred as f64 / elapsed) as u64
-                } else {
-                    0
-                };
+                let speed = speed_meter.bps(transferred);
                 let remaining = total.max(file_size).saturating_sub(transferred);
                 let eta = if speed > 0 {
                     (remaining as f64 / speed as f64) as u64
@@ -1330,6 +1326,7 @@ impl ProviderDownloadExecutor {
         let remote_path_for_progress = entry.remote_path.clone();
         let cancel_for_progress = self.cancel_token.clone();
         let total_for_progress = file_size;
+        let speed_meter = crate::transfer_speed::SpeedMeter::starting_at(dl_start);
         let on_progress: Option<Box<dyn Fn(u64, u64) + Send>> =
             Some(Box::new(move |transferred, total| {
                 if cancel_for_progress.is_cancelled() {
@@ -1341,12 +1338,7 @@ impl ProviderDownloadExecutor {
                 } else {
                     0
                 };
-                let elapsed = dl_start.elapsed().as_secs_f64();
-                let speed = if elapsed > 0.1 {
-                    (transferred as f64 / elapsed) as u64
-                } else {
-                    0
-                };
+                let speed = speed_meter.bps(transferred);
                 let remaining = total.saturating_sub(transferred);
                 let eta = if speed > 0 {
                     (remaining as f64 / speed as f64) as u64
@@ -1641,7 +1633,7 @@ impl ProviderUploadExecutor {
         // FINDING-4 Part B: separate handle to race the in-flight upload against
         // a user Stop (the one above is moved into the progress closure).
         let cancel_race = self.cancel_token.clone();
-        let ul_start = std::time::Instant::now();
+        let speed_meter = crate::transfer_speed::SpeedMeter::new();
 
         let upload_fut = tokio::time::timeout(
             Duration::from_secs(eff_timeout),
@@ -1658,12 +1650,7 @@ impl ProviderUploadExecutor {
                     } else {
                         0
                     };
-                    let elapsed = ul_start.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.1 {
-                        (transferred as f64 / elapsed) as u64
-                    } else {
-                        0
-                    };
+                    let speed = speed_meter.bps(transferred);
                     let remaining = total.max(file_size).saturating_sub(transferred);
                     let eta = if speed > 0 {
                         (remaining as f64 / speed as f64) as u64

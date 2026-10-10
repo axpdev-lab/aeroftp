@@ -3229,7 +3229,7 @@ pub async fn provider_download_file(
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
 
-    let dl_start_time = std::time::Instant::now();
+    let speed_meter = crate::transfer_speed::SpeedMeter::new();
     let mut progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
         Some(Box::new(move |transferred: u64, total: u64| {
             let pct = if total > 0 {
@@ -3237,12 +3237,7 @@ pub async fn provider_download_file(
             } else {
                 0
             };
-            let elapsed = dl_start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.1 {
-                (transferred as f64 / elapsed) as u64
-            } else {
-                0
-            };
+            let speed = speed_meter.bps(transferred);
             let eta = if speed > 0 && transferred < total {
                 ((total - transferred) as f64 / speed as f64) as u64
             } else {
@@ -3494,19 +3489,14 @@ pub async fn provider_download_file(
         let app_progress_fb = app.clone();
         let tid_fb = transfer_id.clone();
         let fname_fb = filename.clone();
-        let start_fb = std::time::Instant::now();
+        let speed_meter = crate::transfer_speed::SpeedMeter::new();
         progress_cb = Some(Box::new(move |transferred: u64, total: u64| {
             let pct = if total > 0 {
                 ((transferred as f64 / total as f64) * 100.0) as u8
             } else {
                 0
             };
-            let elapsed = start_fb.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.1 {
-                (transferred as f64 / elapsed) as u64
-            } else {
-                0
-            };
+            let speed = speed_meter.bps(transferred);
             let eta = if speed > 0 && transferred < total {
                 ((total - transferred) as f64 / speed as f64) as u64
             } else {
@@ -5332,7 +5322,7 @@ pub async fn provider_upload_file(
     let tid_progress = transfer_id.clone();
     let fname_progress = filename.clone();
 
-    let ul_start_time = std::time::Instant::now();
+    let speed_meter = crate::transfer_speed::SpeedMeter::new();
     let progress_cb: Option<Box<dyn Fn(u64, u64) + Send>> = if file_size > 0 {
         Some(Box::new(move |transferred: u64, total: u64| {
             let pct = if total > 0 {
@@ -5340,12 +5330,7 @@ pub async fn provider_upload_file(
             } else {
                 0
             };
-            let elapsed = ul_start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.1 {
-                (transferred as f64 / elapsed) as u64
-            } else {
-                0
-            };
+            let speed = speed_meter.bps(transferred);
             let eta = if speed > 0 && transferred < total {
                 ((total - transferred) as f64 / speed as f64) as u64
             } else {
