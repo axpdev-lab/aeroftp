@@ -16,18 +16,26 @@ import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 
 interface RcloneCryptUnlockProps {
     onClose: () => void;
+    /**
+     * Apply the overlay. Resolves once it is open and rejects with the reason it
+     * was refused, which the dialog shows where the secrets were typed.
+     */
     onUnlocked?: (details: {
-        vaultId: string;
         password: string;
         salt?: string | null;
         passwordForm: CryptSecretForm;
         saltForm: CryptSecretForm;
         filenameEncryption: string;
         directoryNameEncryption: boolean;
-        remoteScope?: string;
-    }) => void;
+        /** The folder to open: the dialog's own, or the one its Create just made. */
+        scope: string;
+    }) => Promise<void>;
     onLocked?: () => void;
     activeVaultId?: string | null;
+    /** Absolute folder the overlay is opened at, `/` for the remote root. */
+    scope: string;
+    /** Opened for a saved profile's binding: it decides the folder and the name encryption. */
+    bound?: boolean;
 }
 
 interface RcloneCryptVaultInfo {
@@ -36,9 +44,21 @@ interface RcloneCryptVaultInfo {
     directory_name_encryption: boolean;
 }
 
-export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, onUnlocked, onLocked, activeVaultId }) => {
+interface RcloneCryptCreatedVault extends RcloneCryptVaultInfo {
+    root: string;
+}
+
+export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, onUnlocked, onLocked, activeVaultId, scope, bound = false }) => {
     const t = useTranslation();
     const [mode, setMode] = useState<'open' | 'create'>('open');
+    // The folder the overlay is applied at: the dialog's, then the one a Create
+    // made under it.
+    const [vaultRoot, setVaultRoot] = useState(scope);
+    // The standalone copy of the keys behind the Decrypt name / file tools. The
+    // overlay App applies holds its own copy in the provider; this one is
+    // released when the dialog locks or closes, so it never outlives the tools.
+    const [toolVaultId, setToolVaultId] = useState<string | null>(null);
+    const toolVaultIdRef = useRef<string | null>(null);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [salt, setSalt] = useState('');
@@ -85,12 +105,56 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
         await invoke('rclone_crypt_lock', { vaultId });
     }, []);
 
+    const releaseToolVault = useCallback(async () => {
+        const id = toolVaultIdRef.current;
+        toolVaultIdRef.current = null;
+        setToolVaultId(null);
+        if (id) await lockVault(id).catch(() => undefined);
+    }, [lockVault]);
+
+    // Closing the dialog drops the tools' keys with it.
+    useEffect(() => () => { void releaseToolVault(); }, [releaseToolVault]);
+
+    // Apply the overlay with the keys `standalone` holds for the tools (null when
+    // there are none). They are kept only if the overlay really opened.
+    const applyOverlay = async (root: string, standalone: RcloneCryptVaultInfo | null, forms: {
+        passwordForm: CryptSecretForm;
+        saltForm: CryptSecretForm;
+    }) => {
+        try {
+            await onUnlocked?.({
+                password,
+                salt: salt || null,
+                ...forms,
+                filenameEncryption,
+                directoryNameEncryption: dirNameEncryption,
+                scope: root,
+            });
+        } catch (e) {
+            if (standalone) await lockVault(standalone.vault_id).catch(() => undefined);
+            throw e;
+        }
+        if (standalone) {
+            await releaseToolVault();
+            toolVaultIdRef.current = standalone.vault_id;
+            setToolVaultId(standalone.vault_id);
+        }
+        setVaultInfo(standalone ?? {
+            vault_id: activeVaultId || 'provider',
+            filename_encryption: filenameEncryption,
+            directory_name_encryption: dirNameEncryption,
+        });
+    };
+
     const handleUnlock = async () => {
         if (!password) return;
         setLoading(true);
         setError(null);
         try {
-            const info = await invoke<RcloneCryptVaultInfo>('rclone_crypt_unlock', {
+            // A bound dialog's name encryption is the binding's, not these
+            // controls', so it gets no tools: keys built from the controls would
+            // decrypt names differently from the panel.
+            const standalone = bound ? null : await invoke<RcloneCryptVaultInfo>('rclone_crypt_unlock', {
                 password,
                 salt: salt || null,
                 filenameEncryption,
@@ -98,17 +162,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                 passwordForm,
                 saltForm,
             });
-            setVaultInfo(info);
-            onUnlocked?.({
-                vaultId: info.vault_id,
-                password,
-                salt: salt || null,
-                passwordForm,
-                saltForm,
-                filenameEncryption,
-                directoryNameEncryption: dirNameEncryption,
-                remoteScope: '',
-            });
+            await applyOverlay(vaultRoot, standalone, { passwordForm, saltForm });
             setPassword('');
             setSalt('');
             setSuccess(t('aerocrypt.unlocked'));
@@ -124,27 +178,22 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
         setLoading(true);
         setError(null);
         try {
-            const info = await invoke<RcloneCryptVaultInfo>('rclone_crypt_provider_create_remote', {
+            const created = await invoke<RcloneCryptCreatedVault>('rclone_crypt_provider_create_remote', {
                 password,
                 salt: salt || null,
                 filenameEncryption,
                 directoryNameEncryption: dirNameEncryption,
+                basePath: vaultRoot,
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
                 passwordForm: 'clear',
                 saltForm: 'clear',
             });
-            setVaultInfo(info);
-            onUnlocked?.({
-                vaultId: info.vault_id,
-                password,
-                salt: salt || null,
-                // A remote created here is keyed from what was typed.
-                passwordForm: 'clear',
-                saltForm: 'clear',
-                filenameEncryption,
-                directoryNameEncryption: dirNameEncryption,
-                remoteScope: '',
-            });
+            // From here on the dialog is about the new remote: if the apply
+            // fails, Open retries it in its folder.
+            setVaultRoot(created.root);
+            setMode('open');
+            // A remote created here is keyed from what was typed.
+            await applyOverlay(created.root, created, { passwordForm: 'clear', saltForm: 'clear' });
             setPassword('');
             setConfirmPassword('');
             setSalt('');
@@ -159,21 +208,18 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
 
     const handleLock = async () => {
         if (!vaultInfo) return;
-        try {
-            await lockVault(vaultInfo.vault_id);
-        } catch (_) {
-            // Ignore lock errors, local state still needs cleanup.
-        }
+        // The overlay itself is cleared by onLocked; this drops the tools' copy.
+        await releaseToolVault();
         clearSensitiveState();
         onLocked?.();
     };
 
     const handleDecryptName = async () => {
-        if (!vaultInfo || !testEncName || !testDirIv) return;
+        if (!toolVaultId || !testEncName || !testDirIv) return;
         setError(null);
         try {
             const name = await invoke<string>('rclone_crypt_decrypt_name', {
-                vaultId: vaultInfo.vault_id,
+                vaultId: toolVaultId,
                 dirIvBase64: testDirIv,
                 encryptedName: testEncName,
             });
@@ -184,7 +230,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
     };
 
     const handleDecryptFile = async () => {
-        if (!vaultInfo) return;
+        if (!toolVaultId) return;
         setError(null);
 
         const inputPath = await pickFile({ multiple: false });
@@ -196,7 +242,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
         setLoading(true);
         try {
             await invoke<string>('rclone_crypt_decrypt_file_path', {
-                vaultId: vaultInfo.vault_id,
+                vaultId: toolVaultId,
                 encryptedFilePath: inputPath,
                 outputPath,
             });
@@ -243,8 +289,14 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                         </div>
                     )}
 
+                    <p className="text-xs text-gray-500 dark:text-gray-400 break-all">
+                        {t('aerocrypt.overlayFolder')}{' '}
+                        <code className="font-mono text-gray-700 dark:text-gray-200">{vaultRoot}</code>
+                    </p>
+
                     {!vaultInfo ? (
                         <>
+                            {!bound && (
                             <div className="flex gap-2">
                                 <button
                                     type="button"
@@ -261,6 +313,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                     {t('aerocrypt.createNew')}
                                 </button>
                             </div>
+                            )}
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -320,6 +373,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                 )}
                             </div>
 
+                            {!bound && (<>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     {t('aerocrypt.filenameEncryption')}
@@ -347,6 +401,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                     {t('aerocrypt.directoryNameEncryption')}
                                 </label>
                             </div>
+                            </>)}
 
                             {mode === 'create' && (
                                 <div>
@@ -395,6 +450,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                 </span>
                             </div>
 
+                            {toolVaultId && (<>
                             <div className="border border-gray-200 dark:border-gray-700 rounded p-3 space-y-2">
                                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
                                     <FileText className="w-4 h-4" />
@@ -436,6 +492,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
                                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
                                 {t('aerocrypt.decryptFileFromDisk')}
                             </button>
+                            </>)}
 
                             <button
                                 onClick={handleLock}
