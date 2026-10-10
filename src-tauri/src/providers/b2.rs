@@ -1212,13 +1212,17 @@ impl B2Provider {
     /// single-threaded), so the closure acquires one per slot. Part planning,
     /// the 10000-part protocol cap, the only-last-part-may-be-smaller
     /// invariant, bounded concurrency, progress, and abort-on-first-error all
-    /// live once in the shared engine. Session lifecycle stays here: an
-    /// engine `Err` leaves the started large file unfinished, exactly as the
-    /// previous sequential path did (B2 auto-expires an unfinished large file
-    /// and the `upload()` caller still retries once on a master-token
-    /// failure: no behaviour change on the failure path).
+    /// live once in the shared engine. Session lifecycle stays here: the
+    /// start and the finish renew an expired token and run again alone, and
+    /// any failure after the start cancels the large file. It stayed
+    /// unfinished before, its parts counting toward storage (B2 cancels one
+    /// by itself only under a bucket lifecycle rule), and the `upload()`
+    /// retry on a token failure inside the parts started a second one
+    /// (#1081 row 38). The parts cannot renew the token from here: each
+    /// runs on a clone, so a token failure there ends in that retry, after
+    /// this cancel.
     async fn upload_large_file(
-        &self,
+        &mut self,
         local_path: &str,
         key: &str,
         size: u64,
@@ -1228,7 +1232,15 @@ impl B2Provider {
             run_concurrent_part_upload, ConcurrentPartUploadConfig,
         };
 
-        let start = self.start_large_file(key).await?;
+        let start = match self.start_large_file(key).await {
+            Err(e) if is_b2_token_failure(&e) => {
+                if !self.maybe_reauth(&e).await {
+                    return Err(e);
+                }
+                self.start_large_file(key).await?
+            }
+            start => start?,
+        };
         let file_id = start.file_id.clone();
 
         let provider = self.clone();
@@ -1254,22 +1266,39 @@ impl B2Provider {
         // b2_finish_large_file (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(progress, size);
         let parts_progress = progress.for_wire(size);
-        let parts = run_concurrent_part_upload(
-            ConcurrentPartUploadConfig {
-                local_path: std::path::PathBuf::from(local_path),
-                total_size: size,
-                part_size: LARGE_FILE_PART_SIZE,
-                max_parts: 10_000,
-                max_parallel: LARGE_FILE_MAX_PARALLEL,
-            },
-            upload_one_part,
-            tokio_util::sync::CancellationToken::new(),
-            Some(Box::new(move |sent, _| parts_progress.report(sent))),
-        )
-        .await?;
-
-        let part_sha1s: Vec<String> = parts.into_iter().map(|(_, sha1)| sha1).collect();
-        self.finish_large_file(&file_id, part_sha1s).await?;
+        let uploaded: Result<(), ProviderError> = (async {
+            let parts = run_concurrent_part_upload(
+                ConcurrentPartUploadConfig {
+                    local_path: std::path::PathBuf::from(local_path),
+                    total_size: size,
+                    part_size: LARGE_FILE_PART_SIZE,
+                    max_parts: 10_000,
+                    max_parallel: LARGE_FILE_MAX_PARALLEL,
+                },
+                upload_one_part,
+                tokio_util::sync::CancellationToken::new(),
+                Some(Box::new(move |sent, _| parts_progress.report(sent))),
+            )
+            .await?;
+            let part_sha1s: Vec<String> = parts.into_iter().map(|(_, sha1)| sha1).collect();
+            match self.finish_large_file(&file_id, part_sha1s.clone()).await {
+                Err(e) if is_b2_token_failure(&e) => {
+                    if !self.maybe_reauth(&e).await {
+                        return Err(e);
+                    }
+                    self.finish_large_file(&file_id, part_sha1s).await?;
+                }
+                finished => {
+                    finished?;
+                }
+            }
+            Ok(())
+        })
+        .await;
+        if let Err(e) = uploaded {
+            self.cancel_failed_large_file(&file_id, &e).await;
+            return Err(e);
+        }
         progress.complete();
         Ok(())
     }
@@ -1417,6 +1446,12 @@ impl B2Provider {
     /// The copy half of [`Self::rename_large_file_inner`]: b2_copy_part into a
     /// new large file at `to_key`, cancelled on failure, finished on success.
     /// The source is left as it is.
+    ///
+    /// A token can expire anywhere in a copy of this size. Each step (the
+    /// start, every part, the finish and the cancel) renews it and runs again
+    /// alone. A retry of the whole copy started a second large file while the
+    /// cancel of the first ran with the expired token, so the first stayed
+    /// unfinished on the bucket (#1081 row 38).
     async fn copy_large_file_inner(
         &mut self,
         source_file_id: &str,
@@ -1438,7 +1473,15 @@ impl B2Provider {
                 part_count
             )));
         }
-        let started = self.start_large_file(to_key).await?;
+        let started = match self.start_large_file(to_key).await {
+            Err(e) if is_b2_token_failure(&e) => {
+                if !self.maybe_reauth(&e).await {
+                    return Err(e);
+                }
+                self.start_large_file(to_key).await?
+            }
+            started => started?,
+        };
         let large_file_id = started.file_id;
         let mut part_sha1s: Vec<String> = Vec::with_capacity(part_count as usize);
         let mut offset: u64 = 0;
@@ -1456,33 +1499,46 @@ impl B2Provider {
                     )));
                 }
                 let range = format!("bytes={}-{}", offset, offset + this_part - 1);
-                let resp = self
+                let resp = match self
                     .copy_part(source_file_id, &large_file_id, part_number, &range)
-                    .await?;
+                    .await
+                {
+                    Err(e) if is_b2_token_failure(&e) => {
+                        if !self.maybe_reauth(&e).await {
+                            return Err(e);
+                        }
+                        self.copy_part(source_file_id, &large_file_id, part_number, &range)
+                            .await?
+                    }
+                    resp => resp?,
+                };
                 part_sha1s.push(resp.content_sha1);
                 offset += this_part;
                 part_number += 1;
             }
+            // Materialize the new file. After this call the destination key
+            // is live.
+            match self
+                .finish_large_file(&large_file_id, part_sha1s.clone())
+                .await
+            {
+                Err(e) if is_b2_token_failure(&e) => {
+                    if !self.maybe_reauth(&e).await {
+                        return Err(e);
+                    }
+                    self.finish_large_file(&large_file_id, part_sha1s).await?;
+                }
+                finished => {
+                    finished?;
+                }
+            }
             Ok(())
         })
         .await;
-        match copy_result {
-            Ok(()) => {}
-            Err(e) => {
-                // Best-effort cancel: release parts already copied so they
-                // don't accrue storage charges. Failures here are logged but
-                // do not mask the original error.
-                if let Err(cancel_err) = self.cancel_large_file_inner(&large_file_id).await {
-                    b2_log(&format!(
-                        "rename_large_file: copy failed and cancel also failed: {} / cancel: {}",
-                        e, cancel_err
-                    ));
-                }
-                return Err(e);
-            }
+        if let Err(e) = copy_result {
+            self.cancel_failed_large_file(&large_file_id, &e).await;
+            return Err(e);
         }
-        // Materialize the new file. After this call the destination key is live.
-        self.finish_large_file(&large_file_id, part_sha1s).await?;
         Ok(())
     }
 
@@ -1533,7 +1589,8 @@ impl B2Provider {
     }
 
     /// Copy one file of a folder rename to `new_name`: b2_copy_file, or the
-    /// b2_copy_part workflow above its 5 GB ceiling.
+    /// b2_copy_part workflow above its 5 GB ceiling. Either renews an expired
+    /// token and runs the step that failed again, never the steps before it.
     async fn copy_folder_file(
         &mut self,
         file_id: &str,
@@ -1541,9 +1598,16 @@ impl B2Provider {
         size: u64,
     ) -> Result<(), ProviderError> {
         if size > COPY_MAX_SIZE {
-            self.copy_large_file_inner(file_id, new_name, size).await
-        } else {
-            self.copy_file_to(file_id, new_name).await.map(|_| ())
+            return self.copy_large_file_inner(file_id, new_name, size).await;
+        }
+        match self.copy_file_to(file_id, new_name).await {
+            Err(e) if is_b2_token_failure(&e) => {
+                if !self.maybe_reauth(&e).await {
+                    return Err(e);
+                }
+                self.copy_file_to(file_id, new_name).await.map(|_| ())
+            }
+            copied => copied.map(|_| ()),
         }
     }
 
@@ -1595,15 +1659,9 @@ impl B2Provider {
         }
         for (copied, (name, file_id, size, _)) in files.iter().enumerate() {
             let new_name = name.replacen(&prefix, &to_prefix, 1);
-            // A token can expire during a long rename: renew it and run the
-            // step that failed again, never the steps before it.
-            let mut copy = self.copy_folder_file(file_id, &new_name, *size).await;
-            if let Err(e) = &copy {
-                if is_b2_token_failure(e) && self.maybe_reauth(e).await {
-                    copy = self.copy_folder_file(file_id, &new_name, *size).await;
-                }
-            }
-            if let Err(e) = copy {
+            // A token can expire during a long rename: the copy renews it and
+            // runs the step that failed again, never the steps before it.
+            if let Err(e) = self.copy_folder_file(file_id, &new_name, *size).await {
                 // The copies made so far stay under the destination, so a
                 // retry would be refused as AlreadyExists with nothing to
                 // say why: say it here.
@@ -1729,22 +1787,12 @@ impl B2Provider {
             // chunked b2_copy_part workflow. The inner method handles the
             // start_large_file → loop copy_part → finish_large_file →
             // delete_source dance, with cancel-on-failure for the in-progress
-            // upload session.
-            return match self
+            // upload session. Each of those steps renews an expired token
+            // itself; running the whole rename again would start a second
+            // large file.
+            return self
                 .rename_large_file_inner(&file_id, uploaded, &from_key, &to_key, size)
-                .await
-            {
-                Ok(()) => Ok(()),
-                Err(e) if is_b2_token_failure(&e) => {
-                    if self.maybe_reauth(&e).await {
-                        self.rename_large_file_inner(&file_id, uploaded, &from_key, &to_key, size)
-                            .await
-                    } else {
-                        Err(e)
-                    }
-                }
-                Err(e) => Err(e),
-            };
+                .await;
         }
         let copied = match self.copy_file_to(&file_id, &to_key).await {
             Ok(v) => v,
@@ -2401,6 +2449,26 @@ impl B2Provider {
         Ok(())
     }
 
+    /// Cancel the large file `file_id` after a failed copy or upload, so its
+    /// parts stop counting toward storage: B2 keeps an unfinished large file
+    /// until it is cancelled, unless a lifecycle rule on the bucket says
+    /// otherwise. An expired token is renewed and the cancel runs again. A
+    /// failure is logged, not returned: the caller reports the error that
+    /// made it cancel.
+    async fn cancel_failed_large_file(&mut self, file_id: &str, cause: &ProviderError) {
+        let mut cancelled = self.cancel_large_file_inner(file_id).await;
+        if let Err(cancel_err) = &cancelled {
+            if is_b2_token_failure(cancel_err) && self.maybe_reauth(cancel_err).await {
+                cancelled = self.cancel_large_file_inner(file_id).await;
+            }
+        }
+        if let Err(cancel_err) = cancelled {
+            b2_log(&format!(
+                "large file {file_id}: {cause}; cancelling it also failed: {cancel_err}"
+            ));
+        }
+    }
+
     // ─── B2-specific public API (downcasted from `as_any_mut()`) ───
 
     /// Enumerate every unfinished large-file upload in the current bucket.
@@ -2995,8 +3063,11 @@ impl StorageProvider for B2Provider {
         };
         self.validate_header_budget(&key, info_extra)?;
         if size > SINGLE_UPLOAD_RECOMMENDED_MAX {
-            // Large path: retry once on master-token failure during start_large_file.
-            // progress is moved on first attempt; the rare retry runs without it.
+            // Large path: the start and the finish renew an expired token
+            // themselves. A token failure inside the parts ends the attempt
+            // with its large file cancelled, and is retried here once with a
+            // new one. progress is moved on first attempt; the rare retry
+            // runs without it.
             return match self
                 .upload_large_file(local_path, &key, size, progress)
                 .await
@@ -5918,6 +5989,231 @@ mod tests {
                 if op == "b2_copy_file" { 3 } else { 2 },
                 "{op}: {ops:?}"
             );
+        }
+    }
+
+    /// A B2 double for the large-file copy and upload: the `expire_on`th call of
+    /// `expire_op` answers 401 `expired_auth_token`, and `b2_copy_part` for
+    /// part `fail_part` answers 400. Every call is recorded by its name.
+    async fn provider_for_large_copy(
+        expire_op: &'static str,
+        expire_on: usize,
+        fail_part: Option<u64>,
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::Arc;
+        let ops: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&ops);
+        let counted: Arc<std::sync::Mutex<usize>> = Arc::default();
+        let base: Arc<std::sync::OnceLock<String>> = Arc::default();
+        let base_for_app = Arc::clone(&base);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                let counted = Arc::clone(&counted);
+                let base = Arc::clone(&base_for_app);
+                async move {
+                    let op = req.uri().path().rsplit('/').next().unwrap_or("").to_string();
+                    let body: serde_json::Value = serde_json::from_slice(
+                        &axum::body::to_bytes(req.into_body(), 64 * 1024).await.unwrap(),
+                    )
+                    .unwrap_or_default();
+                    seen.lock().unwrap().push(op.clone());
+                    let json = |status: u16, value: serde_json::Value| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(value.to_string()))
+                            .unwrap()
+                    };
+                    if op == expire_op {
+                        let mut n = counted.lock().unwrap();
+                        *n += 1;
+                        if *n == expire_on {
+                            return json(
+                                401,
+                                serde_json::json!({
+                                    "status": 401, "code": "expired_auth_token", "message": "expired",
+                                }),
+                            );
+                        }
+                    }
+                    match op.as_str() {
+                        "b2_authorize_account" => json(
+                            200,
+                            serde_json::json!({
+                                "accountId": "account",
+                                "authorizationToken": "renewed",
+                                "apiInfo": { "storageApi": {
+                                    "apiUrl": base.get().unwrap(),
+                                    "downloadUrl": base.get().unwrap(),
+                                }},
+                            }),
+                        ),
+                        "b2_list_buckets" => json(
+                            200,
+                            serde_json::json!({ "buckets": [{ "bucketId": "bucket", "bucketName": "b" }] }),
+                        ),
+                        "b2_start_large_file" => json(
+                            200,
+                            serde_json::json!({ "fileId": "large-id", "fileName": body["fileName"] }),
+                        ),
+                        "b2_copy_part" if body["partNumber"].as_u64() == fail_part => json(
+                            400,
+                            serde_json::json!({ "status": 400, "code": "bad_request", "message": "refused" }),
+                        ),
+                        "b2_copy_part" => json(
+                            200,
+                            serde_json::json!({
+                                "fileId": "large-id", "partNumber": body["partNumber"],
+                                "contentSha1": "none", "contentLength": 1,
+                            }),
+                        ),
+                        "b2_finish_large_file" => json(
+                            200,
+                            serde_json::json!({ "fileId": "large-id", "fileName": "dst.bin" }),
+                        ),
+                        "b2_cancel_large_file" => json(200, serde_json::json!({ "fileId": "large-id" })),
+                        "b2_get_upload_part_url" => json(
+                            200,
+                            serde_json::json!({
+                                "fileId": "large-id",
+                                "uploadUrl": format!("{}/b2api/v4/b2_upload_part", base.get().unwrap()),
+                                "authorizationToken": "part-token",
+                            }),
+                        ),
+                        "b2_upload_part" => json(
+                            200,
+                            serde_json::json!({
+                                "fileId": "large-id", "partNumber": 1,
+                                "contentSha1": "none", "contentLength": 1,
+                            }),
+                        ),
+                        _ => json(400, serde_json::json!({ "status": 400, "code": "bad_request", "message": op })),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        base.set(format!("http://{addr}")).unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = empty_provider();
+        provider.api_url = format!("http://{addr}");
+        provider.authorize_url = format!("http://{addr}/b2api/v4/b2_authorize_account");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, ops)
+    }
+
+    /// Three parts: two full ones and a last byte.
+    const LARGE_COPY_SIZE: u64 = 2 * LARGE_FILE_PART_SIZE + 1;
+
+    /// #1081 row 38: a token that expired inside the copy of a file above
+    /// 5 GB failed the copy, and the retry of the whole copy started a second
+    /// large file. Each step now renews the token and runs again alone, so
+    /// one large file is started, every part is copied once more at most,
+    /// and nothing is cancelled.
+    #[tokio::test]
+    async fn a_large_copy_renews_an_expired_token_at_any_step() {
+        for (op, nth) in [
+            ("b2_start_large_file", 1),
+            ("b2_copy_part", 2),
+            ("b2_finish_large_file", 1),
+        ] {
+            let (mut provider, ops) = provider_for_large_copy(op, nth, None).await;
+            provider
+                .copy_large_file_inner("source-id", "dst.bin", LARGE_COPY_SIZE)
+                .await
+                .unwrap_or_else(|e| panic!("token expiring on {op}: {e}"));
+            let ops = ops.lock().unwrap();
+            let count = |name: &str| ops.iter().filter(|seen| *seen == name).count();
+            assert_eq!(count("b2_authorize_account"), 1, "{op}: {ops:?}");
+            let again = |name: &str| usize::from(op == name);
+            assert_eq!(
+                count("b2_start_large_file"),
+                1 + again("b2_start_large_file"),
+                "{op}: {ops:?}"
+            );
+            assert_eq!(
+                count("b2_copy_part"),
+                3 + again("b2_copy_part"),
+                "{op}: {ops:?}"
+            );
+            assert_eq!(
+                count("b2_finish_large_file"),
+                1 + again("b2_finish_large_file"),
+                "{op}: {ops:?}"
+            );
+            assert_eq!(count("b2_cancel_large_file"), 0, "{op}: {ops:?}");
+        }
+    }
+
+    /// The cancel that releases a failed copy's parts renews an expired
+    /// token too: with the old one it failed, and the unfinished large file
+    /// stayed on the bucket.
+    #[tokio::test]
+    async fn a_failed_large_copy_is_cancelled_with_a_renewed_token() {
+        let (mut provider, ops) = provider_for_large_copy("b2_cancel_large_file", 1, Some(2)).await;
+        let outcome = provider
+            .copy_large_file_inner("source-id", "dst.bin", LARGE_COPY_SIZE)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let ops = ops.lock().unwrap();
+        let count = |name: &str| ops.iter().filter(|seen| *seen == name).count();
+        assert_eq!(count("b2_start_large_file"), 1, "{ops:?}");
+        assert_eq!(count("b2_authorize_account"), 1, "{ops:?}");
+        assert_eq!(count("b2_cancel_large_file"), 2, "{ops:?}");
+        assert_eq!(count("b2_finish_large_file"), 0, "{ops:?}");
+    }
+
+    /// A one-byte local file to upload as a large file: one part.
+    fn one_byte_file() -> tempfile::NamedTempFile {
+        let file = tempfile::NamedTempFile::new().expect("temp file");
+        std::fs::write(file.path(), b"x").expect("write");
+        file
+    }
+
+    /// A large upload that fails after its start cancels the large file: it
+    /// stayed unfinished, its parts counting toward storage, and the retry
+    /// on a token failure in the parts started a second one. Here the part
+    /// itself meets an expired token.
+    #[tokio::test]
+    async fn a_failed_large_upload_cancels_its_large_file() {
+        let (mut provider, ops) = provider_for_large_copy("b2_upload_part", 1, None).await;
+        let local = one_byte_file();
+        let outcome = provider
+            .upload_large_file(&local.path().to_string_lossy(), "dst.bin", 1, None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let ops = ops.lock().unwrap();
+        let count = |name: &str| ops.iter().filter(|seen| *seen == name).count();
+        assert_eq!(count("b2_start_large_file"), 1, "{ops:?}");
+        assert_eq!(count("b2_finish_large_file"), 0, "{ops:?}");
+        assert_eq!(count("b2_cancel_large_file"), 1, "{ops:?}");
+    }
+
+    /// The start and the finish of a large upload renew an expired token and
+    /// run again alone: one large file, finished, nothing cancelled.
+    #[tokio::test]
+    async fn a_large_upload_renews_an_expired_token_at_its_start_and_finish() {
+        for op in ["b2_start_large_file", "b2_finish_large_file"] {
+            let (mut provider, ops) = provider_for_large_copy(op, 1, None).await;
+            let local = one_byte_file();
+            provider
+                .upload_large_file(&local.path().to_string_lossy(), "dst.bin", 1, None)
+                .await
+                .unwrap_or_else(|e| panic!("token expiring on {op}: {e}"));
+            let ops = ops.lock().unwrap();
+            let count = |name: &str| ops.iter().filter(|seen| *seen == name).count();
+            assert_eq!(count("b2_authorize_account"), 1, "{op}: {ops:?}");
+            assert_eq!(count(op), 2, "{op}: {ops:?}");
+            assert_eq!(count("b2_upload_part"), 1, "{op}: {ops:?}");
+            assert_eq!(count("b2_cancel_large_file"), 0, "{op}: {ops:?}");
         }
     }
 
