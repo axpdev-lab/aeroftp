@@ -3,6 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useTauriListener } from './useTauriListener';
+import { nextFrameSpeed, type FrameSpeed } from '../utils/frameSpeed';
 
 /**
  * One progress frame, enriched with frontend-derived speed/ETA.
@@ -40,8 +41,7 @@ interface RawFrame {
  */
 export function useArchiveProgress(active: boolean): ArchiveProgressState | null {
     const [state, setState] = useState<ArchiveProgressState | null>(null);
-    const lastRef = useRef<{ t: number; bytes: number } | null>(null);
-    const speedRef = useRef(0);
+    const speedRef = useRef<FrameSpeed | null>(null);
     // The listener is always attached (so the first frame of a just-started op is
     // never lost to an attach race), but it must only act while THIS hook's operation
     // is running. `archive_progress` is a single global event, so without this gate a
@@ -53,18 +53,9 @@ export function useArchiveProgress(active: boolean): ArchiveProgressState | null
     useTauriListener<RawFrame>('archive_progress', (e) => {
         if (!activeRef.current) return; // ignore frames while idle / from other ops
         const f = e.payload;
-        const now = performance.now();
-        const prev = lastRef.current;
-        // Instantaneous speed from the byte delta, EMA-smoothed to avoid jitter.
-        if (prev && f.transferred >= prev.bytes) {
-            const dt = (now - prev.t) / 1000;
-            if (dt > 0.05) {
-                const inst = (f.transferred - prev.bytes) / dt;
-                speedRef.current = speedRef.current === 0 ? inst : speedRef.current * 0.6 + inst * 0.4;
-            }
-        }
-        lastRef.current = { t: now, bytes: f.transferred };
-        const speedBps = speedRef.current > 0 ? speedRef.current : undefined;
+        // Current speed from the byte delta between frames, EMA-smoothed.
+        speedRef.current = nextFrameSpeed(speedRef.current, performance.now(), f.transferred);
+        const speedBps = speedRef.current.bps > 0 ? speedRef.current.bps : undefined;
         const remaining = Math.max(0, f.total - f.transferred);
         const etaSeconds =
             !f.indeterminate && speedBps && speedBps > 0 && remaining > 0
@@ -87,8 +78,7 @@ export function useArchiveProgress(active: boolean): ArchiveProgressState | null
     useEffect(() => {
         activeRef.current = active;
         setState(null);
-        lastRef.current = null;
-        speedRef.current = 0;
+        speedRef.current = null;
     }, [active]);
 
     return active ? state : null;

@@ -1058,6 +1058,23 @@ pub trait StorageProvider: Send + Sync {
         Ok(true)
     }
 
+    /// What [`transfer_capabilities`] reports as `atomic_rename`: what this
+    /// provider has established about an atomic [`replace`] without asking
+    /// the server again. The default is its type's declaration,
+    /// [`atomic_replace_baseline`]; a provider whose answer depends on its
+    /// own state says so here (SFTP from what the server advertised). It
+    /// must never claim more than [`supports_atomic_replace`] answers, and
+    /// may claim less: that answer can mean "no known obstacle", this one
+    /// only what is established.
+    ///
+    /// [`transfer_capabilities`]: StorageProvider::transfer_capabilities
+    /// [`replace`]: StorageProvider::replace
+    /// [`supports_atomic_replace`]: StorageProvider::supports_atomic_replace
+    /// [`atomic_replace_baseline`]: crate::transfer_dag::capabilities::atomic_replace_baseline
+    fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+        crate::transfer_dag::capabilities::atomic_replace_baseline(self.provider_type())
+    }
+
     /// Wait until a file this session just uploaded can be read back, and
     /// return how long that took, or `None` when there was nothing to wait
     /// for. A server that writes uploads back to its own storage after a
@@ -1814,6 +1831,7 @@ pub trait StorageProvider: Send + Sync {
         // part) of `buffer_bytes`, so it must reflect whether this provider
         // actually streams (i.e. overrides `upload_part_body`).
         caps.multipart_streaming_body = self.multipart_streams_part_body();
+        caps.atomic_rename = self.atomic_replace_capability();
 
         if matches!(
             self.transfer_executor_kind(),

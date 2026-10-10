@@ -46,6 +46,11 @@ pub struct TransferCapabilities {
     pub list_parallel: Capability,
     pub batch_list: Capability,
     pub server_checksum: Capability,
+    /// Whether a replace puts one file in place of another in one step, with
+    /// no moment in which neither is there. `unsupported` also stands for
+    /// "not established": see [`atomic_replace_baseline`] for who declares
+    /// it, and `StorageProvider::atomic_replace_capability` for the live
+    /// answer (SFTP's comes from the server).
     pub atomic_rename: Capability,
     pub rate_limited_api: Capability,
     pub max_file_slots: Option<u16>,
@@ -102,6 +107,31 @@ impl Default for TransferCapabilities {
     }
 }
 
+/// What a provider type declares about an atomic replace before any
+/// connection, the snapshot's `atomic_rename` for protocol defaults and the
+/// live default.
+///
+/// SFTP's answer belongs to the server, which advertises
+/// `posix-rename@openssh.com` or not, so it is known only after asking (a
+/// connection reports what it learned, see `SftpProvider`). Google Drive
+/// replaces a file by uploading a revision of it, so the file is there
+/// throughout. WebDAV's replace is one MOVE with `Overwrite: T`, but one
+/// request is not one step: RFC 4918 section 9.9.3 has the server DELETE the
+/// destination before it moves, so a move that then fails leaves no file,
+/// and the protocol does not establish the property. Every other provider
+/// either says no in its `supports_atomic_replace` (it sets the old item
+/// aside, its move over a file is not one documented step, or it has no
+/// replace) or answers `true` only in the sense of "no known obstacle",
+/// which is not an established capability: `Unsupported` for WebDAV and all
+/// of them.
+pub fn atomic_replace_baseline(provider_type: ProviderType) -> Capability {
+    match provider_type {
+        ProviderType::Sftp => Capability::SupportedAfterProbe,
+        ProviderType::GoogleDrive => Capability::Supported,
+        _ => Capability::Unsupported,
+    }
+}
+
 impl TransferCapabilities {
     pub fn from_provider_hints(
         provider_type: ProviderType,
@@ -114,6 +144,7 @@ impl TransferCapabilities {
             multipart_upload: Capability::from_bool(hints.supports_multipart),
             server_checksum: Capability::from_bool(hints.supports_server_checksum),
             server_side_copy: Capability::from_bool(supports_server_side_copy),
+            atomic_rename: atomic_replace_baseline(provider_type),
             preferred_chunk_size: (hints.multipart_part_size > 0)
                 .then_some(hints.multipart_part_size),
             preferred_download_segments: Some(download_segments_preference_for(provider_type)),
@@ -313,5 +344,46 @@ mod tests {
             caps.strict_concurrent_range_download,
             Capability::Unsupported
         );
+    }
+
+    /// #1081 row 14: `atomic_rename` was `Unsupported` for every provider,
+    /// SFTP included. SFTP's answer is the server's own
+    /// (`posix-rename@openssh.com`), so without a connection it is known only
+    /// after asking; Google Drive replaces a file by uploading a revision of
+    /// it; for the rest it is not established, WebDAV included, whose one
+    /// MOVE deletes the destination before it moves.
+    #[test]
+    fn atomic_rename_is_declared_where_a_provider_established_it() {
+        let atomic_rename = |provider_type| {
+            TransferCapabilities::from_provider_hints(
+                provider_type,
+                &TransferOptimizationHints::default(),
+                false,
+            )
+            .atomic_rename
+        };
+        assert_eq!(
+            atomic_rename(ProviderType::Sftp),
+            Capability::SupportedAfterProbe
+        );
+        assert_eq!(
+            atomic_rename(ProviderType::GoogleDrive),
+            Capability::Supported
+        );
+        for provider_type in [
+            ProviderType::WebDav,
+            ProviderType::Ftp,
+            ProviderType::Ftps,
+            ProviderType::S3,
+            ProviderType::Mega,
+            ProviderType::Dropbox,
+            ProviderType::Local,
+        ] {
+            assert_eq!(
+                atomic_rename(provider_type),
+                Capability::Unsupported,
+                "{provider_type:?}"
+            );
+        }
     }
 }

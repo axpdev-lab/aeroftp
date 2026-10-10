@@ -308,6 +308,7 @@ mod transfer_queue_journal;
 mod transfer_queue_scan;
 pub mod transfer_router;
 pub mod transfer_settings;
+pub mod transfer_speed;
 mod tray_badge;
 mod vault_remote;
 mod windows_acl;
@@ -1720,19 +1721,14 @@ pub(crate) fn make_delta_progress_sink(
     filename: String,
     direction: &'static str,
 ) -> crate::delta_transport::DeltaProgressSink {
-    let start = std::time::Instant::now();
+    let speed_meter = crate::transfer_speed::SpeedMeter::new();
     Box::new(move |transferred: u64, total: u64| {
         let percentage = if total > 0 {
             ((transferred as f64 / total as f64) * 100.0).min(100.0) as u8
         } else {
             0
         };
-        let elapsed = start.elapsed().as_secs_f64();
-        let speed_bps = if elapsed > 0.1 {
-            (transferred as f64 / elapsed) as u64
-        } else {
-            0
-        };
+        let speed_bps = speed_meter.bps(transferred);
         let eta_seconds = if speed_bps > 0 && transferred < total {
             ((total - transferred) as f64 / speed_bps as f64) as u32
         } else {
@@ -2023,16 +2019,11 @@ fn emit_update_download_progress(
     filename: &str,
     downloaded: u64,
     total: u64,
-    started_at: Instant,
+    speed_meter: &crate::transfer_speed::SpeedMeter,
     phase: UpdateDownloadPhase,
 ) {
     let completed = phase != UpdateDownloadPhase::Downloading;
-    let elapsed = started_at.elapsed().as_secs_f64();
-    let speed_bps = if elapsed > 0.0 {
-        (downloaded as f64 / elapsed) as u64
-    } else {
-        0
-    };
+    let speed_bps = speed_meter.bps(downloaded);
     let eta_seconds = if completed || speed_bps == 0 || total <= downloaded {
         0
     } else {
@@ -2172,7 +2163,7 @@ async fn download_update_artifact(
         .await
         .map_err(|error| format!("Failed to create update file: {}", error))?;
 
-    let started_at = Instant::now();
+    let speed_meter = crate::transfer_speed::SpeedMeter::new();
     let mut last_emit = Instant::now();
     let mut last_percentage = 0u8;
     let mut downloaded = 0u64;
@@ -2193,7 +2184,7 @@ async fn download_update_artifact(
                 filename,
                 downloaded,
                 total,
-                started_at,
+                &speed_meter,
                 UpdateDownloadPhase::Downloading,
             );
             last_emit = Instant::now();
@@ -2213,7 +2204,7 @@ async fn download_update_artifact(
         filename,
         downloaded,
         total,
-        started_at,
+        &speed_meter,
         UpdateDownloadPhase::Verifying,
     );
 
@@ -2907,7 +2898,7 @@ async fn download_update(app: AppHandle, url: String) -> Result<DownloadUpdateRe
         &asset.asset_name,
         1,
         1,
-        Instant::now(),
+        &crate::transfer_speed::SpeedMeter::new(),
         UpdateDownloadPhase::Complete,
     );
 
@@ -3495,19 +3486,14 @@ async fn download_file(
         .await
         .unwrap_or(0);
 
-    let start_time = Instant::now();
+    let speed_meter = crate::transfer_speed::SpeedMeter::new();
     let mut last_emit_time = Instant::now();
     let mut last_emit_pct = 0u8;
 
     // Download with progress (throttled: emit every 150ms or 2% delta)
     match ftp_manager
         .download_file_with_progress(&params.remote_path, &params.local_path, |transferred| {
-            let elapsed = start_time.elapsed().as_secs_f64();
-            let speed = if elapsed > 0.0 {
-                (transferred as f64 / elapsed) as u64
-            } else {
-                0
-            };
+            let speed = speed_meter.bps(transferred);
             let percentage = if file_size > 0 {
                 ((transferred as f64 / file_size as f64) * 100.0) as u8
             } else {
@@ -3761,7 +3747,7 @@ async fn upload_file(
     }
 
     let mut ftp_manager = state.ftp_manager.lock().await;
-    let start_time = Instant::now();
+    let speed_meter = crate::transfer_speed::SpeedMeter::new();
     let mut last_emit_time_ul = Instant::now();
     let mut last_emit_pct_ul = 0u8;
 
@@ -3772,12 +3758,7 @@ async fn upload_file(
             &params.remote_path,
             file_size,
             |transferred| {
-                let elapsed = start_time.elapsed().as_secs_f64();
-                let speed = if elapsed > 0.0 {
-                    (transferred as f64 / elapsed) as u64
-                } else {
-                    0
-                };
+                let speed = speed_meter.bps(transferred);
                 let percentage = if file_size > 0 {
                     ((transferred as f64 / file_size as f64) * 100.0) as u8
                 } else {
@@ -14353,7 +14334,7 @@ async fn execute_single_transfer(
                 .map(|m| m.len())
                 .unwrap_or(entry.expected_size);
 
-            let start_time = Instant::now();
+            let speed_meter = crate::transfer_speed::SpeedMeter::new();
             let app_ref = app.clone();
             let transfer_id = format!("psync-{}-{}", stream_id, index);
             let filename = entry.relative_path.clone();
@@ -14365,12 +14346,7 @@ async fn execute_single_transfer(
                 &entry.remote_path,
                 file_size,
                 move |transferred| {
-                    let elapsed = start_time.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.0 {
-                        (transferred as f64 / elapsed) as u64
-                    } else {
-                        0
-                    };
+                    let speed = speed_meter.bps(transferred);
                     let pct = if file_size > 0 {
                         ((transferred as f64 / file_size as f64) * 100.0) as u8
                     } else {
@@ -14420,7 +14396,7 @@ async fn execute_single_transfer(
                 .await
                 .unwrap_or(entry.expected_size);
 
-            let start_time = Instant::now();
+            let speed_meter = crate::transfer_speed::SpeedMeter::new();
             let app_ref = app.clone();
             let transfer_id = format!("psync-{}-{}", stream_id, index);
             let filename = entry.relative_path.clone();
@@ -14431,12 +14407,7 @@ async fn execute_single_transfer(
                 &entry.remote_path,
                 &entry.local_path,
                 move |transferred| {
-                    let elapsed = start_time.elapsed().as_secs_f64();
-                    let speed = if elapsed > 0.0 {
-                        (transferred as f64 / elapsed) as u64
-                    } else {
-                        0
-                    };
+                    let speed = speed_meter.bps(transferred);
                     let pct = if file_size > 0 {
                         ((transferred as f64 / file_size as f64) * 100.0) as u8
                     } else {

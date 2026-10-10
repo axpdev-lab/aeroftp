@@ -1101,6 +1101,16 @@ mod tests {
         assert!(capabilities_for_protocol("xyzzy").is_empty());
     }
 
+    /// An agent asking about SFTP without a connection learns that atomic
+    /// rename is the server's answer, known after asking, instead of being
+    /// told SFTP has none.
+    #[test]
+    fn transfer_capabilities_block_reports_sftp_atomic_rename_after_probe() {
+        let v = transfer_capabilities_block("sftp", None, "protocol_defaults");
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["capabilities"]["atomic_rename"], "supported_after_probe");
+    }
+
     #[test]
     fn transfer_capabilities_block_exposes_parallel_limits() {
         let v = transfer_capabilities_block("backblaze", None, "profile_defaults");
