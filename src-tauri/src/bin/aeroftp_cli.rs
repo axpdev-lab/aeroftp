@@ -5447,7 +5447,9 @@ enum CryptCommands {
         #[arg(long)]
         keyfile: Option<String>,
         /// Generate a fresh transfer-safe keyfile at this path, then use it for
-        /// the new overlay. Mutually exclusive with --keyfile.
+        /// the new overlay. It is written after every check that can refuse
+        /// the run, just before the overlay config, so a refused run leaves no
+        /// keyfile. Mutually exclusive with --keyfile.
         #[arg(long, conflicts_with = "keyfile")]
         keyfile_gen: Option<String>,
         /// Write the AeroCrypt config marker to the remote, preserving the
@@ -5462,7 +5464,8 @@ enum CryptCommands {
         force: bool,
         /// Write the mandatory Emergency Kit (vault_id + public config: salt, KDF params, version)
         /// to this path. Required for non-interactive and JSON runs. In an interactive TTY,
-        /// omitting it prints the kit and requires an explicit YES acknowledgement before init succeeds.
+        /// omitting it prints the kit and requires an explicit YES acknowledgement. Nothing is
+        /// written, on the remote or in the keystore, until the kit is handed over.
         #[arg(long)]
         emergency_kit: Option<String>,
         /// Do NOT bind the overlay to the saved profile. By default, `crypt init
@@ -55208,25 +55211,42 @@ fn read_keyfile_digest(keyfile: &Option<String>) -> Result<Option<[u8; 32]>, Str
 
 /// Resolve the keyfile digest for `crypt init`, generating a fresh transfer-safe
 /// keyfile first when `--keyfile-gen` was given (refuses to overwrite).
+/// A keyfile `crypt init --keyfile-gen` generated. It stays in memory until
+/// the run is about to write the overlay config, so a run refused before
+/// that leaves no keyfile for a vault that does not exist (and the same
+/// command run again is not refused because the keyfile is already there).
+struct GeneratedKeyfile {
+    path: std::path::PathBuf,
+    content: zeroize::Zeroizing<String>,
+}
+
+impl GeneratedKeyfile {
+    /// Exclusive create with mode 0600 at open time: no world-readable window,
+    /// no symlink redirect, no exists()+write TOCTOU (see write_keyfile_new).
+    fn write(&self) -> Result<(), String> {
+        ftp_client_gui_lib::aerocrypt::write_keyfile_new(&self.path, self.content.as_bytes())
+    }
+}
+
 fn resolve_init_keyfile(
     keyfile: &Option<String>,
     keyfile_gen: &Option<String>,
-) -> Result<Option<[u8; 32]>, String> {
+) -> Result<(Option<[u8; 32]>, Option<GeneratedKeyfile>), String> {
     if let Some(path) = keyfile_gen {
-        // Exclusive create with mode 0600 at open time: no world-readable window,
-        // no symlink redirect, no exists()+write TOCTOU (see write_keyfile_new).
-        let content = ftp_client_gui_lib::aerocrypt::generate_keyfile_v1();
-        ftp_client_gui_lib::aerocrypt::write_keyfile_new(
-            std::path::Path::new(path),
-            content.as_bytes(),
-        )?;
-        eprintln!(
-            "Generated keyfile at '{path}'. Back it up: losing it makes the vault unopenable."
-        );
-        return ftp_client_gui_lib::aerocrypt::keyfile_digest_from_file(content.as_bytes())
-            .map(Some);
+        let path = std::path::PathBuf::from(path);
+        // Refused here, before any work, as the exclusive create would refuse
+        // it later.
+        if path.symlink_metadata().is_ok() {
+            return Err(format!(
+                "keyfile '{}' already exists; refusing to overwrite",
+                path.display()
+            ));
+        }
+        let content = zeroize::Zeroizing::new(ftp_client_gui_lib::aerocrypt::generate_keyfile_v1());
+        let digest = ftp_client_gui_lib::aerocrypt::keyfile_digest_from_file(content.as_bytes())?;
+        return Ok((Some(digest), Some(GeneratedKeyfile { path, content })));
     }
-    read_keyfile_digest(keyfile)
+    read_keyfile_digest(keyfile).map(|digest| (digest, None))
 }
 
 fn headerless_init_missing_profile_message() -> &'static str {
@@ -56642,42 +56662,127 @@ async fn cmd_crypt_migrate_marker(
     0
 }
 
-/// Emit (write or print) the Emergency Kit and, when required, obtain explicit
-/// acknowledgement. This is the single implementation used by both success
-/// branches of crypt init. Returns Ok(()) on success/ack; Err(msg) otherwise.
-/// In JSON/non-TTY mode the path is mandatory. Never emits secrets.
-fn handle_emergency_kit_emission(
-    kit: &ftp_client_gui_lib::aerocrypt::emergency_kit::EmergencyKit,
+/// Where `crypt init` hands over the mandatory Emergency Kit. It is settled
+/// before anything is written, and the kit is handed over before the overlay
+/// config is: a run that cannot give the kit to anyone writes nothing. (A
+/// refused run used to leave the config behind, and the next run, with the
+/// kit, was refused as an overlay that already exists.)
+enum EmergencyKitDestination {
+    /// Written to a hidden file in the folder of `path`, which proves the
+    /// folder writable before anything else is written, and renamed onto
+    /// `path` once the overlay config is written and read back.
+    File {
+        path: std::path::PathBuf,
+        staged: tempfile::NamedTempFile,
+    },
+    /// Printed at the terminal and acknowledged with YES.
+    Terminal,
+}
+
+/// Settle where the kit goes. In JSON or non-interactive mode the path is
+/// mandatory; a path must name a file in a folder this process can write.
+/// Returns the message and the exit code of a refusal.
+fn emergency_kit_destination(
     out_path: Option<&str>,
+    format: OutputFormat,
+) -> Result<EmergencyKitDestination, (String, i32)> {
+    let Some(p) = out_path else {
+        if matches!(format, OutputFormat::Json) || !std::io::stdin().is_terminal() {
+            return Err((
+                "--emergency-kit <path> is required in JSON or non-interactive mode. Provide a writable path for the public recovery material.".to_string(),
+                5,
+            ));
+        }
+        return Ok(EmergencyKitDestination::Terminal);
+    };
+    let given = std::path::PathBuf::from(p);
+    if given.is_dir() {
+        return Err((
+            format!(
+                "--emergency-kit {p} is a folder: give the path of the file to write the kit to"
+            ),
+            5,
+        ));
+    }
+    // An existing path (a symlink included) is written where it leads, as
+    // a plain write to it would.
+    let path = if given.exists() {
+        std::fs::canonicalize(&given).unwrap_or(given)
+    } else {
+        given
+    };
+    let folder = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+        _ => std::path::PathBuf::from("."),
+    };
+    let staged = tempfile::Builder::new()
+        .prefix(".aeroftp-emergency-kit-")
+        .tempfile_in(&folder)
+        .map_err(|e| (format!("Cannot write the Emergency Kit to {p}: {e}"), 11))?;
+    Ok(EmergencyKitDestination::File { path, staged })
+}
+
+/// Hand the kit over, before the overlay config is written: into the staged
+/// file, or printed with an explicit YES required (non-skippable). Never
+/// emits secrets.
+fn hand_over_emergency_kit(
+    kit: &ftp_client_gui_lib::aerocrypt::emergency_kit::EmergencyKit,
+    destination: &mut EmergencyKitDestination,
+) -> Result<(), String> {
+    match destination {
+        EmergencyKitDestination::File { path, staged } => staged
+            .write_all(kit.text.as_bytes())
+            .and_then(|()| staged.as_file().sync_all())
+            .map_err(|e| format!("Failed to write Emergency Kit to {}: {}", path.display(), e)),
+        EmergencyKitDestination::Terminal => {
+            println!("{}", kit.text);
+            eprint!("Type YES to confirm you have saved or printed the Emergency Kit: ");
+            let _ = std::io::stderr().flush();
+            let mut line = String::new();
+            std::io::stdin()
+                .read_line(&mut line)
+                .map_err(|e| format!("Failed to read kit acknowledgement: {}", e))?;
+            if line.trim() == "YES" {
+                Ok(())
+            } else {
+                Err(
+                    "Emergency Kit acknowledgement aborted by user: nothing was written"
+                        .to_string(),
+                )
+            }
+        }
+    }
+}
+
+/// After the overlay config is written: the kit built from what was read
+/// back must be the one already handed over, and a staged kit then takes
+/// its path. On a failure here the config is written: the message says so.
+fn settle_emergency_kit(
+    handed_over: &ftp_client_gui_lib::aerocrypt::emergency_kit::EmergencyKit,
+    persisted: &ftp_client_gui_lib::aerocrypt::emergency_kit::EmergencyKit,
+    destination: EmergencyKitDestination,
     format: OutputFormat,
     quiet: bool,
 ) -> Result<(), String> {
-    if let Some(p) = out_path {
-        std::fs::write(p, &kit.text)
-            .map_err(|e| format!("Failed to write Emergency Kit to {}: {}", p, e))?;
+    if handed_over.text != persisted.text {
+        return Err("the overlay config read back does not match the Emergency Kit already handed over, which may not recover it. No file is encrypted under it yet: re-run with --force to write it again.".to_string());
+    }
+    if let EmergencyKitDestination::File { path, staged } = destination {
+        staged.persist(&path).map_err(|e| {
+            let kept = e.file.into_temp_path().keep();
+            format!(
+                "The overlay is initialized, but its Emergency Kit could not be renamed onto {}: {}. The kit is at {}.",
+                path.display(),
+                e.error,
+                kept.map(|p| p.display().to_string())
+                    .unwrap_or_else(|e| format!("nowhere ({e})"))
+            )
+        })?;
         if !matches!(format, OutputFormat::Json) && !quiet {
-            eprintln!("Emergency Kit written to {}", p);
+            eprintln!("Emergency Kit written to {}", path.display());
         }
-        return Ok(());
     }
-    if matches!(format, OutputFormat::Json) || !std::io::stdin().is_terminal() {
-        return Err(
-            "--emergency-kit <path> is required in JSON or non-interactive mode. Provide a writable path for the public recovery material.".to_string(),
-        );
-    }
-    // Interactive TTY, no path: print kit then require ack (non-skippable).
-    println!("{}", kit.text);
-    eprint!("Type YES to confirm you have saved or printed the Emergency Kit: ");
-    let _ = std::io::stderr().flush();
-    let mut line = String::new();
-    std::io::stdin()
-        .read_line(&mut line)
-        .map_err(|e| format!("Failed to read kit acknowledgement: {}", e))?;
-    if line.trim() == "YES" {
-        Ok(())
-    } else {
-        Err("Emergency Kit acknowledgement aborted by user".to_string())
-    }
+    Ok(())
 }
 
 /// Validate an overlay scope against the profile Remote Path (#369): the scope
@@ -57270,15 +57375,84 @@ async fn cmd_crypt_unbind(cli: &Cli, format: OutputFormat) -> i32 {
     0
 }
 
+/// The keyfile `--keyfile-gen` wrote, deleted when it is dropped: a run that
+/// ends before the overlay config recording its digest is written leaves no
+/// keyfile for a vault that does not exist, which the same command run again
+/// would refuse to overwrite. [`WrittenKeyfile::keep`] once the config is
+/// written.
+struct WrittenKeyfile(Option<std::path::PathBuf>);
+
+impl WrittenKeyfile {
+    /// The config that needs this keyfile is written: keep it, and say so.
+    fn keep(mut self) {
+        if let Some(path) = self.0.take() {
+            eprintln!(
+                "Generated keyfile at '{}'. Back it up: losing it makes the vault unopenable.",
+                path.display()
+            );
+        }
+    }
+}
+
+impl Drop for WrittenKeyfile {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// Write what has to exist before the overlay config does: the generated
+/// keyfile, then the Emergency Kit. The keyfile comes back as a
+/// [`WrittenKeyfile`], taken back by every return before the config is
+/// written, a kit that is not handed over included.
+fn write_before_init_config(
+    kit: &ftp_client_gui_lib::aerocrypt::emergency_kit::EmergencyKit,
+    destination: &mut EmergencyKitDestination,
+    generated_keyfile: Option<&GeneratedKeyfile>,
+    format: OutputFormat,
+) -> Result<WrittenKeyfile, i32> {
+    let written = match generated_keyfile {
+        Some(keyfile) => {
+            if let Err(e) = keyfile.write() {
+                print_error(format, &e, 11);
+                return Err(11);
+            }
+            WrittenKeyfile(Some(keyfile.path.clone()))
+        }
+        None => WrittenKeyfile(None),
+    };
+    if let Err(e) = hand_over_emergency_kit(kit, destination) {
+        print_error(format, &e, 5);
+        return Err(5);
+    }
+    Ok(written)
+}
+
+/// Create the remote scope folder so `crypt init /a/b/c` prepares the vault
+/// immediately: the headed marker upload writes into it, and the first
+/// headerless `crypt put` expects it to be there. Best-effort, one component
+/// at a time (mkdir on an existing dir is ignored); a genuine failure still
+/// surfaces at the marker upload (headed) or first put.
+async fn ensure_crypt_init_scope(provider: &mut dyn StorageProvider, base_path: &str) {
+    let mut acc = String::new();
+    for part in base_path.split('/').filter(|s| !s.is_empty()) {
+        acc.push('/');
+        acc.push_str(part);
+        let _ = provider.mkdir(&acc).await;
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_init(
     url: &str,
     path: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    generated_keyfile: Option<GeneratedKeyfile>,
     with_header: bool,
     force: bool,
-    emergency_kit: Option<&str>,
+    mut kit_destination: EmergencyKitDestination,
     no_bind: bool,
     keyfile_path: Option<&str>,
     use_default_salt: bool,
@@ -57292,6 +57466,11 @@ async fn cmd_crypt_init(
     // config MAC). Derive the master key first so we can both validate the
     // password and bind the config MAC. An optional keyfile is mixed into the
     // KDF and recorded in the config (kdf_inputs + a fresh vault_id).
+    //
+    // Nothing is written until the Emergency Kit is handed over: the caller
+    // settled where it goes, the checks that can refuse the run come first,
+    // and then the generated keyfile, the kit, the remote scope folders and
+    // the overlay config are written, in that order.
 
     // D1: default-salt opt-in handling (per 10-executive-plan).
     if use_default_salt && !i_understand_linkability {
@@ -57358,6 +57537,17 @@ async fn cmd_crypt_init(
         }
     };
 
+    // The kit handed over before the write is built from the config about to
+    // be written; after the write it is built again from what was read back,
+    // and the two must agree (`settle_emergency_kit`).
+    let kit = match emergency_kit::build_from_config_json(&config_json) {
+        Ok(k) => k,
+        Err(e) => {
+            print_error(format, &format!("Failed to build Emergency Kit: {}", e), 5);
+            return 5;
+        }
+    };
+
     let headerless_target = if with_header {
         None
     } else {
@@ -57375,21 +57565,6 @@ async fn cmd_crypt_init(
     let base_path = normalize_remote_path(&resolve_cli_remote_path(&initial_path, path));
     let config_path = format!("{}/.aerocrypt.tsv", base_path.trim_end_matches('/'));
 
-    // Ensure the remote scope directory exists so `crypt init /a/b/c` prepares
-    // the vault immediately: the headed marker upload writes into it, and the
-    // first headerless `crypt put` expects it to be there. Best-effort, one
-    // component at a time (mkdir on an existing dir is ignored); a genuine
-    // failure still surfaces at the marker upload (headed) or first put.
-    {
-        let scope = base_path.trim_end_matches('/');
-        let mut acc = String::new();
-        for part in scope.split('/').filter(|s| !s.is_empty()) {
-            acc.push('/');
-            acc.push_str(part);
-            let _ = provider.mkdir(&acc).await;
-        }
-    }
-
     if !with_header {
         let (store, uid, profile_id) = headerless_target.expect("resolved above");
         let config_key = format!("aerocrypt_overlay_config_{}", profile_id);
@@ -57404,9 +57579,20 @@ async fn cmd_crypt_init(
             );
             return 9;
         }
+        let keyfile = match write_before_init_config(
+            &kit,
+            &mut kit_destination,
+            generated_keyfile.as_ref(),
+            format,
+        ) {
+            Ok(keyfile) => keyfile,
+            Err(code) => return code,
+        };
+        ensure_crypt_init_scope(provider.as_mut(), &base_path).await;
         let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
         match store_headerless_init_config(&store, uid, &profile_id, &config_json, &salt_b64) {
             Ok(()) => {
+                keyfile.keep();
                 // Gate on the Emergency Kit (MANDATORY, non-skippable).
                 // READ the persisted config from keystore (do not reuse in-memory before store),
                 // validate with the headerless path, parse, then build kit from it.
@@ -57454,7 +57640,7 @@ async fn cmd_crypt_init(
                         return 5;
                     }
                 };
-                let kit = match emergency_kit::build_from_overlay_config(&cfg) {
+                let persisted_kit = match emergency_kit::build_from_overlay_config(&cfg) {
                     Ok(k) => k,
                     Err(e) => {
                         print_error(format, &format!("Failed to build Emergency Kit: {}", e), 5);
@@ -57462,7 +57648,7 @@ async fn cmd_crypt_init(
                     }
                 };
                 if let Err(e) =
-                    handle_emergency_kit_emission(&kit, emergency_kit, format, cli.quiet)
+                    settle_emergency_kit(&kit, &persisted_kit, kit_destination, format, cli.quiet)
                 {
                     print_error(format, &e, 5);
                     return 5;
@@ -57534,6 +57720,17 @@ async fn cmd_crypt_init(
         return 9;
     }
 
+    let keyfile = match write_before_init_config(
+        &kit,
+        &mut kit_destination,
+        generated_keyfile.as_ref(),
+        format,
+    ) {
+        Ok(keyfile) => keyfile,
+        Err(code) => return code,
+    };
+    ensure_crypt_init_scope(provider.as_mut(), &base_path).await;
+
     // Stage the config to a tempfile, then upload.
     let tmp = match tempfile::NamedTempFile::new() {
         Ok(t) => t,
@@ -57562,10 +57759,15 @@ async fn cmd_crypt_init(
                         &format!("Failed to re-read persisted marker for kit: {}", e),
                         4,
                     );
-                    let _ = provider.delete(&config_path).await; // best effort cleanup on failure to read back
+                    // Best effort: with the marker gone the keyfile goes
+                    // too; a marker still there still needs it.
+                    if provider.delete(&config_path).await.is_err() {
+                        keyfile.keep();
+                    }
                     return 4;
                 }
             };
+            keyfile.keep();
             let persisted = match String::from_utf8(persisted_bytes) {
                 Ok(s) => s,
                 Err(e) => {
@@ -57588,14 +57790,16 @@ async fn cmd_crypt_init(
                     return 5;
                 }
             };
-            let kit = match emergency_kit::build_from_overlay_config(&cfg) {
+            let persisted_kit = match emergency_kit::build_from_overlay_config(&cfg) {
                 Ok(k) => k,
                 Err(e) => {
                     print_error(format, &format!("Failed to build Emergency Kit: {}", e), 5);
                     return 5;
                 }
             };
-            if let Err(e) = handle_emergency_kit_emission(&kit, emergency_kit, format, cli.quiet) {
+            if let Err(e) =
+                settle_emergency_kit(&kit, &persisted_kit, kit_destination, format, cli.quiet)
+            {
                 print_error(format, &e, 5);
                 return 5;
             }
@@ -72357,36 +72561,48 @@ async fn main() {
                                 print_error(format, &e, 5);
                                 5
                             }
-                            Ok(kf) => {
+                            Ok((kf, generated_keyfile)) => {
                                 let pw = resolve_crypt_password(password).unwrap_or_default();
                                 if !require_secret(&pw, kf.as_ref(), "init") {
                                     5
                                 } else {
-                                    let (u, dir) = resolve_profile_crypt_positionals(
-                                        cli.profile.is_some(),
-                                        url,
-                                        path,
-                                        "/",
-                                    );
-                                    let keyfile_path =
-                                        keyfile_gen.as_deref().or(keyfile.as_deref());
-                                    cmd_crypt_init(
-                                        &u,
-                                        &dir,
-                                        &pw,
-                                        kf.as_ref(),
-                                        *with_header,
-                                        *force,
+                                    match emergency_kit_destination(
                                         emergency_kit.as_deref(),
-                                        *no_bind,
-                                        keyfile_path,
-                                        *use_default_salt,
-                                        salt_strength,
-                                        *i_understand_linkability,
-                                        &cli,
                                         format,
-                                    )
-                                    .await
+                                    ) {
+                                        Err((e, code)) => {
+                                            print_error(format, &e, code);
+                                            code
+                                        }
+                                        Ok(kit_destination) => {
+                                            let (u, dir) = resolve_profile_crypt_positionals(
+                                                cli.profile.is_some(),
+                                                url,
+                                                path,
+                                                "/",
+                                            );
+                                            let keyfile_path =
+                                                keyfile_gen.as_deref().or(keyfile.as_deref());
+                                            cmd_crypt_init(
+                                                &u,
+                                                &dir,
+                                                &pw,
+                                                kf.as_ref(),
+                                                generated_keyfile,
+                                                *with_header,
+                                                *force,
+                                                kit_destination,
+                                                *no_bind,
+                                                keyfile_path,
+                                                *use_default_salt,
+                                                salt_strength,
+                                                *i_understand_linkability,
+                                                &cli,
+                                                format,
+                                            )
+                                            .await
+                                        }
+                                    }
                                 }
                             }
                         }
