@@ -2166,10 +2166,12 @@ pub async fn ensure_edit_can_replace(
 /// replace sets the old item aside passes only because nothing was at the
 /// target, and a replace would set aside and delete an item another client
 /// put there in between. Its publish is therefore the rename, which refuses
-/// a taken name: on the server for WebDAV (a MOVE with `Overwrite: F`),
-/// Dropbox and Koofr, which closes that window; from a look just before the
-/// move for MEGA, Filen, FileLu, Drime and kDrive, which narrows it to the
-/// gap between the look and the move (see [`refuse_occupied_destination`]).
+/// a taken name. On WebDAV (a MOVE with `Overwrite: F`, 412), Dropbox,
+/// Koofr, kDrive (409) and Drime (a rename within one folder) the server
+/// refuses it, which closes that window. MEGA, Filen and FileLu keep two
+/// items under one name, so their rename looks for the name first: an item
+/// written between that look and the move ends up beside ours under the
+/// same name, and neither is deleted.
 ///
 /// Bind the answer (`let publish = ensure_atomic_replace(..)?`): the
 /// `must_use` below catches one dropped by `?;`, not one an `if let Err`
