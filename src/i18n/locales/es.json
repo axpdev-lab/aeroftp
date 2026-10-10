@@ -635,7 +635,11 @@
             "modeSafeDescription": "Una conexión: un archivo a la vez, un solo flujo por archivo",
             "modeBalancedDescription": "Hasta 3 conexiones: archivos en paralelo o canales de rangos dentro de un archivo grande",
             "modeMaxDescription": "Hasta 5 conexiones: archivos en paralelo o canales de rangos dentro de un archivo grande",
-            "moreActions": "Más acciones"
+            "moreActions": "Más acciones",
+            "speedGraph": "Gráfico de velocidad",
+            "hideSpeedGraph": "Ocultar gráfico de velocidad",
+            "speedAvg": "prom. {speed}",
+            "speedPeak": "máx. {speed}"
         },
         "settings": {
             "title": "Configuración",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "No conectado al servidor",
             "clearSearch": "Limpiar búsqueda",
             "searchFiles": "Buscar archivos",
-            "locked": "Bloqueado",
             "localDisk": "Disco local",
             "localPathMismatch": "La ruta local no coincide con el servidor conectado",
             "downloadFormat": "Descargar .{format}",

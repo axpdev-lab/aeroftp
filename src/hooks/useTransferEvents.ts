@@ -10,6 +10,7 @@ import { localizeRestrictedCharError } from '../utils/restrictedCharError';
 import { READ_ONLY_ERROR_PREFIX } from '../utils/aeroShare';
 import { createDeferredRefresh } from '../utils/deferredRefresh';
 import { rowForFileStart } from '../components/transferQueueActions';
+import { emptySpeedProfile, recordProgress, type SpeedProfile } from '../utils/speedProfile';
 import type { TransferToastLane, TransferToastState } from '../components/Transfer';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
@@ -123,8 +124,13 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const toastLanesRef = useRef<Map<string, TransferToastLane>>(new Map());
   const toastLaneCleanupTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const toastReservedLaneSlots = useRef(0);
-  // Rolling aggregate-speed samples (bytes/sec) for the collapsible speed graph.
-  const toastSpeedHistory = useRef<number[]>([]);
+  // Speed over the whole toast transfer for the collapsible speed graph
+  // (`utils/speedProfile.ts`), and the furthest byte count recorded into it:
+  // a batch's byte count can dip for a moment between a lane finishing and the
+  // snapshot that adds its file to the completed bytes, and the profile reads
+  // a backward step as a restart.
+  const toastSpeedProfile = useRef<SpeedProfile>(emptySpeedProfile());
+  const toastProfileBytes = useRef(0);
   // Latest real aggregate byte totals for the active batch toast, from the
   // `transfer_batch_progress` snapshot. Drives an honest byte-based aggregate
   // ETA (completed-file bytes from here + in-flight lane partials, over the
@@ -248,20 +254,72 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       const lanes = Array.from(toastLanesRef.current.values())
         .sort((a, b) => (toastLaneAssignments.current.get(a.id) ?? 0) - (toastLaneAssignments.current.get(b.id) ?? 0));
 
-      // Sample the current aggregate speed into the rolling history that feeds
-      // the collapsible speed graph. Capped so the buffer stays light.
-      const hist = toastSpeedHistory.current;
-      hist.push(toastSummaryRef.current.speed_bps || 0);
-      if (hist.length > 60) hist.shift();
-
       const toastState: TransferToastState = {
         summary: toastSummaryRef.current,
         lanes,
         reservedLaneSlots: toastReservedLaneSlots.current,
         maxChannels: optRef.current.maxChannels,
-        speedHistory: hist.slice(),
+        speedProfile: toastSpeedProfile.current,
       };
       dispatchTransferToast(toastState);
+    };
+
+    const resetToastSpeedProfile = () => {
+      toastSpeedProfile.current = emptySpeedProfile();
+      toastProfileBytes.current = 0;
+    };
+
+    /** Record one point of the toast transfer on the speed graph. `total` 0
+     *  (size unknown) keeps the speed as a recent sample instead. */
+    const recordToastProgress = (transferred: number, total: number, speedBps: number) => {
+      const bytes = total > 0 ? Math.max(toastProfileBytes.current, transferred) : transferred;
+      toastProfileBytes.current = bytes;
+      toastSpeedProfile.current = recordProgress(toastSpeedProfile.current, {
+        transferred: bytes,
+        total,
+        speedBps,
+        at: performance.now(),
+      });
+    };
+
+    /** The batch toast's aggregate speed and ETA, from the lanes and the byte
+     *  snapshot, recorded on the speed graph. Runs on the folder-level progress
+     *  event AND on every lane update: the folder event fires only when a file
+     *  finishes, so on a batch of large files the aggregate speed used to stand
+     *  still for as long as a file took. */
+    const refreshBatchSummary = (base: TransferProgress) => {
+      // Aggregate speed from active lanes (more reliable than single-file lastFileSpeedRef)
+      let aggregatedSpeed = lastFileSpeedRef.current;
+      let inFlightBytes = 0;
+      if (toastLanesRef.current.size > 0) {
+        let laneSpeedSum = 0;
+        for (const lane of toastLanesRef.current.values()) {
+          if (lane.state === 'active' || !lane.state) {
+            laneSpeedSum += lane.speed_bps;
+            inFlightBytes += lane.transferred;
+          }
+        }
+        if (laneSpeedSum > 0) aggregatedSpeed = laneSpeedSum;
+      }
+      // Honest byte-based aggregate ETA: real remaining bytes
+      // (total - completed-file bytes - in-flight lane partials) over the
+      // summed lane speed. Each lane's speed_bps is the rate over the last
+      // 3 s (SpeedMeter, transfer_speed.rs), not the average since the
+      // file started, so the ETA follows a change of pace. Falls back to
+      // the backend value (0) until the first batch-bytes snapshot and a
+      // non-zero speed.
+      let aggregatedEta = base.eta_seconds;
+      const batchBytes = toastBatchBytesRef.current;
+      if (batchBytes && batchBytes.total > 0 && aggregatedSpeed > 0) {
+        const remaining = Math.max(0, batchBytes.total - batchBytes.completed - inFlightBytes);
+        aggregatedEta = Math.round(remaining / aggregatedSpeed);
+      }
+      toastSummaryRef.current = { ...base, speed_bps: aggregatedSpeed, eta_seconds: aggregatedEta };
+      if (batchBytes && batchBytes.total > 0) {
+        recordToastProgress(batchBytes.completed + inFlightBytes, batchBytes.total, aggregatedSpeed);
+      } else {
+        recordToastProgress(0, 0, aggregatedSpeed);
+      }
     };
 
     const clearLaneCleanupTimer = (laneId: string) => {
@@ -311,7 +369,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       toastReservedLaneSlots.current = 0;
       for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
       toastLaneCleanupTimers.current.clear();
-      toastSpeedHistory.current = [];
+      resetToastSpeedProfile();
       toastBatchBytesRef.current = null;
       optRef.current.onBatchProgress?.(null);
       optRef.current.onTransferStart?.();
@@ -424,7 +482,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         toastReservedLaneSlots.current = 0;
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
-        toastSpeedHistory.current = [];
+        resetToastSpeedProfile();
         toastBatchBytesRef.current = null;
         optRef.current.onBatchProgress?.(null);
         if (toastSummaryRef.current) {
@@ -631,33 +689,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
             setActiveTransfer(data.progress);
           // Dispatch progress to isolated TransferToastContainer (no App re-render)
           if (data.progress.total_files) {
-            // Aggregate speed from active lanes (more reliable than single-file lastFileSpeedRef)
-            let aggregatedSpeed = lastFileSpeedRef.current;
-            let inFlightBytes = 0;
-            if (toastLanesRef.current.size > 0) {
-              let laneSpeedSum = 0;
-              for (const lane of toastLanesRef.current.values()) {
-                if (lane.state === 'active' || !lane.state) {
-                  laneSpeedSum += lane.speed_bps;
-                  inFlightBytes += lane.transferred;
-                }
-              }
-              if (laneSpeedSum > 0) aggregatedSpeed = laneSpeedSum;
-            }
-            // Honest byte-based aggregate ETA: real remaining bytes
-            // (total - completed-file bytes - in-flight lane partials) over the
-            // summed lane speed. Each lane's speed_bps is the rate over the last
-            // 3 s (SpeedMeter, transfer_speed.rs), not the average since the
-            // file started, so the ETA follows a change of pace. Falls back to
-            // the backend value (0) until the first batch-bytes snapshot and a
-            // non-zero speed.
-            let aggregatedEta = data.progress.eta_seconds;
-            const batchBytes = toastBatchBytesRef.current;
-            if (batchBytes && batchBytes.total > 0 && aggregatedSpeed > 0) {
-              const remaining = Math.max(0, batchBytes.total - batchBytes.completed - inFlightBytes);
-              aggregatedEta = Math.round(remaining / aggregatedSpeed);
-            }
-            toastSummaryRef.current = { ...data.progress, speed_bps: aggregatedSpeed, eta_seconds: aggregatedEta };
+            refreshBatchSummary(data.progress);
             emitToastState();
           } else {
             const batchId = tryResolveToastBatchId(data.transfer_id);
@@ -688,11 +720,13 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
                 Math.max(toastReservedLaneSlots.current, toastLanesRef.current.size),
                 maxCh,
               );
+              if (toastSummaryRef.current?.total_files) refreshBatchSummary(toastSummaryRef.current);
               emitToastState();
             } else {
               // Route single-file progress through the toast builder too, so a
-              // large single file gets the speed-history graph (it has no lanes).
+              // large single file gets the speed graph (it has no lanes).
               toastSummaryRef.current = data.progress;
+              recordToastProgress(data.progress.transferred, data.progress.total, data.progress.speed_bps);
               emitToastState();
             }
           }

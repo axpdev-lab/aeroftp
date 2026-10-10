@@ -51,6 +51,7 @@ import {
 } from '../../utils/aeroShare';
 import { knockLabelKey, knockReplies } from '../../utils/aeroShareKnock';
 import { nextFrameSpeed, type FrameSpeed } from '../../utils/frameSpeed';
+import { useLiveSpeed } from '../../utils/liveSpeed';
 
 interface IncomingPrompt {
   offer: PeerIncomingOfferEvent;
@@ -629,6 +630,8 @@ function SendFileDialog({
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<{ percent: number; speed: number } | null>(null);
   const speedRef = useRef<FrameSpeed | null>(null);
+  // Falls while the ticks stop (a peer that stops reading sends none).
+  const liveSend = useLiveSpeed(progress?.speed, progress, sending && !!progress && progress.percent < 100);
   const fileName = basenameOf(filePath);
 
   // Live send progress: the backend streams `peer://send-status` byte ticks while
@@ -749,7 +752,7 @@ function SendFileDialog({
                 <span>{t('aeroShare.send.sending')}</span>
                 <span className="tabular-nums">
                   {progress.percent}%
-                  {progress.speed > 0 && ` · ${formatBytes(progress.speed)}/s`}
+                  {progress.speed > 0 && ` · ${formatBytes(liveSend.bps)}/s`}
                 </span>
               </div>
               <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">

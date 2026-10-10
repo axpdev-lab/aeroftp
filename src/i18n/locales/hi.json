@@ -635,7 +635,11 @@
             "modeSafeDescription": "एक कनेक्शन: एक बार में एक फ़ाइल, प्रति फ़ाइल एक स्ट्रीम",
             "modeBalancedDescription": "अधिकतम 3 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल",
             "modeMaxDescription": "अधिकतम 5 कनेक्शन: समानांतर फ़ाइलें, या एक बड़ी फ़ाइल के भीतर रेंज चैनल",
-            "moreActions": "और क्रियाएँ"
+            "moreActions": "और क्रियाएँ",
+            "speedGraph": "गति ग्राफ़",
+            "hideSpeedGraph": "गति ग्राफ़ छिपाएँ",
+            "speedAvg": "औसत {speed}",
+            "speedPeak": "अधिकतम {speed}"
         },
         "settings": {
             "title": "सेटिंग्स",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "सर्वर से कनेक्ट नहीं है",
             "clearSearch": "खोज साफ़ करें",
             "searchFiles": "फ़ाइलें खोजें",
-            "locked": "लॉक किया गया",
             "localDisk": "लोकल डिस्क",
             "localPathMismatch": "स्थानीय पथ कनेक्टेड सर्वर से मेल नहीं खाता",
             "downloadFormat": "डाउनलोड .{format}",

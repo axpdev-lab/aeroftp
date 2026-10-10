@@ -635,7 +635,11 @@
             "modeSafeDescription": "接続数1: 一度に1ファイル、ファイルごとにシングルストリーム",
             "modeBalancedDescription": "最大3接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル",
             "modeMaxDescription": "最大5接続: 複数ファイルの並列転送、または1つの大きなファイル内でのレンジチャネル",
-            "moreActions": "その他の操作"
+            "moreActions": "その他の操作",
+            "speedGraph": "速度グラフ",
+            "hideSpeedGraph": "速度グラフを非表示",
+            "speedAvg": "平均 {speed}",
+            "speedPeak": "最大 {speed}"
         },
         "settings": {
             "title": "設定",
@@ -2264,7 +2268,6 @@
             "notConnectedToServer": "サーバーに接続していません",
             "clearSearch": "検索をクリア",
             "searchFiles": "ファイルを検索",
-            "locked": "ロック中",
             "localDisk": "ローカルディスク",
             "localPathMismatch": "ローカルパスが接続中のサーバーと一致しません",
             "downloadFormat": ".{format} をダウンロード",

@@ -635,7 +635,11 @@
             "modeSafeDescription": "একটি সংযোগ: একবারে একটি ফাইল, প্রতি ফাইলে একটি স্ট্রিম",
             "modeBalancedDescription": "সর্বোচ্চ 3টি সংযোগ: সমান্তরাল ফাইল, অথবা একটি বড় ফাইলের মধ্যে রেঞ্জ চ্যানেল",
             "modeMaxDescription": "সর্বোচ্চ 5টি সংযোগ: সমান্তরাল ফাইল, অথবা একটি বড় ফাইলের মধ্যে রেঞ্জ চ্যানেল",
-            "moreActions": "আরও ক্রিয়া"
+            "moreActions": "আরও ক্রিয়া",
+            "speedGraph": "গতির গ্রাফ",
+            "hideSpeedGraph": "গতির গ্রাফ লুকান",
+            "speedAvg": "গড় {speed}",
+            "speedPeak": "সর্বোচ্চ {speed}"
         },
         "settings": {
             "title": "সেটিংস",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "সার্ভারে সংযুক্ত নয়",
             "clearSearch": "অনুসন্ধান সাফ করুন",
             "searchFiles": "ফাইল খুঁজুন",
-            "locked": "লক করা",
             "localDisk": "লোকাল ডিস্ক",
             "localPathMismatch": "লোকাল পাথ সংযুক্ত সার্ভারের সাথে মিলছে না",
             "downloadFormat": ".{format} ডাউনলোড করুন",

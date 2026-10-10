@@ -2,29 +2,46 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 /**
- * SpeedGraph: Real-time transfer speed visualization
+ * SpeedGraph: transfer speed over the whole transfer
  *
- * Canvas-based area chart showing transfer speed over time.
- * Displays: current speed, average, peak, with auto-scaling Y axis.
- * Theme-aware colors (light/dark/tokyo/cyber).
+ * The chart of the Windows copy dialog: the horizontal axis is the progress of
+ * the transfer (0-100 % of the bytes), the area is the speed at each point
+ * reached so far, so a drop twenty minutes ago is still there; the dashed line
+ * is the current speed, which falls while no progress frame arrives. A
+ * transfer of unknown size has no progress axis and shows its recent speeds
+ * instead. The data model lives in `utils/speedProfile.ts`.
+ * Theme-aware colors for the 8 effective themes.
  */
 
 import React, { useRef, useEffect, useMemo } from 'react';
 import { formatSpeed } from '../utils/formatters';
+import { useTranslation } from '../i18n';
+import {
+    SPEED_PROFILE_BUCKETS,
+    hasProgressAxis,
+    smoothedSpeeds,
+    speedStats,
+    type SpeedProfile,
+} from '../utils/speedProfile';
 
 interface SpeedGraphProps {
-    /** Array of speed samples in bytes/sec (newest last) */
-    speedHistory: number[];
+    /** Speed over the transfer (see `recordProgress`). */
+    profile: SpeedProfile;
+    /** Speed to show as current, bytes/sec (already lowered while frames are missing). */
+    currentBps: number;
     /** Current theme */
     theme: string;
     /** Graph height in pixels (default: 64) */
     height?: number;
-    /** Max samples to display (default: 60 = ~30s at 500ms intervals) */
-    maxSamples?: number;
     /** When false, skip the canvas redraw (graph is collapsed but still mounted
      *  for the expand animation). Defaults to true for standalone use. */
     active?: boolean;
 }
+
+/** Room above the highest value, so a steady speed does not fill the box. */
+export const GRAPH_HEADROOM = 1.2;
+/** Lowest top of the vertical scale, bytes/sec. */
+const MIN_SCALE_BPS = 1024;
 
 /** Theme colors for the graph */
 function getGraphColors(theme: string) {
@@ -121,24 +138,16 @@ function getGraphColors(theme: string) {
 }
 
 export const SpeedGraph: React.FC<SpeedGraphProps> = ({
-    speedHistory,
+    profile,
+    currentBps,
     theme,
     height = 64,
-    maxSamples = 60,
     active = true,
 }) => {
+    const t = useTranslation();
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-
-    // Compute stats
-    const stats = useMemo(() => {
-        if (speedHistory.length === 0) return { current: 0, avg: 0, peak: 0 };
-        const current = speedHistory[speedHistory.length - 1];
-        const sum = speedHistory.reduce((a, b) => a + b, 0);
-        const avg = sum / speedHistory.length;
-        const peak = Math.max(...speedHistory);
-        return { current, avg, peak };
-    }, [speedHistory]);
+    const stats = useMemo(() => speedStats(profile), [profile]);
 
     useEffect(() => {
         // Collapsed: stay mounted (the wrapper animates max-height) but skip the
@@ -164,92 +173,129 @@ export const SpeedGraph: React.FC<SpeedGraphProps> = ({
         ctx.scale(dpr, dpr);
 
         const colors = getGraphColors(theme);
-
-        // Clear
         ctx.clearRect(0, 0, w, h);
 
-        // Samples (pad left with zeros if needed)
-        const samples = speedHistory.slice(-maxSamples);
-        if (samples.length < 2) return;
+        const progressAxis = hasProgressAxis(profile);
+        const speeds = progressAxis ? smoothedSpeeds(profile) : [];
+        const recent = progressAxis ? [] : profile.recent.slice();
+        const highest = Math.max(
+            MIN_SCALE_BPS,
+            currentBps,
+            ...speeds.map((speed) => speed ?? 0),
+            ...recent,
+        );
+        const top = highest * GRAPH_HEADROOM;
+        const yOf = (bps: number) => h - 2 - (Math.max(0, bps) / top) * (h - 4);
 
-        // Y-axis: auto-scale with padding
-        const maxVal = Math.max(...samples, 1024); // minimum 1 KB/s
-        const yScale = (h - 8) / maxVal; // 4px padding top+bottom
-        const xStep = w / (maxSamples - 1);
-
-        // Draw grid lines (3 horizontal)
+        // Grid: 3 horizontal lines; on the progress axis also the quarters.
         ctx.strokeStyle = colors.grid;
         ctx.lineWidth = 0.5;
         for (let i = 1; i <= 3; i++) {
-            const y = h - ((h - 8) * (i / 4)) - 4;
+            const y = h - ((h - 4) * (i / 4)) - 2;
             ctx.beginPath();
             ctx.moveTo(0, y);
             ctx.lineTo(w, y);
             ctx.stroke();
         }
+        if (progressAxis) {
+            for (let i = 1; i <= 3; i++) {
+                const x = (w * i) / 4;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+        }
 
-        // Build path
-        const startX = w - (samples.length - 1) * xStep;
-        const points: [number, number][] = samples.map((val, i) => [
-            startX + i * xStep,
-            h - 4 - val * yScale,
-        ]);
-
-        // Area fill gradient
         const gradient = ctx.createLinearGradient(0, 0, 0, h);
         gradient.addColorStop(0, colors.fillTop);
         gradient.addColorStop(1, colors.fill);
 
-        ctx.beginPath();
-        ctx.moveTo(points[0][0], h);
-        points.forEach(([x, y]) => ctx.lineTo(x, y));
-        ctx.lineTo(points[points.length - 1][0], h);
-        ctx.closePath();
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // Line
-        ctx.beginPath();
-        ctx.moveTo(points[0][0], points[0][1]);
-        for (let i = 1; i < points.length; i++) {
-            // Smooth curve using quadratic bezier
-            const prev = points[i - 1];
-            const curr = points[i];
-            const cpx = (prev[0] + curr[0]) / 2;
-            ctx.quadraticCurveTo(prev[0], prev[1], cpx, (prev[1] + curr[1]) / 2);
+        // Contiguous runs of measured points; a gap (bytes before a resumed
+        // transfer's first frame) is left blank rather than bridged.
+        const runs: Array<Array<[number, number]>> = [];
+        if (progressAxis) {
+            const slice = w / SPEED_PROFILE_BUCKETS;
+            const reachedX = profile.reached * w;
+            let run: Array<[number, number]> = [];
+            speeds.forEach((speed, i) => {
+                if (speed === null) {
+                    if (run.length) runs.push(run);
+                    run = [];
+                    return;
+                }
+                const x = Math.min(reachedX, (i + 0.5) * slice);
+                const y = yOf(speed);
+                // A run starts at the left edge of its first slice, so the
+                // area covers the slice instead of starting from its middle.
+                if (run.length === 0) run.push([i * slice, y]);
+                run.push([x, y]);
+            });
+            if (run.length) {
+                // Close the area at the point reached, at the slice's level.
+                run.push([reachedX, run[run.length - 1][1]]);
+                runs.push(run);
+            }
+        } else if (recent.length >= 2) {
+            const step = w / (recent.length - 1);
+            runs.push(recent.map((speed, i) => [i * step, yOf(speed)]));
         }
-        const last = points[points.length - 1];
-        ctx.lineTo(last[0], last[1]);
-        ctx.strokeStyle = colors.line;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
 
-        // Glow dot at current position
+        for (const run of runs) {
+            ctx.beginPath();
+            ctx.moveTo(run[0][0], h);
+            run.forEach(([x, y]) => ctx.lineTo(x, y));
+            ctx.lineTo(run[run.length - 1][0], h);
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(run[0][0], run[0][1]);
+            run.forEach(([x, y]) => ctx.lineTo(x, y));
+            ctx.strokeStyle = colors.line;
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+
+        // Current speed: dashed across the box, with a dot at the point reached.
+        // While frames are missing `currentBps` falls, and the dot drops below
+        // the edge of the area: the stall shows before it lands in the history.
+        const currentY = yOf(currentBps);
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = colors.avg;
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.arc(last[0], last[1], 3, 0, Math.PI * 2);
-        ctx.fillStyle = colors.line;
-        ctx.fill();
+        ctx.moveTo(0, currentY);
+        ctx.lineTo(w, currentY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const dotX = progressAxis ? profile.reached * w : w - 3;
         ctx.beginPath();
-        ctx.arc(last[0], last[1], 5, 0, Math.PI * 2);
+        ctx.arc(dotX, currentY, 5, 0, Math.PI * 2);
         ctx.fillStyle = colors.fillTop;
         ctx.fill();
-
-    }, [speedHistory, theme, height, maxSamples, active]);
+        ctx.beginPath();
+        ctx.arc(dotX, currentY, 3, 0, Math.PI * 2);
+        ctx.fillStyle = colors.line;
+        ctx.fill();
+    }, [profile, currentBps, theme, height, active]);
 
     const colors = getGraphColors(theme);
 
     return (
-        <div className="tpb-graph" ref={containerRef}>
+        <div className="tpb-graph" ref={containerRef} style={{ background: colors.bg }}>
             {/* Stats overlay */}
             <div className="tpb-graph-stats">
                 <span style={{ color: colors.line }}>
-                    {formatSpeed(stats.current)}
+                    {formatSpeed(currentBps)}
                 </span>
                 <span style={{ color: colors.avg }}>
-                    avg {formatSpeed(stats.avg)}
+                    {t('transfer.speedAvg', { speed: formatSpeed(stats.avg) })}
                 </span>
                 <span style={{ color: colors.peak }}>
-                    peak {formatSpeed(stats.peak)}
+                    {t('transfer.speedPeak', { speed: formatSpeed(stats.peak) })}
                 </span>
             </div>
             <canvas ref={canvasRef} className="tpb-graph-canvas" />

@@ -635,7 +635,11 @@
             "modeSafeDescription": "Una connexió: un fitxer cada vegada, un sol flux per fitxer",
             "modeBalancedDescription": "Fins a 3 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran",
             "modeMaxDescription": "Fins a 5 connexions: fitxers en paral·lel o canals de rangs dins d'un fitxer gran",
-            "moreActions": "Més accions"
+            "moreActions": "Més accions",
+            "speedGraph": "Gràfic de velocitat",
+            "hideSpeedGraph": "Amaga el gràfic de velocitat",
+            "speedAvg": "mitj. {speed}",
+            "speedPeak": "pic {speed}"
         },
         "settings": {
             "title": "Configuració",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "No connectat al servidor",
             "clearSearch": "Esborrar cerca",
             "searchFiles": "Cercar fitxers",
-            "locked": "Bloquejat",
             "localDisk": "Disc local",
             "localPathMismatch": "La ruta local no coincideix amb el servidor connectat",
             "downloadFormat": "Descarregar .{format}",

@@ -16659,7 +16659,12 @@ const App: React.FC = () => {
           }}
         />
         {contextMenu.state.visible && <ContextMenu x={contextMenu.state.x} y={contextMenu.state.y} items={contextMenu.state.items} onClose={contextMenu.hide} />}
-        {settings.showTransferProgress !== false && <TransferToastContainer onOpen={transferQueue.show} />}
+        {settings.showTransferProgress !== false && (
+          <TransferToastContainer
+            onToggleQueue={transferQueue.items.length > 0 ? transferQueue.toggle : undefined}
+            queueOpen={transferQueue.isVisible && transferQueue.items.length > 0}
+          />
+        )}
         <GlobalTooltip />
         {confirmDialog && <ConfirmDialog message={confirmDialog.message} onConfirm={confirmDialog.onConfirm} onCancel={confirmDialog.onCancel || (() => setConfirmDialog(null))} confirmLabel={confirmDialog.confirmLabel} confirmColor={confirmDialog.confirmColor} secondaryLabel={confirmDialog.secondaryLabel} onSecondary={confirmDialog.onSecondary} informational={confirmDialog.informational} />}
         {pendingUnifiedTransferPlan && (

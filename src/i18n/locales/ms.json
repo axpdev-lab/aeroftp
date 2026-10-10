@@ -635,7 +635,11 @@
             "modeSafeDescription": "Satu sambungan: satu fail pada satu masa, satu strim setiap fail",
             "modeBalancedDescription": "Sehingga 3 sambungan: fail selari, atau saluran julat dalam satu fail besar",
             "modeMaxDescription": "Sehingga 5 sambungan: fail selari, atau saluran julat dalam satu fail besar",
-            "moreActions": "Lagi tindakan"
+            "moreActions": "Lagi tindakan",
+            "speedGraph": "Graf kelajuan",
+            "hideSpeedGraph": "Sembunyikan graf kelajuan",
+            "speedAvg": "purata {speed}",
+            "speedPeak": "puncak {speed}"
         },
         "settings": {
             "title": "Tetapan",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Tidak disambungkan ke pelayan",
             "clearSearch": "Kosongkan carian",
             "searchFiles": "Cari fail",
-            "locked": "Dikunci",
             "localDisk": "Cakera Setempat",
             "localPathMismatch": "Laluan setempat tidak sepadan dengan pelayan yang disambungkan",
             "downloadFormat": "Muat Turun .{format}",
