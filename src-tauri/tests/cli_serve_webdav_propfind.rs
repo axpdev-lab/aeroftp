@@ -9,9 +9,16 @@
 //! was refused as "already exists". A missing path is now `404`, as RFC 4918
 //! section 9.1 wants, and as `GET` on the same server already answered.
 
+use std::io::Read;
 use std::net::{TcpListener, TcpStream};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+
+/// How long any one step may take: the server coming up, a PROPFIND with its
+/// body, a CLI run. A server that accepts a connection and never answers must
+/// fail the test, not hang it.
+const LIMIT: Duration = Duration::from_secs(30);
 
 struct Served {
     child: Child,
@@ -53,7 +60,7 @@ fn serve() -> Served {
         .stderr(Stdio::null())
         .spawn()
         .expect("serve webdav");
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + LIMIT;
     while TcpStream::connect(("127.0.0.1", port)).is_err() {
         assert!(Instant::now() < deadline, "serve webdav did not listen");
         std::thread::sleep(Duration::from_millis(50));
@@ -67,7 +74,11 @@ fn serve() -> Served {
 }
 
 async fn propfind(port: u16, path: &str, depth: &str) -> (u16, String) {
-    let response = reqwest::Client::new()
+    let response = reqwest::Client::builder()
+        // A total timeout: connection, request and the whole response body.
+        .timeout(LIMIT)
+        .build()
+        .expect("client")
         .request(
             reqwest::Method::from_bytes(b"PROPFIND").expect("method"),
             format!("http://127.0.0.1:{port}{path}"),
@@ -78,6 +89,51 @@ async fn propfind(port: u16, path: &str, depth: &str) -> (u16, String) {
         .expect("PROPFIND");
     let status = response.status().as_u16();
     (status, response.text().await.expect("body"))
+}
+
+/// Read a pipe to its end on a thread of its own.
+fn drain<R: Read + Send + 'static>(mut pipe: R) -> JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let _ = pipe.read_to_end(&mut bytes);
+        bytes
+    })
+}
+
+/// `Command::output`, bounded by `LIMIT`: a child still running then is
+/// killed and the test fails with what it printed so far.
+fn output_within_limit(command: &mut Command, what: &str) -> Output {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| panic!("{what}: {e}"));
+    // Both pipes are read while waiting, so a child that fills one is not
+    // taken for a hung one.
+    let stdout = drain(child.stdout.take().expect("stdout"));
+    let stderr = drain(child.stderr.take().expect("stderr"));
+    let deadline = Instant::now() + LIMIT;
+    let status = loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            break status;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!(
+                "{what} did not finish in {} s\nstdout: {}\nstderr: {}",
+                LIMIT.as_secs(),
+                String::from_utf8_lossy(&stdout.join().unwrap_or_default()),
+                String::from_utf8_lossy(&stderr.join().unwrap_or_default())
+            );
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    };
+    Output {
+        status,
+        stdout: stdout.join().expect("stdout"),
+        stderr: stderr.join().expect("stderr"),
+    }
 }
 
 #[tokio::test]
@@ -122,18 +178,19 @@ async fn a_propfind_still_describes_what_is_there() {
 #[test]
 fn the_cli_does_not_see_a_missing_file_as_a_directory() {
     let served = serve();
-    let out = Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
-        .args(["--format", "json", "stat"])
-        .arg(format!("webdav://127.0.0.1:{}/", served.port))
-        .arg("/missing.txt")
-        .env("XDG_CONFIG_HOME", served.config.path())
-        .env("HOME", served.config.path())
-        .env("APPDATA", served.config.path())
-        .env("LOCALAPPDATA", served.config.path())
-        .env_remove("RUST_LOG")
-        .stdin(Stdio::null())
-        .output()
-        .expect("stat");
+    let out = output_within_limit(
+        Command::new(env!("CARGO_BIN_EXE_aeroftp-cli"))
+            .args(["--format", "json", "stat"])
+            .arg(format!("webdav://127.0.0.1:{}/", served.port))
+            .arg("/missing.txt")
+            .env("XDG_CONFIG_HOME", served.config.path())
+            .env("HOME", served.config.path())
+            .env("APPDATA", served.config.path())
+            .env("LOCALAPPDATA", served.config.path())
+            .env_remove("RUST_LOG")
+            .stdin(Stdio::null()),
+        "aeroftp-cli stat",
+    );
     assert_eq!(
         out.status.code(),
         Some(2),
