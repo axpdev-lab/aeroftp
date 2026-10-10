@@ -48,6 +48,7 @@
 
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::{SftpProvider, StorageProvider};
+use ftp_client_gui_lib::transfer_dag::Capability;
 
 fn env_or(key: &str, fallback: &str) -> String {
     std::env::var(key).unwrap_or_else(|_| fallback.to_string())
@@ -131,6 +132,12 @@ async fn put(provider: &mut SftpProvider, remote: &str, bytes: &[u8]) {
 #[ignore = "needs a real SFTP server; see the module comment"]
 async fn rename_refuses_an_occupied_destination_and_replace_does_not() {
     let mut provider = connected().await;
+    // Nothing has asked the server about posix-rename yet, so the snapshot
+    // says the answer is known only after asking (#1081 row 14).
+    assert_eq!(
+        provider.transfer_capabilities().atomic_rename,
+        Capability::SupportedAfterProbe
+    );
 
     let base = env_or("AEROFTP_LIVE_SFTP_DIR", "/tmp");
     let dir = format!("{base}/aeroftp-live-replace-{}", uuid::Uuid::new_v4());
@@ -164,6 +171,15 @@ async fn rename_refuses_an_occupied_destination_and_replace_does_not() {
         .await
         .expect("asking about atomic replace must not fail");
     eprintln!("MEASURED posix-rename advertised: {atomic}");
+    // Once asked, the snapshot carries the server's answer.
+    assert_eq!(
+        provider.transfer_capabilities().atomic_rename,
+        if atomic {
+            Capability::Supported
+        } else {
+            Capability::Unsupported
+        }
+    );
 
     if !atomic {
         let err = provider

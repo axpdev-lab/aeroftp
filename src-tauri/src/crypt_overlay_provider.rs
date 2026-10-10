@@ -1180,6 +1180,10 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.supports_atomic_replace().await
     }
 
+    fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+        self.inner.atomic_replace_capability()
+    }
+
     fn replace_sets_aside(&self) -> bool {
         self.inner.replace_sets_aside()
     }
@@ -1521,7 +1525,12 @@ impl StorageProvider for CryptOverlayProvider {
 
     fn transfer_capabilities(&self) -> crate::transfer_dag::TransferCapabilities {
         // Conservative: no file parallelism, multipart, range, or server digest.
-        crate::transfer_dag::TransferCapabilities::default()
+        // A replace maps the names and leaves the swap to the inner provider,
+        // so its atomic rename is the inner one's.
+        crate::transfer_dag::TransferCapabilities {
+            atomic_rename: self.atomic_replace_capability(),
+            ..crate::transfer_dag::TransferCapabilities::default()
+        }
     }
 }
 
@@ -5940,6 +5949,26 @@ mod tests {
     /// plaintext folder exists on the wire) creates the encrypted parent chain and
     /// stores the file under an encrypted path, without any plaintext folder name
     /// leaking onto the wire.
+    /// The overlay's snapshot stays conservative on data shape but carries the
+    /// inner provider's atomic rename, as `supports_atomic_replace` does: a
+    /// replace maps the names and leaves the swap to the inner provider. It
+    /// reported `unsupported` over every provider.
+    #[test]
+    fn transfer_capabilities_carry_the_inner_atomic_rename() {
+        let inner = Box::new(StrictMemProvider::with_dirs(&["/AeroCryptTest"]));
+        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
+        let provider = CryptOverlayProvider::new(inner, keys, "/AeroCryptTest");
+        let caps = provider.transfer_capabilities();
+        assert_eq!(
+            caps.atomic_rename,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Unsupported
+        );
+    }
+
     #[tokio::test]
     async fn upload_into_new_encrypted_subtree_still_creates_and_stores() {
         // Only the anchor exists; the target subfolder is brand new.

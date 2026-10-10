@@ -3535,6 +3535,19 @@ impl StorageProvider for SftpProvider {
         Ok(self.posix_rename_session().await?.is_some())
     }
 
+    /// What this connection learned about `posix-rename@openssh.com`, read
+    /// without asking: until a replace or [`supports_atomic_replace`] has
+    /// asked the server, the answer is known only after asking.
+    ///
+    /// [`supports_atomic_replace`]: StorageProvider::supports_atomic_replace
+    fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+        match self.posix_rename {
+            PosixRenameSupport::Unasked => crate::transfer_dag::Capability::SupportedAfterProbe,
+            PosixRenameSupport::Available(_) => crate::transfer_dag::Capability::Supported,
+            PosixRenameSupport::Absent => crate::transfer_dag::Capability::Unsupported,
+        }
+    }
+
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         use russh_sftp::protocol::{Packet, StatusCode};
 
@@ -5836,6 +5849,35 @@ mod tests {
         assert_eq!(
             provider.transfer_executor_max_sessions() as usize,
             SFTP_MULTI_THREAD_MAX_STREAMS
+        );
+    }
+
+    /// The live snapshot carries what this connection knows about
+    /// `posix-rename@openssh.com`: not asked yet, it is known after asking;
+    /// not advertised by the server, unsupported. Building the snapshot never
+    /// asks the server (it is synchronous and takes `&self`).
+    #[test]
+    fn transfer_capabilities_carry_the_posix_rename_answer() {
+        let config = SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+        let mut provider = SftpProvider::new(config);
+        assert_eq!(
+            provider.transfer_capabilities().atomic_rename,
+            crate::transfer_dag::Capability::SupportedAfterProbe
+        );
+        provider.posix_rename = PosixRenameSupport::Absent;
+        assert_eq!(
+            provider.transfer_capabilities().atomic_rename,
+            crate::transfer_dag::Capability::Unsupported
         );
     }
 

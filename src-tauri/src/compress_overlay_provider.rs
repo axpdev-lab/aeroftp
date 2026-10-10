@@ -459,6 +459,10 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.supports_atomic_replace().await
     }
 
+    fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+        self.inner.atomic_replace_capability()
+    }
+
     fn replace_sets_aside(&self) -> bool {
         self.inner.replace_sets_aside()
     }
