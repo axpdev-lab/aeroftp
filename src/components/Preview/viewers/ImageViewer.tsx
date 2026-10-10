@@ -345,19 +345,113 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         setIsFitToScreen(!isFitToScreen);
     }, [isFitToScreen]);
 
-    // Mouse wheel zoom. Same contract as zoomIn / zoomOut: never flips the
-    // Fit / Actual-size mode, and resets the pan offset when zoom returns
-    // to fit (issue #239).
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-        if (cropMode) return;
-        e.preventDefault();
-        const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-        setZoom(prev => {
-            const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, prev + delta));
-            if (next <= 1) setPosition({ x: 0, y: 0 });
-            return next;
-        });
-    }, [cropMode]);
+    // Wheel, touchpad and pinch. Same contract as zoomIn / zoomOut: never
+    // flips the Fit / Actual-size mode, and resets the pan offset when zoom
+    // returns to fit (issue #239). Zoom keeps the point under the pointer in
+    // place, as image viewers do; the step follows the size of the scroll, so
+    // a touchpad zooms smoothly and a mouse wheel notch is about 20 %.
+    const zoomRef = useRef(zoom);
+    zoomRef.current = zoom;
+    const positionRef = useRef(position);
+    positionRef.current = position;
+    const navRef = useRef({ onNext, onPrevious });
+    navRef.current = { onNext, onPrevious };
+    const wheelState = useRef({ cropMode, editMode, isFitToScreen });
+    wheelState.current = { cropMode, editMode, isFitToScreen };
+
+    const zoomAt = useCallback((clientX: number, clientY: number, factor: number) => {
+        const el = containerRef.current;
+        if (!el || !Number.isFinite(factor) || factor <= 0) return;
+        const rect = el.getBoundingClientRect();
+        const cx = clientX - (rect.left + rect.width / 2);
+        const cy = clientY - (rect.top + rect.height / 2);
+        const z = zoomRef.current;
+        const nz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z * factor));
+        if (nz === z) return;
+        const p = positionRef.current;
+        const k = nz / z;
+        const np = nz <= 1 ? { x: 0, y: 0 } : { x: cx - k * (cx - p.x), y: cy - k * (cy - p.y) };
+        zoomRef.current = nz;
+        positionRef.current = np;
+        setZoom(nz);
+        setPosition(np);
+    }, []);
+
+    const swipe = useRef<{ dx: number; locked: boolean; timer: number | undefined }>({ dx: 0, locked: false, timer: undefined });
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return undefined;
+        const pan = (dx: number, dy: number) => {
+            const p = positionRef.current;
+            const np = { x: p.x - dx, y: p.y - dy };
+            positionRef.current = np;
+            setPosition(np);
+        };
+        const onWheel = (e: WheelEvent) => {
+            const st = wheelState.current;
+            // A pinch arrives as a wheel with Ctrl: never let it zoom the page.
+            if (st.cropMode) {
+                if (e.ctrlKey) e.preventDefault();
+                return;
+            }
+            e.preventDefault();
+            if (e.ctrlKey) {
+                zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
+                return;
+            }
+            const zoomed = zoomRef.current > 1 || !st.isFitToScreen;
+            if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+                if (zoomed) {
+                    pan(e.deltaX, e.deltaY);
+                    return;
+                }
+                // Two-finger swipe: one picture per gesture, left for the
+                // next one, as in photo viewers. Not while editing.
+                if (st.editMode) return;
+                const sw = swipe.current;
+                window.clearTimeout(sw.timer);
+                sw.timer = window.setTimeout(() => { sw.dx = 0; sw.locked = false; }, 250);
+                if (sw.locked) return;
+                sw.dx += e.deltaX;
+                if (Math.abs(sw.dx) > 120) {
+                    sw.locked = true;
+                    const go = sw.dx > 0 ? navRef.current.onNext : navRef.current.onPrevious;
+                    sw.dx = 0;
+                    go?.();
+                }
+                return;
+            }
+            // Vertical: a touchpad scroll moves a zoomed picture, a mouse
+            // wheel (whole steps) zooms.
+            const touchpad = e.deltaMode === 0 && Math.abs(e.deltaY) < 50 && e.deltaX !== 0;
+            if (zoomed && touchpad) {
+                pan(e.deltaX, e.deltaY);
+                return;
+            }
+            const px = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+            zoomAt(e.clientX, e.clientY, Math.exp(-px * 0.0018));
+        };
+        // Safari / WKWebView pinch.
+        let gestureStart = 1;
+        const onGestureStart = (e: Event) => { e.preventDefault(); gestureStart = zoomRef.current; };
+        const onGestureChange = (e: Event) => {
+            e.preventDefault();
+            if (wheelState.current.cropMode) return;
+            const g = e as Event & { scale?: number; clientX?: number; clientY?: number };
+            if (!g.scale) return;
+            zoomAt(g.clientX ?? 0, g.clientY ?? 0, (gestureStart * g.scale) / zoomRef.current);
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        el.addEventListener('gesturestart', onGestureStart);
+        el.addEventListener('gesturechange', onGestureChange);
+        return () => {
+            el.removeEventListener('wheel', onWheel);
+            el.removeEventListener('gesturestart', onGestureStart);
+            el.removeEventListener('gesturechange', onGestureChange);
+            window.clearTimeout(swipe.current.timer);
+        };
+        // The container exists once there is a picture to show.
+    }, [zoomAt, !!imageSrc]);
 
     // Drag handlers for panning
     const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -760,7 +854,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         isDragging ? 'cursor-grabbing' :
                         zoom > 1 ? 'cursor-grab' : 'cursor-default'
                     }`}
-                    onWheel={handleWheel}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}

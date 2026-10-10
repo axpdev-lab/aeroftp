@@ -130,7 +130,9 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
 
     // --- mouse handlers -------------------------------------------------------
 
-    const onPointerDown = useCallback((e: React.MouseEvent) => {
+    // Pointer events: mouse, touchpad, touch screen and pen draw the same way.
+    const onPointerDown = useCallback((e: React.PointerEvent) => {
+        if (e.button !== 0) return;
         e.preventDefault();
         const r = imgRect();
         if (!r) return;
@@ -156,7 +158,7 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
     }, [imgRect]);
 
     useEffect(() => {
-        const onMove = (e: MouseEvent) => {
+        const onMove = (e: PointerEvent) => {
             const mode = dragMode.current;
             if (mode.kind === 'none') return;
             const r = imgRect();
@@ -199,9 +201,14 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
             }
         };
         const onUp = () => { dragMode.current = { kind: 'none' }; };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-        return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+        document.addEventListener('pointercancel', onUp);
+        return () => {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            document.removeEventListener('pointercancel', onUp);
+        };
     }, [imgRect, clampScreen, enforce, emitCrop]);
 
     // Start from the crop already chosen, or else the whole image, and keep
@@ -330,7 +337,7 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
     }, [imgRect]);
 
     const [cursor, setCursorState] = useState('crosshair');
-    const onMouseMoveLocal = useCallback((e: React.MouseEvent) => {
+    const onMouseMoveLocal = useCallback((e: React.PointerEvent) => {
         if (dragMode.current.kind !== 'none') return;
         setCursorState(getCursor(e));
     }, [getCursor]);
@@ -363,9 +370,9 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         <div
             ref={overlayRef}
             className="absolute inset-0 select-none"
-            style={{ cursor }}
-            onMouseDown={onPointerDown}
-            onMouseMove={onMouseMoveLocal}
+            style={{ cursor, touchAction: 'none' }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onMouseMoveLocal}
             onDoubleClick={onDoubleClick}
         >
             {crop && (

@@ -20,6 +20,7 @@ import { LocalFile, RemoteFile } from '../types';
 import { PreviewFile } from '../components/DevTools';
 import { PreviewFileData, getPreviewCategory } from '../components/Preview';
 import { logger } from '../utils/logger';
+import { buildGallery, galleryStep, parentDir, sortByName } from '../components/Preview/utils/gallery';
 import DOMPurify from 'dompurify';
 
 /** Max file size (in bytes) for base64 media preview: 25 MB */
@@ -68,6 +69,9 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
   const [galleryFiles, setGalleryFiles] = useState<(RemoteFile | LocalFile)[]>([]);
   const [galleryIndex, setGalleryIndex] = useState(-1);
   const [galleryIsRemote, setGalleryIsRemote] = useState(false);
+  // Bumped on every open, so a folder listing that comes back late cannot
+  // replace the gallery of a file opened after it.
+  const galleryRequest = useRef(0);
 
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'grid' | 'large'>('list');
@@ -292,44 +296,58 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
   }, []);
 
   // Open a preview and, when the folder holds other files of the SAME kind,
-  // build a gallery so the on-screen arrows, the toolbar buttons and the ← →
-  // keys can slide between them (#128). `siblings` is the panel's displayed list.
+  // build a gallery so the on-screen arrows, the toolbar buttons, the ← →
+  // keys and a touchpad swipe can slide between them (#128). `siblings` is
+  // the panel's displayed list, in the panel's order. A local file opened from
+  // somewhere that list does not cover (the other local panel, a search, the
+  // duplicate finder) gets its gallery from its folder on disk, so the arrows
+  // work wherever the picture was opened from.
   const openUniversalPreview = useCallback(async (
     file: RemoteFile | LocalFile,
     isRemote: boolean,
     siblings?: (RemoteFile | LocalFile)[],
   ) => {
-    const pathOf = (f: RemoteFile | LocalFile) => (f as { path: string }).path;
-    const openedCategory = getPreviewCategory(file.name);
-    const gallery = (siblings ?? []).filter((f) => {
-      const entry = f as { is_dir?: boolean; name: string };
-      return !entry.is_dir && getPreviewCategory(entry.name) === openedCategory;
-    });
-    const idx = gallery.findIndex((f) => pathOf(f) === pathOf(file));
-    if (gallery.length > 1 && idx >= 0) {
-      setGalleryFiles(gallery);
-      setGalleryIndex(idx);
+    const request = ++galleryRequest.current;
+    const fromPanel = buildGallery(file as { name: string; path: string }, (siblings ?? []) as (RemoteFile | LocalFile & { path: string })[]);
+    if (fromPanel) {
+      setGalleryFiles(fromPanel.files);
+      setGalleryIndex(fromPanel.index);
       setGalleryIsRemote(isRemote);
     } else {
       setGalleryFiles([]);
       setGalleryIndex(-1);
+      const folder = parentDir((file as { path: string }).path);
+      if (!isRemote && folder) {
+        void invoke<LocalFile[]>('get_local_files', { path: folder, showHidden: false })
+          .then((listed) => {
+            if (galleryRequest.current !== request) return;
+            const fromDisk = buildGallery(file as { name: string; path: string }, sortByName(listed));
+            if (fromDisk) {
+              setGalleryFiles(fromDisk.files);
+              setGalleryIndex(fromDisk.index);
+              setGalleryIsRemote(false);
+            }
+          })
+          .catch((err) => logger.debug('[Preview] gallery folder listing failed', err));
+      }
     }
     await loadAndShow(file, isRemote);
   }, [loadAndShow]);
 
-  const hasPreviewPrevious = galleryIndex > 0;
-  const hasPreviewNext = galleryIndex >= 0 && galleryIndex < galleryFiles.length - 1;
+  // The gallery goes round: after the last file comes the first.
+  const hasPreviewPrevious = galleryIndex >= 0 && galleryFiles.length > 1;
+  const hasPreviewNext = hasPreviewPrevious;
 
   const previewPrevious = useCallback(() => {
-    if (galleryIndex <= 0) return;
-    const ni = galleryIndex - 1;
+    if (galleryIndex < 0 || galleryFiles.length < 2) return;
+    const ni = galleryStep(galleryIndex, galleryFiles.length, -1);
     setGalleryIndex(ni);
     void loadAndShow(galleryFiles[ni], galleryIsRemote);
   }, [galleryIndex, galleryFiles, galleryIsRemote, loadAndShow]);
 
   const previewNext = useCallback(() => {
-    if (galleryIndex < 0 || galleryIndex >= galleryFiles.length - 1) return;
-    const ni = galleryIndex + 1;
+    if (galleryIndex < 0 || galleryFiles.length < 2) return;
+    const ni = galleryStep(galleryIndex, galleryFiles.length, 1);
     setGalleryIndex(ni);
     void loadAndShow(galleryFiles[ni], galleryIsRemote);
   }, [galleryIndex, galleryFiles, galleryIsRemote, loadAndShow]);
@@ -342,6 +360,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
     }
     setUniversalPreviewOpen(false);
     setUniversalPreviewFile(null);
+    galleryRequest.current++;
     setGalleryFiles([]);
     setGalleryIndex(-1);
   }, []);

@@ -77,9 +77,10 @@ const border = () => host.querySelector('[data-crop-border]');
 const overlay = () => host.firstElementChild as HTMLElement;
 const drag = async (from: [number, number], to: [number, number]) => {
     await act(async () => {
-        overlay().dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: from[0], clientY: from[1] }));
-        document.dispatchEvent(new MouseEvent('mousemove', { clientX: to[0], clientY: to[1] }));
-        document.dispatchEvent(new MouseEvent('mouseup', {}));
+        // Pointer events (jsdom has no PointerEvent class; the type is what counts).
+        overlay().dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: from[0], clientY: from[1] }));
+        document.dispatchEvent(new MouseEvent('pointermove', { clientX: to[0], clientY: to[1] }));
+        document.dispatchEvent(new MouseEvent('pointerup', {}));
     });
 };
 
