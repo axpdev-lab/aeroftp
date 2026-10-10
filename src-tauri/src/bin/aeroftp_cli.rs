@@ -37538,7 +37538,7 @@ async fn publish_cli_edit_via_temp_rename(
     // (G119). `--allow-non-atomic` is the explicit opt-in to the set-aside
     // replace some of those backends implement (a short moment with no file,
     // and the previous one is not lost); on the others it is refused here too.
-    ftp_client_gui_lib::providers::ensure_edit_can_replace(
+    let publish = ftp_client_gui_lib::providers::ensure_edit_can_replace(
         provider,
         remote_path,
         allow_non_atomic,
@@ -37566,10 +37566,14 @@ async fn publish_cli_edit_via_temp_rename(
         &original,
     )
     .await;
-    // `replace` and not `rename`: the destination exists by definition here,
-    // and `rename` deliberately keeps refusing that case so an ordinary `mv`
-    // cannot destroy a file the user did not mean to lose.
-    if let Err(e) = provider.replace(&remote_temp_path, remote_path).await {
+    // A replace, the destination being the file just read: `rename` keeps
+    // refusing a taken name so an ordinary `mv` cannot destroy a file the
+    // user did not mean to lose. A creation (that same `rename`) only where
+    // the preflight passed because the file had gone since it was read.
+    if let Err(e) = publish
+        .publish(provider, &remote_temp_path, remote_path)
+        .await
+    {
         let _ = provider.delete(&remote_temp_path).await;
         return Err(e);
     }
@@ -56276,14 +56280,18 @@ async fn cmd_crypt_to_headed(
     // Asked while the server is still untouched (G119): if this backend cannot
     // put one file over another, refusing now means the marker really is
     // unchanged and no temporary was left behind.
-    if let Err(e) =
-        ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &config_path).await
-    {
-        let code = provider_error_to_exit_code(&e);
-        print_error(format, &format!("{e}"), code);
-        let _ = provider.disconnect().await;
-        return code;
-    }
+    let publish =
+        match ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &config_path)
+            .await
+        {
+            Ok(publish) => publish,
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(format, &format!("{e}"), code);
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
     let remote_tmp = format!("{config_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -56329,7 +56337,10 @@ async fn cmd_crypt_to_headed(
         let _ = provider.disconnect().await;
         return 4;
     }
-    if let Err(e) = provider.replace(&remote_tmp, &config_path).await {
+    if let Err(e) = publish
+        .publish(provider.as_mut(), &remote_tmp, &config_path)
+        .await
+    {
         let _ = provider.delete(&remote_tmp).await;
         let code = provider_error_to_exit_code(&e);
         print_error(
@@ -56521,15 +56532,20 @@ async fn cmd_crypt_migrate_marker(
         }
         // Asked while the server is still untouched (G119), see the sibling
         // above: the refusal has to be able to say the marker is unchanged.
-        if let Err(e) =
-            ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &current_path)
-                .await
+        let publish = match ftp_client_gui_lib::providers::ensure_atomic_replace(
+            provider.as_mut(),
+            &current_path,
+        )
+        .await
         {
-            let code = provider_error_to_exit_code(&e);
-            print_error(format, &format!("{e}"), code);
-            let _ = provider.disconnect().await;
-            return code;
-        }
+            Ok(publish) => publish,
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(format, &format!("{e}"), code);
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        };
         let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
         if let Err(e) = provider
             .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -56575,7 +56591,10 @@ async fn cmd_crypt_migrate_marker(
             let _ = provider.disconnect().await;
             return 4;
         }
-        if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
+        if let Err(e) = publish
+            .publish(provider.as_mut(), &remote_tmp, &current_path)
+            .await
+        {
             let _ = provider.delete(&remote_tmp).await;
             let code = provider_error_to_exit_code(&e);
             print_error(
@@ -57685,13 +57704,15 @@ async fn publish_crypt_marker(
     }
     // Asked while the server is still untouched (G119), see the siblings
     // above: the refusal has to be able to say the marker is unchanged.
-    if let Err(e) =
-        ftp_client_gui_lib::providers::ensure_atomic_replace(provider, &current_path).await
-    {
-        let code = provider_error_to_exit_code(&e);
-        print_error(format, &format!("{e}"), code);
-        return Err(code);
-    }
+    let publish =
+        match ftp_client_gui_lib::providers::ensure_atomic_replace(provider, &current_path).await {
+            Ok(publish) => publish,
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(format, &format!("{e}"), code);
+                return Err(code);
+            }
+        };
     let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -57734,7 +57755,7 @@ async fn publish_crypt_marker(
         );
         return Err(4);
     }
-    if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
+    if let Err(e) = publish.publish(provider, &remote_tmp, &current_path).await {
         let _ = provider.delete(&remote_tmp).await;
         let code = provider_error_to_exit_code(&e);
         print_error(
@@ -90211,6 +90232,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         /// and `delete` remove them, as on a backend whose delete of a
         /// folder takes it along.
         dirs: std::collections::HashSet<String>,
+        /// Another client's write, taken by the next upload: the path and
+        /// its bytes land on the server right after the upload, between a
+        /// caller's preflight and its publish.
+        appears_on_upload: Option<(String, Vec<u8>)>,
     }
 
     impl CliEditFakeProvider {
@@ -90234,6 +90259,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 upload_fails_with: None,
                 chmod_fails_with: None,
                 dirs: std::collections::HashSet::new(),
+                appears_on_upload: None,
             }
         }
     }
@@ -90313,6 +90339,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             self.uploads.push((remote_path.to_string(), data.clone()));
             self.modes.entry(remote_path.to_string()).or_insert(0o644);
             self.remote_files.insert(remote_path.to_string(), data);
+            if let Some((path, theirs)) = self.appears_on_upload.take() {
+                self.remote_files.insert(path, theirs);
+            }
             Ok(())
         }
 
@@ -90970,6 +90999,74 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(
             provider.remote_files.get("/target.txt").map(Vec::as_slice),
             Some(b"new text".as_slice())
+        );
+    }
+
+    /// CodeRabbit on #1154: without `--allow-non-atomic` a set-aside backend
+    /// passes only where nothing is at the target (the file went away after
+    /// it was read), so the publish must be a creation. A file another client
+    /// wrote there after that check was set aside and deleted by the replace.
+    #[tokio::test]
+    async fn cli_edit_publish_without_the_opt_in_leaves_alone_a_file_written_after_its_check() {
+        let local = NamedTempFile::new().expect("temp file");
+        std::fs::write(local.path(), b"new text").expect("write replacement");
+        let local_path = local.path().to_string_lossy().to_string();
+        let mut provider = CliEditFakeProvider::new();
+        provider.atomic_replace = false;
+        provider.sets_aside = true;
+        provider.appears_on_upload = Some(("/target.txt".to_string(), b"theirs".to_vec()));
+
+        let err =
+            publish_cli_edit_via_temp_rename(&mut provider, &local_path, "/target.txt", false)
+                .await
+                .unwrap_err();
+
+        assert!(matches!(err, ProviderError::AlreadyExists(_)), "{err}");
+        assert!(err.to_string().contains("taken"), "{err}");
+        assert!(provider.replaces.is_empty(), "{:?}", provider.replaces);
+        assert_eq!(
+            provider.remote_files.get("/target.txt").map(Vec::as_slice),
+            Some(b"theirs".as_slice())
+        );
+        assert_eq!(
+            provider.remote_files.len(),
+            1,
+            "temporary left: {:?}",
+            provider.remote_files.keys()
+        );
+    }
+
+    /// The same for the crypt marker publish of `crypt migrate-v4` and the
+    /// slot commands: exit 9, the other client's marker left as it is.
+    #[tokio::test]
+    async fn crypt_marker_publish_leaves_alone_a_marker_written_after_its_check() {
+        use ftp_client_gui_lib::aerocrypt::overlay;
+        let salt = overlay::random_salt_v3();
+        let master =
+            overlay::derive_master_key(&overlay::OverlayConfig::v3_bootstrap(salt), "pw").unwrap();
+        let marker = overlay::init_config_v3(&salt, &master).unwrap();
+        let current = crypt_marker_path("/", CryptMarkerKind::Current);
+        let mut provider = CliEditFakeProvider::new();
+        provider.atomic_replace = false;
+        provider.sets_aside = true;
+        provider.appears_on_upload = Some((current.clone(), b"theirs".to_vec()));
+
+        let code =
+            publish_crypt_marker(&mut provider, "/", &marker, "pw", None, OutputFormat::Json)
+                .await
+                .unwrap_err();
+
+        assert_eq!(code, 9);
+        assert!(provider.replaces.is_empty(), "{:?}", provider.replaces);
+        assert_eq!(
+            provider.remote_files.get(&current).map(Vec::as_slice),
+            Some(b"theirs".as_slice())
+        );
+        assert_eq!(
+            provider.remote_files.len(),
+            1,
+            "staged marker left: {:?}",
+            provider.remote_files.keys()
         );
     }
 

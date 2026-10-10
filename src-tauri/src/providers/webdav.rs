@@ -6616,16 +6616,60 @@ mod tests {
             matches!(&refused, Err(ProviderError::NotSupported(text)) if text.contains("`--opt`")),
             "{refused:?}"
         );
-        crate::providers::ensure_edit_can_replace(&mut p, "/d/a.txt", true, "`--opt`")
-            .await
-            .expect("the opt-in");
-        crate::providers::ensure_atomic_replace(&mut p, "/d/.aerocrypt.tsv")
+        let opted_in =
+            crate::providers::ensure_edit_can_replace(&mut p, "/d/a.txt", true, "`--opt`")
+                .await
+                .expect("the opt-in");
+        assert_eq!(opted_in, crate::providers::StagedPublish::Replace);
+        let free = crate::providers::ensure_atomic_replace(&mut p, "/d/.aerocrypt.tsv")
             .await
             .expect("nothing to replace");
+        assert_eq!(free, crate::providers::StagedPublish::Create);
         let occupied = crate::providers::ensure_atomic_replace(&mut p, "/d/a.txt").await;
         assert!(
             matches!(occupied, Err(ProviderError::NotSupported(_))),
             "{occupied:?}"
+        );
+    }
+
+    /// CodeRabbit on #1154: a marker check passes on WebDAV only because no
+    /// marker is there, so the publish is a creation, one MOVE with
+    /// `Overwrite: F`. When another client wrote the marker after the check
+    /// the server refuses it (412): their marker stays, nothing is set aside,
+    /// and the staged file is still there for the caller to delete.
+    #[tokio::test]
+    async fn a_publish_onto_a_name_taken_after_its_check_is_refused_by_the_server() {
+        let (url, files, requests) = dav_store_server(&[("/d/m.tmp", "ours")], &[]).await;
+        let mut p = WebDavProvider::new(test_config(&url)).expect("provider");
+        p.connected = true;
+        let publish = crate::providers::ensure_atomic_replace(&mut p, "/d/m.tsv")
+            .await
+            .expect("a free name");
+        files
+            .lock()
+            .unwrap()
+            .insert("/d/m.tsv".to_string(), b"theirs".to_vec());
+
+        let outcome = publish.publish(&mut p, "/d/m.tmp", "/d/m.tsv").await;
+
+        let requests = requests.lock().unwrap();
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?} {requests:?}"
+        );
+        assert_eq!(
+            *files.lock().unwrap(),
+            HashMap::from([
+                ("/d/m.tsv".to_string(), b"theirs".to_vec()),
+                ("/d/m.tmp".to_string(), b"ours".to_vec()),
+            ]),
+            "{requests:?}"
+        );
+        let moves: Vec<_> = requests.iter().filter(|r| r.starts_with("MOVE")).collect();
+        assert_eq!(
+            moves,
+            ["MOVE /d/m.tmp /d/m.tsv Overwrite:F"],
+            "{requests:?}"
         );
     }
 

@@ -14,7 +14,10 @@
 //! deletes the old one, and every MOVE it sends refuses a taken name.
 //!
 //! The first run replaces a file and checks that only the new content is
-//! left, under the old name. The second, with
+//! left, under the old name. Then a creation: the publish a crypt marker
+//! check answers when no marker is there, one MOVE with `Overwrite: F`,
+//! onto a name another client took after that check. The server must refuse
+//! it and leave both files as they are. The last run, with
 //! `AEROFTP_LIVE_WEBDAV_HOLD_SOURCE=1`, is for a server that locks a file
 //! while it is read (Nextcloud): a GET of the staged file is held open while
 //! the replace runs, the replace fails, and the old file must still be
@@ -35,7 +38,7 @@
 
 use ftp_client_gui_lib::providers::types::WebDavConfig;
 use ftp_client_gui_lib::providers::webdav::WebDavProvider;
-use ftp_client_gui_lib::providers::StorageProvider;
+use ftp_client_gui_lib::providers::{ProviderError, StagedPublish, StorageProvider};
 use secrecy::SecretString;
 
 fn env(key: &str) -> Option<String> {
@@ -106,6 +109,31 @@ async fn a_replace_never_loses_the_file_it_replaces() {
     );
     assert_eq!(names(&mut provider, &dir).await, ["html.txt"]);
     println!("replace over a file: new content under the old name, nothing else left");
+
+    let marker = format!("{dir}/marker.tsv");
+    let publish = ftp_client_gui_lib::providers::ensure_atomic_replace(&mut provider, &marker)
+        .await
+        .expect("a free name passes");
+    assert_eq!(publish, StagedPublish::Create);
+    put(&mut provider, &staged, b"ours").await;
+    put(&mut provider, &marker, b"theirs").await;
+    let outcome = publish.publish(&mut provider, &staged, &marker).await;
+    assert!(
+        matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        provider.download_to_bytes(&marker).await.expect("read"),
+        b"theirs"
+    );
+    assert_eq!(
+        names(&mut provider, &dir).await,
+        ["html.txt", "html.txt.tmp", "marker.tsv"],
+        "nothing was set aside"
+    );
+    provider.delete(&marker).await.expect("delete marker");
+    provider.delete(&staged).await.expect("delete staged");
+    println!("creation onto a name taken after the check: refused, the other file left as it is");
 
     if env("AEROFTP_LIVE_WEBDAV_HOLD_SOURCE").as_deref() == Some("1") {
         // Large enough that the server is still sending it when the replace

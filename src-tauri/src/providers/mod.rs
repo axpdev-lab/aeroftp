@@ -2085,19 +2085,23 @@ pub async fn delete_file_only(
 /// A backend whose replace sets the old item aside
 /// ([`StorageProvider::replace_sets_aside`]) passes when nothing is at
 /// `target`, which costs one more question: there is nothing to set aside,
-/// so its replace is the rename onto a free name, one step that leaves no
+/// so the publish is the rename onto a free name, one step that leaves no
 /// moment without a file (the heal of a missing crypt marker, a legacy
 /// marker migration). A backend whose replace is only its rename may have
 /// no rename at all, so it is refused either way.
+///
+/// The answer says how to publish, and why: [`StagedPublish::Create`] when
+/// the target was free and that alone let the backend through,
+/// [`StagedPublish::Replace`] otherwise.
 pub async fn ensure_atomic_replace(
     provider: &mut dyn StorageProvider,
     target: &str,
-) -> Result<(), ProviderError> {
+) -> Result<StagedPublish, ProviderError> {
     if provider.supports_atomic_replace().await? {
-        return Ok(());
+        return Ok(StagedPublish::Replace);
     }
     if provider.replace_sets_aside() && !provider.exists(target).await? {
-        return Ok(());
+        return Ok(StagedPublish::Create);
     }
     Err(ProviderError::NotSupported(format!(
         "cannot replace `{target}` atomically: this server offers no way to put one file \
@@ -2123,15 +2127,19 @@ pub async fn ensure_atomic_replace(
 ///
 /// The crypt and AeroCrypt marker paths call [`ensure_atomic_replace`]
 /// directly: they have no opt-in, so their refusal names none.
+///
+/// The answer is the publish, as for [`ensure_atomic_replace`]: the opt-in
+/// is a replace, and without it a set-aside backend passes only onto a free
+/// name (the file went away after it was read), which makes it a creation.
 pub async fn ensure_edit_can_replace(
     provider: &mut dyn StorageProvider,
     target: &str,
     allow_non_atomic: bool,
     opt_in: &str,
-) -> Result<(), ProviderError> {
+) -> Result<StagedPublish, ProviderError> {
     if allow_non_atomic {
         if provider.supports_atomic_replace().await? || provider.replace_sets_aside() {
-            return Ok(());
+            return Ok(StagedPublish::Replace);
         }
         return Err(ProviderError::NotSupported(opt_in_cannot_set_aside(
             target, opt_in,
@@ -2142,6 +2150,63 @@ pub async fn ensure_edit_can_replace(
             ProviderError::NotSupported(format!("{refusal} {}", set_aside_opt_in_hint(opt_in))),
         ),
         other => other,
+    }
+}
+
+/// How a temporary staged beside its target goes into the target's place,
+/// as [`ensure_atomic_replace`] or [`ensure_edit_can_replace`] answered
+/// before it was staged. The answer carries why the check passed, and the
+/// publish keeps to it: publish with [`StagedPublish::publish`], never with
+/// a bare [`StorageProvider::replace`].
+///
+/// The check and the publish are separate requests (CodeRabbit on #1154).
+/// On a backend that replaces atomically, or under an edit's opt-in, the
+/// check passes whatever is at the target and the publish replaces it:
+/// whoever writes last wins, which is what a replace is. A backend whose
+/// replace sets the old item aside passes only because nothing was at the
+/// target, and a replace would set aside and delete an item another client
+/// put there in between. Its publish is therefore the rename, which refuses
+/// a taken name: on the server for WebDAV (a MOVE with `Overwrite: F`),
+/// Dropbox and Koofr, which closes that window; from a look just before the
+/// move for MEGA, Filen, FileLu, Drime and kDrive, which narrows it to the
+/// gap between the look and the move (see [`refuse_occupied_destination`]).
+///
+/// Bind the answer (`let publish = ensure_atomic_replace(..)?`): the
+/// `must_use` below catches one dropped by `?;`, not one an `if let Err`
+/// never bound.
+#[must_use = "publish with `StagedPublish::publish`: a bare `replace` deletes what another \
+              client wrote at a target the check found free"]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StagedPublish {
+    /// [`StorageProvider::replace`]: the backend replaces atomically, or an
+    /// edit opted into the replace that sets the old file aside.
+    Replace,
+    /// [`StorageProvider::rename`]: the check passed only because nothing was
+    /// at the target, so the target has to be free still.
+    Create,
+}
+
+impl StagedPublish {
+    /// Put the staged `from` at `to`. Under [`StagedPublish::Create`] an item
+    /// found at `to` is left as it is, and the answer is AlreadyExists: nothing
+    /// was published. On any error the caller deletes `from`, as after every
+    /// other failed publish.
+    pub async fn publish(
+        self,
+        provider: &mut dyn StorageProvider,
+        from: &str,
+        to: &str,
+    ) -> Result<(), ProviderError> {
+        match self {
+            Self::Replace => provider.replace(from, to).await,
+            Self::Create => match provider.rename(from, to).await {
+                Err(ProviderError::AlreadyExists(_)) => Err(ProviderError::AlreadyExists(format!(
+                    "{to} was free when checked and is taken now: another client wrote it in \
+                     the meantime. It was left as it is and nothing was published"
+                ))),
+                outcome => outcome,
+            },
+        }
     }
 }
 
@@ -3660,6 +3725,10 @@ pub(crate) mod edit_replace_tests {
         pub(crate) chmod: bool,
         /// When set, `chmod` fails with this.
         pub(crate) chmod_fails_with: Option<String>,
+        /// Another client's write, taken by the next upload: the path and
+        /// its bytes land on the server right after the upload, between a
+        /// caller's preflight and its publish.
+        pub(crate) appears_on_upload: Option<(String, Vec<u8>)>,
     }
 
     impl EditFake {
@@ -3676,6 +3745,7 @@ pub(crate) mod edit_replace_tests {
                 links: HashMap::new(),
                 chmod: false,
                 chmod_fails_with: None,
+                appears_on_upload: None,
             }
         }
     }
@@ -3736,6 +3806,10 @@ pub(crate) mod edit_replace_tests {
             self.uploads.push(remote_path.to_string());
             self.modes.entry(remote_path.to_string()).or_insert(0o644);
             self.files.insert(remote_path.to_string(), data);
+            if let Some((path, theirs)) = self.appears_on_upload.take() {
+                self.modes.insert(path.clone(), 0o644);
+                self.files.insert(path, theirs);
+            }
             Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -3855,6 +3929,10 @@ pub(crate) mod edit_replace_tests {
             let outcome = ensure_edit_can_replace(&mut p, "/t.txt", allow, "`--opt`").await;
             let case = format!("atomic {atomic}, sets aside {sets_aside}, opt-in {allow}");
             assert_eq!(outcome.is_ok(), passes, "{case}: {outcome:?}");
+            if let Ok(publish) = outcome {
+                assert_eq!(publish, StagedPublish::Replace, "{case}: the file is there");
+                continue;
+            }
             if let Err(e) = outcome {
                 let text = e.to_string();
                 assert!(text.contains("Nothing was written"), "{case}: {text}");
@@ -3945,21 +4023,59 @@ pub(crate) mod edit_replace_tests {
 
     /// A marker written where none is (the heal of a missing one, a legacy
     /// migration) replaces nothing. On a backend whose replace sets the old
-    /// item aside, a replace onto a free name is its rename, one step with
-    /// no moment in which a file is missing, so the preflight passes; a
-    /// backend whose replace is only its rename may have no rename at all,
-    /// and is still refused.
+    /// item aside, the publish onto a free name is its rename, one step with
+    /// no moment in which a file is missing, so the preflight passes and
+    /// answers a creation; a backend whose replace is only its rename may
+    /// have no rename at all, and is still refused.
     #[tokio::test]
     async fn a_publish_onto_a_free_name_passes_where_the_replace_sets_aside() {
         for (sets_aside, passes) in [(true, true), (false, false)] {
             let mut p = EditFake::new(false, sets_aside);
             let outcome = ensure_atomic_replace(&mut p, "/.aerocrypt.tsv").await;
             assert_eq!(
-                outcome.is_ok(),
-                passes,
+                outcome.as_ref().ok(),
+                passes.then_some(&StagedPublish::Create),
                 "sets aside {sets_aside}: {outcome:?}"
             );
             assert!(p.uploads.is_empty() && p.replaces.is_empty());
         }
+        let mut atomic = EditFake::new(true, false);
+        let publish = ensure_atomic_replace(&mut atomic, "/.aerocrypt.tsv").await;
+        assert_eq!(publish.ok(), Some(StagedPublish::Replace));
+    }
+
+    /// CodeRabbit on #1154: a creation leaves alone an item another client
+    /// put at the target after the check, answers AlreadyExists, and never
+    /// replaces; onto a name still free it moves the staged file in.
+    #[tokio::test]
+    async fn a_creation_never_replaces_what_another_client_wrote() {
+        let mut p = EditFake::new(false, true);
+        p.files = HashMap::from([
+            ("/m.tmp".to_string(), b"ours".to_vec()),
+            ("/m.tsv".to_string(), b"theirs".to_vec()),
+        ]);
+        let text = StagedPublish::Create
+            .publish(&mut p, "/m.tmp", "/m.tsv")
+            .await
+            .unwrap_err();
+        assert!(matches!(text, ProviderError::AlreadyExists(_)), "{text}");
+        assert!(text.to_string().contains("nothing was published"), "{text}");
+        assert!(p.replaces.is_empty(), "{:?}", p.replaces);
+        assert_eq!(
+            p.files.get("/m.tsv").map(Vec::as_slice),
+            Some(&b"theirs"[..])
+        );
+        assert_eq!(p.files.get("/m.tmp").map(Vec::as_slice), Some(&b"ours"[..]));
+
+        p.files.remove("/m.tsv");
+        StagedPublish::Create
+            .publish(&mut p, "/m.tmp", "/m.tsv")
+            .await
+            .expect("a free name");
+        assert_eq!(
+            p.files,
+            HashMap::from([("/m.tsv".to_string(), b"ours".to_vec())])
+        );
+        assert!(p.replaces.is_empty(), "{:?}", p.replaces);
     }
 }
