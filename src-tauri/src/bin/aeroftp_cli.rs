@@ -13001,6 +13001,61 @@ fn mirror_profiles_to_legacy_blob_if_active(
     }
 }
 
+fn profile_ids(profiles: &[serde_json::Value]) -> Vec<String> {
+    profiles
+        .iter()
+        .map(|p| {
+            p.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect()
+}
+
+/// Move the profile at `src` to `dst` (0-based) when `profiles` still has
+/// exactly the ids the caller listed, in that order. `false` leaves it as is.
+fn apply_reorder_if_unchanged(
+    profiles: &mut Vec<serde_json::Value>,
+    expected_ids: &[String],
+    src: usize,
+    dst: usize,
+) -> bool {
+    if profile_ids(profiles) != expected_ids || src >= profiles.len() || dst >= profiles.len() {
+        return false;
+    }
+    let profile = profiles.remove(src);
+    profiles.insert(dst, profile);
+    true
+}
+
+/// Persist a move of the active user's profile at `src` to `dst`, checked and
+/// written inside one IMMEDIATE vault transaction against `expected_ids` (the
+/// saved order the caller showed). `Ok(None)` when another session changed the
+/// saved order meanwhile: nothing is written.
+fn reorder_saved_profiles(
+    cli: &Cli,
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    expected_ids: &[String],
+    src: usize,
+    dst: usize,
+) -> Result<Option<Vec<serde_json::Value>>, String> {
+    use ftp_client_gui_lib::user_partitions;
+    let target = match ensure_active_user_unlocked(cli, store)? {
+        Some(t) => t,
+        None => return Err("NO_ACTIVE_USER".to_string()),
+    };
+    let (stored, written) =
+        user_partitions::cli_update_server_profiles_for_user(store, target.id, |profiles| {
+            apply_reorder_if_unchanged(profiles, expected_ids, src, dst)
+        })?;
+    if !written {
+        return Ok(None);
+    }
+    mirror_profiles_to_legacy_blob_if_active(store, target.id, &stored);
+    Ok(Some(stored))
+}
+
 fn save_active_user_profiles(
     cli: &Cli,
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
@@ -17502,6 +17557,16 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
         return 5;
     }
 
+    // The 1-based number of each profile in the saved order: the number
+    // `--profile N` and the interactive selectors resolve. It travels with the
+    // profile through the --group filter and any sort, so every listing shows
+    // the number a command accepts instead of a row position.
+    let mut numbers: Vec<usize> = (1..=profiles.len()).collect();
+    // The whole list in saved order, kept before the --group filter: the
+    // interactive loop resolves numbers by position in it, so it must be the
+    // same snapshot the numbers above were taken from.
+    let saved_order = profiles.clone();
+
     // --group filter (#320): keep only profiles that belong to the named group
     // (case-insensitive). The CLI analogue of selecting a GUI group chip.
     if let Some(group_name) = overrides.group.as_deref() {
@@ -17511,12 +17576,16 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
             .find(|g| g.name.eq_ignore_ascii_case(group_name.trim()))
             .map(|g| g.members.iter().map(|s| s.as_str()).collect())
             .unwrap_or_default();
-        profiles.retain(|p| {
-            p.get("id")
-                .and_then(|v| v.as_str())
-                .map(|id| member_ids.contains(id))
-                .unwrap_or(false)
-        });
+        (numbers, profiles) = numbers
+            .into_iter()
+            .zip(profiles)
+            .filter(|(_, p)| {
+                p.get("id")
+                    .and_then(|v| v.as_str())
+                    .map(|id| member_ids.contains(id))
+                    .unwrap_or(false)
+            })
+            .unzip();
     }
 
     // An empty vault is exactly where `-i` / `--tui` matter most: `New`,
@@ -17549,8 +17618,8 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
         let groups = load_server_groups(&store);
         let safe: Vec<serde_json::Value> = profiles
             .iter()
-            .enumerate()
-            .map(|(idx, p)| {
+            .zip(&numbers)
+            .map(|(p, number)| {
                 let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
                 let proto = p.get("protocol").and_then(|v| v.as_str()).unwrap_or("");
                 let auth_state = ftp_client_gui_lib::profile_auth_state::derive_profile_auth_state(
@@ -17579,7 +17648,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
                     // --profile and the interactive `profiles -i` commands
                     // (resolve_profile_selector). Serialized keys are sorted,
                     // so "#" sorts first and appears as the leading field.
-                    "#": idx + 1,
+                    "#": number,
                     "id": id,
                     "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed"),
                     "protocol": proto,
@@ -17662,7 +17731,7 @@ fn list_vault_profiles(cli: &Cli, format: OutputFormat, overrides: ProfilesViewO
             );
         }
     } else {
-        return render_profiles_text(cli, &store, profiles, &overrides);
+        return render_profiles_text(cli, &store, profiles, numbers, saved_order, &overrides);
     }
 
     0
@@ -19507,8 +19576,7 @@ fn build_profile_views(
 fn print_bridge_health_section(sorted: &[(usize, serde_json::Value)], color_on: bool) {
     let targets: Vec<(usize, String, &'static str, Option<u16>)> = sorted
         .iter()
-        .enumerate()
-        .filter_map(|(i, (_, p))| {
+        .filter_map(|(number, p)| {
             let pid = p.get("providerId").and_then(|v| v.as_str()).unwrap_or("");
             let kind = bridge_kind_for_provider_id(pid)?;
             let name = p
@@ -19520,7 +19588,7 @@ fn print_bridge_health_section(sorted: &[(usize, serde_json::Value)], color_on: 
                 .get("port")
                 .and_then(|v| v.as_u64())
                 .and_then(|n| u16::try_from(n).ok());
-            Some((i + 1, name, kind, port))
+            Some((*number, name, kind, port))
         })
         .collect();
     if targets.is_empty() {
@@ -19554,10 +19622,36 @@ fn print_bridge_health_section(sorted: &[(usize, serde_json::Value)], color_on: 
     }
 }
 
+/// The profiles table's rows in display order, each with the number its `#`
+/// column shows. `numbered` pairs every profile with its 1-based number in the
+/// saved order; a sort reorders the rows but never renumbers them, because that
+/// number is what `--profile N` and the interactive selectors resolve. Stable:
+/// equal keys keep the saved order.
+fn profile_table_rows(
+    mut numbered: Vec<(usize, serde_json::Value)>,
+    sort: Option<ProfileSort>,
+    favorites: &std::collections::HashSet<String>,
+) -> Vec<(usize, serde_json::Value)> {
+    if let Some(sort) = sort {
+        numbered.sort_by(|a, b| {
+            let ord = compare_profiles(&a.1, &b.1, sort.col, favorites);
+            let ord = if matches!(sort.dir, ProfileSortDir::Desc) {
+                ord.reverse()
+            } else {
+                ord
+            };
+            ord.then_with(|| a.0.cmp(&b.0))
+        });
+    }
+    numbered
+}
+
 fn render_profiles_text(
     cli: &Cli,
     store: &CredentialStore,
     profiles: Vec<serde_json::Value>,
+    numbers: Vec<usize>,
+    saved_order: Vec<serde_json::Value>,
     overrides: &ProfilesViewOverrides,
 ) -> i32 {
     let color_on = use_color();
@@ -19593,19 +19687,11 @@ fn render_profiles_text(
         }
     }
 
-    // Apply sort. Stable so equal keys keep the vault order.
-    let mut sorted: Vec<(usize, serde_json::Value)> = profiles.into_iter().enumerate().collect();
-    if let Some(sort) = settings.sort {
-        sorted.sort_by(|a, b| {
-            let ord = compare_profiles(&a.1, &b.1, sort.col, &favorites);
-            let ord = if matches!(sort.dir, ProfileSortDir::Desc) {
-                ord.reverse()
-            } else {
-                ord
-            };
-            ord.then_with(|| a.0.cmp(&b.0))
-        });
-    }
+    let sorted = profile_table_rows(
+        numbers.into_iter().zip(profiles).collect(),
+        settings.sort,
+        &favorites,
+    );
 
     // Visible columns in the canonical order.
     let visible: Vec<ProfileColId> = PROFILE_COL_ORDER
@@ -19627,8 +19713,8 @@ fn render_profiles_text(
     // readable on standard terminals. The caps for shrinkable columns are
     // reduced when the terminal is too narrow, so the whole row fits on a
     // single line instead of spilling (issue #129).
-    let row_count = sorted.len();
-    let index_width = ((row_count.max(1) as f64).log10().floor() as usize) + 1;
+    let largest_number = sorted.iter().map(|(n, _)| *n).max().unwrap_or(1);
+    let index_width = ((largest_number.max(1) as f64).log10().floor() as usize) + 1;
     let index_width = index_width.max(1);
 
     let term_cols = terminal_width();
@@ -19776,12 +19862,12 @@ fn render_profiles_text(
     );
 
     // Rows.
-    for (display_idx, (_, p)) in sorted.iter().enumerate() {
+    for (display_idx, (number, p)) in sorted.iter().enumerate() {
         let mut cells = Vec::with_capacity(visible.len());
         for c in &visible {
             let w = col_width(*c);
             let cell = match c {
-                ProfileColId::Index => format!("{:>w$}", display_idx + 1, w = w),
+                ProfileColId::Index => format!("{:>w$}", number, w = w),
                 ProfileColId::Name => {
                     let name = p.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
                     let cap = name_width.max(c.header().chars().count());
@@ -20093,8 +20179,19 @@ fn render_profiles_text(
         && std::io::stdin().is_terminal()
         && std::io::stderr().is_terminal()
     {
-        let ordered: Vec<serde_json::Value> = sorted.into_iter().map(|(_, v)| v).collect();
-        return interactive_profiles_loop(cli, store, ordered, overrides, overrides.start_in_tui);
+        // The loop resolves numbers by position in its list, so it gets the
+        // whole saved order the table's numbers were taken from (not the
+        // filtered rows, not a fresh read another session may have reordered):
+        // the numbers the table printed and the `tui` navigator's selectors
+        // then name the same profiles inside the loop.
+        return interactive_profiles_loop(
+            cli,
+            store,
+            saved_order,
+            overrides,
+            overrides.start_in_tui,
+            settings.sort.is_some(),
+        );
     }
 
     0
@@ -22045,6 +22142,7 @@ fn interactive_profiles_loop(
     profiles: Vec<serde_json::Value>,
     overrides: &ProfilesViewOverrides,
     start_in_tui: bool,
+    sort_active: bool,
 ) -> i32 {
     use std::io::{self, BufRead, Write};
 
@@ -22258,31 +22356,9 @@ fn interactive_profiles_loop(
                     continue;
                 }
             };
-            // Reordering only makes sense against the saved (manual) order.
-            // When a sort is active the displayed order differs from the
-            // stored order, so persisting the displayed list would silently
-            // reorder every profile to match the sort. Refuse in that case
-            // and point the user at manual order, comparing ids positionally.
-            let stored_ids: Vec<String> = load_active_user_profiles(cli, store)
-                .unwrap_or_default()
-                .iter()
-                .map(|p| {
-                    p.get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                })
-                .collect();
-            let current_ids: Vec<String> = current
-                .iter()
-                .map(|p| {
-                    p.get("id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                })
-                .collect();
-            if stored_ids != current_ids {
+            // Reordering only makes sense against the saved (manual) order:
+            // with a sort active the table would not show the move at all.
+            if sort_active {
                 eprintln!(
                     "Reordering needs manual order: a sort is active, so the displayed order differs from the saved order. Re-run with `--sort manual` (or clear the sort) and try again."
                 );
@@ -22299,18 +22375,20 @@ fn interactive_profiles_loop(
                 .and_then(|v| v.as_str())
                 .unwrap_or("?")
                 .to_string();
-            let snapshot = current.clone();
-            let profile = current.remove(src);
-            current.insert(dst, profile);
-            match save_active_user_profiles(cli, store, &current) {
-                Ok(()) => {
+            // The list this loop holds is the saved order. The move is checked
+            // and written in one vault transaction, so a reorder made by
+            // another session meanwhile is refused instead of overwritten.
+            let expected = profile_ids(&current);
+            match reorder_saved_profiles(cli, store, &expected, src, dst) {
+                Ok(Some(stored)) => {
+                    current = stored;
                     eprintln!("Moved '{}' to #{}.", name, dst + 1);
                     print_profiles_summary_with_reorder(&current, src, dst);
                 }
-                Err(e) => {
-                    current = snapshot;
-                    eprintln!("Move failed to persist: {}. Order unchanged.", e);
-                }
+                Ok(None) => eprintln!(
+                    "The saved profile order changed since this list was loaded. Refresh (`.`) and try again."
+                ),
+                Err(e) => eprintln!("Move failed to persist: {}. Order unchanged.", e),
             }
             continue;
         }
@@ -79429,6 +79507,67 @@ mod tests {
             match_profile_by_query(&profiles, "3"),
             ProfileMatch::None
         ));
+    }
+
+    // With a sort saved in the vault, the table numbered its rows by position
+    // after the sort while `--profile N` resolves the saved order, so a number
+    // read from `profiles` opened another server. A `--group` filter did the
+    // same. Every number the table shows must open the profile on its row.
+    #[test]
+    fn a_sorted_or_filtered_profiles_table_shows_the_number_profile_resolves() {
+        let saved = vec![
+            make_profile("charlie"),
+            make_profile("alpha"),
+            make_profile("bravo"),
+        ];
+        let by_name = Some(ProfileSort {
+            col: ProfileColId::Name,
+            dir: ProfileSortDir::Asc,
+        });
+        let all: Vec<(usize, serde_json::Value)> = (1..).zip(saved.iter().cloned()).collect();
+        // A group holding only charlie and bravo keeps their saved numbers.
+        let group: Vec<(usize, serde_json::Value)> =
+            vec![(1, saved[0].clone()), (3, saved[2].clone())];
+
+        for (case, numbered) in [("sorted", all), ("sorted group", group)] {
+            let rows = profile_table_rows(numbered, by_name, &std::collections::HashSet::new());
+            let shown: Vec<&str> = rows
+                .iter()
+                .map(|(_, p)| p["name"].as_str().unwrap())
+                .collect();
+            assert!(
+                shown.windows(2).all(|w| w[0] < w[1]),
+                "{case}: not sorted: {shown:?}"
+            );
+            for (number, row) in &rows {
+                let row_name = row["name"].as_str().unwrap();
+                assert_eq!(
+                    name_of(&match_profile_by_query(&saved, &number.to_string())),
+                    Some(row_name),
+                    "{case}: the table shows #{number} on {row_name}, but --profile {number} opens another profile"
+                );
+            }
+        }
+    }
+
+    // `# <sel> <N>` read the saved ids, then wrote the moved list in a second
+    // step: a reorder by another session in between was overwritten. The
+    // check now runs on the list the vault transaction reads.
+    #[test]
+    fn a_reorder_applies_only_to_the_saved_order_it_was_shown() {
+        let with_id = |id: &str| json!({"id": id, "name": id});
+        let shown: Vec<String> = ["a", "b", "c"].iter().map(|s| s.to_string()).collect();
+
+        let mut unchanged = vec![with_id("a"), with_id("b"), with_id("c")];
+        assert!(apply_reorder_if_unchanged(&mut unchanged, &shown, 2, 0));
+        assert_eq!(profile_ids(&unchanged), ["c", "a", "b"]);
+
+        let mut reordered_elsewhere = vec![with_id("b"), with_id("a"), with_id("c")];
+        assert!(
+            !apply_reorder_if_unchanged(&mut reordered_elsewhere, &shown, 2, 0),
+            "a move was applied over a saved order another session had changed"
+        );
+        assert_eq!(profile_ids(&reordered_elsewhere), ["b", "a", "c"]);
     }
 
     #[test]
