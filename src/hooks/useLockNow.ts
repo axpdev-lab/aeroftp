@@ -37,7 +37,7 @@ export function useLockNow(options: LockNowOptions) {
             if (result.vaultLocked) current.current.onVaultLocked();
             if (result.accountLocked) {
                 dispatchAccountLockScreenRequested();
-                window.dispatchEvent(new Event(PROFILES_CHANGED_EVENT));
+                window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { accountChanged: true } }));
             }
         },
     }));

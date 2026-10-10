@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "S'està convertint el marcador d'AeroCrypt a .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador d'AeroCrypt convertit a .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] S'està desbloquejant la carpeta {filename}..."
+            "box_unlock_folder": "[Box] S'està desbloquejant la carpeta {filename}...",
+            "site_replied": "{command}: el servidor ha respost {code}",
+            "site_unknown": "{command}: cap resposta completa, resultat desconegut",
+            "site_not_sent": "{command} no s'ha enviat"
         },
         "protocol": {
             "selectProtocol": "Seleccioneu protocol...",
@@ -3902,7 +3905,9 @@
             "activityLog": "Registre d'Activitat",
             "detailedCards": "Targetes de servidor detallades",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Connexió",
+            "siteCommand": "Ordre SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Esperant comandes...",
@@ -6171,8 +6176,66 @@
                 "settings_open": "Obrir la configuració",
                 "settings_read": "Inspeccionar la configuració",
                 "settings_update": "Actualitzar la configuració",
-                "settings_close": "Tancar la configuració"
+                "settings_close": "Tancar la configuració",
+                "tools_open": "Obre les eines",
+                "tools_read": "Inspecciona les eines",
+                "tools_close": "Tanca les eines"
+            },
+            "speed": "Velocitat de control",
+            "pause": "Pausa",
+            "resume": "Reprèn",
+            "paused": "En pausa",
+            "preferences": "Control de l’agent",
+            "defaultSpeed": "Velocitat de control per defecte (%)",
+            "presets": "Valors predefinits de velocitat (%)",
+            "preset": "Predefinit {index}",
+            "fallback": "Acció mostrada al distintiu",
+            "preferencesDescription": "Els canvis aquí s’apliquen a les sessions futures. Fes servir el distintiu per ajustar la sessió actual.",
+            "speedSource": {
+                "default": "Valor predeterminat de la configuració",
+                "agent": "Sol·licitada per a aquesta sessió",
+                "human": "Modificada per tu"
             }
+        },
+        "siteCommand": {
+            "title": "Ordre SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Ordre SITE i els seus arguments",
+            "send": "Envia",
+            "sending": "S'està enviant...",
+            "hideCodes": "Amaga els codis de resposta",
+            "copyReply": "Copia la resposta",
+            "copyAll": "Copia-ho tot",
+            "copied": "Copiat",
+            "clear": "Esborra",
+            "empty": "Les ordres que envieu apareixen aquí amb la resposta completa del servidor.",
+            "plainFtpNotice": "Aquesta connexió no està xifrada: les ordres i els seus arguments, contrasenyes incloses, viatgen per la xarxa en text sense xifrar.",
+            "codeNotice": "Les respostes es mostren tal com les ha enviat el servidor. Un codi de resposta no indica si l'ordre ha funcionat: alguns servidors responen 200 a un rebuig, així que llegiu el text.",
+            "privacyNotice": "No es desa res del que escrius o reps aquí, i les ordres que porten una contrasenya queden fora de l'historial.",
+            "chipNotSent": "no enviada",
+            "chipNoReply": "sense resposta",
+            "elapsed": "{ms} ms",
+            "latin1": "decodificat com a Latin-1",
+            "notSent": {
+                "empty": "No hi ha res a enviar: escriu una ordre SITE, per exemple WHO.",
+                "control_character": "No enviada: l'ordre conté un caràcter de control (CR, LF, TAB...).",
+                "too_long": "No enviada: l'ordre supera els 1024 bytes.",
+                "not_ftp": "No enviada: les ordres SITE necessiten una connexió FTP o FTPS.",
+                "not_connected": "No enviada: la sessió no està connectada.",
+                "busy": "No enviada: la sessió està ocupada amb una altra operació. Torna-ho a provar quan acabi.",
+                "reconnect_failed": "No enviada: la sessió s'havia de tornar a connectar primer i no ha pogut."
+            },
+            "unknown": {
+                "timeout": "La resposta no ha arribat a temps.",
+                "connection_lost": "La connexió s'ha perdut abans de la resposta.",
+                "malformed_reply": "La resposta no seguia el format FTP.",
+                "reply_too_large": "La resposta era més gran de 256 KiB i s'ha descartat."
+            },
+            "unknownTail": "Pot ser que el servidor hagi aplicat l'ordre o no. No s'ha tornat a enviar.",
+            "sessionReconnected": "La sessió s'ha restablert.",
+            "sessionNotReconnected": "No s'ha pogut restablir la sessió.",
+            "sessionReset": "El servidor ha enviat més d'una resposta, així que la sessió s'ha restablert perquè l'ordre següent llegeixi la seva.",
+            "sessionStateNote": "Aquesta ordre canvia com tracta el servidor només aquesta connexió: les transferències utilitzen les seves pròpies connexions, i la llista de fitxers pot semblar diferent."
         }
     }
 }

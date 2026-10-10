@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "Notiek AeroCrypt marķiera konvertēšana uz .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt marķieris pārveidots par .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Atbloķē mapi {filename}..."
+            "box_unlock_folder": "[Box] Atbloķē mapi {filename}...",
+            "site_replied": "{command}: serveris atbildēja {code}",
+            "site_unknown": "{command}: pilnīgas atbildes nav, iznākums nav zināms",
+            "site_not_sent": "{command} netika nosūtīta"
         },
         "protocol": {
             "selectProtocol": "Izvēlēties protokolu...",
@@ -3902,7 +3905,9 @@
             "activityLog": "Aktivitāšu žurnāls",
             "detailedCards": "Detalizētas serveru kartes",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Savienojums",
+            "siteCommand": "SITE komanda..."
         },
         "activityPanel": {
             "awaitingCommands": "Gaida komandas...",
@@ -6152,8 +6157,66 @@
                 "settings_open": "Atvērt iestatījumus",
                 "settings_read": "Pārbaudīt iestatījumus",
                 "settings_update": "Atjaunināt iestatījumus",
-                "settings_close": "Aizvērt iestatījumus"
+                "settings_close": "Aizvērt iestatījumus",
+                "tools_open": "Atvērt rīkus",
+                "tools_read": "Apskatīt rīkus",
+                "tools_close": "Aizvērt rīkus"
+            },
+            "speed": "Vadības ātrums",
+            "pause": "Pauzēt",
+            "resume": "Turpināt",
+            "paused": "Pauzēts",
+            "preferences": "Aģenta vadība",
+            "defaultSpeed": "Noklusējuma vadības ātrums (%)",
+            "presets": "Ātruma priekšiestatījumi (%)",
+            "preset": "Priekšiestatījums {index}",
+            "fallback": "Žetonā parādītā darbība",
+            "preferencesDescription": "Šeit veiktās izmaiņas attiecas uz turpmākajām sesijām. Izmantojiet žetonu, lai pielāgotu pašreizējo sesiju.",
+            "speedSource": {
+                "default": "Iestatījumu noklusējums",
+                "agent": "Pieprasīts šai sesijai",
+                "human": "Jūsu mainīts"
             }
+        },
+        "siteCommand": {
+            "title": "SITE komanda",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE komanda un tās argumenti",
+            "send": "Sūtīt",
+            "sending": "Sūta...",
+            "hideCodes": "Slēpt atbildes kodus",
+            "copyReply": "Kopēt atbildi",
+            "copyAll": "Kopēt visu",
+            "copied": "Nokopēts",
+            "clear": "Notīrīt",
+            "empty": "Nosūtītās komandas tiek rādītas šeit kopā ar servera pilno atbildi.",
+            "plainFtpNotice": "Šis savienojums nav šifrēts: komandas un to argumenti, tostarp paroles, tīklā tiek pārsūtīti kā vienkāršs teksts.",
+            "codeNotice": "Atbildes tiek rādītas tādas, kādas tās nosūtīja serveris. Atbildes kods neliecina, vai komanda izdevās: daži serveri uz atteikumu atbild ar 200, tāpēc izlasiet tekstu.",
+            "privacyNotice": "Nekas, kas šeit tiek ierakstīts vai saņemts, netiek saglabāts, un komandas ar paroli netiek iekļautas vēsturē.",
+            "chipNotSent": "nav nosūtīts",
+            "chipNoReply": "nav atbildes",
+            "elapsed": "{ms} ms",
+            "latin1": "atkodēts kā Latin-1",
+            "notSent": {
+                "empty": "Nav ko sūtīt: ievadiet SITE komandu, piemēram, WHO.",
+                "control_character": "Nav nosūtīts: komanda satur vadības rakstzīmi (CR, LF, TAB...).",
+                "too_long": "Nav nosūtīts: komanda ir garāka par 1024 baitiem.",
+                "not_ftp": "Nav nosūtīts: SITE komandām nepieciešams FTP vai FTPS savienojums.",
+                "not_connected": "Nav nosūtīts: sesija nav savienota.",
+                "busy": "Nav nosūtīts: sesija ir aizņemta ar citu darbību. Mēģiniet vēlreiz, kad tā beigsies.",
+                "reconnect_failed": "Nav nosūtīts: sesijai vispirms bija jāpievienojas atkārtoti, taču tas neizdevās."
+            },
+            "unknown": {
+                "timeout": "Atbilde neatnāca laikā.",
+                "connection_lost": "Savienojums tika pārtraukts pirms atbildes.",
+                "malformed_reply": "Atbilde neatbilda FTP formātam.",
+                "reply_too_large": "Atbilde bija lielāka par 256 KiB un tika izmesta."
+            },
+            "unknownTail": "Serveris komandu varēja izpildīt vai arī ne. Tā netika nosūtīta atkārtoti.",
+            "sessionReconnected": "Sesija tika atjaunota.",
+            "sessionNotReconnected": "Sesiju nevarēja atjaunot.",
+            "sessionReset": "Serveris nosūtīja vairāk nekā vienu atbildi, tāpēc sesija tika atjaunota, lai nākamā komanda nolasītu savu atbildi.",
+            "sessionStateNote": "Šī komanda maina tikai to, kā serveris izturas pret šo savienojumu: pārsūtīšanas izmanto savus savienojumus, un failu saraksts var izskatīties citādi."
         }
     }
 }

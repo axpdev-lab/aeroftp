@@ -6123,6 +6123,70 @@ pub async fn provider_checksum(
     .map_err(|e| format!("Failed to get server-side checksum: {}", e))
 }
 
+/// How long a SITE command waits for the session while another operation
+/// holds it (a download keeps it for its whole length) before it is reported
+/// as not sent because the session is busy: waiting behind a long transfer
+/// would look like a hang.
+const SITE_BUSY_WAIT: Duration = Duration::from_secs(5);
+
+/// Send a `SITE` command through the active FTP/FTPS session and return the
+/// server's whole reply (discussion #1109). The same report
+/// `aeroftp-cli site --json` prints; it names the verb, never the arguments.
+/// A command that may have reached the server is never sent again.
+#[tauri::command]
+pub async fn provider_site_command(
+    webview: tauri::Webview,
+    state: State<'_, ProviderState>,
+    args: String,
+    timeout_secs: Option<u64>,
+) -> Result<crate::providers::ftp_site::SiteCommandReport, String> {
+    use crate::providers::ftp_site::{self, NotSentReason, SiteOptions, SiteRun};
+
+    // A SITE command can change accounts on the server: only the main window
+    // sends one, whatever runs in a secondary webview.
+    crate::only_main_window(webview.label(), "provider_site_command")?;
+
+    let opts = timeout_secs
+        .map(SiteOptions::with_reply_timeout_secs)
+        .unwrap_or_default();
+    let Ok(mut provider_lock) = tokio::time::timeout(SITE_BUSY_WAIT, state.provider.lock()).await
+    else {
+        return Ok(SiteRun::not_sent(&args, NotSentReason::Busy).report());
+    };
+    let Some(provider) = provider_lock.as_mut() else {
+        return Ok(SiteRun::not_sent(&args, NotSentReason::NotConnected).report());
+    };
+    Ok(ftp_site::run_site_command(provider.as_mut(), &args, &opts)
+        .await
+        .report())
+}
+
+/// Whether the active session takes `SITE` commands and whether its control
+/// connection is encrypted, for the SITE dialog's clear-text warning. Answers
+/// "not known" rather than wait when another operation holds the session.
+#[tauri::command]
+pub async fn provider_site_session(
+    state: State<'_, ProviderState>,
+) -> Result<crate::providers::ftp_site::SiteSessionStatus, String> {
+    use crate::providers::ftp_site::{site_session_status, SiteSessionStatus};
+
+    let Ok(mut provider_lock) =
+        tokio::time::timeout(Duration::from_secs(1), state.provider.lock()).await
+    else {
+        return Ok(SiteSessionStatus {
+            supported: true,
+            encrypted: None,
+        });
+    };
+    Ok(match provider_lock.as_mut() {
+        Some(provider) => site_session_status(provider.as_mut()),
+        None => SiteSessionStatus {
+            supported: false,
+            encrypted: None,
+        },
+    })
+}
+
 /// Keep connection alive (NOOP equivalent)
 #[tauri::command]
 pub async fn provider_keep_alive(state: State<'_, ProviderState>) -> Result<(), String> {

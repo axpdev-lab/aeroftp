@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "Convertendo o marcador do AeroCrypt para .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcador do AeroCrypt convertido para .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Desbloqueando a pasta {filename}..."
+            "box_unlock_folder": "[Box] Desbloqueando a pasta {filename}...",
+            "site_replied": "{command}: o servidor respondeu {code}",
+            "site_unknown": "{command}: nenhuma resposta completa, resultado desconhecido",
+            "site_not_sent": "{command} não foi enviado"
         },
         "protocol": {
             "selectProtocol": "Selecionar protocolo...",
@@ -3902,7 +3905,9 @@
             "activityLog": "Log de Atividades",
             "detailedCards": "Cartões de servidor detalhados",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Conexão",
+            "siteCommand": "Comando SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Aguardando comandos...",
@@ -6152,8 +6157,66 @@
                 "settings_open": "Abrir configurações",
                 "settings_read": "Inspecionar configurações",
                 "settings_update": "Atualizar configurações",
-                "settings_close": "Fechar configurações"
+                "settings_close": "Fechar configurações",
+                "tools_open": "Abrir ferramentas",
+                "tools_read": "Inspecionar ferramentas",
+                "tools_close": "Fechar ferramentas"
+            },
+            "speed": "Velocidade de controlo",
+            "pause": "Pausar",
+            "resume": "Retomar",
+            "paused": "Em pausa",
+            "preferences": "Controlo do agente",
+            "defaultSpeed": "Velocidade de controlo predefinida (%)",
+            "presets": "Velocidades predefinidas (%)",
+            "preset": "Predefinição {index}",
+            "fallback": "Ação apresentada no distintivo",
+            "preferencesDescription": "As alterações aqui aplicam-se a sessões futuras. Use o distintivo para ajustar a sessão atual.",
+            "speedSource": {
+                "default": "Predefinição das definições",
+                "agent": "Solicitada para esta sessão",
+                "human": "Alterada por si"
             }
+        },
+        "siteCommand": {
+            "title": "Comando SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Comando SITE e seus argumentos",
+            "send": "Enviar",
+            "sending": "Enviando...",
+            "hideCodes": "Ocultar códigos de resposta",
+            "copyReply": "Copiar resposta",
+            "copyAll": "Copiar tudo",
+            "copied": "Copiado",
+            "clear": "Limpar",
+            "empty": "Os comandos enviados aparecem aqui com a resposta completa do servidor.",
+            "plainFtpNotice": "Esta conexão não é criptografada: os comandos e seus argumentos, incluindo senhas, trafegam pela rede em texto simples.",
+            "codeNotice": "As respostas são exibidas como o servidor as enviou. Um código de resposta não indica se o comando funcionou: alguns servidores respondem 200 a uma recusa, portanto leia o texto.",
+            "privacyNotice": "Nada do que é escrito ou recebido aqui é guardado, e os comandos que contêm uma palavra-passe ficam fora do histórico.",
+            "chipNotSent": "não enviado",
+            "chipNoReply": "sem resposta",
+            "elapsed": "{ms} ms",
+            "latin1": "descodificado como Latin-1",
+            "notSent": {
+                "empty": "Nada para enviar: escreva um comando SITE, por exemplo WHO.",
+                "control_character": "Não enviado: o comando contém um caráter de controlo (CR, LF, TAB...).",
+                "too_long": "Não enviado: o comando tem mais de 1024 bytes.",
+                "not_ftp": "Não enviado: os comandos SITE exigem uma ligação FTP ou FTPS.",
+                "not_connected": "Não enviado: a sessão não está ligada.",
+                "busy": "Não enviado: a sessão está ocupada com outra operação. Tente novamente quando terminar.",
+                "reconnect_failed": "Não enviado: a sessão teve de voltar a ligar-se primeiro e não conseguiu."
+            },
+            "unknown": {
+                "timeout": "A resposta não chegou a tempo.",
+                "connection_lost": "A conexão foi perdida antes da resposta.",
+                "malformed_reply": "A resposta não seguia o formato FTP.",
+                "reply_too_large": "A resposta era maior que 256 KiB e foi descartada."
+            },
+            "unknownTail": "O servidor pode ter aplicado o comando ou não. Ele não foi enviado novamente.",
+            "sessionReconnected": "A sessão foi restabelecida.",
+            "sessionNotReconnected": "Não foi possível restabelecer a sessão.",
+            "sessionReset": "O servidor enviou mais de uma resposta, então a sessão foi restabelecida para que o próximo comando leia a sua própria.",
+            "sessionStateNote": "Este comando altera apenas como o servidor trata esta conexão: as transferências usam suas próprias conexões e a lista de arquivos pode parecer diferente."
         }
     }
 }

@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "Inabadilisha alama ya AeroCrypt kuwa .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Alama ya AeroCrypt imebadilishwa kuwa .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Inafungua kufuli ya folda {filename}..."
+            "box_unlock_folder": "[Box] Inafungua kufuli ya folda {filename}...",
+            "site_replied": "{command}: seva ilijibu {code}",
+            "site_unknown": "{command}: hakuna jibu kamili, matokeo hayajulikani",
+            "site_not_sent": "{command} haikutumwa"
         },
         "protocol": {
             "selectProtocol": "Chagua itifaki...",
@@ -3902,7 +3905,9 @@
             "activityLog": "Kumbukumbu ya Shughuli",
             "detailedCards": "Kadi za seva za kina",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Muunganisho",
+            "siteCommand": "Amri ya SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Inasubiri amri...",
@@ -6152,8 +6157,66 @@
                 "settings_open": "Fungua mipangilio",
                 "settings_read": "Kagua mipangilio",
                 "settings_update": "Sasisha mipangilio",
-                "settings_close": "Funga mipangilio"
+                "settings_close": "Funga mipangilio",
+                "tools_open": "Fungua zana",
+                "tools_read": "Kagua zana",
+                "tools_close": "Funga zana"
+            },
+            "speed": "Kasi ya udhibiti",
+            "pause": "Sitisha",
+            "resume": "Endelea",
+            "paused": "Imesitishwa",
+            "preferences": "Udhibiti wa wakala",
+            "defaultSpeed": "Kasi chaguomsingi ya udhibiti (%)",
+            "presets": "Mipangilio ya awali ya kasi (%)",
+            "preset": "Mpangilio wa awali {index}",
+            "fallback": "Kitendo kinachoonyeshwa kwenye beji",
+            "preferencesDescription": "Mabadiliko hapa yanatumika kwa vipindi vijavyo. Tumia beji kurekebisha kipindi cha sasa.",
+            "speedSource": {
+                "default": "Chaguo-msingi la mipangilio",
+                "agent": "Imeombwa kwa kipindi hiki",
+                "human": "Imebadilishwa na wewe"
             }
+        },
+        "siteCommand": {
+            "title": "Amri ya SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Amri ya SITE na hoja zake",
+            "send": "Tuma",
+            "sending": "Inatuma...",
+            "hideCodes": "Ficha misimbo ya majibu",
+            "copyReply": "Nakili jibu",
+            "copyAll": "Nakili yote",
+            "copied": "Imenakiliwa",
+            "clear": "Futa",
+            "empty": "Amri unazotuma huonekana hapa pamoja na jibu kamili la seva.",
+            "plainFtpNotice": "Muunganisho huu haujasimbwa kwa njia fiche: amri na hoja zake, ikiwa ni pamoja na nenosiri, husafiri kwenye mtandao kama maandishi wazi.",
+            "codeNotice": "Majibu huonyeshwa kama seva ilivyoyatuma. Msimbo wa jibu hauonyeshi kama amri ilifanya kazi: baadhi ya seva hujibu 200 kwa kukataliwa, kwa hivyo soma maandishi.",
+            "privacyNotice": "Hakuna kinachoandikwa au kupokelewa hapa kinachohifadhiwa, na amri zenye nenosiri hazijumuishwi kwenye historia.",
+            "chipNotSent": "haikutumwa",
+            "chipNoReply": "hakuna jibu",
+            "elapsed": "{ms} ms",
+            "latin1": "imesimbuliwa kama Latin-1",
+            "notSent": {
+                "empty": "Hakuna cha kutuma: andika amri ya SITE, kwa mfano WHO.",
+                "control_character": "Haikutumwa: amri ina herufi ya udhibiti (CR, LF, TAB...).",
+                "too_long": "Haikutumwa: amri ni ndefu kuliko baiti 1024.",
+                "not_ftp": "Haikutumwa: amri za SITE zinahitaji muunganisho wa FTP au FTPS.",
+                "not_connected": "Haikutumwa: kikao hakijaunganishwa.",
+                "busy": "Haikutumwa: kikao kina shughuli nyingine. Jaribu tena itakapoisha.",
+                "reconnect_failed": "Haikutumwa: kikao kilihitaji kuunganishwa upya kwanza, lakini hakikufaulu."
+            },
+            "unknown": {
+                "timeout": "Jibu halikufika kwa wakati.",
+                "connection_lost": "Muunganisho ulipotea kabla ya jibu.",
+                "malformed_reply": "Jibu halikufuata muundo wa FTP.",
+                "reply_too_large": "Jibu lilikuwa kubwa kuliko 256 KiB na likatupwa."
+            },
+            "unknownTail": "Seva inaweza kuwa imetekeleza amri au la. Haikutumwa tena.",
+            "sessionReconnected": "Kikao kimeanzishwa upya.",
+            "sessionNotReconnected": "Kikao hakikuweza kuanzishwa upya.",
+            "sessionReset": "Seva ilituma jibu zaidi ya moja, kwa hivyo kikao kimeanzishwa upya ili amri inayofuata isome jibu lake yenyewe.",
+            "sessionStateNote": "Amri hii hubadilisha tu jinsi seva inavyoshughulikia muunganisho huu: uhamishaji hutumia miunganisho yake yenyewe, na orodha ya faili inaweza kuonekana tofauti."
         }
     }
 }

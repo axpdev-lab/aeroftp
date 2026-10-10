@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "Wrthi'n trosi marc AeroCrypt yn .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marciwr AeroCrypt wedi'i drosi i .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Datgloi'r ffolder {filename}..."
+            "box_unlock_folder": "[Box] Datgloi'r ffolder {filename}...",
+            "site_replied": "{command}: atebodd y gweinydd {code}",
+            "site_unknown": "{command}: dim ateb cyflawn, canlyniad anhysbys",
+            "site_not_sent": "Ni anfonwyd {command}"
         },
         "protocol": {
             "selectProtocol": "Dewis protocol...",
@@ -3902,7 +3905,9 @@
             "activityLog": "Log Gweithgaredd",
             "detailedCards": "Cardiau gweinydd manwl",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Cysylltiad",
+            "siteCommand": "Gorchymyn SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Yn aros am orchmynion...",
@@ -6171,8 +6176,66 @@
                 "settings_open": "Agor gosodiadau",
                 "settings_read": "Archwilio gosodiadau",
                 "settings_update": "Diweddaru gosodiadau",
-                "settings_close": "Cau gosodiadau"
+                "settings_close": "Cau gosodiadau",
+                "tools_open": "Agor offer",
+                "tools_read": "Archwilio offer",
+                "tools_close": "Cau offer"
+            },
+            "speed": "Cyflymder rheoli",
+            "pause": "Oedi",
+            "resume": "Ailddechrau",
+            "paused": "Wedi oedi",
+            "preferences": "Rheolaeth asiant",
+            "defaultSpeed": "Cyflymder rheoli diofyn (%)",
+            "presets": "Rhagosodiadau cyflymder (%)",
+            "preset": "Rhagosodiad {index}",
+            "fallback": "Gweithred a ddangosir yn y bathodyn",
+            "preferencesDescription": "Mae newidiadau yma yn berthnasol i sesiynau yn y dyfodol. Defnyddiwch y bathodyn i addasu’r sesiwn gyfredol.",
+            "speedSource": {
+                "default": "Rhagosodiad y gosodiadau",
+                "agent": "Gofynnwyd amdani ar gyfer y sesiwn hon",
+                "human": "Wedi’i newid gennych chi"
             }
+        },
+        "siteCommand": {
+            "title": "Gorchymyn SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Gorchymyn SITE a'i ddadleuon",
+            "send": "Anfon",
+            "sending": "Yn anfon...",
+            "hideCodes": "Cuddio codau ymateb",
+            "copyReply": "Copïo'r ymateb",
+            "copyAll": "Copïo popeth",
+            "copied": "Wedi copïo",
+            "clear": "Clirio",
+            "empty": "Mae'r gorchmynion rydych yn eu hanfon yn ymddangos yma gydag ymateb llawn y gweinydd.",
+            "plainFtpNotice": "Nid yw'r cysylltiad hwn wedi'i amgryptio: mae gorchmynion a'u dadleuon, gan gynnwys cyfrineiriau, yn croesi'r rhwydwaith fel testun clir.",
+            "codeNotice": "Dangosir yr ymatebion fel yr anfonodd y gweinydd nhw. Nid yw cod ymateb yn dweud a weithiodd y gorchymyn: mae rhai gweinyddion yn ateb 200 i wrthodiad, felly darllenwch y testun.",
+            "privacyNotice": "Ni chaiff dim a deipiwch nac a dderbyniwch yma ei gadw, ac mae gorchmynion sy'n cynnwys cyfrinair yn cael eu gadael allan o'r hanes.",
+            "chipNotSent": "heb anfon",
+            "chipNoReply": "dim ateb",
+            "elapsed": "{ms} ms",
+            "latin1": "wedi'i ddadgodio fel Latin-1",
+            "notSent": {
+                "empty": "Dim byd i'w anfon: teipiwch orchymyn SITE, er enghraifft WHO.",
+                "control_character": "Heb anfon: mae'r gorchymyn yn cynnwys nod rheoli (CR, LF, TAB...).",
+                "too_long": "Heb anfon: mae'r gorchymyn yn hirach na 1024 beit.",
+                "not_ftp": "Heb anfon: mae gorchmynion SITE angen cysylltiad FTP neu FTPS.",
+                "not_connected": "Heb anfon: nid yw'r sesiwn wedi'i chysylltu.",
+                "busy": "Heb anfon: mae'r sesiwn yn brysur gyda gweithrediad arall. Rhowch gynnig arall arni pan fydd wedi gorffen.",
+                "reconnect_failed": "Heb anfon: roedd yn rhaid i'r sesiwn ailgysylltu yn gyntaf, ac nid oedd yn gallu."
+            },
+            "unknown": {
+                "timeout": "Ni chyrhaeddodd yr ateb mewn pryd.",
+                "connection_lost": "Collwyd y cysylltiad cyn yr ateb.",
+                "malformed_reply": "Ni ddilynodd yr ateb fformat FTP.",
+                "reply_too_large": "Roedd yr ateb yn fwy na 256 KiB ac fe'i taflwyd."
+            },
+            "unknownTail": "Efallai bod y gweinydd wedi cymhwyso'r gorchymyn, neu efallai ddim. Ni chafodd ei anfon eto.",
+            "sessionReconnected": "Ail-sefydlwyd y sesiwn.",
+            "sessionNotReconnected": "Nid oedd modd ail-sefydlu'r sesiwn.",
+            "sessionReset": "Anfonodd y gweinydd fwy nag un ateb, felly ail-sefydlwyd y sesiwn fel bod y gorchymyn nesaf yn darllen ei ateb ei hun.",
+            "sessionStateNote": "Mae'r gorchymyn hwn yn newid sut mae'r gweinydd yn trin y cysylltiad hwn yn unig: mae trosglwyddiadau'n defnyddio eu cysylltiadau eu hunain, ac efallai y bydd y rhestr ffeiliau'n edrych yn wahanol."
         }
     }
 }

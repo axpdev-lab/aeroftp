@@ -397,7 +397,17 @@ fn valid_tools_view(tools: &ToolsView) -> bool {
 }
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct ControlView {
+    speed_percent: u64,
+    speed_source: String,
+    paused: bool,
+    phase: String,
+}
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct Snapshot {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    control: Option<ControlView>,
     schema_version: u8,
     state_revision: u64,
     version: String,
@@ -452,6 +462,8 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
                 "action_failed",
                 "not_connected",
                 "pending_human",
+                "paused",
+                "speed_locked",
             ]
             .contains(&e)
         })
@@ -469,6 +481,13 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
         {
             return Err("gui_invalid_reply".into());
         }
+    }
+    if s.control.as_ref().is_some_and(|c| {
+        !(10..=400).contains(&c.speed_percent)
+            || !["default", "agent", "human"].contains(&c.speed_source.as_str())
+            || !["ready", "move", "press", "running", "dwell"].contains(&c.phase.as_str())
+    }) {
+        return Err("gui_invalid_reply".into());
     }
     if let Some(settings) = &s.settings {
         if !valid_settings_view(settings) {
@@ -491,6 +510,7 @@ fn parse_reply(payload: Value, unlocked: bool) -> Result<Reply, String> {
             || s.panels.local2.is_some()
             || s.settings.is_some()
             || s.tools.is_some()
+            || s.control.is_some()
             || s.queue.active != 0
             || s.queue.pending != 0
             || s.queue.failed != 0)
@@ -566,7 +586,14 @@ pub(crate) async fn request_intent(
     timeout_ms: u64,
     if_revision: Option<u64>,
     session_id: Option<&str>,
+    speed_percent: Option<u64>,
 ) -> Result<Value, String> {
+    if speed_percent.is_some_and(|v| {
+        !(10..=400).contains(&v)
+            || ["state", "wait", "stop", "settings_read", "tools_read"].contains(&name)
+    }) {
+        return Err("invalid_args".into());
+    }
     if !INTENTS.contains(&name) {
         return Err("unsupported_intent".into());
     }
@@ -625,6 +652,9 @@ pub(crate) async fn request_intent(
         .as_millis() as u64;
     let mut request =
         json!({ "name": name, "args": args, "timeout_ms": timeout_ms, "pace": "watch" });
+    if let Some(speed) = speed_percent {
+        request["speed_percent"] = json!(speed);
+    }
     if let Some(revision) = if_revision {
         request["if_revision"] = json!(revision);
     }
@@ -978,6 +1008,38 @@ mod tests {
             let mut bad = unlocked_reply_with_settings();
             bad["snapshot"]["settings"]["ai"]["advanced"][key] = value;
             assert!(parse_reply(bad, true).is_err(), "{key}");
+        }
+    }
+    #[test]
+    fn gui_presentation_projection_is_closed_bounded_and_redacted_on_lock() {
+        let control = json!({"speed_percent": 150, "speed_source": "human", "paused": true, "phase": "ready"});
+        let mut reply = unlocked_reply_with_settings();
+        reply["snapshot"]["control"] = control.clone();
+        assert!(parse_reply(reply.clone(), true).is_ok());
+        for (key, value) in [
+            ("speed_percent", json!(401)),
+            ("speed_percent", json!(9)),
+            ("speed_percent", json!(100.5)),
+            ("speed_source", json!("SECRET")),
+            ("phase", json!("SECRET")),
+            ("paused", json!("true")),
+            ("password", json!("SECRET")),
+        ] {
+            let mut bad = reply.clone();
+            bad["snapshot"]["control"][key] = value;
+            assert!(parse_reply(bad, true).is_err(), "{key}");
+        }
+        let mut locked = locked_reply();
+        locked["snapshot"]["control"] = control;
+        assert_eq!(parse_reply(locked, false).unwrap_err(), "gui_locked_reply");
+        for code in ["paused", "speed_locked"] {
+            let mut error = reply.clone();
+            error["ok"] = json!(false);
+            error["error"] = json!(code);
+            assert_eq!(
+                parse_reply(error, true).unwrap().error.as_deref(),
+                Some(code)
+            );
         }
     }
     #[test]

@@ -51,6 +51,9 @@ interface TitlebarProps {
     setTheme: (t: Theme) => void;
     isConnected: boolean;
     onDisconnect: () => void;
+    /// True on a connected FTP/FTPS session: enables Connection > SITE Command.
+    canSendSiteCommand: boolean;
+    onShowSiteCommand: () => void;
     onShowConnectionScreen: () => void;
     showConnectionScreen: boolean;
     onOpenSettings: () => void;
@@ -189,7 +192,7 @@ const TitlebarMenu: React.FC<TitlebarMenuProps> = ({ label, items, isOpen, onOpe
 export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
     const {
         appTheme, theme, setTheme,
-        isConnected, onDisconnect, onShowConnectionScreen, showConnectionScreen,
+        isConnected, onDisconnect, canSendSiteCommand, onShowSiteCommand, onShowConnectionScreen, showConnectionScreen,
         onOpenSettings, onShowExportImport, onShowSupport, onShowCyberTools, onShowVault,
         onShowAbout, onShowMcp, onShowShortcuts, onShowDependencies, onShowProviders,
         onShowMountManager, onUsersChanged,
@@ -277,6 +280,12 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
         { label: t('menu.delete'), shortcut: 'Del', onClick: onDelete, disabled: !hasFilePanel || !hasSelection },
         { separator: true },
         { label: t('menu.selectAll'), shortcut: 'Ctrl+A', onClick: onSelectAll, disabled: !hasFilePanel },
+    ];
+
+    const connectionMenu: MenuEntry[] = [
+        { label: t('menu.siteCommand'), onClick: onShowSiteCommand, disabled: !canSendSiteCommand },
+        { separator: true },
+        { label: t('common.disconnect'), onClick: onDisconnect, disabled: !isConnected },
     ];
 
     const viewMenu: MenuEntry[] = [
@@ -391,6 +400,14 @@ export const CustomTitlebar: React.FC<TitlebarProps> = (props) => {
                     items={viewMenu}
                     isOpen={openMenu === 'view'}
                     onOpen={() => setOpenMenu('view')}
+                    onClose={closeMenu}
+                    anyMenuOpen={anyMenuOpen}
+                />
+                <TitlebarMenu
+                    label={t('menu.connection')}
+                    items={connectionMenu}
+                    isOpen={openMenu === 'connection'}
+                    onOpen={() => setOpenMenu('connection')}
                     onClose={closeMenu}
                     anyMenuOpen={anyMenuOpen}
                 />

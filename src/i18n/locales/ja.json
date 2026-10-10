@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt マーカーを .aerocrypt.tsv に変換しています…",
             "aerocrypt_marker_migrated": "AeroCrypt マーカーを .aerocrypt.tsv に変換しました",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] フォルダ {filename} のロックを解除しています..."
+            "box_unlock_folder": "[Box] フォルダ {filename} のロックを解除しています...",
+            "site_replied": "{command}: サーバーの応答は {code} でした",
+            "site_unknown": "{command}: 完全な応答がなく、結果は不明です",
+            "site_not_sent": "{command} は送信されませんでした"
         },
         "protocol": {
             "selectProtocol": "プロトコルを選択...",
@@ -3867,7 +3870,9 @@
             "activityLog": "アクティビティログ",
             "detailedCards": "詳細なサーバーカード",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "接続",
+            "siteCommand": "SITE コマンド..."
         },
         "activityPanel": {
             "awaitingCommands": "コマンド待機中...",
@@ -6152,8 +6157,66 @@
                 "settings_open": "設定を開く",
                 "settings_read": "設定を確認",
                 "settings_update": "設定を更新",
-                "settings_close": "設定を閉じる"
+                "settings_close": "設定を閉じる",
+                "tools_open": "ツールを開く",
+                "tools_read": "ツールを確認",
+                "tools_close": "ツールを閉じる"
+            },
+            "speed": "操作速度",
+            "pause": "一時停止",
+            "resume": "再開",
+            "paused": "一時停止中",
+            "preferences": "エージェント操作",
+            "defaultSpeed": "既定の操作速度 (%)",
+            "presets": "速度プリセット (%)",
+            "preset": "プリセット {index}",
+            "fallback": "バッジに表示される操作",
+            "preferencesDescription": "ここでの変更は今後のセッションに適用されます。現在のセッションはバッジから調整してください。",
+            "speedSource": {
+                "default": "設定の既定値",
+                "agent": "このセッション用に要求",
+                "human": "あなたが変更"
             }
+        },
+        "siteCommand": {
+            "title": "SITEコマンド",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITEコマンドとその引数",
+            "send": "送信",
+            "sending": "送信中...",
+            "hideCodes": "応答コードを非表示",
+            "copyReply": "応答をコピー",
+            "copyAll": "すべてコピー",
+            "copied": "コピーしました",
+            "clear": "クリア",
+            "empty": "送信したコマンドは、サーバーの完全な応答とともにここに表示されます。",
+            "plainFtpNotice": "この接続は暗号化されていません。パスワードを含め、コマンドとその引数は平文のままネットワークを流れます。",
+            "codeNotice": "応答はサーバーが送信したとおりに表示されます。応答コードはコマンドが成功したかどうかを示しません。拒否に対して200を返すサーバーもあるため、テキストを確認してください。",
+            "privacyNotice": "ここで入力または受信した内容は一切保存されず、パスワードを含むコマンドは履歴に残りません。",
+            "chipNotSent": "未送信",
+            "chipNoReply": "応答なし",
+            "elapsed": "{ms} ミリ秒",
+            "latin1": "Latin-1 としてデコード",
+            "notSent": {
+                "empty": "送信する内容がありません。SITE コマンドを入力してください（例: WHO）。",
+                "control_character": "送信されませんでした: コマンドに制御文字（CR、LF、TAB...）が含まれています。",
+                "too_long": "送信されませんでした: コマンドが 1024 バイトを超えています。",
+                "not_ftp": "送信されませんでした: SITE コマンドには FTP または FTPS 接続が必要です。",
+                "not_connected": "送信されませんでした: セッションが接続されていません。",
+                "busy": "送信されませんでした: セッションが別の処理で使用中です。完了してから再試行してください。",
+                "reconnect_failed": "送信されませんでした: セッションを先に再接続する必要がありましたが、できませんでした。"
+            },
+            "unknown": {
+                "timeout": "応答が時間内に届きませんでした。",
+                "connection_lost": "応答を受信する前に接続が切断されました。",
+                "malformed_reply": "応答が FTP 形式に従っていませんでした。",
+                "reply_too_large": "応答が 256 KiB を超えていたため破棄されました。"
+            },
+            "unknownTail": "サーバーがコマンドを適用した可能性もあれば、していない可能性もあります。再送信はされていません。",
+            "sessionReconnected": "セッションを再確立しました。",
+            "sessionNotReconnected": "セッションを再確立できませんでした。",
+            "sessionReset": "サーバーが複数の応答を返したため、次のコマンドが自身の応答を読み取れるようセッションを再確立しました。",
+            "sessionStateNote": "このコマンドが変更するのは、サーバーがこの接続を扱う方法のみです。転送は独自の接続を使用し、ファイル一覧の表示が変わる場合があります。"
         }
     }
 }

@@ -47,7 +47,7 @@ async function main() {
         if (!request || typeof request !== 'object' || Array.isArray(request) || typeof request.name !== 'string') {
             throw Error('DEV request requires name, not intent. Use --help');
         }
-        const allowed = ['name', 'args', 'timeout_ms', 'if_revision'];
+        const allowed = ['name', 'args', 'timeout_ms', 'if_revision', 'speed_percent'];
         const unknown = Object.keys(request).find(key => !allowed.includes(key));
         if (unknown) throw Error(`Unknown DEV request field: ${unknown}; expected ${allowed.join(', ')}`);
     }

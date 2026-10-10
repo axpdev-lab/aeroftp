@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt-Markierung wird in .aerocrypt.tsv konvertiert…",
             "aerocrypt_marker_migrated": "AeroCrypt-Marker in .aerocrypt.tsv konvertiert",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Ordner {filename} wird entsperrt..."
+            "box_unlock_folder": "[Box] Ordner {filename} wird entsperrt...",
+            "site_replied": "{command}: Der Server antwortete {code}",
+            "site_unknown": "{command}: keine vollständige Antwort, Ergebnis unbekannt",
+            "site_not_sent": "{command} wurde nicht gesendet"
         },
         "protocol": {
             "selectProtocol": "Protokoll auswählen...",
@@ -3902,7 +3905,9 @@
             "activityLog": "Aktivitätsprotokoll",
             "detailedCards": "Detaillierte Serverkarten",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Verbindung",
+            "siteCommand": "SITE-Befehl..."
         },
         "activityPanel": {
             "awaitingCommands": "Warte auf Befehle...",
@@ -6152,8 +6157,66 @@
                 "settings_open": "Einstellungen öffnen",
                 "settings_read": "Einstellungen prüfen",
                 "settings_update": "Einstellungen aktualisieren",
-                "settings_close": "Einstellungen schließen"
+                "settings_close": "Einstellungen schließen",
+                "tools_open": "Werkzeuge öffnen",
+                "tools_read": "Werkzeuge prüfen",
+                "tools_close": "Werkzeuge schließen"
+            },
+            "speed": "Steuerungsgeschwindigkeit",
+            "pause": "Pausieren",
+            "resume": "Fortsetzen",
+            "paused": "Pausiert",
+            "preferences": "Agentensteuerung",
+            "defaultSpeed": "Standard-Steuerungsgeschwindigkeit (%)",
+            "presets": "Geschwindigkeitsvorgaben (%)",
+            "preset": "Vorgabe {index}",
+            "fallback": "Im Badge angezeigte Aktion",
+            "preferencesDescription": "Änderungen hier gelten für zukünftige Sitzungen. Über das Badge können Sie die aktuelle Sitzung anpassen.",
+            "speedSource": {
+                "default": "Standard aus den Einstellungen",
+                "agent": "Für diese Sitzung angefordert",
+                "human": "Von Ihnen geändert"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-Befehl",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-Befehl und seine Argumente",
+            "send": "Senden",
+            "sending": "Wird gesendet...",
+            "hideCodes": "Antwortcodes ausblenden",
+            "copyReply": "Antwort kopieren",
+            "copyAll": "Alles kopieren",
+            "copied": "Kopiert",
+            "clear": "Leeren",
+            "empty": "Gesendete Befehle erscheinen hier mit der vollständigen Antwort des Servers.",
+            "plainFtpNotice": "Diese Verbindung ist nicht verschlüsselt: Befehle und ihre Argumente, einschließlich Passwörtern, werden im Klartext über das Netzwerk übertragen.",
+            "codeNotice": "Antworten werden so angezeigt, wie der Server sie gesendet hat. Ein Antwortcode sagt nicht, ob der Befehl funktioniert hat: Manche Server antworten auf eine Ablehnung mit 200, lesen Sie daher den Text.",
+            "privacyNotice": "Nichts, was hier eingegeben oder empfangen wird, wird gespeichert, und Befehle mit einem Passwort werden nicht in den Verlauf aufgenommen.",
+            "chipNotSent": "nicht gesendet",
+            "chipNoReply": "keine Antwort",
+            "elapsed": "{ms} ms",
+            "latin1": "als Latin-1 dekodiert",
+            "notSent": {
+                "empty": "Nichts zu senden: Geben Sie einen SITE-Befehl ein, zum Beispiel WHO.",
+                "control_character": "Nicht gesendet: Der Befehl enthält ein Steuerzeichen (CR, LF, TAB...).",
+                "too_long": "Nicht gesendet: Der Befehl ist länger als 1024 Bytes.",
+                "not_ftp": "Nicht gesendet: SITE-Befehle benötigen eine FTP- oder FTPS-Verbindung.",
+                "not_connected": "Nicht gesendet: Die Sitzung ist nicht verbunden.",
+                "busy": "Nicht gesendet: Die Sitzung ist mit einem anderen Vorgang beschäftigt. Versuchen Sie es erneut, wenn dieser beendet ist.",
+                "reconnect_failed": "Nicht gesendet: Die Sitzung musste zuerst die Verbindung neu aufbauen, was nicht gelang."
+            },
+            "unknown": {
+                "timeout": "Die Antwort ist nicht rechtzeitig eingetroffen.",
+                "connection_lost": "Die Verbindung ging vor der Antwort verloren.",
+                "malformed_reply": "Die Antwort entsprach nicht dem FTP-Format.",
+                "reply_too_large": "Die Antwort war größer als 256 KiB und wurde verworfen."
+            },
+            "unknownTail": "Der Server hat den Befehl möglicherweise angewendet, möglicherweise nicht. Er wurde nicht erneut gesendet.",
+            "sessionReconnected": "Die Sitzung wurde wiederhergestellt.",
+            "sessionNotReconnected": "Die Sitzung konnte nicht wiederhergestellt werden.",
+            "sessionReset": "Der Server hat mehr als eine Antwort gesendet, daher wurde die Sitzung wiederhergestellt, damit der nächste Befehl seine eigene Antwort liest.",
+            "sessionStateNote": "Dieser Befehl ändert nur, wie der Server diese Verbindung behandelt: Übertragungen verwenden eigene Verbindungen, und die Dateiliste kann anders aussehen."
         }
     }
 }

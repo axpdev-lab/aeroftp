@@ -1725,7 +1725,10 @@
             "aerocrypt_marker_migrate": "Mengonversi penanda AeroCrypt ke .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Penanda AeroCrypt dikonversi ke .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Membuka kunci folder {filename}..."
+            "box_unlock_folder": "[Box] Membuka kunci folder {filename}...",
+            "site_replied": "{command}: server membalas {code}",
+            "site_unknown": "{command}: tidak ada balasan lengkap, hasil tidak diketahui",
+            "site_not_sent": "{command} tidak dikirim"
         },
         "protocol": {
             "selectProtocol": "Pilih protokol...",
@@ -3902,7 +3905,9 @@
             "activityLog": "Log Aktivitas",
             "detailedCards": "Kartu server terperinci",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Koneksi",
+            "siteCommand": "Perintah SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Menunggu perintah...",
@@ -6152,8 +6157,66 @@
                 "settings_open": "Buka pengaturan",
                 "settings_read": "Periksa pengaturan",
                 "settings_update": "Perbarui pengaturan",
-                "settings_close": "Tutup pengaturan"
+                "settings_close": "Tutup pengaturan",
+                "tools_open": "Buka alat",
+                "tools_read": "Periksa alat",
+                "tools_close": "Tutup alat"
+            },
+            "speed": "Kecepatan kontrol",
+            "pause": "Jeda",
+            "resume": "Lanjutkan",
+            "paused": "Dijeda",
+            "preferences": "Kontrol agen",
+            "defaultSpeed": "Kecepatan kontrol bawaan (%)",
+            "presets": "Preset kecepatan (%)",
+            "preset": "Preset {index}",
+            "fallback": "Tindakan yang ditampilkan di lencana",
+            "preferencesDescription": "Perubahan di sini berlaku untuk sesi mendatang. Gunakan lencana untuk menyesuaikan sesi saat ini.",
+            "speedSource": {
+                "default": "Default dari pengaturan",
+                "agent": "Diminta untuk sesi ini",
+                "human": "Diubah oleh Anda"
             }
+        },
+        "siteCommand": {
+            "title": "Perintah SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Perintah SITE dan argumennya",
+            "send": "Kirim",
+            "sending": "Mengirim...",
+            "hideCodes": "Sembunyikan kode balasan",
+            "copyReply": "Salin balasan",
+            "copyAll": "Salin semua",
+            "copied": "Disalin",
+            "clear": "Bersihkan",
+            "empty": "Perintah yang Anda kirim muncul di sini beserta balasan lengkap dari server.",
+            "plainFtpNotice": "Koneksi ini tidak terenkripsi: perintah dan argumennya, termasuk kata sandi, melintasi jaringan sebagai teks biasa.",
+            "codeNotice": "Balasan ditampilkan persis seperti yang dikirim server. Kode balasan tidak menunjukkan apakah perintah berhasil: beberapa server membalas 200 untuk penolakan, jadi bacalah teksnya.",
+            "privacyNotice": "Tidak ada yang diketik atau diterima di sini yang disimpan, dan perintah yang membawa kata sandi tidak dimasukkan ke riwayat.",
+            "chipNotSent": "tidak terkirim",
+            "chipNoReply": "tanpa balasan",
+            "elapsed": "{ms} ms",
+            "latin1": "didekode sebagai Latin-1",
+            "notSent": {
+                "empty": "Tidak ada yang dikirim: ketik perintah SITE, misalnya WHO.",
+                "control_character": "Tidak terkirim: perintah berisi karakter kontrol (CR, LF, TAB...).",
+                "too_long": "Tidak terkirim: perintah lebih panjang dari 1024 byte.",
+                "not_ftp": "Tidak terkirim: perintah SITE memerlukan koneksi FTP atau FTPS.",
+                "not_connected": "Tidak terkirim: sesi tidak terhubung.",
+                "busy": "Tidak terkirim: sesi sedang sibuk dengan operasi lain. Coba lagi setelah selesai.",
+                "reconnect_failed": "Tidak terkirim: sesi harus terhubung ulang terlebih dahulu, tetapi gagal."
+            },
+            "unknown": {
+                "timeout": "Balasan tidak tiba tepat waktu.",
+                "connection_lost": "Koneksi terputus sebelum balasan diterima.",
+                "malformed_reply": "Balasan tidak mengikuti format FTP.",
+                "reply_too_large": "Balasan lebih besar dari 256 KiB dan dibuang."
+            },
+            "unknownTail": "Server mungkin telah menerapkan perintah tersebut, mungkin juga belum. Perintah tidak dikirim ulang.",
+            "sessionReconnected": "Sesi telah dipulihkan.",
+            "sessionNotReconnected": "Sesi tidak dapat dipulihkan.",
+            "sessionReset": "Server mengirim lebih dari satu balasan, sehingga sesi dipulihkan agar perintah berikutnya membaca balasannya sendiri.",
+            "sessionStateNote": "Perintah ini hanya mengubah cara server memperlakukan koneksi ini: transfer menggunakan koneksinya sendiri, dan daftar file mungkin terlihat berbeda."
         }
     }
 }
