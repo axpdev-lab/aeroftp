@@ -6,7 +6,8 @@
  * a byte count (the backend `archive_progress` event): the byte rate between two
  * frames, smoothed with an exponential moving average.
  *
- * The backend throttles those frames to one per ~150 ms OR one per 2 % step, so
+ * The backend paces those frames with `ProgressCadence`
+ * (`src-tauri/src/progress_cadence.rs`): one per ~150 ms OR one per 2 % step, so
  * on a fast operation several frames arrive a few milliseconds apart. A frame
  * closer than {@link MIN_FRAME_GAP_S} to the anchor is too close to measure, and
  * it must NOT become the new anchor: moving the anchor on every frame while

@@ -40,9 +40,10 @@ use std::path::Path;
 /// (wire bytes may be fewer than the file on a real delta hit, so the bar can
 /// under-fill and complete at reconstruction). It is threaded ONLY from the GUI
 /// command path; AeroSync and the CLI pass `None`, so the driver hot path is
-/// unchanged for them (a single `is_none()` check per chunk). The driver
-/// throttles calls, so the boxed closure (which emits the GUI `transfer_event`)
-/// fires at most ~1% of total movement.
+/// unchanged for them (a single `is_none()` check per chunk). The aerorsync
+/// driver paces the calls (`aerorsync::progress::ProgressThrottle`: every
+/// 150 ms or one percent of movement, whichever comes first), so the boxed
+/// closure (which emits the GUI `transfer_event`) never runs per chunk.
 ///
 /// Must stay structurally identical to `aerorsync::progress::ProgressSink`;
 /// pinned by `delta_transport::tests::aerorsync_delta_progress_sink_is_the_crate_progress_sink`.

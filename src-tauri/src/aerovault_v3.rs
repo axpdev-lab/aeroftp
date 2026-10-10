@@ -398,12 +398,37 @@ pub type VaultProgressFn = Box<dyn FnMut(i64, u64, u64) + Send>;
 
 /// Live progress for a long vault op: accumulates the plaintext bytes seen by
 /// `on_chunk` (compression + encryption run on the same chunk stream) and
-/// invokes the callback at most once per integer percent.
+/// invokes the callback when [`ProgressCadence`](crate::progress_cadence::ProgressCadence)
+/// says a frame is due. Once per integer percent alone left a large add silent
+/// for 1 % of its bytes at a time.
 struct VaultProgressEmitter {
     cb: VaultProgressFn,
     total: u64,
     acc: u64,
-    last_pct: i64,
+    cadence: crate::progress_cadence::ProgressCadence,
+}
+
+impl VaultProgressEmitter {
+    fn new(cb: VaultProgressFn, total: u64) -> Self {
+        Self {
+            cb,
+            total,
+            acc: 0,
+            cadence: crate::progress_cadence::ProgressCadence::new(),
+        }
+    }
+
+    fn on_plaintext(&mut self, plaintext: u64) {
+        self.acc = self.acc.saturating_add(plaintext);
+        let done = self.acc.min(self.total);
+        let pct = done
+            .saturating_mul(100)
+            .checked_div(self.total)
+            .unwrap_or(0) as i64;
+        if self.cadence.admit(pct, done >= self.total) {
+            (self.cb)(pct, done, self.total);
+        }
+    }
 }
 
 impl ReportSink {
@@ -417,13 +442,7 @@ impl aerovault::v3::VaultTelemetrySink for ReportSink {
     fn on_chunk(&mut self, is_new: bool, plaintext: u64, compressed: u64, encrypted: u64) {
         self.with(|r| r.on_chunk(is_new, plaintext, compressed, encrypted));
         if let Some(p) = self.progress.as_mut() {
-            p.acc = p.acc.saturating_add(plaintext);
-            let done = p.acc.min(p.total);
-            let pct = done.saturating_mul(100).checked_div(p.total).unwrap_or(0) as i64;
-            if pct != p.last_pct {
-                p.last_pct = pct;
-                (p.cb)(pct, done, p.total);
-            }
+            p.on_plaintext(plaintext);
         }
     }
     fn on_file(&mut self, packed: bool) {
@@ -656,12 +675,7 @@ async fn aerovz_add_files_with_progress(
             }
             vault.set_telemetry_sink(Box::new(ReportSink {
                 report: report_for_task.clone(),
-                progress: progress.map(|cb| VaultProgressEmitter {
-                    cb,
-                    total: total_bytes,
-                    acc: 0,
-                    last_pct: -1,
-                }),
+                progress: progress.map(|cb| VaultProgressEmitter::new(cb, total_bytes)),
             }));
             aerovault::v3::VaultV3::add_files(&mut vault, &sources)?;
             Ok(aerovault::v3::VaultV3::summary(&vault))
@@ -818,25 +832,18 @@ pub async fn aerovz_extract_entry(
 /// no synthetic 0% frame is emitted, so the spinner covers the pre-first-file window
 /// rather than a determinate bar stuck at 0%.
 pub(crate) fn vault_extract_progress_emitter(app: tauri::AppHandle) -> impl FnMut(u64, u64) + Send {
-    let mut last_emit = Instant::now();
-    let mut last_pct: i64 = -1;
+    let mut cadence = crate::progress_cadence::ProgressCadence::new();
     move |done: u64, total: u64| {
         if total < crate::archive_progress::PROGRESS_THRESHOLD_BYTES {
             return;
         }
         let done = done.min(total);
         let pct = done.saturating_mul(100).checked_div(total).unwrap_or(100) as i64;
-        let final_frame = done >= total;
-        if final_frame
-            || last_emit.elapsed().as_millis() >= 150
-            || pct.saturating_sub(last_pct) >= 2
-        {
+        if cadence.admit(pct, done >= total) {
             let _ = app.emit(
                 "vault_progress",
                 serde_json::json!({ "percentage": pct, "transferred": done, "total": total }),
             );
-            last_emit = Instant::now();
-            last_pct = pct;
         }
     }
 }
@@ -1778,12 +1785,7 @@ pub async fn vault_v3_add_files_with_progress(
             // The crate emits scan/pack/chunk/file/cdc + Error-Correction events.
             vault.set_telemetry_sink(Box::new(ReportSink {
                 report: report_for_task.clone(),
-                progress: progress.map(|cb| VaultProgressEmitter {
-                    cb,
-                    total: total_bytes,
-                    acc: 0,
-                    last_pct: -1,
-                }),
+                progress: progress.map(|cb| VaultProgressEmitter::new(cb, total_bytes)),
             }));
             aerovault::v3::VaultV3::add_files(&mut vault, &sources)?;
             Ok(aerovault::v3::VaultV3::summary(&vault))
@@ -2106,6 +2108,41 @@ mod tests {
     // app-side and is exercised here is only the handler-layer glue: path
     // normalization, the compression-profile mapping, the OOM pre-flight helper
     // and the per-vault write lock.
+
+    #[test]
+    fn a_large_add_reports_progress_while_the_percentage_stands_still() {
+        // Adding 7.5 GB moves 1 % every 75 MB: chunks that stay inside the
+        // first percent but arrive more than the cadence interval apart must
+        // still reach the GUI and the CLI bar, or both stand still for as long
+        // as a percent takes.
+        use aerovault::v3::VaultTelemetrySink as _;
+        let frames: Arc<Mutex<Vec<(i64, u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+        let frames_cb = frames.clone();
+        let cb: VaultProgressFn = Box::new(move |pct, done, total| {
+            frames_cb.lock().unwrap().push((pct, done, total));
+        });
+        let mut sink = ReportSink {
+            report: Arc::new(Mutex::new(VaultReport::new("add_files", 3))),
+            progress: Some(VaultProgressEmitter::new(cb, 7_500_000_000)),
+        };
+        let mib = 1024 * 1024;
+        for _ in 0..4 {
+            std::thread::sleep(crate::progress_cadence::MIN_INTERVAL + Duration::from_millis(10));
+            sink.on_chunk(true, mib, mib, mib);
+        }
+        let frames = frames.lock().unwrap().clone();
+        assert_eq!(
+            frames.len(),
+            4,
+            "one frame per chunk past the interval: {frames:?}"
+        );
+        assert!(frames.iter().all(|&(pct, _, _)| pct == 0), "{frames:?}");
+        assert_eq!(
+            frames.last().unwrap().1,
+            4 * mib,
+            "the frame carries the bytes done"
+        );
+    }
 
     #[test]
     fn level_to_profile_maps_known_levels() {

@@ -17,7 +17,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::io::{self, Read};
-use std::time::Instant;
+
+use crate::progress_cadence::ProgressCadence;
 
 /// Operations whose total payload is below this are treated as instant: no event is
 /// emitted and the GUI shows no bar. 10 MiB, locked with the owner (HANDOFF section 3.2).
@@ -72,16 +73,15 @@ pub fn tauri_emitter(app: tauri::AppHandle) -> ProgressEmit {
 ///
 /// `total` is the operation denominator in bytes: the sum of input file sizes for a
 /// compress, the entry's uncompressed size for an extract, or the plaintext size for
-/// a decrypt. Emission is gated on `total >= PROGRESS_THRESHOLD_BYTES`; throttled to
-/// at most one event per ~150 ms or per 2% step; `finish()` forces a terminal 100%
-/// frame so the last frame is never dropped by the throttle.
+/// a decrypt. Emission is gated on `total >= PROGRESS_THRESHOLD_BYTES` and paced by
+/// [`ProgressCadence`] (one event per ~150 ms or per 2% step); `finish()` forces a
+/// terminal 100% frame so the last frame is never dropped by the throttle.
 pub struct ArchiveProgress {
     emit: ProgressEmit,
     phase: &'static str,
     total: u64,
     transferred: u64,
-    last_emit: Instant,
-    last_pct: i64,
+    cadence: ProgressCadence,
     enabled: bool,
     indeterminate: bool,
     finished: bool,
@@ -132,8 +132,7 @@ impl ArchiveProgress {
             phase,
             total,
             transferred: 0,
-            last_emit: Instant::now(),
-            last_pct: -1,
+            cadence: ProgressCadence::new(),
             enabled,
             indeterminate,
             finished: false,
@@ -158,12 +157,8 @@ impl ArchiveProgress {
         }
         self.transferred = self.transferred.saturating_add(n).min(self.total);
         let pct = self.pct();
-        let should =
-            self.last_emit.elapsed().as_millis() >= 150 || pct.saturating_sub(self.last_pct) >= 2;
-        if should {
+        if self.cadence.admit(pct, false) {
             self.emit_frame(pct);
-            self.last_emit = Instant::now();
-            self.last_pct = pct;
         }
     }
 

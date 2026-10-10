@@ -50,6 +50,7 @@ import {
   type PeerActionEvent,
 } from '../../utils/aeroShare';
 import { knockLabelKey, knockReplies } from '../../utils/aeroShareKnock';
+import { nextFrameSpeed, type FrameSpeed } from '../../utils/frameSpeed';
 
 interface IncomingPrompt {
   offer: PeerIncomingOfferEvent;
@@ -627,12 +628,13 @@ function SendFileDialog({
   const [manualAfid, setManualAfid] = useState('');
   const [sending, setSending] = useState(false);
   const [progress, setProgress] = useState<{ percent: number; speed: number } | null>(null);
-  const lastTickRef = useRef<{ t: number; bytes: number } | null>(null);
+  const speedRef = useRef<FrameSpeed | null>(null);
   const fileName = basenameOf(filePath);
 
   // Live send progress: the backend streams `peer://send-status` byte ticks while
   // the (post-accept) blob transfers. Match on the file name (the dialog sends one
-  // file at a time) and derive an instantaneous throughput from successive ticks.
+  // file at a time) and derive the throughput from successive ticks with the same
+  // smoothing as the archive bars (`nextFrameSpeed`).
   useEffect(() => {
     let un: UnlistenFn | undefined;
     let cancelled = false;
@@ -641,11 +643,8 @@ function SendFileDialog({
       (e) => {
         const p = e.payload;
         if (p.name !== fileName) return;
-        const now = Date.now();
-        const last = lastTickRef.current;
-        const speed = last && now > last.t ? ((p.sent - last.bytes) * 1000) / (now - last.t) : 0;
-        lastTickRef.current = { t: now, bytes: p.sent };
-        setProgress({ percent: p.percent, speed });
+        speedRef.current = nextFrameSpeed(speedRef.current, performance.now(), p.sent);
+        setProgress({ percent: p.percent, speed: speedRef.current.bps });
       },
     ).then((u) => {
       if (cancelled) u();
@@ -698,7 +697,7 @@ function SendFileDialog({
     async (recipientAfid: string, friendLabel: string) => {
       if (sending) return;
       setSending(true);
-      lastTickRef.current = null;
+      speedRef.current = null;
       setProgress(null);
       try {
         await peerSendFile({ recipientAfid, filePath });
