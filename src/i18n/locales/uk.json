@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Ітерації",
             "argon2Parallelism": "Паралелізм",
             "argon2OutputLength": "Довжина (байти)",
-            "argon2DefaultsHint": "Типово: другий рекомендований варіант RFC 9106 для обмеженої пам'яті (64 MiB, 3 ітерації, 4 смуги, сіль 16 байтів). Пам'ять до 2 GiB.",
+            "argon2DefaultsHint": "Типово: профіль, який використовують AeroVault і AeroCrypt (128 MiB, 4 ітерації, 4 смуги, 32-байтовий вивід). Сіль вище ваша. Пам'ять до 2 GiB.",
             "argon2Derive": "Вивести",
             "argon2Phc": "Рядок PHC"
         },

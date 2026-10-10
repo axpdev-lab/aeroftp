@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iterácie",
             "argon2Parallelism": "Paralelizmus",
             "argon2OutputLength": "Dĺžka (bajty)",
-            "argon2DefaultsHint": "Predvolené hodnoty: druhá odporúčaná možnosť RFC 9106 pre obmedzenú pamäť (64 MiB, 3 iterácie, 4 dráhy, 16-bajtová soľ). Pamäť až 2 GiB.",
+            "argon2DefaultsHint": "Predvolené hodnoty: profil, ktorý používajú AeroVault a AeroCrypt (128 MiB, 4 iterácie, 4 dráhy, 32-bajtový výstup). Soľ vyššie je vaša. Pamäť až 2 GiB.",
             "argon2Derive": "Odvodiť",
             "argon2Phc": "Reťazec PHC"
         },

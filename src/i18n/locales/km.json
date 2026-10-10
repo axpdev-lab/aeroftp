@@ -4306,7 +4306,7 @@
             "argon2Iterations": "ចំនួនដង",
             "argon2Parallelism": "ភាពស្របគ្នា",
             "argon2OutputLength": "ប្រវែង (បៃ)",
-            "argon2DefaultsHint": "លំនាំដើម៖ ជម្រើសណែនាំទីពីររបស់ RFC 9106 សម្រាប់អង្គចងចាំមានកំណត់ (64 MiB, 3 ដង, 4 ផ្លូវ, អំបិល 16 បៃ)។ អង្គចងចាំរហូតដល់ 2 GiB។",
+            "argon2DefaultsHint": "លំនាំដើម៖ ទម្រង់ដែល AeroVault និង AeroCrypt ប្រើ (128 MiB, 4 ដង, 4 ផ្លូវ, ទិន្នផល 32 បៃ)។ អំបិលខាងលើជារបស់អ្នក។ អង្គចងចាំរហូតដល់ 2 GiB។",
             "argon2Derive": "បង្កើត",
             "argon2Phc": "ខ្សែអក្សរ PHC"
         },

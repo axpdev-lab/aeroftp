@@ -4306,7 +4306,7 @@
             "argon2Iterations": "반복 횟수",
             "argon2Parallelism": "병렬 처리",
             "argon2OutputLength": "길이 (바이트)",
-            "argon2DefaultsHint": "기본값: 메모리가 제한된 환경을 위한 RFC 9106의 두 번째 권장 옵션 (64 MiB, 반복 3회, 레인 4개, 16바이트 솔트). 메모리 최대 2 GiB.",
+            "argon2DefaultsHint": "기본값: AeroVault와 AeroCrypt가 사용하는 프로필 (128 MiB, 반복 4회, 레인 4개, 32바이트 출력). 위의 솔트는 사용자의 것입니다. 메모리 최대 2 GiB.",
             "argon2Derive": "파생",
             "argon2Phc": "PHC 문자열"
         },

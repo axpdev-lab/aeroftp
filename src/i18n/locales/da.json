@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iterationer",
             "argon2Parallelism": "Parallelitet",
             "argon2OutputLength": "Længde (bytes)",
-            "argon2DefaultsHint": "Standardværdier: den anden anbefalede mulighed i RFC 9106 til begrænset hukommelse (64 MiB, 3 iterationer, 4 baner, 16-byte salt). Hukommelse op til 2 GiB.",
+            "argon2DefaultsHint": "Standardværdier: profilen, som AeroVault og AeroCrypt bruger (128 MiB, 4 iterationer, 4 baner, 32-byte output). Saltet ovenfor er dit. Hukommelse op til 2 GiB.",
             "argon2Derive": "Udled",
             "argon2Phc": "PHC-streng"
         },

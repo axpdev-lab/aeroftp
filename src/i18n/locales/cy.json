@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iteriadau",
             "argon2Parallelism": "Paraleledd",
             "argon2OutputLength": "Hyd (beitiau)",
-            "argon2DefaultsHint": "Rhagosodiadau: ail opsiwn a argymhellir yn RFC 9106, ar gyfer cof cyfyngedig (64 MiB, 3 iteriad, 4 lôn, halen 16 beit). Cof hyd at 2 GiB.",
+            "argon2DefaultsHint": "Rhagosodiadau: y proffil y mae AeroVault ac AeroCrypt yn ei ddefnyddio (128 MiB, 4 iteriad, 4 lôn, allbwn 32 beit). Yr halen uchod yw eich un chi. Cof hyd at 2 GiB.",
             "argon2Derive": "Deillio",
             "argon2Phc": "Llinyn PHC"
         },

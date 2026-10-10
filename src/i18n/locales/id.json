@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iterasi",
             "argon2Parallelism": "Paralelisme",
             "argon2OutputLength": "Panjang (byte)",
-            "argon2DefaultsHint": "Bawaan: opsi rekomendasi kedua RFC 9106 untuk memori terbatas (64 MiB, 3 iterasi, 4 jalur, garam 16 byte). Memori hingga 2 GiB.",
+            "argon2DefaultsHint": "Bawaan: profil yang digunakan AeroVault dan AeroCrypt (128 MiB, 4 iterasi, 4 jalur, keluaran 32 byte). Garam di atas adalah milik Anda. Memori hingga 2 GiB.",
             "argon2Derive": "Turunkan",
             "argon2Phc": "String PHC"
         },

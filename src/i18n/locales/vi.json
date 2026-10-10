@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Số vòng lặp",
             "argon2Parallelism": "Mức song song",
             "argon2OutputLength": "Độ dài (byte)",
-            "argon2DefaultsHint": "Mặc định: tùy chọn khuyến nghị thứ hai của RFC 9106 cho bộ nhớ hạn chế (64 MiB, 3 vòng lặp, 4 làn, muối 16 byte). Bộ nhớ tối đa 2 GiB.",
+            "argon2DefaultsHint": "Mặc định: hồ sơ mà AeroVault và AeroCrypt dùng (128 MiB, 4 vòng lặp, 4 làn, đầu ra 32 byte). Muối ở trên là của bạn. Bộ nhớ tối đa 2 GiB.",
             "argon2Derive": "Dẫn xuất",
             "argon2Phc": "Chuỗi PHC"
         },

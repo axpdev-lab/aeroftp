@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Ponovitve",
             "argon2Parallelism": "Vzporednost",
             "argon2OutputLength": "Dolžina (bajti)",
-            "argon2DefaultsHint": "Privzeto: druga priporočena možnost RFC 9106 za omejen pomnilnik (64 MiB, 3 ponovitve, 4 steze, 16-bajtna sol). Pomnilnik do 2 GiB.",
+            "argon2DefaultsHint": "Privzeto: profil, ki ga uporabljata AeroVault in AeroCrypt (128 MiB, 4 ponovitve, 4 steze, 32-bajtni izhod). Sol zgoraj je vaša. Pomnilnik do 2 GiB.",
             "argon2Derive": "Izpelji",
             "argon2Phc": "Niz PHC"
         },

@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iteracije",
             "argon2Parallelism": "Paralelizam",
             "argon2OutputLength": "Duljina (bajtovi)",
-            "argon2DefaultsHint": "Zadano: druga preporučena opcija RFC 9106 za ograničenu memoriju (64 MiB, 3 iteracije, 4 trake, sol od 16 bajtova). Memorija do 2 GiB.",
+            "argon2DefaultsHint": "Zadano: profil koji koriste AeroVault i AeroCrypt (128 MiB, 4 iteracije, 4 trake, izlaz od 32 bajta). Sol iznad je vaša. Memorija do 2 GiB.",
             "argon2Derive": "Izvedi",
             "argon2Phc": "PHC niz"
         },

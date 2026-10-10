@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iteratsioonid",
             "argon2Parallelism": "Paralleelsus",
             "argon2OutputLength": "Pikkus (baiti)",
-            "argon2DefaultsHint": "Vaikeväärtused: RFC 9106 teine soovitatud valik piiratud mälu jaoks (64 MiB, 3 iteratsiooni, 4 rada, 16-baidine sool). Mälu kuni 2 GiB.",
+            "argon2DefaultsHint": "Vaikeväärtused: profiil, mida kasutavad AeroVault ja AeroCrypt (128 MiB, 4 iteratsiooni, 4 rada, 32-baidine väljund). Ülalolev sool on teie oma. Mälu kuni 2 GiB.",
             "argon2Derive": "Tuleta",
             "argon2Phc": "PHC-string"
         },

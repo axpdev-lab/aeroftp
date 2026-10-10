@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iteraatiot",
             "argon2Parallelism": "Rinnakkaisuus",
             "argon2OutputLength": "Pituus (tavua)",
-            "argon2DefaultsHint": "Oletukset: RFC 9106:n toinen suositeltu vaihtoehto rajalliselle muistille (64 MiB, 3 iteraatiota, 4 kaistaa, 16 tavun suola). Muistia enintään 2 GiB.",
+            "argon2DefaultsHint": "Oletukset: profiili, jota AeroVault ja AeroCrypt käyttävät (128 MiB, 4 iteraatiota, 4 kaistaa, 32 tavun tulos). Yllä oleva suola on sinun. Muistia enintään 2 GiB.",
             "argon2Derive": "Johda",
             "argon2Phc": "PHC-merkkijono"
         },

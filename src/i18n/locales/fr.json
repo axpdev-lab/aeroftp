@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Itérations",
             "argon2Parallelism": "Parallélisme",
             "argon2OutputLength": "Longueur (octets)",
-            "argon2DefaultsHint": "Valeurs par défaut : la deuxième option recommandée par la RFC 9106, pour une mémoire limitée (64 Mio, 3 itérations, 4 voies, sel de 16 octets). Mémoire jusqu'à 2 Gio.",
+            "argon2DefaultsHint": "Valeurs par défaut : le profil utilisé par AeroVault et AeroCrypt (128 MiB, 4 itérations, 4 voies, sortie de 32 octets). Le sel ci-dessus est le vôtre. Mémoire jusqu'à 2 GiB.",
             "argon2Derive": "Dériver",
             "argon2Phc": "Chaîne PHC"
         },

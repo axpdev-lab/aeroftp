@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iterációk",
             "argon2Parallelism": "Párhuzamosság",
             "argon2OutputLength": "Hossz (bájt)",
-            "argon2DefaultsHint": "Alapértékek: az RFC 9106 második ajánlott beállítása korlátozott memóriához (64 MiB, 3 iteráció, 4 sáv, 16 bájtos só). Memória legfeljebb 2 GiB.",
+            "argon2DefaultsHint": "Alapértékek: az AeroVault és az AeroCrypt által használt profil (128 MiB, 4 iteráció, 4 sáv, 32 bájtos kimenet). A fenti só az Öné. Memória legfeljebb 2 GiB.",
             "argon2Derive": "Származtatás",
             "argon2Phc": "PHC karakterlánc"
         },

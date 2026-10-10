@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iterācijas",
             "argon2Parallelism": "Paralēlisms",
             "argon2OutputLength": "Garums (baiti)",
-            "argon2DefaultsHint": "Noklusējumi: RFC 9106 otrā ieteiktā iespēja ierobežotai atmiņai (64 MiB, 3 iterācijas, 4 joslas, 16 baitu sāls). Atmiņa līdz 2 GiB.",
+            "argon2DefaultsHint": "Noklusējumi: profils, ko izmanto AeroVault un AeroCrypt (128 MiB, 4 iterācijas, 4 joslas, 32 baitu izvade). Augšā esošā sāls ir jūsu. Atmiņa līdz 2 GiB.",
             "argon2Derive": "Atvasināt",
             "argon2Phc": "PHC virkne"
         },
