@@ -23,16 +23,19 @@
 #      warnings are printed for a human to judge one by one. Those are NOT
 #      failed on: dynamic loading legitimately looks like an unused library,
 #      and #465 asks for them to be assessed individually rather than
-#      blanket-ignored. A linter that cannot run (no build provider, no
-#      network) leaves the gate green but says the lint half is UNVERIFIED,
-#      never OK. Tested with stub tools: .github/scripts/test_snap_gpu_lint_check.py.
+#      blanket-ignored. On disposable GitHub-hosted runners it installs the
+#      snap with sudo in managed mode, without starting a build provider, and
+#      failure to run is an environment error. Elsewhere an unavailable
+#      linter leaves the lint half UNVERIFIED, never OK. Tested with stub
+#      tools: .github/scripts/test_snap_gpu_lint_check.py.
 #
 # Usage:
 #   scripts/snap-gpu-lint-check.sh <snap-file>
 #   scripts/snap-gpu-lint-check.sh <snap-file> --no-snapcraft   # content only
 #
 # Exit codes: 0 = no provider-owned GPU userspace inside the snap,
-#             1 = the snap ships its own, 2 = usage / environment error.
+#             1 = the snap ships its own, 2 = usage / environment error
+#             (including an unverified lint on a GitHub-hosted runner).
 
 set -euo pipefail
 
@@ -165,7 +168,19 @@ if [ "$RUN_SNAPCRAFT" -eq 0 ]; then
   exit 0
 fi
 
-if ! command -v snapcraft >/dev/null 2>&1; then
+# Managed lint installs the snap on the host. Opt in only on the disposable
+# GitHub-hosted runner, never on a developer machine or a self-hosted runner.
+# G2 already installs the same artifact on these runners immediately after G4.
+HOSTED_LINT=0
+if [ "${GITHUB_ACTIONS:-}" = true ] && [ "${RUNNER_ENVIRONMENT:-}" = github-hosted ]; then
+  HOSTED_LINT=1
+fi
+
+if ! SNAPCRAFT="$(command -v snapcraft)"; then
+  if [ "$HOSTED_LINT" -eq 1 ]; then
+    echo "::error::snapcraft not on PATH; hosted-runner lint is UNVERIFIED"
+    exit 2
+  fi
   echo "note: snapcraft not on PATH, skipping the linter pass (content check already passed)"
   exit 0
 fi
@@ -173,11 +188,17 @@ fi
 echo
 echo "Running snapcraft lint ..."
 LINT_OUT="$TMP/lint.txt"
-# The linter is allowed to fail: it needs a build instance and may be
-# unavailable on a given runner. Its absence must not turn a green content
-# check into a red gate, and its presence must not hide a gpu: warning.
+# snapcraft's lint command skips its build instance only in managed mode.
+# Set the variable AFTER sudo (which otherwise strips it), and resolve the
+# executable before sudo so /snap/bin need not be in root's secure_path.
+# Keep the normal build provider outside disposable hosted CI.
 LINT_RC=0
-snapcraft lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+if [ "$HOSTED_LINT" -eq 1 ]; then
+  echo "Using managed lint on the GitHub-hosted runner (sudo snap install)."
+  sudo -n env CRAFT_MANAGED_MODE=1 "$SNAPCRAFT" lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+else
+  "$SNAPCRAFT" lint "$SNAP_FILE" >"$LINT_OUT" 2>&1 || LINT_RC=$?
+fi
 if [ "$LINT_RC" -ne 0 ]; then
   echo "note: snapcraft lint exited $LINT_RC; output follows"
 fi
@@ -204,6 +225,10 @@ if [ "$LINT_RC" -ne 0 ] && ! grep -qE "^${STAMP}[[:space:]]*Lint (OK|warnings|er
   reason="${reason//%/%25}"
   echo
   echo "::warning::snapcraft lint did not run (${reason:-exit $LINT_RC, no output}); the gpu:/library: lint half of #465 criterion 5 is UNVERIFIED in this run"
+  if [ "$HOSTED_LINT" -eq 1 ]; then
+    echo "::error::snapcraft lint must run on the GitHub-hosted runner"
+    exit 2
+  fi
   exit 0
 fi
 
