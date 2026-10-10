@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Fformat colledus: mae ail-amgodio yn taflu rhywfaint o ddata'r ddelwedd, gan gynnwys golygiadau di-golled.",
                     "reencodeWarnTitle": "Trosi colledus i colledus",
                     "reencodeWarnNote": "Mae trosi un fformat colledus i un arall yn ail-amgodio'r ddelwedd ac yn ychwanegu ail genhedlaeth barhaol o golled. Mae cadw'r fformat gwreiddiol yn ei osgoi.",
-                    "reencodeAck": "Rwy'n deall ac eisiau ail-amgodio beth bynnag"
+                    "reencodeAck": "Rwy'n deall ac eisiau ail-amgodio beth bynnag",
+                    "undo": "Dadwneud",
+                    "redo": "Ail-wneud",
+                    "applyCrop": "Cymhwyso'r tocio",
+                    "cancelCrop": "Canslo'r tocio",
+                    "cropHint": "Cliciwch ddwywaith ar y dewisiad neu pwyswch Enter i gymhwyso, Esc i ganslo",
+                    "cropRatio": "Cyfrannau",
+                    "cropRatioFree": "Rhydd",
+                    "cropRatioOriginal": "Gwreiddiol"
                 },
                 "toggleTransparencyBg": "Cefndir tryloywder (cylchdroi)"
             },

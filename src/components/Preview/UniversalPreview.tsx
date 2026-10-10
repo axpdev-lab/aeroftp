@@ -76,17 +76,17 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                     guarded.requestClose();
                     break;
                 case 'ArrowLeft':
-                    if (hasPrevious && onPrevious) onPrevious();
+                    if (hasPrevious && onPrevious && !previewDirty) onPrevious();
                     break;
                 case 'ArrowRight':
-                    if (hasNext && onNext) onNext();
+                    if (hasNext && onNext && !previewDirty) onNext();
                     break;
             }
         };
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, guarded.requestClose, onNext, onPrevious, hasNext, hasPrevious]);
+    }, [isOpen, guarded.requestClose, onNext, onPrevious, hasNext, hasPrevious, previewDirty]);
 
     // Prevent body scroll when modal is open
     useEffect(() => {
@@ -187,6 +187,8 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         <div>
                             <h3 className="text-[var(--color-text-primary)] font-medium truncate max-w-md">
                                 {file.name}
+                                {/* Unsaved edits, as editors mark them (#1075) */}
+                                {previewDirty && <span data-preview-dirty className="text-[var(--color-text-secondary)]"> *</span>}
                             </h3>
                             <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
                                 <span>{formatFileSize(file.size)}</span>
@@ -282,7 +284,8 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                     {/* Gallery navigation: classic slideshow chevrons that fade in
                         on hover, shown only when the folder has other same-kind
                         images to page through (#128). Keyboard ← → also work. */}
-                    {hasPrevious && (
+                    {/* Not while an edit is unsaved: paging would drop it. */}
+                    {hasPrevious && !previewDirty && (
                         <button
                             onClick={onPrevious}
                             className="absolute left-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-all opacity-0 group-hover:opacity-100 z-20"
@@ -291,7 +294,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                             <ChevronLeft size={24} className="text-[var(--color-text-primary)]" />
                         </button>
                     )}
-                    {hasNext && (
+                    {hasNext && !previewDirty && (
                         <button
                             onClick={onNext}
                             className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-[var(--color-bg-secondary)]/85 hover:bg-[var(--color-bg-tertiary)] rounded-full transition-all opacity-0 group-hover:opacity-100 z-20"

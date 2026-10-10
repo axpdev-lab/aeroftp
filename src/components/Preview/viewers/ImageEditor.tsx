@@ -32,6 +32,7 @@ import {
     Palette,
     Droplets,
     Sparkles,
+    Check,
 } from 'lucide-react';
 import { useI18n } from '../../../i18n';
 import {
@@ -48,7 +49,17 @@ interface ImageEditorProps {
     editState: EditState;
     onEditStateChange: (state: EditState) => void;
     onCropModeToggle: (active: boolean) => void;
+    /** Apply the open selection; the preview then shows the cropped picture. */
+    onCropApply: () => void;
+    onCropCancel: () => void;
+    /** Fixed proportions of the selection (width / height); null: free. */
+    cropAspect: number | null;
+    onCropAspectChange: (ratio: number | null) => void;
+    /** The picture on screen, for the "Original" proportions. */
+    shownSize: { width: number; height: number } | null;
     cropMode: boolean;
+    /** Edits not saved yet: marked on the Save button. */
+    dirty: boolean;
     onSaveRequest: () => void;
 }
 
@@ -171,7 +182,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     editState,
     onEditStateChange,
     onCropModeToggle,
+    onCropApply,
+    onCropCancel,
+    cropAspect,
+    onCropAspectChange,
+    shownSize,
     cropMode,
+    dirty,
     onSaveRequest,
 }) => {
     const { t } = useI18n();
@@ -303,7 +320,62 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                         <Crop size={14} />
                         <span>{t('preview.image.edit.crop') || 'Crop'}</span>
                     </ToggleBtn>
+                    {cropMode && (
+                        <>
+                            <button
+                                onClick={onCropApply}
+                                data-crop-apply
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs rounded border bg-green-600/20 text-green-400 border-green-500/50 hover:bg-green-600/30"
+                                title={t('preview.image.edit.applyCrop')}
+                            >
+                                <Check size={14} />
+                                <span>{t('preview.image.edit.applyCrop')}</span>
+                            </button>
+                            <button
+                                onClick={onCropCancel}
+                                data-crop-cancel
+                                className="p-1.5 text-xs rounded border bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]"
+                                title={t('preview.image.edit.cancelCrop')}
+                            >
+                                <X size={14} />
+                            </button>
+                        </>
+                    )}
                 </div>
+                {cropMode && (
+                    <>
+                        <div className="px-3 pb-1.5 flex flex-wrap gap-1" role="group" aria-label={t('preview.image.edit.cropRatio')}>
+                            {[
+                                { id: 'free', label: t('preview.image.edit.cropRatioFree'), ratio: null },
+                                { id: 'original', label: t('preview.image.edit.cropRatioOriginal'), ratio: shownSize && shownSize.height > 0 ? shownSize.width / shownSize.height : null },
+                                { id: '1:1', label: '1:1', ratio: 1 },
+                                { id: '4:3', label: '4:3', ratio: 4 / 3 },
+                                { id: '3:2', label: '3:2', ratio: 3 / 2 },
+                                { id: '16:9', label: '16:9', ratio: 16 / 9 },
+                            ].map((r) => {
+                                const active = r.id === 'free' ? cropAspect === null : r.ratio !== null && cropAspect !== null && Math.abs(cropAspect - r.ratio) < 1e-6;
+                                return (
+                                    <button
+                                        key={r.id}
+                                        data-crop-ratio={r.id}
+                                        disabled={r.id !== 'free' && r.ratio === null}
+                                        onClick={() => onCropAspectChange(r.ratio)}
+                                        className={`px-2 py-0.5 text-[11px] rounded border transition-colors disabled:opacity-40 ${
+                                            active
+                                                ? 'bg-blue-600/20 text-blue-400 border-blue-500/50'
+                                                : 'bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)] border-[var(--color-border)] hover:bg-[var(--color-surface-hover)]'
+                                        }`}
+                                    >
+                                        {r.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <p className="px-3 pb-1 text-[10px] text-[var(--color-text-tertiary)] leading-snug">
+                            {t('preview.image.edit.cropHint')}
+                        </p>
+                    </>
+                )}
 
                 {/* Rotate */}
                 <div className="px-3 py-1.5">
@@ -508,6 +580,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
                 >
                     <Save size={16} />
                     {t('preview.image.edit.saveTitle') || 'Save Image'}
+                    {dirty ? ' *' : ''}
                 </button>
             </div>
         </div>

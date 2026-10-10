@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Stratový formát: opätovné kódovanie zahodí časť obrazových údajov, aj bezstratové úpravy.",
                     "reencodeWarnTitle": "Prevod zo stratového na stratový formát",
                     "reencodeWarnNote": "Prevod jedného stratového formátu na iný obrázok znova zakóduje a pridá druhú, trvalú generáciu straty kvality. Zachovanie pôvodného formátu tomu predíde.",
-                    "reencodeAck": "Rozumiem a napriek tomu chcem znova zakódovať"
+                    "reencodeAck": "Rozumiem a napriek tomu chcem znova zakódovať",
+                    "undo": "Späť",
+                    "redo": "Znova",
+                    "applyCrop": "Použiť orezanie",
+                    "cancelCrop": "Zrušiť orezanie",
+                    "cropHint": "Dvojitým kliknutím na výber alebo stlačením Enter použijete, Esc zrušíte",
+                    "cropRatio": "Pomer strán",
+                    "cropRatioFree": "Voľný",
+                    "cropRatioOriginal": "Pôvodný"
                 },
                 "toggleTransparencyBg": "Pozadie priehľadnosti (prepnúť)"
             },

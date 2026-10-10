@@ -2,10 +2,10 @@
 import { act, createElement, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { CropOverlay, cropCoversWholeImage } from './CropOverlay';
+import { CropOverlay, cropCoversWholeImage, screenToNatural } from './CropOverlay';
 import type { CropRect } from '../types';
 
-vi.mock('../../../i18n', () => ({ useI18n: () => ({}) }));
+vi.mock('../../../i18n', () => ({ useI18n: () => ({ t: (k: string) => k }) }));
 
 // The viewer is 600 x 400; the image is shown at 400 x 300, centred, so it
 // starts 100 px from the left and 50 px from the top of the overlay. The
@@ -31,8 +31,15 @@ let img: HTMLImageElement;
 let crops: CropRect[];
 let imageRef: { current: HTMLImageElement | null };
 
+let applied = 0;
+let cancelled = 0;
 const mount = async (initialCrop: CropRect | null = null) => {
-    const props = { imageRef, aspectRatio: null, initialCrop, onCropChange: (c: CropRect) => crops.push(c), onCancel: () => {} };
+    const props = {
+        imageRef, aspectRatio: null, initialCrop,
+        onCropChange: (c: CropRect) => crops.push(c),
+        onApply: () => { applied++; },
+        onCancel: () => { cancelled++; },
+    };
     await act(async () => root.render(createElement(CropOverlay, props)));
     // A second render places the frame once the overlay element exists.
     await act(async () => root.render(createElement(CropOverlay, props)));
@@ -51,6 +58,8 @@ beforeEach(async () => {
     img.getBoundingClientRect = () => rect(IMAGE);
     vi.spyOn(HTMLDivElement.prototype, 'getBoundingClientRect').mockImplementation(() => rect(OVERLAY));
     crops = [];
+    applied = 0;
+    cancelled = 0;
     imageRef = createRef<HTMLImageElement>() as { current: HTMLImageElement | null };
     imageRef.current = img;
     root = createRoot(host);
@@ -68,9 +77,10 @@ const border = () => host.querySelector('[data-crop-border]');
 const overlay = () => host.firstElementChild as HTMLElement;
 const drag = async (from: [number, number], to: [number, number]) => {
     await act(async () => {
-        overlay().dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: from[0], clientY: from[1] }));
-        document.dispatchEvent(new MouseEvent('mousemove', { clientX: to[0], clientY: to[1] }));
-        document.dispatchEvent(new MouseEvent('mouseup', {}));
+        // Pointer events (jsdom has no PointerEvent class; the type is what counts).
+        overlay().dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: from[0], clientY: from[1] }));
+        document.dispatchEvent(new MouseEvent('pointermove', { clientX: to[0], clientY: to[1] }));
+        document.dispatchEvent(new MouseEvent('pointerup', {}));
     });
 };
 
@@ -125,4 +135,56 @@ it('starts the selection on the first box with a size, when the image mounts at 
     await act(async () => fireResize());
     expect([px(border(), 'left'), px(border(), 'top'), px(border(), 'width'), px(border(), 'height')]).toEqual([0, 0, 400, 300]);
     expect(crops[crops.length - 1]).toEqual({ x: 0, y: 0, width: 800, height: 600 });
+});
+
+it('never sends a crop past the picture, whatever the screen scale', () => {
+    // Fractional boxes, as a 125 % or 150 % display scale gives them: the
+    // corner and the size used to be rounded apart and could add up to one
+    // pixel past the picture ("exceeds image bounds", #1075).
+    for (const boxW of [341.33, 409.6, 512.8, 273.07]) {
+        const natW = 512;
+        for (let i = 0; i < 400; i++) {
+            const x = (i * 0.37) % boxW;
+            const r = screenToNatural({ x, y: 0, w: boxW - x, h: boxW / 2 }, { width: boxW, height: boxW / 2 }, { width: natW, height: 256 });
+            expect(r.x + r.width).toBeLessThanOrEqual(natW);
+            expect(r.y + r.height).toBeLessThanOrEqual(256);
+            // A selection that reaches the edge ends on the edge.
+            expect(r.x + r.width).toBe(natW);
+        }
+    }
+});
+
+it('applies the selection on a double-click inside it, and on Enter', async () => {
+    await mount({ x: 400, y: 300, width: 400, height: 300 });
+    await act(async () => {
+        overlay().dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: IMAGE.left + 10, clientY: IMAGE.top + 10 }));
+    });
+    expect(applied).toBe(0); // outside the selection
+    await act(async () => {
+        overlay().dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: IMAGE.left + 300, clientY: IMAGE.top + 200 }));
+    });
+    expect(applied).toBe(1);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' })); });
+    expect(applied).toBe(2);
+});
+
+it('leaves crop mode on Escape without letting the preview window close', async () => {
+    await mount();
+    let reachedDocument = false;
+    const onDoc = () => { reachedDocument = true; };
+    document.addEventListener('keydown', onDoc);
+    await act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    document.removeEventListener('keydown', onDoc);
+    expect(cancelled).toBe(1);
+    expect(reachedDocument).toBe(false);
+});
+
+it('draws handles with a dark border, visible on a white picture', async () => {
+    await mount();
+    const handles = host.querySelectorAll('[data-crop-handle]');
+    expect(handles).toHaveLength(8);
+    for (const h of handles) {
+        expect((h as HTMLElement).className).toContain('border-black');
+        expect((h as HTMLElement).style.boxShadow).not.toBe('');
+    }
 });

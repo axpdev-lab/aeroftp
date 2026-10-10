@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Danakargiani formati: khelakhali kodireba ashorebs suratis zogiert monacems, mat shoris udanakargo redaqtirebebs.",
                     "reencodeWarnTitle": "დანაკარგიანიდან დანაკარგიან ფორმატში გადაყვანა",
                     "reencodeWarnNote": "ერთი დანაკარგიანი ფორმატის მეორეში გადაყვანა ხელახლა აკოდირებს გამოსახულებას და ამატებს ხარისხის დანაკარგის მეორე, მუდმივ თაობას. საწყისი ფორმატის შენარჩუნება ამას გამორიცხავს.",
-                    "reencodeAck": "მესმის და მაინც მინდა ხელახლა დაკოდირება"
+                    "reencodeAck": "მესმის და მაინც მინდა ხელახლა დაკოდირება",
+                    "undo": "გაუქმება",
+                    "redo": "გამეორება",
+                    "applyCrop": "ამოჭრის გამოყენება",
+                    "cancelCrop": "ამოჭრის გაუქმება",
+                    "cropHint": "გამოსაყენებლად ორჯერ დააწკაპუნეთ არჩევანზე ან დააჭირეთ Enter-ს, გასაუქმებლად Esc-ს",
+                    "cropRatio": "პროპორციები",
+                    "cropRatioFree": "თავისუფალი",
+                    "cropRatioOriginal": "ორიგინალი"
                 },
                 "toggleTransparencyBg": "გამჭვირვალობის ფონი (გადართვა)"
             },

@@ -14,6 +14,9 @@
  * itself covers the whole viewer, where the image is centred with margins,
  * and drawing in the overlay's frame shifted the selection by the margin, so
  * part of the image could not be reached.
+ *
+ * A double-click on the selection, or Enter, applies it; Escape leaves crop
+ * mode without applying (#1075).
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -23,9 +26,14 @@ import { useI18n } from '../../../i18n';
 interface CropOverlayProps {
     imageRef: React.RefObject<HTMLImageElement | null>;
     aspectRatio: number | null;
+    /** The picture's size in the file's pixels, when the image on screen is a
+     *  smaller preview of it; none: the image's own size. */
+    naturalSize?: { width: number; height: number } | null;
     /** The crop already chosen (natural pixels), to start from; none: the whole image. */
     initialCrop?: CropRect | null;
     onCropChange: (natural: CropRect) => void;
+    /** Apply the selection (double-click on it, or Enter). */
+    onApply?: () => void;
     onCancel: () => void;
 }
 
@@ -39,13 +47,35 @@ const HANDLE_CURSORS: Record<HandleId, string> = {
 
 const MIN_SIZE = 10;
 
+/**
+ * A selection on screen, in the pixels of the file. The two edges are rounded,
+ * not the corner and the size: rounding a corner and a size separately can
+ * add up to one pixel past the picture, which the save refuses as "exceeds
+ * image bounds" (#1075). The result never leaves the picture.
+ */
+export function screenToNatural(
+    sel: { x: number; y: number; w: number; h: number },
+    box: { width: number; height: number },
+    natural: { width: number; height: number },
+): CropRect {
+    if (box.width <= 0 || box.height <= 0) return { x: 0, y: 0, width: 0, height: 0 };
+    const kx = natural.width / box.width;
+    const ky = natural.height / box.height;
+    const clamp = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(v)));
+    const x0 = clamp(sel.x * kx, natural.width);
+    const y0 = clamp(sel.y * ky, natural.height);
+    const x1 = Math.max(x0, clamp((sel.x + sel.w) * kx, natural.width));
+    const y1 = Math.max(y0, clamp((sel.y + sel.h) * ky, natural.height));
+    return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+}
+
 /** A selection of the whole image, which is no crop at all. */
 export function cropCoversWholeImage(c: CropRect, naturalWidth: number, naturalHeight: number): boolean {
     return c.x <= 0 && c.y <= 0 && c.x + c.width >= naturalWidth && c.y + c.height >= naturalHeight;
 }
 
-export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio, initialCrop, onCropChange, onCancel }) => {
-    useI18n(); // keep hook call even if not used for keys yet
+export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio, naturalSize, initialCrop, onCropChange, onApply, onCancel }) => {
+    const { t } = useI18n();
 
     // Screen-space crop rect (relative to image bounding rect)
     const [crop, setCrop] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -70,15 +100,8 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         const img = imageRef.current;
         if (!img) return { x: 0, y: 0, width: 0, height: 0 };
         const r = img.getBoundingClientRect();
-        const scaleX = img.naturalWidth / r.width;
-        const scaleY = img.naturalHeight / r.height;
-        return {
-            x: Math.round(sx * scaleX),
-            y: Math.round(sy * scaleY),
-            width: Math.round(sw * scaleX),
-            height: Math.round(sh * scaleY),
-        };
-    }, [imageRef]);
+        return screenToNatural({ x: sx, y: sy, w: sw, h: sh }, r, naturalSize ?? { width: img.naturalWidth, height: img.naturalHeight });
+    }, [imageRef, naturalSize]);
 
     const emitCrop = useCallback((c: { x: number; y: number; w: number; h: number } | null) => {
         if (c && c.w >= MIN_SIZE && c.h >= MIN_SIZE) {
@@ -107,7 +130,9 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
 
     // --- mouse handlers -------------------------------------------------------
 
-    const onPointerDown = useCallback((e: React.MouseEvent) => {
+    // Pointer events: mouse, touchpad, touch screen and pen draw the same way.
+    const onPointerDown = useCallback((e: React.PointerEvent) => {
+        if (e.button !== 0) return;
         e.preventDefault();
         const r = imgRect();
         if (!r) return;
@@ -133,7 +158,7 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
     }, [imgRect]);
 
     useEffect(() => {
-        const onMove = (e: MouseEvent) => {
+        const onMove = (e: PointerEvent) => {
             const mode = dragMode.current;
             if (mode.kind === 'none') return;
             const r = imgRect();
@@ -176,9 +201,14 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
             }
         };
         const onUp = () => { dragMode.current = { kind: 'none' }; };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-        return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+        document.addEventListener('pointercancel', onUp);
+        return () => {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            document.removeEventListener('pointercancel', onUp);
+        };
     }, [imgRect, clampScreen, enforce, emitCrop]);
 
     // Start from the crop already chosen, or else the whole image, and keep
@@ -194,8 +224,10 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         const start = (box: DOMRect) => {
             if (started || box.width <= 0 || box.height <= 0) return;
             started = true;
-            const kx = img.naturalWidth > 0 ? box.width / img.naturalWidth : 1;
-            const ky = img.naturalHeight > 0 ? box.height / img.naturalHeight : 1;
+            const natW = naturalSize?.width ?? img.naturalWidth;
+            const natH = naturalSize?.height ?? img.naturalHeight;
+            const kx = natW > 0 ? box.width / natW : 1;
+            const ky = natH > 0 ? box.height / natH : 1;
             const first = initialCrop
                 ? { x: initialCrop.x * kx, y: initialCrop.y * ky, w: initialCrop.width * kx, h: initialCrop.height * ky }
                 : { x: 0, y: 0, w: box.width, h: box.height };
@@ -232,12 +264,50 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [imageRef]);
 
-    // Escape key
+    // A new proportion reshapes the selection: the largest of that shape,
+    // centred on the picture, as other editors do.
+    const firstRatio = useRef(true);
     useEffect(() => {
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [onCancel]);
+        if (firstRatio.current) { firstRatio.current = false; return; }
+        if (!aspectRatio) return;
+        const r = imgRect();
+        if (!r || r.width <= 0 || r.height <= 0) return;
+        let w = r.width;
+        let h = w / aspectRatio;
+        if (h > r.height) { h = r.height; w = h * aspectRatio; }
+        const nc = { x: (r.width - w) / 2, y: (r.height - h) / 2, w, h };
+        setCrop(nc);
+        emitCrop(nc);
+        // Only when the proportion changes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [aspectRatio]);
+
+    // Escape leaves crop mode, Enter applies. Caught before the preview window
+    // sees them: there Escape closes the whole preview.
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                onCancel();
+            } else if (e.key === 'Enter' && onApply) {
+                e.preventDefault();
+                e.stopPropagation();
+                onApply();
+            }
+        };
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
+    }, [onCancel, onApply]);
+
+    const onDoubleClick = useCallback((e: React.MouseEvent) => {
+        const r = imgRect();
+        const c = cropRef.current;
+        if (!r || !c || !onApply) return;
+        const mx = e.clientX - r.left;
+        const my = e.clientY - r.top;
+        if (mx >= c.x && mx <= c.x + c.w && my >= c.y && my <= c.y + c.h) onApply();
+    }, [imgRect, onApply]);
 
     // --- hit testing ----------------------------------------------------------
 
@@ -267,7 +337,7 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
     }, [imgRect]);
 
     const [cursor, setCursorState] = useState('crosshair');
-    const onMouseMoveLocal = useCallback((e: React.MouseEvent) => {
+    const onMouseMoveLocal = useCallback((e: React.PointerEvent) => {
         if (dragMode.current.kind !== 'none') return;
         setCursorState(getCursor(e));
     }, [getCursor]);
@@ -277,14 +347,14 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
     const getHandles = (c: { x: number; y: number; w: number; h: number }) => {
         const mx = c.x + c.w / 2, my = c.y + c.h / 2;
         return [
-            { id: 'nw' as HandleId, cx: c.x, cy: c.y, size: 10 },
-            { id: 'n' as HandleId, cx: mx, cy: c.y, size: 8 },
-            { id: 'ne' as HandleId, cx: c.x + c.w, cy: c.y, size: 10 },
-            { id: 'e' as HandleId, cx: c.x + c.w, cy: my, size: 8 },
-            { id: 'se' as HandleId, cx: c.x + c.w, cy: c.y + c.h, size: 10 },
-            { id: 's' as HandleId, cx: mx, cy: c.y + c.h, size: 8 },
-            { id: 'sw' as HandleId, cx: c.x, cy: c.y + c.h, size: 10 },
-            { id: 'w' as HandleId, cx: c.x, cy: my, size: 8 },
+            { id: 'nw' as HandleId, cx: c.x, cy: c.y, size: 12 },
+            { id: 'n' as HandleId, cx: mx, cy: c.y, size: 10 },
+            { id: 'ne' as HandleId, cx: c.x + c.w, cy: c.y, size: 12 },
+            { id: 'e' as HandleId, cx: c.x + c.w, cy: my, size: 10 },
+            { id: 'se' as HandleId, cx: c.x + c.w, cy: c.y + c.h, size: 12 },
+            { id: 's' as HandleId, cx: mx, cy: c.y + c.h, size: 10 },
+            { id: 'sw' as HandleId, cx: c.x, cy: c.y + c.h, size: 12 },
+            { id: 'w' as HandleId, cx: c.x, cy: my, size: 10 },
         ];
     };
 
@@ -300,9 +370,10 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
         <div
             ref={overlayRef}
             className="absolute inset-0 select-none"
-            style={{ cursor }}
-            onMouseDown={onPointerDown}
-            onMouseMove={onMouseMoveLocal}
+            style={{ cursor, touchAction: 'none' }}
+            onPointerDown={onPointerDown}
+            onPointerMove={onMouseMoveLocal}
+            onDoubleClick={onDoubleClick}
         >
             {crop && (
                 <div
@@ -316,22 +387,37 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
                     <div className="absolute bg-black/50" style={{ top: crop.y, left: crop.x + crop.w, width: cw - crop.x - crop.w, height: crop.h }} />
                     <div className="absolute bg-black/50" style={{ top: crop.y + crop.h, left: 0, width: cw, height: ch - crop.y - crop.h }} />
 
-                    {/* Crop border */}
+                    {/* Crop border: white dashes on a dark outline, so it shows
+                        on a light picture as well as on a dark one (#1075). */}
                     <div
                         data-crop-border
                         className="absolute border-2 border-dashed border-white pointer-events-none"
-                        style={{ left: crop.x, top: crop.y, width: crop.w, height: crop.h }}
+                        style={{
+                            left: crop.x, top: crop.y, width: crop.w, height: crop.h,
+                            boxShadow: '0 0 0 1px rgba(0,0,0,0.75), inset 0 0 0 1px rgba(0,0,0,0.75)',
+                        }}
                     />
 
-                    {/* Handles */}
+                    {/* Rule-of-thirds guides inside the selection */}
+                    {[1, 2].map(i => (
+                        <React.Fragment key={i}>
+                            <div data-crop-third className="absolute bg-white/40 pointer-events-none" style={{ left: crop.x + (crop.w * i) / 3, top: crop.y, width: 1, height: crop.h }} />
+                            <div data-crop-third className="absolute bg-white/40 pointer-events-none" style={{ left: crop.x, top: crop.y + (crop.h * i) / 3, width: crop.w, height: 1 }} />
+                        </React.Fragment>
+                    ))}
+
+                    {/* Handles: white with a dark border and shadow, visible on
+                        any background. */}
                     {getHandles(crop).map(h => (
                         <div
                             key={h.id}
-                            className="absolute bg-white rounded-sm pointer-events-none"
+                            data-crop-handle={h.id}
+                            className="absolute bg-white rounded-sm pointer-events-none border border-black/80"
                             style={{
                                 width: h.size, height: h.size,
                                 left: h.cx - h.size / 2,
                                 top: h.cy - h.size / 2,
+                                boxShadow: '0 0 0 1px rgba(255,255,255,0.6), 0 1px 4px rgba(0,0,0,0.8)',
                             }}
                         />
                     ))}
@@ -345,6 +431,11 @@ export const CropOverlay: React.FC<CropOverlayProps> = ({ imageRef, aspectRatio,
                             <span className="bg-gray-800/90 text-gray-300 text-xs font-mono px-2 py-0.5 rounded-full whitespace-nowrap">
                                 {nat.width} × {nat.height} px
                             </span>
+                            {onApply && (
+                                <span data-crop-hint className="ml-2 bg-gray-800/90 text-gray-300 text-xs px-2 py-0.5 rounded-full whitespace-nowrap">
+                                    {t('preview.image.edit.cropHint')}
+                                </span>
+                            )}
                         </div>
                     )}
                 </div>

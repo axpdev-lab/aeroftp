@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format na may lugi: ang muling pag-encode ay nagtatapon ng ilang data ng larawan, kasama ang mga pag-edit na walang lugi.",
                     "reencodeWarnTitle": "Pag-convert mula lossy patungong lossy",
                     "reencodeWarnNote": "Ang pag-convert ng isang lossy na format patungo sa iba ay muling nag-e-encode ng larawan at nagdaragdag ng pangalawa at permanenteng henerasyon ng pagkawala ng kalidad. Naiiwasan ito kung pananatilihin ang orihinal na format.",
-                    "reencodeAck": "Naiintindihan ko at gusto ko pa ring i-encode muli"
+                    "reencodeAck": "Naiintindihan ko at gusto ko pa ring i-encode muli",
+                    "undo": "I-undo",
+                    "redo": "I-redo",
+                    "applyCrop": "Ilapat ang crop",
+                    "cancelCrop": "Kanselahin ang crop",
+                    "cropHint": "I-double-click ang napili o pindutin ang Enter para ilapat, Esc para kanselahin",
+                    "cropRatio": "Mga proporsyon",
+                    "cropRatioFree": "Malaya",
+                    "cropRatioOriginal": "Orihinal"
                 },
                 "toggleTransparencyBg": "Background ng transparency (i-cycle)"
             },

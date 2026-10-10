@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format s poteryami: pri perekodirovanii teryaetsya chast dannyh izobrazheniya, vklyuchaya izmeneniya bez poter.",
                     "reencodeWarnTitle": "Преобразование из формата с потерями в формат с потерями",
                     "reencodeWarnNote": "Преобразование одного формата с потерями в другой заново кодирует изображение и добавляет второе, необратимое поколение потери качества. Сохранение исходного формата позволяет этого избежать.",
-                    "reencodeAck": "Я понимаю и всё равно хочу перекодировать"
+                    "reencodeAck": "Я понимаю и всё равно хочу перекодировать",
+                    "undo": "Отменить",
+                    "redo": "Повторить",
+                    "applyCrop": "Применить кадрирование",
+                    "cancelCrop": "Отменить кадрирование",
+                    "cropHint": "Дважды щёлкните выделение или нажмите Enter, чтобы применить, Esc, чтобы отменить",
+                    "cropRatio": "Пропорции",
+                    "cropRatioFree": "Произвольно",
+                    "cropRatioOriginal": "Оригинал"
                 },
                 "toggleTransparencyBg": "Фон прозрачности (переключить)"
             },

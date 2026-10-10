@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "有损格式：重新编码会丢弃部分图像数据，包括无损编辑。",
                     "reencodeWarnTitle": "有损格式转有损格式",
                     "reencodeWarnNote": "将一种有损格式转换为另一种有损格式会重新编码图像，并叠加第二次永久性的质量损失。保留原始格式即可避免。",
-                    "reencodeAck": "我已了解，仍要重新编码"
+                    "reencodeAck": "我已了解，仍要重新编码",
+                    "undo": "撤销",
+                    "redo": "重做",
+                    "applyCrop": "应用裁剪",
+                    "cancelCrop": "取消裁剪",
+                    "cropHint": "双击选区或按 Enter 应用，按 Esc 取消",
+                    "cropRatio": "比例",
+                    "cropRatioFree": "自由",
+                    "cropRatioOriginal": "原始"
                 },
                 "toggleTransparencyBg": "透明背景（循环切换）"
             },

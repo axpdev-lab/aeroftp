@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Galeradun formatua: berriro kodetzean irudiaren datu batzuk galtzen dira, baita galerarik gabeko edizioak ere.",
                     "reencodeWarnTitle": "Galeradun formatutik galeradunerako bihurketa",
                     "reencodeWarnNote": "Galeradun formatu bat beste batera bihurtzeak irudia berriro kodetzen du eta kalitate-galeraren bigarren belaunaldi iraunkorra gehitzen dio. Jatorrizko formatua mantentzeak saihesten du.",
-                    "reencodeAck": "Ulertzen dut eta hala ere berriro kodetu nahi dut"
+                    "reencodeAck": "Ulertzen dut eta hala ere berriro kodetu nahi dut",
+                    "undo": "Desegin",
+                    "redo": "Berregin",
+                    "applyCrop": "Aplikatu mozketa",
+                    "cancelCrop": "Ezeztatu mozketa",
+                    "cropHint": "Egin klik bikoitza hautapenean edo sakatu Enter aplikatzeko, Esc ezeztatzeko",
+                    "cropRatio": "Proportzioak",
+                    "cropRatioFree": "Librea",
+                    "cropRatioOriginal": "Jatorrizkoa"
                 },
                 "toggleTransparencyBg": "Gardentasun atzeko planoa (txandakatu)"
             },

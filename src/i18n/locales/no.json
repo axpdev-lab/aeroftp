@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format med tap: omkoding forkaster noen bildedata, også tapsfrie redigeringer.",
                     "reencodeWarnTitle": "Konvertering fra tapsformat til tapsformat",
                     "reencodeWarnNote": "Å konvertere ett tapsformat til et annet omkoder bildet og legger til enda en permanent generasjon med kvalitetstap. Å beholde originalformatet unngår det.",
-                    "reencodeAck": "Jeg forstår og vil omkode likevel"
+                    "reencodeAck": "Jeg forstår og vil omkode likevel",
+                    "undo": "Angre",
+                    "redo": "Gjør om",
+                    "applyCrop": "Bruk beskjæring",
+                    "cancelCrop": "Avbryt beskjæring",
+                    "cropHint": "Dobbeltklikk på markeringen eller trykk Enter for å bruke, Esc for å avbryte",
+                    "cropRatio": "Proporsjoner",
+                    "cropRatioFree": "Fri",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Gjennomsiktighetsbakgrunn (veksle)"
             },

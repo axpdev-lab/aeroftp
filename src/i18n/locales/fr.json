@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format avec perte : le réencodage supprime certaines données de l'image, y compris les modifications sans perte.",
                     "reencodeWarnTitle": "Conversion d'un format avec perte vers un autre",
                     "reencodeWarnNote": "Convertir un format avec perte vers un autre réencode l'image et ajoute une deuxième génération de perte de qualité permanente. Conserver le format d'origine l'évite.",
-                    "reencodeAck": "Je comprends et je veux réencoder quand même"
+                    "reencodeAck": "Je comprends et je veux réencoder quand même",
+                    "undo": "Annuler",
+                    "redo": "Rétablir",
+                    "applyCrop": "Appliquer le recadrage",
+                    "cancelCrop": "Annuler le recadrage",
+                    "cropHint": "Double-cliquez sur la sélection ou appuyez sur Enter pour appliquer, Esc pour annuler",
+                    "cropRatio": "Proportions",
+                    "cropRatioFree": "Libre",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Arrière-plan de transparence (faire défiler)"
             },

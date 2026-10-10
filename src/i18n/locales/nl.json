@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Formaat met verlies: bij hercoderen gaan sommige beeldgegevens verloren, ook verliesvrije bewerkingen.",
                     "reencodeWarnTitle": "Conversie van lossy naar lossy",
                     "reencodeWarnNote": "Het converteren van het ene lossy-formaat naar het andere codeert de afbeelding opnieuw en voegt een tweede, permanente generatie kwaliteitsverlies toe. Het oorspronkelijke formaat behouden voorkomt dit.",
-                    "reencodeAck": "Ik begrijp het en wil toch opnieuw coderen"
+                    "reencodeAck": "Ik begrijp het en wil toch opnieuw coderen",
+                    "undo": "Ongedaan maken",
+                    "redo": "Opnieuw",
+                    "applyCrop": "Bijsnijden toepassen",
+                    "cancelCrop": "Bijsnijden annuleren",
+                    "cropHint": "Dubbelklik op de selectie of druk op Enter om toe te passen, Esc om te annuleren",
+                    "cropRatio": "Verhoudingen",
+                    "cropRatioFree": "Vrij",
+                    "cropRatioOriginal": "Origineel"
                 },
                 "toggleTransparencyBg": "Transparantieachtergrond (wisselen)"
             },

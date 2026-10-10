@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Veszteséges formátum: az újrakódolás eldob néhány képadatot, a veszteségmentes szerkesztéseket is.",
                     "reencodeWarnTitle": "Veszteséges formátumból veszteségesbe alakítás",
                     "reencodeWarnNote": "Egy veszteséges formátum másikká alakítása újrakódolja a képet, és egy második, végleges minőségromlási réteget ad hozzá. Az eredeti formátum megtartása elkerüli ezt.",
-                    "reencodeAck": "Megértettem, és mindenképp újra akarom kódolni"
+                    "reencodeAck": "Megértettem, és mindenképp újra akarom kódolni",
+                    "undo": "Visszavonás",
+                    "redo": "Újra",
+                    "applyCrop": "Vágás alkalmazása",
+                    "cancelCrop": "Vágás elvetése",
+                    "cropHint": "Kattintson duplán a kijelölésre, vagy nyomja meg az Enter billentyűt az alkalmazáshoz, az Esc billentyűt a megszakításhoz",
+                    "cropRatio": "Arányok",
+                    "cropRatioFree": "Szabad",
+                    "cropRatioOriginal": "Eredeti"
                 },
                 "toggleTransparencyBg": "Átlátszósági háttér (váltás)"
             },

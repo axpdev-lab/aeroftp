@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format amb pèrdua: la recodificació descarta algunes dades de la imatge, incloses les edicions sense pèrdua.",
                     "reencodeWarnTitle": "Conversió amb pèrdua a amb pèrdua",
                     "reencodeWarnNote": "Convertir un format amb pèrdua a un altre torna a codificar la imatge i afegeix una segona generació permanent de pèrdua. Mantenir el format original ho evita.",
-                    "reencodeAck": "Ho entenc i vull tornar a codificar igualment"
+                    "reencodeAck": "Ho entenc i vull tornar a codificar igualment",
+                    "undo": "Desfés",
+                    "redo": "Refés",
+                    "applyCrop": "Aplica la retallada",
+                    "cancelCrop": "Cancel·la la retallada",
+                    "cropHint": "Fes doble clic a la selecció o prem Enter per aplicar, Esc per cancel·lar",
+                    "cropRatio": "Proporcions",
+                    "cropRatioFree": "Lliure",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Fons de transparència (alterna)"
             },

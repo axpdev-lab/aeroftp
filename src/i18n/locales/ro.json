@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format cu pierderi: recodificarea elimină unele date din imagine, inclusiv editările fără pierderi.",
                     "reencodeWarnTitle": "Conversie dintr-un format cu pierderi în altul cu pierderi",
                     "reencodeWarnNote": "Convertirea unui format cu pierderi în altul recodifică imaginea și adaugă o a doua generație permanentă de pierdere a calității. Păstrarea formatului original o evită.",
-                    "reencodeAck": "Înțeleg și vreau să recodific oricum"
+                    "reencodeAck": "Înțeleg și vreau să recodific oricum",
+                    "undo": "Anulare",
+                    "redo": "Refacere",
+                    "applyCrop": "Aplică decuparea",
+                    "cancelCrop": "Anulează decuparea",
+                    "cropHint": "Faceți dublu clic pe selecție sau apăsați Enter pentru a aplica, Esc pentru a anula",
+                    "cropRatio": "Proporții",
+                    "cropRatioFree": "Liber",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Fundal de transparență (comută)"
             },

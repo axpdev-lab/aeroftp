@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Formatas su nuostoliais: perkoduojant prarandama dalis vaizdo duomenų, taip pat ir be nuostolių keitimai.",
                     "reencodeWarnTitle": "Konvertavimas iš nuostolingo į nuostolingą formatą",
                     "reencodeWarnNote": "Konvertuojant vieną nuostolingą formatą į kitą, vaizdas užkoduojamas iš naujo ir pridedama antrą, nuolatinė kokybės praradimo kartą. Išsaugant pradinį formatą to išvengiama.",
-                    "reencodeAck": "Suprantu ir vis tiek noriu užkoduoti iš naujo"
+                    "reencodeAck": "Suprantu ir vis tiek noriu užkoduoti iš naujo",
+                    "undo": "Atšaukti",
+                    "redo": "Pakartoti",
+                    "applyCrop": "Taikyti apkarpymą",
+                    "cancelCrop": "Atšaukti apkarpymą",
+                    "cropHint": "Dukart spustelėkite pasirinkimą arba paspauskite Enter, kad pritaikytumėte, Esc, kad atšauktumėte",
+                    "cropRatio": "Proporcijos",
+                    "cropRatioFree": "Laisvas",
+                    "cropRatioOriginal": "Originalas"
                 },
                 "toggleTransparencyBg": "Skaidrumo fonas (perjungti)"
             },

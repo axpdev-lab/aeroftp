@@ -98,17 +98,14 @@ pub async fn process_image(
         // image is rejected before allocation rather than spiking memory.
         // (CLAUDE-AV-B1-08)
         const MAX_DECODE_DIMENSION: u32 = 16384;
-        let mut reader = image::ImageReader::open(&input)
+        let reader = image::ImageReader::open(&input)
             .map_err(|e| format!("Failed to open image: {e}"))?
             .with_guessed_format()
             .map_err(|e| format!("Failed to read image format: {e}"))?;
         let mut limits = image::Limits::default();
         limits.max_image_width = Some(MAX_DECODE_DIMENSION);
         limits.max_image_height = Some(MAX_DECODE_DIMENSION);
-        reader.limits(limits);
-        let mut img: DynamicImage = reader
-            .decode()
-            .map_err(|e| format!("Failed to open image: {e}"))?;
+        let mut img = decode_upright(reader, limits)?;
 
         // Apply operations in order
         for op in &operations {
@@ -181,6 +178,47 @@ pub async fn process_image(
 }
 
 /// Apply a single operation to a DynamicImage, returning the modified image.
+/// Decodes the picture the way the preview shows it: turned by its EXIF
+/// orientation. A phone photo is stored sideways with an orientation tag, the
+/// preview (and the crop drawn on it) follows the tag, and a decode that
+/// ignores it crops the sideways picture: the selection lands elsewhere or
+/// "exceeds image bounds" (#1075). The saved file carries no EXIF, so the
+/// turn has to be in the pixels.
+///
+/// `limits` bound the decode as `ImageReader::decode` does, including the
+/// decoded-buffer allocation (`max_alloc`, 512 MiB by default): the decoder
+/// path does not reserve it on its own, so a small file declaring a huge
+/// picture would otherwise be allocated before any check. A quarter turn
+/// (orientations 5 to 8) builds the turned picture while the decoded one is
+/// still alive, so it reserves a second buffer of the same size; a half turn
+/// or a mirror works in place.
+fn decode_upright<R: std::io::BufRead + std::io::Seek>(
+    mut reader: image::ImageReader<R>,
+    mut limits: image::Limits,
+) -> Result<DynamicImage, String> {
+    use image::ImageDecoder;
+    reader.limits(limits.clone());
+    let mut decoder = reader
+        .into_decoder()
+        .map_err(|e| format!("Failed to open image: {e}"))?;
+    use image::metadata::Orientation;
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let buffers = match orientation {
+        Orientation::Rotate90
+        | Orientation::Rotate270
+        | Orientation::Rotate90FlipH
+        | Orientation::Rotate270FlipH => 2,
+        _ => 1,
+    };
+    limits
+        .reserve(decoder.total_bytes().saturating_mul(buffers))
+        .map_err(|e| format!("Failed to open image: {e}"))?;
+    let mut img =
+        DynamicImage::from_decoder(decoder).map_err(|e| format!("Failed to open image: {e}"))?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
 fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImage, String> {
     match op {
         ImageOperation::Crop {
@@ -246,5 +284,103 @@ fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImag
         ImageOperation::HueRotate { degrees } => Ok(DynamicImage::ImageRgba8(
             image::imageops::huerotate(&img, *degrees),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::ImageEncoder;
+
+    /// A 4x2 JPEG whose EXIF says "turn 90 degrees clockwise to view".
+    fn sideways_jpeg() -> Vec<u8> {
+        jpeg_with_orientation(6)
+    }
+
+    /// A 4x2 JPEG carrying the EXIF orientation `value`.
+    fn jpeg_with_orientation(value: u8) -> Vec<u8> {
+        let pixels = image::RgbImage::from_pixel(4, 2, image::Rgb([200, 30, 30]));
+        let mut out = Vec::new();
+        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90);
+        // TIFF header, one IFD entry: Orientation (0x0112), SHORT, 1, value.
+        let exif: Vec<u8> = vec![
+            b'I', b'I', 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00,
+            0x01, 0x00, 0x00, 0x00, value, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        enc.set_exif_metadata(exif).expect("jpeg takes exif");
+        enc.write_image(pixels.as_raw(), 4, 2, image::ExtendedColorType::Rgb8)
+            .expect("encode");
+        out
+    }
+
+    #[test]
+    fn decodes_a_tagged_photo_the_way_the_preview_shows_it() {
+        let bytes = sideways_jpeg();
+        let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .expect("format");
+        let img = decode_upright(reader, image::Limits::default()).expect("decode");
+        // Stored 4x2, shown (and cropped) as 2x4.
+        assert_eq!(img.dimensions(), (2, 4));
+        // A crop of the bottom half of what the preview shows fits.
+        let op = ImageOperation::Crop {
+            x: 0,
+            y: 2,
+            width: 2,
+            height: 2,
+        };
+        let cropped = apply_operation(img, &op).expect("crop inside the shown picture");
+        assert_eq!(cropped.dimensions(), (2, 2));
+    }
+
+    #[test]
+    fn decodes_an_untagged_picture_unchanged() {
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(&[0u8; 4 * 2 * 3], 4, 2, image::ExtendedColorType::Rgb8)
+            .expect("encode");
+        let reader = image::ImageReader::new(std::io::Cursor::new(out))
+            .with_guessed_format()
+            .expect("format");
+        assert_eq!(
+            decode_upright(reader, image::Limits::default())
+                .expect("decode")
+                .dimensions(),
+            (4, 2)
+        );
+    }
+
+    #[test]
+    fn refuses_a_picture_larger_than_the_allocation_limit_before_decoding_it() {
+        // 4x2 RGB needs 24 bytes; a 16-byte allowance must refuse it, as
+        // ImageReader::decode does with its 512 MiB default.
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(&[0u8; 4 * 2 * 3], 4, 2, image::ExtendedColorType::Rgb8)
+            .expect("encode");
+        let reader = image::ImageReader::new(std::io::Cursor::new(out))
+            .with_guessed_format()
+            .expect("format");
+        let mut limits = image::Limits::default();
+        limits.max_alloc = Some(16);
+        assert!(decode_upright(reader, limits).is_err());
+    }
+
+    #[test]
+    fn a_quarter_turn_reserves_the_turned_copy_too() {
+        // 4x2 RGB is 24 bytes. A quarter turn holds the decoded and the turned
+        // picture at once (48 bytes); a half turn works in place (24 bytes).
+        let decode = |orientation: u8, max_alloc: u64| {
+            let reader =
+                image::ImageReader::new(std::io::Cursor::new(jpeg_with_orientation(orientation)))
+                    .with_guessed_format()
+                    .expect("format");
+            let mut limits = image::Limits::default();
+            limits.max_alloc = Some(max_alloc);
+            decode_upright(reader, limits)
+        };
+        assert!(decode(6, 40).is_err(), "quarter turn over the allowance");
+        assert!(decode(6, 48).is_ok(), "quarter turn within it");
+        assert!(decode(3, 40).is_ok(), "half turn needs one buffer");
     }
 }

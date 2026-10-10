@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Förlustbehäftat format: omkodning kastar bort en del bilddata, även förlustfria redigeringar.",
                     "reencodeWarnTitle": "Konvertering från förstörande till förstörande format",
                     "reencodeWarnNote": "Att konvertera ett förstörande format till ett annat omkodar bilden och lägger till ännu en permanent generation av kvalitetsförlust. Att behålla originalformatet undviker det.",
-                    "reencodeAck": "Jag förstår och vill omkoda ändå"
+                    "reencodeAck": "Jag förstår och vill omkoda ändå",
+                    "undo": "Ångra",
+                    "redo": "Gör om",
+                    "applyCrop": "Använd beskärning",
+                    "cancelCrop": "Avbryt beskärning",
+                    "cropHint": "Dubbelklicka på markeringen eller tryck på Enter för att tillämpa, Esc för att avbryta",
+                    "cropRatio": "Proportioner",
+                    "cropRatioFree": "Fri",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Genomskinlighetsbakgrund (växla)"
             },

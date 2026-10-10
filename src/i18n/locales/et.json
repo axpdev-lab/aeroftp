@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Kadudega vorming: uuesti kodeerimine kaotab osa pildiandmeid, ka kadudeta muudatused.",
                     "reencodeWarnTitle": "Teisendus kadudega vormingust kadudega vormingusse",
                     "reencodeWarnNote": "Ühe kadudega vormingu teisendamine teiseks kodeerib pildi uuesti ja lisab teise püsiva kvaliteedikao põlvkonna. Algse vormingu säilitamine hoiab selle ära.",
-                    "reencodeAck": "Saan aru ja soovin siiski uuesti kodeerida"
+                    "reencodeAck": "Saan aru ja soovin siiski uuesti kodeerida",
+                    "undo": "Võta tagasi",
+                    "redo": "Tee uuesti",
+                    "applyCrop": "Rakenda kärpimine",
+                    "cancelCrop": "Tühista kärpimine",
+                    "cropHint": "Rakendamiseks tehke valikul topeltklõps või vajutage Enter, tühistamiseks Esc",
+                    "cropRatio": "Proportsioonid",
+                    "cropRatioFree": "Vaba",
+                    "cropRatioOriginal": "Originaal"
                 },
                 "toggleTransparencyBg": "Läbipaistvuse taust (vaheta)"
             },

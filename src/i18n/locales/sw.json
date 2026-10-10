@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Muundo wenye hasara: kusimba upya hutupa baadhi ya data ya picha, ikijumuisha mahariri bila hasara.",
                     "reencodeWarnTitle": "Ubadilishaji kutoka lossy hadi lossy",
                     "reencodeWarnNote": "Kubadilisha muundo mmoja wa lossy hadi mwingine husimbua upya picha na kuongeza kizazi cha pili cha kudumu cha upotevu wa ubora. Kuhifadhi muundo asili huepuka hilo.",
-                    "reencodeAck": "Naelewa na bado nataka kusimba upya"
+                    "reencodeAck": "Naelewa na bado nataka kusimba upya",
+                    "undo": "Tendua",
+                    "redo": "Rudia",
+                    "applyCrop": "Tumia upunguzaji",
+                    "cancelCrop": "Ghairi upunguzaji",
+                    "cropHint": "Bofya mara mbili uteuzi au bonyeza Enter ili kutumia, Esc ili kughairi",
+                    "cropRatio": "Uwiano",
+                    "cropRatioFree": "Huru",
+                    "cropRatioOriginal": "Asili"
                 },
                 "toggleTransparencyBg": "Mandharinyuma ya uwazi (zungusha)"
             },

@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format so zaguba: povtornoto kodiranje otfrla del od podatocite na slikata, i uraduvanjata bez zaguba.",
                     "reencodeWarnTitle": "Претворање од формат со загуба во формат со загуба",
                     "reencodeWarnNote": "Претворањето на еден формат со загуба во друг повторно ја кодира сликата и додава втора, трајна генерација на загуба на квалитет. Задржувањето на оригиналниот формат го избегнува тоа.",
-                    "reencodeAck": "Разбирам и сепак сакам повторно да кодирам"
+                    "reencodeAck": "Разбирам и сепак сакам повторно да кодирам",
+                    "undo": "Врати",
+                    "redo": "Повтори",
+                    "applyCrop": "Примени сечење",
+                    "cancelCrop": "Откажи сечење",
+                    "cropHint": "Кликнете двапати на изборот или притиснете Enter за примена, Esc за откажување",
+                    "cropRatio": "Пропорции",
+                    "cropRatioFree": "Слободно",
+                    "cropRatioOriginal": "Оригинал"
                 },
                 "toggleTransparencyBg": "Позадина на проѕирност (менувај)"
             },
