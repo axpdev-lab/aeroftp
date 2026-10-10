@@ -12,12 +12,18 @@ import { CopyButton, PillButton, randomHex } from './CyberToolsShared';
 const SALT_ENCODINGS = ['hex', 'utf-8'] as const;
 type SaltEncoding = (typeof SALT_ENCODINGS)[number];
 
-/** RFC 9106 section 4, second recommended option: t=3, p=4, m=64 MiB, and a
- *  128-bit salt with a 256-bit tag. */
-const DEFAULT_MEMORY_KIB = 64 * 1024;
-const DEFAULT_ITERATIONS = 3;
-const DEFAULT_PARALLELISM = 4;
-const DEFAULT_OUTPUT_LEN = 32;
+/** Audited AeroVault / AeroCrypt profile: 128 MiB, t=4, p=4, 32-byte tag.
+ *  Mirrors `aerocrypt::audited_argon2_profile` and `crypto::derive_key_strong`.
+ *  The salt stays a fresh 16-byte value (RFC 9106). AeroCrypt vault salts are
+ *  32 bytes and belong to that format, not to this calculator.
+ *  `crypto::derive_key` (64 MiB, t=3) is the credential-store profile and is
+ *  intentionally not copied here. */
+export const HASH_FORGE_ARGON2_DEFAULTS = {
+    memoryKib: 128 * 1024,
+    iterations: 4,
+    parallelism: 4,
+    outputLen: 32,
+} as const;
 /** Mirrors ARGON2_MEMORY_KIB_MAX in cyber_tools.rs; the backend enforces it. */
 const MEMORY_KIB_MAX = 2 * 1024 * 1024;
 
@@ -45,10 +51,10 @@ export const Argon2idPanel: React.FC<Argon2idPanelProps> = ({ password, password
     const t = useTranslation();
     const [salt, setSalt] = useState(() => randomHex(16));
     const [saltEncoding, setSaltEncoding] = useState<SaltEncoding>('hex');
-    const [memoryKib, setMemoryKib] = useState(DEFAULT_MEMORY_KIB);
-    const [iterations, setIterations] = useState(DEFAULT_ITERATIONS);
-    const [parallelism, setParallelism] = useState(DEFAULT_PARALLELISM);
-    const [outputLen, setOutputLen] = useState(DEFAULT_OUTPUT_LEN);
+    const [memoryKib, setMemoryKib] = useState(HASH_FORGE_ARGON2_DEFAULTS.memoryKib);
+    const [iterations, setIterations] = useState(HASH_FORGE_ARGON2_DEFAULTS.iterations);
+    const [parallelism, setParallelism] = useState(HASH_FORGE_ARGON2_DEFAULTS.parallelism);
+    const [outputLen, setOutputLen] = useState(HASH_FORGE_ARGON2_DEFAULTS.outputLen);
     const [output, setOutput] = useState<Argon2idOutput | null>(null);
     const [error, setError] = useState('');
     const [running, setRunning] = useState(false);

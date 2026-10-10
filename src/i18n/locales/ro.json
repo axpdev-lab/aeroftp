@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iterații",
             "argon2Parallelism": "Paralelism",
             "argon2OutputLength": "Lungime (octeți)",
-            "argon2DefaultsHint": "Valori implicite: a doua opțiune recomandată de RFC 9106, pentru memorie limitată (64 MiB, 3 iterații, 4 benzi, salt de 16 octeți). Memorie până la 2 GiB.",
+            "argon2DefaultsHint": "Valori implicite: profilul folosit de AeroVault și AeroCrypt (128 MiB, 4 iterații, 4 benzi, ieșire de 32 de octeți). Saltul de mai sus este al tău. Memorie până la 2 GiB.",
             "argon2Derive": "Derivă",
             "argon2Phc": "Șir PHC"
         },

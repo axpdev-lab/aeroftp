@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Ítranir",
             "argon2Parallelism": "Samsíða vinnsla",
             "argon2OutputLength": "Lengd (bæti)",
-            "argon2DefaultsHint": "Sjálfgefin gildi: annar ráðlagði valkostur RFC 9106 fyrir takmarkað minni (64 MiB, 3 ítranir, 4 brautir, 16 bæta salt). Minni allt að 2 GiB.",
+            "argon2DefaultsHint": "Sjálfgefin gildi: sniðið sem AeroVault og AeroCrypt nota (128 MiB, 4 ítranir, 4 brautir, 32 bæta úttak). Saltið hér að ofan er þitt. Minni allt að 2 GiB.",
             "argon2Derive": "Leiða út",
             "argon2Phc": "PHC-strengur"
         },

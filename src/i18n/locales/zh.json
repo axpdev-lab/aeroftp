@@ -4306,7 +4306,7 @@
             "argon2Iterations": "迭代次数",
             "argon2Parallelism": "并行度",
             "argon2OutputLength": "长度（字节）",
-            "argon2DefaultsHint": "默认值：RFC 9106 针对内存受限情况的第二推荐选项（64 MiB、3 次迭代、4 条通道、16 字节盐值）。内存最高 2 GiB。",
+            "argon2DefaultsHint": "默认值：AeroVault 和 AeroCrypt 使用的配置（128 MiB、4 次迭代、4 条通道、32 字节输出）。上方的盐值是你的。内存最高 2 GiB。",
             "argon2Derive": "派生",
             "argon2Phc": "PHC 字符串"
         },

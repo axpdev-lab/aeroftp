@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iterazioak",
             "argon2Parallelism": "Paralelismoa",
             "argon2OutputLength": "Luzera (byte)",
-            "argon2DefaultsHint": "Balio lehenetsiak: RFC 9106 arauaren bigarren aukera gomendatua, memoria mugatuetarako (64 MiB, 3 iterazio, 4 errei, 16 byteko gatza). Memoria 2 GiB arte.",
+            "argon2DefaultsHint": "Balio lehenetsiak: AeroVault eta AeroCrypt erabiltzen duten profila (128 MiB, 4 iterazio, 4 errei, 32 byteko irteera). Goiko gatza zurea da. Memoria 2 GiB arte.",
             "argon2Derive": "Eratorri",
             "argon2Phc": "PHC katea"
         },

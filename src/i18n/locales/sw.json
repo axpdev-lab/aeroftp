@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Marudio",
             "argon2Parallelism": "Usambamba",
             "argon2OutputLength": "Urefu (baiti)",
-            "argon2DefaultsHint": "Chaguo-msingi: chaguo la pili linalopendekezwa na RFC 9106 kwa kumbukumbu ndogo (64 MiB, marudio 3, njia 4, chumvi ya baiti 16). Kumbukumbu hadi 2 GiB.",
+            "argon2DefaultsHint": "Chaguo-msingi: wasifu ambao AeroVault na AeroCrypt wanatumia (128 MiB, marudio 4, njia 4, pato la baiti 32). Chumvi hapo juu ni yako. Kumbukumbu hadi 2 GiB.",
             "argon2Derive": "Tokeza",
             "argon2Phc": "Mfuatano wa PHC"
         },

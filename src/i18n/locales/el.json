@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Επαναλήψεις",
             "argon2Parallelism": "Παραλληλισμός",
             "argon2OutputLength": "Μήκος (byte)",
-            "argon2DefaultsHint": "Προεπιλογές: η δεύτερη προτεινόμενη επιλογή του RFC 9106 για περιορισμένη μνήμη (64 MiB, 3 επαναλήψεις, 4 λωρίδες, αλάτι 16 byte). Μνήμη έως 2 GiB.",
+            "argon2DefaultsHint": "Προεπιλογές: το προφίλ που χρησιμοποιούν AeroVault και AeroCrypt (128 MiB, 4 επαναλήψεις, 4 λωρίδες, έξοδος 32 byte). Το αλάτι παραπάνω είναι δικό σας. Μνήμη έως 2 GiB.",
             "argon2Derive": "Παραγωγή",
             "argon2Phc": "Συμβολοσειρά PHC"
         },

@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Iteraties",
             "argon2Parallelism": "Parallelisme",
             "argon2OutputLength": "Lengte (bytes)",
-            "argon2DefaultsHint": "Standaardwaarden: de tweede aanbevolen optie van RFC 9106, voor beperkt geheugen (64 MiB, 3 iteraties, 4 lanes, salt van 16 bytes). Geheugen tot 2 GiB.",
+            "argon2DefaultsHint": "Standaardwaarden: het profiel dat AeroVault en AeroCrypt gebruiken (128 MiB, 4 iteraties, 4 lanes, uitvoer van 32 bytes). Het salt hierboven is van u. Geheugen tot 2 GiB.",
             "argon2Derive": "Afleiden",
             "argon2Phc": "PHC-tekenreeks"
         },

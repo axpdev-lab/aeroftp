@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Lelaran",
             "argon2Parallelism": "Keselarian",
             "argon2OutputLength": "Panjang (bait)",
-            "argon2DefaultsHint": "Lalai: pilihan disyorkan kedua RFC 9106 untuk memori terhad (64 MiB, 3 lelaran, 4 lorong, garam 16 bait). Memori sehingga 2 GiB.",
+            "argon2DefaultsHint": "Lalai: profil yang digunakan oleh AeroVault dan AeroCrypt (128 MiB, 4 lelaran, 4 lorong, output 32 bait). Garam di atas adalah milik anda. Memori sehingga 2 GiB.",
             "argon2Derive": "Terbitkan",
             "argon2Phc": "Rentetan PHC"
         },

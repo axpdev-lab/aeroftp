@@ -4306,7 +4306,7 @@
             "argon2Iterations": "Mga pag-ulit",
             "argon2Parallelism": "Paralelismo",
             "argon2OutputLength": "Haba (byte)",
-            "argon2DefaultsHint": "Mga default: ang pangalawang inirerekomendang opsyon ng RFC 9106 para sa limitadong memorya (64 MiB, 3 pag-ulit, 4 na lane, asin na 16 byte). Memorya hanggang 2 GiB.",
+            "argon2DefaultsHint": "Mga default: ang profil na ginagamit ng AeroVault at AeroCrypt (128 MiB, 4 pag-ulit, 4 na lane, output na 32 byte). Ang asin sa itaas ay iyo. Memorya hanggang 2 GiB.",
             "argon2Derive": "I-derive",
             "argon2Phc": "String ng PHC"
         },
