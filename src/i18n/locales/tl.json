@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Kino-convert ang marker ng AeroCrypt sa .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Na-convert ang AeroCrypt marker sa .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Ina-unlock ang folder na {filename}..."
+            "box_unlock_folder": "[Box] Ina-unlock ang folder na {filename}...",
+            "site_replied": "{command}: sumagot ang server ng {code}",
+            "site_unknown": "{command}: walang kumpletong tugon, hindi alam ang resulta",
+            "site_not_sent": "Hindi ipinadala ang {command}"
         },
         "protocol": {
             "selectProtocol": "Pumili ng protocol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Log ng Aktibidad",
             "detailedCards": "Mga detalyadong card ng server",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Koneksyon",
+            "siteCommand": "Command na SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Naghihintay ng mga command...",
@@ -6190,6 +6195,46 @@
                 "agent": "Hiniling para sa sesyong ito",
                 "human": "Binago mo"
             }
+        },
+        "siteCommand": {
+            "title": "SITE command",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE command at mga argumento nito",
+            "send": "Ipadala",
+            "sending": "Ipinapadala...",
+            "hideCodes": "Itago ang mga code ng tugon",
+            "copyReply": "Kopyahin ang tugon",
+            "copyAll": "Kopyahin lahat",
+            "copied": "Nakopya",
+            "clear": "I-clear",
+            "empty": "Lumalabas dito ang mga command na ipinadala mo kasama ang buong tugon ng server.",
+            "plainFtpNotice": "Hindi naka-encrypt ang koneksyong ito: ang mga command at ang mga argumento nito, kasama ang mga password, ay dumadaan sa network bilang plain text.",
+            "codeNotice": "Ipinapakita ang mga tugon ayon sa pagpapadala ng server. Hindi sinasabi ng code ng tugon kung gumana ang command: may mga server na sumasagot ng 200 sa pagtanggi, kaya basahin ang teksto.",
+            "privacyNotice": "Walang nata-type o natatanggap dito ang sine-save, at ang mga command na may password ay hindi isinasama sa history.",
+            "chipNotSent": "hindi naipadala",
+            "chipNoReply": "walang tugon",
+            "elapsed": "{ms} ms",
+            "latin1": "na-decode bilang Latin-1",
+            "notSent": {
+                "empty": "Walang ipapadala: mag-type ng SITE command, halimbawa WHO.",
+                "control_character": "Hindi naipadala: may control character ang command (CR, LF, TAB...).",
+                "too_long": "Hindi naipadala: mas mahaba ang command sa 1024 byte.",
+                "not_ftp": "Hindi naipadala: nangangailangan ng FTP o FTPS na koneksyon ang mga SITE command.",
+                "not_connected": "Hindi naipadala: hindi nakakonekta ang session.",
+                "busy": "Hindi naipadala: abala ang session sa ibang operasyon. Subukan muli kapag tapos na ito.",
+                "reconnect_failed": "Hindi naipadala: kailangang muling kumonekta muna ang session, ngunit hindi ito nagtagumpay."
+            },
+            "unknown": {
+                "timeout": "Hindi dumating sa oras ang tugon.",
+                "connection_lost": "Nawala ang koneksyon bago ang tugon.",
+                "malformed_reply": "Hindi sumunod ang tugon sa format ng FTP.",
+                "reply_too_large": "Mas malaki ang tugon kaysa sa 256 KiB at itinapon ito."
+            },
+            "unknownTail": "Maaaring naipatupad ng server ang command, o maaaring hindi. Hindi ito ipinadala muli.",
+            "sessionReconnected": "Naibalik ang session.",
+            "sessionNotReconnected": "Hindi naibalik ang session.",
+            "sessionReset": "Nagpadala ang server ng higit sa isang tugon, kaya naibalik ang session upang mabasa ng susunod na command ang sarili nitong tugon.",
+            "sessionStateNote": "Binabago lang ng command na ito kung paano tinatrato ng server ang koneksyong ito: gumagamit ang mga paglilipat ng sarili nilang koneksyon, at maaaring iba ang hitsura ng listahan ng file."
         }
     }
 }

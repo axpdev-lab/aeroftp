@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Konverterar AeroCrypt-markör till .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markör konverterad till .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Låser upp mappen {filename}..."
+            "box_unlock_folder": "[Box] Låser upp mappen {filename}...",
+            "site_replied": "{command}: servern svarade {code}",
+            "site_unknown": "{command}: inget fullständigt svar, utfallet är okänt",
+            "site_not_sent": "{command} skickades inte"
         },
         "protocol": {
             "selectProtocol": "Välj protokoll...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Aktivitetslogg",
             "detailedCards": "Detaljerade serverkort",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Anslutning",
+            "siteCommand": "SITE-kommando..."
         },
         "activityPanel": {
             "awaitingCommands": "Väntar på kommandon...",
@@ -6171,6 +6176,46 @@
                 "agent": "Begärd för denna session",
                 "human": "Ändrad av dig"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-kommando",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-kommando och dess argument",
+            "send": "Skicka",
+            "sending": "Skickar...",
+            "hideCodes": "Dölj svarskoder",
+            "copyReply": "Kopiera svar",
+            "copyAll": "Kopiera allt",
+            "copied": "Kopierat",
+            "clear": "Rensa",
+            "empty": "Kommandon du skickar visas här tillsammans med serverns fullständiga svar.",
+            "plainFtpNotice": "Den här anslutningen är inte krypterad: kommandon och deras argument, lösenord inräknade, skickas över nätverket som klartext.",
+            "codeNotice": "Svar visas så som servern skickade dem. En svarskod säger inte om kommandot fungerade: vissa servrar svarar 200 på ett avslag, så läs texten.",
+            "privacyNotice": "Inget som skrivs eller tas emot här sparas, och kommandon som innehåller ett lösenord utelämnas från historiken.",
+            "chipNotSent": "inte skickat",
+            "chipNoReply": "inget svar",
+            "elapsed": "{ms} ms",
+            "latin1": "avkodat som Latin-1",
+            "notSent": {
+                "empty": "Inget att skicka: skriv ett SITE-kommando, till exempel WHO.",
+                "control_character": "Inte skickat: kommandot innehåller ett styrtecken (CR, LF, TAB...).",
+                "too_long": "Inte skickat: kommandot är längre än 1024 byte.",
+                "not_ftp": "Inte skickat: SITE-kommandon kräver en FTP- eller FTPS-anslutning.",
+                "not_connected": "Inte skickat: sessionen är inte ansluten.",
+                "busy": "Inte skickat: sessionen är upptagen med en annan åtgärd. Försök igen när den är klar.",
+                "reconnect_failed": "Inte skickat: sessionen behövde först återansluta, men det misslyckades."
+            },
+            "unknown": {
+                "timeout": "Svaret kom inte fram i tid.",
+                "connection_lost": "Anslutningen bröts före svaret.",
+                "malformed_reply": "Svaret följde inte FTP-formatet.",
+                "reply_too_large": "Svaret var större än 256 KiB och kasserades."
+            },
+            "unknownTail": "Servern kan ha tillämpat kommandot, eller inte. Det skickades inte igen.",
+            "sessionReconnected": "Sessionen återupprättades.",
+            "sessionNotReconnected": "Sessionen kunde inte återupprättas.",
+            "sessionReset": "Servern skickade mer än ett svar, så sessionen återupprättades för att nästa kommando ska läsa sitt eget svar.",
+            "sessionStateNote": "Det här kommandot ändrar bara hur servern behandlar den här anslutningen: överföringar använder egna anslutningar, och fillistan kan se annorlunda ut."
         }
     }
 }

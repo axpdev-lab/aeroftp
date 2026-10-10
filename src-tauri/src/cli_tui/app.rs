@@ -2279,6 +2279,16 @@ impl AppState {
                 self.begin_mutation(TuiWorkerOperation::Mkdir, format!("Creating {}.", path));
                 vec![WorkerCommand::Mkdir { path }]
             }
+            // A session that is not FTP/FTPS is told so by the shared core, in
+            // the same words the CLI uses, rather than guessed from the profile.
+            PaletteCommand::Site(args) => {
+                self.overlay = TuiOverlay::None;
+                self.begin_mutation(
+                    TuiWorkerOperation::Site,
+                    format!("Sending {}.", args.label()),
+                );
+                vec![WorkerCommand::Site { args }]
+            }
             PaletteCommand::Get { remote, local } => {
                 let name = remote_basename(&remote);
                 let base = if !self.context.download_base.is_empty() {
@@ -3028,6 +3038,19 @@ impl AppState {
             } => {
                 self.status = format!("Quota refresh failed: {}", message);
             }
+            WorkerEvent::SiteReply { title, lines, .. } => {
+                let lines: Vec<String> = lines
+                    .iter()
+                    .map(|line| {
+                        crate::cli_tui::sanitize_display(
+                            &ftp_client_gui_lib::providers::ftp_site::strip_ansi(line),
+                        )
+                    })
+                    .collect();
+                self.overlay =
+                    TuiOverlay::Pager(PagerState::new(format!(" {} ", title), lines, false, false));
+                self.status = format!("{}.", title);
+            }
             WorkerEvent::FileContent {
                 path,
                 content,
@@ -3382,7 +3405,8 @@ fn event_identity(event: &WorkerEvent) -> Option<&TuiSessionIdentity> {
         }
         WorkerEvent::SessionReady { identity, .. }
         | WorkerEvent::ListReady { identity, .. }
-        | WorkerEvent::StatReady { identity, .. } => identity.as_ref(),
+        | WorkerEvent::StatReady { identity, .. }
+        | WorkerEvent::SiteReply { identity, .. } => identity.as_ref(),
         WorkerEvent::Idle
         | WorkerEvent::PathReady { .. }
         | WorkerEvent::TransferProgress { .. }
@@ -3522,6 +3546,10 @@ enum PaletteCommand {
     Move { from: String, to: String },
     /// `rm <path>` (confirm) / `rm! <path>` (force): delete a remote entry.
     Rm { path: String, force: bool },
+    /// `site <command>`: send a SITE command on the live FTP/FTPS session.
+    /// The rest of the line is kept as typed (quotes and spacing are the
+    /// server's syntax), validated here so a bad line never reaches the worker.
+    Site(ftp_client_gui_lib::providers::ftp_site::SiteArgs),
 }
 
 /// Split a palette line shell-style, honouring double quotes so a single
@@ -3587,6 +3615,9 @@ fn resolve_remote_arg(cwd: &str, arg: &str) -> String {
 /// wrong arity return [`PaletteCommand::Error`] with a short usage hint so the
 /// palette can stay open without ever running a half-parsed command.
 fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
+    if let Some(command) = parse_site_palette_line(line) {
+        return command;
+    }
     let tokens = tokenize_palette_line(line);
     let Some((verb, args)) = tokens.split_first() else {
         return PaletteCommand::Empty;
@@ -3668,17 +3699,42 @@ fn parse_palette_command(line: &str, cwd: &str) -> PaletteCommand {
             }
         }
         other => PaletteCommand::Error(format!(
-            "unknown '{}': ls cd get put stat mkdir mv rm rm! (type help)",
+            "unknown '{}': ls cd get put stat mkdir mv rm rm! site (type help)",
             other
         )),
     }
+}
+
+/// `site <command>` from the raw palette line, or `None` for any other verb.
+/// The tokenizer is bypassed on purpose: it would drop the quotes and the
+/// spacing that a server-defined SITE command may need.
+fn parse_site_palette_line(line: &str) -> Option<PaletteCommand> {
+    use ftp_client_gui_lib::providers::ftp_site::{SiteArgs, SiteInputError};
+    let line = line.trim_start();
+    let verb_end = line.find(char::is_whitespace).unwrap_or(line.len());
+    if !line[..verb_end].eq_ignore_ascii_case("site") {
+        return None;
+    }
+    Some(match SiteArgs::parse(&line[verb_end..]) {
+        Ok(args) => PaletteCommand::Site(args),
+        Err(SiteInputError::Empty) => {
+            PaletteCommand::Error("usage: site <command>  (e.g. site WHO)".to_string())
+        }
+        Err(SiteInputError::ControlCharacter) => {
+            PaletteCommand::Error("site: the command contains a control character".to_string())
+        }
+        Err(SiteInputError::TooLong) => PaletteCommand::Error(format!(
+            "site: the command is longer than {} bytes",
+            ftp_client_gui_lib::providers::ftp_site::MAX_SITE_LINE_BYTES
+        )),
+    })
 }
 
 /// The one-line cheatsheet of every palette verb. Single source of truth for
 /// the `help`/`?` echo and the empty-buffer placeholder hint (rendered in
 /// `mod.rs`). The middot separator matches the header style; no em-dashes.
 pub(crate) fn palette_cheatsheet() -> &'static str {
-    "ls [path] · cd <path> · stat <path> · mkdir <path> · get <remote> [local] · put <local> [remote] · mv <src> <dst> · rm <path> · rm! <path>"
+    "ls [path] · cd <path> · stat <path> · mkdir <path> · get <remote> [local] · put <local> [remote] · mv <src> <dst> · rm <path> · rm! <path> · site <command>"
 }
 
 /// Compact byte size for the status line (the Shape B fullscreen view has no
@@ -5066,6 +5122,34 @@ mod tests {
         app
     }
 
+    #[test]
+    fn a_site_reply_opens_only_for_the_session_it_was_sent_on() {
+        let mut app = connected_app_with_listing();
+        app.apply_worker_event(WorkerEvent::SiteReply {
+            identity: Some(sample_identity()),
+            title: "SITE WHO - 200".to_string(),
+            lines: vec!["200 \u{1b}[1mok\u{1b}[0m".to_string()],
+        });
+        match &app.overlay {
+            TuiOverlay::Pager(_) => {}
+            other => panic!("the reply to this session opens the pager, got {other:?}"),
+        }
+
+        let mut app = connected_app_with_listing();
+        let mut other = sample_identity();
+        other.profile_selector = "2".to_string();
+        other.host = "other.example.com".to_string();
+        app.apply_worker_event(WorkerEvent::SiteReply {
+            identity: Some(other),
+            title: "SITE WHO - 200".to_string(),
+            lines: vec!["200 ok".to_string()],
+        });
+        assert!(
+            !matches!(app.overlay, TuiOverlay::Pager(_)),
+            "a reply that belongs to another session must not open its pager here"
+        );
+    }
+
     // --- B3 command palette ------------------------------------------------
 
     #[test]
@@ -5088,6 +5172,33 @@ mod tests {
         assert_eq!(resolve_remote_arg("/srv", "/etc/hosts"), "/etc/hosts");
         assert_eq!(resolve_remote_arg("/srv/docs", ".."), "/srv");
         assert_eq!(resolve_remote_arg("/srv", "."), "/srv");
+    }
+
+    #[test]
+    fn palette_site_keeps_the_rest_of_the_line_as_typed() {
+        match parse_palette_command("site CHANGE example tagline \"a  b\"", "/srv") {
+            PaletteCommand::Site(args) => assert_eq!(args.label(), "SITE CHANGE"),
+            other => panic!("expected a SITE command, got {other:?}"),
+        }
+        for line in ["SITE WHO", "site who", "  site   WHO"] {
+            assert!(
+                matches!(parse_palette_command(line, "/srv"), PaletteCommand::Site(ref args) if args.label() == "SITE WHO"),
+                "{line:?}"
+            );
+        }
+        assert!(matches!(
+            parse_palette_command("site", "/srv"),
+            PaletteCommand::Error(hint) if hint.starts_with("usage: site")
+        ));
+        assert!(matches!(
+            parse_palette_command("site WHO\tX", "/srv"),
+            PaletteCommand::Error(hint) if hint.contains("control character")
+        ));
+        // A verb that only starts with "site" is not the site verb.
+        assert!(matches!(
+            parse_palette_command("sitemap", "/srv"),
+            PaletteCommand::Error(hint) if hint.starts_with("unknown 'sitemap'")
+        ));
     }
 
     #[test]

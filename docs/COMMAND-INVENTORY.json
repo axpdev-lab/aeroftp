@@ -162,7 +162,7 @@
   },
   "app_version": "4.2.2",
   "cli": {
-    "count": 95,
+    "count": 96,
     "subcommands": [
       {
         "about": "Show detailed server info, account, and storage quota",
@@ -481,6 +481,10 @@
         "name": "serve"
       },
       {
+        "about": "Send a SITE command through an FTP/FTPS session and print the server's reply",
+        "name": "site"
+      },
+      {
         "about": "Show total size and object count under a path (recursive scan). A scan cancelled with Ctrl-C still prints the figure it reached and exits 4 (partial), so a script can tell it from a complete measurement",
         "name": "size"
       },
@@ -548,7 +552,7 @@
   },
   "counts": {
     "agent_tools": 39,
-    "cli_subcommands": 95,
+    "cli_subcommands": 96,
     "mcp_by_namespace": {
       "aeroftp_": 38,
       "other": 1,
@@ -558,7 +562,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 775
+    "tauri_commands": 778
   },
   "mcp": {
     "count": 77,
@@ -951,7 +955,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 449,
+    "name_matched_count": 452,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1358,6 +1362,7 @@
       "save_remote_file",
       "toggle_menu_bar",
       "rebuild_menu",
+      "set_site_command_menu_enabled",
       "compare_directories",
       "compare_local_directories",
       "cancel_compare",
@@ -1747,6 +1752,8 @@
       "provider_checksum",
       "provider_checksum_capability",
       "provider_keep_alive",
+      "provider_site_command",
+      "provider_site_session",
       "oauth2_connect",
       "oauth2_full_auth",
       "twake_sign_in",
@@ -2062,6 +2069,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 775
+    "count": 778
   }
 }

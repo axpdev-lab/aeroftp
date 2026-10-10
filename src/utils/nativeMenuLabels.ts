@@ -35,6 +35,8 @@ export const NATIVE_MENU_KEYS = [
     'view',
     'toggleTheme',
     'checkForUpdates',
+    'connection',
+    'siteCommand',
     'help',
 ] as const;
 

@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Konwertowanie znacznika AeroCrypt na .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Znacznik AeroCrypt przekonwertowany na .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Odblokowywanie folderu {filename}..."
+            "box_unlock_folder": "[Box] Odblokowywanie folderu {filename}...",
+            "site_replied": "{command}: serwer odpowiedział {code}",
+            "site_unknown": "{command}: brak pełnej odpowiedzi, wynik nieznany",
+            "site_not_sent": "{command} nie zostało wysłane"
         },
         "protocol": {
             "selectProtocol": "Wybierz protokół...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Dziennik aktywności",
             "detailedCards": "Szczegółowe karty serwerów",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Połączenie",
+            "siteCommand": "Polecenie SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Oczekiwanie na polecenia...",
@@ -6171,6 +6176,46 @@
                 "agent": "Zażądana dla tej sesji",
                 "human": "Zmieniona przez Ciebie"
             }
+        },
+        "siteCommand": {
+            "title": "Polecenie SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Polecenie SITE i jego argumenty",
+            "send": "Wyślij",
+            "sending": "Wysyłanie...",
+            "hideCodes": "Ukryj kody odpowiedzi",
+            "copyReply": "Kopiuj odpowiedź",
+            "copyAll": "Kopiuj wszystko",
+            "copied": "Skopiowano",
+            "clear": "Wyczyść",
+            "empty": "Wysłane polecenia pojawiają się tutaj wraz z pełną odpowiedzią serwera.",
+            "plainFtpNotice": "To połączenie nie jest szyfrowane: polecenia i ich argumenty, w tym hasła, są przesyłane przez sieć jawnym tekstem.",
+            "codeNotice": "Odpowiedzi są wyświetlane tak, jak wysłał je serwer. Kod odpowiedzi nie mówi, czy polecenie się powiodło: niektóre serwery odpowiadają 200 na odmowę, dlatego przeczytaj tekst.",
+            "privacyNotice": "Nic, co tu wpiszesz lub otrzymasz, nie jest zapisywane, a polecenia zawierające hasło są pomijane w historii.",
+            "chipNotSent": "nie wysłano",
+            "chipNoReply": "brak odpowiedzi",
+            "elapsed": "{ms} ms",
+            "latin1": "zdekodowano jako Latin-1",
+            "notSent": {
+                "empty": "Nie ma czego wysłać: wpisz polecenie SITE, na przykład WHO.",
+                "control_character": "Nie wysłano: polecenie zawiera znak sterujący (CR, LF, TAB...).",
+                "too_long": "Nie wysłano: polecenie jest dłuższe niż 1024 bajty.",
+                "not_ftp": "Nie wysłano: polecenia SITE wymagają połączenia FTP lub FTPS.",
+                "not_connected": "Nie wysłano: sesja nie jest połączona.",
+                "busy": "Nie wysłano: sesja jest zajęta inną operacją. Spróbuj ponownie po jej zakończeniu.",
+                "reconnect_failed": "Nie wysłano: sesja musiała się najpierw połączyć ponownie, co się nie udało."
+            },
+            "unknown": {
+                "timeout": "Odpowiedź nie nadeszła na czas.",
+                "connection_lost": "Połączenie zostało utracone przed odpowiedzią.",
+                "malformed_reply": "Odpowiedź nie miała formatu FTP.",
+                "reply_too_large": "Odpowiedź była większa niż 256 KiB i została odrzucona."
+            },
+            "unknownTail": "Serwer mógł zastosować polecenie lub nie. Nie zostało ono wysłane ponownie.",
+            "sessionReconnected": "Sesja została przywrócona.",
+            "sessionNotReconnected": "Nie udało się przywrócić sesji.",
+            "sessionReset": "Serwer wysłał więcej niż jedną odpowiedź, dlatego sesję przywrócono, aby kolejne polecenie odczytało własną odpowiedź.",
+            "sessionStateNote": "To polecenie zmienia tylko sposób, w jaki serwer traktuje to połączenie: transfery używają własnych połączeń, a lista plików może wyglądać inaczej."
         }
     }
 }

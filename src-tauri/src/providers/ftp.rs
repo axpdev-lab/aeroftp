@@ -143,6 +143,7 @@ impl AsyncTlsConnector for FtpsConnector {
 }
 
 use super::checksum_matrix;
+use super::ftp_site;
 use super::multi_thread::{
     parallel_refused, range_source_changed_through, read_range_source_through,
     run_concurrent_range_download, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
@@ -568,6 +569,11 @@ impl FtpProvider {
         }
     }
 
+    /// Whether a failed operation may be redialed and run once more.
+    ///
+    /// Never on the `SITE` path ([`Self::site_command`]): `"invalid response"`
+    /// is how suppaftp prints every refused reply, so routing a SITE command
+    /// through here would send each refused administrative command twice.
     fn is_stale_data_connection_error(err: &ProviderError) -> bool {
         let message = match err {
             ProviderError::ServerError(msg)
@@ -2339,18 +2345,36 @@ impl StorageProvider for FtpProvider {
         true
     }
 
+    /// `SITE CHMOD` through [`Self::site_command`], so it has a deadline and
+    /// takes any 2xx as done (vsftpd and others do not all answer `200`).
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
+        use ftp_site::{NotSentReason, SiteOutcome, UnknownCause};
 
-        // SITE CHMOD command
-        let chmod_cmd = format!("CHMOD {:o} {}", mode, path);
-        stream
-            .site(&chmod_cmd)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-
-        Ok(())
+        let args =
+            ftp_site::SiteArgs::verbatim(format!("CHMOD {mode:o} {path}")).map_err(|_| {
+                ProviderError::InvalidPath(format!("cannot send SITE CHMOD for {path:?}"))
+            })?;
+        // A standard verb with a one-line reply: no settle window, so a
+        // recursive chmod does not wait after every file.
+        let opts = ftp_site::SiteOptions::default().with_settle(std::time::Duration::ZERO);
+        match self.site_command(&args, &opts).await {
+            SiteOutcome::Replied { reply, .. } if (200..300).contains(&reply.code) => Ok(()),
+            SiteOutcome::Replied { reply, .. } => Err(ProviderError::ServerError(format!(
+                "the server refused SITE CHMOD on {path}: {}",
+                reply.lines.join(" ")
+            ))),
+            SiteOutcome::NotSent(NotSentReason::NotConnected) => Err(ProviderError::NotConnected),
+            SiteOutcome::NotSent(reason) => Err(ProviderError::ConnectionFailed(format!(
+                "SITE CHMOD on {path} was not sent: {reason:?}"
+            ))),
+            SiteOutcome::Unknown {
+                cause: UnknownCause::Timeout,
+                ..
+            } => Err(ProviderError::Timeout),
+            SiteOutcome::Unknown { cause, .. } => Err(ProviderError::ConnectionLost(format!(
+                "no complete reply to SITE CHMOD on {path} ({cause:?})"
+            ))),
+        }
     }
 
     fn supports_checksum(&self) -> bool {
@@ -2831,6 +2855,17 @@ fn parse_hash_feat(value: &str) -> (Vec<String>, Option<String>) {
         algorithms.push(label.to_string());
     }
     (algorithms, selected)
+}
+
+/// What follows a SITE command's final reply on the control connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AfterSiteReply {
+    /// Nothing within the settle window: the session stays as it is.
+    Clean,
+    /// Another reply: the next command would read it as its own.
+    Surplus,
+    /// The server closed the connection (end of file or a socket error).
+    Closed,
 }
 
 /// The lines of an FTP reply without their status code, last line first.
@@ -3526,30 +3561,7 @@ impl FtpProvider {
     /// session pays one buffer check and one non-blocking peek, no round
     /// trip.
     async fn redial_if_a_reply_is_pending(&mut self) -> Result<(), ProviderError> {
-        let pending = match self.stream.as_ref() {
-            Some(stream) => {
-                let control = stream.get_ref().await;
-                if !control.buffered_reply_bytes().is_empty() {
-                    true
-                } else {
-                    // The reader's buffer is empty; the socket may still hold
-                    // a reply the reader never pulled. One non-blocking peek,
-                    // the same probe `after_timed_out_open` uses.
-                    let mut probe = [0u8; 1];
-                    let mut got = tokio::io::ReadBuf::new(&mut probe);
-                    std::future::poll_fn(|cx| {
-                        std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
-                            std::task::Poll::Ready(Ok(bytes)) => bytes,
-                            _ => 0,
-                        })
-                    })
-                    .await
-                        > 0
-                }
-            }
-            None => return Ok(()),
-        };
-        if !pending {
+        if !self.reply_pending().await {
             return Ok(());
         }
         tracing::warn!(
@@ -3564,6 +3576,291 @@ impl FtpProvider {
         self.config = spec;
         self.connect().await?;
         self.restore_working_directory(&previous_path).await
+    }
+
+    /// Whether the control connection is encrypted: a TLS mode was asked for
+    /// and the session did not fall back to clear text (an
+    /// explicit-if-available server that refused `AUTH TLS`).
+    pub fn session_encrypted(&self) -> bool {
+        self.config.tls_mode != FtpTlsMode::None && !self.tls_downgraded
+    }
+
+    /// Whether the session holds reply bytes no command has read: in the
+    /// reader's buffer, or on the socket (one non-blocking peek, the same probe
+    /// `after_timed_out_open` uses). `false` without a session. No round trip,
+    /// so bytes still in flight are not seen; the next command's
+    /// [`Self::redial_if_a_reply_is_pending`] catches them once they land.
+    async fn reply_pending(&self) -> bool {
+        let Some(stream) = self.stream.as_ref() else {
+            return false;
+        };
+        let control = stream.get_ref().await;
+        if !control.buffered_reply_bytes().is_empty() {
+            return true;
+        }
+        let mut probe = [0u8; 1];
+        let mut got = tokio::io::ReadBuf::new(&mut probe);
+        std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(match control.poll_peek(cx, &mut got) {
+                std::task::Poll::Ready(Ok(bytes)) => bytes,
+                _ => 0,
+            })
+        })
+        .await
+            > 0
+    }
+
+    /// What the control connection shows after a SITE command's final
+    /// reply, waiting at most `window` (zero: one non-blocking look). Bytes
+    /// buffered or arriving are a surplus reply; end of file or a socket error
+    /// mean the server closed the connection, which is a different reason to
+    /// stop using it. Bounded, and no proof that nothing comes later.
+    async fn after_final_reply(&self, window: std::time::Duration) -> AfterSiteReply {
+        let Some(stream) = self.stream.as_ref() else {
+            return AfterSiteReply::Closed;
+        };
+        let control = stream.get_ref().await;
+        if !control.buffered_reply_bytes().is_empty() {
+            return AfterSiteReply::Surplus;
+        }
+        let mut probe = [0u8; 1];
+        let mut got = tokio::io::ReadBuf::new(&mut probe);
+        let look = std::future::poll_fn(|cx| match control.poll_peek(cx, &mut got) {
+            std::task::Poll::Ready(Ok(0)) | std::task::Poll::Ready(Err(_)) => {
+                std::task::Poll::Ready(AfterSiteReply::Closed)
+            }
+            std::task::Poll::Ready(Ok(_)) => std::task::Poll::Ready(AfterSiteReply::Surplus),
+            std::task::Poll::Pending if window.is_zero() => {
+                std::task::Poll::Ready(AfterSiteReply::Clean)
+            }
+            std::task::Poll::Pending => std::task::Poll::Pending,
+        });
+        tokio::time::timeout(window, look)
+            .await
+            .unwrap_or(AfterSiteReply::Clean)
+    }
+
+    /// Send `SITE <args>` once on this session and read the server's whole
+    /// reply, whatever its code.
+    ///
+    /// The command is written at most once. Recovering the session before it
+    /// is written is free, so a leftover reply or a dropped session is redialed
+    /// first. After it is written, a timeout, a lost connection or a reply that
+    /// cannot be read leaves the outcome unknown: the session is rebuilt so the
+    /// caller can go on, and the command is not sent again, because an account
+    /// command applied twice (or a `DELUSER` the server applied before the
+    /// connection died) is not something a retry can take back. This path
+    /// stays clear of `is_stale_data_connection_error`, which matches the
+    /// words suppaftp uses for every refused reply.
+    ///
+    /// `custom_command` with an empty list of expected codes, not `site()`:
+    /// `site()` accepts only `200`, so `SITE HELP`'s `214` would arrive as an
+    /// error. Every final reply then comes back whole, either as `Ok` or
+    /// inside `UnexpectedResponse`. Never `Status::System` in that list: it
+    /// makes the reader stop at the first line of a multi-line reply.
+    pub async fn site_command(
+        &mut self,
+        args: &ftp_site::SiteArgs,
+        opts: &ftp_site::SiteOptions,
+    ) -> ftp_site::SiteOutcome {
+        use ftp_site::{NotSentReason, SiteInputError, SiteOutcome, SiteReply, UnknownCause};
+
+        let started = std::time::Instant::now();
+        if self.redial_if_a_reply_is_pending().await.is_err() {
+            return SiteOutcome::NotSent(NotSentReason::ReconnectFailed);
+        }
+        if self.stream.is_none() {
+            if self.connection_spec.is_none() {
+                return SiteOutcome::NotSent(NotSentReason::NotConnected);
+            }
+            if self.ensure_connected().await.is_err() {
+                return SiteOutcome::NotSent(NotSentReason::ReconnectFailed);
+            }
+        }
+        let Some(stream) = self.stream.as_mut() else {
+            return SiteOutcome::NotSent(NotSentReason::NotConnected);
+        };
+
+        let deadline = tokio::time::Instant::now() + opts.reply_timeout;
+        let first =
+            tokio::time::timeout_at(deadline, stream.custom_command(args.wire_line(), &[])).await;
+        let mut body = match first {
+            Ok(Ok(response)) | Ok(Err(FtpError::UnexpectedResponse(response))) => response.body,
+            // suppaftp refuses a CR/LF line before writing it; the line was
+            // validated already, so this is a guard, and nothing was sent.
+            Ok(Err(FtpError::ConnectionError(io)))
+                if io.kind() == std::io::ErrorKind::InvalidInput =>
+            {
+                return SiteOutcome::NotSent(NotSentReason::Input(
+                    SiteInputError::ControlCharacter,
+                ));
+            }
+            Ok(Err(err)) => {
+                let cause = self.site_failure_cause(&err).await;
+                return self.abandon_site_session(cause, started).await;
+            }
+            Err(_) => {
+                return self
+                    .abandon_site_session(UnknownCause::Timeout, started)
+                    .await
+            }
+        };
+
+        // A 1xx is preliminary (RFC 959 4.2): the final reply of the same
+        // exchange follows, within the same deadline and the same size cap
+        // for the whole exchange. Both are checked on every turn: a server
+        // that keeps the socket full makes each read ready on its first poll,
+        // and tokio's timeout polls the read before its delay, so the deadline
+        // alone would never fire. Only the reply just read is decoded for its
+        // code, so the loop stays linear in what the server sends.
+        let mut last_code = ftp_site::final_reply_code_of(&body);
+        while last_code.is_some_and(|code| (100..200).contains(&code)) {
+            if body.len() > ftp_site::MAX_SITE_REPLY_BYTES {
+                return self
+                    .abandon_site_session(UnknownCause::ReplyTooLarge, started)
+                    .await;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return self
+                    .abandon_site_session(UnknownCause::Timeout, started)
+                    .await;
+            }
+            let Some(stream) = self.stream.as_mut() else {
+                break;
+            };
+            let next = tokio::time::timeout_at(deadline, stream.read_response_in(&[])).await;
+            match next {
+                Ok(Ok(response)) | Ok(Err(FtpError::UnexpectedResponse(response))) => {
+                    last_code = ftp_site::final_reply_code_of(&response.body);
+                    body.extend_from_slice(&response.body);
+                }
+                Ok(Err(err)) => {
+                    let cause = self.site_failure_cause(&err).await;
+                    return self.abandon_site_session(cause, started).await;
+                }
+                Err(_) => {
+                    return self
+                        .abandon_site_session(UnknownCause::Timeout, started)
+                        .await
+                }
+            }
+        }
+        if body.len() > ftp_site::MAX_SITE_REPLY_BYTES {
+            return self
+                .abandon_site_session(UnknownCause::ReplyTooLarge, started)
+                .await;
+        }
+
+        let Some(reply) = SiteReply::from_body(&body) else {
+            return self
+                .abandon_site_session(UnknownCause::MalformedReply, started)
+                .await;
+        };
+        // suppaftp ends a multi-line reply at the first `NNN ` line whatever
+        // its code (glFTPd needs that), so a listing row such as `123 files`
+        // can cut the reply short and leave the rest buffered.
+        let after = self.after_final_reply(opts.settle).await;
+        let session_reset = after == AfterSiteReply::Surplus;
+        match after {
+            AfterSiteReply::Clean => {}
+            AfterSiteReply::Surplus => tracing::warn!(
+                "FTP session held more than one reply after a SITE command; redialing so the next command reads its own reply"
+            ),
+            // Nothing to misattribute, but a closed session would turn the
+            // next command into an unknown outcome instead of a redial.
+            AfterSiteReply::Closed => tracing::debug!(
+                "FTP server closed the control connection after a SITE reply; redialing"
+            ),
+        }
+        if after != AfterSiteReply::Clean {
+            self.stream = None;
+            if let Err(err) = self.ensure_connected().await {
+                tracing::warn!("FTP redial after a SITE reply failed: {err}");
+            }
+        }
+        let elapsed = started.elapsed();
+        tracing::debug!(
+            code = reply.code,
+            lines = reply.lines.len(),
+            elapsed_ms = elapsed.as_millis() as u64,
+            session_reset,
+            "SITE command replied"
+        );
+        SiteOutcome::Replied {
+            reply,
+            elapsed,
+            session_reset,
+        }
+    }
+
+    /// What a failure after a `SITE` command was written says about the
+    /// reply: suppaftp's 256 KiB cap, a reply that broke RFC 959, or a
+    /// connection that died. suppaftp 12.1.0 reports a connection closed before
+    /// the first byte of a reply as `BadResponse` (12.1.1 makes it an end of
+    /// file), so a `BadResponse` on a socket already at its end is a lost
+    /// connection. Every cause leaves the outcome unknown either way.
+    async fn site_failure_cause(&self, err: &FtpError) -> ftp_site::UnknownCause {
+        match err {
+            FtpError::ConnectionError(io)
+                if io
+                    .get_ref()
+                    .is_some_and(|inner| inner.is::<suppaftp::ReplyTooLarge>()) =>
+            {
+                ftp_site::UnknownCause::ReplyTooLarge
+            }
+            FtpError::BadResponse if !self.control_at_eof().await => {
+                ftp_site::UnknownCause::MalformedReply
+            }
+            _ => ftp_site::UnknownCause::ConnectionLost,
+        }
+    }
+
+    /// Whether the control socket has reached its end: nothing buffered and a
+    /// non-blocking peek that reads end of file. `true` without a session.
+    async fn control_at_eof(&self) -> bool {
+        let Some(stream) = self.stream.as_ref() else {
+            return true;
+        };
+        let control = stream.get_ref().await;
+        if !control.buffered_reply_bytes().is_empty() {
+            return false;
+        }
+        let mut probe = [0u8; 1];
+        let mut got = tokio::io::ReadBuf::new(&mut probe);
+        std::future::poll_fn(|cx| {
+            std::task::Poll::Ready(matches!(
+                control.poll_peek(cx, &mut got),
+                std::task::Poll::Ready(Ok(0))
+            ))
+        })
+        .await
+    }
+
+    /// A `SITE` command was written and no complete reply was read. The
+    /// session is dropped, since whatever the server sends later would be read
+    /// as the next command's answer, and rebuilt from the stored spec in the
+    /// directory it was in. The command is not sent again.
+    async fn abandon_site_session(
+        &mut self,
+        cause: ftp_site::UnknownCause,
+        started: std::time::Instant,
+    ) -> ftp_site::SiteOutcome {
+        tracing::warn!(
+            "SITE command got no complete reply ({cause:?}); redialing without sending it again"
+        );
+        self.stream = None;
+        let session_reconnected = match self.ensure_connected().await {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::warn!("FTP redial after an unanswered SITE command failed: {err}");
+                false
+            }
+        };
+        ftp_site::SiteOutcome::Unknown {
+            cause,
+            elapsed: started.elapsed(),
+            session_reconnected,
+        }
     }
 
     /// Put the redialed session back in the directory the caller left it in.

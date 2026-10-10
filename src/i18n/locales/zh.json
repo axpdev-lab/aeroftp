@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "正在将 AeroCrypt 标记转换为 .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt 标记已转换为 .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] 正在解锁文件夹 {filename}..."
+            "box_unlock_folder": "[Box] 正在解锁文件夹 {filename}...",
+            "site_replied": "{command}：服务器回复 {code}",
+            "site_unknown": "{command}：没有完整回复，结果未知",
+            "site_not_sent": "{command} 未发送"
         },
         "protocol": {
             "selectProtocol": "选择协议...",
@@ -3901,7 +3904,9 @@
             "activityLog": "活动日志",
             "detailedCards": "详细服务器卡片",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "连接",
+            "siteCommand": "SITE 命令..."
         },
         "activityPanel": {
             "awaitingCommands": "等待命令...",
@@ -6171,6 +6176,46 @@
                 "agent": "为此会话请求",
                 "human": "由你更改"
             }
+        },
+        "siteCommand": {
+            "title": "SITE 命令",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE 命令及其参数",
+            "send": "发送",
+            "sending": "正在发送...",
+            "hideCodes": "隐藏响应代码",
+            "copyReply": "复制响应",
+            "copyAll": "全部复制",
+            "copied": "已复制",
+            "clear": "清除",
+            "empty": "您发送的命令会连同服务器的完整响应显示在这里。",
+            "plainFtpNotice": "此连接未加密：命令及其参数（包括密码）将以明文形式在网络上传输。",
+            "codeNotice": "响应按服务器发送的原样显示。响应代码并不能说明命令是否成功：有些服务器对拒绝也会返回 200，因此请阅读文本内容。",
+            "privacyNotice": "此处输入或接收的内容均不会被保存，包含密码的命令也不会记入历史记录。",
+            "chipNotSent": "未发送",
+            "chipNoReply": "无响应",
+            "elapsed": "{ms} 毫秒",
+            "latin1": "已按 Latin-1 解码",
+            "notSent": {
+                "empty": "没有可发送的内容：请输入 SITE 命令，例如 WHO。",
+                "control_character": "未发送：命令包含控制字符（CR、LF、TAB...）。",
+                "too_long": "未发送：命令长度超过 1024 字节。",
+                "not_ftp": "未发送：SITE 命令需要 FTP 或 FTPS 连接。",
+                "not_connected": "未发送：会话未连接。",
+                "busy": "未发送：会话正忙于其他操作。请在其结束后重试。",
+                "reconnect_failed": "未发送：会话需要先重新连接，但连接失败。"
+            },
+            "unknown": {
+                "timeout": "未能及时收到响应。",
+                "connection_lost": "在收到回复之前连接已断开。",
+                "malformed_reply": "回复不符合 FTP 格式。",
+                "reply_too_large": "回复大于 256 KiB，已被丢弃。"
+            },
+            "unknownTail": "服务器可能已执行该命令，也可能没有。该命令未被再次发送。",
+            "sessionReconnected": "会话已重新建立。",
+            "sessionNotReconnected": "无法重新建立会话。",
+            "sessionReset": "服务器发送了多个回复，因此已重新建立会话，以便下一条命令读取它自己的回复。",
+            "sessionStateNote": "此命令仅改变服务器对此连接的处理方式：传输使用各自独立的连接，文件列表可能会显示不同。"
         }
     }
 }

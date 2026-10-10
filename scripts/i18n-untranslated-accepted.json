@@ -109,7 +109,8 @@
     "settings.onedriveClientSecretPlaceholder": "OAuth credential mask. It shows the SHAPE of the value the user pastes from the provider console, so it is not prose in any language and must stay byte-identical in all 46.",
     "settings.pcloudClientIdPlaceholder": "OAuth credential mask. It shows the SHAPE of the value the user pastes from the provider console, so it is not prose in any language and must stay byte-identical in all 46.",
     "settings.pcloudClientSecretPlaceholder": "OAuth credential mask. It shows the SHAPE of the value the user pastes from the provider console, so it is not prose in any language and must stay byte-identical in all 46.",
-    "connection.internxtEmailPlaceholder": "Email mask, not prose. It shows the SHAPE of the address the user types and all 46 locales already agree on it. The detector flags it only because 'your.email@example.com' parses as four words, one of them the function word 'your'. Confirmed by the Phase B translators: given the string and told to translate it, every one of the 46 returned it unchanged."
+    "connection.internxtEmailPlaceholder": "Email mask, not prose. It shows the SHAPE of the address the user types and all 46 locales already agree on it. The detector flags it only because 'your.email@example.com' parses as four words, one of them the function word 'your'. Confirmed by the Phase B translators: given the string and told to translate it, every one of the 46 returned it unchanged.",
+    "siteCommand.placeholder": "Example SITE commands typed exactly as the server expects them (WHO, USER alice, CHANGE alice ratio 5): command words and arguments are protocol syntax, not prose, so the placeholder must stay byte-identical in all 46."
   },
   "knownLeaks": {}
 }

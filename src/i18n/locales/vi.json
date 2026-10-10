@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Đang chuyển đổi dấu AeroCrypt sang .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Đã chuyển đổi điểm đánh dấu AeroCrypt sang .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Đang mở khóa thư mục {filename}..."
+            "box_unlock_folder": "[Box] Đang mở khóa thư mục {filename}...",
+            "site_replied": "{command}: máy chủ đã phản hồi {code}",
+            "site_unknown": "{command}: không có phản hồi đầy đủ, kết quả không xác định",
+            "site_not_sent": "{command} không được gửi"
         },
         "protocol": {
             "selectProtocol": "Chọn giao thức...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Nhật ký hoạt động",
             "detailedCards": "Thẻ máy chủ chi tiết",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Kết nối",
+            "siteCommand": "Lệnh SITE..."
         },
         "activityPanel": {
             "awaitingCommands": "Đang chờ lệnh...",
@@ -6171,6 +6176,46 @@
                 "agent": "Được yêu cầu cho phiên này",
                 "human": "Do bạn thay đổi"
             }
+        },
+        "siteCommand": {
+            "title": "Lệnh SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Lệnh SITE và các đối số của nó",
+            "send": "Gửi",
+            "sending": "Đang gửi...",
+            "hideCodes": "Ẩn mã phản hồi",
+            "copyReply": "Sao chép phản hồi",
+            "copyAll": "Sao chép tất cả",
+            "copied": "Đã sao chép",
+            "clear": "Xóa",
+            "empty": "Các lệnh bạn gửi sẽ hiển thị ở đây cùng với phản hồi đầy đủ của máy chủ.",
+            "plainFtpNotice": "Kết nối này không được mã hóa: các lệnh và đối số của chúng, kể cả mật khẩu, đi qua mạng dưới dạng văn bản thuần.",
+            "codeNotice": "Phản hồi được hiển thị đúng như máy chủ đã gửi. Mã phản hồi không cho biết lệnh có thành công hay không: một số máy chủ trả lời 200 cho một lời từ chối, vì vậy hãy đọc nội dung văn bản.",
+            "privacyNotice": "Mọi nội dung nhập hoặc nhận ở đây đều không được lưu, và các lệnh có mật khẩu sẽ không được ghi vào lịch sử.",
+            "chipNotSent": "chưa gửi",
+            "chipNoReply": "không có phản hồi",
+            "elapsed": "{ms} ms",
+            "latin1": "được giải mã dưới dạng Latin-1",
+            "notSent": {
+                "empty": "Không có gì để gửi: hãy nhập một lệnh SITE, ví dụ WHO.",
+                "control_character": "Chưa gửi: lệnh chứa ký tự điều khiển (CR, LF, TAB...).",
+                "too_long": "Chưa gửi: lệnh dài hơn 1024 byte.",
+                "not_ftp": "Chưa gửi: lệnh SITE cần kết nối FTP hoặc FTPS.",
+                "not_connected": "Chưa gửi: phiên chưa được kết nối.",
+                "busy": "Chưa gửi: phiên đang bận với một thao tác khác. Hãy thử lại khi thao tác đó kết thúc.",
+                "reconnect_failed": "Chưa gửi: phiên phải kết nối lại trước, nhưng không thành công."
+            },
+            "unknown": {
+                "timeout": "Phản hồi không đến kịp thời.",
+                "connection_lost": "Kết nối bị mất trước khi nhận được phản hồi.",
+                "malformed_reply": "Phản hồi không tuân theo định dạng FTP.",
+                "reply_too_large": "Phản hồi lớn hơn 256 KiB nên đã bị loại bỏ."
+            },
+            "unknownTail": "Máy chủ có thể đã áp dụng lệnh, hoặc cũng có thể chưa. Lệnh không được gửi lại.",
+            "sessionReconnected": "Phiên đã được thiết lập lại.",
+            "sessionNotReconnected": "Không thể thiết lập lại phiên.",
+            "sessionReset": "Máy chủ đã gửi nhiều hơn một phản hồi, nên phiên đã được thiết lập lại để lệnh tiếp theo đọc phản hồi của chính nó.",
+            "sessionStateNote": "Lệnh này chỉ thay đổi cách máy chủ xử lý kết nối này: các lượt truyền dùng kết nối riêng, và danh sách tệp có thể trông khác."
         }
     }
 }

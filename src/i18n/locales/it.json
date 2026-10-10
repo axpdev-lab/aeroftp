@@ -2247,7 +2247,10 @@
             "aerocrypt_marker_migrate": "Conversione del marcatore AeroCrypt in .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "Marcatore AeroCrypt convertito in .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Sblocco della cartella {filename}..."
+            "box_unlock_folder": "[Box] Sblocco della cartella {filename}...",
+            "site_replied": "{command}: il server ha risposto {code}",
+            "site_unknown": "{command}: nessuna risposta completa, esito sconosciuto",
+            "site_not_sent": "{command} non è stato inviato"
         },
         "folderOverwrite": {
             "title": "Cartella già esistente",
@@ -4310,7 +4313,9 @@
             "mountManager": "AeroMount...",
             "activityLog": "Registro attività",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Connessione",
+            "siteCommand": "Comando SITE..."
         },
         "mountManager": {
             "title": "AeroMount",
@@ -6171,6 +6176,46 @@
                 "agent": "Richiesta per questa sessione",
                 "human": "Modificata da te"
             }
+        },
+        "siteCommand": {
+            "title": "Comando SITE",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "Comando SITE e relativi argomenti",
+            "send": "Invia",
+            "sending": "Invio in corso...",
+            "hideCodes": "Nascondi i codici di risposta",
+            "copyReply": "Copia la risposta",
+            "copyAll": "Copia tutto",
+            "copied": "Copiato",
+            "clear": "Svuota",
+            "empty": "I comandi che invii compaiono qui con la risposta completa del server.",
+            "plainFtpNotice": "Questa connessione non è cifrata: i comandi e i loro argomenti, password comprese, viaggiano in rete in chiaro.",
+            "codeNotice": "Le risposte sono mostrate così come le ha inviate il server. Un codice di risposta non dice se il comando ha funzionato: alcuni server rispondono 200 a un rifiuto, quindi leggi il testo.",
+            "privacyNotice": "Nulla di ciò che digiti o ricevi qui viene salvato, e i comandi che contengono una password restano fuori dalla cronologia.",
+            "chipNotSent": "non inviato",
+            "chipNoReply": "nessuna risposta",
+            "elapsed": "{ms} ms",
+            "latin1": "decodificato come Latin-1",
+            "notSent": {
+                "empty": "Niente da inviare: digita un comando SITE, ad esempio WHO.",
+                "control_character": "Non inviato: il comando contiene un carattere di controllo (CR, LF, TAB...).",
+                "too_long": "Non inviato: il comando supera i 1024 byte.",
+                "not_ftp": "Non inviato: i comandi SITE richiedono una connessione FTP o FTPS.",
+                "not_connected": "Non inviato: la sessione non è connessa.",
+                "busy": "Non inviato: la sessione è occupata con un'altra operazione. Riprova quando termina.",
+                "reconnect_failed": "Non inviato: la sessione doveva prima riconnettersi, e non ci è riuscita."
+            },
+            "unknown": {
+                "timeout": "La risposta non è arrivata in tempo.",
+                "connection_lost": "La connessione è stata persa prima della risposta.",
+                "malformed_reply": "La risposta non rispettava il formato FTP.",
+                "reply_too_large": "La risposta superava i 256 KiB ed è stata scartata."
+            },
+            "unknownTail": "Il server potrebbe aver applicato il comando oppure no. Non è stato inviato di nuovo.",
+            "sessionReconnected": "La sessione è stata ristabilita.",
+            "sessionNotReconnected": "Non è stato possibile ristabilire la sessione.",
+            "sessionReset": "Il server ha inviato più di una risposta, quindi la sessione è stata ristabilita in modo che il comando successivo legga la propria.",
+            "sessionStateNote": "Questo comando cambia il modo in cui il server tratta solo questa connessione: i trasferimenti usano connessioni proprie e l'elenco dei file potrebbe apparire diverso."
         }
     }
 }

@@ -171,6 +171,7 @@ mod only_main_window_tests {
             "get_credential",
             "ai_delegate_local",
             "ai_cancel_delegation",
+            "provider_site_command",
         ] {
             assert!(super::only_main_window("main", command).is_ok());
             for label in ["extract", "extract-2", "splashscreen", ""] {
@@ -11332,6 +11333,46 @@ fn toggle_menu_bar(app: AppHandle, window: tauri::Window, visible: bool) {
     }
 }
 
+/// Whether the native Connection > SITE Command item is enabled: only while
+/// the active session is FTP/FTPS. The frontend reports every change; the
+/// value lives here so a menu rebuild (a language change) keeps it.
+static SITE_COMMAND_MENU_ENABLED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Enable or disable Connection > SITE Command in the native menu, which is
+/// always visible on macOS and optional on Linux and Windows. The command is
+/// async so IPC does not run it on the GTK thread; the menu change itself is
+/// queued onto that thread, like every other menu change (LT1 / tracker
+/// Known #7), and the command returns without waiting for it.
+#[tauri::command]
+async fn set_site_command_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    SITE_COMMAND_MENU_ENABLED.store(enabled, Ordering::SeqCst);
+    let app_main = app.clone();
+    app.run_on_main_thread(move || apply_site_command_menu_enabled(&app_main, enabled))
+        .map_err(|e| format!("Failed to marshal the SITE menu state onto the main thread: {e}"))
+}
+
+/// The SITE Command item sits in a submenu, and `Menu::get` looks at the top
+/// level only, so each submenu is searched. The menu may be installed on the
+/// app or on the main window, depending on the platform path that set it.
+fn apply_site_command_menu_enabled(app: &AppHandle, enabled: bool) {
+    use tauri::menu::MenuItemKind;
+    let menus = [
+        app.menu(),
+        app.get_webview_window("main")
+            .and_then(|window| window.menu()),
+    ];
+    for menu in menus.into_iter().flatten() {
+        for item in menu.items().unwrap_or_default() {
+            if let MenuItemKind::Submenu(submenu) = item {
+                if let Some(MenuItemKind::MenuItem(site)) = submenu.get("site_command") {
+                    let _ = site.set_enabled(enabled);
+                }
+            }
+        }
+    }
+}
+
 #[tauri::command]
 fn rebuild_menu(
     app: AppHandle,
@@ -11580,8 +11621,36 @@ fn rebuild_menu_on_main(
     )
     .map_err(|e| e.to_string())?;
 
-    let menu = Menu::with_items(&app, &[&file_menu, &edit_menu, &view_menu, &help_menu])
-        .map_err(|e| e.to_string())?;
+    // Connection > SITE Command (discussion #1109): enabled only while the
+    // active session is FTP/FTPS, as the frontend last reported it through
+    // set_site_command_menu_enabled, so a rebuild keeps the current state.
+    let site_command = MenuItem::with_id(
+        &app,
+        "site_command",
+        get("siteCommand", "SITE Command..."),
+        SITE_COMMAND_MENU_ENABLED.load(Ordering::SeqCst),
+        None::<&str>,
+    )
+    .map_err(|e| e.to_string())?;
+    let connection_menu = Submenu::with_items(
+        &app,
+        get("connection", "Connection"),
+        true,
+        &[&site_command],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let menu = Menu::with_items(
+        &app,
+        &[
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &connection_menu,
+            &help_menu,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
 
     // If splash is still open (APP_READY_DONE==false), store menu for later -
     // don't set globally (GTK applies global menus to ALL windows, causing flash).
@@ -18828,7 +18897,22 @@ pub fn run() {
             // Build menu but do NOT set it globally yet: GTK applies global menus
             // to ALL windows instantly, causing a menu flash on the splash screen.
             // The menu will be set in app_ready() after the splash is closed.
-            let menu = Menu::with_items(app, &[&file_menu, &edit_menu, &view_menu, &help_menu])?;
+            // Connection > SITE Command, as rebuild_menu_on_main builds it:
+            // disabled until the frontend reports an active FTP/FTPS session.
+            let site_command =
+                MenuItem::with_id(app, "site_command", "SITE Command...", false, None::<&str>)?;
+            let connection_menu = Submenu::with_items(app, "Connection", true, &[&site_command])?;
+
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &file_menu,
+                    &edit_menu,
+                    &view_menu,
+                    &connection_menu,
+                    &help_menu,
+                ],
+            )?;
             app.manage(std::sync::Mutex::new(Some(menu)));
 
             // Safety timeout: if the frontend does not signal app_ready within 10
@@ -19273,6 +19357,7 @@ pub fn run() {
             save_remote_file,
             toggle_menu_bar,
             rebuild_menu,
+            set_site_command_menu_enabled,
             compare_directories,
             compare_local_directories,
             cancel_compare,
@@ -19700,6 +19785,8 @@ pub fn run() {
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
             provider_commands::provider_keep_alive,
+            provider_commands::provider_site_command,
+            provider_commands::provider_site_session,
             // OAuth2 cloud provider commands
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,

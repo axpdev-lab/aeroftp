@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Muunnetaan AeroCrypt-merkintää muotoon .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-merkintä muunnettu muotoon .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Avataan kansion {filename} lukitusta..."
+            "box_unlock_folder": "[Box] Avataan kansion {filename} lukitusta...",
+            "site_replied": "{command}: palvelin vastasi {code}",
+            "site_unknown": "{command}: ei täydellistä vastausta, lopputulos tuntematon",
+            "site_not_sent": "Komentoa {command} ei lähetetty"
         },
         "protocol": {
             "selectProtocol": "Valitse protokolla...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Tapahtumaloki",
             "detailedCards": "Yksityiskohtaiset palvelinkortit",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Yhteys",
+            "siteCommand": "SITE-komento..."
         },
         "activityPanel": {
             "awaitingCommands": "Odotetaan komentoja...",
@@ -6171,6 +6176,46 @@
                 "agent": "Pyydetty tälle istunnolle",
                 "human": "Sinun muuttamasi"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-komento",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-komento ja sen argumentit",
+            "send": "Lähetä",
+            "sending": "Lähetetään...",
+            "hideCodes": "Piilota vastauskoodit",
+            "copyReply": "Kopioi vastaus",
+            "copyAll": "Kopioi kaikki",
+            "copied": "Kopioitu",
+            "clear": "Tyhjennä",
+            "empty": "Lähettämäsi komennot näkyvät tässä palvelimen täydellisen vastauksen kanssa.",
+            "plainFtpNotice": "Tämä yhteys ei ole salattu: komennot ja niiden argumentit, salasanat mukaan lukien, kulkevat verkossa selkotekstinä.",
+            "codeNotice": "Vastaukset näytetään sellaisina kuin palvelin ne lähetti. Vastauskoodi ei kerro, toimiko komento: jotkin palvelimet vastaavat kieltäytymiseen koodilla 200, joten lue teksti.",
+            "privacyNotice": "Mitään tähän kirjoitettua tai täällä vastaanotettua ei tallenneta, ja salasanan sisältävät komennot jätetään pois historiasta.",
+            "chipNotSent": "ei lähetetty",
+            "chipNoReply": "ei vastausta",
+            "elapsed": "{ms} ms",
+            "latin1": "purettu Latin-1-merkistönä",
+            "notSent": {
+                "empty": "Ei mitään lähetettävää: kirjoita SITE-komento, esimerkiksi WHO.",
+                "control_character": "Ei lähetetty: komento sisältää ohjausmerkin (CR, LF, TAB...).",
+                "too_long": "Ei lähetetty: komento on pidempi kuin 1024 tavua.",
+                "not_ftp": "Ei lähetetty: SITE-komennot vaativat FTP- tai FTPS-yhteyden.",
+                "not_connected": "Ei lähetetty: istunto ei ole yhdistetty.",
+                "busy": "Ei lähetetty: istunto on varattu toisella toiminnolla. Yritä uudelleen, kun se päättyy.",
+                "reconnect_failed": "Ei lähetetty: istunnon piti ensin muodostaa yhteys uudelleen, mutta se epäonnistui."
+            },
+            "unknown": {
+                "timeout": "Vastaus ei saapunut ajoissa.",
+                "connection_lost": "Yhteys katkesi ennen vastausta.",
+                "malformed_reply": "Vastaus ei noudattanut FTP-muotoa.",
+                "reply_too_large": "Vastaus oli suurempi kuin 256 KiB, ja se hylättiin."
+            },
+            "unknownTail": "Palvelin on voinut ottaa komennon käyttöön tai ei. Sitä ei lähetetty uudelleen.",
+            "sessionReconnected": "Istunto muodostettiin uudelleen.",
+            "sessionNotReconnected": "Istuntoa ei voitu muodostaa uudelleen.",
+            "sessionReset": "Palvelin lähetti useamman kuin yhden vastauksen, joten istunto muodostettiin uudelleen, jotta seuraava komento lukee oman vastauksensa.",
+            "sessionStateNote": "Tämä komento muuttaa vain sitä, miten palvelin käsittelee tätä yhteyttä: siirrot käyttävät omia yhteyksiään, ja tiedostoluettelo voi näyttää erilaiselta."
         }
     }
 }

@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt-jelölő átalakítása .aerocrypt.tsv formátumba…",
             "aerocrypt_marker_migrated": "Az AeroCrypt jelölő átalakítva .aerocrypt.tsv formátumra",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] A(z) {filename} mappa zárolásának feloldása..."
+            "box_unlock_folder": "[Box] A(z) {filename} mappa zárolásának feloldása...",
+            "site_replied": "{command}: a szerver válasza {code}",
+            "site_unknown": "{command}: nincs teljes válasz, az eredmény ismeretlen",
+            "site_not_sent": "{command} nem lett elküldve"
         },
         "protocol": {
             "selectProtocol": "Protokoll kiválasztása...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Tevékenységnapló",
             "detailedCards": "Részletes szerverkártyák",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Kapcsolat",
+            "siteCommand": "SITE parancs..."
         },
         "activityPanel": {
             "awaitingCommands": "Parancsokra vár...",
@@ -6171,6 +6176,46 @@
                 "agent": "Ehhez a munkamenethez kérve",
                 "human": "Ön módosította"
             }
+        },
+        "siteCommand": {
+            "title": "SITE parancs",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE parancs és argumentumai",
+            "send": "Küldés",
+            "sending": "Küldés...",
+            "hideCodes": "Válaszkódok elrejtése",
+            "copyReply": "Válasz másolása",
+            "copyAll": "Összes másolása",
+            "copied": "Másolva",
+            "clear": "Törlés",
+            "empty": "Az elküldött parancsok itt jelennek meg a kiszolgáló teljes válaszával együtt.",
+            "plainFtpNotice": "Ez a kapcsolat nincs titkosítva: a parancsok és argumentumaik, a jelszavakat is beleértve, egyszerű szövegként haladnak át a hálózaton.",
+            "codeNotice": "A válaszok úgy jelennek meg, ahogyan a kiszolgáló elküldte őket. A válaszkód nem árulja el, hogy a parancs sikerült-e: egyes kiszolgálók elutasításra is 200-zal válaszolnak, ezért olvassa el a szöveget.",
+            "privacyNotice": "A itt beírt vagy fogadott tartalmat a program nem menti el, a jelszót tartalmazó parancsok pedig kimaradnak az előzményekből.",
+            "chipNotSent": "nincs elküldve",
+            "chipNoReply": "nincs válasz",
+            "elapsed": "{ms} ms",
+            "latin1": "Latin-1-ként dekódolva",
+            "notSent": {
+                "empty": "Nincs mit elküldeni: írjon be egy SITE parancsot, például WHO.",
+                "control_character": "Nem lett elküldve: a parancs vezérlőkaraktert (CR, LF, TAB...) tartalmaz.",
+                "too_long": "Nem lett elküldve: a parancs hosszabb 1024 bájtnál.",
+                "not_ftp": "Nem lett elküldve: a SITE parancsokhoz FTP- vagy FTPS-kapcsolat szükséges.",
+                "not_connected": "Nem lett elküldve: a munkamenet nincs csatlakoztatva.",
+                "busy": "Nem lett elküldve: a munkamenet egy másik művelettel van elfoglalva. Próbálja újra, ha az befejeződött.",
+                "reconnect_failed": "Nem lett elküldve: a munkamenetnek előbb újra kellett csatlakoznia, de ez nem sikerült."
+            },
+            "unknown": {
+                "timeout": "A válasz nem érkezett meg időben.",
+                "connection_lost": "A kapcsolat megszakadt a válasz előtt.",
+                "malformed_reply": "A válasz nem követte az FTP formátumot.",
+                "reply_too_large": "A válasz nagyobb volt 256 KiB-nál, ezért elvetettük."
+            },
+            "unknownTail": "A szerver lehet, hogy végrehajtotta a parancsot, lehet, hogy nem. Nem küldtük el újra.",
+            "sessionReconnected": "A munkamenet újra létrejött.",
+            "sessionNotReconnected": "A munkamenetet nem sikerült újra létrehozni.",
+            "sessionReset": "A szerver egynél több választ küldött, ezért a munkamenet újra létrejött, hogy a következő parancs a sajátját olvassa.",
+            "sessionStateNote": "Ez a parancs csak azt módosítja, hogyan kezeli a szerver ezt a kapcsolatot: az átvitelek saját kapcsolatot használnak, és a fájllista másképp nézhet ki."
         }
     }
 }

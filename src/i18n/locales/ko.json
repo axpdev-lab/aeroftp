@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "AeroCrypt 마커를 .aerocrypt.tsv로 변환하는 중…",
             "aerocrypt_marker_migrated": "AeroCrypt 마커가 .aerocrypt.tsv로 변환되었습니다",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] {filename} 폴더 잠금 해제 중..."
+            "box_unlock_folder": "[Box] {filename} 폴더 잠금 해제 중...",
+            "site_replied": "{command}: 서버가 {code} 응답을 보냈습니다",
+            "site_unknown": "{command}: 완전한 응답 없음, 결과를 알 수 없습니다",
+            "site_not_sent": "{command}: 전송되지 않았습니다"
         },
         "protocol": {
             "selectProtocol": "프로토콜 선택...",
@@ -3901,7 +3904,9 @@
             "activityLog": "활동 로그",
             "detailedCards": "상세 서버 카드",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "연결",
+            "siteCommand": "SITE 명령..."
         },
         "activityPanel": {
             "awaitingCommands": "명령 대기 중...",
@@ -6171,6 +6176,46 @@
                 "agent": "이 세션에 요청됨",
                 "human": "사용자가 변경함"
             }
+        },
+        "siteCommand": {
+            "title": "SITE 명령",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE 명령과 인수",
+            "send": "보내기",
+            "sending": "보내는 중...",
+            "hideCodes": "응답 코드 숨기기",
+            "copyReply": "응답 복사",
+            "copyAll": "모두 복사",
+            "copied": "복사됨",
+            "clear": "지우기",
+            "empty": "보낸 명령이 서버의 전체 응답과 함께 여기에 표시됩니다.",
+            "plainFtpNotice": "이 연결은 암호화되지 않았습니다. 비밀번호를 포함한 명령과 인수가 네트워크를 통해 평문으로 전송됩니다.",
+            "codeNotice": "응답은 서버가 보낸 그대로 표시됩니다. 응답 코드만으로는 명령이 성공했는지 알 수 없습니다. 일부 서버는 거부에도 200으로 응답하므로 텍스트를 읽어 보세요.",
+            "privacyNotice": "여기에서 입력하거나 받은 내용은 저장되지 않으며, 비밀번호가 포함된 명령은 기록에서 제외됩니다.",
+            "chipNotSent": "전송 안 됨",
+            "chipNoReply": "응답 없음",
+            "elapsed": "{ms} ms",
+            "latin1": "Latin-1로 디코딩됨",
+            "notSent": {
+                "empty": "보낼 내용이 없습니다: SITE 명령을 입력하세요. 예: WHO.",
+                "control_character": "전송되지 않음: 명령에 제어 문자(CR, LF, TAB...)가 포함되어 있습니다.",
+                "too_long": "전송되지 않음: 명령이 1024바이트보다 깁니다.",
+                "not_ftp": "전송되지 않음: SITE 명령에는 FTP 또는 FTPS 연결이 필요합니다.",
+                "not_connected": "전송되지 않음: 세션이 연결되어 있지 않습니다.",
+                "busy": "전송되지 않음: 세션이 다른 작업을 처리 중입니다. 작업이 끝나면 다시 시도하세요.",
+                "reconnect_failed": "전송되지 않음: 세션을 먼저 다시 연결해야 했지만 실패했습니다."
+            },
+            "unknown": {
+                "timeout": "응답이 제때 도착하지 않았습니다.",
+                "connection_lost": "응답을 받기 전에 연결이 끊어졌습니다.",
+                "malformed_reply": "응답이 FTP 형식을 따르지 않았습니다.",
+                "reply_too_large": "응답이 256 KiB보다 커서 삭제되었습니다."
+            },
+            "unknownTail": "서버가 명령을 적용했을 수도, 적용하지 않았을 수도 있습니다. 명령은 다시 전송되지 않았습니다.",
+            "sessionReconnected": "세션이 다시 연결되었습니다.",
+            "sessionNotReconnected": "세션을 다시 연결하지 못했습니다.",
+            "sessionReset": "서버가 둘 이상의 응답을 보냈으므로, 다음 명령이 자신의 응답을 읽을 수 있도록 세션을 다시 연결했습니다.",
+            "sessionStateNote": "이 명령은 서버가 이 연결만 처리하는 방식을 변경합니다. 전송은 자체 연결을 사용하며, 파일 목록이 다르게 보일 수 있습니다."
         }
     }
 }

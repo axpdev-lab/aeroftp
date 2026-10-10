@@ -1724,7 +1724,10 @@
             "aerocrypt_marker_migrate": "Konverterer AeroCrypt-markør til .aerocrypt.tsv…",
             "aerocrypt_marker_migrated": "AeroCrypt-markør konverteret til .aerocrypt.tsv",
             "aerocrypt_marker_migrate_failed": "AeroCrypt marker conversion failed",
-            "box_unlock_folder": "[Box] Låser mappen {filename} op..."
+            "box_unlock_folder": "[Box] Låser mappen {filename} op...",
+            "site_replied": "{command}: serveren svarede {code}",
+            "site_unknown": "{command}: intet fuldstændigt svar, udfaldet er ukendt",
+            "site_not_sent": "{command} blev ikke sendt"
         },
         "protocol": {
             "selectProtocol": "Vælg protokol...",
@@ -3901,7 +3904,9 @@
             "activityLog": "Aktivitetslog",
             "detailedCards": "Detaljerede serverkort",
             "debugPanel": "Debug Panel",
-            "aerosync": "AeroSync..."
+            "aerosync": "AeroSync...",
+            "connection": "Forbindelse",
+            "siteCommand": "SITE-kommando..."
         },
         "activityPanel": {
             "awaitingCommands": "Afventer kommandoer...",
@@ -6171,6 +6176,46 @@
                 "agent": "Anmodet for denne session",
                 "human": "Ændret af dig"
             }
+        },
+        "siteCommand": {
+            "title": "SITE-kommando",
+            "placeholder": "WHO, USER alice, CHANGE alice ratio 5...",
+            "inputLabel": "SITE-kommando og dets argumenter",
+            "send": "Send",
+            "sending": "Sender...",
+            "hideCodes": "Skjul svarkoder",
+            "copyReply": "Kopiér svar",
+            "copyAll": "Kopiér alt",
+            "copied": "Kopieret",
+            "clear": "Ryd",
+            "empty": "Kommandoer, du sender, vises her sammen med serverens fulde svar.",
+            "plainFtpNotice": "Denne forbindelse er ikke krypteret: kommandoer og deres argumenter, adgangskoder inklusive, sendes over netværket som almindelig tekst.",
+            "codeNotice": "Svar vises, som serveren sendte dem. En svarkode fortæller ikke, om kommandoen virkede: nogle servere svarer 200 på en afvisning, så læs teksten.",
+            "privacyNotice": "Intet, der skrives eller modtages her, bliver gemt, og kommandoer med en adgangskode udelades fra historikken.",
+            "chipNotSent": "ikke sendt",
+            "chipNoReply": "intet svar",
+            "elapsed": "{ms} ms",
+            "latin1": "afkodet som Latin-1",
+            "notSent": {
+                "empty": "Intet at sende: skriv en SITE-kommando, for eksempel WHO.",
+                "control_character": "Ikke sendt: kommandoen indeholder et kontroltegn (CR, LF, TAB...).",
+                "too_long": "Ikke sendt: kommandoen er længere end 1024 bytes.",
+                "not_ftp": "Ikke sendt: SITE-kommandoer kræver en FTP- eller FTPS-forbindelse.",
+                "not_connected": "Ikke sendt: sessionen er ikke forbundet.",
+                "busy": "Ikke sendt: sessionen er optaget af en anden handling. Prøv igen, når den er færdig.",
+                "reconnect_failed": "Ikke sendt: sessionen skulle først genoprette forbindelsen, og det lykkedes ikke."
+            },
+            "unknown": {
+                "timeout": "Svaret nåede ikke frem i tide.",
+                "connection_lost": "Forbindelsen blev afbrudt før svaret.",
+                "malformed_reply": "Svaret fulgte ikke FTP-formatet.",
+                "reply_too_large": "Svaret var større end 256 KiB og blev kasseret."
+            },
+            "unknownTail": "Serveren har måske anvendt kommandoen, måske ikke. Den blev ikke sendt igen.",
+            "sessionReconnected": "Sessionen blev genoprettet.",
+            "sessionNotReconnected": "Sessionen kunne ikke genoprettes.",
+            "sessionReset": "Serveren sendte mere end ét svar, så sessionen blev genoprettet, så den næste kommando læser sit eget svar.",
+            "sessionStateNote": "Denne kommando ændrer kun, hvordan serveren behandler denne forbindelse: overførsler bruger deres egne forbindelser, og fillisten kan se anderledes ud."
         }
     }
 }
