@@ -19359,7 +19359,6 @@ pub fn run() {
             list_sync_snapshots_cmd,
             restore_sync_snapshot_cmd,
             delete_sync_snapshot_cmd,
-            #[cfg(feature = "aerorsync")]
             sync_canary_run,
             get_journal_signing_key,
             verify_journal_signature,

@@ -135,6 +135,22 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets --features test-seed -- -D warnings
 
+      # A `#[cfg(...)]` on a `generate_handler!` entry that its function does
+      # not carry is not an error anywhere: in the build where the cfg is off,
+      # the command silently leaves the IPC surface while the frontend still
+      # invokes it, and rustc reports only a dead-code warning on the function.
+      # That is how `sync_canary_run` lost its registration without aerorsync:
+      # the attribute belonged to `delta_sync_analyze`, removed in #1023, and
+      # fell onto the next line. The clippy step above builds default features
+      # only, and the feature-off checks in aerorsync-protocol.yml and
+      # windows-unit-tests.yml let warnings through. `build.warnings` fails on
+      # this crate's warnings only and, unlike RUSTFLAGS, leaves every
+      # dependency's fingerprint alone, so the units the clippy step just built
+      # are reused and only this crate is checked again.
+      - name: Feature-off build is warning-free (aerorsync and local-stt off)
+        working-directory: src-tauri
+        run: cargo check --all-targets --no-default-features --features test-seed --config 'build.warnings="deny"'
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
