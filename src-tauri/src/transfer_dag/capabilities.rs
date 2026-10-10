@@ -114,16 +114,20 @@ impl Default for TransferCapabilities {
 /// SFTP's answer belongs to the server, which advertises
 /// `posix-rename@openssh.com` or not, so it is known only after asking (a
 /// connection reports what it learned, see `SftpProvider`). Google Drive
-/// replaces a file by uploading a revision of it, and WebDAV with one MOVE
-/// with `Overwrite: T`, in one request each. Every other provider either
-/// says no in its `supports_atomic_replace` (it sets the old item aside, its
-/// move over a file is not one documented step, or it has no replace) or
-/// answers `true` only in the sense of "no known obstacle", which is not an
-/// established capability: `Unsupported` for all of them.
+/// replaces a file by uploading a revision of it, so the file is there
+/// throughout. WebDAV's replace is one MOVE with `Overwrite: T`, but one
+/// request is not one step: RFC 4918 section 9.9.3 has the server DELETE the
+/// destination before it moves, so a move that then fails leaves no file,
+/// and the protocol does not establish the property. Every other provider
+/// either says no in its `supports_atomic_replace` (it sets the old item
+/// aside, its move over a file is not one documented step, or it has no
+/// replace) or answers `true` only in the sense of "no known obstacle",
+/// which is not an established capability: `Unsupported` for WebDAV and all
+/// of them.
 pub fn atomic_replace_baseline(provider_type: ProviderType) -> Capability {
     match provider_type {
         ProviderType::Sftp => Capability::SupportedAfterProbe,
-        ProviderType::GoogleDrive | ProviderType::WebDav => Capability::Supported,
+        ProviderType::GoogleDrive => Capability::Supported,
         _ => Capability::Unsupported,
     }
 }
@@ -345,8 +349,9 @@ mod tests {
     /// #1081 row 14: `atomic_rename` was `Unsupported` for every provider,
     /// SFTP included. SFTP's answer is the server's own
     /// (`posix-rename@openssh.com`), so without a connection it is known only
-    /// after asking; Google Drive and WebDAV replace a file in one request;
-    /// for the rest it is not established.
+    /// after asking; Google Drive replaces a file by uploading a revision of
+    /// it; for the rest it is not established, WebDAV included, whose one
+    /// MOVE deletes the destination before it moves.
     #[test]
     fn atomic_rename_is_declared_where_a_provider_established_it() {
         let atomic_rename = |provider_type| {
@@ -365,8 +370,8 @@ mod tests {
             atomic_rename(ProviderType::GoogleDrive),
             Capability::Supported
         );
-        assert_eq!(atomic_rename(ProviderType::WebDav), Capability::Supported);
         for provider_type in [
+            ProviderType::WebDav,
             ProviderType::Ftp,
             ProviderType::Ftps,
             ProviderType::S3,

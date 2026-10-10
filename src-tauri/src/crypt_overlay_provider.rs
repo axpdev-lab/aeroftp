@@ -5791,6 +5791,11 @@ mod tests {
         fn provider_type(&self) -> ProviderType {
             ProviderType::WebDav
         }
+        /// An in-memory map puts one entry in place of another in one step,
+        /// which a WebDAV server is not held to.
+        fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+            crate::transfer_dag::Capability::Supported
+        }
         fn display_name(&self) -> String {
             "strict-mem".into()
         }
@@ -5945,10 +5950,6 @@ mod tests {
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 
-    /// #385 must still work: uploading into a genuinely-new encrypted subtree (no
-    /// plaintext folder exists on the wire) creates the encrypted parent chain and
-    /// stores the file under an encrypted path, without any plaintext folder name
-    /// leaking onto the wire.
     /// The overlay's snapshot stays conservative on data shape but carries the
     /// inner provider's atomic rename, as `supports_atomic_replace` does: a
     /// replace maps the names and leaves the swap to the inner provider. It
@@ -5969,6 +5970,10 @@ mod tests {
         );
     }
 
+    /// #385 must still work: uploading into a genuinely-new encrypted subtree (no
+    /// plaintext folder exists on the wire) creates the encrypted parent chain and
+    /// stores the file under an encrypted path, without any plaintext folder name
+    /// leaking onto the wire.
     #[tokio::test]
     async fn upload_into_new_encrypted_subtree_still_creates_and_stores() {
         // Only the anchor exists; the target subfolder is brand new.

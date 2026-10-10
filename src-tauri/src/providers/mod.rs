@@ -1061,9 +1061,10 @@ pub trait StorageProvider: Send + Sync {
     /// provider has established about an atomic [`replace`] without asking
     /// the server again. The default is its type's declaration,
     /// [`atomic_replace_baseline`]; a provider whose answer depends on its
-    /// own state says so here (SFTP from what the server advertised, WebDAV
-    /// off in single-file mode). It must never claim more than
-    /// [`supports_atomic_replace`] answers.
+    /// own state says so here (SFTP from what the server advertised). It
+    /// must never claim more than [`supports_atomic_replace`] answers, and
+    /// may claim less: that answer can mean "no known obstacle", this one
+    /// only what is established.
     ///
     /// [`transfer_capabilities`]: StorageProvider::transfer_capabilities
     /// [`replace`]: StorageProvider::replace

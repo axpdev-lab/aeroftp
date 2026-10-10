@@ -4059,19 +4059,11 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
-    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
-        Ok(self.atomic_replace_capability() == crate::transfer_dag::Capability::Supported)
-    }
-
     /// Yes: `replace` is one MOVE with `Overwrite: T`. Not in single-file
     /// mode, where there is no other path to stage a temporary at: an edit
     /// uploaded it over the served file, and the cleanup deleted that file.
-    fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
-        if self.single_file_mode.is_some() {
-            crate::transfer_dag::Capability::Unsupported
-        } else {
-            crate::transfer_dag::Capability::Supported
-        }
+    async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        Ok(self.single_file_mode.is_none())
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -5471,18 +5463,18 @@ mod tests {
         );
     }
 
-    /// A WebDAV replace is one MOVE with `Overwrite: T`, and the snapshot says
-    /// so, except in single-file mode, where there is no other path to stage
-    /// a temporary at. The snapshot and `supports_atomic_replace` agree.
-    #[tokio::test]
-    async fn atomic_rename_follows_single_file_mode() {
+    /// A WebDAV replace is one MOVE with `Overwrite: T`, and RFC 4918
+    /// section 9.9.3 has the server DELETE the destination before it moves:
+    /// one request, but not a replace with no moment in which neither file
+    /// is there. The snapshot does not claim it, in either mode.
+    #[test]
+    fn atomic_rename_is_not_claimed_for_one_move() {
         let mut provider =
             WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
         assert_eq!(
             provider.transfer_capabilities().atomic_rename,
-            crate::transfer_dag::Capability::Supported
+            crate::transfer_dag::Capability::Unsupported
         );
-        assert!(provider.supports_atomic_replace().await.unwrap());
         provider.single_file_mode = Some(RemoteEntry::file(
             "f.txt".to_string(),
             "/dav/f.txt".to_string(),
@@ -5492,7 +5484,6 @@ mod tests {
             provider.transfer_capabilities().atomic_rename,
             crate::transfer_dag::Capability::Unsupported
         );
-        assert!(!provider.supports_atomic_replace().await.unwrap());
     }
 
     fn test_config(url: &str) -> WebDavConfig {
