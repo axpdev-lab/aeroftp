@@ -1208,6 +1208,10 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.supports_atomic_replace().await
     }
 
+    fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+        self.inner.atomic_replace_capability()
+    }
+
     fn replace_sets_aside(&self) -> bool {
         self.inner.replace_sets_aside()
     }
@@ -1561,7 +1565,12 @@ impl StorageProvider for CryptOverlayProvider {
 
     fn transfer_capabilities(&self) -> crate::transfer_dag::TransferCapabilities {
         // Conservative: no file parallelism, multipart, range, or server digest.
-        crate::transfer_dag::TransferCapabilities::default()
+        // A replace maps the names and leaves the swap to the inner provider,
+        // so its atomic rename is the inner one's.
+        crate::transfer_dag::TransferCapabilities {
+            atomic_rename: self.atomic_replace_capability(),
+            ..crate::transfer_dag::TransferCapabilities::default()
+        }
     }
 }
 
@@ -5950,6 +5959,11 @@ mod tests {
         fn provider_type(&self) -> ProviderType {
             ProviderType::WebDav
         }
+        /// An in-memory map puts one entry in place of another in one step,
+        /// which a WebDAV server is not held to.
+        fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+            crate::transfer_dag::Capability::Supported
+        }
         fn display_name(&self) -> String {
             "strict-mem".into()
         }
@@ -6102,6 +6116,26 @@ mod tests {
             "no phantom encrypted folder may be created"
         );
         let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// The overlay's snapshot stays conservative on data shape but carries the
+    /// inner provider's atomic rename, as `supports_atomic_replace` does: a
+    /// replace maps the names and leaves the swap to the inner provider. It
+    /// reported `unsupported` over every provider.
+    #[test]
+    fn transfer_capabilities_carry_the_inner_atomic_rename() {
+        let inner = Box::new(StrictMemProvider::with_dirs(&["/AeroCryptTest"]));
+        let keys = rclone_keys(FilenameEncryption::Standard, true, ".bin");
+        let provider = CryptOverlayProvider::new(inner, keys, "/AeroCryptTest");
+        let caps = provider.transfer_capabilities();
+        assert_eq!(
+            caps.atomic_rename,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert_eq!(
+            caps.multipart_upload,
+            crate::transfer_dag::Capability::Unsupported
+        );
     }
 
     /// #385 must still work: uploading into a genuinely-new encrypted subtree (no

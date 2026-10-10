@@ -3190,6 +3190,19 @@ impl StorageProvider for GoogleDriveProvider {
 mod tests {
     use super::*;
 
+    /// A replace uploads the new content as a revision of the file already
+    /// there, in one request: the snapshot and `supports_atomic_replace` both
+    /// say so.
+    #[tokio::test]
+    async fn atomic_rename_is_supported_and_agrees_with_replace() {
+        let mut provider = test_provider();
+        assert_eq!(
+            provider.transfer_capabilities().atomic_rename,
+            crate::transfer_dag::Capability::Supported
+        );
+        assert!(provider.supports_atomic_replace().await.unwrap());
+    }
+
     fn test_provider() -> GoogleDriveProvider {
         GoogleDriveProvider::new(GoogleDriveConfig::new("cid", "csec"))
     }

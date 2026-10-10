@@ -5463,6 +5463,29 @@ mod tests {
         );
     }
 
+    /// A WebDAV replace is one MOVE with `Overwrite: T`, and RFC 4918
+    /// section 9.9.3 has the server DELETE the destination before it moves:
+    /// one request, but not a replace with no moment in which neither file
+    /// is there. The snapshot does not claim it, in either mode.
+    #[test]
+    fn atomic_rename_is_not_claimed_for_one_move() {
+        let mut provider =
+            WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
+        assert_eq!(
+            provider.transfer_capabilities().atomic_rename,
+            crate::transfer_dag::Capability::Unsupported
+        );
+        provider.single_file_mode = Some(RemoteEntry::file(
+            "f.txt".to_string(),
+            "/dav/f.txt".to_string(),
+            1,
+        ));
+        assert_eq!(
+            provider.transfer_capabilities().atomic_rename,
+            crate::transfer_dag::Capability::Unsupported
+        );
+    }
+
     fn test_config(url: &str) -> WebDavConfig {
         WebDavConfig {
             url: url.to_string(),
