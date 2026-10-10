@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Ścieżka nakładek",
             "overlaysPathButtonHint": "Przejdź do zaszyfrowanej ścieżki nakładek: {path}",
             "lockedOverlayTitle": "Zaszyfrowana nakładka zablokowana",
-            "lockedOverlayDesc": "Ten serwer ma zaszyfrowaną nakładkę, której nie można odblokować. Wprowadź hasło, aby odszyfrować nazwy, lub kontynuuj przeglądanie surowej listy."
+            "lockedOverlayDesc": "Ten serwer ma zaszyfrowaną nakładkę, której nie można odblokować. Wprowadź hasło, aby odszyfrować nazwy, lub kontynuuj przeglądanie surowej listy.",
+            "overlayFolder": "Folder nakładki:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Utwórz i odblokuj",
             "unlocked": "Nakładka odblokowana.",
             "initialised": "Nakładka utworzona i odblokowana.",
-            "noOverlayFound": "Nie znaleziono nakładki AeroCrypt w bieżącym folderze zdalnym. Przełącz na „Utwórz nową”, aby ją utworzyć.",
+            "noOverlayFound": "W tym folderze nie ma znacznika AeroCrypt. Jeśli vault używa domyślnej soli AeroCrypt, zaznacz poniżej tę opcję; aby utworzyć tu nowy vault, przełącz na „Utwórz nową”.",
             "remoteUnlocked": "Serwer zdalny odblokowany (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Zablokuj nakładkę",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Slot odzyskiwania dodano automatycznie, ponieważ ten sejf byłby dostępny tylko z keyfile. Zapisz kod odzyskiwania poniżej.",
             "keyslotsRecoverySaveOnce": "Zapisz ten kod odzyskiwania teraz (pokazywany raz):",
             "keyslotsRecoveryCopy": "Kopiuj kod",
-            "keyslotsUnlockWithRecovery": "Możesz też odblokować kodem odzyskiwania (wklej jako hasło)."
+            "keyslotsUnlockWithRecovery": "Możesz też odblokować kodem odzyskiwania (wklej jako hasło).",
+            "openDefaultSaltLabel": "Ten vault używa domyślnej soli AeroCrypt",
+            "openDefaultSaltHint": "Bez znacznika vault z domyślną solą otwiera się samym hasłem, gdy tylko nazwy w tym folderze da się nim odszyfrować. Na zdalnym serwerze nic nie jest zapisywane."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Szyfrowanie)",

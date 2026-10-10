@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Katman Yolu",
             "overlaysPathButtonHint": "Şifreli Katman Yoluna atla: {path}",
             "lockedOverlayTitle": "Şifreli katman kilitlendi",
-            "lockedOverlayDesc": "Bu sunucuda kilidi açılamayan bir şifreli katman var. Adların şifresini çözmek için parolayı girin veya ham listeye göz atmaya devam edin."
+            "lockedOverlayDesc": "Bu sunucuda kilidi açılamayan bir şifreli katman var. Adların şifresini çözmek için parolayı girin veya ham listeye göz atmaya devam edin.",
+            "overlayFolder": "Katman klasörü:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Oluştur ve kilidi aç",
             "unlocked": "Katmanın kilidi açıldı.",
             "initialised": "Katman oluşturuldu ve kilidi açıldı.",
-            "noOverlayFound": "Geçerli uzak klasörde AeroCrypt katmanı bulunamadı. Bir tane oluşturmak için \"Yeni oluştur\" seçeneğine geçin.",
+            "noOverlayFound": "Bu klasörde AeroCrypt işaretçisi yok. Vault AeroCrypt'in varsayılan salt değerini kullanıyorsa aşağıdaki seçeneği işaretleyin; burada yeni bir vault oluşturmak için “Yeni oluştur” seçeneğine geçin.",
             "remoteUnlocked": "Uzak kilidi açıldı (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Katmanı kilitle",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Bu kasa yalnızca keyfile ile olacağı için bir kurtarma yuvası otomatik eklendi. Aşağıdaki kurtarma kodunu kaydedin.",
             "keyslotsRecoverySaveOnce": "Bu kurtarma kodunu şimdi kaydedin (bir kez gösterilir):",
             "keyslotsRecoveryCopy": "Kodu kopyala",
-            "keyslotsUnlockWithRecovery": "Kurtarma koduyla da kilidi açabilirsiniz (parola olarak yapıştırın)."
+            "keyslotsUnlockWithRecovery": "Kurtarma koduyla da kilidi açabilirsiniz (parola olarak yapıştırın).",
+            "openDefaultSaltLabel": "Bu vault AeroCrypt'in varsayılan salt değerini kullanıyor",
+            "openDefaultSaltHint": "Burada işaretçi yoksa varsayılan salt kullanan bir vault, bu klasördeki adlar parolayla çözülebildiği anda yalnızca parolasıyla açılır. Uzak sunucuya hiçbir şey yazılmaz."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Şifreleme)",

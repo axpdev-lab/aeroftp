@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "オーバーレイパス",
             "overlaysPathButtonHint": "暗号化されたオーバーレイパスへ移動: {path}",
             "lockedOverlayTitle": "暗号化オーバーレイをロックしました",
-            "lockedOverlayDesc": "このサーバーにはロックを解除できなかった暗号化オーバーレイがあります。パスワードを入力して名前を復号するか、生の一覧の閲覧を続けてください。"
+            "lockedOverlayDesc": "このサーバーにはロックを解除できなかった暗号化オーバーレイがあります。パスワードを入力して名前を復号するか、生の一覧の閲覧を続けてください。",
+            "overlayFolder": "オーバーレイフォルダー："
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "作成してロック解除",
             "unlocked": "オーバーレイのロックを解除しました。",
             "initialised": "オーバーレイを作成してロック解除しました。",
-            "noOverlayFound": "現在のリモートフォルダーに AeroCrypt オーバーレイが見つかりません。「新規作成」に切り替えて作成してください。",
+            "noOverlayFound": "このフォルダーに AeroCrypt マーカーはありません。vault が AeroCrypt のデフォルト salt を使用している場合は、下のオプションをオンにしてください。ここに新しい vault を作成するには「新規作成」に切り替えてください。",
             "remoteUnlocked": "リモートのロックを解除しました（ID {id}）",
             "versionLabel": "AECR v{version}",
             "lock": "オーバーレイをロック",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "この保管庫が keyfile のみになるため、リカバリースロットを自動追加しました。下のリカバリーコードを保存してください。",
             "keyslotsRecoverySaveOnce": "このリカバリーコードを今すぐ保存してください（一度だけ表示）:",
             "keyslotsRecoveryCopy": "コードをコピー",
-            "keyslotsUnlockWithRecovery": "リカバリーコードでもロック解除できます（パスワードとして貼り付け）。"
+            "keyslotsUnlockWithRecovery": "リカバリーコードでもロック解除できます（パスワードとして貼り付け）。",
+            "openDefaultSaltLabel": "この vault は AeroCrypt のデフォルト salt を使用する",
+            "openDefaultSaltHint": "ここにマーカーがない場合、デフォルト salt の vault は、このフォルダー内の名前がパスワードで復号できれば、パスワードだけで開きます。リモートには何も書き込まれません。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (暗号化)",

@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Perdangų kelias",
             "overlaysPathButtonHint": "Pereiti į šifruotą perdangų kelią: {path}",
             "lockedOverlayTitle": "Šifruotas sluoksnis užrakintas",
-            "lockedOverlayDesc": "Šis serveris turi šifruotą sluoksnį, kurio nepavyko atrakinti. Įveskite slaptažodį vardams iššifruoti arba toliau naršykite neapdorotą sąrašą."
+            "lockedOverlayDesc": "Šis serveris turi šifruotą sluoksnį, kurio nepavyko atrakinti. Įveskite slaptažodį vardams iššifruoti arba toliau naršykite neapdorotą sąrašą.",
+            "overlayFolder": "Perdangos aplankas:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Sukurti ir atrakinti",
             "unlocked": "Perdanga atrakinta.",
             "initialised": "Perdanga sukurta ir atrakinta.",
-            "noOverlayFound": "Dabartiniame nuotoliniame aplanke AeroCrypt perdangos nerasta. Norėdami ją sukurti, perjunkite į \"Sukurti naują\".",
+            "noOverlayFound": "Šiame aplanke nėra AeroCrypt žymeklio. Jei vault saugykla naudoja AeroCrypt numatytąją druską, pažymėkite šią parinktį žemiau; norėdami čia sukurti naują vault saugyklą, perjunkite į „Sukurti naują“.",
             "remoteUnlocked": "Nuotolinis serveris atrakintas (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Užrakinti perdangą",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Atkūrimo lizdas pridėtas automatiškai, nes šis seifas būtų buvęs tik su keyfile. Išsaugokite atkūrimo kodą žemiau.",
             "keyslotsRecoverySaveOnce": "Išsaugokite šį atkūrimo kodą dabar (rodomas vieną kartą):",
             "keyslotsRecoveryCopy": "Kopijuoti kodą",
-            "keyslotsUnlockWithRecovery": "Taip pat galite atrakinti atkūrimo kodu (įklijuokite jį kaip slaptažodį)."
+            "keyslotsUnlockWithRecovery": "Taip pat galite atrakinti atkūrimo kodu (įklijuokite jį kaip slaptažodį).",
+            "openDefaultSaltLabel": "Ši vault saugykla naudoja AeroCrypt numatytąją druską",
+            "openDefaultSaltHint": "Be žymeklio čia vault saugykla su numatytąja druska atsidaro tik su slaptažodžiu, kai su juo iššifruojami šio aplanko pavadinimai. Į nuotolinį serverį niekas neįrašoma."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

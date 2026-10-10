@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Jalur Overlay",
             "overlaysPathButtonHint": "Lompat ke Jalur Overlay terenkripsi: {path}",
             "lockedOverlayTitle": "Lapisan terenkripsi terkunci",
-            "lockedOverlayDesc": "Server ini memiliki lapisan terenkripsi yang tidak dapat dibuka. Masukkan kata sandi untuk mendekripsi nama, atau terus telusuri daftar mentah."
+            "lockedOverlayDesc": "Server ini memiliki lapisan terenkripsi yang tidak dapat dibuka. Masukkan kata sandi untuk mendekripsi nama, atau terus telusuri daftar mentah.",
+            "overlayFolder": "Folder overlay:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Buat dan buka kunci",
             "unlocked": "Overlay terbuka kuncinya.",
             "initialised": "Overlay dibuat dan dibuka kuncinya.",
-            "noOverlayFound": "Tidak ada overlay AeroCrypt yang ditemukan di folder jarak jauh saat ini. Beralih ke \"Buat baru\" untuk membuatnya.",
+            "noOverlayFound": "Tidak ada marker AeroCrypt di folder ini. Jika vault menggunakan salt default AeroCrypt, centang opsi tersebut di bawah; untuk membuat vault baru di sini, beralih ke “Buat baru”.",
             "remoteUnlocked": "Jarak jauh terbuka kuncinya (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Kunci overlay",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Slot pemulihan ditambahkan otomatis karena vault ini hanya akan memakai keyfile. Simpan kode pemulihan di bawah.",
             "keyslotsRecoverySaveOnce": "Simpan kode pemulihan ini sekarang (ditampilkan sekali):",
             "keyslotsRecoveryCopy": "Salin kode",
-            "keyslotsUnlockWithRecovery": "Anda juga dapat membuka kunci dengan kode pemulihan (tempel sebagai kata sandi)."
+            "keyslotsUnlockWithRecovery": "Anda juga dapat membuka kunci dengan kode pemulihan (tempel sebagai kata sandi).",
+            "openDefaultSaltLabel": "Vault ini menggunakan salt default AeroCrypt",
+            "openDefaultSaltHint": "Tanpa marker di sini, vault dengan salt default terbuka hanya dengan kata sandinya setelah nama-nama di folder ini berhasil didekripsi dengannya. Tidak ada yang ditulis ke server jarak jauh."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Enkripsi)",

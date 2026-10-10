@@ -562,7 +562,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 779
+    "tauri_commands": 778
   },
   "mcp": {
     "count": 77,
@@ -1104,7 +1104,6 @@
       "cryptomator_encrypt_paths",
       "cryptomator_create",
       "cryptomator_save_all",
-      "aerocrypt_unlock",
       "aerocrypt_lock",
       "aerocrypt_provider_marker_status",
       "aerocrypt_provider_migrate_legacy_marker",
@@ -1285,7 +1284,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 327,
+    "name_unmatched_count": 326,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1686,7 +1685,6 @@
       "rclone_crypt_decrypt_name",
       "rclone_crypt_decrypt_file_path",
       "rclone_crypt_provider_create_remote",
-      "aerocrypt_unlock",
       "aerocrypt_lock",
       "aerocrypt_provider_read_config",
       "aerocrypt_provider_marker_status",
@@ -2071,6 +2069,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 779
+    "count": 778
   }
 }

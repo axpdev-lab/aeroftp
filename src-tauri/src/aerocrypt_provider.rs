@@ -108,17 +108,6 @@ impl Default for AeroCryptState {
     }
 }
 
-/// Info returned after unlock / create.
-#[derive(Debug, Clone, Serialize)]
-pub struct AeroCryptVaultInfo {
-    pub vault_id: String,
-    pub version: u8,
-    /// The overlay config text. For a fresh overlay (no `config_json` passed to
-    /// unlock) this is the newly generated config the caller must persist as the
-    /// `.aerocrypt.tsv` marker at the overlay root.
-    pub config_json: String,
-}
-
 /// Lightweight marker probe for the unlock modal. It carries no config bytes and
 /// is safe to expose before the user enters credentials.
 #[derive(Debug, Clone, Serialize)]
@@ -137,91 +126,6 @@ pub struct AeroCryptMarkerMigrationResult {
 }
 
 // ── Unlock / lock (pure, no provider I/O) ────────────────────────────────────
-
-/// Unlock a native AeroCrypt overlay for the session.
-///
-/// `config_json`:
-/// - `Some(json)` - an existing overlay; parse it, derive the master key, and
-///   verify the key-bound config MAC (v3), so a tampered `version`/`salt` or a
-///   wrong password fails closed (the caller reads the config from the remote
-///   via [`aerocrypt_provider_read_config`]).
-/// - `None` - prepare a fresh overlay: generate a v3 salt + key-bound config and
-///   derive the key. The returned `config_json` is what the caller persists on
-///   the remote (e.g. via [`aerocrypt_provider_create_remote`]).
-#[tauri::command]
-pub async fn aerocrypt_unlock(
-    state: State<'_, AeroCryptState>,
-    password: String,
-    config_json: Option<String>,
-    keyfile_path: Option<String>,
-) -> Result<AeroCryptVaultInfo, String> {
-    let secret_pwd = secrecy::SecretString::from(password);
-    let pw = secrecy::ExposeSecret::expose_secret(&secret_pwd);
-    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
-
-    let (config, master_key, config_json_out) = match config_json {
-        Some(json) => {
-            let config = overlay::parse_config(&json)?;
-            // Tier 1: reconcile the supplied keyfile against what the config
-            // requires BEFORE the expensive KDF, so a missing or spurious
-            // keyfile is a clear error instead of a confusing "wrong password".
-            let keyfile_digest = match (config.requires_keyfile(), keyfile_digest) {
-                (true, None) => {
-                    return Err(
-                        "this AeroCrypt overlay requires a keyfile (none was provided)".to_string(),
-                    )
-                }
-                (false, Some(_)) => {
-                    return Err(
-                        "this AeroCrypt overlay was not created with a keyfile (remove the keyfile to unlock)"
-                            .to_string(),
-                    )
-                }
-                (true, kd) => kd,
-                (false, _) => None,
-            };
-            let master_key = derive_master_key_async(&config, pw, keyfile_digest).await?;
-            // F1: reject a wrong password or a tampered version/salt before use.
-            overlay::verify_config_mac(&config, &master_key)?;
-            (config, master_key, json)
-        }
-        None => {
-            let salt = overlay::random_salt_v3();
-            let tmp = OverlayConfig::v3_bootstrap(salt);
-            let master_key = derive_master_key_async(&tmp, pw, keyfile_digest).await?;
-            // With a keyfile the config records kdf_inputs + a fresh vault_id
-            // and omits keyfile_hint by default (F5), mirroring the CLI init.
-            let json = if keyfile_digest.is_some() {
-                overlay::init_config_v3_with_keyfile(
-                    &salt,
-                    &master_key,
-                    &overlay::random_vault_id(),
-                    None,
-                    overlay::SaltMode::PerVault,
-                )?
-            } else {
-                overlay::init_config_v3(&salt, &master_key)?
-            };
-            let config = overlay::parse_config(&json)?;
-            (config, master_key, json)
-        }
-    };
-    let version = config.version();
-
-    let vault_id = uuid::Uuid::new_v4().to_string();
-    let info = AeroCryptVaultInfo {
-        vault_id: vault_id.clone(),
-        version,
-        config_json: config_json_out,
-    };
-
-    state
-        .vaults
-        .lock()
-        .await
-        .insert(vault_id, AeroCryptKeys { master_key, config });
-    Ok(info)
-}
 
 /// Lock (forget) an unlocked overlay, zeroizing its master key via `Drop`.
 #[tauri::command]
@@ -259,15 +163,7 @@ pub async fn aerocrypt_provider_read_config(
     // pwd. Path-based providers (Filen, etc.) reset current_path to "/" on connect
     // and never cd when they merely *list* a folder, so the overlay would always
     // root at "/". Prefer an absolute marker path under base_path when given.
-    let cwd = if let Some(bp) = base_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != "/")
-    {
-        bp.to_string()
-    } else {
-        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
-    };
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
     let new_name = overlay::CRYPT_CONFIG_WRITE_NAME;
     let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
     let new_path = join_remote_path(&cwd, new_name);
@@ -376,15 +272,7 @@ pub async fn aerocrypt_provider_marker_status(
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
 
-    let cwd = if let Some(bp) = base_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != "/")
-    {
-        bp.to_string()
-    } else {
-        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
-    };
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
     let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
     let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
     Ok(AeroCryptMarkerStatus {
@@ -414,15 +302,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
     // Same peel as read_config/marker_status: migrate must see cleartext marker names.
     let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
 
-    let cwd = if let Some(bp) = base_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != "/")
-    {
-        bp.to_string()
-    } else {
-        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
-    };
+    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
     let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
     let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
     let legacy_exists = provider
@@ -514,22 +394,28 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
 }
 
 /// Bootstrap a brand-new native AeroCrypt overlay on the connected provider:
-/// generate a fresh v3 (key-bound) config, derive the key, write `.aerocrypt.tsv`
-/// at the (optional) sub-path, and register the unlocked vault. Refuses to
-/// overwrite an existing overlay unless `force` is set, because re-initializing
-/// rotates the salt and would orphan every existing file.
+/// generate a fresh v3 (key-bound) config and write `.aerocrypt.tsv` in
+/// `base_path`, or in its `target_subpath` subfolder (created when missing).
+/// `base_path` is the absolute plaintext folder the dialog was opened on,
+/// never the provider pwd, which a path-based provider leaves at `/` when the
+/// panel merely lists a folder. Refuses to overwrite an existing overlay
+/// unless `force` is set, because re-initializing rotates the salt and would
+/// orphan every existing file.
+///
+/// Nothing is unlocked here: the caller opens the new vault through
+/// `provider_apply_crypt_overlay` at the folder this returns, like any other.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn aerocrypt_provider_create_remote(
     provider_state: State<'_, ProviderState>,
-    aerocrypt_state: State<'_, AeroCryptState>,
     password: String,
+    base_path: String,
     target_subpath: Option<String>,
     force: Option<bool>,
     keyfile_path: Option<String>,
     use_default_salt: Option<bool>,
     salt_strength: Option<String>,
-) -> Result<AeroCryptVaultInfo, String> {
+) -> Result<AeroCryptCreatedVault, String> {
     let secret_pwd = secrecy::SecretString::from(password);
     let force = force.unwrap_or(false);
     let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
@@ -579,84 +465,67 @@ pub async fn aerocrypt_provider_create_remote(
         )?
     };
     let config = overlay::parse_config(&config_json)?;
+    let root = overlay_create_root(&base_path, target_subpath.as_deref());
 
-    {
-        let mut provider_lock = provider_state.provider.lock().await;
-        let provider = provider_lock
-            .as_mut()
-            .ok_or_else(|| "Not connected to any provider".to_string())?;
-        let saved_pwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-
-        let target = target_subpath
-            .as_deref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty());
-        log::debug!(
-            "[aerocrypt][create_remote] saved_pwd={:?} target_subpath={:?}",
-            saved_pwd,
-            target
-        );
-
-        let init_result: Result<(), String> = async {
-            if let Some(sub) = target {
-                let _ = provider.mkdir(sub).await; // idempotent
-                provider
-                    .cd(sub)
-                    .await
-                    .map_err(|e| format!("Failed to cd into {}: {}", sub, e))?;
-            }
-
-            let base = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-            let config_path = join_remote_path(&base, CONFIG_NAME);
-            // C4: never silently clobber an existing overlay. Re-init rotates the
-            // salt, which permanently orphans every file already encrypted here.
-            if !force && provider.size(&config_path).await.is_ok() {
-                return Err(format!(
-                    "an AeroCrypt overlay already exists at {}; refusing to re-initialize \
-                     (existing files would become permanently undecryptable). \
-                     Pass force=true to overwrite.",
-                    base
-                ));
-            }
-            log::debug!(
-                "[aerocrypt][create_remote] after cd: base(pwd)={:?} writing config to {:?}",
-                base,
-                config_path
-            );
-            let temp = std::env::temp_dir().join(format!(
-                "aeroftp_aerocrypt_config_{}_{}.json",
-                chrono::Utc::now().timestamp_millis(),
-                uuid::Uuid::new_v4()
-            ));
-            tokio::fs::write(&temp, &config_json)
-                .await
-                .map_err(|e| format!("Failed to stage overlay config: {}", e))?;
-            let up = provider
-                .upload(&temp.to_string_lossy(), &config_path, None)
-                .await
-                .map_err(|e| format!("Failed to write overlay config: {}", e));
-            let _ = tokio::fs::remove_file(&temp).await;
-            up
-        }
-        .await;
-
-        let _ = provider.cd(&saved_pwd).await;
-        init_result?;
+    let mut provider_lock = provider_state.provider.lock().await;
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    log::debug!("[aerocrypt][create_remote] root={:?}", root);
+    if root != base_path.trim() {
+        let _ = provider.mkdir(&root).await; // idempotent
     }
-
-    let version = config.version();
-    let vault_id = uuid::Uuid::new_v4().to_string();
-    let info = AeroCryptVaultInfo {
-        vault_id: vault_id.clone(),
-        version,
-        config_json,
-    };
-    aerocrypt_state
-        .vaults
-        .lock()
+    let config_path = join_remote_path(&root, CONFIG_NAME);
+    // C4: never silently clobber an existing overlay. Re-init rotates the
+    // salt, which permanently orphans every file already encrypted here.
+    if !force && provider.size(&config_path).await.is_ok() {
+        return Err(format!(
+            "an AeroCrypt overlay already exists at {root}; refusing to re-initialize \
+             (existing files would become permanently undecryptable). \
+             Pass force=true to overwrite."
+        ));
+    }
+    let staged = tempfile::NamedTempFile::new()
+        .map_err(|e| format!("Failed to stage overlay config: {e}"))?;
+    tokio::fs::write(staged.path(), &config_json)
         .await
-        .insert(vault_id, AeroCryptKeys { master_key, config });
-    Ok(info)
+        .map_err(|e| format!("Failed to stage overlay config: {e}"))?;
+    provider
+        .upload(&staged.path().to_string_lossy(), &config_path, None)
+        .await
+        .map_err(|e| format!("Failed to write overlay config: {e}"))?;
+
+    Ok(AeroCryptCreatedVault {
+        root,
+        version: config.version(),
+        config_json,
+    })
+}
+
+/// What [`aerocrypt_provider_create_remote`] wrote: the folder the new vault
+/// is rooted at (the one to open), and its public config for the Recovery Kit.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroCryptCreatedVault {
+    pub root: String,
+    pub version: u8,
+    pub config_json: String,
+}
+
+/// The folder a create from the unlock dialog roots its vault at: `base` (the
+/// absolute folder the dialog was opened on), or `subpath` under it. The
+/// subpath is always relative to `base`, its slashes trimmed, so `/x` typed in
+/// the field does not escape to the remote root.
+pub(crate) fn overlay_create_root(base: &str, subpath: Option<&str>) -> String {
+    let base = base.trim();
+    let base = if base.is_empty() { "/" } else { base };
+    match subpath
+        .map(|s| s.trim().trim_matches('/'))
+        .filter(|s| !s.is_empty())
+    {
+        Some(sub) => join_remote_path(base, sub),
+        None => base.to_string(),
+    }
 }
 
 /// Build and return the mandatory Emergency Kit from a (persisted) config JSON.
@@ -766,19 +635,29 @@ fn next_slot_id(slots: &[crate::aerocrypt::keyslots::Slot]) -> u32 {
     slots.iter().map(|s| s.id).max().map(|m| m + 1).unwrap_or(0)
 }
 
-/// Resolve the overlay root: absolute `base_path` when given, else provider pwd.
+/// Resolve the overlay root: the absolute `base_path` when given, `/` included
+/// (the remote root, an overlay anchored there), else the provider pwd.
+///
+/// `/` used to fall back to the pwd too, so a root overlay probed from a
+/// subfolder read that subfolder's marker; the callers that mean "where the
+/// panel is" pass no base path.
 async fn resolve_overlay_cwd(
     provider: &mut dyn crate::providers::StorageProvider,
     base_path: Option<&str>,
 ) -> String {
-    if let Some(bp) = base_path
-        .map(str::trim)
-        .filter(|s| !s.is_empty() && *s != "/")
-    {
-        bp.to_string()
-    } else {
-        provider.pwd().await.unwrap_or_else(|_| "/".to_string())
+    match explicit_overlay_cwd(base_path) {
+        Some(bp) => bp,
+        None => provider.pwd().await.unwrap_or_else(|_| "/".to_string()),
     }
+}
+
+/// The folder a caller named, if it named one. `/` is the remote root like any
+/// other folder; only an absent or blank path means "where the provider is".
+fn explicit_overlay_cwd(base_path: Option<&str>) -> Option<String> {
+    base_path
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 /// Read the headed marker (prefer `.aerocrypt.tsv`, fall back to legacy JSON).
@@ -1627,5 +1506,34 @@ mod tests {
             overlay::unlock_overlay_from_config(&added.marker, &bad, None).is_err(),
             "corrupted recovery must fail closed"
         );
+    }
+
+    /// #1081 row 43: the unlock dialog names the folder of an overlay at the
+    /// remote root as `/`. Reading `/` as "no folder given" probed wherever the
+    /// provider happened to be instead.
+    #[test]
+    fn overlay_probes_read_slash_as_the_root() {
+        assert_eq!(explicit_overlay_cwd(Some("/")).as_deref(), Some("/"));
+        assert_eq!(
+            explicit_overlay_cwd(Some(" /home/u/Vault ")).as_deref(),
+            Some("/home/u/Vault")
+        );
+        assert_eq!(explicit_overlay_cwd(None), None);
+        assert_eq!(explicit_overlay_cwd(Some("")), None);
+        assert_eq!(explicit_overlay_cwd(Some("   ")), None);
+    }
+
+    /// A create from the dialog roots its vault at the dialog's folder or under
+    /// it, never at the provider's pwd, and a typed `/x` stays under it.
+    #[test]
+    fn dialog_create_roots_the_vault_at_or_under_its_folder() {
+        assert_eq!(overlay_create_root("/home/u", None), "/home/u");
+        assert_eq!(overlay_create_root("/home/u", Some("  ")), "/home/u");
+        assert_eq!(overlay_create_root("/home/u", Some("New")), "/home/u/New");
+        assert_eq!(overlay_create_root("/home/u", Some("/New/")), "/home/u/New");
+        assert_eq!(overlay_create_root("/home/u/", Some("a/b")), "/home/u/a/b");
+        assert_eq!(overlay_create_root("/", Some("New")), "/New");
+        assert_eq!(overlay_create_root("", Some("New")), "/New");
+        assert_eq!(overlay_create_root("", None), "/");
     }
 }

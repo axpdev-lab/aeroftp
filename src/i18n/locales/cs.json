@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Cesta překryvů",
             "overlaysPathButtonHint": "Přejít na šifrovanou cestu překryvů: {path}",
             "lockedOverlayTitle": "Šifrovaná vrstva uzamčena",
-            "lockedOverlayDesc": "Tento server má šifrovanou vrstvu, kterou se nepodařilo odemknout. Zadejte heslo pro dešifrování názvů, nebo pokračujte v procházení surového výpisu."
+            "lockedOverlayDesc": "Tento server má šifrovanou vrstvu, kterou se nepodařilo odemknout. Zadejte heslo pro dešifrování názvů, nebo pokračujte v procházení surového výpisu.",
+            "overlayFolder": "Složka vrstvy:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Vytvořit a odemknout",
             "unlocked": "Vrstva odemčena.",
             "initialised": "Vrstva vytvořena a odemčena.",
-            "noOverlayFound": "V aktuální vzdálené složce nebyla nalezena žádná vrstva AeroCrypt. Přepněte na „Vytvořit novou“ a vytvořte ji.",
+            "noOverlayFound": "V této složce není žádný marker AeroCrypt. Pokud vault používá výchozí sůl AeroCrypt, zaškrtněte níže tuto volbu; chcete-li zde vytvořit nový vault, přepněte na „Vytvořit novou“.",
             "remoteUnlocked": "Vzdálený server odemčen (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Uzamknout vrstvu",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Obnovovací slot byl automaticky přidán, protože tento trezor by byl pouze s keyfile. Uložte obnovovací kód níže.",
             "keyslotsRecoverySaveOnce": "Uložte tento obnovovací kód nyní (zobrazen pouze jednou):",
             "keyslotsRecoveryCopy": "Kopírovat kód",
-            "keyslotsUnlockWithRecovery": "Můžete také odemknout obnovovacím kódem (vložte jej jako heslo)."
+            "keyslotsUnlockWithRecovery": "Můžete také odemknout obnovovacím kódem (vložte jej jako heslo).",
+            "openDefaultSaltLabel": "Tento vault používá výchozí sůl AeroCrypt",
+            "openDefaultSaltHint": "Bez markeru se vault s výchozí solí otevře pouze heslem, jakmile se s ním dešifrují názvy v této složce. Na vzdálený server se nic nezapisuje."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrování)",

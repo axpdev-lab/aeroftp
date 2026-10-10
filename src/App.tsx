@@ -39,6 +39,7 @@ import {
   CompareReport, RetryPolicy, SyncJournal
 } from './types';
 import { profileOverlayApplyParams } from './utils/profileOverlayUnlock';
+import { overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
 import type { ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
 import { bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
@@ -1186,7 +1187,7 @@ const App: React.FC = () => {
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; containerKind?: 'vault' | 'zip'; path?: string; files?: string[]; folderPath?: string; outputDir?: string }>(false);
   const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState<false | { initialVaultPath?: string }>(false);
-  const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState(false);
+  const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState<CryptUnlockTarget | null>(null);
   const [rcloneCryptVaultId, setRcloneCryptVaultId] = useState<string | null>(null);
   const [rcloneCryptImportBanner, setRcloneCryptImportBanner] = useState<null | {
     serverName: string;
@@ -1239,7 +1240,7 @@ const App: React.FC = () => {
   // The two provider overlays are mutually exclusive (a panel has at most one
   // active); Phase 3 wraps the live provider instead of routing each operation
   // through per-kind commands.
-  const [showAeroCryptUnlock, setShowAeroCryptUnlock] = useState(false);
+  const [showAeroCryptUnlock, setShowAeroCryptUnlock] = useState<CryptUnlockTarget | null>(null);
   // Recovery kit viewer opened from the crypt badge right-click menu (connected
   // native AeroCrypt profile). Same modal as the saved-server context menu.
   const [badgeRecoveryKit, setBadgeRecoveryKit] = useState<{ id: string; name: string } | null>(null);
@@ -4103,9 +4104,27 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remoteFiles, currentRemoteDisplayPath, overlayVaultLit, overlayInScope, aeroCryptVaultId, rcloneCryptVaultId, warnSameNameEncrypted]);
 
-  const openLockedOverlayUnlockPrompt = (kind: 'rclone-crypt' | 'aerocrypt') => {
-    if (kind === 'aerocrypt') setShowAeroCryptUnlock(true);
-    else setShowRcloneCryptUnlock(true);
+  // The ad-hoc dialogs open at a folder; this one unlocks the saved profile's
+  // binding, so the folder (and every intent) is the binding's, as on connect.
+  const openLockedOverlayUnlockPrompt = async (locked: {
+    savedServerId: string;
+    kind: 'rclone-crypt' | 'aerocrypt';
+  }) => {
+    const bound = await getEnabledProfileOverlay(locked.savedServerId);
+    const target: CryptUnlockTarget = {
+      scope: overlayAnchor(bound?.anchor),
+      savedServerId: locked.savedServerId,
+    };
+    if (locked.kind === 'aerocrypt') setShowAeroCryptUnlock(target);
+    else setShowRcloneCryptUnlock(target);
+  };
+
+  // Where an ad-hoc unlock dialog opens: the folder the overlay was anchored at
+  // when there is one, else the folder the panel is showing.
+  const openAdHocCryptUnlock = (kind: 'rclone-crypt' | 'aerocrypt', scope: string | null | undefined) => {
+    const target: CryptUnlockTarget = { scope: overlayAnchor(scope) };
+    if (kind === 'aerocrypt') setShowAeroCryptUnlock(target);
+    else setShowRcloneCryptUnlock(target);
   };
 
   const toggleActiveCryptOverlay = () => {
@@ -4138,7 +4157,7 @@ const App: React.FC = () => {
     // silent pending path would re-use the same wrong password and fail again
     // with no UI. Open the password prompt so the user can recover in-panel.
     if (lockedOverlayProfile) {
-      openLockedOverlayUnlockPrompt(lockedOverlayProfile.kind);
+      void openLockedOverlayUnlockPrompt(lockedOverlayProfile);
       return;
     }
     // LOCKED -> re-unlock. Fast path first: if the overlay was unlocked earlier
@@ -4172,20 +4191,27 @@ const App: React.FC = () => {
           humanLog.logRaw('activity.overlay_unlocked', 'CONNECT', {}, 'success');
           await loadRemoteFiles(undefined, true, true);
         } catch {
-          // Cache miss (different connection, disconnect, or hard lock): fall back
-          // to the full re-derive + decrypt animation, exactly as before.
+          // Cache miss (different connection, disconnect, or hard lock). The
+          // profile's binding re-derives only the vault it describes: an overlay
+          // this tab opened from the dialog in another folder goes back to the
+          // dialog there, or the re-derive would open the binding's vault instead.
+          const bound = await getEnabledProfileOverlay(savedId);
+          const sameVault = !!bound
+            && bound.kind === kind
+            && normCryptScope(bound.anchor) === normCryptScope(sess.cryptOverlayScope);
+          if (!sameVault) {
+            openAdHocCryptUnlock(kind, sess.cryptOverlayScope ?? currentRemotePath);
+            return;
+          }
+          // Fall back to the full re-derive + decrypt animation, exactly as before.
           overlayReloadedVaultRef.current = null;
           setPendingOverlayUnlock(savedId);
         }
       })();
       return;
     }
-    // Ad-hoc overlay (no saved profile): re-open the unlock modal.
-    if (kind === 'aerocrypt') {
-      setShowAeroCryptUnlock(true);
-    } else {
-      setShowRcloneCryptUnlock(true);
-    }
+    // Ad-hoc overlay (no saved profile): re-open the unlock modal where it was.
+    openAdHocCryptUnlock(kind, sess?.cryptOverlayScope ?? currentRemotePath);
   };
 
   // Explicit HARD lock (badge menu): unwrap AND wipe the cached key from memory
@@ -4244,7 +4270,7 @@ const App: React.FC = () => {
             setBadgeKeyslots({
               id: (sess?.savedServerId as string) || null,
               name: sess?.serverName || '',
-              remoteScope: sess?.cryptOverlay?.remoteScope || null,
+              remoteScope: overlayAnchor(sess?.cryptOverlay?.remoteScope),
             }),
           divider: true,
         });
@@ -4260,7 +4286,7 @@ const App: React.FC = () => {
         try {
           const status = await invoke<{ hasCurrentMarker: boolean; hasLegacyMarker: boolean }>(
             'aerocrypt_provider_marker_status',
-            { basePath: sess.cryptOverlay?.remoteScope || null },
+            { basePath: overlayAnchor(sess.cryptOverlay?.remoteScope) },
           );
           showConvert = !!(status.hasLegacyMarker && !status.hasCurrentMarker);
         } catch {
@@ -4273,7 +4299,7 @@ const App: React.FC = () => {
             action: () => {
               void (async () => {
                 const profileId = sess.savedServerId as string;
-                const scope = sess.cryptOverlay?.remoteScope || '';
+                const scope = overlayAnchor(sess.cryptOverlay?.remoteScope);
                 const logId = humanLog.logRaw(
                   'activity.aerocrypt_marker_migrate',
                   'INFO',
@@ -4305,7 +4331,7 @@ const App: React.FC = () => {
                   }>('aerocrypt_provider_migrate_legacy_marker', {
                     password: password || '',
                     keyfilePath: keyfilePath || null,
-                    basePath: scope || null,
+                    basePath: scope,
                   });
                   if (result.warning) {
                     humanLog.updateEntry(logId, {
@@ -4316,7 +4342,7 @@ const App: React.FC = () => {
                   } else if (result.changed || result.legacyDeleted) {
                     try {
                       const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {
-                        basePath: scope || null,
+                        basePath: scope,
                       });
                       if (configJson) {
                         let saltB64 = '';
@@ -5795,6 +5821,7 @@ const App: React.FC = () => {
         profileId: params.profileId ?? null,
         withHeader: params.withHeader ?? null,
         useDefaultSalt: params.useDefaultSalt ?? null,
+        openOnly: params.openOnly ?? null,
       },
     });
     // Backend returns ApplyOverlayResult { scope, markerRestored, warning, … };
@@ -5925,6 +5952,79 @@ const App: React.FC = () => {
     } catch {
       return null;
     }
+  };
+
+  // Open and Create from the unlock dialogs (#1081 row 43). An ad-hoc dialog
+  // opens the overlay at its own folder with what was typed in it, and never
+  // creates there. It passes no profile: a saved profile's keystore records
+  // (config copy, secret forms) describe the vault its binding names, not
+  // whatever folder the dialog was opened on. A dialog opened for the binding
+  // (the locked-overlay banner) unlocks it the way the connect does, with the
+  // typed factors in place of the stored ones. A failure is thrown back to the
+  // dialog, which shows it next to what was typed; success is only reported
+  // once the overlay is applied.
+  const unlockCryptOverlayFromDialog = async (
+    target: CryptUnlockTarget,
+    typed: ProviderCryptOverlayApply,
+  ): Promise<void> => {
+    let savedServerId = target.savedServerId || null;
+    let params: ProviderCryptOverlayApply = {
+      ...typed,
+      // The dialog's folder, or the one its Create just made under it.
+      remoteScope: typed.remoteScope ?? target.scope,
+      profileId: null,
+      openOnly: true,
+    };
+    if (savedServerId) {
+      const profiles = await loadSavedServerProfiles();
+      const profile = profiles.find((p) => p.id === savedServerId);
+      const binding = profile?.aeroCryptOverlay;
+      if (profile && binding?.enabled && binding.kind === typed.kind) {
+        // An empty field falls back to what the profile stores, as the connect
+        // would have used it: the banner is often there because only the
+        // password is missing.
+        const storedSalt = binding.kind === 'rclone-crypt' && !typed.salt
+          ? await invoke<string>('get_credential', { account: `aerocrypt_overlay_salt_${savedServerId}` }).catch(() => '')
+          : '';
+        const storedKeyfile = binding.kind === 'aerocrypt' && !typed.keyfilePath && profile.hasStoredAeroCryptKeyfilePath
+          ? await invoke<string>('get_credential', { account: `aerocrypt_overlay_keyfile_path_${savedServerId}` }).catch(() => '')
+          : '';
+        params = {
+          ...profileOverlayApplyParams({
+            binding,
+            savedServerId,
+            overlayScope: binding.remoteScope?.trim() || profile.initialPath?.trim() || '',
+            password: typed.password,
+            salt: typed.salt || storedSalt,
+            keyfilePath: typed.keyfilePath || storedKeyfile,
+          }),
+          // The typed secrets are written the way the dialog says; a stored
+          // salt keeps the form its profile recorded (null reads it there).
+          passwordForm: typed.passwordForm ?? null,
+          saltForm: typed.salt ? typed.saltForm ?? null : null,
+        };
+      } else {
+        // The binding was switched off or changed while the banner was up:
+        // open what is at the folder the dialog shows, as an ad-hoc dialog.
+        savedServerId = null;
+      }
+    }
+    setCryptOverlayOwner(
+      savedServerId ? { savedServerId, sessionId: null } : { savedServerId: null, sessionId: activeSessionId },
+    );
+    try {
+      if (savedServerId) await invoke('provider_arm_crypt_capability');
+      await activateProviderCryptOverlay(
+        savedServerId ? { savedServerId } : { sessionId: activeSessionId ?? undefined },
+        params,
+        savedServerId ?? activeSessionId,
+      );
+    } catch (e) {
+      setCryptOverlayOwner(null);
+      throw e;
+    }
+    setLockedOverlayProfile(null);
+    void loadRemoteFiles(undefined, true, true);
   };
 
   // P3.3 / P3.3b: when a saved profile carries an encrypted-overlay binding,
@@ -15914,12 +16014,12 @@ const App: React.FC = () => {
         {
           label: `${t('aerocryptNative.title')} (${t('aerocryptNative.recommended')})`,
           icon: <Lock size={14} className="text-emerald-500" />,
-          action: () => setShowAeroCryptUnlock(true),
+          action: () => setShowAeroCryptUnlock({ scope: overlayAnchor(currentRemotePath) }),
         } as ContextMenuItem,
         {
           label: t('aerocrypt.title'),
           icon: <Lock size={14} className="text-blue-500" />,
-          action: () => setShowRcloneCryptUnlock(true),
+          action: () => setShowRcloneCryptUnlock({ scope: overlayAnchor(currentRemotePath) }),
           divider: true,
         } as ContextMenuItem,
       ] : []),
@@ -17323,36 +17423,20 @@ const App: React.FC = () => {
         {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
           <RcloneCryptUnlock
-            onClose={() => setShowRcloneCryptUnlock(false)}
+            onClose={() => setShowRcloneCryptUnlock(null)}
             activeVaultId={rcloneCryptVaultId}
-            onUnlocked={(details) => {
-              void (async () => {
-                try {
-                  setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
-                  await activateProviderCryptOverlay(
-                    { sessionId: activeSessionId ?? undefined },
-                    {
-                      kind: 'rclone-crypt',
-                      remoteScope: details.remoteScope ?? '',
-                      filenameEncryption: details.filenameEncryption,
-                      directoryNameEncryption: details.directoryNameEncryption,
-                      password: details.password,
-                      salt: details.salt || null,
-                      passwordForm: details.passwordForm,
-                      saltForm: details.saltForm,
-                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId
-                        ?? lockedOverlayProfile?.savedServerId
-                        ?? null,
-                    },
-                    activeSessionId,
-                  );
-                  setLockedOverlayProfile(null);
-                  await loadRemoteFiles(undefined, true, true);
-                } catch (err) {
-                  notify.error('Rclone Crypt', String(err));
-                }
-              })();
-            }}
+            scope={showRcloneCryptUnlock.scope}
+            bound={!!showRcloneCryptUnlock.savedServerId}
+            onUnlocked={(details) => unlockCryptOverlayFromDialog(showRcloneCryptUnlock, {
+              kind: 'rclone-crypt',
+              remoteScope: details.scope,
+              filenameEncryption: details.filenameEncryption,
+              directoryNameEncryption: details.directoryNameEncryption,
+              password: details.password,
+              salt: details.salt || null,
+              passwordForm: details.passwordForm,
+              saltForm: details.saltForm,
+            })}
             onLocked={() => {
               setRcloneCryptVaultId(null);
               setCryptOverlayOwner(null);
@@ -17366,42 +17450,20 @@ const App: React.FC = () => {
         )}
         {showAeroCryptUnlock && (
           <AeroCryptUnlock
-            onClose={() => setShowAeroCryptUnlock(false)}
+            onClose={() => setShowAeroCryptUnlock(null)}
             activeVaultId={aeroCryptVaultId}
-            profileId={
-              sessions.find((s) => s.id === activeSessionId)?.savedServerId
-              || cryptOverlayOwner?.savedServerId
-              || lockedOverlayProfile?.savedServerId
-              || null
-            }
-            remoteScope={
-              sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope
-              || null
-            }
-            onUnlocked={(details) => {
-              void (async () => {
-                try {
-                  setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
-                  await activateProviderCryptOverlay(
-                    { sessionId: activeSessionId ?? undefined },
-                    {
-                      kind: 'aerocrypt',
-                      remoteScope: details.remoteScope ?? '',
-                      password: details.password,
-                      keyfilePath: details.keyfilePath || null,
-                      profileId: sessions.find(s => s.id === activeSessionId)?.savedServerId
-                        ?? lockedOverlayProfile?.savedServerId
-                        ?? null,
-                    },
-                    activeSessionId,
-                  );
-                  setLockedOverlayProfile(null);
-                  await loadRemoteFiles(undefined, true, true);
-                } catch (err) {
-                  notify.error('AeroCrypt', String(err));
-                }
-              })();
-            }}
+            scope={showAeroCryptUnlock.scope}
+            bound={!!showAeroCryptUnlock.savedServerId}
+            // Only the binding's dialog reads the profile's Recovery Kit and
+            // keystore copy: an ad-hoc vault is another vault.
+            profileId={showAeroCryptUnlock.savedServerId ?? null}
+            onUnlocked={(details) => unlockCryptOverlayFromDialog(showAeroCryptUnlock, {
+              kind: 'aerocrypt',
+              remoteScope: details.scope,
+              password: details.password,
+              keyfilePath: details.keyfilePath || null,
+              useDefaultSalt: details.useDefaultSalt || null,
+            })}
             onLocked={() => {
               setAeroCryptVaultId(null);
               setCryptOverlayOwner(null);
@@ -17458,7 +17520,7 @@ const App: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => openLockedOverlayUnlockPrompt(lockedOverlayProfile.kind)}
+                onClick={() => void openLockedOverlayUnlockPrompt(lockedOverlayProfile)}
                 className="px-3 py-1 text-xs rounded bg-amber-500 hover:bg-amber-600 text-white font-semibold"
               >
                 {t('aerocrypt.unlock')}

@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Pot prekrivkov",
             "overlaysPathButtonHint": "Skoči na šifrirano pot prekrivkov: {path}",
             "lockedOverlayTitle": "Šifrirana plast zaklenjena",
-            "lockedOverlayDesc": "Ta strežnik ima šifrirano plast, ki je ni bilo mogoče odkleniti. Vnesite geslo za dešifriranje imen ali nadaljujte z brskanjem po surovem seznamu."
+            "lockedOverlayDesc": "Ta strežnik ima šifrirano plast, ki je ni bilo mogoče odkleniti. Vnesite geslo za dešifriranje imen ali nadaljujte z brskanjem po surovem seznamu.",
+            "overlayFolder": "Mapa sloja:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Ustvari in odkleni",
             "unlocked": "Sloj odklenjen.",
             "initialised": "Sloj ustvarjen in odklenjen.",
-            "noOverlayFound": "V trenutni oddaljeni mapi ni bilo najdenega sloja AeroCrypt. Preklopite na „Ustvari novega“, da ga ustvarite.",
+            "noOverlayFound": "V tej mapi ni markerja AeroCrypt. Če vault uporablja privzeto sol AeroCrypt, obkljukajte to možnost spodaj; če želite tukaj ustvariti nov vault, preklopite na „Ustvari novega“.",
             "remoteUnlocked": "Oddaljeni strežnik odklenjen (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Zakleni sloj",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Obnovitvena reža je bila samodejno dodana, ker bi bil ta trezor le s keyfile. Shranite obnovitveno kodo spodaj.",
             "keyslotsRecoverySaveOnce": "Shranite to obnovitveno kodo zdaj (prikazana enkrat):",
             "keyslotsRecoveryCopy": "Kopiraj kodo",
-            "keyslotsUnlockWithRecovery": "Odklenete lahko tudi z obnovitveno kodo (prilepite jo kot geslo)."
+            "keyslotsUnlockWithRecovery": "Odklenete lahko tudi z obnovitveno kodo (prilepite jo kot geslo).",
+            "openDefaultSaltLabel": "Ta vault uporablja privzeto sol AeroCrypt",
+            "openDefaultSaltHint": "Brez markerja se vault s privzeto soljo odpre samo z geslom, ko se z njim dešifrirajo imena v tej mapi. Na oddaljeni strežnik se ne zapiše nič."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

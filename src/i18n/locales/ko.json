@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "오버레이 경로",
             "overlaysPathButtonHint": "암호화된 오버레이 경로로 이동: {path}",
             "lockedOverlayTitle": "암호화 오버레이 잠김",
-            "lockedOverlayDesc": "이 서버에는 잠금을 해제할 수 없는 암호화 오버레이가 있습니다. 이름을 복호화하려면 비밀번호를 입력하거나, 원본 목록 탐색을 계속하세요."
+            "lockedOverlayDesc": "이 서버에는 잠금을 해제할 수 없는 암호화 오버레이가 있습니다. 이름을 복호화하려면 비밀번호를 입력하거나, 원본 목록 탐색을 계속하세요.",
+            "overlayFolder": "오버레이 폴더:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "만들고 잠금 해제",
             "unlocked": "오버레이 잠금이 해제되었습니다.",
             "initialised": "오버레이가 생성되고 잠금이 해제되었습니다.",
-            "noOverlayFound": "현재 원격 폴더에서 AeroCrypt 오버레이를 찾을 수 없습니다. \"새로 만들기\"로 전환하여 만드세요.",
+            "noOverlayFound": "이 폴더에는 AeroCrypt 마커가 없습니다. vault가 AeroCrypt 기본 salt를 사용한다면 아래 해당 옵션을 선택하세요. 여기에 새 vault를 만들려면 “새로 만들기”로 전환하세요.",
             "remoteUnlocked": "원격 잠금이 해제되었습니다(ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "오버레이 잠금",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "이 볼트가 keyfile 전용이 될 수 있어 복구 슬롯이 자동으로 추가되었습니다. 아래 복구 코드를 저장하세요.",
             "keyslotsRecoverySaveOnce": "이 복구 코드를 지금 저장하세요(한 번만 표시):",
             "keyslotsRecoveryCopy": "코드 복사",
-            "keyslotsUnlockWithRecovery": "복구 코드로도 잠금을 해제할 수 있습니다(비밀번호로 붙여넣기)."
+            "keyslotsUnlockWithRecovery": "복구 코드로도 잠금을 해제할 수 있습니다(비밀번호로 붙여넣기).",
+            "openDefaultSaltLabel": "이 vault는 AeroCrypt 기본 salt를 사용합니다",
+            "openDefaultSaltHint": "여기에 마커가 없으면 기본 salt를 쓰는 vault는 이 폴더의 이름이 비밀번호로 복호화되는 즉시 비밀번호만으로 열립니다. 원격에는 아무것도 기록되지 않습니다."
         },
         "aerocryptProfile": {
             "enable": "Crypt (암호화)",

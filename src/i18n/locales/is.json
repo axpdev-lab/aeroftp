@@ -5258,7 +5258,8 @@
             "overlaysPathButton": "Yfirlagsslóð",
             "overlaysPathButtonHint": "Fara á dulkóðaða yfirlagsslóð: {path}",
             "lockedOverlayTitle": "Dulkóðað yfirlag læst",
-            "lockedOverlayDesc": "Þessi netþjónn er með dulkóðað yfirlag sem ekki tókst að aflæsa. Sláðu inn lykilorðið til að afkóða nöfn, eða haltu áfram að skoða hráa listann."
+            "lockedOverlayDesc": "Þessi netþjónn er með dulkóðað yfirlag sem ekki tókst að aflæsa. Sláðu inn lykilorðið til að afkóða nöfn, eða haltu áfram að skoða hráa listann.",
+            "overlayFolder": "Yfirlagsmappa:"
         },
         "b2": {
             "hidden": {
@@ -5715,7 +5716,7 @@
             "createAndUnlock": "Búa til og aflæsa",
             "unlocked": "Yfirlag aflæst.",
             "initialised": "Yfirlag búið til og aflæst.",
-            "noOverlayFound": "Ekkert AeroCrypt-yfirlag fannst í núverandi fjarmöppu. Skiptu yfir í „Búa til nýtt“ til að búa eitt til.",
+            "noOverlayFound": "Ekkert AeroCrypt-merki er í þessari möppu. Ef vault notar sjálfgefið salt AeroCrypt, hakaðu við þann valkost hér að neðan; til að búa til nýja vault hér skaltu skipta yfir í „Búa til nýtt“.",
             "remoteUnlocked": "Fjartenging aflæst (auðkenni {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Læsa yfirlagi",
@@ -5805,7 +5806,9 @@
             "keyslotsRecoveryAutoOffered": "Endurheimturauf var bætt við sjálfkrafa vegna þess að þetta hólf hefði aðeins verið með keyfile. Vistaðu endurheimtukóðann hér að neðan.",
             "keyslotsRecoverySaveOnce": "Vistaðu þennan endurheimtukóða núna (sýndur einu sinni):",
             "keyslotsRecoveryCopy": "Afrita kóða",
-            "keyslotsUnlockWithRecovery": "Þú getur líka opnað með endurheimtukóða (límdu hann sem lykilorð)."
+            "keyslotsUnlockWithRecovery": "Þú getur líka opnað með endurheimtukóða (límdu hann sem lykilorð).",
+            "openDefaultSaltLabel": "Þessi vault notar sjálfgefið salt AeroCrypt",
+            "openDefaultSaltHint": "Án merkis hér opnast vault með sjálfgefnu salti eingöngu með lykilorðinu sínu, svo fremi sem nöfnin í þessari möppu afkóðast með því. Ekkert er skrifað á fjarþjóninn."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",

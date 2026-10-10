@@ -1417,10 +1417,11 @@ async fn rclone_crypt_provider_create_remote(
     filename_encryption: Option<String>,
     suffix: Option<String>,
     directory_name_encryption: Option<bool>,
+    base_path: String,
     target_subpath: Option<String>,
     password_form: Option<String>,
     salt_form: Option<String>,
-) -> Result<rclone_crypt::RcloneCryptVaultInfo, String> {
+) -> Result<RcloneCryptCreatedVault, String> {
     let (name_key, data_key, name_tweak) = rclone_crypt::derive_keys_with_forms(
         &password,
         rclone_crypt::CryptSecretForm::parse(password_form.as_deref()),
@@ -1435,33 +1436,23 @@ async fn rclone_crypt_provider_create_remote(
     let off_suffix = rclone_crypt::resolve_off_suffix(suffix.as_deref());
     let dir_name_enc = directory_name_encryption.unwrap_or(true);
 
-    {
+    // Same rule as the AeroCrypt create: the folder is absolute, taken from
+    // the dialog, never from the provider's pwd, which the overlay is then
+    // applied at by the caller. rclone crypt has no marker to write.
+    let root = aerocrypt_provider::overlay_create_root(&base_path, target_subpath.as_deref());
+    if root != base_path.trim() {
         let mut provider_lock = provider_state.provider.lock().await;
         let provider = provider_lock
             .as_mut()
             .ok_or_else(|| "Not connected to any provider".to_string())?;
-        let saved_pwd = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-
-        let target = target_subpath
-            .as_deref()
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty());
-
-        let init_result: Result<(), String> = async {
-            if let Some(sub) = target {
-                let _ = provider.mkdir(sub).await; // idempotent
-                provider
-                    .cd(sub)
-                    .await
-                    .map_err(|e| format!("Failed to cd into {}: {}", sub, e))?;
-            }
-
-            Ok(())
+        if provider.mkdir(&root).await.is_err() {
+            // mkdir is not idempotent on every backend: an existing folder is
+            // fine, anything else is the error the user needs to see.
+            provider
+                .stat(&root)
+                .await
+                .map_err(|e| format!("Failed to create {root}: {e}"))?;
         }
-        .await;
-
-        let _ = provider.cd(&saved_pwd).await;
-        init_result?;
     }
 
     let vault_id = uuid::Uuid::new_v4().to_string();
@@ -1480,7 +1471,16 @@ async fn rclone_crypt_provider_create_remote(
         directory_name_encryption: dir_name_enc,
     };
     rclone_state.vaults.lock().await.insert(vault_id, keys);
-    Ok(info)
+    Ok(RcloneCryptCreatedVault { info, root })
+}
+
+/// What [`rclone_crypt_provider_create_remote`] set up: the unlocked remote,
+/// and the folder it is rooted at (the one the overlay is applied to).
+#[derive(Debug, Clone, serde::Serialize)]
+struct RcloneCryptCreatedVault {
+    #[serde(flatten)]
+    info: rclone_crypt::RcloneCryptVaultInfo,
+    root: String,
 }
 
 /// Global transfer speed limits (bytes per second, 0 = unlimited)
@@ -19677,7 +19677,6 @@ pub fn run() {
             rclone_crypt::rclone_crypt_decrypt_file_path,
             rclone_crypt_provider_create_remote,
             // Native AeroCrypt overlay (mirrors the rclone set on our own codec)
-            aerocrypt_provider::aerocrypt_unlock,
             aerocrypt_provider::aerocrypt_lock,
             aerocrypt_provider::aerocrypt_provider_read_config,
             aerocrypt_provider::aerocrypt_provider_marker_status,

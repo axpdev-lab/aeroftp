@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "叠加层路径",
             "overlaysPathButtonHint": "跳转到加密的叠加层路径：{path}",
             "lockedOverlayTitle": "已锁定加密叠加层",
-            "lockedOverlayDesc": "此服务器有一个无法解锁的加密叠加层。输入密码以解密名称，或继续浏览原始列表。"
+            "lockedOverlayDesc": "此服务器有一个无法解锁的加密叠加层。输入密码以解密名称，或继续浏览原始列表。",
+            "overlayFolder": "叠加层文件夹："
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "创建并解锁",
             "unlocked": "叠加层已解锁。",
             "initialised": "叠加层已创建并解锁。",
-            "noOverlayFound": "在当前远程文件夹中未找到 AeroCrypt 叠加层。切换到“新建”来创建一个。",
+            "noOverlayFound": "此文件夹中没有 AeroCrypt 标记。如果 vault 使用 AeroCrypt 默认 salt，请勾选下方的该选项；要在此处新建 vault，请切换到“新建”。",
             "remoteUnlocked": "远程已解锁（ID {id}）",
             "versionLabel": "AECR v{version}",
             "lock": "锁定叠加层",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "已自动添加恢复槽，因为此保险库将仅支持 keyfile。请保存下方恢复码。",
             "keyslotsRecoverySaveOnce": "请立即保存此恢复码（仅显示一次）：",
             "keyslotsRecoveryCopy": "复制代码",
-            "keyslotsUnlockWithRecovery": "也可以使用恢复码解锁（将其粘贴为密码）。"
+            "keyslotsUnlockWithRecovery": "也可以使用恢复码解锁（将其粘贴为密码）。",
+            "openDefaultSaltLabel": "此 vault 使用 AeroCrypt 默认 salt",
+            "openDefaultSaltHint": "此处没有标记时，使用默认 salt 的 vault 仅凭密码即可打开，只要此文件夹中的名称能用该密码解密。不会向远程写入任何内容。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (加密)",

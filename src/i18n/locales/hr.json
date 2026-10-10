@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Putanja prekrivača",
             "overlaysPathButtonHint": "Skoči na šifriranu putanju prekrivača: {path}",
             "lockedOverlayTitle": "Šifrirani sloj zaključan",
-            "lockedOverlayDesc": "Ovaj poslužitelj ima šifrirani sloj koji nije moguće otključati. Unesite lozinku za dešifriranje naziva ili nastavite pregledavati sirovi popis."
+            "lockedOverlayDesc": "Ovaj poslužitelj ima šifrirani sloj koji nije moguće otključati. Unesite lozinku za dešifriranje naziva ili nastavite pregledavati sirovi popis.",
+            "overlayFolder": "Mapa sloja:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Stvori i otključaj",
             "unlocked": "Sloj otključan.",
             "initialised": "Sloj stvoren i otključan.",
-            "noOverlayFound": "U trenutnoj udaljenoj mapi nije pronađen AeroCrypt sloj. Prijeđite na „Stvori novi“ da biste ga izradili.",
+            "noOverlayFound": "U ovoj mapi nema AeroCrypt markera. Ako vault koristi zadanu sol AeroCrypta, označite tu opciju u nastavku; za izradu novog vaulta ovdje prijeđite na „Stvori novi“.",
             "remoteUnlocked": "Udaljeni poslužitelj otključan (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Zaključaj sloj",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Utor za oporavak automatski je dodan jer bi ovaj trezor bio samo s keyfileom. Spremite kod za oporavak u nastavku.",
             "keyslotsRecoverySaveOnce": "Spremite ovaj kod za oporavak sada (prikazuje se jednom):",
             "keyslotsRecoveryCopy": "Kopiraj kod",
-            "keyslotsUnlockWithRecovery": "Također možete otključati kodom za oporavak (zalijepite ga kao lozinku)."
+            "keyslotsUnlockWithRecovery": "Također možete otključati kodom za oporavak (zalijepite ga kao lozinku).",
+            "openDefaultSaltLabel": "Ovaj vault koristi zadanu sol AeroCrypta",
+            "openDefaultSaltHint": "Bez markera ovdje se vault sa zadanom soli otvara samo svojom lozinkom, čim se nazivi u ovoj mapi dešifriraju njome. Na udaljeni poslužitelj ne zapisuje se ništa."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

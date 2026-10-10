@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Cesta prekrytí",
             "overlaysPathButtonHint": "Prejsť na šifrovanú cestu prekrytí: {path}",
             "lockedOverlayTitle": "Šifrovaná vrstva uzamknutá",
-            "lockedOverlayDesc": "Tento server má šifrovanú vrstvu, ktorú sa nepodarilo odomknúť. Zadajte heslo na dešifrovanie názvov, alebo pokračujte v prehliadaní surového výpisu."
+            "lockedOverlayDesc": "Tento server má šifrovanú vrstvu, ktorú sa nepodarilo odomknúť. Zadajte heslo na dešifrovanie názvov, alebo pokračujte v prehliadaní surového výpisu.",
+            "overlayFolder": "Priečinok vrstvy:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Vytvoriť a odomknúť",
             "unlocked": "Vrstva odomknutá.",
             "initialised": "Vrstva vytvorená a odomknutá.",
-            "noOverlayFound": "V aktuálnom vzdialenom priečinku sa nenašla žiadna vrstva AeroCrypt. Prepnite na „Vytvoriť novú“ a vytvorte ju.",
+            "noOverlayFound": "V tomto priečinku nie je žiadny marker AeroCrypt. Ak vault používa predvolenú soľ AeroCrypt, zaškrtnite túto voľbu nižšie; ak tu chcete vytvoriť nový vault, prepnite na „Vytvoriť novú“.",
             "remoteUnlocked": "Vzdialený server odomknutý (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Uzamknúť vrstvu",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Obnovovací slot bol automaticky pridaný, pretože tento trezor by bol len s keyfile. Uložte obnovovací kód nižšie.",
             "keyslotsRecoverySaveOnce": "Uložte tento obnovovací kód teraz (zobrazený raz):",
             "keyslotsRecoveryCopy": "Kopírovať kód",
-            "keyslotsUnlockWithRecovery": "Môžete odomknúť aj obnovovacím kódom (vložte ho ako heslo)."
+            "keyslotsUnlockWithRecovery": "Môžete odomknúť aj obnovovacím kódom (vložte ho ako heslo).",
+            "openDefaultSaltLabel": "Tento vault používa predvolenú soľ AeroCrypt",
+            "openDefaultSaltHint": "Bez markera sa vault s predvolenou soľou otvorí iba heslom, hneď ako sa ním dešifrujú názvy v tomto priečinku. Na vzdialený server sa nič nezapisuje."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",

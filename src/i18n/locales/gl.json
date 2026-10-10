@@ -5258,7 +5258,8 @@
             "overlaysPathButton": "Ruta de superposicións",
             "overlaysPathButtonHint": "Ir á ruta cifrada de superposicións: {path}",
             "lockedOverlayTitle": "Capa cifrada bloqueada",
-            "lockedOverlayDesc": "Este servidor ten unha capa cifrada que non se puido desbloquear. Introduza o contrasinal para descifrar os nomes, ou siga explorando o listado en bruto."
+            "lockedOverlayDesc": "Este servidor ten unha capa cifrada que non se puido desbloquear. Introduza o contrasinal para descifrar os nomes, ou siga explorando o listado en bruto.",
+            "overlayFolder": "Cartafol da superposición:"
         },
         "b2": {
             "hidden": {
@@ -5715,7 +5716,7 @@
             "createAndUnlock": "Crear e desbloquear",
             "unlocked": "Superposición desbloqueada.",
             "initialised": "Superposición creada e desbloqueada.",
-            "noOverlayFound": "Non se atopou ningunha superposición AeroCrypt no cartafol remoto actual. Cambia a «Crear nova» para crear unha.",
+            "noOverlayFound": "Non hai ningún marcador de AeroCrypt neste cartafol. Se o vault usa o sal predeterminado de AeroCrypt, marca esa opción de abaixo; para crear un vault novo aquí, cambia a «Crear nova».",
             "remoteUnlocked": "Remoto desbloqueado (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Bloquear superposición",
@@ -5805,7 +5806,9 @@
             "keyslotsRecoveryAutoOffered": "Engadiuse automaticamente unha ranura de recuperación porque este vault sería só con keyfile. Garde o código de recuperación de abaixo.",
             "keyslotsRecoverySaveOnce": "Garde este código de recuperación agora (móstrase unha soa vez):",
             "keyslotsRecoveryCopy": "Copiar código",
-            "keyslotsUnlockWithRecovery": "Tamén pode desbloquear cun código de recuperación (péguelo como contrasinal)."
+            "keyslotsUnlockWithRecovery": "Tamén pode desbloquear cun código de recuperación (péguelo como contrasinal).",
+            "openDefaultSaltLabel": "Este vault usa o sal predeterminado de AeroCrypt",
+            "openDefaultSaltHint": "Sen marcador aquí, un vault con sal predeterminado ábrese só co seu contrasinal en canto os nomes deste cartafol se descifran con el. Non se escribe nada no remoto."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

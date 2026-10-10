@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Pārklājumu ceļš",
             "overlaysPathButtonHint": "Pāriet uz šifrēto pārklājumu ceļu: {path}",
             "lockedOverlayTitle": "Šifrētais slānis bloķēts",
-            "lockedOverlayDesc": "Šim serverim ir šifrēts slānis, kuru neizdevās atbloķēt. Ievadiet paroli, lai atšifrētu nosaukumus, vai turpiniet pārlūkot neapstrādāto sarakstu."
+            "lockedOverlayDesc": "Šim serverim ir šifrēts slānis, kuru neizdevās atbloķēt. Ievadiet paroli, lai atšifrētu nosaukumus, vai turpiniet pārlūkot neapstrādāto sarakstu.",
+            "overlayFolder": "Pārklājuma mape:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Izveidot un atbloķēt",
             "unlocked": "Pārklājums atbloķēts.",
             "initialised": "Pārklājums izveidots un atbloķēts.",
-            "noOverlayFound": "Pašreizējā attālajā mapē netika atrasts AeroCrypt pārklājums. Pārslēdzies uz \"Izveidot jaunu\", lai to izveidotu.",
+            "noOverlayFound": "Šajā mapē nav AeroCrypt marķiera. Ja vault izmanto AeroCrypt noklusējuma sāli, atzīmē šo opciju zemāk; lai šeit izveidotu jaunu vault, pārslēdzies uz „Izveidot jaunu“.",
             "remoteUnlocked": "Attālais serveris atbloķēts (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Bloķēt pārklājumu",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Atkopšanas slots tika pievienots automātiski, jo šis seifs būtu bijis tikai ar keyfile. Saglabājiet tālāk norādīto atkopšanas kodu.",
             "keyslotsRecoverySaveOnce": "Saglabājiet šo atkopšanas kodu tūlīt (rādīts vienreiz):",
             "keyslotsRecoveryCopy": "Kopēt kodu",
-            "keyslotsUnlockWithRecovery": "Varat arī atbloķēt ar atkopšanas kodu (ielīmējiet to kā paroli)."
+            "keyslotsUnlockWithRecovery": "Varat arī atbloķēt ar atkopšanas kodu (ielīmējiet to kā paroli).",
+            "openDefaultSaltLabel": "Šis vault izmanto AeroCrypt noklusējuma sāli",
+            "openDefaultSaltHint": "Bez marķiera šeit vault ar noklusējuma sāli atveras tikai ar savu paroli, tiklīdz ar to atšifrējas šīs mapes nosaukumi. Attālajā serverī nekas netiek ierakstīts."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",

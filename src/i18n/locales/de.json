@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Overlay-Pfad",
             "overlaysPathButtonHint": "Zum verschlüsselten Overlay-Pfad springen: {path}",
             "lockedOverlayTitle": "Verschlüsselte Überlagerung gesperrt",
-            "lockedOverlayDesc": "Dieser Server hat eine verschlüsselte Überlagerung, die nicht entsperrt werden konnte. Geben Sie das Passwort ein, um Namen zu entschlüsseln, oder browsen Sie weiter die Roh-Auflistung."
+            "lockedOverlayDesc": "Dieser Server hat eine verschlüsselte Überlagerung, die nicht entsperrt werden konnte. Geben Sie das Passwort ein, um Namen zu entschlüsseln, oder browsen Sie weiter die Roh-Auflistung.",
+            "overlayFolder": "Overlay-Ordner:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Erstellen und entsperren",
             "unlocked": "Overlay entsperrt.",
             "initialised": "Overlay erstellt und entsperrt.",
-            "noOverlayFound": "Kein AeroCrypt-Overlay im aktuellen Remote-Ordner gefunden. Wechseln Sie zu „Neu erstellen“, um eines anzulegen.",
+            "noOverlayFound": "Kein AeroCrypt-Marker in diesem Ordner. Wenn der Vault das AeroCrypt-Standard-Salt verwendet, aktivieren Sie unten diese Option; um hier einen neuen Vault anzulegen, wechseln Sie zu „Neu erstellen“.",
             "remoteUnlocked": "Remote entsperrt (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Overlay sperren",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Ein Wiederherstellungsslot wurde automatisch hinzugefügt, weil dieser Tresor sonst nur per Keyfile zugänglich gewesen wäre. Speichern Sie den Wiederherstellungscode unten.",
             "keyslotsRecoverySaveOnce": "Speichern Sie diesen Wiederherstellungscode jetzt (einmalig angezeigt):",
             "keyslotsRecoveryCopy": "Code kopieren",
-            "keyslotsUnlockWithRecovery": "Sie können auch mit einem Wiederherstellungscode entsperren (als Passwort einfügen)."
+            "keyslotsUnlockWithRecovery": "Sie können auch mit einem Wiederherstellungscode entsperren (als Passwort einfügen).",
+            "openDefaultSaltLabel": "Dieser Vault verwendet das AeroCrypt-Standard-Salt",
+            "openDefaultSaltHint": "Ohne Marker öffnet sich ein Vault mit Standard-Salt allein über sein Passwort, sobald die Namen in diesem Ordner damit entschlüsselt werden. Auf dem Remote wird nichts geschrieben."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Verschlüsselung)",

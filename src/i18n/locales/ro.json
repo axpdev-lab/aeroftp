@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Calea suprapunerilor",
             "overlaysPathButtonHint": "Salt la calea criptată a suprapunerilor: {path}",
             "lockedOverlayTitle": "Strat criptat blocat",
-            "lockedOverlayDesc": "Acest server are un strat criptat care nu a putut fi deblocat. Introduceți parola pentru a decripta numele, sau continuați explorarea listei brute."
+            "lockedOverlayDesc": "Acest server are un strat criptat care nu a putut fi deblocat. Introduceți parola pentru a decripta numele, sau continuați explorarea listei brute.",
+            "overlayFolder": "Folderul stratului:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Creează și deblochează",
             "unlocked": "Strat deblocat.",
             "initialised": "Strat creat și deblocat.",
-            "noOverlayFound": "Nu a fost găsit niciun strat AeroCrypt în folderul la distanță curent. Comutați la „Creează nou” pentru a crea unul.",
+            "noOverlayFound": "Niciun marker AeroCrypt în acest folder. Dacă vault-ul folosește saltul implicit AeroCrypt, bifați opțiunea respectivă de mai jos; pentru a crea aici un vault nou, comutați la „Creează nou”.",
             "remoteUnlocked": "Server la distanță deblocat (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Blochează stratul",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Un slot de recuperare a fost adăugat automat deoarece acest seif ar fi fost doar cu keyfile. Salvați codul de recuperare de mai jos.",
             "keyslotsRecoverySaveOnce": "Salvați acum acest cod de recuperare (afișat o singură dată):",
             "keyslotsRecoveryCopy": "Copiați codul",
-            "keyslotsUnlockWithRecovery": "Puteți debloca și cu un cod de recuperare (lipiți-l ca parolă)."
+            "keyslotsUnlockWithRecovery": "Puteți debloca și cu un cod de recuperare (lipiți-l ca parolă).",
+            "openDefaultSaltLabel": "Acest vault folosește saltul implicit AeroCrypt",
+            "openDefaultSaltHint": "Fără marker aici, un vault cu salt implicit se deschide doar cu parola sa, odată ce numele din acest folder se decriptează cu ea. Nimic nu se scrie pe serverul de la distanță."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",
