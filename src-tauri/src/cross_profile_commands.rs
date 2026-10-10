@@ -244,7 +244,7 @@ struct CrossProfileExecutor {
     skip_existing: bool,
     cancel_token: CancellationToken,
     total: u64,
-    started_at: Instant,
+    speed_meter: crate::transfer_speed::SpeedMeter,
     counters: Arc<CrossProfileBatchCounters>,
 }
 
@@ -490,7 +490,6 @@ impl CrossProfileExecutor {
     }
 
     fn progress(&self, entry: &TransferEntry, terminal: u64) -> TransferProgress {
-        let elapsed_ms = self.started_at.elapsed().as_millis() as u64;
         let bytes = self.counters.bytes_transferred.load(Ordering::Relaxed);
         TransferProgress {
             transfer_id: self.transfer_id.clone(),
@@ -498,7 +497,7 @@ impl CrossProfileExecutor {
             transferred: terminal,
             total: self.total,
             percentage: ((terminal * 100).checked_div(self.total).unwrap_or(0)).min(100) as u8,
-            speed_bps: (bytes * 1000).checked_div(elapsed_ms).unwrap_or(0),
+            speed_bps: self.speed_meter.bps(bytes),
             eta_seconds: 0,
             direction: "cross-profile".to_string(),
             total_files: Some(self.total),
@@ -662,7 +661,7 @@ pub async fn cross_profile_execute(
             skip_existing: stored.request.skip_existing,
             cancel_token: cancelled.clone(),
             total,
-            started_at: start,
+            speed_meter: crate::transfer_speed::SpeedMeter::new(),
             counters: counters.clone(),
         });
         let entries = plan

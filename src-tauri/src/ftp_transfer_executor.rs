@@ -5,7 +5,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tauri::AppHandle;
@@ -179,7 +179,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                                 format!("Failed to change directory to {}: {}", parent_dir, e)
                             })?;
 
-                            let started_at = Instant::now();
+                            let speed_meter = crate::transfer_speed::SpeedMeter::new();
                             ftp.download_file_with_progress(
                                 &remote_name,
                                 &local_path,
@@ -188,12 +188,7 @@ impl TransferExecutor for FtpDownloadExecutor {
                                         return false;
                                     }
 
-                                    let elapsed = started_at.elapsed().as_secs_f64();
-                                    let speed = if elapsed > 0.0 {
-                                        (transferred as f64 / elapsed) as u64
-                                    } else {
-                                        0
-                                    };
+                                    let speed = speed_meter.bps(transferred);
                                     let percentage = if file_size > 0 {
                                         ((transferred as f64 / file_size as f64) * 100.0) as u8
                                     } else {
@@ -441,7 +436,7 @@ impl TransferExecutor for FtpUploadExecutor {
                                 format!("Failed to change directory to {}: {}", parent_dir, e)
                             })?;
 
-                            let started_at = Instant::now();
+                            let speed_meter = crate::transfer_speed::SpeedMeter::new();
                             ftp.upload_file_with_progress(
                                 &local_path,
                                 &remote_name,
@@ -451,12 +446,7 @@ impl TransferExecutor for FtpUploadExecutor {
                                         return false;
                                     }
 
-                                    let elapsed = started_at.elapsed().as_secs_f64();
-                                    let speed = if elapsed > 0.0 {
-                                        (transferred as f64 / elapsed) as u64
-                                    } else {
-                                        0
-                                    };
+                                    let speed = speed_meter.bps(transferred);
                                     let percentage = if file_size > 0 {
                                         ((transferred as f64 / file_size as f64) * 100.0) as u8
                                     } else {
