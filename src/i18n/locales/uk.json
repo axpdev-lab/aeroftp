@@ -635,7 +635,11 @@
             "modeSafeDescription": "Одне з'єднання: один файл за раз, один потік на файл",
             "modeBalancedDescription": "До 3 з'єднань: паралельні файли або канали діапазонів в одному великому файлі",
             "modeMaxDescription": "До 5 з'єднань: паралельні файли або канали діапазонів в одному великому файлі",
-            "moreActions": "Інші дії"
+            "moreActions": "Інші дії",
+            "speedGraph": "Графік швидкості",
+            "hideSpeedGraph": "Сховати графік швидкості",
+            "speedAvg": "сер. {speed}",
+            "speedPeak": "макс. {speed}"
         },
         "settings": {
             "title": "Налаштування",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Немає підключення до сервера",
             "clearSearch": "Очистити пошук",
             "searchFiles": "Шукати файли",
-            "locked": "Заблоковано",
             "localDisk": "Локальний диск",
             "localPathMismatch": "Локальний шлях не відповідає підключеному серверу",
             "downloadFormat": "Завантажити .{format}",

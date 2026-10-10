@@ -635,7 +635,11 @@
             "modeSafeDescription": "Ein tenging: ein skrá í einu, einn straumur á skrá",
             "modeBalancedDescription": "Allt að 3 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar",
             "modeMaxDescription": "Allt að 5 tengingar: samhliða skrár eða bilsrásir innan einnar stórrar skráar",
-            "moreActions": "Fleiri aðgerðir"
+            "moreActions": "Fleiri aðgerðir",
+            "speedGraph": "Hraðarit",
+            "hideSpeedGraph": "Fela hraðarit",
+            "speedAvg": "meðal {speed}",
+            "speedPeak": "hámark {speed}"
         },
         "settings": {
             "title": "Stillingar",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Ekki tengdur við netþjón",
             "clearSearch": "Hreinsa leit",
             "searchFiles": "Leita í skrám",
-            "locked": "Læst",
             "localDisk": "Staðbundinn diskur",
             "localPathMismatch": "Staðbundin slóð passar ekki við tengdan netþjón",
             "downloadFormat": "Sækja .{format}",

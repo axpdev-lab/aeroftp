@@ -635,7 +635,11 @@
             "modeSafeDescription": "Un cysylltiad: un ffeil ar y tro, un ffrwd i bob ffeil",
             "modeBalancedDescription": "Hyd at 3 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr",
             "modeMaxDescription": "Hyd at 5 cysylltiad: ffeiliaid yn gyfochrog, neu sianeli ystod o fewn un ffeil fawr",
-            "moreActions": "Rhagor o weithredoedd"
+            "moreActions": "Rhagor o weithredoedd",
+            "speedGraph": "Graff cyflymder",
+            "hideSpeedGraph": "Cuddio'r graff cyflymder",
+            "speedAvg": "cyfart. {speed}",
+            "speedPeak": "uchaf {speed}"
         },
         "settings": {
             "title": "Gosodiadau",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Heb gysylltu â gweinydd",
             "clearSearch": "Clirio chwiliad",
             "searchFiles": "Chwilio ffeiliau",
-            "locked": "Wedi cloi",
             "localDisk": "Disg Lleol",
             "localPathMismatch": "Nid yw'r llwybr lleol yn cyfateb i'r gweinydd cysylltiedig",
             "downloadFormat": "Lawrlwytho .{format}",

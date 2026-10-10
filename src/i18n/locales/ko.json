@@ -635,7 +635,11 @@
             "modeSafeDescription": "연결 1개: 한 번에 파일 하나, 파일당 단일 스트림",
             "modeBalancedDescription": "최대 3개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널",
             "modeMaxDescription": "최대 5개 연결: 파일 병렬 전송 또는 하나의 큰 파일 내 범위 채널",
-            "moreActions": "추가 작업"
+            "moreActions": "추가 작업",
+            "speedGraph": "속도 그래프",
+            "hideSpeedGraph": "속도 그래프 숨기기",
+            "speedAvg": "평균 {speed}",
+            "speedPeak": "최고 {speed}"
         },
         "settings": {
             "title": "설정",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "서버에 연결되지 않음",
             "clearSearch": "검색 지우기",
             "searchFiles": "파일 검색",
-            "locked": "잠김",
             "localDisk": "로컬 디스크",
             "localPathMismatch": "로컬 경로가 연결된 서버와 일치하지 않습니다",
             "downloadFormat": ".{format} 다운로드",

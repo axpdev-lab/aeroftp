@@ -635,7 +635,11 @@
             "modeSafeDescription": "ការតភ្ជាប់មួយ៖ ឯកសារមួយក្នុងមួយពេល ស្ទ្រីមតែមួយក្នុងមួយឯកសារ",
             "modeBalancedDescription": "រហូតដល់ 3 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ",
             "modeMaxDescription": "រហូតដល់ 5 ការតភ្ជាប់៖ ឯកសារស្របគ្នា ឬឆានែលជួរក្នុងឯកសារធំមួយ",
-            "moreActions": "សកម្មភាពផ្សេងទៀត"
+            "moreActions": "សកម្មភាពផ្សេងទៀត",
+            "speedGraph": "ក្រាហ្វិកល្បឿន",
+            "hideSpeedGraph": "លាក់ក្រាហ្វិកល្បឿន",
+            "speedAvg": "មធ្យម {speed}",
+            "speedPeak": "អតិបរមា {speed}"
         },
         "settings": {
             "title": "ការកំណត់",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "មិនបានភ្ជាប់ទៅម៉ាស៊ីនបម្រើ",
             "clearSearch": "សម្អាតការស្វែងរក",
             "searchFiles": "ស្វែងរកឯកសារ",
-            "locked": "បានចាក់សោ",
             "localDisk": "ថាសមូលដ្ឋាន",
             "localPathMismatch": "ផ្លូវមូលដ្ឋានមិនត្រូវគ្នានឹងម៉ាស៊ីនបម្រើដែលបានភ្ជាប់",
             "downloadFormat": "ទាញយក .{format}",

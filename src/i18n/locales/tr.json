@@ -635,7 +635,11 @@
             "modeSafeDescription": "Tek bağlantı: aynı anda tek dosya, dosya başına tek akış",
             "modeBalancedDescription": "En fazla 3 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları",
             "modeMaxDescription": "En fazla 5 bağlantı: paralel dosyalar veya tek bir büyük dosya içinde aralık kanalları",
-            "moreActions": "Diğer eylemler"
+            "moreActions": "Diğer eylemler",
+            "speedGraph": "Hız grafiği",
+            "hideSpeedGraph": "Hız grafiğini gizle",
+            "speedAvg": "ort. {speed}",
+            "speedPeak": "maks. {speed}"
         },
         "settings": {
             "title": "Ayarlar",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Sunucuya bağlı değil",
             "clearSearch": "Aramayı temizle",
             "searchFiles": "Dosyaları ara",
-            "locked": "Kilitli",
             "localDisk": "Yerel Disk",
             "localPathMismatch": "Yerel yol bağlı sunucuyla eşleşmiyor",
             "downloadFormat": ".{format} İndir",

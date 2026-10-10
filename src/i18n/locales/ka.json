@@ -635,7 +635,11 @@
             "modeSafeDescription": "ერთი კავშირი: ერთდროულად ერთი ფაილი, თითო ნაკადი თითო ფაილზე",
             "modeBalancedDescription": "3 კავშირამდე: პარალელური ფაილები ან დიაპაზონის არხები ერთი დიდი ფაილის შიგნით",
             "modeMaxDescription": "5 კავშირამდე: პარალელური ფაილები ან დიაპაზონის არხები ერთი დიდი ფაილის შიგნით",
-            "moreActions": "სხვა მოქმედებები"
+            "moreActions": "სხვა მოქმედებები",
+            "speedGraph": "სიჩქარის გრაფიკი",
+            "hideSpeedGraph": "სიჩქარის გრაფიკის დამალვა",
+            "speedAvg": "საშ. {speed}",
+            "speedPeak": "მაქს. {speed}"
         },
         "settings": {
             "title": "პარამეტრები",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "სერვერთან კავშირი არ არის",
             "clearSearch": "ძიების გასუფთავება",
             "searchFiles": "ფაილების ძიება",
-            "locked": "ჩაკეტილია",
             "localDisk": "ლოკალური დისკი",
             "localPathMismatch": "ლოკალური ბილიკი დაკავშირებულ სერვერს არ ემთხვევა",
             "downloadFormat": ".{format} ჩამოტვირთვა",

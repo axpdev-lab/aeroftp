@@ -228,55 +228,28 @@
 .tpb-tokyo .tpb-pct-label { color: #c4b5fd; }
 .tpb-cyber .tpb-pct-label { color: #22d3ee; }
 
-/* Graph toggle button */
+/* Graph toggle: a pill in the bar's own accent (set inline from the theme
+   gradient, so all 8 themes get it); at 10 px grey it went unnoticed. */
 .tpb-graph-toggle {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 5px;
     margin-top: 8px;
-    padding: 3px 8px;
-    border: none;
-    border-radius: 4px;
+    padding: 3px 10px;
+    border: 1px solid;
+    border-radius: 999px;
+    background: transparent;
     cursor: pointer;
-    font-size: 10px;
-    font-weight: 500;
-    transition: background 0.15s, color 0.15s;
+    font-size: 11px;
+    font-weight: 600;
+    opacity: 0.85;
+    transition: background 0.15s, opacity 0.15s;
 }
 
-.tpb-light .tpb-graph-toggle {
-    color: #6b7280;
-    background: transparent;
-}
-.tpb-light .tpb-graph-toggle:hover {
-    color: #3b82f6;
-    background: rgba(59, 130, 246, 0.08);
-}
-
-.tpb-dark .tpb-graph-toggle {
-    color: #6b7280;
-    background: transparent;
-}
-.tpb-dark .tpb-graph-toggle:hover {
-    color: #60a5fa;
-    background: rgba(96, 165, 250, 0.08);
-}
-
-.tpb-tokyo .tpb-graph-toggle {
-    color: #7c3aed;
-    background: transparent;
-}
-.tpb-tokyo .tpb-graph-toggle:hover {
-    color: #a78bfa;
-    background: rgba(167, 139, 250, 0.1);
-}
-
-.tpb-cyber .tpb-graph-toggle {
-    color: #0e7490;
-    background: transparent;
-}
-.tpb-cyber .tpb-graph-toggle:hover {
-    color: #22d3ee;
-    background: rgba(34, 211, 238, 0.08);
+.tpb-graph-toggle:hover,
+.tpb-graph-toggle[aria-expanded="true"] {
+    opacity: 1;
+    background: var(--tpb-toggle-bg);
 }
 
 /* Graph wrapper: slide animation */
