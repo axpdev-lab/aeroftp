@@ -115,12 +115,12 @@ impl Default for TransferCapabilities {
 /// `posix-rename@openssh.com` or not, so it is known only after asking (a
 /// connection reports what it learned, see `SftpProvider`). Google Drive
 /// replaces a file by uploading a revision of it, so the file is there
-/// throughout. WebDAV's replace is one MOVE with `Overwrite: T`, but one
-/// request is not one step: RFC 4918 section 9.9.3 has the server DELETE the
-/// destination before it moves, so a move that then fails leaves no file,
-/// and the protocol does not establish the property. Every other provider
-/// either says no in its `supports_atomic_replace` (it sets the old item
-/// aside, its move over a file is not one documented step, or it has no
+/// throughout. WebDAV's replace sets the old file aside, because RFC 4918
+/// section 9.9.3 has a MOVE with `Overwrite: T` DELETE the destination before
+/// it moves and a move that then failed would leave no file; the name is
+/// empty between its two moves, so the property is not there. Every other
+/// provider either says no in its `supports_atomic_replace` (it sets the old
+/// item aside, its move over a file is not one documented step, or it has no
 /// replace) or answers `true` only in the sense of "no known obstacle",
 /// which is not an established capability: `Unsupported` for WebDAV and all
 /// of them.
@@ -350,8 +350,9 @@ mod tests {
     /// SFTP included. SFTP's answer is the server's own
     /// (`posix-rename@openssh.com`), so without a connection it is known only
     /// after asking; Google Drive replaces a file by uploading a revision of
-    /// it; for the rest it is not established, WebDAV included, whose one
-    /// MOVE deletes the destination before it moves.
+    /// it; for the rest it is not established, WebDAV included, whose
+    /// replace sets the old file aside because a MOVE with `Overwrite: T`
+    /// deletes the destination before it moves.
     #[test]
     fn atomic_rename_is_declared_where_a_provider_established_it() {
         let atomic_rename = |provider_type| {
