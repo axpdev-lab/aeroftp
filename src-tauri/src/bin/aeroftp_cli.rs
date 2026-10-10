@@ -57375,35 +57375,58 @@ async fn cmd_crypt_unbind(cli: &Cli, format: OutputFormat) -> i32 {
     0
 }
 
+/// The keyfile `--keyfile-gen` wrote, deleted when it is dropped: a run that
+/// ends before the overlay config recording its digest is written leaves no
+/// keyfile for a vault that does not exist, which the same command run again
+/// would refuse to overwrite. [`WrittenKeyfile::keep`] once the config is
+/// written.
+struct WrittenKeyfile(Option<std::path::PathBuf>);
+
+impl WrittenKeyfile {
+    /// The config that needs this keyfile is written: keep it, and say so.
+    fn keep(mut self) {
+        if let Some(path) = self.0.take() {
+            eprintln!(
+                "Generated keyfile at '{}'. Back it up: losing it makes the vault unopenable.",
+                path.display()
+            );
+        }
+    }
+}
+
+impl Drop for WrittenKeyfile {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 /// Write what has to exist before the overlay config does: the generated
-/// keyfile, then the Emergency Kit. A kit that is not handed over takes back
-/// the keyfile this run created, so a refused run leaves neither.
+/// keyfile, then the Emergency Kit. The keyfile comes back as a
+/// [`WrittenKeyfile`], taken back by every return before the config is
+/// written, a kit that is not handed over included.
 fn write_before_init_config(
     kit: &ftp_client_gui_lib::aerocrypt::emergency_kit::EmergencyKit,
     destination: &mut EmergencyKitDestination,
     generated_keyfile: Option<&GeneratedKeyfile>,
     format: OutputFormat,
-) -> Result<(), i32> {
-    if let Some(keyfile) = generated_keyfile {
-        if let Err(e) = keyfile.write() {
-            print_error(format, &e, 11);
-            return Err(11);
+) -> Result<WrittenKeyfile, i32> {
+    let written = match generated_keyfile {
+        Some(keyfile) => {
+            if let Err(e) = keyfile.write() {
+                print_error(format, &e, 11);
+                return Err(11);
+            }
+            WrittenKeyfile(Some(keyfile.path.clone()))
         }
-    }
+        None => WrittenKeyfile(None),
+    };
     if let Err(e) = hand_over_emergency_kit(kit, destination) {
-        if let Some(keyfile) = generated_keyfile {
-            let _ = std::fs::remove_file(&keyfile.path);
-        }
         print_error(format, &e, 5);
         return Err(5);
     }
-    if let Some(keyfile) = generated_keyfile {
-        eprintln!(
-            "Generated keyfile at '{}'. Back it up: losing it makes the vault unopenable.",
-            keyfile.path.display()
-        );
-    }
-    Ok(())
+    Ok(written)
 }
 
 /// Create the remote scope folder so `crypt init /a/b/c` prepares the vault
@@ -57556,18 +57579,20 @@ async fn cmd_crypt_init(
             );
             return 9;
         }
-        if let Err(code) = write_before_init_config(
+        let keyfile = match write_before_init_config(
             &kit,
             &mut kit_destination,
             generated_keyfile.as_ref(),
             format,
         ) {
-            return code;
-        }
+            Ok(keyfile) => keyfile,
+            Err(code) => return code,
+        };
         ensure_crypt_init_scope(provider.as_mut(), &base_path).await;
         let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
         match store_headerless_init_config(&store, uid, &profile_id, &config_json, &salt_b64) {
             Ok(()) => {
+                keyfile.keep();
                 // Gate on the Emergency Kit (MANDATORY, non-skippable).
                 // READ the persisted config from keystore (do not reuse in-memory before store),
                 // validate with the headerless path, parse, then build kit from it.
@@ -57695,14 +57720,15 @@ async fn cmd_crypt_init(
         return 9;
     }
 
-    if let Err(code) = write_before_init_config(
+    let keyfile = match write_before_init_config(
         &kit,
         &mut kit_destination,
         generated_keyfile.as_ref(),
         format,
     ) {
-        return code;
-    }
+        Ok(keyfile) => keyfile,
+        Err(code) => return code,
+    };
     ensure_crypt_init_scope(provider.as_mut(), &base_path).await;
 
     // Stage the config to a tempfile, then upload.
@@ -57733,10 +57759,15 @@ async fn cmd_crypt_init(
                         &format!("Failed to re-read persisted marker for kit: {}", e),
                         4,
                     );
-                    let _ = provider.delete(&config_path).await; // best effort cleanup on failure to read back
+                    // Best effort: with the marker gone the keyfile goes
+                    // too; a marker still there still needs it.
+                    if provider.delete(&config_path).await.is_err() {
+                        keyfile.keep();
+                    }
                     return 4;
                 }
             };
+            keyfile.keep();
             let persisted = match String::from_utf8(persisted_bytes) {
                 Ok(s) => s,
                 Err(e) => {

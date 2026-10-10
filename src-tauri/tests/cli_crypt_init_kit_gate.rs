@@ -10,7 +10,7 @@
 //! the kit has somewhere to go.
 
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Child, Command, Output, Stdio};
 
 const PASSWORD: &str = "kit gate probe: correct horse battery staple 2026";
 
@@ -31,6 +31,17 @@ fn crypt_init(remote: &Path, config: &Path, extra: &[&str]) -> Output {
         .stdin(Stdio::null())
         .output()
         .expect("run aeroftp-cli")
+}
+
+/// A server process stopped on every way out of a test, a failed assertion
+/// included: a dropped `Child` keeps running and keeps its port.
+struct Server(Child);
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 fn marker(remote: &Path) -> std::path::PathBuf {
@@ -179,6 +190,41 @@ fn a_refused_init_leaves_no_generated_keyfile_and_no_kit() {
     assert_eq!(left, ["first.txt"], "{}", describe(&again));
 }
 
+/// CodeRabbit on #1156: the keyfile `--keyfile-gen` wrote was taken back only
+/// when the kit could not be handed over. An init that failed after that and
+/// before its config was written (here the upload, with a file where the
+/// vault folder goes) left a keyfile for a vault that does not exist, and the
+/// same command was then refused because the keyfile was there.
+#[test]
+fn an_init_whose_config_write_fails_leaves_no_generated_keyfile() {
+    let remote = tempfile::tempdir().expect("remote folder");
+    let config = tempfile::tempdir().expect("isolated config");
+    let kits = tempfile::tempdir().expect("kit folder");
+    let keyfile = kits.path().join("vault.key");
+    let kit = kits.path().join("kit.txt");
+    let args = [
+        "--keyfile-gen",
+        keyfile.to_str().expect("utf-8 path"),
+        "--emergency-kit",
+        kit.to_str().expect("utf-8 path"),
+    ];
+    std::fs::write(remote.path().join("vault"), b"not a folder").expect("blocker");
+
+    let failed = crypt_init(remote.path(), config.path(), &args);
+    assert_ne!(failed.status.code(), Some(0), "{}", describe(&failed));
+    let left: Vec<_> = std::fs::read_dir(kits.path())
+        .expect("kit folder")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(left.is_empty(), "left {left:?}: {}", describe(&failed));
+
+    std::fs::remove_file(remote.path().join("vault")).expect("blocker");
+    let done = crypt_init(remote.path(), config.path(), &args);
+    assert_eq!(done.status.code(), Some(0), "{}", describe(&done));
+    assert!(keyfile.is_file() && kit.is_file(), "{}", describe(&done));
+}
+
 /// A headerless init keeps its config in the local keystore, under the
 /// profile: a refused run must not leave it there either. The profile is a
 /// WebDAV one, served from a folder by `aeroftp-cli serve webdav`.
@@ -208,14 +254,16 @@ fn a_refused_headerless_init_leaves_no_config_in_the_keystore() {
         cmd
     };
 
-    let mut server = cli(&["serve", "webdav"])
-        .arg(served.path())
-        .args(["--addr", &format!("127.0.0.1:{port}")])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("serve webdav");
+    let server = Server(
+        cli(&["serve", "webdav"])
+            .arg(served.path())
+            .args(["--addr", &format!("127.0.0.1:{port}")])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("serve webdav"),
+    );
     let deadline = Instant::now() + Duration::from_secs(30);
     while TcpStream::connect(("127.0.0.1", port)).is_err() {
         assert!(Instant::now() < deadline, "serve webdav did not listen");
@@ -266,8 +314,7 @@ fn a_refused_headerless_init_leaves_no_config_in_the_keystore() {
         .stdin(Stdio::null())
         .output()
         .expect("init");
-    let _ = server.kill();
-    let _ = server.wait();
+    drop(server);
     assert_eq!(done.status.code(), Some(0), "{}", describe(&done));
     assert!(kit.is_file());
 }
