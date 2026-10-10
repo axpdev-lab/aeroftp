@@ -3721,7 +3721,8 @@
             "overlaysPathButton": "Percorso overlay",
             "overlaysPathButtonHint": "Vai al percorso overlay cifrato: {path}",
             "lockedOverlayTitle": "Overlay cifrato bloccato",
-            "lockedOverlayDesc": "Questo server ha un overlay cifrato che non è stato possibile sbloccare. Inserisci la password per decifrare i nomi, o continua a esplorare l'elenco grezzo."
+            "lockedOverlayDesc": "Questo server ha un overlay cifrato che non è stato possibile sbloccare. Inserisci la password per decifrare i nomi, o continua a esplorare l'elenco grezzo.",
+            "overlayFolder": "Cartella dell'overlay:"
         },
         "aerocryptNative": {
             "title": "Overlay AeroCrypt",
@@ -3745,7 +3746,7 @@
             "createAndUnlock": "Crea e sblocca",
             "unlocked": "Overlay sbloccato.",
             "initialised": "Overlay creato e sbloccato.",
-            "noOverlayFound": "Nessun overlay AeroCrypt trovato nella cartella remota corrente. Passa a \"Crea nuovo\" per crearne uno.",
+            "noOverlayFound": "Nessun marker AeroCrypt in questa cartella. Se il vault usa il salt predefinito di AeroCrypt, spunta l'opzione qui sotto; per creare un vault nuovo qui, passa a \"Crea nuovo\".",
             "remoteUnlocked": "Remoto sbloccato (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Blocca overlay",
@@ -3835,7 +3836,9 @@
             "keyslotsRecoveryAutoOffered": "Uno slot di recupero è stato aggiunto automaticamente perché questa cassaforte sarebbe stata solo con keyfile. Salva il codice di recupero qui sotto.",
             "keyslotsRecoverySaveOnce": "Salva ora questo codice di recupero (mostrato una sola volta):",
             "keyslotsRecoveryCopy": "Copia codice",
-            "keyslotsUnlockWithRecovery": "Puoi anche sbloccare con un codice di recupero (incollalo come password)."
+            "keyslotsUnlockWithRecovery": "Puoi anche sbloccare con un codice di recupero (incollalo come password).",
+            "openDefaultSaltLabel": "Questo vault usa il salt predefinito di AeroCrypt",
+            "openDefaultSaltHint": "Senza marker, un vault con salt predefinito si apre dalla sola password, una volta che i nomi in questa cartella si decifrano con essa. Sul remoto non viene scritto nulla."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",

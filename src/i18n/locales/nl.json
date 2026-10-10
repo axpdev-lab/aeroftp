@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Overlay-pad",
             "overlaysPathButtonHint": "Ga naar het versleutelde overlay-pad: {path}",
             "lockedOverlayTitle": "Versleutelde overlay vergrendeld",
-            "lockedOverlayDesc": "Deze server heeft een versleutelde overlay die niet kon worden ontgrendeld. Voer het wachtwoord in om namen te ontsleutelen, of blijf de ruwe lijst verkennen."
+            "lockedOverlayDesc": "Deze server heeft een versleutelde overlay die niet kon worden ontgrendeld. Voer het wachtwoord in om namen te ontsleutelen, of blijf de ruwe lijst verkennen.",
+            "overlayFolder": "Overlaymap:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Maken en ontgrendelen",
             "unlocked": "Overlay ontgrendeld.",
             "initialised": "Overlay gemaakt en ontgrendeld.",
-            "noOverlayFound": "Geen AeroCrypt-overlay gevonden in de huidige externe map. Schakel over naar 'Nieuwe maken' om er een te maken.",
+            "noOverlayFound": "Geen AeroCrypt-marker in deze map. Als de vault het AeroCrypt-standaard-salt gebruikt, vink dan hieronder die optie aan; om hier een nieuwe vault te maken, schakelt u over naar “Nieuwe maken”.",
             "remoteUnlocked": "Extern ontgrendeld (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Overlay vergrendelen",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Er is automatisch een herstel-slot toegevoegd omdat deze kluis anders alleen met keyfile toegankelijk was. Sla de herstelcode hieronder op.",
             "keyslotsRecoverySaveOnce": "Sla deze herstelcode nu op (één keer getoond):",
             "keyslotsRecoveryCopy": "Code kopiëren",
-            "keyslotsUnlockWithRecovery": "U kunt ook ontgrendelen met een herstelcode (plak als wachtwoord)."
+            "keyslotsUnlockWithRecovery": "U kunt ook ontgrendelen met een herstelcode (plak als wachtwoord).",
+            "openDefaultSaltLabel": "Deze vault gebruikt het AeroCrypt-standaard-salt",
+            "openDefaultSaltHint": "Zonder marker hier opent een vault met standaard-salt alleen met zijn wachtwoord, zodra de namen in deze map ermee worden ontsleuteld. Er wordt niets naar de externe server geschreven."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",

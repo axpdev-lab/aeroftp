@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Đường dẫn Overlay",
             "overlaysPathButtonHint": "Nhảy đến Đường dẫn Overlay đã mã hóa: {path}",
             "lockedOverlayTitle": "Đã khóa lớp phủ mã hóa",
-            "lockedOverlayDesc": "Máy chủ này có lớp phủ mã hóa không thể mở khóa. Nhập mật khẩu để giải mã tên, hoặc tiếp tục duyệt danh sách thô."
+            "lockedOverlayDesc": "Máy chủ này có lớp phủ mã hóa không thể mở khóa. Nhập mật khẩu để giải mã tên, hoặc tiếp tục duyệt danh sách thô.",
+            "overlayFolder": "Thư mục lớp phủ:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Tạo và mở khóa",
             "unlocked": "Đã mở khóa lớp phủ.",
             "initialised": "Đã tạo và mở khóa lớp phủ.",
-            "noOverlayFound": "Không tìm thấy lớp phủ AeroCrypt trong thư mục từ xa hiện tại. Chuyển sang \"Tạo mới\" để tạo một lớp phủ.",
+            "noOverlayFound": "Không có marker AeroCrypt trong thư mục này. Nếu vault dùng salt mặc định của AeroCrypt, hãy chọn tùy chọn đó bên dưới; để tạo vault mới tại đây, hãy chuyển sang “Tạo mới”.",
             "remoteUnlocked": "Đã mở khóa từ xa (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Khóa lớp phủ",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Đã tự động thêm khe khôi phục vì kho này sẽ chỉ dùng keyfile. Lưu mã khôi phục bên dưới.",
             "keyslotsRecoverySaveOnce": "Lưu mã khôi phục này ngay (hiển thị một lần):",
             "keyslotsRecoveryCopy": "Sao chép mã",
-            "keyslotsUnlockWithRecovery": "Bạn cũng có thể mở khóa bằng mã khôi phục (dán làm mật khẩu)."
+            "keyslotsUnlockWithRecovery": "Bạn cũng có thể mở khóa bằng mã khôi phục (dán làm mật khẩu).",
+            "openDefaultSaltLabel": "Vault này dùng salt mặc định của AeroCrypt",
+            "openDefaultSaltHint": "Khi không có marker ở đây, vault dùng salt mặc định sẽ mở chỉ bằng mật khẩu, miễn là tên trong thư mục này giải mã được bằng mật khẩu đó. Không có gì được ghi lên máy chủ từ xa."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",

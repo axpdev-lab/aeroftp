@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Ülekatete tee",
             "overlaysPathButtonHint": "Hüppa krüpteeritud ülekatete teele: {path}",
             "lockedOverlayTitle": "Krüpteeritud kiht lukustatud",
-            "lockedOverlayDesc": "Sellel serveril on krüpteeritud kiht, mida ei õnnestunud avada. Sisestage parool nimede dekrüpteerimiseks või jätkake toorloendi sirvimist."
+            "lockedOverlayDesc": "Sellel serveril on krüpteeritud kiht, mida ei õnnestunud avada. Sisestage parool nimede dekrüpteerimiseks või jätkake toorloendi sirvimist.",
+            "overlayFolder": "Kattekihi kaust:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Loo ja ava lukk",
             "unlocked": "Kattekiht avatud.",
             "initialised": "Kattekiht loodud ja avatud.",
-            "noOverlayFound": "Praegusest kaugkaustast ei leitud AeroCrypti kattekihti. Selle loomiseks vaheta valikule \"Loo uus\".",
+            "noOverlayFound": "Selles kaustas pole AeroCrypti markerit. Kui vault kasutab AeroCrypti vaikesoola, märgi allpool see valik; uue vaulti loomiseks siin lülitu valikule „Loo uus“.",
             "remoteUnlocked": "Kaugserver avatud (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Lukusta kattekiht",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Taastamispilu lisati automaatselt, sest see võlv oleks olnud ainult keyfile'iga. Salvestage allolev taastekood.",
             "keyslotsRecoverySaveOnce": "Salvestage see taastekood kohe (kuvatakse üks kord):",
             "keyslotsRecoveryCopy": "Kopeeri kood",
-            "keyslotsUnlockWithRecovery": "Saate avada ka taastekoodiga (kleepige see paroolina)."
+            "keyslotsUnlockWithRecovery": "Saate avada ka taastekoodiga (kleepige see paroolina).",
+            "openDefaultSaltLabel": "See vault kasutab AeroCrypti vaikesoola",
+            "openDefaultSaltHint": "Ilma markerita avaneb vaikesoolaga vault ainult parooliga, kui selle kausta nimed sellega dekrüpteeruvad. Kaugserverisse ei kirjutata midagi."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Laluan Tindih",
             "overlaysPathButtonHint": "Lompat ke Laluan Tindih yang disulitkan: {path}",
             "lockedOverlayTitle": "Lapisan tersulit dikunci",
-            "lockedOverlayDesc": "Pelayan ini mempunyai lapisan tersulit yang tidak dapat dibuka kunci. Masukkan kata laluan untuk menyahsulitkan nama, atau terus layari senarai mentah."
+            "lockedOverlayDesc": "Pelayan ini mempunyai lapisan tersulit yang tidak dapat dibuka kunci. Masukkan kata laluan untuk menyahsulitkan nama, atau terus layari senarai mentah.",
+            "overlayFolder": "Folder tindanan:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Cipta dan buka kunci",
             "unlocked": "Tindanan dibuka kunci.",
             "initialised": "Tindanan dicipta dan dibuka kunci.",
-            "noOverlayFound": "Tiada tindanan AeroCrypt ditemui dalam folder jauh semasa. Tukar ke \"Cipta baharu\" untuk menciptanya.",
+            "noOverlayFound": "Tiada marker AeroCrypt dalam folder ini. Jika vault menggunakan salt lalai AeroCrypt, tandakan pilihan itu di bawah; untuk membuat vault baharu di sini, tukar kepada “Cipta baharu”.",
             "remoteUnlocked": "Jauh dibuka kunci (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Kunci tindanan",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Slot pemulihan ditambah secara automatik kerana vault ini hanya akan menggunakan keyfile. Simpan kod pemulihan di bawah.",
             "keyslotsRecoverySaveOnce": "Simpan kod pemulihan ini sekarang (ditunjukkan sekali):",
             "keyslotsRecoveryCopy": "Salin kod",
-            "keyslotsUnlockWithRecovery": "Anda juga boleh buka kunci dengan kod pemulihan (tampal sebagai kata laluan)."
+            "keyslotsUnlockWithRecovery": "Anda juga boleh buka kunci dengan kod pemulihan (tampal sebagai kata laluan).",
+            "openDefaultSaltLabel": "Vault ini menggunakan salt lalai AeroCrypt",
+            "openDefaultSaltHint": "Tanpa marker di sini, vault salt lalai dibuka dengan kata laluannya sahaja apabila nama dalam folder ini berjaya dinyahsulit dengannya. Tiada apa-apa yang ditulis ke pelayan jauh."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Penyulitan)",

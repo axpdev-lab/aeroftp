@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Överläggssökväg",
             "overlaysPathButtonHint": "Hoppa till den krypterade överläggssökvägen: {path}",
             "lockedOverlayTitle": "Krypterat överlägg låst",
-            "lockedOverlayDesc": "Denna server har ett krypterat överlägg som inte kunde låsas upp. Ange lösenordet för att dekryptera namn, eller fortsätt bläddra i den råa listan."
+            "lockedOverlayDesc": "Denna server har ett krypterat överlägg som inte kunde låsas upp. Ange lösenordet för att dekryptera namn, eller fortsätt bläddra i den råa listan.",
+            "overlayFolder": "Överläggsmapp:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Skapa och lås upp",
             "unlocked": "Överlägg upplåst.",
             "initialised": "Överlägg skapat och upplåst.",
-            "noOverlayFound": "Inget AeroCrypt-överlägg hittades i den aktuella fjärrmappen. Växla till \"Skapa nytt\" för att skapa ett.",
+            "noOverlayFound": "Ingen AeroCrypt-markör i den här mappen. Om vaultet använder AeroCrypts standardsalt, bocka i det alternativet nedan; för att skapa ett nytt vault här, byt till ”Skapa nytt”.",
             "remoteUnlocked": "Fjärrserver upplåst (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Lås överlägg",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "En återställningsplats lades till automatiskt eftersom detta valv annars bara hade keyfile. Spara återställningskoden nedan.",
             "keyslotsRecoverySaveOnce": "Spara denna återställningskod nu (visas en gång):",
             "keyslotsRecoveryCopy": "Kopiera kod",
-            "keyslotsUnlockWithRecovery": "Du kan också låsa upp med en återställningskod (klistra in den som lösenord)."
+            "keyslotsUnlockWithRecovery": "Du kan också låsa upp med en återställningskod (klistra in den som lösenord).",
+            "openDefaultSaltLabel": "Detta vault använder AeroCrypts standardsalt",
+            "openDefaultSaltHint": "Utan markör här öppnas ett vault med standardsalt enbart med sitt lösenord, så snart namnen i den här mappen dekrypteras med det. Ingenting skrivs till fjärrservern."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

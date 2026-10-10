@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Fedvények útvonala",
             "overlaysPathButtonHint": "Ugrás a titkosított fedvények útvonalára: {path}",
             "lockedOverlayTitle": "Titkosított réteg zárolva",
-            "lockedOverlayDesc": "Ennek a kiszolgálónak van egy titkosított rétege, amelyet nem sikerült feloldani. Adja meg a jelszót a nevek visszafejtéséhez, vagy folytassa a nyers lista böngészését."
+            "lockedOverlayDesc": "Ennek a kiszolgálónak van egy titkosított rétege, amelyet nem sikerült feloldani. Adja meg a jelszót a nevek visszafejtéséhez, vagy folytassa a nyers lista böngészését.",
+            "overlayFolder": "Réteg mappája:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Létrehozás és feloldás",
             "unlocked": "Réteg feloldva.",
             "initialised": "Réteg létrehozva és feloldva.",
-            "noOverlayFound": "Nem található AeroCrypt réteg az aktuális távoli mappában. Váltson az „Új létrehozása” lehetőségre egy létrehozásához.",
+            "noOverlayFound": "Ebben a mappában nincs AeroCrypt marker. Ha a vault az AeroCrypt alapértelmezett sóját használja, jelölje be lent ezt az opciót; új vault létrehozásához váltson az „Új létrehozása” lehetőségre.",
             "remoteUnlocked": "Távoli kiszolgáló feloldva (azonosító: {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Réteg zárolása",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Helyreállító hely automatikusan hozzáadva, mert ez a trezor csak keyfile-os lett volna. Mentse el az alábbi helyreállító kódot.",
             "keyslotsRecoverySaveOnce": "Mentse el most ezt a helyreállító kódot (egyszer jelenik meg):",
             "keyslotsRecoveryCopy": "Kód másolása",
-            "keyslotsUnlockWithRecovery": "Helyreállító kóddal is feloldhat (illesztse be jelszóként)."
+            "keyslotsUnlockWithRecovery": "Helyreállító kóddal is feloldhat (illesztse be jelszóként).",
+            "openDefaultSaltLabel": "Ez a vault az AeroCrypt alapértelmezett sóját használja",
+            "openDefaultSaltHint": "Marker nélkül az alapértelmezett sót használó vault csak a jelszavával nyílik meg, amint a mappa nevei visszafejthetők vele. A távoli kiszolgálóra semmi nem íródik."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Titkosítás)",

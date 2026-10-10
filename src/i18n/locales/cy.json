@@ -5258,7 +5258,8 @@
             "overlaysPathButton": "Llwybr Troshaenau",
             "overlaysPathButtonHint": "Neidio i'r Llwybr Troshaenau wedi'i amgryptio: {path}",
             "lockedOverlayTitle": "Haen wedi'i hamgryptio wedi'i chloi",
-            "lockedOverlayDesc": "Mae gan y gweinydd hwn haen wedi'i hamgryptio na ellid ei datgloi. Rhowch y cyfrinair i ddadgryptio enwau, neu parhewch i bori'r rhestr amrwd."
+            "lockedOverlayDesc": "Mae gan y gweinydd hwn haen wedi'i hamgryptio na ellid ei datgloi. Rhowch y cyfrinair i ddadgryptio enwau, neu parhewch i bori'r rhestr amrwd.",
+            "overlayFolder": "Ffolder y troshaen:"
         },
         "b2": {
             "hidden": {
@@ -5715,7 +5716,7 @@
             "createAndUnlock": "Creu a datgloi",
             "unlocked": "Troshaen wedi'i ddatgloi.",
             "initialised": "Troshaen wedi'i greu a'i ddatgloi.",
-            "noOverlayFound": "Ni chafwyd troshaen AeroCrypt yn y ffolder bell gyfredol. Newidiwch i \"Creu un newydd\" i wneud un.",
+            "noOverlayFound": "Dim marciwr AeroCrypt yn y ffolder hon. Os yw'r vault yn defnyddio halen diofyn AeroCrypt, ticiwch yr opsiwn hwnnw isod; i greu vault newydd yma, newidiwch i “Creu un newydd”.",
             "remoteUnlocked": "Gweinydd pell wedi'i ddatgloi (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Cloi'r troshaen",
@@ -5805,7 +5806,9 @@
             "keyslotsRecoveryAutoOffered": "Ychwanegwyd slot adfer yn awtomatig oherwydd byddai'r storfa hon wedi bod yn keyfile yn unig. Cadwch y cod adfer isod.",
             "keyslotsRecoverySaveOnce": "Cadwch y cod adfer hwn nawr (dangosir unwaith):",
             "keyslotsRecoveryCopy": "Copïo'r cod",
-            "keyslotsUnlockWithRecovery": "Gallwch hefyd ddatgloi â chod adfer (gludwch ef fel y cyfrinair)."
+            "keyslotsUnlockWithRecovery": "Gallwch hefyd ddatgloi â chod adfer (gludwch ef fel y cyfrinair).",
+            "openDefaultSaltLabel": "Mae'r vault hwn yn defnyddio halen diofyn AeroCrypt",
+            "openDefaultSaltHint": "Heb farciwr yma, mae vault halen diofyn yn agor o'i gyfrinair yn unig unwaith y bydd yr enwau yn y ffolder hon yn dadamgryptio ag ef. Ni ysgrifennir dim i'r gweinydd pell."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Amgryptio)",

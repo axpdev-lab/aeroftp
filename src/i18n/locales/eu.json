@@ -5258,7 +5258,8 @@
             "overlaysPathButton": "Gainjarrien bidea",
             "overlaysPathButtonHint": "Jauzi gainjarri zifratuen bidera: {path}",
             "lockedOverlayTitle": "Zifratutako geruza blokeatuta",
-            "lockedOverlayDesc": "Zerbitzari honek desblokeatu ezin izan den zifratutako geruza bat du. Sartu pasahitza izenak deszifratzeko, edo jarraitu gordinaren zerrenda arakatzen."
+            "lockedOverlayDesc": "Zerbitzari honek desblokeatu ezin izan den zifratutako geruza bat du. Sartu pasahitza izenak deszifratzeko, edo jarraitu gordinaren zerrenda arakatzen.",
+            "overlayFolder": "Gainjartze-karpeta:"
         },
         "b2": {
             "hidden": {
@@ -5715,7 +5716,7 @@
             "createAndUnlock": "Sortu eta desblokeatu",
             "unlocked": "Gainjartzea desblokeatuta.",
             "initialised": "Gainjartzea sortua eta desblokeatua.",
-            "noOverlayFound": "Ez da AeroCrypt gainjartzerik aurkitu uneko urruneko karpetan. Aldatu «Sortu berria» aukerara bat sortzeko.",
+            "noOverlayFound": "Karpeta honetan ez dago AeroCrypt markatzailerik. Vault-ak AeroCrypt-en gatz lehenetsia erabiltzen badu, markatu beheko aukera hori; hemen vault berri bat sortzeko, aldatu «Sortu berria» aukerara.",
             "remoteUnlocked": "Urrunekoa desblokeatuta ({id} IDa)",
             "versionLabel": "AECR v{version}",
             "lock": "Blokeatu gainjartzea",
@@ -5805,7 +5806,9 @@
             "keyslotsRecoveryAutoOffered": "Berreskuratze-zirrikitu bat automatikoki gehitu da, gordailu hau keyfile soilik izango zelako. Gorde beheko berreskuratze-kodea.",
             "keyslotsRecoverySaveOnce": "Gorde berreskuratze-kode hau orain (behin erakusten da):",
             "keyslotsRecoveryCopy": "Kopiatu kodea",
-            "keyslotsUnlockWithRecovery": "Berreskuratze-kode batekin ere desblokea dezakezu (itsatsi pasahitz gisa)."
+            "keyslotsUnlockWithRecovery": "Berreskuratze-kode batekin ere desblokea dezakezu (itsatsi pasahitz gisa).",
+            "openDefaultSaltLabel": "Vault honek AeroCrypt-en gatz lehenetsia erabiltzen du",
+            "openDefaultSaltHint": "Hemen markatzailerik gabe, gatz lehenetsiko vault bat bere pasahitzarekin bakarrik irekitzen da, karpeta honetako izenak harekin deszifratzen direnean. Ez da ezer idazten urruneko zerbitzarian."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",

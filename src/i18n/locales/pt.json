@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Caminho de sobreposições",
             "overlaysPathButtonHint": "Ir para o caminho cifrado de sobreposições: {path}",
             "lockedOverlayTitle": "Sobreposição cifrada bloqueada",
-            "lockedOverlayDesc": "Este servidor tem uma sobreposição cifrada que não foi possível desbloquear. Introduza a senha para descriptografar os nomes, ou continue a explorar a listagem em bruto."
+            "lockedOverlayDesc": "Este servidor tem uma sobreposição cifrada que não foi possível desbloquear. Introduza a senha para descriptografar os nomes, ou continue a explorar a listagem em bruto.",
+            "overlayFolder": "Pasta da sobreposição:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Criar e desbloquear",
             "unlocked": "Sobreposição desbloqueada.",
             "initialised": "Sobreposição criada e desbloqueada.",
-            "noOverlayFound": "Nenhuma sobreposição AeroCrypt encontrada na pasta remota atual. Mude para «Criar nova» para criar uma.",
+            "noOverlayFound": "Não existe nenhum marcador do AeroCrypt nesta pasta. Se o vault usar o sal predefinido do AeroCrypt, assinale essa opção abaixo; para criar um novo vault aqui, mude para «Criar nova».",
             "remoteUnlocked": "Remoto desbloqueado (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Bloquear sobreposição",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Um slot de recuperação foi adicionado automaticamente porque este cofre seria apenas com keyfile. Guarde o código de recuperação abaixo.",
             "keyslotsRecoverySaveOnce": "Guarde este código de recuperação agora (mostrado uma vez):",
             "keyslotsRecoveryCopy": "Copiar código",
-            "keyslotsUnlockWithRecovery": "Também pode desbloquear com um código de recuperação (cole-o como palavra-passe)."
+            "keyslotsUnlockWithRecovery": "Também pode desbloquear com um código de recuperação (cole-o como palavra-passe).",
+            "openDefaultSaltLabel": "Este vault usa o sal predefinido do AeroCrypt",
+            "openDefaultSaltHint": "Sem marcador aqui, um vault com sal predefinido abre-se apenas com a sua palavra-passe, assim que os nomes nesta pasta forem decifrados com ela. Nada é escrito no remoto."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Encriptação)",

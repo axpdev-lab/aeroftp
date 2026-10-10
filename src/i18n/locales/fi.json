@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Peittojen polku",
             "overlaysPathButtonHint": "Siirry salattuun peittojen polkuun: {path}",
             "lockedOverlayTitle": "Salattu peittokerros lukittu",
-            "lockedOverlayDesc": "Tällä palvelimella on salattu peittokerros, jota ei voitu avata. Syötä salasana nimien salauksen purkamiseksi, tai jatka raakalistauksen selaamista."
+            "lockedOverlayDesc": "Tällä palvelimella on salattu peittokerros, jota ei voitu avata. Syötä salasana nimien salauksen purkamiseksi, tai jatka raakalistauksen selaamista.",
+            "overlayFolder": "Peittokerroksen kansio:"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Luo ja avaa lukitus",
             "unlocked": "Peittokerroksen lukitus avattu.",
             "initialised": "Peittokerros luotu ja lukitus avattu.",
-            "noOverlayFound": "Nykyisestä etäkansiosta ei löytynyt AeroCrypt-peittokerrosta. Vaihda kohtaan \"Luo uusi\" luodaksesi sellaisen.",
+            "noOverlayFound": "Tässä kansiossa ei ole AeroCrypt-merkintää. Jos vault käyttää AeroCryptin oletussuolaa, valitse tämä vaihtoehto alta; luodaksesi tänne uuden vaultin vaihda kohtaan ”Luo uusi”.",
             "remoteUnlocked": "Etäpalvelimen lukitus avattu (tunnus {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Lukitse peittokerros",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Palautuspaikka lisättiin automaattisesti, koska tämä holvi olisi ollut vain keyfile-pohjainen. Tallenna alla oleva palautuskoodi.",
             "keyslotsRecoverySaveOnce": "Tallenna tämä palautuskoodi nyt (näytetään kerran):",
             "keyslotsRecoveryCopy": "Kopioi koodi",
-            "keyslotsUnlockWithRecovery": "Voit avata myös palautuskoodilla (liitä se salasanaksi)."
+            "keyslotsUnlockWithRecovery": "Voit avata myös palautuskoodilla (liitä se salasanaksi).",
+            "openDefaultSaltLabel": "Tämä vault käyttää AeroCryptin oletussuolaa",
+            "openDefaultSaltHint": "Ilman merkintää oletussuolaa käyttävä vault avautuu pelkällä salasanallaan, kun tämän kansion nimet saadaan sillä purettua. Etäpalvelimelle ei kirjoiteta mitään."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",

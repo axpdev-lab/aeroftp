@@ -1861,6 +1861,12 @@ pub struct ApplyCryptOverlayParams {
     /// vault from the password once the names in the scope prove the key.
     #[serde(default)]
     pub use_default_salt: Option<bool>,
+    /// The unlock dialog's "Open": unlock an overlay that exists (marker,
+    /// keystore copy, or a default-salt rebuild), never bootstrap one. Absent
+    /// or false keeps the saved-profile activation, which creates the overlay
+    /// on the first connect of a new binding.
+    #[serde(default)]
+    pub open_only: Option<bool>,
 }
 
 type CryptSecretForms = (
@@ -1996,6 +2002,7 @@ pub async fn provider_apply_crypt_overlay(
             &salt,
             keyfile_digest.as_ref(),
             with_header,
+            !params.open_only.unwrap_or(false),
         )
         .await
         {
@@ -7296,9 +7303,9 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
 ///   the live decorator and into this connection's key cache, and the vault id
 ///   the frontend then reports is a synthetic sentinel
 ///   (`provider-overlay:<kind>:<owner>`), never a map key;
-/// * the **standalone vault** commands (`rclone_crypt_unlock` /
-///   `aerocrypt_unlock`), used by the vault browser, which do insert under the
-///   UUID they hand back.
+/// * the **standalone vault** commands (`rclone_crypt_unlock`, and the
+///   AeroCrypt one this map was built for, gone since #1081 row 43 left it with
+///   no caller), which do insert under the UUID they hand back.
 ///
 /// Looking only in the maps therefore failed for every provider-overlay session,
 /// which is the whole of the Overlays Path (#347). For a provider-overlay

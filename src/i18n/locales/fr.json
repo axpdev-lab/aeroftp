@@ -5239,7 +5239,8 @@
             "overlaysPathButton": "Chemin des superpositions",
             "overlaysPathButtonHint": "Aller au chemin chiffré des superpositions : {path}",
             "lockedOverlayTitle": "Superposition chiffrée verrouillée",
-            "lockedOverlayDesc": "Ce serveur dispose d'une superposition chiffrée qui n'a pas pu être déverrouillée. Saisissez le mot de passe pour déchiffrer les noms, ou continuez à parcourir la liste brute."
+            "lockedOverlayDesc": "Ce serveur dispose d'une superposition chiffrée qui n'a pas pu être déverrouillée. Saisissez le mot de passe pour déchiffrer les noms, ou continuez à parcourir la liste brute.",
+            "overlayFolder": "Dossier de la superposition :"
         },
         "b2": {
             "hidden": {
@@ -5696,7 +5697,7 @@
             "createAndUnlock": "Créer et déverrouiller",
             "unlocked": "Superposition déverrouillée.",
             "initialised": "Superposition créée et déverrouillée.",
-            "noOverlayFound": "Aucune superposition AeroCrypt trouvée dans le dossier distant actuel. Passez à « En créer une » pour en créer une.",
+            "noOverlayFound": "Aucun marqueur AeroCrypt dans ce dossier. Si le vault utilise le sel par défaut d'AeroCrypt, cochez cette option ci-dessous ; pour créer un nouveau vault ici, passez à « En créer une ».",
             "remoteUnlocked": "Distant déverrouillé (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Verrouiller la superposition",
@@ -5786,7 +5787,9 @@
             "keyslotsRecoveryAutoOffered": "Un emplacement de récupération a été ajouté automatiquement car ce coffre n'aurait eu qu'un keyfile. Enregistrez le code de récupération ci-dessous.",
             "keyslotsRecoverySaveOnce": "Enregistrez ce code de récupération maintenant (affiché une seule fois) :",
             "keyslotsRecoveryCopy": "Copier le code",
-            "keyslotsUnlockWithRecovery": "Vous pouvez aussi déverrouiller avec un code de récupération (collez-le comme mot de passe)."
+            "keyslotsUnlockWithRecovery": "Vous pouvez aussi déverrouiller avec un code de récupération (collez-le comme mot de passe).",
+            "openDefaultSaltLabel": "Ce vault utilise le sel par défaut d'AeroCrypt",
+            "openDefaultSaltHint": "Sans marqueur ici, un vault à sel par défaut s'ouvre avec son seul mot de passe dès que les noms de ce dossier se déchiffrent avec lui. Rien n'est écrit sur le serveur distant."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Chiffrement)",

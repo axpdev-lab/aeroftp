@@ -5258,7 +5258,8 @@
             "overlaysPathButton": "Landas ng Overlay",
             "overlaysPathButtonHint": "Tumalon sa naka-encrypt na Landas ng Overlay: {path}",
             "lockedOverlayTitle": "Naka-lock ang naka-encrypt na overlay",
-            "lockedOverlayDesc": "May naka-encrypt na overlay ang server na ito na hindi ma-unlock. Ipasok ang password para i-decrypt ang mga pangalan, o magpatuloy sa pag-browse ng raw listing."
+            "lockedOverlayDesc": "May naka-encrypt na overlay ang server na ito na hindi ma-unlock. Ipasok ang password para i-decrypt ang mga pangalan, o magpatuloy sa pag-browse ng raw listing.",
+            "overlayFolder": "Folder ng overlay:"
         },
         "b2": {
             "hidden": {
@@ -5715,7 +5716,7 @@
             "createAndUnlock": "Gumawa at i-unlock",
             "unlocked": "Na-unlock ang overlay.",
             "initialised": "Nagawa at na-unlock ang overlay.",
-            "noOverlayFound": "Walang nakitang AeroCrypt overlay sa kasalukuyang remote folder. Lumipat sa \"Gumawa ng bago\" para gumawa ng isa.",
+            "noOverlayFound": "Walang AeroCrypt marker sa folder na ito. Kung ang vault ay gumagamit ng default na salt ng AeroCrypt, lagyan ng tsek ang opsyong iyon sa ibaba; para gumawa ng bagong vault dito, lumipat sa “Gumawa ng bago”.",
             "remoteUnlocked": "Na-unlock ang remote (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "I-lock ang overlay",
@@ -5805,7 +5806,9 @@
             "keyslotsRecoveryAutoOffered": "Awtomatikong naidagdag ang recovery slot dahil magiging keyfile-only ang vault na ito. I-save ang recovery code sa ibaba.",
             "keyslotsRecoverySaveOnce": "I-save ang recovery code na ito ngayon (minsan lang ipapakita):",
             "keyslotsRecoveryCopy": "Kopyahin ang code",
-            "keyslotsUnlockWithRecovery": "Maaari mo ring i-unlock gamit ang recovery code (i-paste bilang password)."
+            "keyslotsUnlockWithRecovery": "Maaari mo ring i-unlock gamit ang recovery code (i-paste bilang password).",
+            "openDefaultSaltLabel": "Ang vault na ito ay gumagamit ng default na salt ng AeroCrypt",
+            "openDefaultSaltHint": "Kung walang marker dito, magbubukas ang vault na may default na salt gamit lang ang password nito kapag na-decrypt na ng password ang mga pangalan sa folder na ito. Walang isinusulat sa remote."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",
