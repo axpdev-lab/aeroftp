@@ -135,3 +135,42 @@ describe('useTransferEvents batch toast', () => {
         }
     });
 });
+
+describe('useTransferEvents single-file toast', () => {
+    const fileProgress = (id: string, transferred: number) => fire('transfer_event', {
+        event_type: 'progress',
+        transfer_id: id,
+        filename: `${id}.bin`,
+        direction: 'download',
+        progress: {
+            transfer_id: id, filename: `${id}.bin`, transferred, total: 1000,
+            percentage: transferred / 10, speed_bps: 1000, eta_seconds: 0, direction: 'download',
+        },
+    });
+
+    it('restarts the graph when a single file count goes back, without holding the furthest one', async () => {
+        await mount();
+        await fire('transfer_event', { event_type: 'start', transfer_id: 'pdl-1', filename: 'pdl-1.bin', direction: 'download' });
+        await fileProgress('pdl-1', 100);
+        await fileProgress('pdl-1', 900);
+        expect(lastToast().speedProfile!.reached).toBeCloseTo(0.9, 5);
+        // The next file reports from its own start: the graph follows it
+        // instead of staying at the previous file's 90 %.
+        await fileProgress('pdl-2', 100);
+        expect(lastToast().speedProfile!.reached).toBeCloseTo(0.1, 5);
+    });
+
+    it('drops the graph when the toast is torn down', async () => {
+        await mount();
+        await fire('transfer_event', { event_type: 'start', transfer_id: 'pdl-3', filename: 'pdl-3.bin', direction: 'download' });
+        await fileProgress('pdl-3', 100);
+        await fileProgress('pdl-3', 900);
+        await fire('transfer_event', { event_type: 'error', transfer_id: 'pdl-3', filename: 'pdl-3.bin', direction: 'download', message: 'boom' });
+        await fileProgress('pdl-4', 950);
+        // A profile kept from pdl-3 would take 950 as the same transfer moving
+        // on from 90 %; a dropped one starts from this frame.
+        const profile = lastToast().speedProfile!;
+        expect(profile.reached).toBeCloseTo(0.95, 5);
+        expect(profile.millis.every((ms) => ms === 0)).toBe(true);
+    });
+});

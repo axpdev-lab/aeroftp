@@ -125,10 +125,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const toastLaneCleanupTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const toastReservedLaneSlots = useRef(0);
   // Speed over the whole toast transfer for the collapsible speed graph
-  // (`utils/speedProfile.ts`), and the furthest byte count recorded into it:
-  // a batch's byte count can dip for a moment between a lane finishing and the
-  // snapshot that adds its file to the completed bytes, and the profile reads
-  // a backward step as a restart.
+  // (`utils/speedProfile.ts`), and the furthest batch byte count recorded into
+  // it: a batch's byte count can dip for a moment between a lane finishing and
+  // the snapshot that adds its file to the completed bytes, and the profile
+  // reads a backward step as a restart.
   const toastSpeedProfile = useRef<SpeedProfile>(emptySpeedProfile());
   const toastProfileBytes = useRef(0);
   // Latest real aggregate byte totals for the active batch toast, from the
@@ -272,10 +272,8 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
     /** Record one point of the toast transfer on the speed graph. `total` 0
      *  (size unknown) keeps the speed as a recent sample instead. */
     const recordToastProgress = (transferred: number, total: number, speedBps: number) => {
-      const bytes = total > 0 ? Math.max(toastProfileBytes.current, transferred) : transferred;
-      toastProfileBytes.current = bytes;
       toastSpeedProfile.current = recordProgress(toastSpeedProfile.current, {
-        transferred: bytes,
+        transferred,
         total,
         speedBps,
         at: performance.now(),
@@ -316,7 +314,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       }
       toastSummaryRef.current = { ...base, speed_bps: aggregatedSpeed, eta_seconds: aggregatedEta };
       if (batchBytes && batchBytes.total > 0) {
-        recordToastProgress(batchBytes.completed + inFlightBytes, batchBytes.total, aggregatedSpeed);
+        // Only the batch count is held at its furthest value: a single file's
+        // count going back is a new transfer, which the profile must restart on.
+        toastProfileBytes.current = Math.max(toastProfileBytes.current, batchBytes.completed + inFlightBytes);
+        recordToastProgress(toastProfileBytes.current, batchBytes.total, aggregatedSpeed);
       } else {
         recordToastProgress(0, 0, aggregatedSpeed);
       }
@@ -767,6 +768,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           toastReservedLaneSlots.current = 0;
           for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
           toastLaneCleanupTimers.current.clear();
+          resetToastSpeedProfile();
           toastBatchBytesRef.current = null;
           optRef.current.onBatchProgress?.(null);
           clearToastTimer.current = null;
@@ -833,6 +835,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         toastReservedLaneSlots.current = 0;
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
+        resetToastSpeedProfile();
         toastBatchBytesRef.current = null;
         optRef.current.onBatchProgress?.(null);
 
@@ -885,6 +888,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         toastReservedLaneSlots.current = 0;
         for (const timer of toastLaneCleanupTimers.current.values()) clearTimeout(timer);
         toastLaneCleanupTimers.current.clear();
+        resetToastSpeedProfile();
         toastBatchBytesRef.current = null;
         optRef.current.onBatchProgress?.(null);
 
