@@ -2416,11 +2416,13 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let mut total_bytes_transferred: u64 = 0;
     let mut errors: Vec<Value> = Vec::new();
 
-    // Throttle progress events (emit every 5 files OR ~2% delta) to mirror
-    // the F6 fix in v2.1.2 download path. `progress_step` is at least 1.
-    let progress_step = std::cmp::max((total_planned / 50).max(1), 5);
+    // Pace progress events with the shared cadence: every 150 ms or 2 % of
+    // the files, and the last file. A step of files alone (every 5 files)
+    // left a tree of large files without news for minutes.
+    let mut cadence = crate::progress_cadence::ProgressCadence::new();
+    let files_pct = |done: u64| (done * 100).checked_div(total_planned).unwrap_or(100) as i64;
 
-    for (idx, entry) in plan.entries.iter().enumerate() {
+    for entry in plan.entries.iter() {
         crate::ai_core::tools::check_cancelled(ctx)?;
         if skip_existing {
             match crate::cross_profile_transfer::should_skip_existing(
@@ -2432,11 +2434,12 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             {
                 Ok(true) => {
                     skipped_files += 1;
-                    if (idx as u64).is_multiple_of(progress_step) {
+                    let done = transferred_files + skipped_files + failed_files;
+                    if cadence.admit(files_pct(done), done >= total_planned) {
                         ctx.event_sink()
                             .emit_tool_progress(&crate::ai_core::ToolProgress {
                                 tool: "aeroftp_transfer_tree".to_string(),
-                                current: (transferred_files + skipped_files) as u32,
+                                current: done as u32,
                                 total: total_planned as u32,
                                 item: entry.source_path.clone(),
                             });
@@ -2472,11 +2475,12 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             }
         }
 
-        if (idx as u64).is_multiple_of(progress_step) || (idx as u64) + 1 == total_planned {
+        let done = transferred_files + skipped_files + failed_files;
+        if cadence.admit(files_pct(done), done >= total_planned) {
             ctx.event_sink()
                 .emit_tool_progress(&crate::ai_core::ToolProgress {
                     tool: "aeroftp_transfer_tree".to_string(),
-                    current: (transferred_files + skipped_files + failed_files) as u32,
+                    current: done as u32,
                     total: total_planned as u32,
                     item: entry.source_path.clone(),
                 });

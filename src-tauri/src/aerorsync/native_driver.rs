@@ -999,9 +999,8 @@ pub struct AerorsyncDriver<T: RawRemoteShellTransport> {
     /// AeroSync and the CLI, so their hot path stays a single `is_none()`
     /// check per chunk. See `docs/dev/roadmap/APPENDIX-AERORSYNC-DELTA-REDESIGN`.
     progress_sink: Option<crate::aerorsync::progress::ProgressSink>,
-    /// Throttle cursor for `report_wire_progress`: the last `transferred`
-    /// value the sink was actually called with.
-    last_progress_report: u64,
+    /// Paces `report_wire_progress`: when the sink is next due.
+    progress_throttle: crate::aerorsync::progress::ProgressThrottle,
 }
 
 impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
@@ -1055,7 +1054,7 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             download_clean_eof_noop: false,
             remote_command_flavor: RemoteCommandFlavor::WrapperParity,
             progress_sink: None,
-            last_progress_report: 0,
+            progress_throttle: Default::default(),
         }
     }
 
@@ -1081,25 +1080,18 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
     }
 
     /// Report `transferred` wire bytes (out of `total`, a hint) to the GUI
-    /// progress sink, throttled so the boxed closure (and the `transfer_event`
-    /// IPC it emits) fires at most ~1% of total movement, plus the final byte.
-    /// A no-op when no sink is attached (AeroSync / CLI): a single `is_none()`
-    /// branch, no time syscall, nothing allocated in the hot loop.
+    /// progress sink when [`ProgressThrottle`](crate::aerorsync::progress::ProgressThrottle)
+    /// says it is due. A no-op when no sink is attached (AeroSync / CLI): a
+    /// single `is_none()` branch, no time syscall, nothing allocated in the
+    /// hot loop.
     fn report_wire_progress(&mut self, transferred: u64, total: u64) {
-        if self.progress_sink.is_none() {
+        let Some(sink) = self.progress_sink.as_mut() else {
             return;
-        }
-        let step = if total > 0 {
-            (total / 100).max(256 * 1024)
-        } else {
-            256 * 1024
         };
-        let final_tick = total > 0 && transferred >= total;
-        if !final_tick && transferred < self.last_progress_report.saturating_add(step) {
-            return;
-        }
-        self.last_progress_report = transferred;
-        if let Some(sink) = self.progress_sink.as_mut() {
+        if self
+            .progress_throttle
+            .admit(std::time::Instant::now(), transferred, total)
+        {
             sink(transferred, total);
         }
     }
@@ -2377,34 +2369,42 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         Ok(())
     }
 
-    /// Size of each MSG_DATA frame on the GUI progress-aware delta send. Small
-    /// enough to tick the bar smoothly, well under `MSG_DATA_MAX`; russh
-    /// re-chunks to SSH packet size on the wire regardless, so the only cost is
-    /// one 4-byte mux header per frame (negligible on a multi-MB delta).
-    #[cfg(test)]
-    const PROGRESS_CHUNK: usize = 1024 * 1024;
+    /// Size of each MSG_DATA frame of an upload slab when a GUI progress sink
+    /// is attached. Writing a slab returns only once the SSH window takes it,
+    /// so on a slow uplink one frame per slab meant one report per slab: 2 MiB,
+    /// about 10 s at 200 KB/s. Stock rsync writes frames of at most 32 KiB, so
+    /// smaller frames are ordinary on the wire; the cost is one 4-byte mux
+    /// header per frame.
+    const PROGRESS_CHUNK: usize = 256 * 1024;
 
-    /// Send the upload delta `payload`, reporting wire-byte progress as it goes.
+    /// Write one upload slab's encoded `payload`, which carries the source
+    /// bytes `source_from..source_to` of `source_len`.
     ///
     /// With no progress sink attached (AeroSync / CLI) this is exactly
-    /// [`write_data_frame`](Self::write_data_frame): a single frame for
-    /// `<= 16 MiB`, Fix B chunking above that, byte-identical to before. With a
-    /// sink (the GUI command path) it splits the payload into `PROGRESS_CHUNK`
-    /// frames and reports the running wire bytes after each, so the flagship
-    /// progress bar fills during the actual network send instead of jumping to
-    /// 100% at the end.
-    #[cfg(test)]
-    async fn write_delta_with_progress(&mut self, payload: &[u8]) -> Result<(), AerorsyncError> {
+    /// [`write_data_frame`](Self::write_data_frame), byte-identical to before.
+    /// With a sink (the GUI command path) it writes `PROGRESS_CHUNK` frames and
+    /// reports after each the share of the slab's source bytes that the
+    /// written share of its payload stands for, ending exactly at
+    /// `source_to`. Mux frame boundaries are transparent to the rsync stream.
+    async fn write_slab_with_progress(
+        &mut self,
+        payload: &[u8],
+        source_from: u64,
+        source_to: u64,
+        source_len: u64,
+    ) -> Result<(), AerorsyncError> {
         if self.progress_sink.is_none() {
             return self.write_data_frame(payload).await;
         }
-        let total = payload.len() as u64;
-        let mut sent = 0u64;
-        self.last_progress_report = 0;
+        let slab = u128::from(source_to.saturating_sub(source_from));
+        let total = (payload.len() as u128).max(1);
+        let mut written = 0u128;
         for chunk in payload.chunks(Self::PROGRESS_CHUNK) {
             self.write_one_data_frame(chunk).await?;
-            sent += chunk.len() as u64;
-            self.report_wire_progress(sent, total);
+            written += chunk.len() as u128;
+            // u128: a slab times the bytes written can exceed u64.
+            let share = (slab * written / total) as u64;
+            self.report_wire_progress(source_from + share, source_len);
         }
         Ok(())
     }
@@ -3397,9 +3397,11 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         }
         self.session_stats.copy_blocks = 0;
         self.session_stats.literal_bytes = 0;
-        self.last_progress_report = 0;
+        self.progress_throttle = Default::default();
 
         let mut total_source_bytes: u64 = 0;
+        // Source bytes whose encoded ops are already on the wire.
+        let mut sent_source_bytes: u64 = 0;
         let mut buf = vec![0u8; STREAMING_READ_CHUNK_BYTES];
         let mut producer_finalized = false;
 
@@ -3452,9 +3454,16 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
             // the rsync application stream.
             if !declared_last_slab {
                 if !payload.is_empty() {
-                    self.write_data_frame(&payload).await?;
+                    self.write_slab_with_progress(
+                        &payload,
+                        sent_source_bytes,
+                        total_source_bytes,
+                        source_len,
+                    )
+                    .await?;
                     payload.clear();
                 }
+                sent_source_bytes = total_source_bytes;
                 self.report_wire_progress(total_source_bytes, source_len);
             }
         }
@@ -3484,7 +3493,8 @@ impl<T: RawRemoteShellTransport> AerorsyncDriver<T> {
         let file_checksum = file_hasher.finish();
         payload.push(TOKEN_END_FLAG);
         payload.extend_from_slice(&file_checksum);
-        self.write_data_frame(&payload).await?;
+        self.write_slab_with_progress(&payload, sent_source_bytes, source_len, source_len)
+            .await?;
         self.report_wire_progress(source_len, source_len);
 
         self.phase = AerorsyncSessionPhase::DeltaSent;
@@ -7201,51 +7211,13 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn write_delta_with_progress_reports_monotonic_wire_bytes() {
-        // Fix A: with a progress sink attached, the upload delta send splits the
-        // payload into PROGRESS_CHUNK frames and reports monotonically
-        // increasing wire bytes, ending exactly at the payload size, and the
-        // frames still reassemble to the original. Without a sink it stays one
-        // logical payload (covered by the chunking test above).
+    /// Data frames a raw outbound capture carries, in order.
+    fn captured_data_frames(
+        last_raw_outbound: &std::sync::Arc<
+            std::sync::Mutex<Option<crate::aerorsync::mock::RawOutboundBuffer>>,
+        >,
+    ) -> Vec<Vec<u8>> {
         use crate::aerorsync::real_wire::{MuxPoll, MuxStreamReader};
-        use std::sync::{Arc, Mutex};
-
-        let calls: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
-        let calls_for_sink = calls.clone();
-        let sink: crate::aerorsync::progress::ProgressSink = Box::new(move |transferred, total| {
-            calls_for_sink.lock().unwrap().push((transferred, total));
-        });
-
-        let transport = mock_transport_with_raw_inbound(Vec::new());
-        let last_raw_outbound = transport.last_raw_outbound.clone();
-        let mut d = make_driver(transport).with_progress_sink(Some(sink));
-        d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/big.bin"))
-            .await
-            .expect("raw stream opens");
-
-        let total = AerorsyncDriver::<MockRemoteShellTransport>::PROGRESS_CHUNK * 3 + 512 * 1024;
-        let payload: Vec<u8> = (0..total).map(|i| (i % 251) as u8).collect();
-        d.write_delta_with_progress(&payload)
-            .await
-            .expect("delta send with progress");
-
-        let reports = calls.lock().unwrap().clone();
-        assert!(!reports.is_empty(), "sink must fire at least once");
-        assert_eq!(
-            reports.last().unwrap().0,
-            total as u64,
-            "final report must equal the full payload size"
-        );
-        assert!(
-            reports.iter().all(|&(_, t)| t == total as u64),
-            "reported total must stay the payload size"
-        );
-        assert!(
-            reports.windows(2).all(|w| w[0].0 <= w[1].0),
-            "reported wire bytes must be monotonically non-decreasing"
-        );
-
         let outbound = {
             let guard = last_raw_outbound.lock().unwrap();
             guard.as_ref().expect("raw stream opened").clone()
@@ -7259,10 +7231,76 @@ mod tests {
                 frames.push(p);
             }
         }
+        frames
+    }
+
+    #[tokio::test]
+    async fn write_slab_with_progress_reports_the_slab_share_of_each_frame() {
+        // With a progress sink attached, an upload slab goes out in
+        // PROGRESS_CHUNK frames and the sink hears, after each, the share of
+        // the slab's source bytes that the written share of its payload
+        // stands for, ending exactly at the slab end. The frames reassemble to
+        // the payload. Without a sink the slab stays one frame, as before.
+        use std::sync::{Arc, Mutex};
+
+        type Driver = AerorsyncDriver<MockRemoteShellTransport>;
+        let mib = 1024 * 1024u64;
+        let (from, to, source_len) = (10 * mib, 12 * mib, 16 * mib);
+        let payload_len = Driver::PROGRESS_CHUNK * 3 + 128 * 1024;
+        let payload: Vec<u8> = (0..payload_len).map(|i| (i % 251) as u8).collect();
+
+        let calls: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_for_sink = calls.clone();
+        let sink: crate::aerorsync::progress::ProgressSink = Box::new(move |transferred, total| {
+            calls_for_sink.lock().unwrap().push((transferred, total));
+        });
+        let transport = mock_transport_with_raw_inbound(Vec::new());
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport).with_progress_sink(Some(sink));
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/big.bin"))
+            .await
+            .expect("raw stream opens");
+        d.write_slab_with_progress(&payload, from, to, source_len)
+            .await
+            .expect("slab send with progress");
+
+        let frames = captured_data_frames(&last_raw_outbound);
+        assert_eq!(frames.len(), 4, "three full frames and the rest");
+        assert!(frames.iter().all(|f| f.len() <= Driver::PROGRESS_CHUNK));
+        assert_eq!(frames.concat(), payload, "frames reassemble to the payload");
+
+        let reports = calls.lock().unwrap().clone();
         assert_eq!(
-            frames.concat(),
-            payload,
-            "progress-chunked frames must reassemble to the original payload"
+            reports.len(),
+            frames.len(),
+            "one report per frame: {reports:?}"
+        );
+        assert!(
+            reports
+                .iter()
+                .all(|&(sent, total)| sent > from && sent <= to && total == source_len),
+            "{reports:?}"
+        );
+        assert!(reports.windows(2).all(|w| w[0].0 < w[1].0), "{reports:?}");
+        assert_eq!(
+            reports.last().unwrap().0,
+            to,
+            "the last frame ends the slab"
+        );
+
+        let transport = mock_transport_with_raw_inbound(Vec::new());
+        let last_raw_outbound = transport.last_raw_outbound.clone();
+        let mut d = make_driver(transport);
+        d.open_raw_stream_internal(&RemoteCommandSpec::capture_upload("/remote/big.bin"))
+            .await
+            .expect("raw stream opens");
+        d.write_slab_with_progress(&payload, from, to, source_len)
+            .await
+            .expect("slab send without progress");
+        assert_eq!(
+            captured_data_frames(&last_raw_outbound),
+            vec![payload],
+            "without a sink the slab is one frame, as before"
         );
     }
 
@@ -10743,6 +10781,100 @@ mod tests {
         let reconstructed =
             crate::aerorsync::real_wire::decompress_zstd_literal_stream(&compressed)
                 .expect("streaming zstd literals decode");
+        assert_eq!(reconstructed, source);
+        assert_eq!(report.file_checksum, FileChecksumKind::Md5.digest(&source));
+    }
+
+    /// A slow uplink takes seconds per source slab, so the GUI sink must hear
+    /// about progress while a slab is on the wire, not only once it is all
+    /// sent: one call per slab froze the toast and its speed for ~10 s per
+    /// 2 MiB at 200 KB/s. The split frames must still reconstruct the source.
+    #[tokio::test]
+    async fn streaming_send_reports_progress_inside_each_slab() {
+        use crate::aerorsync::engine_adapter::CurrentDeltaSyncBridge;
+        use std::sync::{Arc, Mutex};
+
+        let head = SumHead {
+            count: 0,
+            block_length: 0,
+            checksum_length: 0,
+            remainder_length: 0,
+        };
+        // Incompressible (xorshift), so each slab's payload is as large as
+        // the slab: compressible bytes leave a small payload whose write
+        // costs nothing to wait for.
+        let len = STREAMING_READ_CHUNK_BYTES + 1024 * 1024;
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let source: Vec<u8> = (0..len)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                (state >> 32) as u8
+            })
+            .collect();
+
+        let calls: Arc<Mutex<Vec<(u64, u64)>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_for_sink = calls.clone();
+        let progress: crate::aerorsync::progress::ProgressSink =
+            Box::new(move |transferred, total| {
+                calls_for_sink.lock().unwrap().push((transferred, total));
+            });
+        let inbound = build_streaming_parity_inbound(head, Vec::new());
+        let transport = mock_transport_with_raw_inbound(inbound);
+        let last = transport.last_raw_outbound.clone();
+        let mut driver = make_driver(transport).with_progress_sink(Some(progress));
+        let mut sink = CollectingSink::default();
+        driver
+            .drive_upload_through_delta_streaming(
+                RemoteCommandSpec::capture_upload("/remote/target.bin"),
+                sample_file_list_entry("target.bin"),
+                std::io::Cursor::new(source.clone()),
+                source.len() as u64,
+                &CurrentDeltaSyncBridge::new(),
+                &mut sink,
+            )
+            .await
+            .expect("streaming upload with a progress sink");
+
+        let calls = calls.lock().unwrap().clone();
+        let slab = STREAMING_READ_CHUNK_BYTES as u64;
+        assert!(
+            calls.iter().any(|&(sent, _)| sent > 0 && sent < slab),
+            "the first slab must report before it is all on the wire: {calls:?}"
+        );
+        assert!(
+            calls.windows(2).all(|w| w[0].0 < w[1].0),
+            "reports must only move forward, once each: {calls:?}"
+        );
+        assert_eq!(calls.last().map(|c| c.0), Some(len as u64), "{calls:?}");
+        assert!(
+            calls.iter().all(|&(_, total)| total == len as u64),
+            "{calls:?}"
+        );
+
+        let outbound = {
+            let guard = last.lock().unwrap();
+            let bytes = guard
+                .as_ref()
+                .expect("raw stream opened")
+                .lock()
+                .unwrap()
+                .clone();
+            bytes
+        };
+        let (_, report) = decode_upload_entry_and_delta_report(&outbound, 16);
+        let compressed: Vec<&[u8]> = report
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DeltaOp::Literal { compressed_payload } => Some(compressed_payload.as_slice()),
+                DeltaOp::CopyRun { .. } => None,
+            })
+            .collect();
+        let reconstructed =
+            crate::aerorsync::real_wire::decompress_zstd_literal_stream(&compressed)
+                .expect("split frames still decode");
         assert_eq!(reconstructed, source);
         assert_eq!(report.file_checksum, FileChecksumKind::Md5.digest(&source));
     }

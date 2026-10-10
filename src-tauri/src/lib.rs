@@ -265,6 +265,7 @@ pub mod copy_fallback;
 /// Class-level pin: every consumer of a provider time uses the single parser.
 #[cfg(test)]
 mod mtime_parse_audit;
+pub mod progress_cadence;
 pub mod progress_governor;
 pub mod provider_transfer_executor;
 pub mod providers;
@@ -1711,10 +1712,13 @@ pub struct TransferEvent {
 /// are wire bytes: for upload `total` is the full delta payload (the bar fills
 /// accurately); for download it is the remote file size hint, so on a real delta
 /// hit the bar under-fills and the final `complete` event takes it to 100%.
-/// Speed and ETA are derived from wire bytes over elapsed time, exactly like the
-/// classic callback. The driver throttles calls (~1% steps), so this closure and
-/// its IPC emit fire sparingly. Only the GUI command path passes one of these;
-/// AeroSync and the CLI pass `None`.
+/// Speed and ETA come from the wire bytes moved over the last few seconds
+/// (`SpeedMeter`), exactly like the classic callback. The driver paces the
+/// calls (`aerorsync::progress::ProgressThrottle`: 150 ms or one percent of
+/// movement since the last call, whichever comes first), checked each time it
+/// moves bytes: every received frame on a download, every 4 MiB source slab on
+/// an upload. Only the GUI command path passes one of these; AeroSync and the
+/// CLI pass `None`.
 pub(crate) fn make_delta_progress_sink(
     app: tauri::AppHandle,
     transfer_id: String,
@@ -2164,8 +2168,7 @@ async fn download_update_artifact(
         .map_err(|error| format!("Failed to create update file: {}", error))?;
 
     let speed_meter = crate::transfer_speed::SpeedMeter::new();
-    let mut last_emit = Instant::now();
-    let mut last_percentage = 0u8;
+    let mut cadence = crate::progress_cadence::ProgressCadence::new();
     let mut downloaded = 0u64;
 
     while let Some(chunk) = stream.next().await {
@@ -2176,9 +2179,7 @@ async fn download_update_artifact(
         downloaded = downloaded.saturating_add(chunk.len() as u64);
 
         let percentage = compute_update_download_progress(downloaded, total, false);
-        let should_emit = last_emit.elapsed().as_millis() >= 150
-            || percentage.saturating_sub(last_percentage) >= 2;
-        if should_emit {
+        if cadence.admit(i64::from(percentage), false) {
             emit_update_download_progress(
                 app,
                 filename,
@@ -2187,8 +2188,6 @@ async fn download_update_artifact(
                 &speed_meter,
                 UpdateDownloadPhase::Downloading,
             );
-            last_emit = Instant::now();
-            last_percentage = percentage;
         }
     }
 

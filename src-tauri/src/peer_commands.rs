@@ -642,15 +642,16 @@ pub async fn peer_send_file(
     apply_active_discovery_pref(&app);
 
     // Live progress: stream byte ticks to the FE on `peer://send-status` so the
-    // Send dialog can render a bar. Throttled to integer-percent changes so a
-    // large transfer does not flood the IPC channel.
+    // Send dialog can render a bar and a speed. Paced by `ProgressCadence` so a
+    // large transfer neither floods the IPC channel nor goes silent for a whole
+    // percent (75 MB of a 7.5 GB file) on a slow relay.
     let progress_app = app.clone();
     let progress_recipient = recipient.clone();
     let progress_name = Path::new(file_path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".to_string());
-    let last_pct = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(u64::MAX));
+    let cadence = std::sync::Mutex::new(crate::progress_cadence::ProgressCadence::new());
     let progress: aeroftp_peer_l0::send::SendProgress =
         std::sync::Arc::new(move |sent: u64, total: u64| {
             // checked_div folds the total==0 guard into the divide (clippy
@@ -659,9 +660,11 @@ pub async fn peer_send_file(
                 .checked_mul(100)
                 .and_then(|n| n.checked_div(total))
                 .unwrap_or(100);
-            // Only emit when the integer percent advances (the up-front 0 and the
-            // final 100 always fire because the seed is u64::MAX).
-            if last_pct.swap(pct, std::sync::atomic::Ordering::Relaxed) == pct {
+            let due = cadence
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .admit(pct as i64, sent >= total);
+            if !due {
                 return;
             }
             let _ = progress_app.emit(
