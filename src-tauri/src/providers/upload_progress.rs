@@ -170,7 +170,9 @@ impl UploadProgress {
     /// Report `sent` bytes of the file, counted by someone else (an external
     /// tool's own progress output), under the same rules as [`Self::track`]:
     /// only below the total, which is [`Self::complete`]'s to give, and only
-    /// above anything already reported, so the bar never goes back.
+    /// above anything already reported, so the bar never goes back. Nothing
+    /// here is particular to an upload, and MEGAcmd's `mega-get` reports
+    /// through it as `mega-put` does.
     pub fn report(&self, sent: u64) {
         if sent < self.total
             && self

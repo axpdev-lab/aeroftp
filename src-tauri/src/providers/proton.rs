@@ -814,10 +814,13 @@ impl StorageProvider for ProtonCliProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        // No opening report: the CLI says nothing while it downloads, and the
+        // `(0, 0)` sent here read as a transfer already done, even when the
+        // download then failed. Opening at `(0, size)` instead would cost one
+        // more CLI run per file to read the size (`filesystem info`, 0.75 to
+        // 1.6 s on 0.8.0) for a total the callers already show from their own
+        // listing. The only report is the completed file, below.
         let remote = self.resolve_path(remote_path);
-        if let Some(ref cb) = on_progress {
-            cb(0, 0);
-        }
 
         let dest = Path::new(local_path);
         let dest_is_dir = dest.is_dir()
@@ -1670,6 +1673,45 @@ mod cli_sequence_tests {
             f_strat,
             Some("create-new-revision"),
             "overwrite must keep the node uid: {uploads:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The CLI says nothing while it downloads, and the download opened
+    /// with `(0, 0)`, which reads as a transfer already done, even when the
+    /// download then failed. The only report is now the completed file, once
+    /// it is in place, and a failed download reports nothing.
+    #[tokio::test]
+    async fn download_reports_only_the_completed_file() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let dest = dir.join("got.txt");
+        let mut p = provider(&shim);
+        let (callback, updates) = crate::providers::upload_progress::fixture::recorder();
+        p.download(
+            "/my-files/scratch/report.txt",
+            dest.to_str().unwrap(),
+            Some(callback),
+        )
+        .await
+        .unwrap();
+        let size = "REMOTE-CONTENT".len() as u64;
+        assert_eq!(*updates.lock().unwrap(), [(size, size)]);
+
+        std::fs::write(dir.join("signed_out"), b"").unwrap();
+        let (callback, updates) = crate::providers::upload_progress::fixture::recorder();
+        let outcome = p
+            .download(
+                "/my-files/scratch/report.txt",
+                dest.to_str().unwrap(),
+                Some(callback),
+            )
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            updates.lock().unwrap().is_empty(),
+            "{:?}",
+            updates.lock().unwrap()
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

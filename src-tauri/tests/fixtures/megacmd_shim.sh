@@ -1,6 +1,7 @@
 #!/bin/sh
-# Stand-in for MEGAcmd's `mega-ls`, `mega-mv`, `mega-rm` and `mega-put`, used
-# by the tests in src/providers/mega.rs, which link the names to this one file. It is a
+# Stand-in for MEGAcmd's `mega-ls`, `mega-mv`, `mega-rm`, `mega-put` and
+# `mega-get`, used by the tests in src/providers/mega.rs, which link the names
+# to this one file. It is a
 # checked-in executable on purpose: a test that writes a script and then runs
 # it can fail with ETXTBSY (see `link_shim` in src/providers/proton.rs).
 #
@@ -11,6 +12,9 @@
 # lists bin-handles.txt and any other path lists folder-handles.txt, the path
 # asked for is appended to ls.log, and a file ls-fails makes it fail. A file
 # bin-fails makes the bin listing fail, and a file rm-fails makes mega-rm fail.
+# `mega-ls -l /f.dat` lists that one 1000-byte file, as MEGAcmd 2.6 lists a
+# file path; `mega-ls -l /same` lists a folder holding a file of its own name,
+# opened by the `path:` line MEGAcmd 2.6 writes before a folder's listing.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
@@ -39,6 +43,17 @@ case "$(basename "$0")" in
             echo '----  1  3  15Jan2026  14:30  a.txt'
             echo '----  1  3  15Jan2026  14:30  b.txt'
             echo 'd---  -  -  15Jan2026  14:30  d'
+            exit 0
+        fi
+        if [ "$1" = "-l" ] && [ "$2" = "/f.dat" ]; then
+            echo 'FLAGS VERS      SIZE            DATE       NAME'
+            echo '----    1         1000 10Oct2026 17:12:39 f.dat'
+            exit 0
+        fi
+        if [ "$1" = "-l" ] && [ "$2" = "/same" ]; then
+            echo '/same: '
+            echo 'FLAGS VERS      SIZE            DATE       NAME'
+            echo '----    1           7 10Oct2026 17:12:39 same'
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "//bin" ]; then
@@ -87,6 +102,25 @@ case "$(basename "$0")" in
             done
         fi
         printf '\nUpload finished: %s\n' "$2"
+        printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
+        ;;
+    mega-get)
+        # mega-put's progress lines on the download side, as MEGAcmd 2.6
+        # writes them for mega-get (measured 2026-10-10): 10, 50 and 90
+        # percent on stderr, then 1000 bytes at the local path, "Download
+        # finished" on stdout and the last line. A file get-fails makes it
+        # refuse after two progress lines, with nothing written.
+        if [ -f "$here/get-fails" ]; then
+            printf 'TRANSFERRING ||####..........||(3/30 MB:  10.00 %%) \000\r' >&2
+            printf 'TRANSFERRING ||####..........||(6/30 MB:  20.00 %%) \000\r' >&2
+            echo "Download failed: Access denied" >&2
+            exit 2
+        fi
+        for p in 10.00 50.00 90.00; do
+            printf 'TRANSFERRING ||####..........||(9/30 MB:  %s %%) \000\r' "$p" >&2
+        done
+        dd if=/dev/zero of="$2" bs=1000 count=1 2>/dev/null
+        printf '\nDownload finished: %s\n' "$2"
         printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
         ;;
     *)

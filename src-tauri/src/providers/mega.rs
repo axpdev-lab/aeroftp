@@ -579,6 +579,36 @@ impl MegaCmdProvider {
         }
     }
 
+    /// The size `mega-ls -l` lists for the file at `path`, which on a file
+    /// path lists that one file (measured on MEGAcmd 2.6). `None` when the
+    /// answer is not one file of that name: a path not found, a listing that
+    /// failed, or a folder, whose listing opens with a `path:` line and may
+    /// hold a file of the folder's own name.
+    async fn listed_file_size(&mut self, path: &str) -> Option<u64> {
+        let name = Path::new(path).file_name()?.to_string_lossy().to_string();
+        let listing = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", path])
+            .await
+            .ok()?;
+        if listing.lines().any(|line| {
+            let line = line.trim_end();
+            line.starts_with('/') && line.ends_with(':')
+        }) {
+            return None;
+        }
+        let mut files = listing
+            .lines()
+            .filter_map(|line| Some((line, Self::parse_ls_line(line, "/")?)));
+        match (files.next(), files.next()) {
+            // The size column read again: `parse_ls_line` takes a column it
+            // cannot read for 0, which here would be an empty file.
+            (Some((line, entry)), None) if !entry.is_dir && entry.name == name => {
+                line.split_whitespace().nth(2)?.parse().ok()
+            }
+            _ => None,
+        }
+    }
+
     /// Parse a single mega-ls -l output line into a RemoteEntry (CQ-01: defensive parsing).
     fn parse_ls_line(line: &str, parent_path: &str) -> Option<RemoteEntry> {
         // Skip header and section lines
@@ -794,7 +824,7 @@ impl StorageProvider for MegaCmdProvider {
         &mut self,
         r: &str,
         l: &str,
-        progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        mut progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let abs_remote = self.resolve_path(r);
         self.log_debug(&format!(
@@ -802,9 +832,27 @@ impl StorageProvider for MegaCmdProvider {
             abs_remote, l
         ));
 
-        // XFER-08: Signal start
-        if let Some(ref cb) = progress {
-            cb(0, 0);
+        // XFER-02: the bar follows mega-get's own progress lines, which are
+        // mega-put's, turned into bytes of the size `mega-ls` lists; 100
+        // percent waits until mega-get has returned (see `UploadProgress`,
+        // whose rules for a count reported from outside hold for a download
+        // too). It used to open with `(0, 0)`, which reads as a transfer
+        // already done. Without a listed size there is no step to show, only
+        // the completed file.
+        let listed = match progress {
+            Some(_) => self.listed_file_size(&abs_remote).await,
+            None => None,
+        };
+        let tracked = listed.map(|size| {
+            let bar = super::upload_progress::UploadProgress::new(progress.take(), size);
+            bar.start();
+            (size, bar)
+        });
+        if tracked.is_none() && progress.is_some() {
+            self.log_debug(&format!(
+                "[MEGAcmd] No listed size for '{}': the bar shows the completed file only",
+                abs_remote
+            ));
         }
 
         // MEGAcmd's `mega-get` does NOT overwrite an existing local target: it
@@ -831,18 +879,28 @@ impl StorageProvider for MegaCmdProvider {
         // Issue #263: normalize `/` → `\` on Windows so the verbatim-path
         // resolution inside MEGAcmd does not produce `\\?\C:/...` (invalid).
         let local_arg = Self::normalize_local_path_for_cli(l);
+        let on_percent = |percent: f64| {
+            if let Some((size, bar)) = &tracked {
+                bar.report((*size as f64 * percent / 100.0) as u64);
+            }
+        };
         match self
-            .run_mega_transfer_with_reauth("mega-get", &[&abs_remote, &local_arg], Some(&|_| {}))
+            .run_mega_transfer_with_reauth(
+                "mega-get",
+                &[&abs_remote, &local_arg],
+                Some(&on_percent),
+            )
             .await
         {
             Ok(out) => {
                 self.log_debug(&format!("[MEGAcmd] Download output: {}", out));
-                // XFER-02: Signal completion with file size
-                if let Some(ref cb) = progress {
-                    match std::fs::metadata(l) {
+                match (&tracked, &progress) {
+                    (Some((_, bar)), _) => bar.complete(),
+                    (None, Some(cb)) => match std::fs::metadata(l) {
                         Ok(meta) => cb(meta.len(), meta.len()),
                         Err(_) => cb(1, 1),
-                    }
+                    },
+                    (None, None) => {}
                 }
                 Ok(())
             }
@@ -1697,6 +1755,137 @@ mod tests {
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
         (provider, dir)
+    }
+
+    /// A provider whose `mega-ls` and `mega-get` are links to the stand-in,
+    /// plus the folder that keeps the links (`get-fails` makes the get
+    /// refuse).
+    #[cfg(unix)]
+    fn provider_with_stand_in_get() -> (MegaCmdProvider, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let shim =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
+        for name in ["mega-ls", "mega-get"] {
+            std::os::unix::fs::symlink(&shim, dir.path().join(name)).unwrap();
+        }
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        (provider, dir)
+    }
+
+    /// Download `remote` through the stand-in `mega-get` into a fresh
+    /// folder, which is returned so the file outlives the call.
+    #[cfg(unix)]
+    async fn get_through_stand_in(
+        provider: &mut MegaCmdProvider,
+        remote: &str,
+    ) -> (
+        Result<(), ProviderError>,
+        Vec<(u64, u64)>,
+        tempfile::TempDir,
+    ) {
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("got.dat");
+        let (callback, updates) = crate::providers::upload_progress::fixture::recorder();
+        let outcome = provider
+            .download(remote, target.to_str().unwrap(), Some(callback))
+            .await;
+        let updates = updates.lock().unwrap().clone();
+        (outcome, updates, local)
+    }
+
+    /// #368, the download side of #1124: `mega-get` reported `(0, 0)`, which
+    /// reads as a transfer already done, then the total once the command
+    /// had returned, while it writes the same progress lines as mega-put.
+    /// The bar now opens at zero of the size `mega-ls` lists, follows those
+    /// lines, and reaches 100 only once mega-get has returned successfully.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn download_follows_mega_get_progress_lines() {
+        let (mut provider, dir) = provider_with_stand_in_get();
+        let (outcome, updates, _local) = get_through_stand_in(&mut provider, "/f.dat").await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            updates,
+            [
+                (0, 1000),
+                (100, 1000),
+                (500, 1000),
+                (900, 1000),
+                (1000, 1000)
+            ]
+        );
+        crate::providers::upload_progress::fixture::assert_real_progress(&updates, 1000, true);
+
+        std::fs::write(dir.path().join("get-fails"), b"").unwrap();
+        let (outcome, updates, _local) = get_through_stand_in(&mut provider, "/f.dat").await;
+        assert!(
+            updates.iter().all(|&(got, total)| got < total),
+            "a failed download reported a completed one: {updates:?}"
+        );
+        // The progress lines written before the failure stay out of the
+        // error, which carries MEGAcmd's own message.
+        let message = outcome.expect_err("a refused get fails").to_string();
+        assert!(message.contains("Access denied"), "{message}");
+        assert!(!message.contains("TRANSFERRING"), "{message}");
+    }
+
+    /// Without a listed size the percentages cannot become bytes: the bar
+    /// gets no opening `(0, 0)` and no step, only the completed file once it
+    /// is on disk. A path `mega-ls` cannot find gives no size, and neither
+    /// does a folder: its listing holds a 7-byte file of its own name, which
+    /// a match on the name alone would take for the file.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn download_without_a_listed_size_reports_only_the_completed_file() {
+        let (mut provider, _dir) = provider_with_stand_in_get();
+        for remote in ["/unlisted.dat", "/same"] {
+            let (outcome, updates, _local) = get_through_stand_in(&mut provider, remote).await;
+            assert!(outcome.is_ok(), "{remote}: {outcome:?}");
+            assert_eq!(updates, [(1000, 1000)], "{remote}");
+        }
+    }
+
+    /// Live: a download through the MEGAcmd session already open on this
+    /// machine (no credentials here) of the file `AEROFTP_MEGA_LIVE_FILE`
+    /// names, a few MB at least so that mega-get writes progress lines. The
+    /// bar opens at zero of the listed size, moves in steps and ends at that
+    /// size, with a file of that size on disk; a path that is not there
+    /// fails with no report at all.
+    #[tokio::test]
+    #[ignore = "live: needs a MEGAcmd session and AEROFTP_MEGA_LIVE_FILE"]
+    async fn live_download_follows_mega_get_progress_lines() {
+        use crate::providers::upload_progress::fixture::{assert_real_progress, recorder};
+        let remote = std::env::var("AEROFTP_MEGA_LIVE_FILE").expect("AEROFTP_MEGA_LIVE_FILE");
+        let mut provider = test_provider();
+        let size = provider
+            .listed_file_size(&remote)
+            .await
+            .expect("mega-ls lists the file");
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("live.dat");
+        let (callback, updates) = recorder();
+        provider
+            .download(&remote, target.to_str().unwrap(), Some(callback))
+            .await
+            .expect("download");
+        let updates = updates.lock().unwrap().clone();
+        eprintln!("{} updates for {size} bytes", updates.len());
+        assert_eq!(updates.first(), Some(&(0, size)));
+        assert_real_progress(&updates, size, true);
+        assert_eq!(std::fs::metadata(&target).unwrap().len(), size);
+
+        let (callback, updates) = recorder();
+        let missing = format!("{remote}.not-there");
+        let outcome = provider
+            .download(&missing, target.to_str().unwrap(), Some(callback))
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            updates.lock().unwrap().is_empty(),
+            "{:?}",
+            updates.lock().unwrap()
+        );
     }
 
     /// Upload a 1000-byte file through the stand-in `mega-put`.
