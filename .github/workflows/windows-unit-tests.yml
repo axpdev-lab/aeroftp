@@ -120,6 +120,18 @@ jobs:
             }
           }
 
+      # The two checks below and the test build fail on any warning from this
+      # crate. Clippy with -D warnings runs only on Linux (build.yml,
+      # linux-validate), so code compiled only here, and items whose only users
+      # sit behind a unix cfg, built with warnings nobody had to read: run
+      # 38072169081 printed 19 distinct rustc warnings across these three steps.
+      # `build.warnings` counts this crate's warnings only (build-script
+      # `cargo:warning` lines do not count, linker output reported through the
+      # `linker_messages` lint does) and, unlike RUSTFLAGS, changes no
+      # fingerprint, so it costs no rebuild; RUSTFLAGS would also replace the
+      # `+crt-static` rustflags of src-tauri/.cargo/config.toml. A warning here
+      # is fixed by giving the item the cfg of the code that uses it.
+      #
       # Compile-surface gate for the classic-only fallback path:
       # `--no-default-features` turns `aerorsync` off, and on
       # Windows the binary-rsync transport is also gated out. The only
@@ -130,7 +142,7 @@ jobs:
       # back into the cross-OS surface.
       - name: cargo check (--no-default-features, classic-only fallback)
         working-directory: src-tauri
-        run: cargo check --locked --no-default-features
+        run: cargo check --locked --no-default-features --config 'build.warnings="deny"'
 
       # Compile-surface gate for the shipping configuration (default
       # features, which include `aerorsync`). This confirms
@@ -140,7 +152,7 @@ jobs:
       # all build cleanly under MSVC with the feature on.
       - name: "cargo check (default features: shipping configuration)"
         working-directory: src-tauri
-        run: cargo check --locked --all-targets
+        run: cargo check --locked --all-targets --config 'build.warnings="deny"'
       # G105, 2026-09-18. Until today this job's name promised "native
       # unit tests" and it ran none: every `cargo test` in the repository
       # executes on a Linux runner, so no Rust assertion had ever been
@@ -191,7 +203,7 @@ jobs:
         timeout-minutes: 40
         env:
           AEROFTP_EMBED_TEST_MANIFEST: "1"
-        run: cargo test --locked --lib --no-default-features --features aerorsync --no-run
+        run: cargo test --locked --lib --no-default-features --features aerorsync --no-run --config 'build.warnings="deny"'
 
       - name: "Unit tests: cross-platform assertions under MSVC"
         working-directory: src-tauri

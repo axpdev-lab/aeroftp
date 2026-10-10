@@ -15,7 +15,11 @@ use crate::mcp_client_config::McpServerConfig;
 pub(crate) enum SandboxError {
     Unavailable,
     InvalidPath,
+    // Only the Linux launch path pins the install directory and checks its
+    // integrity; everywhere else a launch fails closed as `Unavailable`.
+    #[cfg(target_os = "linux")]
     DirectoryChanged,
+    #[cfg(target_os = "linux")]
     IntegrityFailure,
 }
 

@@ -87594,6 +87594,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     }
 
     /// `target` as a path relative to the current directory.
+    #[cfg(target_os = "linux")]
     fn relative_to_cwd(target: &Path) -> PathBuf {
         let cwd = std::env::current_dir().unwrap();
         let (cwd, target) = (

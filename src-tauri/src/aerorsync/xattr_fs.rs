@@ -17,8 +17,12 @@
 
 #![cfg(feature = "aerorsync")]
 
+#[cfg(unix)]
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
+#[cfg(unix)]
 use std::sync::Mutex;
 
 use crate::aerorsync::real_wire::{XattrDatum, XattrPair};
@@ -439,6 +443,9 @@ fn apply_xattrs_unix(
 }
 
 // --- capability probe cache (once per destination directory) ---------------
+//
+// Unix only, like the probe and the `setxattr` path that fill it: elsewhere
+// `fs_supports_xattrs` answers `false` without asking.
 
 /// How many destination directories the probe cache may remember at once.
 ///
@@ -447,6 +454,7 @@ fn apply_xattrs_unix(
 /// the process. The cap turns that into a fixed cost; overflow clears the map
 /// wholesale rather than evicting cleverly, because since R5 a re-probe is a
 /// single read-only `listxattr` and is not worth an LRU.
+#[cfg(unix)]
 const XATTR_CACHE_MAX_ENTRIES: usize = 256;
 
 /// How long a cached answer stays trusted.
@@ -457,12 +465,16 @@ const XATTR_CACHE_MAX_ENTRIES: usize = 256;
 /// until the process restarted. (The positive direction always self-corrected,
 /// because the real `setxattr` re-caches a negative on ENOTSUP.) A short expiry
 /// bounds that staleness without giving up the per-file syscall saving.
+#[cfg(unix)]
 const XATTR_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(60);
 
+#[cfg(unix)]
 type XattrCacheEntry = (bool, std::time::Instant);
 
+#[cfg(unix)]
 static XATTR_SUPPORT_CACHE: Mutex<Option<HashMap<PathBuf, XattrCacheEntry>>> = Mutex::new(None);
 
+#[cfg(unix)]
 fn remember_xattr_support(dir: &Path, supported: bool) {
     let Ok(mut guard) = XATTR_SUPPORT_CACHE.lock() else {
         return;
