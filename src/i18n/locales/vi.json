@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Định dạng mất dữ liệu: việc mã hóa lại loại bỏ một số dữ liệu hình ảnh, kể cả các chỉnh sửa không mất dữ liệu.",
                     "reencodeWarnTitle": "Chuyển đổi từ định dạng mất dữ liệu sang mất dữ liệu",
                     "reencodeWarnNote": "Chuyển một định dạng mất dữ liệu sang định dạng khác sẽ mã hóa lại ảnh và thêm một thế hệ giảm chất lượng thứ hai vĩnh viễn. Giữ nguyên định dạng gốc sẽ tránh được điều này.",
-                    "reencodeAck": "Tôi hiểu và vẫn muốn mã hóa lại"
+                    "reencodeAck": "Tôi hiểu và vẫn muốn mã hóa lại",
+                    "undo": "Hoàn tác",
+                    "redo": "Làm lại",
+                    "applyCrop": "Áp dụng cắt",
+                    "cancelCrop": "Hủy cắt",
+                    "cropHint": "Nhấp đúp vào vùng chọn hoặc nhấn Enter để áp dụng, Esc để hủy",
+                    "cropRatio": "Tỷ lệ",
+                    "cropRatioFree": "Tự do",
+                    "cropRatioOriginal": "Bản gốc"
                 },
                 "toggleTransparencyBg": "Nền trong suốt (xoay vòng)"
             },

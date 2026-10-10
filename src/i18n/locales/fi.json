@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Häviöllinen muoto: uudelleenkoodaus hylkää osan kuvatiedoista, myös häviöttömät muokkaukset.",
                     "reencodeWarnTitle": "Muunnos häviöllisestä häviölliseen",
                     "reencodeWarnNote": "Yhden häviöllisen muodon muuntaminen toiseksi koodaa kuvan uudelleen ja lisää toisen, pysyvän laatuhäviöiden sukupolven. Alkuperäisen muodon säilyttäminen välttää sen.",
-                    "reencodeAck": "Ymmärrän ja haluan silti koodata uudelleen"
+                    "reencodeAck": "Ymmärrän ja haluan silti koodata uudelleen",
+                    "undo": "Kumoa",
+                    "redo": "Tee uudelleen",
+                    "applyCrop": "Käytä rajaus",
+                    "cancelCrop": "Peruuta rajaus",
+                    "cropHint": "Ota käyttöön kaksoisnapsauttamalla valintaa tai painamalla Enter, peruuta painamalla Esc",
+                    "cropRatio": "Mittasuhteet",
+                    "cropRatioFree": "Vapaa",
+                    "cropRatioOriginal": "Alkuperäinen"
                 },
                 "toggleTransparencyBg": "Läpinäkyvyyden tausta (vaihda)"
             },

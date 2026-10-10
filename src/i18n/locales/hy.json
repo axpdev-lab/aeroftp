@@ -4068,7 +4068,15 @@
                     "formatLossyNote": "Korstov dzevachap. verakodavorumy heracnum e patkeri vorosh tvyalner, ayd tvum aranc korsti xmbagrumnery.",
                     "reencodeWarnTitle": "Կորստով ձևաչափից կորստով ձևաչափ փոխակերպում",
                     "reencodeWarnNote": "Կորստով մի ձևաչափը մյուսին փոխակերպելը վերակոդավորում է պատկերը և ավելացնում որակի կորստի երկրորդ, մշտական սերունդ։ Սկզբնական ձևաչափը պահպանելը խուսափում է դրանից։",
-                    "reencodeAck": "Հասկանում եմ և այնուամենայնիվ ուզում եմ վերակոդավորել"
+                    "reencodeAck": "Հասկանում եմ և այնուամենայնիվ ուզում եմ վերակոդավորել",
+                    "undo": "Հետարկել",
+                    "redo": "Վերարկել",
+                    "applyCrop": "Կիրառել կտրումը",
+                    "cancelCrop": "Չեղարկել կտրումը",
+                    "cropHint": "Կրկնակի սեղմեք ընտրության վրա կամ սեղմեք Enter՝ կիրառելու համար, Esc՝ չեղարկելու համար",
+                    "cropRatio": "Համամասնություններ",
+                    "cropRatioFree": "Ազատ",
+                    "cropRatioOriginal": "Բնօրինակ"
                 },
                 "toggleTransparencyBg": "Թափանցիկության ֆոն (փոխել)"
             },

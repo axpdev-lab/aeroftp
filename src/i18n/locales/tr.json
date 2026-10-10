@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Kayıplı biçim: yeniden kodlama bazı görüntü verilerini, kayıpsız düzenlemeler dahil, atar.",
                     "reencodeWarnTitle": "Kayıplı biçimden kayıplı biçime dönüştürme",
                     "reencodeWarnNote": "Bir kayıplı biçimi başka bir kayıplı biçime dönüştürmek görüntüyü yeniden kodlar ve ikinci, kalıcı bir kalite kaybı katmanı ekler. Özgün biçimi korumak bunu önler.",
-                    "reencodeAck": "Anlıyorum ve yine de yeniden kodlamak istiyorum"
+                    "reencodeAck": "Anlıyorum ve yine de yeniden kodlamak istiyorum",
+                    "undo": "Geri al",
+                    "redo": "Yinele",
+                    "applyCrop": "Kırpmayı uygula",
+                    "cancelCrop": "Kırpmayı iptal et",
+                    "cropHint": "Uygulamak için seçime çift tıklayın veya Enter tuşuna basın, iptal etmek için Esc tuşuna basın",
+                    "cropRatio": "Oranlar",
+                    "cropRatioFree": "Serbest",
+                    "cropRatioOriginal": "Orijinal"
                 },
                 "toggleTransparencyBg": "Saydamlık arka planı (değiştir)"
             },

@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Formāts ar zudumiem: pārkodēšana atmet daļu attēla datu, arī izmaiņas bez zudumiem.",
                     "reencodeWarnTitle": "Pārveidošana no zudumiem pakļauta uz zudumiem pakļautu formātu",
                     "reencodeWarnNote": "Viena zudumiem pakļauta formāta pārveidošana par citu atkārtoti kodē attēlu un pievieno otru, pastāvīgu kvalitātes zuduma paaudzi. Sākotnējā formāta saglabāšana no tā izvairās.",
-                    "reencodeAck": "Es saprotu un tomēr vēlos kodēt atkārtoti"
+                    "reencodeAck": "Es saprotu un tomēr vēlos kodēt atkārtoti",
+                    "undo": "Atsaukt",
+                    "redo": "Atkārtot",
+                    "applyCrop": "Lietot apcirpšanu",
+                    "cancelCrop": "Atcelt apcirpšanu",
+                    "cropHint": "Veiciet dubultklikšķi uz atlases vai nospiediet Enter, lai lietotu, Esc, lai atceltu",
+                    "cropRatio": "Proporcijas",
+                    "cropRatioFree": "Brīvs",
+                    "cropRatioOriginal": "Oriģināls"
                 },
                 "toggleTransparencyBg": "Caurspīdīguma fons (pārslēgt)"
             },

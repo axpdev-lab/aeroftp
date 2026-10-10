@@ -106,9 +106,7 @@ pub async fn process_image(
         limits.max_image_width = Some(MAX_DECODE_DIMENSION);
         limits.max_image_height = Some(MAX_DECODE_DIMENSION);
         reader.limits(limits);
-        let mut img: DynamicImage = reader
-            .decode()
-            .map_err(|e| format!("Failed to open image: {e}"))?;
+        let mut img = decode_upright(reader)?;
 
         // Apply operations in order
         for op in &operations {
@@ -181,6 +179,28 @@ pub async fn process_image(
 }
 
 /// Apply a single operation to a DynamicImage, returning the modified image.
+/// Decodes the picture the way the preview shows it: turned by its EXIF
+/// orientation. A phone photo is stored sideways with an orientation tag, the
+/// preview (and the crop drawn on it) follows the tag, and a decode that
+/// ignores it crops the sideways picture: the selection lands elsewhere or
+/// "exceeds image bounds" (#1075). The saved file carries no EXIF, so the
+/// turn has to be in the pixels.
+fn decode_upright<R: std::io::BufRead + std::io::Seek>(
+    reader: image::ImageReader<R>,
+) -> Result<DynamicImage, String> {
+    use image::ImageDecoder;
+    let mut decoder = reader
+        .into_decoder()
+        .map_err(|e| format!("Failed to open image: {e}"))?;
+    let orientation = decoder
+        .orientation()
+        .unwrap_or(image::metadata::Orientation::NoTransforms);
+    let mut img =
+        DynamicImage::from_decoder(decoder).map_err(|e| format!("Failed to open image: {e}"))?;
+    img.apply_orientation(orientation);
+    Ok(img)
+}
+
 fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImage, String> {
     match op {
         ImageOperation::Crop {
@@ -246,5 +266,59 @@ fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImag
         ImageOperation::HueRotate { degrees } => Ok(DynamicImage::ImageRgba8(
             image::imageops::huerotate(&img, *degrees),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::ImageEncoder;
+
+    /// A 4x2 JPEG whose EXIF says "turn 90 degrees clockwise to view".
+    fn sideways_jpeg() -> Vec<u8> {
+        let pixels = image::RgbImage::from_pixel(4, 2, image::Rgb([200, 30, 30]));
+        let mut out = Vec::new();
+        let mut enc = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 90);
+        // TIFF header, one IFD entry: Orientation (0x0112), SHORT, 1, value 6.
+        let exif: Vec<u8> = vec![
+            b'I', b'I', 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00,
+            0x01, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        enc.set_exif_metadata(exif).expect("jpeg takes exif");
+        enc.write_image(pixels.as_raw(), 4, 2, image::ExtendedColorType::Rgb8)
+            .expect("encode");
+        out
+    }
+
+    #[test]
+    fn decodes_a_tagged_photo_the_way_the_preview_shows_it() {
+        let bytes = sideways_jpeg();
+        let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
+            .with_guessed_format()
+            .expect("format");
+        let img = decode_upright(reader).expect("decode");
+        // Stored 4x2, shown (and cropped) as 2x4.
+        assert_eq!(img.dimensions(), (2, 4));
+        // A crop of the bottom half of what the preview shows fits.
+        let op = ImageOperation::Crop {
+            x: 0,
+            y: 2,
+            width: 2,
+            height: 2,
+        };
+        let cropped = apply_operation(img, &op).expect("crop inside the shown picture");
+        assert_eq!(cropped.dimensions(), (2, 2));
+    }
+
+    #[test]
+    fn decodes_an_untagged_picture_unchanged() {
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(&[0u8; 4 * 2 * 3], 4, 2, image::ExtendedColorType::Rgb8)
+            .expect("encode");
+        let reader = image::ImageReader::new(std::io::Cursor::new(out))
+            .with_guessed_format()
+            .expect("format");
+        assert_eq!(decode_upright(reader).expect("decode").dimensions(), (4, 2));
     }
 }

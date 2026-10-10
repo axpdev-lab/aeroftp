@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Snið með tapi: endurkóðun hendir hluta myndgagna, einnig taplausum breytingum.",
                     "reencodeWarnTitle": "Umbreyting úr tapssniði í tapssnið",
                     "reencodeWarnNote": "Að umbreyta einu tapssniði í annað endurkótar myndina og bætir við annarri, varanlegri kynslóð gæðataps. Að halda upprunalega sniðinu forðast það.",
-                    "reencodeAck": "Ég skil þetta og vil endurkóta samt"
+                    "reencodeAck": "Ég skil þetta og vil endurkóta samt",
+                    "undo": "Afturkalla",
+                    "redo": "Endurgera",
+                    "applyCrop": "Beita skurði",
+                    "cancelCrop": "Hætta við skurð",
+                    "cropHint": "Tvísmelltu á valið eða ýttu á Enter til að beita, Esc til að hætta við",
+                    "cropRatio": "Hlutföll",
+                    "cropRatioFree": "Frjálst",
+                    "cropRatioOriginal": "Upprunalegt"
                 },
                 "toggleTransparencyBg": "Bakgrunnur gegnsæis (skipta)"
             },

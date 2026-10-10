@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Tabsgivende format: omkodning kasserer nogle billeddata, også tabsfrie redigeringer.",
                     "reencodeWarnTitle": "Konvertering fra tabsgivende til tabsgivende",
                     "reencodeWarnNote": "Konvertering af ét tabsgivende format til et andet omkoder billedet og tilføjer endnu en permanent generation af kvalitetstab. Ved at beholde det originale format undgår du det.",
-                    "reencodeAck": "Jeg forstår og vil omkode alligevel"
+                    "reencodeAck": "Jeg forstår og vil omkode alligevel",
+                    "undo": "Fortryd",
+                    "redo": "Gentag",
+                    "applyCrop": "Anvend beskæring",
+                    "cancelCrop": "Annuller beskæring",
+                    "cropHint": "Dobbeltklik på markeringen eller tryk på Enter for at anvende, Esc for at annullere",
+                    "cropRatio": "Proportioner",
+                    "cropRatioFree": "Fri",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Gennemsigtighedsbaggrund (skift)"
             },

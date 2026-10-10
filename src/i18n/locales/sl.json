@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Oblika z izgubo: ponovno kodiranje zavrze nekaj slikovnih podatkov, tudi urejanja brez izgub.",
                     "reencodeWarnTitle": "Pretvorba iz izgubnega v izgubni format",
                     "reencodeWarnNote": "Pretvorba enega izgubnega formata v drugega sliko znova kodira in doda drugo, trajno generacijo izgube kakovosti. Ohranitev izvirnega formata se temu izogne.",
-                    "reencodeAck": "Razumem in vseeno želim znova kodirati"
+                    "reencodeAck": "Razumem in vseeno želim znova kodirati",
+                    "undo": "Razveljavi",
+                    "redo": "Uveljavi",
+                    "applyCrop": "Uporabi obrezovanje",
+                    "cancelCrop": "Prekliči obrezovanje",
+                    "cropHint": "Dvokliknite izbor ali pritisnite Enter za uporabo, Esc za preklic",
+                    "cropRatio": "Razmerja",
+                    "cropRatioFree": "Prosto",
+                    "cropRatioOriginal": "Izvirnik"
                 },
                 "toggleTransparencyBg": "Ozadje prosojnosti (preklopi)"
             },

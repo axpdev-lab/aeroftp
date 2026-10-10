@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Verlustbehaftetes Format: Beim erneuten Kodieren gehen einige Bilddaten verloren, auch verlustfreie Bearbeitungen.",
                     "reencodeWarnTitle": "Umwandlung von verlustbehaftet zu verlustbehaftet",
                     "reencodeWarnNote": "Das Umwandeln eines verlustbehafteten Formats in ein anderes kodiert das Bild neu und fügt einen zweiten, dauerhaften Qualitätsverlust hinzu. Wird das Originalformat beibehalten, wird dies vermieden.",
-                    "reencodeAck": "Ich verstehe und möchte trotzdem neu kodieren"
+                    "reencodeAck": "Ich verstehe und möchte trotzdem neu kodieren",
+                    "undo": "Rückgängig",
+                    "redo": "Wiederholen",
+                    "applyCrop": "Zuschnitt anwenden",
+                    "cancelCrop": "Zuschnitt abbrechen",
+                    "cropHint": "Auswahl doppelklicken oder Eingabetaste zum Anwenden drücken, Esc zum Abbrechen",
+                    "cropRatio": "Seitenverhältnis",
+                    "cropRatioFree": "Frei",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Transparenz-Hintergrund (wechseln)"
             },

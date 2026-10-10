@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Format stratny: ponowne kodowanie odrzuca część danych obrazu, także edycje bezstratne.",
                     "reencodeWarnTitle": "Konwersja z formatu stratnego na stratny",
                     "reencodeWarnNote": "Konwersja jednego formatu stratnego na inny ponownie koduje obraz i dodaje drugą, trwałą generację utraty jakości. Zachowanie oryginalnego formatu pozwala tego uniknąć.",
-                    "reencodeAck": "Rozumiem i mimo to chcę ponownie zakodować"
+                    "reencodeAck": "Rozumiem i mimo to chcę ponownie zakodować",
+                    "undo": "Cofnij",
+                    "redo": "Ponów",
+                    "applyCrop": "Zastosuj przycięcie",
+                    "cancelCrop": "Anuluj przycinanie",
+                    "cropHint": "Kliknij dwukrotnie zaznaczenie lub naciśnij Enter, aby zastosować, Esc, aby anulować",
+                    "cropRatio": "Proporcje",
+                    "cropRatioFree": "Dowolne",
+                    "cropRatioOriginal": "Oryginalne"
                 },
                 "toggleTransparencyBg": "Tło przezroczystości (przełącz)"
             },

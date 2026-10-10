@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Morfi me apoleies: i epanakodikopoiisi aporriptei orismena dedomena tis eikonas, kai tis epexergasies xoris apoleies.",
                     "reencodeWarnTitle": "Μετατροπή από απωλεστική σε απωλεστική",
                     "reencodeWarnNote": "Η μετατροπή μιας απωλεστικής μορφής σε άλλη επανακωδικοποιεί την εικόνα και προσθέτει μια δεύτερη, μόνιμη γενιά απώλειας ποιότητας. Η διατήρηση της αρχικής μορφής το αποφεύγει.",
-                    "reencodeAck": "Το κατάλαβα και θέλω να επανακωδικοποιήσω ούτως ή άλλως"
+                    "reencodeAck": "Το κατάλαβα και θέλω να επανακωδικοποιήσω ούτως ή άλλως",
+                    "undo": "Αναίρεση",
+                    "redo": "Επανάληψη",
+                    "applyCrop": "Εφαρμογή περικοπής",
+                    "cancelCrop": "Ακύρωση περικοπής",
+                    "cropHint": "Κάντε διπλό κλικ στην επιλογή ή πατήστε Enter για εφαρμογή, Esc για ακύρωση",
+                    "cropRatio": "Αναλογίες",
+                    "cropRatioFree": "Ελεύθερο",
+                    "cropRatioOriginal": "Αρχικό"
                 },
                 "toggleTransparencyBg": "Φόντο διαφάνειας (εναλλαγή)"
             },

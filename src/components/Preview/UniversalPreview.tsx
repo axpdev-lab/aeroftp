@@ -187,6 +187,8 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
                         <div>
                             <h3 className="text-[var(--color-text-primary)] font-medium truncate max-w-md">
                                 {file.name}
+                                {/* Unsaved edits, as editors mark them (#1075) */}
+                                {previewDirty && <span data-preview-dirty className="text-[var(--color-text-secondary)]"> *</span>}
                             </h3>
                             <div className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
                                 <span>{formatFileSize(file.size)}</span>

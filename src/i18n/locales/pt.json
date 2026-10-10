@@ -4075,7 +4075,15 @@
                     "formatLossyNote": "Formato com perdas: a recodificação descarta alguns dados da imagem, incluindo edições sem perdas.",
                     "reencodeWarnTitle": "Conversão de formato com perdas para outro com perdas",
                     "reencodeWarnNote": "Converter um formato com perdas noutro recodifica a imagem e adiciona uma segunda geração permanente de perda de qualidade. Manter o formato original evita-o.",
-                    "reencodeAck": "Compreendo e quero recodificar mesmo assim"
+                    "reencodeAck": "Compreendo e quero recodificar mesmo assim",
+                    "undo": "Desfazer",
+                    "redo": "Refazer",
+                    "applyCrop": "Aplicar recorte",
+                    "cancelCrop": "Cancelar recorte",
+                    "cropHint": "Clique duas vezes na seleção ou pressione Enter para aplicar, Esc para cancelar",
+                    "cropRatio": "Proporções",
+                    "cropRatioFree": "Livre",
+                    "cropRatioOriginal": "Original"
                 },
                 "toggleTransparencyBg": "Fundo de transparência (alternar)"
             },

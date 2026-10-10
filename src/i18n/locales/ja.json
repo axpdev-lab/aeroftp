@@ -4040,7 +4040,15 @@
                     "formatLossyNote": "非可逆形式: 再エンコードで画像データの一部（可逆編集を含む）が失われます。",
                     "reencodeWarnTitle": "非可逆形式から非可逆形式への変換",
                     "reencodeWarnNote": "ある非可逆形式を別の非可逆形式に変換すると画像が再エンコードされ、2回目の恒久的な画質劣化が加わります。元の形式を保持すればこれを回避できます。",
-                    "reencodeAck": "理解した上で、それでも再エンコードする"
+                    "reencodeAck": "理解した上で、それでも再エンコードする",
+                    "undo": "元に戻す",
+                    "redo": "やり直す",
+                    "applyCrop": "切り抜きを適用",
+                    "cancelCrop": "切り抜きをキャンセル",
+                    "cropHint": "選択範囲をダブルクリックするか Enter キーで適用、Esc キーでキャンセル",
+                    "cropRatio": "縦横比",
+                    "cropRatioFree": "フリー",
+                    "cropRatioOriginal": "オリジナル"
                 },
                 "toggleTransparencyBg": "透過の背景（切り替え）"
             },

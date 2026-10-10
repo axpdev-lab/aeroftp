@@ -2748,7 +2748,15 @@
                     "formatLossyNote": "Lossy format: re-encoding discards some image data, including any lossless edits.",
                     "reencodeWarnTitle": "Lossy to lossy conversion",
                     "reencodeWarnNote": "Converting one lossy format to another re-encodes the image and adds a second, permanent generation of loss. Keeping the original format avoids it.",
-                    "reencodeAck": "I understand and want to re-encode anyway"
+                    "reencodeAck": "I understand and want to re-encode anyway",
+                    "undo": "Undo",
+                    "redo": "Redo",
+                    "applyCrop": "Apply crop",
+                    "cancelCrop": "Cancel crop",
+                    "cropHint": "Double-click the selection or press Enter to apply, Esc to cancel",
+                    "cropRatio": "Proportions",
+                    "cropRatioFree": "Free",
+                    "cropRatioOriginal": "Original"
                 }
             },
             "mixer": {

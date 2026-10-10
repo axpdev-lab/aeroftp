@@ -11,18 +11,26 @@
  * - Fit to screen / Actual size toggle
  * - Color picker
  * - AeroImage editor (crop, resize, rotate, flip, adjustments, effects, save as)
+ *
+ * An applied crop is shown at once: the preview is the cropped picture, and
+ * the format is chosen only when saving. Every edit is a step Undo (Ctrl+Z)
+ * and Redo (Ctrl+Y, Ctrl+Shift+Z) walk through; Ctrl+S saves (#1075).
  */
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom, ChevronLeft, ChevronRight } from 'lucide-react';
-import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect, buildOperations } from '../types';
+import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom, ChevronLeft, ChevronRight, Undo2, Redo2, Save } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect } from '../types';
 import type { ImageResult } from '../types';
 import { useI18n } from '../../../i18n';
 import { useImagePreviewBg, writeImagePreviewBg, IMAGE_PREVIEW_BG_PRESETS } from '../../../utils/imagePreviewBg';
 import ImageEditor from './ImageEditor';
 import { CropOverlay, cropCoversWholeImage } from './CropOverlay';
 import { ImageSaveDialog } from './ImageSaveDialog';
+import { EditHistory, applyCrop, commit, createHistory, orientedSize, redo, sameEdits, undo } from './imageEditHistory';
 import { copyText } from '../../../utils/clipboard';
+import { useGuardedClose } from '../../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../../GuardedCloseConfirm';
 
 interface ImageViewerProps extends ViewerBaseProps {
     className?: string;
@@ -40,6 +48,67 @@ interface ImageViewerProps extends ViewerBaseProps {
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 5;
 const ZOOM_STEP = 0.25;
+
+const IMAGE_MIME: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    gif: 'image/gif', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+};
+
+/** True for a key typed into a field, where Ctrl+Z belongs to the field. */
+function isTextField(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    if (target.isContentEditable || target.tagName === 'TEXTAREA') return true;
+    if (target.tagName !== 'INPUT') return false;
+    const type = (target as HTMLInputElement).type;
+    return type !== 'range' && type !== 'checkbox' && type !== 'button';
+}
+
+interface Geometry {
+    crop: CropRect | null;
+    rotation: EditState['rotation'];
+    flipH: boolean;
+    flipV: boolean;
+}
+
+/** The longest side of the edit preview: the screen, not the file. */
+function previewMaxSide(): number {
+    const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+    const screenSide = typeof window !== 'undefined' ? Math.max(window.screen?.width ?? 0, window.screen?.height ?? 0) : 0;
+    return Math.max(1024, Math.round((screenSide || 1920) * dpr));
+}
+
+/**
+ * The picture as the edit shapes it (cropped, then turned clockwise, then
+ * mirrored, the order of the save), for the preview. Crop mode draws on this
+ * picture, so a selection is made on what the user sees. It is drawn at the
+ * size of the screen, so a 24-megapixel photo turns and crops at once; the
+ * selection is still measured in the file's pixels (CropOverlay naturalSize).
+ */
+async function renderGeometry(img: HTMLImageElement, g: Geometry, mime: string): Promise<string> {
+    const sx = g.crop?.x ?? 0;
+    const sy = g.crop?.y ?? 0;
+    const sw = g.crop?.width ?? img.naturalWidth;
+    const sh = g.crop?.height ?? img.naturalHeight;
+    const quarter = g.rotation === 90 || g.rotation === 270;
+    const k = Math.min(1, previewMaxSide() / Math.max(sw, sh));
+    const dw = Math.max(1, Math.round(sw * k));
+    const dh = Math.max(1, Math.round(sh * k));
+    const canvas = document.createElement('canvas');
+    canvas.width = quarter ? dh : dw;
+    canvas.height = quarter ? dw : dh;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('no 2d context');
+    ctx.imageSmoothingQuality = 'high';
+    // The last transform set acts first on the drawing: turn, then mirror.
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(g.flipH ? -1 : 1, g.flipV ? -1 : 1);
+    ctx.rotate((g.rotation * Math.PI) / 180);
+    ctx.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+    const type = mime === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, 0.92));
+    if (!blob) throw new Error('crop preview failed');
+    return URL.createObjectURL(blob);
+}
 
 export const ImageViewer: React.FC<ImageViewerProps> = ({
     file,
@@ -77,14 +146,40 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     const [colorPickMode, setColorPickMode] = useState(false);
     const [pickedColor, setPickedColor] = useState<string | null>(null);
 
-    // AeroImage editor state
+    // AeroImage editor state. `history.present` is the edit the save applies;
+    // `savedEdit` is what is already on disk, for the unsaved marker.
     const [editMode, setEditMode] = useState(false);
-    const [editState, setEditState] = useState<EditState>(INITIAL_EDIT_STATE);
+    const [history, setHistory] = useState<EditHistory>(() => createHistory(INITIAL_EDIT_STATE));
+    const editState = history.present;
+    const [savedEdit, setSavedEdit] = useState<EditState>(INITIAL_EDIT_STATE);
     const [cropMode, setCropMode] = useState(false);
+    // The selection while crop mode is open, in the pixels of the picture on
+    // screen (the cropped one, once a crop is applied); null: all of it.
+    const [cropDraft, setCropDraft] = useState<CropRect | null>(null);
+    // Fixed proportions for the selection (width / height); null: free.
+    const [cropAspect, setCropAspect] = useState<number | null>(null);
     const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
     // Image source URL
     const imageSrc = file.blobUrl || file.content as string || '';
+    // The picture being edited: the file as opened, or as re-read from disk
+    // after Replace Original.
+    const [reloadedSrc, setReloadedSrc] = useState<string | null>(null);
+    const baseSrc = reloadedSrc ?? imageSrc;
+    const baseSrcRef = useRef(baseSrc);
+    baseSrcRef.current = baseSrc;
+    const fileExt = (file.name.split('.').pop() ?? '').toLowerCase();
+    // The preview of the edited geometry (crop, turn, mirror).
+    const [shapedSrc, setShapedSrc] = useState<string | null>(null);
+
+    const setEditState = useCallback((next: EditState) => {
+        setHistory((h) => commit(h, next, Date.now()));
+    }, []);
+    const resetEdits = useCallback(() => {
+        setHistory(createHistory(INITIAL_EDIT_STATE));
+        setSavedEdit(INITIAL_EDIT_STATE);
+        setCropDraft(null);
+    }, []);
 
     // Track previous src to avoid resetting on initial load
     const prevSrcRef = React.useRef<string>(imageSrc);
@@ -100,23 +195,100 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             setImageError(false);
             setMetadata(null);
             setEditMode(false);
-            setEditState(INITIAL_EDIT_STATE);
+            resetEdits();
             setCropMode(false);
             setSaveDialogOpen(false);
+            setReloadedSrc(null);
         }
         prevSrcRef.current = imageSrc;
-    }, [imageSrc]);
+    }, [imageSrc, resetEdits]);
+
+    // A URL this viewer made is released when it is replaced or unmounted.
+    useEffect(() => () => { if (reloadedSrc) URL.revokeObjectURL(reloadedSrc); }, [reloadedSrc]);
+    useEffect(() => () => { if (shapedSrc) URL.revokeObjectURL(shapedSrc); }, [shapedSrc]);
+
+    const decodedBase = useRef<{ src: string; ready: Promise<HTMLImageElement> } | null>(null);
+    // Build the preview of the edited geometry.
+    const geometry = useMemo<Geometry | null>(() => {
+        if (!editMode) return null;
+        const { crop, rotation, flipH, flipV } = editState;
+        return crop || rotation !== 0 || flipH || flipV ? { crop, rotation, flipH, flipV } : null;
+    }, [editMode, editState]);
+    const geometryKey = geometry ? JSON.stringify(geometry) : '';
+    const [shapedKey, setShapedKey] = useState('');
+    useEffect(() => {
+        if (!geometry) {
+            setShapedSrc(null);
+            setShapedKey('');
+            return undefined;
+        }
+        let cancelled = false;
+        // The file is decoded once per picture, not once per edit.
+        const cached = decodedBase.current;
+        const decoded = cached && cached.src === baseSrc
+            ? cached.ready
+            : (() => {
+                const img = new Image();
+                img.src = baseSrc;
+                const ready = img.decode().then(() => img);
+                decodedBase.current = { src: baseSrc, ready };
+                return ready;
+            })();
+        decoded
+            .then((img) => renderGeometry(img, geometry, IMAGE_MIME[fileExt] ?? ''))
+            .then((url) => {
+                if (cancelled) URL.revokeObjectURL(url);
+                else { setShapedSrc(url); setShapedKey(geometryKey); }
+            })
+            .catch(() => { if (!cancelled) { setShapedSrc(null); setShapedKey(''); } });
+        return () => { cancelled = true; };
+        // geometryKey stands for geometry.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [baseSrc, geometryKey, fileExt]);
+    // Until the new preview is ready the last one stays; with no geometry, the file.
+    const displaySrc = (geometry && shapedSrc) || baseSrc;
+    // Crop mode waits for the preview of the current geometry, so the
+    // selection is drawn on the picture the edit describes.
+    const previewCurrent = !geometry || shapedKey === geometryKey;
+    // The picture on screen in the file's pixels: the preview may be smaller.
+    const shownSize = useMemo(() => {
+        if (!metadata) return null;
+        const base = editState.crop ? { width: editState.crop.width, height: editState.crop.height } : { width: metadata.width, height: metadata.height };
+        return editMode ? orientedSize(base, editState.rotation) : base;
+    }, [metadata, editMode, editState.crop, editState.rotation]);
 
     // Report unsaved AeroImage edits up so the preview modal can guard against
     // an accidental click-outside while the user is mid-edit (#270).
+    const exitEditMode = useCallback(() => {
+        setEditMode(false);
+        resetEdits();
+        setCropMode(false);
+    }, [resetEdits]);
+
+    // Unsaved: an open selection, or edits that differ from what was saved.
+    const dirty = editMode && (cropDraft !== null || !sameEdits(editState, savedEdit));
     useEffect(() => {
-        onDirtyChange?.(editMode && buildOperations(editState).length > 0);
-    }, [editMode, editState, onDirtyChange]);
+        onDirtyChange?.(dirty);
+    }, [dirty, onDirtyChange]);
+
+    // Leaving the editor with unsaved edits asks first, as closing the
+    // preview does: Exit Edit used to drop them without a word.
+    const exitGuard = useGuardedClose({ guard: dirty ? 'dirty' : null, onClose: exitEditMode });
+    const toggleEditMode = useCallback(() => {
+        if (editMode) {
+            exitGuard.requestClose();
+        } else {
+            setEditMode(true);
+            setColorPickMode(false);
+            setPickedColor(null);
+        }
+    }, [editMode, exitGuard]);
 
     // Handle image load
     const handleImageLoad = useCallback(() => {
         setImageLoaded(true);
-        if (imageRef.current) {
+        // The size of the file, not of the cropped preview.
+        if (imageRef.current && imageRef.current.getAttribute('src') === baseSrcRef.current) {
             setMetadata({
                 width: imageRef.current.naturalWidth,
                 height: imageRef.current.naturalHeight,
@@ -234,54 +406,136 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     // ─── AeroImage Edit Handlers ─────────────────────────────────────
 
-    const toggleEditMode = useCallback(() => {
-        if (editMode) {
-            setEditMode(false);
-            setEditState(INITIAL_EDIT_STATE);
-            setCropMode(false);
-        } else {
-            setEditMode(true);
-            setColorPickMode(false);
-            setPickedColor(null);
-        }
-    }, [editMode]);
 
     const handleEditStateChange = useCallback((state: EditState) => {
         setEditState(state);
+    }, [setEditState]);
+
+    const original = useMemo(
+        () => ({ width: metadata?.width ?? 0, height: metadata?.height ?? 0 }),
+        [metadata],
+    );
+
+    // The selection becomes part of the edit: the preview shows it cropped.
+    const applyCropDraft = useCallback(() => {
+        if (cropDraft && original.width > 0) {
+            setHistory((h) => commit(h, applyCrop(h.present, cropDraft, original), Date.now()));
+        }
+        setCropDraft(null);
+        setCropMode(false);
+    }, [cropDraft, original]);
+
+    const cancelCrop = useCallback(() => {
+        setCropDraft(null);
+        setCropMode(false);
     }, []);
 
     const handleCropModeToggle = useCallback((active: boolean) => {
-        setCropMode(active);
-        if (active) {
-            setZoom(1);
-            setPosition({ x: 0, y: 0 });
-            setIsFitToScreen(true);
+        if (!active) {
+            // Leaving crop mode with the button keeps the selection.
+            applyCropDraft();
+            return;
         }
-    }, []);
+        setCropDraft(null);
+        setCropMode(true);
+        setZoom(1);
+        setPosition({ x: 0, y: 0 });
+        setIsFitToScreen(true);
+    }, [applyCropDraft]);
 
     const handleCropChange = useCallback((natural: CropRect) => {
-        // The selection starts as the whole image: that is no crop at all,
-        // and must not add a Crop operation to the save.
-        const img = imageRef.current;
-        const whole = !!img && cropCoversWholeImage(natural, img.naturalWidth, img.naturalHeight);
-        setEditState(prev => ({ ...prev, crop: whole ? null : natural }));
+        // The selection starts as the whole picture: that is no crop at all.
+        const whole = !!shownSize && cropCoversWholeImage(natural, shownSize.width, shownSize.height);
+        setCropDraft(whole ? null : natural);
+    }, [shownSize]);
+
+    const canUndo = history.past.length > 0;
+    const canRedo = history.future.length > 0;
+    const handleUndo = useCallback(() => {
+        setCropDraft(null);
+        setCropMode(false);
+        setHistory(undo);
+    }, []);
+    const handleRedo = useCallback(() => {
+        setCropDraft(null);
+        setCropMode(false);
+        setHistory(redo);
     }, []);
 
-    const handleSaveResult = useCallback((result: ImageResult) => {
+    // Save: a selection still open is applied first, as it is on screen.
+    const requestSave = useCallback(() => {
+        if (cropMode) applyCropDraft();
+        setSaveDialogOpen(true);
+    }, [cropMode, applyCropDraft]);
+
+    const handleSaveResult = useCallback(async (result: ImageResult) => {
         setSaveDialogOpen(false);
         window.dispatchEvent(new CustomEvent('file-changed', {
             detail: { path: result.path },
         }));
-        // If replaced original, force image reload
-        if (result.path === file.path) {
-            const img = imageRef.current;
-            if (img) {
-                const src = img.src;
-                img.src = '';
-                img.src = src + (src.includes('?') ? '&' : '?') + `t=${Date.now()}`;
-            }
+        if (result.path !== file.path) {
+            // Saved as a copy: these edits are on disk, in the copy.
+            setSavedEdit(history.present);
+            return;
         }
-    }, [file.path]);
+        // Replaced the original: edit the new file from here, read again
+        // from disk. Reusing the old picture would apply the same edits a
+        // second time to a file that already has them.
+        try {
+            const base64 = await invoke<string>('read_local_file_base64', { path: file.path });
+            const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+            const url = URL.createObjectURL(new Blob([bytes], { type: IMAGE_MIME[fileExt] ?? 'application/octet-stream' }));
+            setImageLoaded(false);
+            setMetadata(null);
+            setReloadedSrc(url);
+            resetEdits();
+            setCropMode(false);
+        } catch (err) {
+            onError?.(String(err));
+        }
+    }, [file.path, fileExt, history.present, resetEdits, onError]);
+
+    // Editor keys: Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Ctrl+S. Caught before the
+    // rest of the app, which has its own Ctrl+S.
+    useEffect(() => {
+        if (!editMode || saveDialogOpen) return undefined;
+        const onKey = (e: KeyboardEvent) => {
+            // The arrows page to the next picture: not while editing this one.
+            if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isTextField(e.target)) {
+                e.stopPropagation();
+                return;
+            }
+            if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+            const key = e.key.toLowerCase();
+            if (key === 's') {
+                e.preventDefault();
+                e.stopPropagation();
+                requestSave();
+                return;
+            }
+            if (isTextField(e.target)) return;
+            if (key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                handleUndo();
+            } else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+                e.preventDefault();
+                e.stopPropagation();
+                handleRedo();
+            }
+        };
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
+    }, [editMode, saveDialogOpen, requestSave, handleUndo, handleRedo]);
+
+    // The editor works on the picture as cropped: sizes and their presets
+    // refer to it.
+    const editorMetadata = useMemo(
+        () => (metadata && editState.crop
+            ? { ...metadata, width: editState.crop.width, height: editState.crop.height }
+            : metadata),
+        [metadata, editState.crop],
+    );
 
     // ─── CSS Filters (live preview) ──────────────────────────────────
 
@@ -297,16 +551,6 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         return parts.length > 0 ? parts.join(' ') : undefined;
     }, [editMode, editState.brightness, editState.contrast, editState.hue, editState.blur, editState.grayscale, editState.invert]);
 
-    // Edit transforms (rotation + flip): not applied during crop mode
-    const editTransform = useMemo(() => {
-        if (!editMode || cropMode) return '';
-        const parts: string[] = [];
-        if (editState.flipH) parts.push('scaleX(-1)');
-        if (editState.flipV) parts.push('scaleY(-1)');
-        if (editState.rotation !== 0) parts.push(`rotate(${editState.rotation}deg)`);
-        return parts.join(' ');
-    }, [editMode, cropMode, editState.flipH, editState.flipV, editState.rotation]);
-
     // Local file check (edit only for local files)
     const canEdit = !file.isRemote;
 
@@ -321,14 +565,12 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             `translate(${effectivePosition.x}px, ${effectivePosition.y}px)`,
             `scale(${effectiveZoom})`,
         ];
+        // The edit's turn and mirror are in the preview picture itself.
         if (!editMode && effectiveRotation !== 0) {
             parts.push(`rotate(${effectiveRotation}deg)`);
         }
-        if (editTransform) {
-            parts.push(editTransform);
-        }
         return parts.join(' ');
-    }, [effectivePosition, effectiveZoom, effectiveRotation, editMode, editTransform]);
+    }, [effectivePosition, effectiveZoom, effectiveRotation, editMode]);
 
     // Render loading state
     if (!imageSrc) {
@@ -351,7 +593,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         <>
                             <button
                                 onClick={onPrevious}
-                                disabled={!hasPrevious}
+                                disabled={!hasPrevious || editMode}
                                 className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 title={t('preview.common.previous')}
                             >
@@ -359,7 +601,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             </button>
                             <button
                                 onClick={onNext}
-                                disabled={!hasNext}
+                                disabled={!hasNext || editMode}
                                 className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                 title={t('preview.common.next')}
                             >
@@ -444,6 +686,40 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                         <SquareDashedBottom size={18} />
                     </button>
 
+                    {/* Undo / Redo / Save, while editing */}
+                    {editMode && (
+                        <>
+                            <div className="w-px h-6 bg-[var(--color-border)] mx-2" />
+                            <button
+                                onClick={handleUndo}
+                                disabled={!canUndo}
+                                data-image-undo
+                                className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={`${t('preview.image.edit.undo')} (Ctrl+Z)`}
+                            >
+                                <Undo2 size={18} className="text-[var(--color-text-secondary)]" />
+                            </button>
+                            <button
+                                onClick={handleRedo}
+                                disabled={!canRedo}
+                                data-image-redo
+                                className="p-2 hover:bg-[var(--color-bg-tertiary)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                title={`${t('preview.image.edit.redo')} (Ctrl+Y)`}
+                            >
+                                <Redo2 size={18} className="text-[var(--color-text-secondary)]" />
+                            </button>
+                            <button
+                                onClick={requestSave}
+                                data-image-save
+                                className={`ml-1 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-medium ${dirty ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] text-[var(--color-text-secondary)]'}`}
+                                title={`${t('preview.image.edit.saveTitle')} (Ctrl+S)`}
+                            >
+                                <Save size={16} />
+                                <span>{t('preview.image.edit.saveTitle')}{dirty ? ' *' : ''}</span>
+                            </button>
+                        </>
+                    )}
+
                     {/* Edit button (local files only) */}
                     {canEdit && (
                         <>
@@ -464,10 +740,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     )}
                 </div>
 
-                {/* Image info */}
-                {metadata && (
+                {/* Image info: the size being edited, after an applied crop */}
+                {editorMetadata && (
                     <div className="text-xs text-[var(--color-text-tertiary)] font-mono">
-                        {metadata.width} × {metadata.height} • {metadata.format}
+                        {editorMetadata.width} × {editorMetadata.height} • {editorMetadata.format}
                     </div>
                 )}
             </div>
@@ -508,7 +784,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     {/* Image */}
                     <img
                         ref={imageRef}
-                        src={imageSrc}
+                        src={displaySrc}
                         alt={file.name}
                         onClick={handleColorPick}
                         className={`max-w-full max-h-full transition-opacity duration-300 select-none ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
@@ -524,13 +800,15 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     />
 
                     {/* Crop overlay */}
-                    {cropMode && imageLoaded && (
+                    {cropMode && imageLoaded && previewCurrent && (
                         <CropOverlay
                             imageRef={imageRef}
-                            aspectRatio={null}
-                            initialCrop={editState.crop}
+                            aspectRatio={cropAspect}
+                            naturalSize={shownSize}
+                            initialCrop={null}
                             onCropChange={handleCropChange}
-                            onCancel={() => setCropMode(false)}
+                            onApply={applyCropDraft}
+                            onCancel={cancelCrop}
                         />
                     )}
 
@@ -544,15 +822,21 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 </div>
 
                 {/* Editor sidebar */}
-                {editMode && metadata && (
+                {editMode && editorMetadata && (
                     <ImageEditor
                         file={file}
-                        metadata={metadata}
+                        metadata={editorMetadata}
                         editState={editState}
                         onEditStateChange={handleEditStateChange}
                         onCropModeToggle={handleCropModeToggle}
+                        onCropApply={applyCropDraft}
+                        onCropCancel={cancelCrop}
+                        cropAspect={cropAspect}
+                        onCropAspectChange={setCropAspect}
+                        shownSize={shownSize}
                         cropMode={cropMode}
-                        onSaveRequest={() => setSaveDialogOpen(true)}
+                        dirty={dirty}
+                        onSaveRequest={requestSave}
                     />
                 )}
             </div>
@@ -563,13 +847,18 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                 filePath={file.path}
                 fileName={file.name}
                 editState={editState}
-                originalDimensions={{
-                    width: metadata?.width ?? 0,
-                    height: metadata?.height ?? 0,
-                }}
+                originalDimensions={original}
                 onSaved={handleSaveResult}
                 onClose={() => setSaveDialogOpen(false)}
             />
+
+            {exitGuard.confirmOpen && exitGuard.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={exitGuard.confirmKind}
+                    onKeep={exitGuard.cancelConfirm}
+                    onConfirm={exitGuard.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
