@@ -1235,13 +1235,19 @@ impl StorageProvider for CryptOverlayProvider {
         } else {
             entry.name
         };
-        // Decode as the target was encoded: a relative target is encrypted in
-        // full (it resolves against the current directory, wherever that is),
-        // so the path the provider returns for it is decrypted in full too; an
-        // absolute one only below the anchor.
+        // Decode as the target was encoded: an absolute target only below the
+        // anchor. A relative one is encrypted in full (it resolves against the
+        // current directory, wherever that is), so the path the provider
+        // returns for it is decrypted in full too, except when that path lands
+        // at or under the anchor: the anchor is a name on the server and stays
+        // as it is, like in `list` (#1077, an anchor whose name is ciphertext).
         let plain_path = if !is_enc {
             entry.path
-        } else if path.starts_with('/') {
+        } else if path.starts_with('/')
+            || (entry.path.starts_with('/')
+                && (norm_abs(&entry.path) == self.scope
+                    || self.wire_path_is_encrypted(&entry.path)))
+        {
             decode_scoped(&self.keys, &self.scope, &entry.path, entry.is_dir)
         } else {
             decode_entry_path(&self.keys, &entry.path, entry.is_dir)
@@ -3565,6 +3571,29 @@ mod tests {
             assert_eq!(
                 entry.path, "/Other/report",
                 "{label}: path decoded like the name"
+            );
+        }
+    }
+
+    /// The same relative `stat` from inside an anchor whose own name is
+    /// ciphertext (#1077): the provider returns the path under the anchor, and
+    /// only the part below the anchor is decrypted, so the anchor stays as it
+    /// is on the server and the path can be opened.
+    #[tokio::test]
+    async fn stat_of_a_relative_target_inside_a_ciphertext_anchor_keeps_the_anchor() {
+        for (label, keys) in both_kinds() {
+            let cipher = keys.encode_name("cartella-cifrata", true).unwrap();
+            let scope = format!("/top/{cipher}");
+            let mut provider =
+                CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, &scope);
+            provider.mkdir(&format!("{scope}/report")).await.unwrap();
+            provider.cd(&scope).await.unwrap();
+            let entry = provider.stat("report").await.unwrap();
+            assert_eq!(entry.name, "report", "{label}");
+            assert_eq!(
+                entry.path,
+                format!("{scope}/report"),
+                "{label}: anchor kept, child decrypted"
             );
         }
     }
