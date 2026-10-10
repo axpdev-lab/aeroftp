@@ -98,15 +98,14 @@ pub async fn process_image(
         // image is rejected before allocation rather than spiking memory.
         // (CLAUDE-AV-B1-08)
         const MAX_DECODE_DIMENSION: u32 = 16384;
-        let mut reader = image::ImageReader::open(&input)
+        let reader = image::ImageReader::open(&input)
             .map_err(|e| format!("Failed to open image: {e}"))?
             .with_guessed_format()
             .map_err(|e| format!("Failed to read image format: {e}"))?;
         let mut limits = image::Limits::default();
         limits.max_image_width = Some(MAX_DECODE_DIMENSION);
         limits.max_image_height = Some(MAX_DECODE_DIMENSION);
-        reader.limits(limits);
-        let mut img = decode_upright(reader)?;
+        let mut img = decode_upright(reader, limits)?;
 
         // Apply operations in order
         for op in &operations {
@@ -185,12 +184,22 @@ pub async fn process_image(
 /// ignores it crops the sideways picture: the selection lands elsewhere or
 /// "exceeds image bounds" (#1075). The saved file carries no EXIF, so the
 /// turn has to be in the pixels.
+///
+/// `limits` bound the decode as `ImageReader::decode` does, including the
+/// decoded-buffer allocation (`max_alloc`, 512 MiB by default): the decoder
+/// path does not reserve it on its own, so a small file declaring a huge
+/// picture would otherwise be allocated before any check.
 fn decode_upright<R: std::io::BufRead + std::io::Seek>(
-    reader: image::ImageReader<R>,
+    mut reader: image::ImageReader<R>,
+    mut limits: image::Limits,
 ) -> Result<DynamicImage, String> {
     use image::ImageDecoder;
+    reader.limits(limits.clone());
     let mut decoder = reader
         .into_decoder()
+        .map_err(|e| format!("Failed to open image: {e}"))?;
+    limits
+        .reserve(decoder.total_bytes())
         .map_err(|e| format!("Failed to open image: {e}"))?;
     let orientation = decoder
         .orientation()
@@ -296,7 +305,7 @@ mod tests {
         let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
             .with_guessed_format()
             .expect("format");
-        let img = decode_upright(reader).expect("decode");
+        let img = decode_upright(reader, image::Limits::default()).expect("decode");
         // Stored 4x2, shown (and cropped) as 2x4.
         assert_eq!(img.dimensions(), (2, 4));
         // A crop of the bottom half of what the preview shows fits.
@@ -319,6 +328,27 @@ mod tests {
         let reader = image::ImageReader::new(std::io::Cursor::new(out))
             .with_guessed_format()
             .expect("format");
-        assert_eq!(decode_upright(reader).expect("decode").dimensions(), (4, 2));
+        assert_eq!(
+            decode_upright(reader, image::Limits::default())
+                .expect("decode")
+                .dimensions(),
+            (4, 2)
+        );
+    }
+
+    #[test]
+    fn refuses_a_picture_larger_than_the_allocation_limit_before_decoding_it() {
+        // 4x2 RGB needs 24 bytes; a 16-byte allowance must refuse it, as
+        // ImageReader::decode does with its 512 MiB default.
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(&[0u8; 4 * 2 * 3], 4, 2, image::ExtendedColorType::Rgb8)
+            .expect("encode");
+        let reader = image::ImageReader::new(std::io::Cursor::new(out))
+            .with_guessed_format()
+            .expect("format");
+        let mut limits = image::Limits::default();
+        limits.max_alloc = Some(16);
+        assert!(decode_upright(reader, limits).is_err());
     }
 }
