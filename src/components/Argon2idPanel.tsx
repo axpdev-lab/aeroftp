@@ -18,12 +18,17 @@ type SaltEncoding = (typeof SALT_ENCODINGS)[number];
  *  32 bytes and belong to that format, not to this calculator.
  *  `crypto::derive_key` (64 MiB, t=3) is the credential-store profile and is
  *  intentionally not copied here. */
-export const HASH_FORGE_ARGON2_DEFAULTS = {
+export const HASH_FORGE_ARGON2_DEFAULTS: {
+    readonly memoryKib: number;
+    readonly iterations: number;
+    readonly parallelism: number;
+    readonly outputLen: number;
+} = {
     memoryKib: 128 * 1024,
     iterations: 4,
     parallelism: 4,
     outputLen: 32,
-} as const;
+};
 /** Mirrors ARGON2_MEMORY_KIB_MAX in cyber_tools.rs; the backend enforces it. */
 const MEMORY_KIB_MAX = 2 * 1024 * 1024;
 
