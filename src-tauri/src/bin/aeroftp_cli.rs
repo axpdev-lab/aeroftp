@@ -33253,8 +33253,9 @@ mod serve_sftp {
                 // assumed from the name.
                 //
                 // Not the two SIDES. `client_supported()` returns those five
-                // plus GssapiWithMic, so it is not a drop-in here: russh 0.63.1
-                // ships no gssapi implementation in its server module, and a
+                // plus GssapiWithMic, so it is not a drop-in here: russh (0.63.1
+                // and 0.64.1, re-read) ships no gssapi implementation in its
+                // server module, and a
                 // `server::Config` built from it would advertise a method it
                 // cannot honour. The equality that makes this substitution
                 // behaviour-preserving is with the OLD `all()`, not with the

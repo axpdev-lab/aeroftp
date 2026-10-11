@@ -133,6 +133,25 @@ updates:
         versions: [">=2.11.1"]
       - dependency-name: "@tauri-apps/cli"
         versions: [">=2.11.1"]
+      # The same pin, seen from the plugins. Each floor below is the first
+      # release whose JS package requires @tauri-apps/api ^2.12.0 and whose
+      # Rust crate requires tauri ^2.12 (measured on npm and crates.io on
+      # 2026-10-11). Taking one moves @tauri-apps/api to 2.12 in the lock and
+      # `tauri build` rejects the JS/Rust plugin skew, which is why #1085,
+      # #1088, #1089, #1170, #1172 and #1173 were red on the release job.
+      # Patches below each floor stay open. Remove these with the tauri pin.
+      - dependency-name: "@tauri-apps/plugin-autostart"
+        versions: [">=2.6.0"]
+      - dependency-name: "@tauri-apps/plugin-dialog"
+        versions: [">=2.8.0"]
+      - dependency-name: "@tauri-apps/plugin-fs"
+        versions: [">=2.6.0"]
+      - dependency-name: "@tauri-apps/plugin-log"
+        versions: [">=2.10.0"]
+      - dependency-name: "@tauri-apps/plugin-notification"
+        versions: [">=2.5.0"]
+      - dependency-name: "@tauri-apps/plugin-shell"
+        versions: [">=2.4.0"]
       - dependency-name: "vite"
         update-types: ["version-update:semver-major"]
       - dependency-name: "tailwindcss"
