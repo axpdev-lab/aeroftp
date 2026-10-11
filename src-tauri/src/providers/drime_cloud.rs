@@ -3162,7 +3162,8 @@ mod tests {
         let changes = changes.lock().unwrap().clone();
         assert_eq!(changes.len(), 3, "{changes:?}");
         assert!(
-            changes[0].starts_with("rename 12 .b.txt.aeroftp-replaced-"),
+            changes[0].starts_with("rename 12 .aeroftp-replaced-")
+                && changes[0].ends_with(".b.txt"),
             "{changes:?}"
         );
         assert_eq!(changes[1], "rename 11 b.txt");

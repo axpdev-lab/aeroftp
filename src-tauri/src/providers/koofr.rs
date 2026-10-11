@@ -2320,12 +2320,14 @@ mod tests {
         let changes = changes.lock().unwrap().clone();
         assert_eq!(changes.len(), 3, "{changes:?}");
         assert!(
-            changes[0].starts_with("rename /d/b.txt /d/.b.txt.aeroftp-replaced-"),
+            changes[0].starts_with("rename /d/b.txt /d/.aeroftp-replaced-")
+                && changes[0].ends_with(".b.txt"),
             "{changes:?}"
         );
         assert_eq!(changes[1], "rename /d/a.txt /d/b.txt");
         assert!(
-            changes[2].starts_with("remove /d/.b.txt.aeroftp-replaced-"),
+            changes[2].starts_with("remove /d/.aeroftp-replaced-")
+                && changes[2].ends_with(".b.txt"),
             "{changes:?}"
         );
         let store = store.lock().unwrap().clone();

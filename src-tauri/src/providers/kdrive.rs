@@ -2775,7 +2775,10 @@ mod tests {
         assert_eq!(*store.lock().unwrap(), [(11, "b.txt".to_string())]);
         let changes = changes.lock().unwrap().clone();
         assert_eq!(changes.len(), 3, "{changes:?}");
-        assert!(changes[0].starts_with("move 12 .b.txt."), "{changes:?}");
+        assert!(
+            changes[0].starts_with("move 12 .aeroftp-replaced-") && changes[0].ends_with(".b.txt"),
+            "{changes:?}"
+        );
         assert_eq!(changes[1..], ["move 11 b.txt", "delete 12"]);
     }
 

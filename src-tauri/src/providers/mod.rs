@@ -1013,16 +1013,17 @@ pub trait StorageProvider: Send + Sync {
     /// The default forwards to `rename`, which is what every caller did
     /// before this method existed. A backend whose rename refuses an occupied
     /// destination must override this, or every replace onto an existing
-    /// file fails: SFTP, WebDAV, the copy-based backends (S3, B2, Swift,
-    /// Azure, Cloudinary, OpenDrive), FTP, ImageKit, pCloud, Yandex Disk and
-    /// the MTP folder overwrite in one server step, MEGAcmd and Jottacloud
-    /// send their move without the look their rename makes, OneDrive
-    /// replaces in the request that moves, Google Drive uploads the new
-    /// content as a revision of the file there, and MEGA, Filen, FileLu,
-    /// Dropbox, Koofr, Drime and kDrive, which have neither, set the old item
-    /// aside first (see [`set_aside_name`]). A backend with none of these keeps the default,
-    /// whose refusal is the answer, and says so through
-    /// [`StorageProvider::supports_atomic_replace`].
+    /// file fails: SFTP, the copy-based backends (S3, B2, Swift, Azure,
+    /// Cloudinary, OpenDrive), FTP, ImageKit, pCloud, Yandex Disk and the
+    /// MTP folder overwrite in one server step, MEGAcmd and Jottacloud send
+    /// their move without the look their rename makes, OneDrive replaces in
+    /// the request that moves, Google Drive uploads the new content as a
+    /// revision of the file there, and MEGA, Filen, FileLu, Dropbox, Koofr,
+    /// Drime and kDrive, which have neither, set the old item aside first
+    /// (see [`set_aside_name`]), as WebDAV does, whose overwriting MOVE
+    /// deletes the destination before it moves (RFC 4918 section 9.9.3). A
+    /// backend with none of these keeps the default, whose refusal is the
+    /// answer, and says so through [`StorageProvider::supports_atomic_replace`].
     ///
     /// A replace puts a file in place of a file or a folder in place of a
     /// folder. Across the two (see [`refuse_replace_across_types`]) it is
@@ -1044,8 +1045,8 @@ pub trait StorageProvider: Send + Sync {
     /// backend that has actually measured its own ground says otherwise:
     /// `SftpProvider`, which asks the server whether it offers
     /// `posix-rename@openssh.com`; the backends whose replace sets the old
-    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, see
-    /// [`StorageProvider::replace_sets_aside`]); those whose move over a file is not
+    /// item aside (MEGA, Filen, FileLu, Dropbox, Koofr, Drime, kDrive,
+    /// WebDAV, see [`StorageProvider::replace_sets_aside`]); those whose move over a file is not
     /// documented as one step (MEGAcmd, Jottacloud); those with no replace
     /// at all, whose rename refuses a taken name or who have no rename (each
     /// says why on its own answer); and ImageKit and OpenDrive, which
@@ -1110,9 +1111,12 @@ pub trait StorageProvider: Send + Sync {
     /// would upload a temporary that the replace then refuses to publish.
     ///
     /// `true` on MEGA through the native API, Filen, FileLu, Dropbox, Koofr,
-    /// Drime and kDrive. Not on MEGAcmd or Jottacloud: their replace is a
-    /// server move over the file whose atomicity is not documented, not a
-    /// set-aside. The overlays (crypt, compress) forward the inner answer.
+    /// Drime, kDrive and WebDAV (not on a single-file WebDAV profile). Not on
+    /// MEGAcmd or Jottacloud: their replace is a server move over the file
+    /// whose atomicity is not documented, not a set-aside. The overlays
+    /// (crypt, compress) forward the inner answer. Onto a free name the
+    /// replace of every one of them is its rename, which is what lets
+    /// [`ensure_atomic_replace`] pass a publish where nothing is yet.
     ///
     /// [`replace`]: StorageProvider::replace
     fn replace_sets_aside(&self) -> bool {
@@ -2077,12 +2081,27 @@ pub async fn delete_file_only(
 /// SFTP is one channel and one init, and it buys an error that names both
 /// facts the reader needs: why this server cannot do it, and that their file
 /// is untouched.
+///
+/// A backend whose replace sets the old item aside
+/// ([`StorageProvider::replace_sets_aside`]) passes when nothing is at
+/// `target`, which costs one more question: there is nothing to set aside,
+/// so the publish is the rename onto a free name, one step that leaves no
+/// moment without a file (the heal of a missing crypt marker, a legacy
+/// marker migration). A backend whose replace is only its rename may have
+/// no rename at all, so it is refused either way.
+///
+/// The answer says how to publish, and why: [`StagedPublish::Create`] when
+/// the target was free and that alone let the backend through,
+/// [`StagedPublish::Replace`] otherwise.
 pub async fn ensure_atomic_replace(
     provider: &mut dyn StorageProvider,
     target: &str,
-) -> Result<(), ProviderError> {
+) -> Result<StagedPublish, ProviderError> {
     if provider.supports_atomic_replace().await? {
-        return Ok(());
+        return Ok(StagedPublish::Replace);
+    }
+    if provider.replace_sets_aside() && !provider.exists(target).await? {
+        return Ok(StagedPublish::Create);
     }
     Err(ProviderError::NotSupported(format!(
         "cannot replace `{target}` atomically: this server offers no way to put one file \
@@ -2108,15 +2127,19 @@ pub async fn ensure_atomic_replace(
 ///
 /// The crypt and AeroCrypt marker paths call [`ensure_atomic_replace`]
 /// directly: they have no opt-in, so their refusal names none.
+///
+/// The answer is the publish, as for [`ensure_atomic_replace`]: the opt-in
+/// is a replace, and without it a set-aside backend passes only onto a free
+/// name (the file went away after it was read), which makes it a creation.
 pub async fn ensure_edit_can_replace(
     provider: &mut dyn StorageProvider,
     target: &str,
     allow_non_atomic: bool,
     opt_in: &str,
-) -> Result<(), ProviderError> {
+) -> Result<StagedPublish, ProviderError> {
     if allow_non_atomic {
         if provider.supports_atomic_replace().await? || provider.replace_sets_aside() {
-            return Ok(());
+            return Ok(StagedPublish::Replace);
         }
         return Err(ProviderError::NotSupported(opt_in_cannot_set_aside(
             target, opt_in,
@@ -2127,6 +2150,65 @@ pub async fn ensure_edit_can_replace(
             ProviderError::NotSupported(format!("{refusal} {}", set_aside_opt_in_hint(opt_in))),
         ),
         other => other,
+    }
+}
+
+/// How a temporary staged beside its target goes into the target's place,
+/// as [`ensure_atomic_replace`] or [`ensure_edit_can_replace`] answered
+/// before it was staged. The answer carries why the check passed, and the
+/// publish keeps to it: publish with [`StagedPublish::publish`], never with
+/// a bare [`StorageProvider::replace`].
+///
+/// The check and the publish are separate requests (CodeRabbit on #1154).
+/// On a backend that replaces atomically, or under an edit's opt-in, the
+/// check passes whatever is at the target and the publish replaces it:
+/// whoever writes last wins, which is what a replace is. A backend whose
+/// replace sets the old item aside passes only because nothing was at the
+/// target, and a replace would set aside and delete an item another client
+/// put there in between. Its publish is therefore the rename, which refuses
+/// a taken name. On WebDAV (a MOVE with `Overwrite: F`, 412), Dropbox,
+/// Koofr, kDrive (409) and Drime (a rename within one folder) the server
+/// refuses it, which closes that window. MEGA, Filen and FileLu keep two
+/// items under one name, so their rename looks for the name first: an item
+/// written between that look and the move ends up beside ours under the
+/// same name, and neither is deleted.
+///
+/// Bind the answer (`let publish = ensure_atomic_replace(..)?`): the
+/// `must_use` below catches one dropped by `?;`, not one an `if let Err`
+/// never bound.
+#[must_use = "publish with `StagedPublish::publish`: a bare `replace` deletes what another \
+              client wrote at a target the check found free"]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StagedPublish {
+    /// [`StorageProvider::replace`]: the backend replaces atomically, or an
+    /// edit opted into the replace that sets the old file aside.
+    Replace,
+    /// [`StorageProvider::rename`]: the check passed only because nothing was
+    /// at the target, so the target has to be free still.
+    Create,
+}
+
+impl StagedPublish {
+    /// Put the staged `from` at `to`. Under [`StagedPublish::Create`] an item
+    /// found at `to` is left as it is, and the answer is AlreadyExists: nothing
+    /// was published. On any error the caller deletes `from`, as after every
+    /// other failed publish.
+    pub async fn publish(
+        self,
+        provider: &mut dyn StorageProvider,
+        from: &str,
+        to: &str,
+    ) -> Result<(), ProviderError> {
+        match self {
+            Self::Replace => provider.replace(from, to).await,
+            Self::Create => match provider.rename(from, to).await {
+                Err(ProviderError::AlreadyExists(_)) => Err(ProviderError::AlreadyExists(format!(
+                    "{to} was free when checked and is taken now: another client wrote it in \
+                     the meantime. It was left as it is and nothing was published"
+                ))),
+                outcome => outcome,
+            },
+        }
     }
 }
 
@@ -2327,15 +2409,21 @@ pub async fn keep_edit_original(
 /// The name an item displaced by a replace takes until it is deleted, on a
 /// backend that can neither overwrite on a move nor swap two items in one
 /// call (MEGA, Filen, FileLu, Google Drive for folders, and through
-/// [`replace_by_setting_aside`] Dropbox, Koofr, Drime and kDrive). Their `replace` renames the item
-/// at the destination to this, moves the new one in, and only then deletes
-/// it: no step can lose either item, and the name is hidden and unique so it
-/// never meets another. The destination is empty between the first two
-/// steps, which is why those backends answer `false` to
-/// [`StorageProvider::supports_atomic_replace`].
+/// [`replace_by_setting_aside`] Dropbox, Koofr, Drime and kDrive), or whose
+/// overwriting move deletes the destination first (WebDAV, through the same
+/// helper). Their `replace` renames the item at the destination to this,
+/// moves the new one in, and only then deletes it: no step can lose either
+/// item, and the name is hidden and unique so it never meets another. The
+/// destination is empty between the first two steps, which is why those
+/// backends answer `false` to [`StorageProvider::supports_atomic_replace`].
+///
+/// The marker comes before the name, so the name never begins with `.ht`,
+/// which Apache's default configuration refuses (`<Files ".ht*">`): with
+/// the name first, setting `html.txt` aside on such a WebDAV server was a
+/// 403 before anything moved.
 pub(crate) fn set_aside_name(name: &str) -> String {
     let unique = uuid::Uuid::new_v4().simple().to_string();
-    format!(".{name}.aeroftp-replaced-{}", &unique[..8])
+    format!(".aeroftp-replaced-{}.{name}", &unique[..8])
 }
 
 /// The error of a set-aside replace whose move of the new item into `to`
@@ -3163,15 +3251,21 @@ mod tests {
         }
     }
 
-    /// Hidden, unique, and naming what it stands in for.
+    /// Hidden, unique, naming what it stands in for, and never a name that a
+    /// server refuses out of the box: Apache's default configuration denies
+    /// every name that begins with `.ht` (measured on the lab WebDAV on
+    /// 2026-10-10: PUT and MOVE to `.html.txt.aeroftp-replaced-1` answer
+    /// 403), so setting `html.txt` aside failed before anything moved.
     #[test]
-    fn a_set_aside_name_is_hidden_unique_and_readable() {
-        let first = set_aside_name("report.pdf");
-        assert!(
-            first.starts_with(".report.pdf.aeroftp-replaced-"),
-            "{first}"
-        );
-        assert_ne!(first, set_aside_name("report.pdf"));
+    fn a_set_aside_name_is_hidden_unique_readable_and_never_refused_by_default() {
+        for name in ["report.pdf", "html.txt", "htdocs", "ht", ".htaccess", "a"] {
+            let aside = set_aside_name(name);
+            assert!(aside.starts_with('.'), "{aside}");
+            assert!(aside.contains(name), "{aside}");
+            assert!(aside.contains("aeroftp-replaced"), "{aside}");
+            assert!(!aside.starts_with(".ht"), "{aside}");
+            assert_ne!(aside, set_aside_name(name));
+        }
     }
 
     /// Row 4: an empty body degrades to a stable placeholder, never panics.
@@ -3633,6 +3727,10 @@ pub(crate) mod edit_replace_tests {
         pub(crate) chmod: bool,
         /// When set, `chmod` fails with this.
         pub(crate) chmod_fails_with: Option<String>,
+        /// Another client's write, taken by the next upload: the path and
+        /// its bytes land on the server right after the upload, between a
+        /// caller's preflight and its publish.
+        pub(crate) appears_on_upload: Option<(String, Vec<u8>)>,
     }
 
     impl EditFake {
@@ -3649,6 +3747,7 @@ pub(crate) mod edit_replace_tests {
                 links: HashMap::new(),
                 chmod: false,
                 chmod_fails_with: None,
+                appears_on_upload: None,
             }
         }
     }
@@ -3709,6 +3808,10 @@ pub(crate) mod edit_replace_tests {
             self.uploads.push(remote_path.to_string());
             self.modes.entry(remote_path.to_string()).or_insert(0o644);
             self.files.insert(remote_path.to_string(), data);
+            if let Some((path, theirs)) = self.appears_on_upload.take() {
+                self.modes.insert(path.clone(), 0o644);
+                self.files.insert(path, theirs);
+            }
             Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -3828,6 +3931,10 @@ pub(crate) mod edit_replace_tests {
             let outcome = ensure_edit_can_replace(&mut p, "/t.txt", allow, "`--opt`").await;
             let case = format!("atomic {atomic}, sets aside {sets_aside}, opt-in {allow}");
             assert_eq!(outcome.is_ok(), passes, "{case}: {outcome:?}");
+            if let Ok(publish) = outcome {
+                assert_eq!(publish, StagedPublish::Replace, "{case}: the file is there");
+                continue;
+            }
             if let Err(e) = outcome {
                 let text = e.to_string();
                 assert!(text.contains("Nothing was written"), "{case}: {text}");
@@ -3902,6 +4009,8 @@ pub(crate) mod edit_replace_tests {
     async fn the_shared_refusal_names_no_edit_opt_in() {
         for sets_aside in [false, true] {
             let mut p = EditFake::new(false, sets_aside);
+            p.files
+                .insert("/.aerocrypt.tsv".to_string(), b"marker".to_vec());
             let text = ensure_atomic_replace(&mut p, "/.aerocrypt.tsv")
                 .await
                 .unwrap_err()
@@ -3912,5 +4021,63 @@ pub(crate) mod edit_replace_tests {
                 "a marker refusal must not suggest an edit flag: {text}"
             );
         }
+    }
+
+    /// A marker written where none is (the heal of a missing one, a legacy
+    /// migration) replaces nothing. On a backend whose replace sets the old
+    /// item aside, the publish onto a free name is its rename, one step with
+    /// no moment in which a file is missing, so the preflight passes and
+    /// answers a creation; a backend whose replace is only its rename may
+    /// have no rename at all, and is still refused.
+    #[tokio::test]
+    async fn a_publish_onto_a_free_name_passes_where_the_replace_sets_aside() {
+        for (sets_aside, passes) in [(true, true), (false, false)] {
+            let mut p = EditFake::new(false, sets_aside);
+            let outcome = ensure_atomic_replace(&mut p, "/.aerocrypt.tsv").await;
+            assert_eq!(
+                outcome.as_ref().ok(),
+                passes.then_some(&StagedPublish::Create),
+                "sets aside {sets_aside}: {outcome:?}"
+            );
+            assert!(p.uploads.is_empty() && p.replaces.is_empty());
+        }
+        let mut atomic = EditFake::new(true, false);
+        let publish = ensure_atomic_replace(&mut atomic, "/.aerocrypt.tsv").await;
+        assert_eq!(publish.ok(), Some(StagedPublish::Replace));
+    }
+
+    /// CodeRabbit on #1154: a creation leaves alone an item another client
+    /// put at the target after the check, answers AlreadyExists, and never
+    /// replaces; onto a name still free it moves the staged file in.
+    #[tokio::test]
+    async fn a_creation_never_replaces_what_another_client_wrote() {
+        let mut p = EditFake::new(false, true);
+        p.files = HashMap::from([
+            ("/m.tmp".to_string(), b"ours".to_vec()),
+            ("/m.tsv".to_string(), b"theirs".to_vec()),
+        ]);
+        let text = StagedPublish::Create
+            .publish(&mut p, "/m.tmp", "/m.tsv")
+            .await
+            .unwrap_err();
+        assert!(matches!(text, ProviderError::AlreadyExists(_)), "{text}");
+        assert!(text.to_string().contains("nothing was published"), "{text}");
+        assert!(p.replaces.is_empty(), "{:?}", p.replaces);
+        assert_eq!(
+            p.files.get("/m.tsv").map(Vec::as_slice),
+            Some(&b"theirs"[..])
+        );
+        assert_eq!(p.files.get("/m.tmp").map(Vec::as_slice), Some(&b"ours"[..]));
+
+        p.files.remove("/m.tsv");
+        StagedPublish::Create
+            .publish(&mut p, "/m.tmp", "/m.tsv")
+            .await
+            .expect("a free name");
+        assert_eq!(
+            p.files,
+            HashMap::from([("/m.tsv".to_string(), b"ours".to_vec())])
+        );
+        assert!(p.replaces.is_empty(), "{:?}", p.replaces);
     }
 }

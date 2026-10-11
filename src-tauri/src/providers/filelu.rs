@@ -2647,7 +2647,8 @@ mod tests {
         let calls = calls.lock().unwrap().clone();
         assert_eq!(calls.len(), 3, "{calls:?}");
         assert!(
-            calls[0].starts_with("/api/file/rename?file_code=OLD&name=.a.txt.aeroftp-replaced-"),
+            calls[0].starts_with("/api/file/rename?file_code=OLD&name=.aeroftp-replaced-")
+                && calls[0].ends_with(".a.txt"),
             "{calls:?}"
         );
         assert_eq!(calls[1], "/api/file/rename?file_code=NEW&name=a.txt");
@@ -2682,7 +2683,7 @@ mod tests {
         assert!(
             warnings
                 .iter()
-                .any(|w| w.contains("set aside as /dst/.a.txt.aeroftp-replaced-")),
+                .any(|w| w.contains("set aside as /dst/.aeroftp-replaced-")),
             "the leftover is named where it is: {warnings:?}"
         );
     }

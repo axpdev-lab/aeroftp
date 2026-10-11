@@ -3993,16 +3993,24 @@ impl StorageProvider for WebDavProvider {
         }
     }
 
-    /// `MOVE` with `Overwrite: T`, which is the one difference from
-    /// [`rename`](Self::rename) and the whole point of the method.
+    /// Sets the file at `to` aside, moves `from` in, and only then deletes
+    /// the one set aside: see [`super::replace_by_setting_aside`]. Every MOVE
+    /// it sends is a [`rename`](Self::rename), with `Overwrite: F`.
     ///
-    /// RFC 4918 section 10.6 makes `Overwrite: F` mean "fail with 412 if the
-    /// destination exists", and that is deliberately what `rename` keeps
-    /// sending: a user renaming one file onto another must not lose the
-    /// second one silently. Publishing a staged temporary is the opposite
-    /// case, where the destination is meant to go, and section 9.9.3 says the
-    /// server deletes it as part of the MOVE, so this is a single request and
-    /// not a delete followed by a move (G119).
+    /// Not one MOVE with `Overwrite: T`, which is what this sent until
+    /// 2026-10-10: RFC 4918 section 9.9.3 has the server DELETE the
+    /// destination before it moves, and a move that fails after that delete
+    /// does not bring the destination back. Measured that day: Apache
+    /// mod_dav 2.4.66 and golang.org/x/net/webdav (`rclone serve webdav`
+    /// 1.75.1) unlink the destination and then rename, and a rename that
+    /// fails leaves no destination at all (500 and 403); Nextcloud 33 sends
+    /// it to the trash first, a MOVE whose source another client was reading
+    /// failed with 500 `LockedException` after that, and readers polling the
+    /// name during ten replaces saw 404 five times in ninety. Only nginx 1.31
+    /// renames a file over another, and it deletes a folder's tree first. A
+    /// client cannot tell which server it reaches (the lab's Apache and that
+    /// Nextcloud both answer `Server: nginx`), so it never asks a server to
+    /// delete what it may not be able to put back.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -4023,47 +4031,32 @@ impl StorageProvider for WebDavProvider {
             ));
         }
 
-        let destination = self.build_url(to);
-        if self.names_the_same_resource(from, &destination) {
+        if self.names_the_same_resource(from, &self.build_url(to)) {
             return Ok(());
         }
-        // When `from` turns out to be a collection named without its slash,
-        // the resent MOVE names the destination as a collection too.
-        let collection_destination = self.build_url(&Self::collection_path(to));
-
-        let response = self
-            .send_on_resource(from, |source| {
-                let destination = if source == from {
-                    &destination
-                } else {
-                    &collection_destination
-                };
-                self.request(webdav_methods::move_method(), source)
-                    .header("Destination", destination)
-                    .header("Overwrite", "T")
-                    .header("Depth", MOVE_DEPTH)
-            })
-            .await?;
-
-        match response.status() {
-            StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => Ok(()),
-            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(from.to_string())),
-            StatusCode::CONFLICT => Err(ProviderError::InvalidPath(
-                "Destination parent does not exist".to_string(),
-            )),
-            StatusCode::BAD_GATEWAY => Err(destination_refused_error("MOVE")),
-            status => Err(ProviderError::ServerError(format!(
-                "MOVE failed with status: {}",
-                status
-            ))),
-        }
+        // A path without a leading slash names the same resource from the
+        // root (see `resolve_root`); the set-aside name is put beside `to`
+        // in its own folder, which needs the absolute spelling.
+        let absolute = |path: &str| format!("/{}", path.trim_start_matches('/'));
+        super::replace_by_setting_aside(self, &absolute(from), &absolute(to)).await
     }
 
-    /// Yes: `replace` is one MOVE with `Overwrite: T`. Not in single-file
-    /// mode, where there is no other path to stage a temporary at: an edit
-    /// uploaded it over the served file, and the cleanup deleted that file.
+    /// No: `replace` sets the old file aside, so the name is empty for a
+    /// moment. The callers that need atomicity (CLI `edit` without
+    /// `--allow-non-atomic`, MCP `remote_edit` without `allow_non_atomic`,
+    /// the crypt marker paths over an existing marker) refuse before they
+    /// write anything. In single-file mode there is no other path either, to
+    /// stage a temporary at or to set the served file aside under.
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
-        Ok(self.single_file_mode.is_none())
+        Ok(false)
+    }
+
+    /// Yes, outside single-file mode: the replace above renames the file at
+    /// the destination aside, moves the new one in, and only then deletes
+    /// the old one, which is what an edit's non-atomic opt-in needs. A
+    /// single-file profile has one path, and nowhere to set its file aside.
+    fn replace_sets_aside(&self) -> bool {
+        self.single_file_mode.is_none()
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
@@ -5463,12 +5456,13 @@ mod tests {
         );
     }
 
-    /// A WebDAV replace is one MOVE with `Overwrite: T`, and RFC 4918
-    /// section 9.9.3 has the server DELETE the destination before it moves:
-    /// one request, but not a replace with no moment in which neither file
-    /// is there. The snapshot does not claim it, in either mode.
+    /// RFC 4918 section 9.9.3 has a MOVE with `Overwrite: T` DELETE the
+    /// destination before it moves, so a WebDAV replace sets the old file
+    /// aside and the name is empty between its two moves: not a replace with
+    /// no moment without the file. The snapshot does not claim it, in either
+    /// mode.
     #[test]
-    fn atomic_rename_is_not_claimed_for_one_move() {
+    fn atomic_rename_is_not_claimed_for_a_set_aside() {
         let mut provider =
             WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
         assert_eq!(
@@ -6361,9 +6355,13 @@ mod tests {
         p.connected = true;
         p.rename("/a.txt", "/dir/a.txt").await.expect("rename");
         p.replace("/b.tmp", "/dir/b.txt").await.expect("replace");
-        assert_eq!(
-            *depths.lock().unwrap(),
-            [Some("infinity".to_string()), Some("infinity".to_string())]
+        // One MOVE for the rename, two for the replace, which sets the file
+        // this server reports at `/dir/b.txt` aside before it moves in.
+        let depths = depths.lock().unwrap();
+        assert_eq!(depths.len(), 3, "{depths:?}");
+        assert!(
+            depths.iter().all(|d| d.as_deref() == Some("infinity")),
+            "{depths:?}"
         );
     }
 
@@ -6414,6 +6412,264 @@ mod tests {
             moves.lock().unwrap().is_empty(),
             "{:?}",
             moves.lock().unwrap()
+        );
+    }
+
+    /// Files by path, as a [`dav_store_server`] holds them.
+    type DavFiles = std::sync::Arc<std::sync::Mutex<HashMap<String, Vec<u8>>>>;
+
+    /// An in-memory WebDAV server whose MOVE is the one of RFC 4918 section
+    /// 9.9.3, as Apache mod_dav, golang.org/x/net/webdav and Nextcloud were
+    /// measured to run it on 2026-10-10: under `Overwrite: T` the destination
+    /// is deleted first and the source moved after, and a move that fails
+    /// after that delete does not bring the destination back. A source in
+    /// `locked` fails its move with 500, the way Nextcloud answers the MOVE
+    /// of a file another client is reading (`LockedException`). Returns the
+    /// base URL, the files, and every request as `METHOD path` with a MOVE's
+    /// destination and `Overwrite:` value.
+    async fn dav_store_server(
+        files: &[(&str, &str)],
+        locked: &[&str],
+    ) -> (
+        String,
+        DavFiles,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::{Arc, Mutex};
+        let store: DavFiles = Arc::new(Mutex::new(
+            files
+                .iter()
+                .map(|(path, data)| (path.to_string(), data.as_bytes().to_vec()))
+                .collect(),
+        ));
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let locked: Arc<Vec<String>> = Arc::new(locked.iter().map(|p| p.to_string()).collect());
+        let (state, log) = (Arc::clone(&store), Arc::clone(&requests));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (store, log, locked) =
+                    (Arc::clone(&state), Arc::clone(&log), Arc::clone(&locked));
+                async move {
+                    let status = |code: u16| {
+                        axum::response::Response::builder()
+                            .status(code)
+                            .body(axum::body::Body::empty())
+                            .unwrap()
+                    };
+                    let path = req.uri().path().to_string();
+                    let method = req.method().to_string();
+                    let mut files = store.lock().unwrap();
+                    match method.as_str() {
+                        "PROPFIND" => {
+                            log.lock().unwrap().push(format!("PROPFIND {path}"));
+                            let Some(data) = files.get(&path) else {
+                                return status(404);
+                            };
+                            let body = format!(
+                                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\
+                                 <d:multistatus xmlns:d=\"DAV:\"><d:response>\
+                                 <d:href>{path}</d:href><d:propstat><d:prop><d:resourcetype/>\
+                                 <d:getcontentlength>{}</d:getcontentlength></d:prop>\
+                                 <d:status>HTTP/1.1 200 OK</d:status></d:propstat>\
+                                 </d:response></d:multistatus>",
+                                data.len()
+                            );
+                            axum::response::Response::builder()
+                                .status(207)
+                                .header("content-type", "application/xml; charset=utf-8")
+                                .body(axum::body::Body::from(body))
+                                .unwrap()
+                        }
+                        "DELETE" => {
+                            log.lock().unwrap().push(format!("DELETE {path}"));
+                            status(if files.remove(&path).is_some() {
+                                204
+                            } else {
+                                404
+                            })
+                        }
+                        "MOVE" => {
+                            let header = |name: &str| {
+                                req.headers()
+                                    .get(name)
+                                    .map(|v| v.to_str().unwrap().to_string())
+                            };
+                            let destination = header("destination").unwrap_or_default();
+                            let destination = destination
+                                .splitn(4, '/')
+                                .nth(3)
+                                .map(|rest| format!("/{rest}"))
+                                .unwrap_or_default();
+                            // RFC 4918 section 10.6: an absent header is `T`.
+                            let overwrite = header("overwrite").as_deref() != Some("F");
+                            log.lock().unwrap().push(format!(
+                                "MOVE {path} {destination} Overwrite:{}",
+                                if overwrite { "T" } else { "F" }
+                            ));
+                            if !files.contains_key(&path) {
+                                return status(404);
+                            }
+                            let replaced = files.contains_key(&destination);
+                            if replaced {
+                                if !overwrite {
+                                    return status(412);
+                                }
+                                files.remove(&destination);
+                            }
+                            if locked.contains(&path) {
+                                return status(500);
+                            }
+                            let data = files.remove(&path).unwrap();
+                            files.insert(destination, data);
+                            status(if replaced { 204 } else { 201 })
+                        }
+                        _ => status(405),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        (format!("http://{addr}/"), store, requests)
+    }
+
+    /// A MOVE with `Overwrite: T` is one request, but RFC 4918 section 9.9.3
+    /// has the server delete the destination before it moves: measured so on
+    /// Apache mod_dav, golang.org/x/net/webdav and Nextcloud, and only nginx
+    /// renames a file over another. A replace is therefore not claimed
+    /// atomic: it sets the old file aside, which a single-file profile, with
+    /// no other name to set it aside under, cannot do.
+    #[tokio::test]
+    async fn a_replace_sets_the_old_file_aside_and_is_never_claimed_atomic() {
+        let mut provider =
+            WebDavProvider::new(test_config("https://example.com/dav")).expect("provider");
+        assert!(!provider.supports_atomic_replace().await.expect("asked"));
+        assert!(provider.replace_sets_aside());
+        provider.single_file_mode = Some(RemoteEntry::file(
+            "f.txt".to_string(),
+            "/dav/f.txt".to_string(),
+            1,
+        ));
+        assert!(!provider.supports_atomic_replace().await.expect("asked"));
+        assert!(!provider.replace_sets_aside());
+    }
+
+    /// A replace over a file never sends `Overwrite: T`, whose delete comes
+    /// before the move, and leaves nothing behind but the new file under the
+    /// old name, in the target's own folder however the path is spelled.
+    #[tokio::test]
+    async fn a_replace_over_a_file_never_sends_an_overwriting_move() {
+        for (from, to) in [("/d/a.tmp", "/d/a.txt"), ("d/a.tmp", "d/a.txt")] {
+            let (url, files, requests) =
+                dav_store_server(&[("/d/a.txt", "old"), ("/d/a.tmp", "new")], &[]).await;
+            let mut p = WebDavProvider::new(test_config(&url)).expect("provider");
+            p.connected = true;
+            p.replace(from, to).await.expect("replace");
+            let requests = requests.lock().unwrap();
+            assert_eq!(
+                *files.lock().unwrap(),
+                HashMap::from([("/d/a.txt".to_string(), b"new".to_vec())]),
+                "{from} -> {to}: {requests:?}"
+            );
+            assert!(
+                !requests.iter().any(|r| r.ends_with("Overwrite:T")),
+                "{from} -> {to}: {requests:?}"
+            );
+        }
+    }
+
+    /// The failure that made one overwriting MOVE unsafe: measured on
+    /// Nextcloud 33, a MOVE whose source another client is reading answers
+    /// 500 after the destination has gone to the trash. A replace whose move
+    /// in fails puts the old file back under its name and says it failed.
+    #[tokio::test]
+    async fn a_replace_whose_move_in_fails_puts_the_old_file_back() {
+        let (url, files, requests) =
+            dav_store_server(&[("/d/a.txt", "old"), ("/d/a.tmp", "new")], &["/d/a.tmp"]).await;
+        let mut p = WebDavProvider::new(test_config(&url)).expect("provider");
+        p.connected = true;
+        let outcome = p.replace("/d/a.tmp", "/d/a.txt").await;
+        let requests = requests.lock().unwrap();
+        assert!(outcome.is_err(), "{outcome:?} {requests:?}");
+        assert_eq!(
+            *files.lock().unwrap(),
+            HashMap::from([
+                ("/d/a.txt".to_string(), b"old".to_vec()),
+                ("/d/a.tmp".to_string(), b"new".to_vec()),
+            ]),
+            "{requests:?}"
+        );
+    }
+
+    /// What the callers that publish a staged file get from that answer: an
+    /// edit is refused without the opt-in and offered it, and passes with it;
+    /// a marker written onto a free name passes, since a set-aside replace
+    /// onto a free name is one MOVE that sets nothing aside.
+    #[tokio::test]
+    async fn an_edit_needs_the_opt_in_and_a_marker_onto_a_free_name_does_not() {
+        let (url, _, _) = dav_store_server(&[("/d/a.txt", "old")], &[]).await;
+        let mut p = WebDavProvider::new(test_config(&url)).expect("provider");
+        p.connected = true;
+        let refused =
+            crate::providers::ensure_edit_can_replace(&mut p, "/d/a.txt", false, "`--opt`").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::NotSupported(text)) if text.contains("`--opt`")),
+            "{refused:?}"
+        );
+        let opted_in =
+            crate::providers::ensure_edit_can_replace(&mut p, "/d/a.txt", true, "`--opt`")
+                .await
+                .expect("the opt-in");
+        assert_eq!(opted_in, crate::providers::StagedPublish::Replace);
+        let free = crate::providers::ensure_atomic_replace(&mut p, "/d/.aerocrypt.tsv")
+            .await
+            .expect("nothing to replace");
+        assert_eq!(free, crate::providers::StagedPublish::Create);
+        let occupied = crate::providers::ensure_atomic_replace(&mut p, "/d/a.txt").await;
+        assert!(
+            matches!(occupied, Err(ProviderError::NotSupported(_))),
+            "{occupied:?}"
+        );
+    }
+
+    /// CodeRabbit on #1154: a marker check passes on WebDAV only because no
+    /// marker is there, so the publish is a creation, one MOVE with
+    /// `Overwrite: F`. When another client wrote the marker after the check
+    /// the server refuses it (412): their marker stays, nothing is set aside,
+    /// and the staged file is still there for the caller to delete.
+    #[tokio::test]
+    async fn a_publish_onto_a_name_taken_after_its_check_is_refused_by_the_server() {
+        let (url, files, requests) = dav_store_server(&[("/d/m.tmp", "ours")], &[]).await;
+        let mut p = WebDavProvider::new(test_config(&url)).expect("provider");
+        p.connected = true;
+        let publish = crate::providers::ensure_atomic_replace(&mut p, "/d/m.tsv")
+            .await
+            .expect("a free name");
+        files
+            .lock()
+            .unwrap()
+            .insert("/d/m.tsv".to_string(), b"theirs".to_vec());
+
+        let outcome = publish.publish(&mut p, "/d/m.tmp", "/d/m.tsv").await;
+
+        let requests = requests.lock().unwrap();
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(_))),
+            "{outcome:?} {requests:?}"
+        );
+        assert_eq!(
+            *files.lock().unwrap(),
+            HashMap::from([
+                ("/d/m.tsv".to_string(), b"theirs".to_vec()),
+                ("/d/m.tmp".to_string(), b"ours".to_vec()),
+            ]),
+            "{requests:?}"
+        );
+        let moves: Vec<_> = requests.iter().filter(|r| r.starts_with("MOVE")).collect();
+        assert_eq!(
+            moves,
+            ["MOVE /d/m.tmp /d/m.tsv Overwrite:F"],
+            "{requests:?}"
         );
     }
 

@@ -2536,7 +2536,7 @@ pub async fn restore_headed_marker_from_config(
     // Asked while the server is still untouched (G119): a backend that cannot
     // put one file over another refuses here, before a temporary exists, so
     // the refusal can truthfully say the marker is unchanged.
-    crate::providers::ensure_atomic_replace(provider, config_path)
+    let publish = crate::providers::ensure_atomic_replace(provider, config_path)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -2563,7 +2563,7 @@ pub async fn restore_headed_marker_from_config(
                 .to_string(),
         );
     }
-    if let Err(e) = provider.replace(&remote_tmp, config_path).await {
+    if let Err(e) = publish.publish(provider, &remote_tmp, config_path).await {
         let _ = provider.delete(&remote_tmp).await;
         return Err(format!("Cannot publish verified AeroCrypt marker: {e}"));
     }
@@ -6362,5 +6362,33 @@ mod tests {
             .rename("/Vault/a.txt", "/Vault/b.txt")
             .await
             .expect("an in-anchor move must stay allowed");
+    }
+
+    /// CodeRabbit on #1154: a backend whose replace sets the old item aside
+    /// passes the marker preflight only because no marker is there, so the
+    /// heal must publish as a creation. A marker another client wrote after
+    /// that check was set aside and deleted by the replace that followed.
+    #[tokio::test]
+    async fn a_marker_heal_leaves_alone_a_marker_written_after_its_check() {
+        let keys = aerocrypt_keys();
+        let OverlayKeys::AeroCrypt { master_key, config } = &keys else {
+            unreachable!("aerocrypt_keys builds an AeroCrypt key")
+        };
+        let mut p = crate::providers::edit_replace_tests::EditFake::new(false, true);
+        p.files.clear();
+        p.appears_on_upload = Some(("/.aerocrypt.tsv".to_string(), b"theirs".to_vec()));
+
+        let outcome =
+            restore_headed_marker_from_config(&mut p, "/.aerocrypt.tsv", config, master_key).await;
+
+        let text = outcome.expect_err("the name was taken after the check");
+        assert!(text.contains("taken"), "{text}");
+        assert_eq!(
+            p.files.get("/.aerocrypt.tsv").map(Vec::as_slice),
+            Some(&b"theirs"[..]),
+            "the other client's marker is left as it is"
+        );
+        assert!(p.replaces.is_empty(), "{:?}", p.replaces);
+        assert_eq!(p.files.len(), 1, "staged marker left: {:?}", p.files.keys());
     }
 }

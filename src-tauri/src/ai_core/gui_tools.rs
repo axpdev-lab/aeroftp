@@ -53,7 +53,7 @@ async fn publish_remote_edit(
     path: &str,
     allow_non_atomic: bool,
 ) -> Result<(), String> {
-    crate::providers::ensure_edit_can_replace(
+    let publish = crate::providers::ensure_edit_can_replace(
         provider,
         path,
         allow_non_atomic,
@@ -71,8 +71,9 @@ async fn publish_remote_edit(
     }
     let not_kept =
         crate::providers::keep_edit_original(provider, &remote_temp, path, &original).await;
-    // `replace` and not `rename`: the destination exists by definition.
-    if let Err(e) = provider.replace(&remote_temp, path).await {
+    // A replace, the destination being the file just read, or a creation
+    // where the preflight passed only because that file had gone since.
+    if let Err(e) = publish.publish(provider, &remote_temp, path).await {
         let _ = provider.delete(&remote_temp).await;
         return Err(e.to_string());
     }
@@ -1380,6 +1381,31 @@ mod tests {
             rename_only.files.get("/t.txt").map(Vec::as_slice),
             Some(&b"old"[..])
         );
+    }
+
+    /// CodeRabbit on #1154: without the opt-in a set-aside backend passes
+    /// only where nothing is at the target (the file went away after it was
+    /// read), so the publish must be a creation. A file another client wrote
+    /// there after that check was set aside and deleted by the replace.
+    #[tokio::test]
+    async fn remote_edit_without_the_opt_in_leaves_alone_a_file_written_after_its_check() {
+        let local = staged(b"new");
+        let local = local.path().to_string_lossy().to_string();
+        let mut p = EditFake::new(false, true);
+        p.files.clear();
+        p.appears_on_upload = Some(("/t.txt".to_string(), b"theirs".to_vec()));
+
+        let text = publish_remote_edit(&mut p, &local, "/t.txt", false)
+            .await
+            .unwrap_err();
+
+        assert!(text.contains("taken"), "{text}");
+        assert_eq!(
+            p.files.get("/t.txt").map(Vec::as_slice),
+            Some(&b"theirs"[..])
+        );
+        assert!(p.replaces.is_empty(), "{:?}", p.replaces);
+        assert_eq!(p.files.len(), 1, "temporary left: {:?}", p.files.keys());
     }
 
     /// M-A of the 4.2.1 closeout: the upload in place this path made until

@@ -461,7 +461,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         // half is why this sits above the `write` and not below it, because
         // the `?` here returns before the `remove_file` further down and
         // would leave the staging file in the temp directory.
-        crate::providers::ensure_atomic_replace(provider, &current_path)
+        let publish = crate::providers::ensure_atomic_replace(provider, &current_path)
             .await
             .map_err(|e| e.to_string())?;
         tokio::fs::write(&temp, rebuilt_marker.as_bytes())
@@ -492,7 +492,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         let staged_text = String::from_utf8(staged)
             .map_err(|e| format!("Staged AeroCrypt marker is not valid UTF-8: {e}"))?;
         validate_marker_for_migration(&staged_text, &password, keyfile_digest).await?;
-        if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
+        if let Err(e) = publish.publish(provider, &remote_tmp, &current_path).await {
             let _ = provider.delete(&remote_tmp).await;
             return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
         }
@@ -823,7 +823,7 @@ async fn publish_headed_marker(
     // `restore_headerless_marker`: the remote contract is "the marker is
     // unchanged", and asking here also keeps the `?` from returning past the
     // `remove_file` below and stranding the local staging file (G119).
-    crate::providers::ensure_atomic_replace(provider, &current_path)
+    let publish = crate::providers::ensure_atomic_replace(provider, &current_path)
         .await
         .map_err(|e| e.to_string())?;
     tokio::fs::write(&temp, marker_text.as_bytes())
@@ -861,7 +861,7 @@ async fn publish_headed_marker(
             "staged AeroCrypt marker failed unlock verification: {e}"
         ));
     }
-    if let Err(e) = provider.replace(&remote_tmp, &current_path).await {
+    if let Err(e) = publish.publish(provider, &remote_tmp, &current_path).await {
         let _ = provider.delete(&remote_tmp).await;
         return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
     }
@@ -1627,5 +1627,32 @@ mod tests {
             overlay::unlock_overlay_from_config(&added.marker, &bad, None).is_err(),
             "corrupted recovery must fail closed"
         );
+    }
+
+    /// CodeRabbit on #1154: a backend whose replace sets the old item aside
+    /// passes the marker preflight only because no marker is there, so the
+    /// publish must be a creation. A marker another client wrote after that
+    /// check was set aside and deleted by the replace that followed.
+    #[tokio::test]
+    async fn a_headed_marker_publish_leaves_alone_a_marker_written_after_its_check() {
+        let salt = overlay::random_salt_v3();
+        let master = overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "pw").unwrap();
+        let marker = overlay::init_config_v3(&salt, &master).unwrap();
+        let mut p = crate::providers::edit_replace_tests::EditFake::new(false, true);
+        p.files.clear();
+        p.appears_on_upload = Some(("/.aerocrypt.tsv".to_string(), b"theirs".to_vec()));
+
+        let text = publish_headed_marker(&mut p, "/", &marker, "pw", None)
+            .await
+            .expect_err("the name was taken after the check");
+
+        assert!(text.contains("taken"), "{text}");
+        assert_eq!(
+            p.files.get("/.aerocrypt.tsv").map(Vec::as_slice),
+            Some(&b"theirs"[..]),
+            "the other client's marker is left as it is"
+        );
+        assert!(p.replaces.is_empty(), "{:?}", p.replaces);
+        assert_eq!(p.files.len(), 1, "staged marker left: {:?}", p.files.keys());
     }
 }
