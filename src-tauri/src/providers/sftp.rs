@@ -31,9 +31,10 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, parallel_refused, run_concurrent_range_download, share_progress,
-    source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeSourceFingerprint,
-    SegmentedRun, SegmentedTemp, AFTER_TRANSFER_READ_RETRY,
+    aerotmp_path_for, parallel_refused, run_concurrent_range_download, settle_range_attempt,
+    share_progress, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeMark,
+    RangeSourceFingerprint, SegmentedRun, SegmentedTemp, AFTER_TRANSFER_READ_RETRY,
+    FAILED_RANGE_DISCONNECT,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -1403,7 +1404,8 @@ impl SftpProvider {
                                     end: u64,
                                     temp_path: PathBuf,
                                     aggregate: Arc<AtomicU64>,
-                                    cancel: CancellationToken| {
+                                    cancel: CancellationToken,
+                                    mark: RangeMark| {
             let spec = spec.clone();
             let remote_path = remote_path_owned.clone();
             let current_dir = current_dir.clone();
@@ -1425,6 +1427,7 @@ impl SftpProvider {
                     temp_path,
                     aggregate,
                     cancel,
+                    mark,
                 )
                 .await
             }
@@ -4501,6 +4504,7 @@ async fn sftp_readahead_range_into(
     total_for_progress: u64,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     fail_write: Arc<AtomicBool>,
+    mark: Option<&RangeMark>,
 ) -> Result<(), ProviderError> {
     use tokio::io::{AsyncSeekExt, AsyncWriteExt};
     if expected == 0 {
@@ -4677,8 +4681,14 @@ async fn sftp_readahead_range_into(
     let writer = {
         let work_cancel = work_cancel.clone();
         async move {
-            // The first READ's bytes, then the readers' chunks.
+            // The first READ's bytes, then the readers' chunks. The chunks
+            // arrive out of order within the window; `mark` follows the first
+            // byte still missing, so a retry reads again only what is not in
+            // the file (`pieces_ahead` holds what was written past a gap).
             let mut first = Some((start, first));
+            let mut written_to = start;
+            let mut pieces_ahead: std::collections::BTreeMap<u64, u64> =
+                std::collections::BTreeMap::new();
             loop {
                 let (abs_off, buf) = match first.take() {
                     Some(piece) => piece,
@@ -4710,6 +4720,13 @@ async fn sftp_readahead_range_into(
                     aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed) + buf.len() as u64;
                 if let Some(ref cb) = on_progress {
                     cb(done, total_for_progress);
+                }
+                if let Some(mark) = mark {
+                    pieces_ahead.insert(abs_off, abs_off + buf.len() as u64);
+                    while let Some(end) = pieces_ahead.remove(&written_to) {
+                        written_to = end;
+                    }
+                    mark.advance(written_to);
                 }
             }
             Ok::<(), ProviderError>(())
@@ -4841,6 +4858,7 @@ async fn sftp_readahead_download(
         total_size,
         on_progress,
         fail_write,
+        None,
     )
     .await?;
 
@@ -5142,6 +5160,7 @@ async fn sftp_pipelined_range_into(
     window: usize,
     aggregate: &Arc<AtomicU64>,
     cancel: &CancellationToken,
+    mark: Option<&RangeMark>,
 ) -> Result<(), ProviderError> {
     use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
@@ -5221,6 +5240,9 @@ async fn sftp_pipelined_range_into(
                 out.write_all(buf).await.map_err(ProviderError::IoError)?;
                 aggregate.fetch_add(buf.len() as u64, Ordering::Relaxed);
                 abs += buf.len() as u64;
+                if let Some(mark) = mark {
+                    mark.advance(abs);
+                }
             }
         }
 
@@ -5259,9 +5281,8 @@ async fn sftp_download_one_range(
     temp_path: PathBuf,
     aggregate: Arc<AtomicU64>,
     cancel: CancellationToken,
+    mark: RangeMark,
 ) -> Result<ConcurrentRangeOutcome, ProviderError> {
-    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-
     let expected = end - start + 1;
 
     // Independent worker: own socket + own auth, host-key pinned re-dial.
@@ -5273,7 +5294,58 @@ async fn sftp_download_one_range(
     worker.connection_spec = Some(spec);
     worker.ensure_connected().await?;
 
-    let full_path = worker.normalize_path(&remote_path);
+    let read = sftp_read_one_range(
+        &worker,
+        &remote_path,
+        buffer_size,
+        limit_bps,
+        parallel_connections,
+        requested_readahead_window,
+        readahead_grow_to,
+        start,
+        expected,
+        &temp_path,
+        &aggregate,
+        &cancel,
+        &mark,
+    )
+    .await;
+    // The connection is this attempt's, whatever happened: a range that
+    // failed is attempted again on a connection of its own
+    // (`multi_thread::write_range_resuming`), and one left open would keep the
+    // server serving a session nobody reads. After a failure the server may be
+    // the one not answering, so the goodbye does not hold up the retry.
+    if read.is_ok() {
+        let _ = worker.disconnect().await;
+    } else {
+        let _ = tokio::time::timeout(FAILED_RANGE_DISCONNECT, worker.disconnect()).await;
+    }
+    read?;
+    Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// The reading half of [`sftp_download_one_range`], on the worker's own
+/// connection: `expected` bytes from `start` into `temp_path`, advancing
+/// `mark` as they land without a gap.
+#[allow(clippy::too_many_arguments)]
+async fn sftp_read_one_range(
+    worker: &SftpProvider,
+    remote_path: &str,
+    buffer_size: usize,
+    limit_bps: u64,
+    parallel_connections: usize,
+    requested_readahead_window: Option<usize>,
+    readahead_grow_to: Option<usize>,
+    start: u64,
+    expected: u64,
+    temp_path: &Path,
+    aggregate: &Arc<AtomicU64>,
+    cancel: &CancellationToken,
+    mark: &RangeMark,
+) -> Result<(), ProviderError> {
+    use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+    let full_path = worker.normalize_path(remote_path);
     let sftp = worker.get_sftp()?;
     let global_bw = crate::transfer_dag::governor::global();
 
@@ -5292,10 +5364,10 @@ async fn sftp_download_one_range(
         }) {
             let mut out = tokio::fs::OpenOptions::new()
                 .write(true)
-                .open(&temp_path)
+                .open(temp_path)
                 .await
                 .map_err(ProviderError::IoError)?;
-            sftp_readahead_range_into(
+            let read = sftp_readahead_range_into(
                 sftp,
                 &full_path,
                 start,
@@ -5304,17 +5376,18 @@ async fn sftp_download_one_range(
                 buffer_size,
                 window,
                 readahead_grow_to,
-                &aggregate,
-                &cancel,
+                aggregate,
+                cancel,
                 expected,
                 None,
                 Arc::clone(&worker.fail_readahead_write),
+                Some(mark),
             )
-            .await?;
+            .await;
+            settle_range_attempt(&mut out, read).await?;
             out.flush().await.map_err(ProviderError::IoError)?;
             out.sync_all().await.map_err(ProviderError::IoError)?;
-            let _ = worker.disconnect().await;
-            return Ok(ConcurrentRangeOutcome::Completed);
+            return Ok(());
         }
     }
 
@@ -5333,10 +5406,10 @@ async fn sftp_download_one_range(
         if let Some(window) = sftp_read_pipeline_window() {
             let mut out = tokio::fs::OpenOptions::new()
                 .write(true)
-                .open(&temp_path)
+                .open(temp_path)
                 .await
                 .map_err(ProviderError::IoError)?;
-            sftp_pipelined_range_into(
+            let read = sftp_pipelined_range_into(
                 sftp,
                 &full_path,
                 start,
@@ -5344,14 +5417,15 @@ async fn sftp_download_one_range(
                 &mut out,
                 buffer_size,
                 window,
-                &aggregate,
-                &cancel,
+                aggregate,
+                cancel,
+                Some(mark),
             )
-            .await?;
+            .await;
+            settle_range_attempt(&mut out, read).await?;
             out.flush().await.map_err(ProviderError::IoError)?;
             out.sync_all().await.map_err(ProviderError::IoError)?;
-            let _ = worker.disconnect().await;
-            return Ok(ConcurrentRangeOutcome::Completed);
+            return Ok(());
         }
     }
 
@@ -5365,6 +5439,8 @@ async fn sftp_download_one_range(
                 ))
             })
         })?;
+    // The local file outlives the copy so a failed one can settle its writes.
+    let mut out_slot: Option<tokio::fs::File> = None;
     let streamed: Result<(), ProviderError> = async {
         remote_file
             .seek(std::io::SeekFrom::Start(start))
@@ -5375,11 +5451,13 @@ async fn sftp_download_one_range(
                 })
             })?;
 
-        let mut out = tokio::fs::OpenOptions::new()
-            .write(true)
-            .open(&temp_path)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let out = out_slot.insert(
+            tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(temp_path)
+                .await
+                .map_err(ProviderError::IoError)?,
+        );
         out.seek(std::io::SeekFrom::Start(start))
             .await
             .map_err(ProviderError::IoError)?;
@@ -5421,6 +5499,7 @@ async fn sftp_download_one_range(
                         .map_err(ProviderError::IoError)?;
                     aggregate.fetch_add(take as u64, Ordering::Relaxed);
                     written += take as u64;
+                    mark.advance(start + written);
 
                     if limit_bps > 0 {
                         let expected_elapsed = std::time::Duration::from_secs_f64(
@@ -5441,9 +5520,10 @@ async fn sftp_download_one_range(
     }
     .await;
     close_sftp_file(remote_file, &sftp.ended).await;
-    streamed?;
-    let _ = worker.disconnect().await;
-    Ok(ConcurrentRangeOutcome::Completed)
+    match out_slot.as_mut() {
+        Some(out) => settle_range_attempt(out, streamed).await,
+        None => streamed,
+    }
 }
 
 #[cfg(test)]
@@ -7416,6 +7496,7 @@ mod tests {
             size,
             None,
             Arc::new(AtomicBool::new(false)),
+            None,
         )
         .await?;
         out.flush().await.expect("flush");

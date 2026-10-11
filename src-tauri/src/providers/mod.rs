@@ -4285,6 +4285,9 @@ mod http_timeout_class_tests {
         "send_error",
         "connect_send_error",
         "map_reqwest_error",
+        // A range window's body: built on `http_send_error`, plus a body cut
+        // by a dropped connection, so the window is resumed from its mark.
+        "range_body_error",
     ];
 
     /// Files outside the class, and why. Their errors never become a

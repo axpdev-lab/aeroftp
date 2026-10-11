@@ -3856,15 +3856,18 @@ impl S3Provider {
             committed: false,
         };
 
-        // Aggregate counter of bytes written across all streams (lock-free).
-        let aggregate = Arc::new(AtomicU64::new(0));
+        // Bytes each range has in the temporary (lock-free): a range resumed
+        // after a failure takes back what it wrote past its mark, so the
+        // progress is their sum, not a counter every attempt adds to.
+        let range_bytes: Arc<Vec<Arc<AtomicU64>>> =
+            Arc::new(ranges.iter().map(|_| Arc::new(AtomicU64::new(0))).collect());
 
-        // Background progress emitter: ticks every 100 ms, reads the aggregate
+        // Background progress emitter: ticks every 100 ms, sums the ranges
         // and forwards it to the user-supplied callback. Decouples the workers
         // from the (Send-only, !Sync) `on_progress` closure.
         let progress_stop = Arc::new(AtomicBool::new(false));
         let progress_handle = if let Some(cb) = on_progress {
-            let agg = aggregate.clone();
+            let range_bytes = range_bytes.clone();
             let stop = progress_stop.clone();
             Some(tokio::spawn(async move {
                 let mut ticker = tokio::time::interval(std::time::Duration::from_millis(100));
@@ -3875,7 +3878,7 @@ impl S3Provider {
                     if stop.load(Ordering::Relaxed) {
                         break;
                     }
-                    let cur = agg.load(Ordering::Relaxed);
+                    let cur = super::multi_thread::total_range_bytes(&range_bytes);
                     if cur != last_emitted {
                         cb(cur, total_size);
                         last_emitted = cur;
@@ -3886,7 +3889,7 @@ impl S3Provider {
                 }
                 // Final flush: ensures the user sees the last byte counts even if
                 // the download finished between two ticks.
-                let cur = agg.load(Ordering::Relaxed);
+                let cur = super::multi_thread::total_range_bytes(&range_bytes);
                 if cur != last_emitted {
                     cb(cur, total_size);
                 }
@@ -3896,16 +3899,46 @@ impl S3Provider {
         };
 
         // Spawn one task per range. JoinSet so the first failure aborts siblings,
-        // mirroring the multipart upload pattern (`upload_multipart`).
+        // mirroring the multipart upload pattern (`upload_multipart`). A range
+        // that fails with a recoverable error (a body that stopped arriving)
+        // is requested again from its mark, as in the shared engine; the abort
+        // ends one waiting to retry.
         let mut joinset = tokio::task::JoinSet::new();
-        for (start, end) in ranges {
+        for (&(start, end), bytes) in ranges.iter().zip(range_bytes.iter()) {
             let provider = self.clone();
             let key_owned = key.to_string();
             let temp = temp_path.clone();
-            let agg = aggregate.clone();
+            let bytes = bytes.clone();
             let etag = validator.clone();
             joinset.spawn(async move {
-                download_range_to_offset(provider, key_owned, temp, start, end, etag, agg).await
+                let write_one_range =
+                    move |start: u64,
+                          end: u64,
+                          temp: PathBuf,
+                          bytes: Arc<AtomicU64>,
+                          _cancel: tokio_util::sync::CancellationToken,
+                          mark: super::multi_thread::RangeMark| {
+                        let provider = provider.clone();
+                        let key = key_owned.clone();
+                        let etag = etag.clone();
+                        async move {
+                            download_range_to_offset(
+                                provider, key, temp, start, end, etag, bytes, mark,
+                            )
+                            .await
+                            .map(|()| super::multi_thread::ConcurrentRangeOutcome::Completed)
+                        }
+                    };
+                super::multi_thread::write_range_resuming(
+                    &write_one_range,
+                    start,
+                    end,
+                    &temp,
+                    bytes,
+                    &tokio_util::sync::CancellationToken::new(),
+                )
+                .await
+                .map(|_| ())
             });
         }
 
@@ -7596,6 +7629,7 @@ async fn drain_bounded(response: &mut reqwest::Response, limit: usize) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_range_to_offset(
     provider: S3Provider,
     key: String,
@@ -7604,6 +7638,7 @@ async fn download_range_to_offset(
     end: u64,
     validator: String,
     aggregate: Arc<AtomicU64>,
+    mark: super::multi_thread::RangeMark,
 ) -> Result<(), ProviderError> {
     let range_value = format!("bytes={}-{}", start, end);
     let response = provider
@@ -7690,43 +7725,50 @@ async fn download_range_to_offset(
     let expected = end - start + 1;
     let mut written: u64 = 0;
     let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        let chunk_len = chunk.len() as u64;
-        crate::transfer_dag::throttle::charge(
-            crate::transfer_dag::governor::TransferDirection::Download,
-            chunk_len.min(expected - written),
-        )
-        .await;
-        if written + chunk_len > expected {
-            // The server said one window and is sending more than it. Cutting
-            // the extra away would keep whatever arrived first and call it the
-            // window; there is no reason to believe it is. Refuse, and the
-            // caller reads this file on a single stream.
-            return Err(ProviderError::ParallelRefused(
-                super::multi_thread::parallel_refused(
-                    "S3 multi-thread",
-                    &key,
-                    &format!(
-                        "the server said bytes {}-{} and is sending more than {} bytes",
-                        start, end, expected
+    let copied: Result<(), ProviderError> = async {
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(super::multi_thread::range_body_error)?;
+            let chunk_len = chunk.len() as u64;
+            crate::transfer_dag::throttle::charge(
+                crate::transfer_dag::governor::TransferDirection::Download,
+                chunk_len.min(expected - written),
+            )
+            .await;
+            if written + chunk_len > expected {
+                // The server said one window and is sending more than it. Cutting
+                // the extra away would keep whatever arrived first and call it the
+                // window; there is no reason to believe it is. Refuse, and the
+                // caller reads this file on a single stream.
+                return Err(ProviderError::ParallelRefused(
+                    super::multi_thread::parallel_refused(
+                        "S3 multi-thread",
+                        &key,
+                        &format!(
+                            "the server said bytes {}-{} and is sending more than {} bytes",
+                            start, end, expected
+                        ),
                     ),
-                ),
-            ));
+                ));
+            }
+            file.write_all(&chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            aggregate.fetch_add(chunk_len, Ordering::Relaxed);
+            written += chunk_len;
+            mark.advance(start + written);
         }
-        file.write_all(&chunk)
-            .await
-            .map_err(ProviderError::IoError)?;
-        aggregate.fetch_add(chunk_len, Ordering::Relaxed);
-        written += chunk_len;
+        if written != expected {
+            // The body ended before the window did: the connection closed
+            // early, and the window goes on from its mark.
+            return Err(ProviderError::NetworkError(format!(
+                "Multi-thread range download truncated: expected {} bytes, got {}",
+                expected, written
+            )));
+        }
+        Ok(())
     }
-
-    if written != expected {
-        return Err(ProviderError::TransferFailed(format!(
-            "Multi-thread range download truncated: expected {} bytes, got {}",
-            expected, written
-        )));
-    }
+    .await;
+    super::multi_thread::settle_range_attempt(&mut file, copied).await?;
 
     file.flush().await.map_err(ProviderError::IoError)?;
     file.sync_all().await.map_err(ProviderError::IoError)?;

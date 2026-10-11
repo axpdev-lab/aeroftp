@@ -186,6 +186,182 @@ pub struct ConcurrentRangeConfig {
     pub max_parallel: usize,
 }
 
+/// How far one attempt at a range has written without a gap: every byte from
+/// the attempt's start up to [`RangeMark::reached`] is in the temporary.
+///
+/// A range that fails with a recoverable error (a request timeout, a dropped
+/// connection) is attempted again from its mark instead of failing the whole
+/// download (see [`write_range_resuming`]). A writer that writes in order
+/// advances the mark after each write; one that writes out of order (the SFTP
+/// read-ahead) advances it to the first byte still missing. A writer that
+/// never advances it is safe: its range is read again from the start.
+#[derive(Clone, Debug)]
+pub struct RangeMark(Arc<AtomicU64>);
+
+impl RangeMark {
+    pub(crate) fn new(start: u64) -> Self {
+        Self(Arc::new(AtomicU64::new(start)))
+    }
+
+    /// Every byte before `offset` is written. The mark never goes back.
+    pub fn advance(&self, offset: u64) {
+        self.0.fetch_max(offset, Ordering::Relaxed);
+    }
+
+    /// The first byte not known to be written.
+    pub fn reached(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+/// Failures in a row of one range, with none of its bytes moving on, before
+/// the download fails. An attempt that moved the mark starts the count again,
+/// so a server that stalls now and then over a long transfer does not use it
+/// up.
+pub(crate) const RANGE_RETRIES: u32 = 3;
+
+/// Wait before the n-th retry in a row of a range: 1, 2, then 4 s.
+fn range_retry_backoff(failures: u32) -> std::time::Duration {
+    std::time::Duration::from_secs(1u64 << failures.saturating_sub(1).min(2))
+}
+
+/// Run `write_one_range` over the inclusive range `[start, end]`, resuming it
+/// after a recoverable failure.
+///
+/// A single request that took too long used to fail the whole download, and
+/// the temporary went with it: a 25 GB SFTP download from a NAS whose server
+/// stopped answering one connection for more than 10 s failed twice, after 26
+/// and 16 minutes, and started from zero each time (#658 re-test, 2026-10-10;
+/// the late replies did arrive, the server was alive). The failed attempt's
+/// connection is the worker's to close; the next attempt dials its own and
+/// reads from the mark, so only the bytes in flight are read again.
+///
+/// `bytes` is this range's share of the progress: what an attempt wrote past
+/// its mark is taken off, since it will be written again.
+pub(crate) async fn write_range_resuming<W, WFut>(
+    write_one_range: &W,
+    start: u64,
+    end: u64,
+    temp_path: &Path,
+    bytes: Arc<AtomicU64>,
+    cancel: &CancellationToken,
+) -> Result<ConcurrentRangeOutcome, ProviderError>
+where
+    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken, RangeMark) -> WFut,
+    WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>,
+{
+    let mut from = start;
+    let mut failures = 0u32;
+    loop {
+        let mark = RangeMark::new(from);
+        let error = match write_one_range(
+            from,
+            end,
+            temp_path.to_path_buf(),
+            bytes.clone(),
+            cancel.clone(),
+            mark.clone(),
+        )
+        .await
+        {
+            Err(e) if e.is_recoverable() && !cancel.is_cancelled() => e,
+            outcome => return outcome,
+        };
+        let reached = mark.reached().clamp(from, end.saturating_add(1));
+        bytes.store(reached - start, Ordering::Relaxed);
+        if reached > end {
+            // Every byte is in the temporary; what failed came after the last
+            // write (closing the remote handle), which a download can lose.
+            return Ok(ConcurrentRangeOutcome::Completed);
+        }
+        if reached > from {
+            failures = 0;
+        }
+        failures += 1;
+        if failures > RANGE_RETRIES {
+            return Err(error);
+        }
+        let wait = range_retry_backoff(failures);
+        tracing::warn!(
+            "Range {}-{}: {} at offset {}; retry {} of {} from there in {:?}",
+            start,
+            end,
+            error,
+            reached,
+            failures,
+            RANGE_RETRIES,
+            wait
+        );
+        tokio::select! {
+            _ = cancel.cancelled() => return Err(ProviderError::Cancelled),
+            _ = tokio::time::sleep(wait) => {}
+        }
+        from = reached;
+    }
+}
+
+/// Settle the writes a failed range attempt left in flight before its error
+/// goes back. A `tokio::fs::File` write returns once its bytes are handed to
+/// a blocking task, and a failure of that write shows only on the next write
+/// or on `flush`; the mark already counts those bytes, so a write that failed
+/// unseen would leave a hole the retry skips. A write that fails here fails
+/// the range for good: an I/O error is not resumed.
+pub async fn settle_range_attempt<T>(
+    file: &mut tokio::fs::File,
+    attempt: Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    if attempt.is_err() {
+        file.flush().await.map_err(ProviderError::IoError)?;
+    }
+    attempt
+}
+
+/// A range worker's failed `read_range`, with where it failed. The class is
+/// kept: a timeout or a lost connection is resumed from the mark
+/// ([`write_range_resuming`]) and a refusal stays one; anything else fails
+/// the range.
+pub fn range_read_failed(what: &str, offset: u64, e: ProviderError) -> ProviderError {
+    let text = format!("{what}: read_range at offset {offset} failed: {e}");
+    match e {
+        ProviderError::Timeout | ProviderError::NotConnected => e,
+        ProviderError::NetworkError(_) => ProviderError::NetworkError(text),
+        ProviderError::ConnectionLost(_) => ProviderError::ConnectionLost(text),
+        ProviderError::ParallelRefused(_) => ProviderError::ParallelRefused(text),
+        _ => ProviderError::TransferFailed(text),
+    }
+}
+
+/// How long a range worker waits to say goodbye on a connection that failed:
+/// the server may be the one not answering, and the retry waits on it.
+pub(crate) const FAILED_RANGE_DISCONNECT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The worker a failed range attempt leaves to the next one, for the engines
+/// that take their workers from a pool: a fresh clone of `worker` (a
+/// connection of its own, as the first attempt had, with `validator` pinning
+/// the object), or, for a provider that cannot clone, `worker` itself,
+/// disconnected, which dials again on its next call where it can. The failed
+/// connection is closed either way: one left open keeps the server serving a
+/// session nobody reads.
+pub async fn replace_failed_range_worker(
+    mut worker: Box<dyn super::StorageProvider>,
+    validator: Option<String>,
+) -> Box<dyn super::StorageProvider> {
+    let fresh = worker.clone_for_transfer().ok();
+    let _ = tokio::time::timeout(FAILED_RANGE_DISCONNECT, worker.disconnect()).await;
+    match fresh {
+        Some(mut fresh) => {
+            fresh.set_range_validator(validator);
+            fresh
+        }
+        None => worker,
+    }
+}
+
+/// Bytes of every range in the temporary, for the progress report.
+pub(crate) fn total_range_bytes(range_bytes: &[Arc<AtomicU64>]) -> u64 {
+    range_bytes.iter().map(|b| b.load(Ordering::Relaxed)).sum()
+}
+
 /// RAII guard: removes the `.aerosegtmp` file on drop unless `commit()` is
 /// called. Guarantees no partial temp survives an error, a fallback, or a
 /// cancellation (the F-1 lesson: every new transfer path is cancellable and
@@ -604,10 +780,14 @@ pub fn segmented_temp_path_for(final_path: &Path) -> PathBuf {
 /// (the F-1 lesson), bounded concurrency, progress aggregation, cooperative
 /// cancellation, and the commit/atomic-ready temp.
 ///
-/// `write_one_range(start, end, temp_path, aggregate, cancel)` is the only
+/// `write_one_range(start, end, temp_path, bytes, cancel, mark)` is the only
 /// transport-specific part. It must write **exactly** the inclusive
 /// `[start, end]` window at its absolute offset into `temp_path`, bump
-/// `aggregate` by the bytes it wrote, honour `cancel`, and return:
+/// `bytes` (the range's share of the progress) by the bytes it wrote, advance
+/// `mark` to the first byte it has not yet written without a gap (see
+/// [`RangeMark`]; a range that fails with a recoverable error is called again
+/// with `start` at the mark, at most [`RANGE_RETRIES`] times in a row without
+/// progress), honour `cancel`, and return:
 /// - [`ConcurrentRangeOutcome::Completed`] on success;
 /// - [`ConcurrentRangeOutcome::ServerIgnoredRange`] iff the transport proves
 ///   the server ignored `Range` (HTTP `200 OK`); SFTP never returns this
@@ -622,7 +802,10 @@ pub async fn run_concurrent_range_download<W, WFut>(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<SegmentedRun, ProviderError>
 where
-    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
+    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken, RangeMark) -> WFut
+        + Send
+        + Sync
+        + 'static,
     WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
         + Send
         + 'static,
@@ -744,19 +927,23 @@ pub(crate) async fn run_ranges_via_joinset<W, WFut>(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<ConcurrentRangeOutcome, ProviderError>
 where
-    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
+    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken, RangeMark) -> WFut
+        + Send
+        + Sync
+        + 'static,
     WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
         + Send
         + 'static,
 {
-    let aggregate = Arc::new(AtomicU64::new(0));
+    let range_bytes: Vec<Arc<AtomicU64>> =
+        ranges.iter().map(|_| Arc::new(AtomicU64::new(0))).collect();
     let semaphore = Arc::new(Semaphore::new(max_parallel.max(1)));
     let mut join_set: JoinSet<Result<ConcurrentRangeOutcome, ProviderError>> = JoinSet::new();
 
-    for &(start, end) in ranges {
+    for (&(start, end), bytes) in ranges.iter().zip(&range_bytes) {
         let semaphore = semaphore.clone();
         let write_one_range = write_one_range.clone();
-        let aggregate = aggregate.clone();
+        let bytes = bytes.clone();
         let temp_path = temp_path.to_path_buf();
         let cancel = cancel.clone();
         join_set.spawn(async move {
@@ -769,7 +956,7 @@ where
                     "Transfer cancelled by user".to_string(),
                 ));
             }
-            write_one_range(start, end, temp_path, aggregate, cancel).await
+            write_range_resuming(&*write_one_range, start, end, &temp_path, bytes, &cancel).await
         });
     }
 
@@ -788,7 +975,7 @@ where
         match task_result {
             Ok(ConcurrentRangeOutcome::Completed) => {
                 if let Some(cb) = on_progress.as_ref() {
-                    cb(aggregate.load(Ordering::Relaxed), total_size);
+                    cb(total_range_bytes(&range_bytes), total_size);
                 }
             }
             Ok(ConcurrentRangeOutcome::ServerIgnoredRange) => {
@@ -870,7 +1057,10 @@ pub(crate) async fn run_ranges_via_graph<W, WFut>(
     ProviderError,
 >
 where
-    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> WFut + Send + Sync + 'static,
+    W: Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken, RangeMark) -> WFut
+        + Send
+        + Sync
+        + 'static,
     WFut: std::future::Future<Output = Result<ConcurrentRangeOutcome, ProviderError>>
         + Send
         + 'static,
@@ -927,20 +1117,23 @@ where
     );
 
     let ranges: Arc<Vec<(u64, u64)>> = Arc::new(ranges.to_vec());
-    let aggregate = Arc::new(AtomicU64::new(0));
+    // Each range's share of the progress, summed for the report: a range read
+    // again after a failure takes back what it wrote past its mark.
+    let range_bytes: Arc<Vec<Arc<AtomicU64>>> =
+        Arc::new(ranges.iter().map(|_| Arc::new(AtomicU64::new(0))).collect());
     let temp_path: Arc<PathBuf> = Arc::new(temp_path.to_path_buf());
     let server_ignored = Arc::new(AtomicBool::new(false));
     let first_error: Arc<Mutex<Option<ProviderError>>> = Arc::new(Mutex::new(None));
     let progress: SharedProgress = Arc::new(Mutex::new(on_progress));
     let report_progress = {
-        let aggregate = aggregate.clone();
+        let range_bytes = range_bytes.clone();
         let last_reported = AtomicU64::new(0);
         Arc::new(move || {
-            // Read the aggregate and update the watermark under the callback
+            // Read the range totals and update the watermark under the callback
             // lock, so timer ticks and range completions cannot duplicate or
             // regress a report. Empty/stalled ticks produce no callback.
             let callback = progress.lock().unwrap();
-            let done = aggregate.load(Ordering::Relaxed);
+            let done = total_range_bytes(&range_bytes);
             if let Some(callback) = callback.as_ref() {
                 if done > last_reported.load(Ordering::Relaxed) {
                     last_reported.store(done, Ordering::Relaxed);
@@ -952,7 +1145,7 @@ where
 
     let r_ranges = ranges.clone();
     let r_write = write_one_range.clone();
-    let r_aggregate = aggregate.clone();
+    let r_range_bytes = range_bytes.clone();
     let r_temp = temp_path.clone();
     let r_cancel = cancel.clone();
     let r_ignored = server_ignored.clone();
@@ -962,7 +1155,7 @@ where
     let runner: Arc<dyn DagNodeRunner> = Arc::new(move |node: TransferNode| -> NodeFuture {
         let ranges = r_ranges.clone();
         let write_one_range = r_write.clone();
-        let aggregate = r_aggregate.clone();
+        let range_bytes = r_range_bytes.clone();
         let temp_path = r_temp.clone();
         let cancel = r_cancel.clone();
         let server_ignored = r_ignored.clone();
@@ -976,12 +1169,13 @@ where
                     TransferError::cancelled().with_scope(FailureScope::Part),
                 );
             }
-            match write_one_range(
+            match write_range_resuming(
+                &*write_one_range,
                 start,
                 end,
-                (*temp_path).clone(),
-                aggregate.clone(),
-                cancel.clone(),
+                &temp_path,
+                range_bytes[node.id].clone(),
+                &cancel,
             )
             .await
             {
@@ -1282,7 +1476,8 @@ where
                                 end: u64,
                                 temp_path: PathBuf,
                                 aggregate: Arc<AtomicU64>,
-                                cancel: CancellationToken| {
+                                cancel: CancellationToken,
+                                mark: RangeMark| {
         let fetch_range = fetch_range.clone();
         async move {
             download_one_strict_range(
@@ -1292,11 +1487,55 @@ where
                 end,
                 &aggregate,
                 &cancel,
+                &mark,
             )
             .await
         }
     };
     run_concurrent_range_download(cfg, write_one_range, cancel, on_progress).await
+}
+
+/// A range's body that stopped arriving: a timeout or a dropped connection is
+/// recoverable, so the range is resumed from what it wrote
+/// ([`write_range_resuming`]); anything else (a body that does not decode)
+/// fails it.
+pub(crate) fn range_body_error(e: reqwest::Error) -> ProviderError {
+    super::http_send_error(e, |e| {
+        if e.is_body() || e.is_request() || e.is_connect() {
+            ProviderError::NetworkError(e.to_string())
+        } else if connection_ended_under(&e) {
+            ProviderError::NetworkError(format!(
+                "{e}: the connection closed before the window ended"
+            ))
+        } else {
+            ProviderError::TransferFailed(e.to_string())
+        }
+    })
+}
+
+/// Whether an error was caused by the connection ending under it. A body cut
+/// halfway reaches the reader as a decode error, since `reqwest` files every
+/// failure of the body stream under it; its cause is hyper's
+/// `IncompleteBody`, an `UnexpectedEof`.
+fn connection_ended_under(e: &(dyn std::error::Error + 'static)) -> bool {
+    use std::io::ErrorKind;
+    let mut cause = e.source();
+    while let Some(c) = cause {
+        if let Some(io) = c.downcast_ref::<std::io::Error>() {
+            if matches!(
+                io.kind(),
+                ErrorKind::UnexpectedEof
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::BrokenPipe
+                    | ErrorKind::TimedOut
+            ) {
+                return true;
+            }
+        }
+        cause = c.source();
+    }
+    false
 }
 
 /// Download exactly one `[start, end]` window under the strict gate.
@@ -1307,6 +1546,7 @@ async fn download_one_strict_range<F, Fut>(
     end: u64,
     aggregate: &AtomicU64,
     cancel: &CancellationToken,
+    mark: &RangeMark,
 ) -> Result<ConcurrentRangeOutcome, ProviderError>
 where
     F: Fn(u64, u64) -> Fut,
@@ -1357,42 +1597,50 @@ where
     let expected = end - start + 1;
     let mut written: u64 = 0;
     let mut stream = response.bytes_stream();
-    loop {
-        tokio::select! {
-            _ = cancel.cancelled() => {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
-            }
-            next = stream.next() => {
-                let Some(chunk) = next else { break };
-                let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-                let chunk_len = chunk.len() as u64;
-                crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, chunk_len.min(expected - written)).await;
-                if written + chunk_len > expected {
-                    let allowed = (expected - written) as usize;
-                    file.write_all(&chunk[..allowed])
+    let copied: Result<(), ProviderError> = async {
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
+                }
+                next = stream.next() => {
+                    let Some(chunk) = next else { break };
+                    let chunk = chunk.map_err(range_body_error)?;
+                    let chunk_len = chunk.len() as u64;
+                    crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, chunk_len.min(expected - written)).await;
+                    if written + chunk_len > expected {
+                        let allowed = (expected - written) as usize;
+                        file.write_all(&chunk[..allowed])
+                            .await
+                            .map_err(ProviderError::IoError)?;
+                        aggregate.fetch_add(allowed as u64, Ordering::Relaxed);
+                        written = expected;
+                        mark.advance(start + written);
+                        break;
+                    }
+                    file.write_all(&chunk)
                         .await
                         .map_err(ProviderError::IoError)?;
-                    aggregate.fetch_add(allowed as u64, Ordering::Relaxed);
-                    written = expected;
-                    break;
+                    aggregate.fetch_add(chunk_len, Ordering::Relaxed);
+                    written += chunk_len;
+                    mark.advance(start + written);
                 }
-                file.write_all(&chunk)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                aggregate.fetch_add(chunk_len, Ordering::Relaxed);
-                written += chunk_len;
             }
         }
+        if written != expected {
+            // The body ended before the window did: the connection closed
+            // early, and the window goes on from its mark.
+            return Err(ProviderError::NetworkError(format!(
+                "Concurrent range download truncated: expected {} bytes, got {}",
+                expected, written
+            )));
+        }
+        Ok(())
     }
-
-    if written != expected {
-        return Err(ProviderError::TransferFailed(format!(
-            "Concurrent range download truncated: expected {} bytes, got {}",
-            expected, written
-        )));
-    }
+    .await;
+    settle_range_attempt(&mut file, copied).await?;
 
     file.flush().await.map_err(ProviderError::IoError)?;
     file.sync_all().await.map_err(ProviderError::IoError)?;
@@ -2135,12 +2383,12 @@ mod tests {
     /// the same content regardless of which window writes it, so a correct
     /// run produces one deterministic file.
     fn deterministic_writer(
-    ) -> impl Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken) -> BoxedRangeFut
+    ) -> impl Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken, RangeMark) -> BoxedRangeFut
            + Send
            + Sync
            + Clone
            + 'static {
-        |start, end, temp_path, aggregate, _cancel| {
+        |start, end, temp_path, aggregate, _cancel, mark: RangeMark| {
             Box::pin(async move {
                 let mut f = tokio::fs::OpenOptions::new()
                     .write(true)
@@ -2158,6 +2406,7 @@ mod tests {
                 f.write_all(&buf).await.map_err(ProviderError::IoError)?;
                 f.flush().await.map_err(ProviderError::IoError)?;
                 aggregate.fetch_add(len as u64, Ordering::Relaxed);
+                mark.advance(end + 1);
                 Ok(ConcurrentRangeOutcome::Completed)
             })
         }
@@ -2311,7 +2560,8 @@ mod tests {
                   _end: u64,
                   temp_path: PathBuf,
                   aggregate: Arc<AtomicU64>,
-                  _cancel: CancellationToken|
+                  _cancel: CancellationToken,
+                  _mark: RangeMark|
                   -> BoxedRangeFut {
                 Box::pin(async move {
                     let client = reqwest::Client::new();
@@ -2388,7 +2638,8 @@ mod tests {
              _end: u64,
              _p: PathBuf,
              _a: Arc<AtomicU64>,
-             _c: CancellationToken|
+             _c: CancellationToken,
+             _mark: RangeMark|
              -> BoxedRangeFut {
                 Box::pin(async move {
                     if start == 0 {
@@ -2454,7 +2705,8 @@ mod tests {
              _end: u64,
              _p: PathBuf,
              _a: Arc<AtomicU64>,
-             _c: CancellationToken|
+             _c: CancellationToken,
+             _mark: RangeMark|
              -> BoxedRangeFut {
                 Box::pin(async move {
                     if start == 0 {
@@ -2532,7 +2784,8 @@ mod tests {
                       _end: u64,
                       _path: PathBuf,
                       _aggregate: Arc<AtomicU64>,
-                      cancel: CancellationToken|
+                      cancel: CancellationToken,
+                      _mark: RangeMark|
                       -> BoxedRangeFut {
                     let both_started = both_started.clone();
                     let sibling_terminated = sibling_terminated.clone();
@@ -2601,6 +2854,501 @@ mod tests {
         assert_cancellation_parity(true, "cancel-graph").await;
     }
 
+    // ── A failed range resumes from its mark ──────────────────────────────
+    //
+    // A 25 GB SFTP download failed twice, from zero, because one request on
+    // one of its four connections had no answer within 10 s. These pin what
+    // a range does after such a failure, on both schedulers.
+
+    /// One scripted attempt of [`scripted_writer`]'s target range: write
+    /// `write` bytes from the attempt's start, the first `mark` of them right
+    /// and the rest garbage the next attempt has to overwrite, then fail with
+    /// `fail`.
+    #[derive(Clone, Copy)]
+    struct ScriptedAttempt {
+        write: u64,
+        mark: u64,
+        fail: fn() -> ProviderError,
+    }
+
+    fn timeout() -> ProviderError {
+        ProviderError::Timeout
+    }
+
+    /// The window ending at `target_end` follows `script`, one entry per
+    /// attempt, and completes once the script runs out; every other window
+    /// completes at once. Content is `(offset % 251)`, as in
+    /// [`deterministic_writer`]. `starts` gets the start of every attempt at
+    /// the target.
+    fn scripted_writer(
+        target_end: u64,
+        script: Vec<ScriptedAttempt>,
+        starts: Arc<std::sync::Mutex<Vec<u64>>>,
+    ) -> impl Fn(u64, u64, PathBuf, Arc<AtomicU64>, CancellationToken, RangeMark) -> BoxedRangeFut
+           + Send
+           + Sync
+           + 'static {
+        move |start, end, temp_path, bytes, _cancel, mark: RangeMark| {
+            let step = if end == target_end {
+                let mut starts = starts.lock().unwrap();
+                starts.push(start);
+                script.get(starts.len() - 1).copied()
+            } else {
+                None
+            };
+            Box::pin(async move {
+                let len = end - start + 1;
+                let (write, good) = match step {
+                    Some(s) => (s.write.min(len), s.mark.min(s.write).min(len)),
+                    None => (len, len),
+                };
+                let buf: Vec<u8> = (0..write)
+                    .map(|i| {
+                        if i < good {
+                            ((start + i) % 251) as u8
+                        } else {
+                            0xEE
+                        }
+                    })
+                    .collect();
+                let mut f = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&temp_path)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                f.seek(std::io::SeekFrom::Start(start))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                f.write_all(&buf).await.map_err(ProviderError::IoError)?;
+                f.flush().await.map_err(ProviderError::IoError)?;
+                bytes.fetch_add(write, Ordering::Relaxed);
+                mark.advance(start + good);
+                match step {
+                    Some(s) => Err((s.fail)()),
+                    None => Ok(ConcurrentRangeOutcome::Completed),
+                }
+            })
+        }
+    }
+
+    struct ScriptedRun {
+        result: Result<ConcurrentRangeOutcome, ProviderError>,
+        starts: Vec<u64>,
+        reports: Vec<u64>,
+        file: Vec<u8>,
+        target: (u64, u64),
+    }
+
+    /// Run a 64 KiB download in four windows, the second following `script`.
+    async fn run_scripted(graph: bool, tag: &str, script: Vec<ScriptedAttempt>) -> ScriptedRun {
+        let total: u64 = 1 << 16;
+        let ranges = plan_multi_thread_ranges(total, 4, MAX);
+        let target = ranges[1];
+        let dir = scratch_dir(tag);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let temp = segmented_temp_path_for(&dir.join("r.bin"));
+        prealloc(&temp, total).await;
+
+        let starts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let reports = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let on_progress: Box<dyn Fn(u64, u64) + Send> = {
+            let reports = reports.clone();
+            Box::new(move |done, _total| reports.lock().unwrap().push(done))
+        };
+        let writer = Arc::new(scripted_writer(target.1, script, starts.clone()));
+        let result = if graph {
+            run_ranges_via_graph(
+                &ranges,
+                &temp,
+                total,
+                4,
+                super::super::ProviderType::Sftp,
+                crate::transfer_dag::EndpointIdentity::new("sftp", "resume-harness", ""),
+                writer,
+                CancellationToken::new(),
+                Some(on_progress),
+            )
+            .await
+            .map(|(outcome, _)| outcome)
+        } else {
+            run_ranges_via_joinset(
+                &ranges,
+                &temp,
+                total,
+                4,
+                writer,
+                CancellationToken::new(),
+                Some(on_progress),
+            )
+            .await
+        };
+        let file = tokio::fs::read(&temp).await.unwrap();
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        let starts = starts.lock().unwrap().clone();
+        let reports = reports.lock().unwrap().clone();
+        ScriptedRun {
+            result,
+            starts,
+            reports,
+            file,
+            target,
+        }
+    }
+
+    fn assert_deterministic(file: &[u8]) {
+        for (o, byte) in file.iter().enumerate() {
+            assert_eq!(*byte, ((o as u64) % 251) as u8, "byte mismatch at {o}");
+        }
+    }
+
+    /// A window that times out after writing goes on from its mark: the next
+    /// attempt starts there, overwrites what the failed one left past it, and
+    /// the progress counts every byte once.
+    #[tokio::test(start_paused = true)]
+    async fn a_range_that_times_out_resumes_from_its_mark() {
+        for graph in [false, true] {
+            let run = run_scripted(
+                graph,
+                &format!("resume-{graph}"),
+                vec![ScriptedAttempt {
+                    write: 3000,
+                    mark: 1000,
+                    fail: timeout,
+                }],
+            )
+            .await;
+            let (start, _) = run.target;
+            assert_eq!(
+                run.result.as_ref().ok(),
+                Some(&ConcurrentRangeOutcome::Completed),
+                "graph={graph}: {:?}",
+                run.result
+            );
+            assert_eq!(run.starts, vec![start, start + 1000], "graph={graph}");
+            assert_deterministic(&run.file);
+            let total = run.file.len() as u64;
+            assert_eq!(run.reports.last(), Some(&total), "graph={graph}");
+            assert!(
+                run.reports.iter().all(|&done| done <= total),
+                "graph={graph}: a byte written twice was counted twice: {:?}",
+                run.reports
+            );
+        }
+    }
+
+    /// Only a recoverable error is resumed: a hard one fails the download on
+    /// its first occurrence, as before.
+    #[tokio::test(start_paused = true)]
+    async fn a_range_that_fails_hard_is_not_retried() {
+        fn hard() -> ProviderError {
+            ProviderError::TransferFailed("synthetic hard error".to_string())
+        }
+        for graph in [false, true] {
+            let run = run_scripted(
+                graph,
+                &format!("hard-{graph}"),
+                vec![ScriptedAttempt {
+                    write: 1000,
+                    mark: 1000,
+                    fail: hard,
+                }],
+            )
+            .await;
+            assert!(
+                matches!(run.result, Err(ProviderError::TransferFailed(_))),
+                "graph={graph}: {:?}",
+                run.result
+            );
+            assert_eq!(run.starts, vec![run.target.0], "graph={graph}");
+        }
+    }
+
+    /// A range that fails without moving fails the download after
+    /// `RANGE_RETRIES` retries, waiting 1, 2 and 4 s between them.
+    #[tokio::test(start_paused = true)]
+    async fn a_range_that_never_moves_fails_after_its_retries() {
+        let stuck = ScriptedAttempt {
+            write: 0,
+            mark: 0,
+            fail: timeout,
+        };
+        for graph in [false, true] {
+            let began = tokio::time::Instant::now();
+            let run = run_scripted(graph, &format!("stuck-{graph}"), vec![stuck; 10]).await;
+            assert!(
+                matches!(run.result, Err(ProviderError::Timeout)),
+                "graph={graph}: {:?}",
+                run.result
+            );
+            assert_eq!(
+                run.starts,
+                vec![run.target.0; RANGE_RETRIES as usize + 1],
+                "graph={graph}"
+            );
+            assert!(
+                began.elapsed() >= std::time::Duration::from_secs(7),
+                "graph={graph}: retried after {:?}",
+                began.elapsed()
+            );
+        }
+    }
+
+    /// An attempt that moved the mark starts the count again: a server that
+    /// stalls now and then over a long transfer does not use the retries up.
+    #[tokio::test(start_paused = true)]
+    async fn a_range_that_keeps_moving_is_retried_past_the_limit() {
+        let step = ScriptedAttempt {
+            write: 100,
+            mark: 100,
+            fail: timeout,
+        };
+        let attempts = RANGE_RETRIES as usize * 2;
+        for graph in [false, true] {
+            let run = run_scripted(graph, &format!("moving-{graph}"), vec![step; attempts]).await;
+            assert_eq!(
+                run.result.as_ref().ok(),
+                Some(&ConcurrentRangeOutcome::Completed),
+                "graph={graph}: {:?}",
+                run.result
+            );
+            let expected: Vec<u64> = (0..=attempts as u64)
+                .map(|i| run.target.0 + 100 * i)
+                .collect();
+            assert_eq!(run.starts, expected, "graph={graph}");
+            assert_deterministic(&run.file);
+        }
+    }
+
+    /// A failure after the last byte (closing the remote handle) is not a
+    /// reason to read the window again.
+    #[tokio::test(start_paused = true)]
+    async fn a_range_that_fails_after_its_last_byte_is_complete() {
+        for graph in [false, true] {
+            let run = run_scripted(
+                graph,
+                &format!("tail-{graph}"),
+                vec![ScriptedAttempt {
+                    write: u64::MAX,
+                    mark: u64::MAX,
+                    fail: timeout,
+                }],
+            )
+            .await;
+            assert_eq!(
+                run.result.as_ref().ok(),
+                Some(&ConcurrentRangeOutcome::Completed),
+                "graph={graph}: {:?}",
+                run.result
+            );
+            assert_eq!(run.starts, vec![run.target.0], "graph={graph}");
+            assert_deterministic(&run.file);
+        }
+    }
+
+    /// A cancel during the wait before a retry ends the range at once, as a
+    /// cancel, and no further attempt is made.
+    #[tokio::test(start_paused = true)]
+    async fn a_cancel_during_the_retry_wait_ends_the_range() {
+        let attempts = Arc::new(AtomicU64::new(0));
+        let writer = {
+            let attempts = attempts.clone();
+            move |_start: u64,
+                  _end: u64,
+                  _path: PathBuf,
+                  _bytes: Arc<AtomicU64>,
+                  _cancel: CancellationToken,
+                  _mark: RangeMark|
+                  -> BoxedRangeFut {
+                attempts.fetch_add(1, Ordering::Relaxed);
+                Box::pin(async { Err(ProviderError::Timeout) })
+            }
+        };
+        let cancel = CancellationToken::new();
+        let began = tokio::time::Instant::now();
+        let range = {
+            let cancel = cancel.clone();
+            tokio::spawn(async move {
+                write_range_resuming(
+                    &writer,
+                    0,
+                    99,
+                    Path::new("/nonexistent"),
+                    Arc::new(AtomicU64::new(0)),
+                    &cancel,
+                )
+                .await
+            })
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        cancel.cancel();
+        let result = range.await.unwrap();
+        assert!(
+            matches!(result, Err(ProviderError::Cancelled)),
+            "{result:?}"
+        );
+        assert_eq!(attempts.load(Ordering::Relaxed), 1);
+        assert!(began.elapsed() < std::time::Duration::from_secs(1));
+    }
+
+    /// A pool worker's failed read keeps its class, so a timeout or a lost
+    /// connection is resumed and everything else still fails the range. They
+    /// all came back as `TransferFailed`, which nothing resumes.
+    #[test]
+    fn a_failed_read_range_keeps_its_class() {
+        let cases = [
+            (ProviderError::Timeout, true),
+            (ProviderError::NotConnected, true),
+            (ProviderError::NetworkError("reset".into()), true),
+            (ProviderError::ConnectionLost("closed".into()), true),
+            (ProviderError::ParallelRefused("moved".into()), false),
+            (ProviderError::ServerError("boom".into()), false),
+            (ProviderError::NotFound("gone".into()), false),
+        ];
+        for (error, recoverable) in cases {
+            let label = format!("{error:?}");
+            let mapped = range_read_failed("pget", 42, error);
+            assert_eq!(
+                mapped.is_recoverable(),
+                recoverable,
+                "{label} -> {mapped:?}"
+            );
+        }
+        assert!(matches!(
+            range_read_failed("b2", 7, ProviderError::ParallelRefused("moved".into())),
+            ProviderError::ParallelRefused(text) if text.contains("offset 7")
+        ));
+        assert!(matches!(
+            range_read_failed("pget", 7, ProviderError::ServerError("boom".into())),
+            ProviderError::TransferFailed(text) if text.contains("offset 7")
+        ));
+    }
+
+    /// A write still in flight when an attempt failed is settled before the
+    /// error goes back, and a write that fails there replaces the recoverable
+    /// error with a hard one: the mark counted those bytes, and resuming past
+    /// them would leave a hole. `/dev/full` accepts the write and fails it on
+    /// flush, as a full disk does.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_failed_attempt_settles_its_writes_before_it_is_resumed() {
+        let mut full = tokio::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .await
+            .expect("/dev/full");
+        full.write_all(&[1u8; 4096])
+            .await
+            .expect("the write is accepted");
+        let settled = settle_range_attempt(&mut full, Err::<(), _>(ProviderError::Timeout)).await;
+        assert!(
+            matches!(settled, Err(ProviderError::IoError(_))),
+            "{settled:?}"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let mut file = tokio::fs::File::create(dir.path().join("ok.bin"))
+            .await
+            .unwrap();
+        file.write_all(&[1u8; 4096]).await.unwrap();
+        let settled = settle_range_attempt(&mut file, Err::<(), _>(ProviderError::Timeout)).await;
+        assert!(
+            matches!(settled, Err(ProviderError::Timeout)),
+            "{settled:?}"
+        );
+    }
+
+    /// A WebDAV window whose body stops halfway (the connection drops) is
+    /// asked for again from where it stopped, and the download completes. The
+    /// body error used to be a `TransferFailed` that failed the whole file.
+    #[tokio::test]
+    async fn an_http_window_cut_halfway_is_asked_again_from_its_mark() {
+        const SIZE: u64 = 4 * 1024 * 1024;
+        const WINDOW: u64 = SIZE / 4;
+        let requests = Arc::new(std::sync::Mutex::new(Vec::<(u64, u64)>::new()));
+        let cut_once = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let app = {
+            let requests = requests.clone();
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let requests = requests.clone();
+                let cut_once = cut_once.clone();
+                async move {
+                    let raw = req
+                        .headers()
+                        .get("range")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("")
+                        .to_string();
+                    let (start, end) = requested_window(&raw).unwrap_or((0, SIZE - 1));
+                    requests.lock().unwrap().push((start, end));
+                    let body: Vec<u8> = (start..=end).map(|o| (o % 251) as u8).collect();
+                    let body = if start == WINDOW && !cut_once.swap(true, Ordering::SeqCst) {
+                        let half = bytes::Bytes::from(body[..body.len() / 2].to_vec());
+                        axum::body::Body::from_stream(futures_util::stream::iter(vec![
+                            Ok::<_, std::io::Error>(half),
+                            Err(std::io::Error::other("connection dropped")),
+                        ]))
+                    } else {
+                        axum::body::Body::from(body)
+                    };
+                    axum::response::Response::builder()
+                        .status(206)
+                        .header("content-range", format!("bytes {start}-{end}/{SIZE}"))
+                        .header("content-length", (end - start + 1).to_string())
+                        .header("etag", "\"v1\"")
+                        .body(body)
+                        .unwrap()
+                }
+            }))
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        let attempt = try_http_concurrent_range_download(
+            HttpRangeRequest {
+                client: reqwest::Client::new(),
+                url: format!("http://{addr}/big.bin"),
+                headers: Vec::new(),
+                local_path: local.to_string_lossy().into_owned(),
+                provider_type: super::super::ProviderType::WebDav,
+                streams: 4,
+                max_streams: 4,
+                cutoff: 1024 * 1024,
+                known_size: Some(SIZE),
+            },
+            None,
+        )
+        .await;
+        assert!(
+            matches!(attempt, HttpRangeAttempt::Completed),
+            "{:?}",
+            match attempt {
+                HttpRangeAttempt::Failed(e) => format!("Failed({e})"),
+                HttpRangeAttempt::Fallback(_) => "Fallback".to_string(),
+                HttpRangeAttempt::Completed => "Completed".to_string(),
+            }
+        );
+        let file = std::fs::read(&local).unwrap();
+        assert_eq!(file.len() as u64, SIZE);
+        assert_deterministic(&file);
+        let resumed: Vec<u64> = requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|&&(start, end)| start > WINDOW && end == 2 * WINDOW - 1)
+            .map(|&(start, _)| start)
+            .collect();
+        assert_eq!(resumed.len(), 1, "one retry of the cut window: {resumed:?}");
+        assert!(
+            resumed[0] <= WINDOW + WINDOW / 2,
+            "the retry starts where the body stopped, not past it: {resumed:?}"
+        );
+    }
+
     #[tokio::test]
     async fn segmented_progress_advances_before_any_range_completes() {
         use std::sync::atomic::AtomicUsize;
@@ -2629,7 +3377,8 @@ mod tests {
                   end: u64,
                   temp_path: PathBuf,
                   aggregate: Arc<AtomicU64>,
-                  _cancel: CancellationToken| {
+                  _cancel: CancellationToken,
+                  _mark: RangeMark| {
                 let release = release.clone();
                 let partial_written = partial_written.clone();
                 let completed = completed.clone();
@@ -2767,7 +3516,8 @@ mod tests {
                   end: u64,
                   temp_path: PathBuf,
                   aggregate: Arc<AtomicU64>,
-                  _cancel: CancellationToken|
+                  _cancel: CancellationToken,
+                  _mark: RangeMark|
                   -> BoxedRangeFut {
                 let callbacks = callbacks.clone();
                 let callback_notify = callback_notify.clone();
@@ -2913,7 +3663,8 @@ mod tests {
              _end: u64,
              _path: PathBuf,
              _aggregate: Arc<AtomicU64>,
-             _cancel: CancellationToken|
+             _cancel: CancellationToken,
+             _mark: RangeMark|
              -> BoxedRangeFut {
                 Box::pin(async move { panic!("synthetic range panic") })
             },
@@ -3104,7 +3855,8 @@ mod tests {
                       _end: u64,
                       _path: PathBuf,
                       aggregate: Arc<AtomicU64>,
-                      _cancel: CancellationToken|
+                      _cancel: CancellationToken,
+                      _mark: RangeMark|
                       -> BoxedRangeFut {
                     let active = active.clone();
                     let peak = peak.clone();
