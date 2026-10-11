@@ -34162,25 +34162,6 @@ async fn cmd_get(
 const PGET_MIN_FILE_SIZE: u64 = 4 * 1024 * 1024; // 4 MB minimum for segmented download
 const PGET_SUB_READ_SIZE: u64 = 64 * 1024 * 1024; // 64 MB max per read_range call
 
-/// How the windows of `pget` read under `limit_bps` (`--limit-rate`, or the
-/// `--bwlimit` schedule): the size of each `read_range`, and whether each is
-/// charged to the process-wide limiter first. `read_range` goes around the
-/// limiter the streamed downloads pace through, so a capped `pget` ran at full
-/// speed; each read is now about one second of the cap (at least 256 KiB, at
-/// most the 64 MiB the uncapped windows read), charged before it is made.
-fn pget_sub_reads(limit_bps: Option<u64>) -> (u64, bool) {
-    match limit_bps {
-        Some(bps) => (
-            bps.clamp(
-                ftp_client_gui_lib::transfer_dag::throttle::OWNED_BODY_CHUNK_BYTES as u64,
-                PGET_SUB_READ_SIZE,
-            ),
-            true,
-        ),
-        None => (PGET_SUB_READ_SIZE, false),
-    }
-}
-
 /// Effective pget segment count.
 ///
 /// The shared planner (`plan_segment_count`) owns the window math: hard cap
@@ -34256,7 +34237,7 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        open_after_transfer, range_read_failed, range_source_changed_through,
+        open_after_transfer, range_read_failed, range_source_changed_through, read_range_paced,
         read_range_source_through, replace_failed_range_worker, run_concurrent_range_download,
         settle_range_attempt, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeMark,
         SegmentedRun,
@@ -34437,7 +34418,6 @@ async fn pget_segmented_download(
         max_parallel: effective_parallel_workers(cli).min(actual_segments),
     };
 
-    let (sub_read_size, paced) = pget_sub_reads(cli_speed_limit_bps(cli));
     let write_one_range = move |start_off: u64,
                                 end_off: u64,
                                 temp_path: PathBuf,
@@ -34480,18 +34460,21 @@ async fn pget_segmented_download(
                             "Transfer cancelled by user".to_string(),
                         ));
                     }
-                    let sub_len = (window_len - written).min(sub_read_size);
-                    if paced {
-                        ftp_client_gui_lib::transfer_dag::throttle::charge(
-                            ftp_client_gui_lib::transfer_dag::governor::TransferDirection::Download,
-                            sub_len,
-                        )
-                        .await;
-                    }
-                    let data = provider
-                        .read_range(&remote, start_off + written, sub_len)
-                        .await
-                        .map_err(|e| range_read_failed("pget", start_off + written, e))?;
+                    // `read_range` goes around the limiter the streamed
+                    // downloads pace through, so a capped `pget` ran at full
+                    // speed (40 MiB in 141 ms at 1M, where `get` takes 39 s).
+                    // Under any cap the process carries (`--limit-rate`,
+                    // `--bwlimit`, `AEROFTP_GLOBAL_BANDWIDTH_BPS`) each read
+                    // is about one second of it, charged before it is made.
+                    let data = read_range_paced(
+                        provider.as_mut(),
+                        &remote,
+                        start_off + written,
+                        window_len - written,
+                        PGET_SUB_READ_SIZE,
+                    )
+                    .await
+                    .map_err(|e| range_read_failed("pget", start_off + written, e))?;
                     if data.is_empty() {
                         // Hard error, never a soft short-read: read_range has no
                         // HTTP-200 semantics, so this is not ServerIgnoredRange
@@ -77149,26 +77132,6 @@ mod tests {
         // Unknown remote size: the only honest move is to ask for the tail.
         assert_eq!(partial_resume_plan(40, None), ResumePlan::Resume);
         assert_eq!(partial_resume_plan(0, Some(0)), ResumePlan::Complete);
-    }
-
-    /// `--limit-rate` did not hold on `pget` and `get --segments`: their
-    /// windows read through `read_range`, which the limiter never saw (40 MiB
-    /// in 141 ms at 1M, where `get` takes 39 s). Under a cap each read is about
-    /// one second of it, and is charged to the limiter first.
-    #[test]
-    fn a_capped_pget_reads_in_paced_steps() {
-        assert_eq!(pget_sub_reads(None), (PGET_SUB_READ_SIZE, false));
-        assert_eq!(pget_sub_reads(Some(1024 * 1024)), (1024 * 1024, true));
-        assert_eq!(
-            pget_sub_reads(Some(1)),
-            (256 * 1024, true),
-            "at least 256 KiB"
-        );
-        assert_eq!(
-            pget_sub_reads(Some(u64::MAX)),
-            (PGET_SUB_READ_SIZE, true),
-            "at most the uncapped read"
-        );
     }
 
     #[test]

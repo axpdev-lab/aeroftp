@@ -38,6 +38,40 @@ fn governor_is_unlimited(g: &GlobalTransferGovernor, direction: TransferDirectio
     g.bandwidth().is_unlimited() && g.directional_bandwidth(direction).is_unlimited()
 }
 
+/// How long each range read of a file read in ranges may be, and whether it is
+/// charged before it is made. `uncapped` is the length the caller reads when no
+/// cap is set.
+///
+/// `StorageProvider::read_range` goes around the byte loops this module paces,
+/// so whoever reads a file in ranges pays for the ranges. Under a cap each read
+/// is about one second of the tightest cap that applies (at least
+/// [`OWNED_BODY_CHUNK_BYTES`], at most `uncapped`) and is charged first: a pool
+/// of workers then moves what the bucket grants and no more, where a charge
+/// made after the read lets the first read of every worker through unpaced.
+/// Uncapped: `uncapped`, and no charge.
+pub fn range_read_pacing(direction: TransferDirection, uncapped: u64) -> (u64, bool) {
+    range_read_pacing_with(&governor::global(), direction, uncapped)
+}
+
+/// [`range_read_pacing`] against an explicit governor.
+pub fn range_read_pacing_with(
+    g: &GlobalTransferGovernor,
+    direction: TransferDirection,
+    uncapped: u64,
+) -> (u64, bool) {
+    let cap = [
+        g.directional_bandwidth(direction).rate_bps(),
+        g.bandwidth().rate_bps(),
+    ]
+    .into_iter()
+    .filter(|&bps| bps > 0)
+    .min();
+    match cap {
+        Some(bps) => (bps.max(OWNED_BODY_CHUNK_BYTES as u64).min(uncapped), true),
+        None => (uncapped, false),
+    }
+}
+
 /// Pace a stream of byte chunks against the process-global governor: each `Ok`
 /// chunk is charged for its length before it is yielded. Errors pass through
 /// untouched. The item type is preserved, so this wraps a `reqwest` response
@@ -227,6 +261,49 @@ mod tests {
         });
         g.set_transfer_limits(upload_bps, download_bps);
         g
+    }
+
+    /// A file read in ranges under a cap reads about one second of the
+    /// tightest cap that applies to its direction per read, and pays first.
+    #[test]
+    fn a_capped_range_read_is_one_second_of_the_tightest_cap() {
+        const MIB: u64 = 1024 * 1024;
+        let down = TransferDirection::Download;
+        let uncapped = 64 * MIB;
+        assert_eq!(
+            range_read_pacing_with(&capped(0, 0), down, uncapped),
+            (uncapped, false)
+        );
+        // An upload cap leaves downloads alone.
+        assert_eq!(
+            range_read_pacing_with(&capped(MIB, 0), down, uncapped),
+            (uncapped, false)
+        );
+        let g = capped(0, 3 * MIB);
+        assert_eq!(range_read_pacing_with(&g, down, uncapped), (3 * MIB, true));
+        // The rest of a window shorter than a second of the cap.
+        assert_eq!(range_read_pacing_with(&g, down, 1000), (1000, true));
+        // A combined cap tighter than the directional one wins.
+        let both = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: 0,
+            bandwidth_bps: 2 * MIB,
+            endpoint_slots: 4,
+            disk_device_slots: 4,
+        });
+        both.set_transfer_limits(0, 3 * MIB);
+        assert_eq!(
+            range_read_pacing_with(&both, down, uncapped),
+            (2 * MIB, true)
+        );
+        // A tiny cap still reads a usable chunk, a huge one no more than uncapped.
+        assert_eq!(
+            range_read_pacing_with(&capped(0, 1), down, uncapped),
+            (OWNED_BODY_CHUNK_BYTES as u64, true)
+        );
+        assert_eq!(
+            range_read_pacing_with(&capped(0, 1 << 40), down, uncapped),
+            (uncapped, true)
+        );
     }
 
     #[tokio::test]

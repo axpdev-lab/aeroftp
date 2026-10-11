@@ -1909,8 +1909,8 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<crate::providers::multi_thread::SegmentedTemp, ProviderError> {
         use crate::providers::multi_thread::{
-            range_read_failed, run_concurrent_range_download, settle_range_attempt,
-            ConcurrentRangeConfig, ConcurrentRangeOutcome, SegmentedRun,
+            range_read_failed, read_range_paced, run_concurrent_range_download,
+            settle_range_attempt, ConcurrentRangeConfig, ConcurrentRangeOutcome, SegmentedRun,
         };
         use std::collections::VecDeque;
         use std::path::PathBuf;
@@ -1983,23 +1983,23 @@ impl B2Provider {
                                     "Transfer cancelled by user".to_string(),
                                 ));
                             }
-                            let sub_len = (window_len - written).min(MULTI_THREAD_SUB_READ_SIZE);
-                            let data = worker
-                                .read_range(&remote, start_off + written, sub_len)
-                                .await
-                                .map_err(|e| {
-                                    // The offset is added to the message, and a
-                                    // refusal stays one on the way up.
-                                    range_read_failed("b2 multi-thread", start_off + written, e)
-                                })?;
-                            // Charged here, not in `read_range`, which like every
-                            // other provider's leaves the limiter to its caller
-                            // (pget charged it a second time).
-                            crate::transfer_dag::throttle::charge(
-                                crate::transfer_dag::governor::TransferDirection::Download,
-                                data.len() as u64,
+                            // Charged before it is made: `read_range`, like every
+                            // other provider's, leaves the limiter to its caller,
+                            // and a read charged after it came let the first
+                            // 8 MiB of every stream through unpaced.
+                            let data = read_range_paced(
+                                &mut worker,
+                                &remote,
+                                start_off + written,
+                                window_len - written,
+                                MULTI_THREAD_SUB_READ_SIZE,
                             )
-                            .await;
+                            .await
+                            .map_err(|e| {
+                                // The offset is added to the message, and a
+                                // refusal stays one on the way up.
+                                range_read_failed("b2 multi-thread", start_off + written, e)
+                            })?;
                             if data.is_empty() {
                                 return Err(ProviderError::TransferFailed(format!(
                                     "b2 multi-thread: short read at offset {} ({} of {} bytes)",

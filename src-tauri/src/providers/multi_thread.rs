@@ -330,6 +330,45 @@ pub fn range_read_failed(what: &str, offset: u64, e: ProviderError) -> ProviderE
     }
 }
 
+/// One `read_range` of a file read in ranges, paid to the speed limiter
+/// before it is made: at most `remaining` bytes from `offset`, `uncapped` of
+/// them when no cap is set, about one second of the cap when one is
+/// ([`crate::transfer_dag::throttle::range_read_pacing`]). `read_range` leaves
+/// the limiter to its caller, so the engines that copy a file in ranges read
+/// through here.
+pub async fn read_range_paced(
+    provider: &mut dyn super::StorageProvider,
+    path: &str,
+    offset: u64,
+    remaining: u64,
+    uncapped: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    let governor = crate::transfer_dag::governor::global();
+    read_range_paced_with(&governor, provider, path, offset, remaining, uncapped).await
+}
+
+/// [`read_range_paced`] against an explicit governor.
+pub async fn read_range_paced_with(
+    governor: &crate::transfer_dag::governor::GlobalTransferGovernor,
+    provider: &mut dyn super::StorageProvider,
+    path: &str,
+    offset: u64,
+    remaining: u64,
+    uncapped: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    use crate::transfer_dag::governor::TransferDirection;
+    let (read_size, paced) = crate::transfer_dag::throttle::range_read_pacing_with(
+        governor,
+        TransferDirection::Download,
+        uncapped,
+    );
+    let len = remaining.min(read_size);
+    if paced {
+        governor.charge(TransferDirection::Download, len).await;
+    }
+    provider.read_range(path, offset, len).await
+}
+
 /// How long a range worker waits to say goodbye on a connection that failed:
 /// the server may be the one not answering, and the retry waits on it.
 pub(crate) const FAILED_RANGE_DISCONNECT: std::time::Duration = std::time::Duration::from_secs(5);

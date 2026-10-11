@@ -2684,7 +2684,7 @@ aeroftp-cli get sftp://user@host /large-file.iso --limit-rate 5M
 aeroftp-cli get sftp://user@host /large-file.iso --bwlimit "08:00,512k 18:00,off"
 ```
 
-The cap is process-wide and protocol-independent: it is enforced by the transfer governor where the bytes move (the HTTP download and upload streams, every multipart part, the FTP data channel, the SFTP loops), so it holds on S3, WebDAV, FTP/FTPS, Azure, Backblaze B2 and the HTTP cloud providers as well as on SFTP and MEGA. Concurrent files and parts share the one budget: `--parallel 8 --limit-rate 5M` moves at most 5 MiB/s in total, not per file. The `--bwlimit` schedule is resolved once at startup. Owned request bodies (S3 signed parts, B2 parts) are paced in 256 KiB slices, so a low cap still produces a smooth rate rather than one burst per part.
+The cap is process-wide and protocol-independent: it is enforced by the transfer governor where the bytes move (the HTTP download and upload streams, every multipart part, the FTP data channel, the SFTP loops), so it holds on S3, WebDAV, FTP/FTPS, Azure, Backblaze B2 and the HTTP cloud providers as well as on SFTP and MEGA. Concurrent files and parts share the one budget: `--parallel 8 --limit-rate 5M` moves at most 5 MiB/s in total, not per file. The `--bwlimit` schedule is resolved once at startup. Owned request bodies (S3 signed parts, B2 parts) are paced in 256 KiB slices, so a low cap still produces a smooth rate rather than one burst per part. Segmented downloads (`pget`, `get --segments`, and the large files that `get -r`, `sync` and the app split into ranges) charge each range before reading it, about one second of the cap per read, so the cap holds from the first byte instead of after one read per segment.
 
 ### Encoding Issues
 
