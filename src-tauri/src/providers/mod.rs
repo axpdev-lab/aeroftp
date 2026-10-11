@@ -4197,11 +4197,11 @@ mod http_send_error_tests {
     use super::*;
     use std::time::Duration;
 
-    async fn failed_send(url: &str) -> reqwest::Error {
+    async fn failed_send(url: &str, read_timeout: Duration) -> reqwest::Error {
         // The providers' own limit: a read timeout, not a total one.
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(5))
-            .read_timeout(Duration::from_millis(300))
+            .read_timeout(read_timeout)
             .build()
             .expect("client");
         client
@@ -4213,7 +4213,7 @@ mod http_send_error_tests {
 
     #[tokio::test]
     async fn a_request_that_gets_no_reply_is_a_timeout_whatever_the_site_calls_it() {
-        let e = failed_send(&mute_http_endpoint()).await;
+        let e = failed_send(&mute_http_endpoint(), Duration::from_millis(300)).await;
         let mapped = http_send_error(e, |e| ProviderError::ConnectionFailed(e.to_string()));
         assert!(matches!(mapped, ProviderError::Timeout), "{mapped:?}");
     }
@@ -4223,7 +4223,12 @@ mod http_send_error_tests {
         let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let url = format!("http://{}/", closed.local_addr().expect("address"));
         drop(closed);
-        let e = failed_send(&url).await;
+        // reqwest starts its read timeout when the request is sent, so it
+        // covers the connect too, and Windows answers a connect to a closed
+        // localhost port only after about 2 s of SYN retries: a read timeout
+        // shorter than that turns the refusal into a timeout there. The
+        // providers' own read timeout is far longer than that wait.
+        let e = failed_send(&url, Duration::from_secs(30)).await;
         let mapped = http_send_error(e, |e| ProviderError::ConnectionFailed(e.to_string()));
         assert!(
             matches!(mapped, ProviderError::ConnectionFailed(_)),
