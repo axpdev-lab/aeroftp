@@ -39,7 +39,7 @@ import {
   CompareReport, RetryPolicy, SyncJournal
 } from './types';
 import { profileOverlayApplyParams } from './utils/profileOverlayUnlock';
-import { overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
+import { cryptUnlockTargetKey, overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
 import type { ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
 import { bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
@@ -17428,6 +17428,7 @@ const App: React.FC = () => {
         {showCryptomatorBrowser && <CryptomatorBrowser initialVaultPath={showCryptomatorBrowser.initialVaultPath} onClose={() => setShowCryptomatorBrowser(false)} />}
         {showRcloneCryptUnlock && (
           <RcloneCryptUnlock
+            key={cryptUnlockTargetKey(showRcloneCryptUnlock)}
             onClose={() => setShowRcloneCryptUnlock(null)}
             activeVaultId={rcloneCryptVaultId}
             scope={showRcloneCryptUnlock.scope}
@@ -17455,6 +17456,7 @@ const App: React.FC = () => {
         )}
         {showAeroCryptUnlock && (
           <AeroCryptUnlock
+            key={cryptUnlockTargetKey(showAeroCryptUnlock)}
             onClose={() => setShowAeroCryptUnlock(null)}
             activeVaultId={aeroCryptVaultId}
             scope={showAeroCryptUnlock.scope}

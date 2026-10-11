@@ -112,15 +112,31 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
         if (id) await lockVault(id).catch(() => undefined);
     }, [lockVault]);
 
-    // Closing the dialog drops the tools' keys with it.
-    useEffect(() => () => { void releaseToolVault(); }, [releaseToolVault]);
+    // Closing the dialog drops the tools' keys with it, and so does an unlock or
+    // a create still pending at that moment: it returns after the cleanup ran,
+    // so `closedRef` tells it the dialog is gone (set back on mount because
+    // StrictMode runs a cleanup between its two mounts).
+    const closedRef = useRef(false);
+    useEffect(() => {
+        closedRef.current = false;
+        return () => {
+            closedRef.current = true;
+            void releaseToolVault();
+        };
+    }, [releaseToolVault]);
 
     // Apply the overlay with the keys `standalone` holds for the tools (null when
-    // there are none). They are kept only if the overlay really opened.
+    // there are none). They are kept only if the overlay really opened, and only
+    // while the dialog is still open to use them.
     const applyOverlay = async (root: string, standalone: RcloneCryptVaultInfo | null, forms: {
         passwordForm: CryptSecretForm;
         saltForm: CryptSecretForm;
     }) => {
+        // Closed before the apply: open nothing for a dialog nobody is looking at.
+        if (closedRef.current) {
+            if (standalone) await lockVault(standalone.vault_id).catch(() => undefined);
+            return;
+        }
         try {
             await onUnlocked?.({
                 password,
@@ -133,6 +149,12 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
         } catch (e) {
             if (standalone) await lockVault(standalone.vault_id).catch(() => undefined);
             throw e;
+        }
+        // Closed while App applied: the overlay App opened stays (the badge
+        // shows and locks it), the tools' keys go with the dialog.
+        if (closedRef.current) {
+            if (standalone) await lockVault(standalone.vault_id).catch(() => undefined);
+            return;
         }
         if (standalone) {
             await releaseToolVault();
@@ -147,7 +169,8 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
     };
 
     const handleUnlock = async () => {
-        if (!password) return;
+        // Enter in a field still works while the button is disabled.
+        if (!password || loading) return;
         setLoading(true);
         setError(null);
         try {
@@ -174,7 +197,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
     };
 
     const handleCreate = async () => {
-        if (!password || password !== confirmPassword) return;
+        if (!password || password !== confirmPassword || loading) return;
         setLoading(true);
         setError(null);
         try {

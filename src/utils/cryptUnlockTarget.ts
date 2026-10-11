@@ -29,3 +29,14 @@ export interface CryptUnlockTarget {
  * `/`: passing `''` for an overlay at the root probed wherever the panel was.
  */
 export const overlayAnchor = (scope?: string | null): string => normCryptScope(scope) || '/';
+
+/**
+ * Identity of a dialog's target, for its React `key`.
+ *
+ * The dialogs read the folder into their own state when they mount (a Create
+ * then moves it to the vault it made), so a new target has to mount a new
+ * dialog: reusing the open one kept probing, creating and applying at the
+ * previous folder, with the previous mode, password and default-salt choice.
+ */
+export const cryptUnlockTargetKey = (target: CryptUnlockTarget): string =>
+  JSON.stringify([target.scope, target.savedServerId ?? null]);

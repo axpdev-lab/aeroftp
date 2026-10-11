@@ -153,6 +153,17 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         vaultInfoRef.current = vaultInfo;
     }, [vaultInfo]);
 
+    // An Open or a Create still pending when the dialog closes returns after
+    // the unmount: `closedRef` tells it the dialog is gone (set back on mount
+    // because StrictMode runs a cleanup between its two mounts).
+    const closedRef = useRef(false);
+    useEffect(() => {
+        closedRef.current = false;
+        return () => {
+            closedRef.current = true;
+        };
+    }, []);
+
     const refreshMarkerStatus = useCallback(async () => {
         try {
             const status = await invoke<AeroCryptMarkerStatus>('aerocrypt_provider_marker_status', {
@@ -244,7 +255,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
 
     const handleUnlock = async () => {
         // Tier 1: an empty password is legal when a keyfile is the (only) factor.
-        if (!password && !keyfilePath) return;
+        // Enter in a field still works while the button is disabled.
+        if ((!password && !keyfilePath) || loading) return;
         setLoading(true);
         setError(null);
         try {
@@ -259,6 +271,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                     return;
                 }
             }
+            // Closed while probing: open nothing for a dialog nobody is looking at.
+            if (closedRef.current) return;
             await onUnlocked?.({
                 password,
                 scope: vaultRoot,
@@ -276,7 +290,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
 
     const handleCreate = async () => {
         // Tier 1: keyfile-only vaults (empty password) are legal by design.
-        if ((!password && !keyfilePath) || password !== confirmPassword) return;
+        if ((!password && !keyfilePath) || password !== confirmPassword || loading) return;
         // #276: never create the vault with default-salt intent the backend would
         // reject for entropy. Refusing is the point: the alternative is a vault
         // that silently got a per-vault salt while the toggle read as on.
@@ -298,6 +312,9 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             // view (rebuilt from the persisted config, re-viewable and re-savable
             // any time), so the create+connect flow is never interrupted.
             //
+            // Closed while creating: the vault exists, Open finds it later; no
+            // overlay is opened for a dialog nobody is looking at.
+            if (closedRef.current) return;
             // From here on the dialog is about the new vault: if the apply below
             // fails, Open retries it where it is instead of a second create.
             setVaultRoot(created.root);
