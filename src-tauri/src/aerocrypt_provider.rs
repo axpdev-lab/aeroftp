@@ -9,8 +9,9 @@
 //! [`crate::aerocrypt`] codec instead of rclone's wire format. They open the
 //! currently-connected provider and encrypt/decrypt on the fly so a dual-panel
 //! GUI can browse and transfer through the overlay transparently (master plan
-//! 3.6). Per-session unlock returns a `vault_id`; binding the overlay to a saved
-//! profile is P3, deliberately not done here.
+//! 3.6). No command here unlocks or locks an overlay: the keys an open derives
+//! live in the decorator `provider_apply_crypt_overlay` arms and in that
+//! connection's overlay key cache, and `provider_clear_crypt_overlay` drops both.
 //!
 //! Two facts make this set diverge from the rclone mirror, both inherent to the
 //! native model (not a gap):
@@ -21,14 +22,11 @@
 //!   vaults, legacy `.aeroftp-crypt.json` still readable). rclone keeps its
 //!   config locally. Unlocking an existing overlay therefore needs to read that
 //!   marker first, which is why this set adds [`aerocrypt_provider_read_config`]
-//!   on top of the eight rclone-parallel commands.
-
-use std::collections::HashMap;
+//!   on top of the rclone-parallel commands.
 
 use serde::Serialize;
 use tauri::State;
-use tokio::sync::Mutex;
-use zeroize::{Zeroize, Zeroizing};
+use zeroize::Zeroizing;
 
 use crate::aerocrypt::keyslots::{
     derive_slot_key, Argon2Params, SlotBinding, SlotFactor, SlotType,
@@ -73,40 +71,7 @@ fn resolve_ui_keyfile_digest(keyfile_path: Option<&str>) -> Result<Option<[u8; K
     }
 }
 
-// ── State ────────────────────────────────────────────────────────────────────
-
-/// Derived material for one unlocked native AeroCrypt overlay. The master key is
-/// zeroized on drop; the config carries only the (public) version + salt.
-pub struct AeroCryptKeys {
-    pub master_key: [u8; KEY_SIZE],
-    pub config: OverlayConfig,
-}
-
-impl Drop for AeroCryptKeys {
-    fn drop(&mut self) {
-        self.master_key.zeroize();
-    }
-}
-
-/// Managed state holding every unlocked native AeroCrypt overlay, keyed by the
-/// per-session `vault_id`.
-pub struct AeroCryptState {
-    pub vaults: Mutex<HashMap<String, AeroCryptKeys>>,
-}
-
-impl AeroCryptState {
-    pub fn new() -> Self {
-        Self {
-            vaults: Mutex::new(HashMap::new()),
-        }
-    }
-}
-
-impl Default for AeroCryptState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// ── Marker probe results ─────────────────────────────────────────────────────
 
 /// Lightweight marker probe for the unlock modal. It carries no config bytes and
 /// is safe to expose before the user enters credentials.
@@ -123,21 +88,6 @@ pub struct AeroCryptMarkerMigrationResult {
     pub changed: bool,
     pub legacy_deleted: bool,
     pub warning: Option<String>,
-}
-
-// ── Unlock / lock (pure, no provider I/O) ────────────────────────────────────
-
-/// Lock (forget) an unlocked overlay, zeroizing its master key via `Drop`.
-#[tauri::command]
-pub async fn aerocrypt_lock(
-    state: State<'_, AeroCryptState>,
-    vault_id: String,
-) -> Result<(), String> {
-    let mut vaults = state.vaults.lock().await;
-    if vaults.remove(&vault_id).is_none() {
-        return Err("Vault not found or already locked".to_string());
-    }
-    Ok(())
 }
 
 // ── Provider commands ────────────────────────────────────────────────────────

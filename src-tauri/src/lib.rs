@@ -19230,7 +19230,6 @@ pub fn run() {
     let builder = builder.manage(create_ssh_shell_state());
     let builder = builder.manage(cryptomator::CryptomatorState::new());
     let builder = builder.manage(rclone_crypt::RcloneCryptState::new());
-    let builder = builder.manage(aerocrypt_provider::AeroCryptState::new());
     let builder = builder.manage(AeroVaultOverlayState::new());
     let builder = builder.manage(cross_profile_commands::CrossProfileState::new());
     // Master Password state for app-level security
@@ -19675,7 +19674,6 @@ pub fn run() {
             rclone_crypt::rclone_crypt_decrypt_file_path,
             rclone_crypt_provider_create_remote,
             // Native AeroCrypt overlay (mirrors the rclone set on our own codec)
-            aerocrypt_provider::aerocrypt_lock,
             aerocrypt_provider::aerocrypt_provider_read_config,
             aerocrypt_provider::aerocrypt_provider_marker_status,
             aerocrypt_provider::aerocrypt_provider_migrate_legacy_marker,

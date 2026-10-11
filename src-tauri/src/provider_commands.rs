@@ -7296,30 +7296,30 @@ impl crate::transfer_dag::DagObserver for ScanProgressEmitter {
 /// Resolve the keys a crypt-aware compare must normalize the RAW remote listing
 /// with, from whichever unlock path armed this session.
 ///
-/// There are two, and only one of them ever populated the standalone vault maps:
+/// There are two, and only one of them ever populated a standalone vault map:
 ///
 /// * the **provider overlay** (`provider_apply_crypt_overlay`), which is what the
 ///   Overlays Path and every saved crypt profile use. It derives the keys into
 ///   the live decorator and into this connection's key cache, and the vault id
 ///   the frontend then reports is a synthetic sentinel
 ///   (`provider-overlay:<kind>:<owner>`), never a map key;
-/// * the **standalone vault** commands (`rclone_crypt_unlock`, and the
-///   AeroCrypt one this map was built for, gone since #1081 row 43 left it with
-///   no caller), which do insert under the UUID they hand back.
+/// * the **standalone vault** command `rclone_crypt_unlock`, which does insert
+///   under the UUID it hands back. AeroCrypt has no standalone vault any more:
+///   its unlock command was removed with #1081 row 43 and the map it filled in
+///   the follow-up, so an AeroCrypt id resolves as a sentinel or not at all.
 ///
-/// Looking only in the maps therefore failed for every provider-overlay session,
+/// Looking only in the map therefore failed for every provider-overlay session,
 /// which is the whole of the Overlays Path (#347). For a provider-overlay
 /// sentinel the cache is consulted first because it is the same key material the
 /// file panel is displaying with, so Compare and the panel cannot disagree. A
-/// real vault UUID always goes to the standalone maps instead: an explicitly
-/// named vault must never be shadowed by an unrelated cached overlay of the same
-/// kind (tracker #575 row 11 (a)).
+/// real vault UUID never reads the cache: an explicitly named vault must never
+/// be shadowed by an unrelated cached overlay of the same kind (tracker #575
+/// row 11 (a)).
 async fn resolve_compare_overlay_keys(
     kind: Option<&str>,
     vault_id: &str,
     state: &ProviderState,
     rclone_state: &crate::rclone_crypt::RcloneCryptState,
-    aerocrypt_state: &crate::aerocrypt_provider::AeroCryptState,
 ) -> Result<crate::crypt_overlay_provider::OverlayKeys, String> {
     use crate::crypt_overlay_provider::OverlayKeys;
 
@@ -7342,6 +7342,7 @@ async fn resolve_compare_overlay_keys(
     }
 
     // 2. A standalone unlocked vault, keyed by the UUID that unlock returned.
+    //    Only rclone crypt has one; AeroCrypt answers through the sentinel above.
     match kind {
         Some("rclone-crypt") => {
             let vaults = rclone_state.vaults.lock().await;
@@ -7350,16 +7351,7 @@ async fn resolve_compare_overlay_keys(
                 .map(|keys| OverlayKeys::Rclone(keys.clone()))
                 .ok_or_else(|| "Crypt vault is not unlocked".to_string())
         }
-        Some("aerocrypt") => {
-            let vaults = aerocrypt_state.vaults.lock().await;
-            vaults
-                .get(vault_id)
-                .map(|keys| OverlayKeys::AeroCrypt {
-                    master_key: keys.master_key,
-                    config: keys.config.clone(),
-                })
-                .ok_or_else(|| "Crypt vault is not unlocked".to_string())
-        }
+        Some("aerocrypt") => Err("Crypt vault is not unlocked".to_string()),
         Some(_) => Err("Unsupported crypt overlay kind for compare".to_string()),
         None => Err("Missing crypt overlay kind for compare".to_string()),
     }
@@ -7494,7 +7486,6 @@ pub async fn provider_compare_directories(
     app: AppHandle,
     state: State<'_, ProviderState>,
     rclone_state: State<'_, crate::rclone_crypt::RcloneCryptState>,
-    aerocrypt_state: State<'_, crate::aerocrypt_provider::AeroCryptState>,
     local_path: String,
     remote_path: String,
     crypt_vault_id: Option<String>,
@@ -7821,7 +7812,6 @@ pub async fn provider_compare_directories(
                     vault_id,
                     &state,
                     &rclone_state,
-                    &aerocrypt_state,
                 )
                 .await?,
             );
@@ -14122,7 +14112,6 @@ mod tests {
     async fn compare_resolves_provider_overlay_keys_from_the_connection_cache() {
         let state = ProviderState::new();
         let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
-        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
         state.store_overlay_key_cache(
             compare_test_keys(),
             "/Vault".to_string(),
@@ -14132,11 +14121,10 @@ mod tests {
         let resolved = resolve_compare_overlay_keys(
             Some("rclone-crypt"),
             // Exactly the shape App.tsx builds: `provider-overlay:<kind>:<owner>`,
-            // which is not, and never was, a key in either vault map.
+            // which is not, and never was, a vault map key.
             "provider-overlay:rclone-crypt:saved-server-1",
             &state,
             &rclone_state,
-            &aerocrypt_state,
         )
         .await
         .expect("a provider-overlay session must resolve its own armed keys");
@@ -14150,7 +14138,6 @@ mod tests {
     async fn compare_does_not_answer_with_a_different_overlay_kind() {
         let state = ProviderState::new();
         let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
-        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
         state.store_overlay_key_cache(
             compare_test_keys(),
             "/Vault".to_string(),
@@ -14164,7 +14151,6 @@ mod tests {
             "provider-overlay:aerocrypt:saved-server-1",
             &state,
             &rclone_state,
-            &aerocrypt_state,
         )
         .await
         {
@@ -14179,7 +14165,6 @@ mod tests {
     async fn compare_ignores_a_cache_from_a_previous_connection() {
         let state = ProviderState::new();
         let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
-        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
         state.store_overlay_key_cache(
             compare_test_keys(),
             "/Vault".to_string(),
@@ -14193,7 +14178,6 @@ mod tests {
                 "provider-overlay:rclone-crypt:saved-server-1",
                 &state,
                 &rclone_state,
-                &aerocrypt_state,
             )
             .await
             .is_err(),
@@ -14207,7 +14191,6 @@ mod tests {
     async fn compare_still_resolves_a_standalone_unlocked_vault_by_uuid() {
         let state = ProviderState::new();
         let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
-        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
         let (name_key, data_key, name_tweak) =
             derive_keys_with_tweak("compare-pass", "compare-salt").unwrap();
         rclone_state.vaults.lock().await.insert(
@@ -14227,7 +14210,6 @@ mod tests {
             "11111111-2222-3333-4444-555555555555",
             &state,
             &rclone_state,
-            &aerocrypt_state,
         )
         .await
         .expect("the vault-browser unlock path must keep resolving");
@@ -14243,7 +14225,6 @@ mod tests {
     async fn compare_real_vault_uuid_outranks_same_kind_overlay_cache() {
         let state = ProviderState::new();
         let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
-        let aerocrypt_state = crate::aerocrypt_provider::AeroCryptState::default();
         state.store_overlay_key_cache(
             compare_test_keys(),
             "/Vault".to_string(),
@@ -14266,15 +14247,10 @@ mod tests {
             },
         );
 
-        let resolved = resolve_compare_overlay_keys(
-            Some("rclone-crypt"),
-            vault_id,
-            &state,
-            &rclone_state,
-            &aerocrypt_state,
-        )
-        .await
-        .expect("an explicitly named standalone vault must resolve from its map");
+        let resolved =
+            resolve_compare_overlay_keys(Some("rclone-crypt"), vault_id, &state, &rclone_state)
+                .await
+                .expect("an explicitly named standalone vault must resolve from its map");
 
         match &resolved {
             crate::crypt_overlay_provider::OverlayKeys::Rclone(keys) => {
@@ -14284,6 +14260,50 @@ mod tests {
                 );
             }
             _ => panic!("expected rclone-crypt keys"),
+        }
+    }
+
+    /// AeroCrypt has no vault map any more, so the connection's own sentinel is
+    /// the only id that resolves its keys. Any other id, a UUID included, must be
+    /// refused even with AeroCrypt keys armed on this connection: answering it
+    /// from the cache would hand an explicitly named vault the keys of whatever
+    /// overlay happens to be open (tracker #575 row 11 (a)).
+    #[tokio::test]
+    async fn compare_resolves_aerocrypt_keys_only_through_the_provider_overlay_sentinel() {
+        let state = ProviderState::new();
+        let rclone_state = crate::rclone_crypt::RcloneCryptState::default();
+        let config = crate::aerocrypt::overlay::OverlayConfig::v3_bootstrap(
+            crate::aerocrypt::overlay::random_salt_v3(),
+        );
+        state.store_overlay_key_cache(
+            crate::crypt_overlay_provider::OverlayKeys::AeroCrypt {
+                master_key: [7u8; 32],
+                config,
+            },
+            "/Vault".to_string(),
+            "aerocrypt".to_string(),
+        );
+
+        let resolved = resolve_compare_overlay_keys(
+            Some("aerocrypt"),
+            "provider-overlay:aerocrypt:saved-server-1",
+            &state,
+            &rclone_state,
+        )
+        .await
+        .expect("the AeroCrypt sentinel must resolve the keys this connection armed");
+        assert_eq!(resolved.kind_str(), "aerocrypt");
+
+        match resolve_compare_overlay_keys(
+            Some("aerocrypt"),
+            "11111111-2222-3333-4444-555555555555",
+            &state,
+            &rclone_state,
+        )
+        .await
+        {
+            Ok(_) => panic!("an AeroCrypt id that is not the sentinel must not read the cache"),
+            Err(err) => assert!(err.contains("not unlocked"), "unexpected error: {err}"),
         }
     }
 

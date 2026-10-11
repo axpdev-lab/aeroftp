@@ -8240,15 +8240,11 @@ const App: React.FC = () => {
       // reload/in-flight refs survived the disconnect. On the next connect the
       // phase-1/phase-2 auto-unlock guards (see the effects at ~4602 and ~4665)
       // short-circuited on the old vault id: the decrypted reload never ran, so
-      // "decrypting" stayed on forever and the overlay button was stuck. Lock the
-      // backend keys, unwrap the provider, and reset the frontend overlay state and
-      // refs so a reconnect starts clean.
-      if (aeroCryptVaultId) {
-        try { await invoke('aerocrypt_lock', { vaultId: aeroCryptVaultId }); } catch { }
-      }
-      if (rcloneCryptVaultId) {
-        try { await invoke('rclone_crypt_lock', { vaultId: rcloneCryptVaultId }); } catch { }
-      }
+      // "decrypting" stayed on forever and the overlay button was stuck. Unwrap
+      // the provider and wipe the connection's cached overlay keys (the `full`
+      // clear), and reset the frontend overlay state and refs so a reconnect
+      // starts clean. The vault ids here are `provider-overlay:` sentinels, keys
+      // in no backend map, so the clear is the only lock there is.
       await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
       setAeroCryptVaultId(null);
       setRcloneCryptVaultId(null);
@@ -9467,8 +9463,6 @@ const App: React.FC = () => {
     const overlaySessionId = aeroVaultOverlaySession?.sessionId;
     return runOwnedConnectionCleanup(owns, [
       ...(overlaySessionId ? [() => invoke('aerovault_overlay_lock', { sessionId: overlaySessionId })] : []),
-      ...(aeroCryptVaultId ? [() => invoke('aerocrypt_lock', { vaultId: aeroCryptVaultId })] : []),
-      ...(rcloneCryptVaultId ? [() => invoke('rclone_crypt_lock', { vaultId: rcloneCryptVaultId })] : []),
       () => invoke('provider_clear_crypt_overlay', { full: true }),
       () => invoke('provider_disconnect'),
       () => invoke('disconnect_ftp'),
