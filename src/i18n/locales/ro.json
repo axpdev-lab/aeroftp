@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Tastați YES pentru a confirma eliminarea",
             "keyslotsRemoveTypeYes": "Tastați YES (majuscule) pentru a confirma eliminarea.",
             "keyslotsRemoveUnlockHint": "Pentru a elimina un slot, deblocați mai întâi cu un alt slot rămas (nu puteți elimina slotul cu care ați deblocat).",
-            "keyslotsF6Honesty": "Eliminarea unui factor îl împiedică să deschidă seiful de acum înainte. NU recriptează datele: oricine a păstrat deja o copie a vechiului antet al seifului ȘI a acreditărilor eliminate poate încă deschide datele la care avea acces. Pentru a revoca complet accesul, recriptați seiful (rotiți Volume Key).",
+            "keyslotsF6Honesty": "Eliminarea unui factor îl împiedică să deschidă seiful de acum înainte. NU recriptează datele: oricine a păstrat o copie a vechiului antet al seifului ȘI a acreditărilor eliminate poate încă deschide întregul seif, inclusiv fișierele adăugate după eliminare. Pentru a revoca complet accesul, creați un seif nou, mutați fișierele în el și ștergeți-l pe cel vechi.",
             "keyslotsKindPassphrase": "Frază de acces",
             "keyslotsKindKeyfile": "Fișier cheie",
             "keyslotsKindRecovery": "Recuperare",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Copiați codul",
             "keyslotsUnlockWithRecovery": "Puteți debloca și cu un cod de recuperare (lipiți-l ca parolă).",
             "openDefaultSaltLabel": "Acest vault folosește saltul implicit AeroCrypt",
-            "openDefaultSaltHint": "Fără marker aici, un vault cu salt implicit se deschide doar cu parola sa, odată ce numele din acest folder se decriptează cu ea. Nimic nu se scrie pe serverul de la distanță."
+            "openDefaultSaltHint": "Fără marker aici, un vault cu salt implicit se deschide doar cu parola sa, odată ce numele din acest folder se decriptează cu ea. Nimic nu se scrie pe serverul de la distanță.",
+            "keyslotsSetAsideRisks": "Acest server nu poate înlocui un fișier într-un singur pas. Markerul curent este redenumit și pus deoparte, cel nou este mutat în locul lui, iar cel vechi este apoi șters. În acel moment seiful nu are marker și nu poate fi deschis. Dacă modificarea este întreruptă pe parcurs, markerul rămâne în folderul seifului sub un nume care conține .aeroftp-replaced- și trebuie redenumit înapoi manual. Pe un spațiu de stocare care păstrează un coș de gunoi sau versiuni de fișiere, markerul anterior rămâne recuperabil acolo.",
+            "keyslotsSetAsideRevocation": "Markerul anterior încă deschide seiful cu factorul pe care îl eliminați sau îl înlocuiți. Fiecare copie rămasă în folderul seifului este ștearsă după modificare, iar o copie care nu poate fi ștearsă este raportată ca eroare. O copie din coșul de gunoi sau din versiunile de fișiere ale spațiului de stocare nu este atinsă: golirea lor elimină acele copii, dar nu una păstrată de altcineva, deci nu finalizează revocarea.",
+            "keyslotsSetAsideConsent": "Am înțeles: înlocuiește markerul pe acest server redenumind cel vechi și punându-l deoparte",
+            "keyslotsSetAsideConsentRequired": "Acest server poate înlocui markerul seifului doar redenumind cel vechi și punându-l deoparte: confirmați în caseta de mai sus pentru a continua.",
+            "keyslotsMarkerReplaceUnsupported": "Acest server nu poate înlocui markerul seifului, deci modificările de sloturi sunt refuzate aici. Deschideți același spațiu de stocare printr-un server care înlocuiește un fișier într-un singur pas (de exemplu SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Criptare)",

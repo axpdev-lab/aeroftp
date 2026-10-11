@@ -5788,7 +5788,7 @@
             "keyslotsRemoveConfirmLabel": "Escriu YES per confirmar l’eliminació",
             "keyslotsRemoveTypeYes": "Escriu YES (en majúscules) per confirmar l’eliminació.",
             "keyslotsRemoveUnlockHint": "Per eliminar una ranura, desbloqueja primer amb una altra ranura supervivent (no pots eliminar la ranura amb la qual has desbloquejat).",
-            "keyslotsF6Honesty": "Eliminar un factor fa que deixi d’obrir la volta a partir d’ara. NO reencripta les teves dades: qualsevol que ja hagi conservat una còpia de l’antiga capçalera de la volta I de la credencial eliminada encara pot obrir les dades a les quals tenia accés. Per revocar totalment l’accés, reencripta la volta (rota la Volume Key).",
+            "keyslotsF6Honesty": "Eliminar un factor fa que deixi d’obrir la volta a partir d’ara. NO reencripta les teves dades: qualsevol que hagi conservat una còpia de l’antiga capçalera de la volta I de la credencial eliminada encara pot obrir tota la volta, inclosos els fitxers afegits després de l’eliminació. Per revocar totalment l’accés, crea una volta nova, mou-hi els teus fitxers i elimina l’antiga.",
             "keyslotsKindPassphrase": "Frase de pas",
             "keyslotsKindKeyfile": "Fitxer de clau",
             "keyslotsKindRecovery": "Recuperació",
@@ -5811,7 +5811,12 @@
             "keyslotsRecoveryCopy": "Copia el codi",
             "keyslotsUnlockWithRecovery": "També podeu desbloquejar amb un codi de recuperació (enganxeu-lo com a contrasenya).",
             "openDefaultSaltLabel": "Aquest vault usa la sal predeterminada d'AeroCrypt",
-            "openDefaultSaltHint": "Sense marcador aquí, un vault amb sal predeterminada s'obre només amb la contrasenya un cop els noms d'aquesta carpeta es desxifren amb ella. No s'escriu res al remot."
+            "openDefaultSaltHint": "Sense marcador aquí, un vault amb sal predeterminada s'obre només amb la contrasenya un cop els noms d'aquesta carpeta es desxifren amb ella. No s'escriu res al remot.",
+            "keyslotsSetAsideRisks": "Aquest servidor no pot substituir un fitxer en un sol pas. El marcador actual es reanomena a part, el nou es mou al seu lloc i després se suprimeix l'antic. Durant aquest instant el cofre no té marcador i no es pot obrir. Si el canvi s'interromp pel mig, el marcador queda a la carpeta del cofre amb un nom que conté .aeroftp-replaced- i s'ha de reanomenar a mà. En un emmagatzematge que conserva paperera o versions de fitxers, el marcador anterior continua sent recuperable allà.",
+            "keyslotsSetAsideRevocation": "El marcador anterior encara obre el cofre amb el factor que elimineu o substituïu. Totes les còpies que quedin a la carpeta del cofre se suprimeixen després del canvi, i una còpia que no es pugui suprimir s'informa com a error. No s'arriba a una còpia a la paperera o a les versions de fitxers de l'emmagatzematge: buidar-les elimina aquestes còpies, però no una que algú altre hagi conservat, de manera que no completa la revocació.",
+            "keyslotsSetAsideConsent": "Ho entenc: substitueix el marcador en aquest servidor reanomenant l'anterior a part",
+            "keyslotsSetAsideConsentRequired": "Aquest servidor només pot substituir el marcador del cofre reanomenant l'anterior a part: confirmeu-ho a la casella de dalt per continuar.",
+            "keyslotsMarkerReplaceUnsupported": "Aquest servidor no pot substituir el marcador del cofre, per això aquí es rebutgen els canvis de ranures. Obriu el mateix emmagatzematge mitjançant un servidor que substitueixi un fitxer en un sol pas (SFTP, per exemple)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",

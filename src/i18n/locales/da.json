@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Skriv YES for at bekræfte fjernelse",
             "keyslotsRemoveTypeYes": "Skriv YES (store bogstaver) for at bekræfte fjernelse.",
             "keyslotsRemoveUnlockHint": "For at fjerne et slot skal du først låse op med et andet tilbageværende slot (du kan ikke fjerne det slot, du låste op med).",
-            "keyslotsF6Honesty": "Fjernelse af en faktor stopper den i at åbne boksen fra nu af. Det genkrypterer IKKE dine data: alle, der allerede har gemt en kopi af den gamle boks-header OG de fjernede legitimationsoplysninger, kan stadig åbne de data, de havde adgang til. For at tilbagekalde adgang helt genkryptér boksen (rotér Volume Key).",
+            "keyslotsF6Honesty": "Fjernelse af en faktor stopper den i at åbne boksen fra nu af. Det genkrypterer IKKE dine data: alle, der har gemt en kopi af den gamle boks-header OG de fjernede legitimationsoplysninger, kan stadig åbne hele boksen, også filer tilføjet efter fjernelsen. For at tilbagekalde adgang helt skal du oprette en ny boks, flytte dine filer over i den og slette den gamle.",
             "keyslotsKindPassphrase": "Adgangsfrase",
             "keyslotsKindKeyfile": "Nøglefil",
             "keyslotsKindRecovery": "Gendannelse",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopiér kode",
             "keyslotsUnlockWithRecovery": "Du kan også låse op med en gendannelseskode (indsæt den som adgangskode).",
             "openDefaultSaltLabel": "Denne vault bruger AeroCrypts standardsalt",
-            "openDefaultSaltHint": "Uden markør her åbnes en vault med standardsalt kun med sin adgangskode, så snart navnene i denne mappe kan dekrypteres med den. Der skrives intet til fjernserveren."
+            "openDefaultSaltHint": "Uden markør her åbnes en vault med standardsalt kun med sin adgangskode, så snart navnene i denne mappe kan dekrypteres med den. Der skrives intet til fjernserveren.",
+            "keyslotsSetAsideRisks": "Denne server kan ikke erstatte en fil i ét trin. Den nuværende markør omdøbes og sættes til side, den nye flyttes på plads, og den gamle slettes derefter. I det øjeblik har boksen ingen markør og kan ikke åbnes. Hvis ændringen afbrydes midtvejs, bliver markøren liggende i boksens mappe under et navn med .aeroftp-replaced- og skal omdøbes tilbage manuelt. På lager, der gemmer papirkurv eller filversioner, kan den tidligere markør gendannes dér.",
+            "keyslotsSetAsideRevocation": "Den tidligere markør åbner stadig boksen med den faktor, du fjerner eller erstatter. Hver kopi, der ligger tilbage i boksens mappe, slettes efter ændringen, og en kopi, der ikke kan slettes, rapporteres som en fejl. En kopi i lagerets papirkurv eller filversioner nås ikke: at tømme dem fjerner disse kopier, men ikke en kopi, som en anden har gemt, så det fuldfører ikke tilbagekaldelsen.",
+            "keyslotsSetAsideConsent": "Jeg forstår: erstat markøren på denne server ved at sætte den gamle til side",
+            "keyslotsSetAsideConsentRequired": "Denne server kan kun erstatte boksens markør ved at sætte den gamle til side: bekræft det i feltet ovenfor for at fortsætte.",
+            "keyslotsMarkerReplaceUnsupported": "Denne server kan ikke erstatte boksens markør, så ændringer af slots afvises her. Åbn det samme lager via en server, der erstatter en fil i ét trin (f.eks. SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

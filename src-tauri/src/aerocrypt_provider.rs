@@ -291,7 +291,7 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
         // half is why this sits above the `write` and not below it, because
         // the `?` here returns before the `remove_file` further down and
         // would leave the staging file in the temp directory.
-        let publish = crate::providers::ensure_atomic_replace(provider, &current_path)
+        let publish = crate::providers::ensure_marker_replace(provider, &current_path, false, None)
             .await
             .map_err(|e| e.to_string())?;
         tokio::fs::write(&temp, rebuilt_marker.as_bytes())
@@ -519,6 +519,10 @@ pub struct AeroCryptSlotListResult {
     /// Slot that authenticated this unlock (v4 only).
     pub opened_slot_id: Option<u32>,
     pub slots: Vec<AeroCryptSlotSummary>,
+    /// How the marker can be replaced on this server: the dialog asks for
+    /// consent before a slot change only where it `setsAside` (policy C).
+    /// Filled by `aerocrypt_list_slots` after the marker is read.
+    pub marker_replace: Option<crate::providers::MarkerReplaceMode>,
 }
 
 /// Result of a marker-mutating keyslot action (migrate / add / remove / rotate).
@@ -641,6 +645,7 @@ async fn publish_headed_marker(
     marker_text: &str,
     password: &str,
     keyfile_digest: Option<[u8; KEY_SIZE]>,
+    allow_non_atomic: bool,
 ) -> Result<(), String> {
     let current_path = join_remote_path(cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
     let temp = std::env::temp_dir().join(format!(
@@ -652,9 +657,10 @@ async fn publish_headed_marker(
     // `restore_headerless_marker`: the remote contract is "the marker is
     // unchanged", and asking here also keeps the `?` from returning past the
     // `remove_file` below and stranding the local staging file (G119).
-    let publish = crate::providers::ensure_atomic_replace(provider, &current_path)
-        .await
-        .map_err(|e| e.to_string())?;
+    let publish =
+        crate::providers::ensure_marker_replace(provider, &current_path, allow_non_atomic, None)
+            .await
+            .map_err(|e| e.to_string())?;
     tokio::fs::write(&temp, marker_text.as_bytes())
         .await
         .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
@@ -699,6 +705,28 @@ async fn publish_headed_marker(
         let _ = provider.delete(&legacy_path).await;
     }
     Ok(())
+}
+
+/// After a revocation (`remove-slot`, `rotate-slot`) published through a
+/// set-aside, delete every copy of the marker left in the vault folder. A
+/// copy is the marker as it was before, and it still opens the vault with the
+/// factor just revoked: one left behind is an error that names it, not a
+/// warning (policy C, owner 2026-10-11). Copies from earlier runs go too.
+/// Nothing to do where the replace is atomic: no copy is ever made there.
+async fn remove_revoked_marker_copies(
+    provider: &mut dyn crate::providers::StorageProvider,
+    cwd: &str,
+) -> Result<(), String> {
+    if !provider.replace_sets_aside() {
+        return Ok(());
+    }
+    let left =
+        crate::providers::remove_set_aside_copies(provider, cwd, overlay::CRYPT_CONFIG_WRITE_NAME)
+            .await;
+    if left.is_empty() {
+        return Ok(());
+    }
+    Err(crate::providers::revoked_marker_copies_left(&left))
 }
 
 /// Best-effort: refresh the local public config cache so Recovery Kit / next
@@ -980,6 +1008,7 @@ fn list_result_from_v4(
         vault_id_short: vault_id_short_hex(&material.config),
         opened_slot_id: Some(material.slot_id),
         slots,
+        marker_replace: None,
     })
 }
 
@@ -1048,9 +1077,12 @@ pub async fn aerocrypt_list_slots(
     let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
     let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
     let (raw, _) = load_headed_marker(provider, &cwd).await?;
+    let marker_replace = crate::providers::marker_replace_mode(provider)
+        .await
+        .map_err(|e| e.to_string())?;
     let kd = keyfile_digest;
     let pw = password;
-    tokio::task::spawn_blocking(move || {
+    let mut listed = tokio::task::spawn_blocking(move || {
         let (cfg, _) = overlay::unlock_overlay_from_config(&raw, &pw, kd.as_ref())?;
         match cfg.version() {
             4 => list_result_from_v4(&raw, &pw, kd.as_ref()),
@@ -1060,6 +1092,7 @@ pub async fn aerocrypt_list_slots(
                 vault_id_short: vault_id_short_hex(&cfg),
                 opened_slot_id: None,
                 slots: vec![],
+                marker_replace: None,
             }),
             other => Err(format!(
                 "keyslot manager does not support AeroCrypt v{other}"
@@ -1067,7 +1100,9 @@ pub async fn aerocrypt_list_slots(
         }
     })
     .await
-    .map_err(|e| format!("list-slots task failed: {e}"))?
+    .map_err(|e| format!("list-slots task failed: {e}"))??;
+    listed.marker_replace = Some(marker_replace);
+    Ok(listed)
 }
 
 /// Convert a connected v3 headed vault to v4 keyslots and publish the new marker.
@@ -1078,6 +1113,7 @@ pub async fn aerocrypt_migrate_v4(
     keyfile_path: Option<String>,
     base_path: Option<String>,
     profile_id: Option<String>,
+    allow_non_atomic: Option<bool>,
 ) -> Result<AeroCryptSlotMutateResult, String> {
     if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
         return Err("password or keyfile required to migrate to v4".to_string());
@@ -1104,7 +1140,15 @@ pub async fn aerocrypt_migrate_v4(
     let recovery_code = migrate.recovery_code;
     let auto_offered = recovery_code.is_some();
 
-    publish_headed_marker(provider, &cwd, &v4_marker, &password, keyfile_digest).await?;
+    publish_headed_marker(
+        provider,
+        &cwd,
+        &v4_marker,
+        &password,
+        keyfile_digest,
+        allow_non_atomic.unwrap_or(false),
+    )
+    .await?;
     best_effort_refresh_keystore_config(profile_id.as_deref(), &v4_marker);
 
     let kd = keyfile_digest;
@@ -1136,6 +1180,7 @@ pub async fn aerocrypt_add_slot(
     slot_type: String,
     new_password: Option<String>,
     new_keyfile_path: Option<String>,
+    allow_non_atomic: Option<bool>,
 ) -> Result<AeroCryptSlotMutateResult, String> {
     if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
         return Err("password or keyfile required to add a slot".to_string());
@@ -1212,7 +1257,15 @@ pub async fn aerocrypt_add_slot(
     }
 
     // Publish with the original unlock factor (still valid; add does not revoke).
-    publish_headed_marker(provider, &cwd, &new_header, &password, keyfile_digest).await?;
+    publish_headed_marker(
+        provider,
+        &cwd,
+        &new_header,
+        &password,
+        keyfile_digest,
+        allow_non_atomic.unwrap_or(false),
+    )
+    .await?;
     best_effort_refresh_keystore_config(profile_id.as_deref(), &new_header);
 
     let kd = keyfile_digest;
@@ -1237,6 +1290,7 @@ pub async fn aerocrypt_remove_slot(
     base_path: Option<String>,
     profile_id: Option<String>,
     slot_id: u32,
+    allow_non_atomic: Option<bool>,
 ) -> Result<AeroCryptSlotMutateResult, String> {
     if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
         return Err("password or keyfile required to remove a slot".to_string());
@@ -1269,8 +1323,17 @@ pub async fn aerocrypt_remove_slot(
         .map_err(|e| format!("remove-slot produced a marker that fails unlock: {e}"))?;
     }
 
-    publish_headed_marker(provider, &cwd, &new_header, &password, keyfile_digest).await?;
+    publish_headed_marker(
+        provider,
+        &cwd,
+        &new_header,
+        &password,
+        keyfile_digest,
+        allow_non_atomic.unwrap_or(false),
+    )
+    .await?;
     best_effort_refresh_keystore_config(profile_id.as_deref(), &new_header);
+    remove_revoked_marker_copies(provider, &cwd).await?;
 
     let kd = keyfile_digest;
     let pw = password;
@@ -1294,6 +1357,7 @@ pub async fn aerocrypt_rotate_slot(
     slot_id: u32,
     new_password: Option<String>,
     new_keyfile_path: Option<String>,
+    allow_non_atomic: Option<bool>,
 ) -> Result<AeroCryptSlotMutateResult, String> {
     if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
         return Err("password or keyfile required to rotate a slot".to_string());
@@ -1343,8 +1407,17 @@ pub async fn aerocrypt_rotate_slot(
 
     // Publish: verify path above already used the new factor; use the same for
     // the staged unlock check inside publish.
-    publish_headed_marker(provider, &cwd, &new_header, &vpw, vkd).await?;
+    publish_headed_marker(
+        provider,
+        &cwd,
+        &new_header,
+        &vpw,
+        vkd,
+        allow_non_atomic.unwrap_or(false),
+    )
+    .await?;
     best_effort_refresh_keystore_config(profile_id.as_deref(), &new_header);
+    remove_revoked_marker_copies(provider, &cwd).await?;
 
     let marker = new_header;
     tokio::task::spawn_blocking(move || {
@@ -1471,7 +1544,7 @@ mod tests {
         p.files.clear();
         p.appears_on_upload = Some(("/.aerocrypt.tsv".to_string(), b"theirs".to_vec()));
 
-        let text = publish_headed_marker(&mut p, "/", &marker, "pw", None)
+        let text = publish_headed_marker(&mut p, "/", &marker, "pw", None, false)
             .await
             .expect_err("the name was taken after the check");
 
@@ -1512,5 +1585,34 @@ mod tests {
         assert_eq!(overlay_create_root("/", Some("New")), "/New");
         assert_eq!(overlay_create_root("", Some("New")), "/New");
         assert_eq!(overlay_create_root("", None), "/");
+    }
+
+    /// A backend that cannot put one marker over another refuses the slot
+    /// dialogs' publish before anything is staged, and the refusal names no
+    /// way around it: the generic one sent the user to `put` over a marker
+    /// they do not have, where a rewrite cut short cannot open the vault.
+    #[tokio::test]
+    async fn a_refused_headed_marker_publish_offers_no_put() {
+        let salt = overlay::random_salt_v3();
+        let master = overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "pw").unwrap();
+        let marker = overlay::init_config_v3(&salt, &master).unwrap();
+        for sets_aside in [false, true] {
+            let mut p = crate::providers::edit_replace_tests::EditFake::new(false, sets_aside);
+            p.files.clear();
+            p.files
+                .insert("/.aerocrypt.tsv".to_string(), b"current".to_vec());
+
+            let text = publish_headed_marker(&mut p, "/", &marker, "pw", None, false)
+                .await
+                .expect_err("no replace on this backend");
+
+            assert!(text.contains("Nothing was written"), "{text}");
+            assert!(!text.contains("`put`"), "{text}");
+            assert!(p.uploads.is_empty(), "{:?}", p.uploads);
+            assert_eq!(
+                p.files.get("/.aerocrypt.tsv").map(Vec::as_slice),
+                Some(&b"current"[..])
+            );
+        }
     }
 }

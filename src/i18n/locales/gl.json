@@ -5788,7 +5788,7 @@
             "keyslotsRemoveConfirmLabel": "Escribe YES para confirmar a eliminación",
             "keyslotsRemoveTypeYes": "Escribe YES (maiúsculas) para confirmar a eliminación.",
             "keyslotsRemoveUnlockHint": "Para eliminar unha ranura, desbloquea primeiro cunha ranura diferente que permaneza (non podes eliminar a ranura coa que desbloqueaches).",
-            "keyslotsF6Honesty": "Eliminar un factor impide que abra o cofre a partir de agora. NON volve a cifrar os teus datos: calquera que xa gardase unha copia da cabeceira antiga do cofre E a credencial eliminada aínda pode abrir os datos aos que tiña acceso. Para revogar o acceso por completo, volve a cifrar o cofre (rota a Chave de Volume).",
+            "keyslotsF6Honesty": "Eliminar un factor impide que abra o cofre a partir de agora. NON volve a cifrar os teus datos: calquera que gardase unha copia da cabeceira antiga do cofre E da credencial eliminada aínda pode abrir o cofre enteiro, incluídos os ficheiros engadidos despois da eliminación. Para revogar o acceso por completo, crea un cofre novo, move a el os teus ficheiros e elimina o antigo.",
             "keyslotsKindPassphrase": "Frase de paso",
             "keyslotsKindKeyfile": "Ficheiro de chave",
             "keyslotsKindRecovery": "Recuperación",
@@ -5811,7 +5811,12 @@
             "keyslotsRecoveryCopy": "Copiar código",
             "keyslotsUnlockWithRecovery": "Tamén pode desbloquear cun código de recuperación (péguelo como contrasinal).",
             "openDefaultSaltLabel": "Este vault usa o sal predeterminado de AeroCrypt",
-            "openDefaultSaltHint": "Sen marcador aquí, un vault con sal predeterminado ábrese só co seu contrasinal en canto os nomes deste cartafol se descifran con el. Non se escribe nada no remoto."
+            "openDefaultSaltHint": "Sen marcador aquí, un vault con sal predeterminado ábrese só co seu contrasinal en canto os nomes deste cartafol se descifran con el. Non se escribe nada no remoto.",
+            "keyslotsSetAsideRisks": "Este servidor non pode substituír un ficheiro nun só paso. O marcador actual renómease á parte, o novo móvese ao seu lugar e despois elimínase o antigo. Durante ese intre o cofre non ten marcador e non se pode abrir. Se o cambio se interrompe polo medio, o marcador queda no cartafol do cofre cun nome que contén .aeroftp-replaced- e hai que renomealo de volta a man. Nun almacenamento que garda papeleira ou versións de ficheiros, o marcador anterior segue sendo recuperable aí.",
+            "keyslotsSetAsideRevocation": "O marcador anterior segue abrindo o cofre co factor que estás a quitar ou substituír. Cada copia que quede no cartafol do cofre elimínase despois do cambio, e unha copia que non se poida eliminar notifícase como erro. Non se chega a unha copia na papeleira ou nas versións de ficheiros do almacenamento: baleirar esas áreas elimina esas copias, pero non unha que conservase outra persoa, polo que non completa a revogación.",
+            "keyslotsSetAsideConsent": "Entendo: substituír o marcador neste servidor renomeando o anterior á parte",
+            "keyslotsSetAsideConsentRequired": "Este servidor só pode substituír o marcador do cofre renomeando o anterior á parte: confírmao na caixa de arriba para continuar.",
+            "keyslotsMarkerReplaceUnsupported": "Este servidor non pode substituír o marcador do cofre, polo que aquí se rexeitan os cambios de ranuras. Abre o mesmo almacenamento a través dun servidor que substitúa un ficheiro nun só paso (SFTP, por exemplo)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Cifrado)",

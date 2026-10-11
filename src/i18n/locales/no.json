@@ -5788,7 +5788,7 @@
             "keyslotsRemoveConfirmLabel": "Skriv YES for å bekrefte fjerning",
             "keyslotsRemoveTypeYes": "Skriv YES (store bokstaver) for å bekrefte fjerning.",
             "keyslotsRemoveUnlockHint": "For å fjerne en spalte, lås først opp med en annen gjenværende spalte (du kan ikke fjerne spalten du låste opp med).",
-            "keyslotsF6Honesty": "Fjerning av en faktor stopper den fra å åpne hvelvet fra nå av. Det krypterer IKKE dataene dine på nytt: alle som allerede har lagret en kopi av den gamle hvelvheaderen OG de fjernede legitimasjonene, kan fortsatt åpne dataene de hadde tilgang til. For å tilbakekalle tilgang fullstendig, krypter hvelvet på nytt (roter Volume Key).",
+            "keyslotsF6Honesty": "Fjerning av en faktor stopper den fra å åpne hvelvet fra nå av. Det krypterer IKKE dataene dine på nytt: alle som har tatt vare på en kopi av den gamle hvelvheaderen OG den fjernede legitimasjonen, kan fortsatt åpne hele hvelvet, også filer som er lagt til etter fjerningen. For å tilbakekalle tilgang fullstendig, opprett et nytt hvelv, flytt filene dine dit og slett det gamle.",
             "keyslotsKindPassphrase": "Passordfrase",
             "keyslotsKindKeyfile": "Nøkkelfil",
             "keyslotsKindRecovery": "Gjenoppretting",
@@ -5811,7 +5811,12 @@
             "keyslotsRecoveryCopy": "Kopier kode",
             "keyslotsUnlockWithRecovery": "Du kan også låse opp med en gjenopprettingskode (lim den inn som passord).",
             "openDefaultSaltLabel": "Denne vaulten bruker AeroCrypts standardsalt",
-            "openDefaultSaltHint": "Uten markør her åpnes en vault med standardsalt kun med passordet sitt, så snart navnene i denne mappen kan dekrypteres med det. Ingenting skrives til fjernserveren."
+            "openDefaultSaltHint": "Uten markør her åpnes en vault med standardsalt kun med passordet sitt, så snart navnene i denne mappen kan dekrypteres med det. Ingenting skrives til fjernserveren.",
+            "keyslotsSetAsideRisks": "Denne serveren kan ikke erstatte en fil i ett trinn. Den nåværende markøren får nytt navn og settes til side, den nye flyttes på plass, og den gamle slettes etterpå. I det øyeblikket har hvelvet ingen markør og kan ikke åpnes. Hvis endringen avbrytes midtveis, blir markøren liggende i hvelvmappen under et navn med .aeroftp-replaced- og må gis tilbake sitt navn manuelt. På lagring som beholder papirkurv eller filversjoner, kan den forrige markøren gjenopprettes der.",
+            "keyslotsSetAsideRevocation": "Den forrige markøren åpner fortsatt hvelvet med faktoren du fjerner eller erstatter. Hver kopi som er igjen i hvelvmappen slettes etter endringen, og en kopi som ikke kan slettes, rapporteres som en feil. En kopi i lagringens papirkurv eller filversjoner nås ikke: å tømme dem fjerner disse kopiene, men ikke en kopi en annen har beholdt, så det fullfører ikke tilbakekallingen.",
+            "keyslotsSetAsideConsent": "Jeg forstår: erstatt markøren på denne serveren ved å sette den gamle til side",
+            "keyslotsSetAsideConsentRequired": "Denne serveren kan bare erstatte hvelvmarkøren ved å sette den gamle til side: bekreft i boksen ovenfor for å fortsette.",
+            "keyslotsMarkerReplaceUnsupported": "Denne serveren kan ikke erstatte hvelvmarkøren, så endringer i spor avvises her. Åpne den samme lagringen via en server som erstatter en fil i ett trinn (for eksempel SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

@@ -2049,6 +2049,12 @@ pub async fn reopen_default_salt_vault(
             Err(ProviderError::NotFound(_))
         );
     }
+    // A marker change cut off between its two steps left the vault's marker
+    // under a set-aside name: it is the vault's record, and a rebuild written
+    // beside it would be a second, newer-looking one. Name it instead.
+    if let Some(notice) = set_aside_marker_notice(&entries, list_dir) {
+        return Err(DefaultSaltReopenError::Refused(notice));
+    }
     if marker_may_exist {
         return Err(DefaultSaltReopenError::Refused(format!(
             "An AeroCrypt marker exists at {list_dir}, or its absence could not be confirmed. \
@@ -2520,6 +2526,33 @@ pub struct OverlayUnlockOutcome {
     pub has_current_marker: bool,
 }
 
+/// Where the vault marker is when a marker change was cut off between its
+/// two steps on a server whose replace sets the old file aside (policy C):
+/// `.aerocrypt.tsv` is gone and a copy under a set-aside name is in the
+/// vault folder. The unlock does not open from a set-aside copy by itself:
+/// which copy is the vault's marker is the user's call when there are
+/// several, and the rename puts it back where every client looks.
+fn set_aside_marker_notice(entries: &[RemoteEntry], dir: &str) -> Option<String> {
+    let mut copies: Vec<&str> = entries
+        .iter()
+        .filter(|e| {
+            !e.is_dir && crate::providers::is_set_aside_copy_of(&e.name, AEROCRYPT_CONFIG_NAME)
+        })
+        .map(|e| e.name.as_str())
+        .collect();
+    if copies.is_empty() {
+        return None;
+    }
+    copies.sort_unstable();
+    Some(format!(
+        "The AeroCrypt marker {AEROCRYPT_CONFIG_NAME} is missing from {dir}, but a marker \
+         change that did not finish left it there under a set-aside name: {}. Rename it back \
+         to {AEROCRYPT_CONFIG_NAME} to open the vault (if there are several, the most recent \
+         one is the vault's marker).",
+        copies.join(", ")
+    ))
+}
+
 /// Publish a headed AeroCrypt marker from already-verified local config + master
 /// key. Stages to a temp remote name, verifies byte-for-byte + unlock, then
 /// renames into place (same choreography as CLI `crypt to-headed`). Returns the
@@ -2543,7 +2576,7 @@ pub async fn restore_headed_marker_from_config(
     // Asked while the server is still untouched (G119): a backend that cannot
     // put one file over another refuses here, before a temporary exists, so
     // the refusal can truthfully say the marker is unchanged.
-    let publish = crate::providers::ensure_atomic_replace(provider, config_path)
+    let publish = crate::providers::ensure_marker_replace(provider, config_path, false, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -2726,7 +2759,29 @@ async fn unlock_overlay_keys_encrypting(
                     password,
                     keyfile_digest,
                 )?;
-                if headed_intent {
+                // A marker change cut off between its two steps left the
+                // vault's marker under a set-aside name. That copy is the
+                // vault's record, and this keystore copy may be older than it
+                // (a slot added or revoked since on another device): writing
+                // it back would put an older marker over the vault's, so
+                // nothing is written and the copy is named.
+                let list_dir = if scope.is_empty() { "/" } else { scope };
+                let set_aside = if headed_intent {
+                    provider
+                        .list(list_dir)
+                        .await
+                        .ok()
+                        .and_then(|entries| set_aside_marker_notice(&entries, list_dir))
+                } else {
+                    None
+                };
+                if let Some(notice) = set_aside {
+                    warning = Some(format!(
+                        "{notice} This device opened it from its local keystore and wrote no \
+                         marker, so other devices cannot open the vault until the copy is \
+                         renamed back."
+                    ));
+                } else if headed_intent {
                     match restore_headed_marker_from_config(
                         provider, &new_path, &derived.0, &derived.1,
                     )
@@ -2844,6 +2899,9 @@ async fn unlock_overlay_keys_encrypting(
                 let list_dir = if scope.is_empty() { "/" } else { scope };
                 match list_scope_for_write(provider, list_dir).await {
                     Ok(Some(entries)) => {
+                        if let Some(notice) = set_aside_marker_notice(&entries, list_dir) {
+                            return Err(notice);
+                        }
                         if entries.iter().any(|e| e.name != AEROCRYPT_CONFIG_NAME) {
                             return Err(format!(
                                 "Refusing to initialize a new AeroCrypt overlay at {list_dir}: it \
@@ -2983,7 +3041,18 @@ async fn unlock_overlay_keys_encrypting(
             } else {
                 // Non-interactive contexts never create an overlay implicitly: a
                 // crypt-bound profile pointed at a folder with no config is refused
-                // (fail-closed), never handed back the raw provider.
+                // (fail-closed), never handed back the raw provider. A marker
+                // change cut off between its two steps leaves the marker under a
+                // set-aside name: say where, so the vault can be opened again.
+                let list_dir = if scope.is_empty() { "/" } else { scope };
+                if let Some(notice) = provider
+                    .list(list_dir)
+                    .await
+                    .ok()
+                    .and_then(|entries| set_aside_marker_notice(&entries, list_dir))
+                {
+                    return Err(notice);
+                }
                 return Err(format!(
                     "Cannot read AeroCrypt overlay config: no overlay at {config_path}"
                 ));
@@ -6507,5 +6576,147 @@ mod tests {
         );
         assert!(p.replaces.is_empty(), "{:?}", p.replaces);
         assert_eq!(p.files.len(), 1, "staged marker left: {:?}", p.files.keys());
+    }
+
+    /// A marker change cut off between its two steps leaves the marker
+    /// under a set-aside name; the unlock that finds no marker says where
+    /// it is, and a folder without such a copy gets no such sentence.
+    #[test]
+    fn a_missing_marker_names_the_copy_a_set_aside_left() {
+        let entry = |name: &str| RemoteEntry::file(name.to_string(), format!("/v/{name}"), 1);
+        let entries = [
+            entry("a.bin"),
+            entry(".aeroftp-replaced-0a1b2c3d..aerocrypt.tsv"),
+            entry(".aeroftp-replaced-0a1b2c3d.other.txt"),
+        ];
+        let notice = set_aside_marker_notice(&entries, "/v").expect("a copy is named");
+        assert!(
+            notice.contains(".aeroftp-replaced-0a1b2c3d..aerocrypt.tsv"),
+            "{notice}"
+        );
+        assert!(
+            notice.contains("Rename it back to .aerocrypt.tsv"),
+            "{notice}"
+        );
+        assert!(!notice.contains("other.txt"), "{notice}");
+        assert!(set_aside_marker_notice(&entries[..1], "/v").is_none());
+    }
+
+    const SET_ASIDE_COPY: &str = "/Vault/.aeroftp-replaced-0a1b2c3d..aerocrypt.tsv";
+
+    /// CodeRabbit on #1180: with the marker under a set-aside name, the
+    /// keystore heal writes nothing. The copy is the vault's record and the
+    /// keystore copy may be older than it (a slot revoked on another
+    /// device): the unlock still opens from the keystore, writes no marker,
+    /// and names the copy.
+    #[tokio::test]
+    async fn a_keystore_heal_writes_nothing_over_a_set_aside_marker() {
+        use base64::Engine as _;
+        let salt = overlay::random_salt_v3();
+        let master_key =
+            overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "overlay-pass").unwrap();
+        let config_json = overlay::init_config_v3(&salt, &master_key).unwrap();
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: Some("profile-headed".to_string()),
+            local_config_json: Some(config_json.clone()),
+            local_config_salt: Some(base64::engine::general_purpose::STANDARD.encode(salt)),
+            with_header: true,
+            use_default_salt: false,
+            password_form: None,
+            salt_form: None,
+        };
+        let mut mem = MemProvider::new();
+        mem.seed_raw_file(SET_ASIDE_COPY, config_json.as_bytes());
+
+        let outcome = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &binding,
+            "overlay-pass",
+            "",
+            None,
+            false,
+            false,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("the keystore still opens the vault: {e}"));
+
+        assert_eq!(master_key_of(&outcome), master_key);
+        assert!(!outcome.marker_restored);
+        assert!(
+            mem.raw_bytes("/Vault/.aerocrypt.tsv").is_none(),
+            "no marker is written beside the set-aside copy"
+        );
+        let warning = outcome.warning.unwrap_or_default();
+        assert!(
+            warning.contains(".aeroftp-replaced-0a1b2c3d..aerocrypt.tsv")
+                && warning.contains("wrote no marker"),
+            "{warning}"
+        );
+    }
+
+    /// The default-salt rebuild is refused while the marker is under a
+    /// set-aside name, and the refusal names the copy: a rebuild written
+    /// beside it would be a second marker for the same vault.
+    #[tokio::test]
+    async fn a_default_salt_rebuild_is_refused_beside_a_set_aside_marker() {
+        let mut mem = MemProvider::new();
+        let original = default_salt_vault_without_marker(&mut mem, "/Vault").await;
+        mem.seed_raw_file(SET_ASIDE_COPY, original.as_bytes());
+
+        let refused = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &default_salt_binding("/Vault", true),
+            DEFAULT_SALT_PW,
+            "",
+            None,
+            false,
+            false,
+        )
+        .await
+        .err()
+        .expect("refused beside a set-aside marker");
+        assert!(
+            refused.contains(".aeroftp-replaced-0a1b2c3d..aerocrypt.tsv"),
+            "{refused}"
+        );
+        assert!(mem.raw_bytes("/Vault/.aerocrypt.tsv").is_none());
+        let Err(refused) =
+            reopen_default_salt_vault(&mut mem, "/Vault", DEFAULT_SALT_PW, None).await
+        else {
+            panic!("the CLI and compare callers are refused too");
+        };
+        assert!(
+            refused
+                .message("/Vault")
+                .contains(".aeroftp-replaced-0a1b2c3d..aerocrypt.tsv"),
+            "{}",
+            refused.message("/Vault")
+        );
+    }
+
+    /// A backend whose replace is only its rename cannot take a healed
+    /// marker, and says so without sending the user to `put` one: the
+    /// marker exists only inside the heal.
+    #[tokio::test]
+    async fn a_refused_marker_heal_offers_no_put() {
+        let keys = aerocrypt_keys();
+        let OverlayKeys::AeroCrypt { master_key, config } = &keys else {
+            unreachable!("aerocrypt_keys builds an AeroCrypt key")
+        };
+        let mut p = crate::providers::edit_replace_tests::EditFake::new(false, false);
+        p.files.clear();
+
+        let text = restore_headed_marker_from_config(&mut p, "/.aerocrypt.tsv", config, master_key)
+            .await
+            .expect_err("no replace on this backend");
+
+        assert!(text.contains("Nothing was written"), "{text}");
+        assert!(!text.contains("`put`"), "{text}");
+        assert!(p.uploads.is_empty() && p.files.is_empty(), "{:?}", p.files);
     }
 }

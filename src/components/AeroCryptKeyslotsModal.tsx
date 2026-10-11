@@ -13,6 +13,11 @@ import { KeyRound, Loader2, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { copyText } from '../utils/clipboard';
+import {
+    AeroCryptSetAsideConsent,
+    MarkerReplaceMode,
+    setAsideConsentState,
+} from './AeroCryptSetAsideConsent';
 
 interface SlotSummary {
     id: number;
@@ -26,6 +31,8 @@ interface SlotListResult {
     vaultIdShort: string;
     openedSlotId: number | null;
     slots: SlotSummary[];
+    /** Listing only: how this server can replace the marker (policy C). */
+    markerReplace?: MarkerReplaceMode | null;
 }
 
 interface SlotMutateResult extends SlotListResult {
@@ -71,6 +78,25 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
     const [shownRecoveryCode, setShownRecoveryCode] = useState<string | null>(null);
     // F6 gate: user must type YES to confirm remove
     const [removeConfirm, setRemoveConfirm] = useState('');
+    // Policy C: how the marker can be replaced here (from the listing; a
+    // mutate result does not carry it), and the consent for a set-aside,
+    // asked again for every change.
+    const [markerReplace, setMarkerReplace] = useState<MarkerReplaceMode | null>(null);
+    const [setAsideConsent, setSetAsideConsent] = useState(false);
+    useEffect(() => {
+        setSetAsideConsent(false);
+    }, [mode]);
+
+    // Null when the change may be sent, with the `allowNonAtomic` it carries;
+    // otherwise the error is shown and nothing is sent.
+    const consentArgs = (): { allowNonAtomic: boolean } | null => {
+        const consent = setAsideConsentState(markerReplace, setAsideConsent);
+        if (consent.blocked) {
+            setError(t('aerocryptNative.keyslotsSetAsideConsentRequired'));
+            return null;
+        }
+        return { allowNonAtomic: consent.allowNonAtomic };
+    };
 
     const baseArgs = useCallback(() => {
         return {
@@ -132,6 +158,7 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                 basePath: remoteScope || null,
             });
             setList(result);
+            setMarkerReplace(result.markerReplace ?? null);
             if (result.slots.length > 0) {
                 setSelectedId((prev) =>
                     prev != null && result.slots.some((s) => s.id === prev)
@@ -154,10 +181,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
         setError(null);
         setInfo(null);
         setShownRecoveryCode(null);
+        const consent = consentArgs();
+        if (!consent) return;
         setBusy(true);
         try {
             const result = await invoke<SlotMutateResult>('aerocrypt_migrate_v4', {
                 ...baseArgs(),
+                ...consent,
             });
             setList(result);
             setSelectedId(result.slots[0]?.id ?? null);
@@ -195,10 +225,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
             }
         }
         // recovery: no form fields; backend generates a code
+        const consent = consentArgs();
+        if (!consent) return;
         setBusy(true);
         try {
             const result = await invoke<SlotMutateResult>('aerocrypt_add_slot', {
                 ...baseArgs(),
+                ...consent,
                 slotType,
                 newPassword: slotType === 'passphrase' ? newPassword : newPassword || null,
                 newKeyfilePath: slotType === 'keyfile' ? newKeyfilePath.trim() : null,
@@ -255,10 +288,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
             setError(t('aerocryptNative.keyslotsRotateUnsupported'));
             return;
         }
+        const consent = consentArgs();
+        if (!consent) return;
         setBusy(true);
         try {
             const result = await invoke<SlotMutateResult>('aerocrypt_rotate_slot', {
                 ...baseArgs(),
+                ...consent,
                 slotId: selectedId,
                 newPassword: selected.kind === 'passphrase' ? newPassword : newPassword || null,
                 newKeyfilePath: selected.kind === 'keyfile' ? newKeyfilePath.trim() : null,
@@ -295,10 +331,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
             setError(t('aerocryptNative.keyslotsRemoveTypeYes'));
             return;
         }
+        const consent = consentArgs();
+        if (!consent) return;
         setBusy(true);
         try {
             const result = await invoke<SlotMutateResult>('aerocrypt_remove_slot', {
                 ...baseArgs(),
+                ...consent,
                 slotId: selectedId,
             });
             setList(result);
@@ -465,6 +504,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                             {list.version === 3 && (
                                 <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded text-sm text-amber-800 dark:text-amber-200 space-y-2">
                                     <p>{t('aerocryptNative.keyslotsV3Notice')}</p>
+                                    <AeroCryptSetAsideConsent
+                                        mode={markerReplace}
+                                        revocation={false}
+                                        checked={setAsideConsent}
+                                        onChange={setSetAsideConsent}
+                                        disabled={busy}
+                                    />
                                     <button
                                         type="button"
                                         disabled={busy}
@@ -675,6 +721,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                             {t('aerocryptNative.keyslotsRecoveryHint')}
                                         </p>
                                     )}
+                                    <AeroCryptSetAsideConsent
+                                        mode={markerReplace}
+                                        revocation={false}
+                                        checked={setAsideConsent}
+                                        onChange={setSetAsideConsent}
+                                        disabled={busy}
+                                    />
                                     <div className="flex gap-2">
                                         <button
                                             type="button"
@@ -749,6 +802,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                             />
                                         </>
                                     )}
+                                    <AeroCryptSetAsideConsent
+                                        mode={markerReplace}
+                                        revocation={true}
+                                        checked={setAsideConsent}
+                                        onChange={setSetAsideConsent}
+                                        disabled={busy}
+                                    />
                                     <div className="flex gap-2">
                                         <button
                                             type="button"
@@ -791,6 +851,13 @@ export const AeroCryptKeyslotsModal: React.FC<Props> = ({
                                             placeholder="YES"
                                         />
                                     </label>
+                                    <AeroCryptSetAsideConsent
+                                        mode={markerReplace}
+                                        revocation={true}
+                                        checked={setAsideConsent}
+                                        onChange={setSetAsideConsent}
+                                        disabled={busy}
+                                    />
                                     <div className="flex gap-2">
                                         <button
                                             type="button"

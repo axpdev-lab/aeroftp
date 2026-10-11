@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Skriv YES för att bekräfta borttagning",
             "keyslotsRemoveTypeYes": "Skriv YES (versaler) för att bekräfta borttagning.",
             "keyslotsRemoveUnlockHint": "För att ta bort ett fack, lås först upp med ett annat kvarvarande fack (du kan inte ta bort facket du låste upp med).",
-            "keyslotsF6Honesty": "Att ta bort en faktor hindrar den från att öppna valvet från och med nu. Det krypterar INTE om dina data: den som redan sparat en kopia av den gamla valvhuvudet OCH de borttagna uppgifterna kan fortfarande öppna data de hade åtkomst till. För att återkalla åtkomst helt, kryptera om valvet (rotera Volume Key).",
+            "keyslotsF6Honesty": "Att ta bort en faktor hindrar den från att öppna valvet från och med nu. Det krypterar INTE om dina data: den som har sparat en kopia av det gamla valvhuvudet OCH de borttagna inloggningsuppgifterna kan fortfarande öppna hela valvet, även filer som lagts till efter borttagningen. För att återkalla åtkomst helt, skapa ett nytt valv, flytta dina filer dit och ta bort det gamla.",
             "keyslotsKindPassphrase": "Lösenfras",
             "keyslotsKindKeyfile": "Nyckelfil",
             "keyslotsKindRecovery": "Återställning",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopiera kod",
             "keyslotsUnlockWithRecovery": "Du kan också låsa upp med en återställningskod (klistra in den som lösenord).",
             "openDefaultSaltLabel": "Detta vault använder AeroCrypts standardsalt",
-            "openDefaultSaltHint": "Utan markör här öppnas ett vault med standardsalt enbart med sitt lösenord, så snart namnen i den här mappen dekrypteras med det. Ingenting skrivs till fjärrservern."
+            "openDefaultSaltHint": "Utan markör här öppnas ett vault med standardsalt enbart med sitt lösenord, så snart namnen i den här mappen dekrypteras med det. Ingenting skrivs till fjärrservern.",
+            "keyslotsSetAsideRisks": "Den här servern kan inte ersätta en fil i ett enda steg. Den nuvarande markören byter namn och läggs åt sidan, den nya flyttas på plats och den gamla tas sedan bort. Under det ögonblicket har valvet ingen markör och kan inte öppnas. Om ändringen avbryts däremellan blir markören kvar i valvets mapp under ett namn med .aeroftp-replaced- och måste få tillbaka sitt namn manuellt. På lagring som behåller papperskorg eller filversioner går den tidigare markören att återställa där.",
+            "keyslotsSetAsideRevocation": "Den tidigare markören öppnar fortfarande valvet med den faktor du tar bort eller ersätter. Varje kopia som blir kvar i valvets mapp raderas efter ändringen, och en kopia som inte kan raderas rapporteras som ett fel. En kopia i lagringens papperskorg eller filversioner nås inte: att tömma dem tar bort dessa kopior, men inte en kopia som någon annan har behållit, så det slutför inte återkallelsen.",
+            "keyslotsSetAsideConsent": "Jag förstår: ersätt markören på den här servern genom att lägga den gamla åt sidan",
+            "keyslotsSetAsideConsentRequired": "Den här servern kan bara ersätta valvets markör genom att lägga den gamla åt sidan: bekräfta i rutan ovan för att fortsätta.",
+            "keyslotsMarkerReplaceUnsupported": "Den här servern kan inte ersätta valvets markör, så ändringar av platser avvisas här. Öppna samma lagring via en server som ersätter en fil i ett enda steg (till exempel SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Kryptering)",

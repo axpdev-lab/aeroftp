@@ -5788,7 +5788,7 @@
             "keyslotsRemoveConfirmLabel": "Idatzi YES kentzea berresteko",
             "keyslotsRemoveTypeYes": "Idatzi YES (maiuskulak) kentzea berresteko.",
             "keyslotsRemoveUnlockHint": "Slot bat kentzeko, desblokeatu lehenik bizirik geratzen den beste slot batekin (ezin duzu desblokeatzeko erabili duzun slota kendu).",
-            "keyslotsF6Honesty": "Faktore bat kentzeak aurrerantzean kutxa irekitzea eragozten dio. EZ ditu zure datuak berriro enkriptatzen: kutxaren goiburuko zaharraren kopia ETA kendutako kredentziala gorde duen edonork oraindik ireki ditzake sarbidea zuten datuak. Sarbidea erabat ezeztatzeko, enkriptatu berriro kutxa (biratu Bolumen-gakoa).",
+            "keyslotsF6Honesty": "Faktore bat kentzeak aurrerantzean kutxa irekitzea eragozten dio. EZ ditu zure datuak berriro enkriptatzen: kutxaren goiburuko zaharraren ETA kendutako kredentzialaren kopia gorde duen edonork oraindik ireki dezake kutxa osoa, kendu ondoren gehitutako fitxategiak barne. Sarbidea erabat ezeztatzeko, sortu kutxa berri bat, eraman zure fitxategiak bertara eta ezabatu zaharra.",
             "keyslotsKindPassphrase": "Pasaesaldia",
             "keyslotsKindKeyfile": "Gako-fitxategia",
             "keyslotsKindRecovery": "Berreskurapena",
@@ -5811,7 +5811,12 @@
             "keyslotsRecoveryCopy": "Kopiatu kodea",
             "keyslotsUnlockWithRecovery": "Berreskuratze-kode batekin ere desblokea dezakezu (itsatsi pasahitz gisa).",
             "openDefaultSaltLabel": "Vault honek AeroCrypt-en gatz lehenetsia erabiltzen du",
-            "openDefaultSaltHint": "Hemen markatzailerik gabe, gatz lehenetsiko vault bat bere pasahitzarekin bakarrik irekitzen da, karpeta honetako izenak harekin deszifratzen direnean. Ez da ezer idazten urruneko zerbitzarian."
+            "openDefaultSaltHint": "Hemen markatzailerik gabe, gatz lehenetsiko vault bat bere pasahitzarekin bakarrik irekitzen da, karpeta honetako izenak harekin deszifratzen direnean. Ez da ezer idazten urruneko zerbitzarian.",
+            "keyslotsSetAsideRisks": "Zerbitzari honek ezin du fitxategi bat urrats bakarrean ordezkatu. Uneko markatzailea alboratuz berrizendatzen da, berria haren lekura mugitzen da eta zaharra ezabatzen da ondoren. Une horretan kutxa gotorrak ez du markatzailerik eta ezin da ireki. Aldaketa tartean etenez gero, markatzailea kutxa gotorraren karpetan geratzen da .aeroftp-replaced- duen izen batekin eta eskuz berrizendatu behar da. Zakarrontzia edo fitxategi-bertsioak gordetzen dituen biltegiratzean, aurreko markatzailea hor berreskuragarri geratzen da.",
+            "keyslotsSetAsideRevocation": "Aurreko markatzaileak oraindik kutxa gotorra irekitzen du kentzen ari zaren edo ordezkatzen ari zaren faktorearekin. Kutxa gotorraren karpetan geratzen den kopia bakoitza ezabatzen da aldaketaren ondoren, eta ezin den kopia bat errore gisa jakinarazten da. Biltegiratzeko zakarrontziko edo fitxategi-bertsioetako kopiara ez da iristen: hustuz gero kopia horiek kentzen dira, baina ez beste norbaitek gorde duena, beraz ez da indargabetzea osatzen.",
+            "keyslotsSetAsideConsent": "Ulertzen dut: ordezkatu markatzailea zerbitzari honetan zaharra alboratuz berrizendatuta",
+            "keyslotsSetAsideConsentRequired": "Zerbitzari honek kutxa gotorraren markatzailea zaharra alboratuz berrizendatuta bakarrik ordezkatu dezake: baieztatu goiko laukian jarraitzeko.",
+            "keyslotsMarkerReplaceUnsupported": "Zerbitzari honek ezin du kutxa gotorraren markatzailea ordezkatu, beraz hemen zirrikituen aldaketak baztertzen dira. Ireki biltegiratze bera fitxategi bat urrats bakarrean ordezkatzen duen zerbitzari baten bidez (adibidez SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",

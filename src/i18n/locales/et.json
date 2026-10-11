@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Eemaldamise kinnitamiseks sisesta YES",
             "keyslotsRemoveTypeYes": "Eemaldamise kinnitamiseks sisesta YES (suurtähtedega).",
             "keyslotsRemoveUnlockHint": "Pesa eemaldamiseks ava esmalt lukustus teise allesjäänud pesaga (ei saa eemaldada pesa, millega lukustuse avasid).",
-            "keyslotsF6Honesty": "Teguri eemaldamine peatab sellel seifist avamise alates praegusest. See EI krüpteeri andmeid uuesti: igaüks, kes juba hoidis vana seifi päise koopiat JA eemaldatud mandaati, saab endiselt avada andmeid, millele tal oli juurdepääs. Juurdepääsu täielikuks tühistamiseks krüpteeri seif uuesti (pööra Volume Key).",
+            "keyslotsF6Honesty": "Teguri eemaldamine peatab sellel seifi avamise alates praegusest. See EI krüpteeri andmeid uuesti: igaüks, kes hoidis alles vana seifi päise JA eemaldatud mandaadi koopia, saab endiselt avada kogu seifi, sealhulgas pärast eemaldamist lisatud failid. Juurdepääsu täielikuks tühistamiseks loo uus seif, teisalda oma failid sinna ja kustuta vana.",
             "keyslotsKindPassphrase": "Pääsufraas",
             "keyslotsKindKeyfile": "Võtmefail",
             "keyslotsKindRecovery": "Taastamine",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopeeri kood",
             "keyslotsUnlockWithRecovery": "Saate avada ka taastekoodiga (kleepige see paroolina).",
             "openDefaultSaltLabel": "See vault kasutab AeroCrypti vaikesoola",
-            "openDefaultSaltHint": "Ilma markerita avaneb vaikesoolaga vault ainult parooliga, kui selle kausta nimed sellega dekrüpteeruvad. Kaugserverisse ei kirjutata midagi."
+            "openDefaultSaltHint": "Ilma markerita avaneb vaikesoolaga vault ainult parooliga, kui selle kausta nimed sellega dekrüpteeruvad. Kaugserverisse ei kirjutata midagi.",
+            "keyslotsSetAsideRisks": "See server ei saa faili asendada ühe sammuga. Praegune marker nimetatakse ümber kõrvale, uus liigutatakse selle kohale ja vana kustutatakse seejärel. Selle hetke jooksul pole hoidlal markerit ja seda ei saa avada. Kui muudatus katkeb vahepeal, jääb marker hoidla kausta nime all, mis sisaldab .aeroftp-replaced-, ja tuleb käsitsi tagasi ümber nimetada. Salvestusruumis, mis hoiab prügikasti või failiversioone, jääb eelmine marker seal taastatavaks.",
+            "keyslotsSetAsideRevocation": "Eelmine marker avab hoidla endiselt teguriga, mille eemaldate või asendate. Iga hoidla kausta jäänud koopia kustutatakse pärast muudatust ja koopia, mida ei saa kustutada, esitatakse veana. Salvestusruumi prügikasti või failiversioonide koopiani ei jõuta: nende tühjendamine eemaldab need koopiad, kuid mitte koopiat, mille keegi teine on alles hoidnud, seega ei vii see tühistamist lõpule.",
+            "keyslotsSetAsideConsent": "Saan aru: asenda marker sellel serveril, nimetades vana kõrvale ümber",
+            "keyslotsSetAsideConsentRequired": "See server saab hoidla markeri asendada ainult vana kõrvale ümber nimetades: jätkamiseks kinnitage see ülalolevas ruudus.",
+            "keyslotsMarkerReplaceUnsupported": "See server ei saa hoidla markerit asendada, seega lükatakse pesamuudatused siin tagasi. Avage sama salvestusruum serveri kaudu, mis asendab faili ühe sammuga (näiteks SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Krüptimine)",

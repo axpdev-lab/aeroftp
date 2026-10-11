@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "输入 YES 以确认移除",
             "keyslotsRemoveTypeYes": "输入 YES（全大写）以确认移除。",
             "keyslotsRemoveUnlockHint": "要移除插槽，请先用另一个仍可用的插槽解锁（不能移除用于解锁的插槽）。",
-            "keyslotsF6Honesty": "移除因子后，从现在起它将无法打开保管库。这不会重新加密您的数据：任何已保留旧保管库标头和已移除凭证副本的人，仍可打开其曾有权访问的数据。要彻底撤销访问，请重新加密保管库（轮换 Volume Key）。",
+            "keyslotsF6Honesty": "移除因子后，从现在起它将无法打开保管库。这不会重新加密您的数据：任何保留了旧保管库标头和已移除凭证副本的人，仍可打开整个保管库，包括移除之后添加的文件。要彻底撤销访问，请创建一个新的保管库，将您的文件移入其中，然后删除旧的保管库。",
             "keyslotsKindPassphrase": "密码短语",
             "keyslotsKindKeyfile": "密钥文件",
             "keyslotsKindRecovery": "恢复",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "复制代码",
             "keyslotsUnlockWithRecovery": "也可以使用恢复码解锁（将其粘贴为密码）。",
             "openDefaultSaltLabel": "此 vault 使用 AeroCrypt 默认 salt",
-            "openDefaultSaltHint": "此处没有标记时，使用默认 salt 的 vault 仅凭密码即可打开，只要此文件夹中的名称能用该密码解密。不会向远程写入任何内容。"
+            "openDefaultSaltHint": "此处没有标记时，使用默认 salt 的 vault 仅凭密码即可打开，只要此文件夹中的名称能用该密码解密。不会向远程写入任何内容。",
+            "keyslotsSetAsideRisks": "此服务器无法一步替换文件。当前标记文件会先被重命名并放到一边,新标记文件移动到它的位置,然后删除旧文件。在这段时间里,保险库没有标记文件,无法打开。如果更改在中途被中断,标记文件会以包含 .aeroftp-replaced- 的名称留在保险库文件夹中,需要手动改回原名。在保留回收站或文件版本的存储上,之前的标记文件仍可在那里恢复。",
+            "keyslotsSetAsideRevocation": "之前的标记文件仍可使用你正在移除或替换的因素打开保险库。更改后,保险库文件夹中留下的每个副本都会被删除,无法删除的副本会作为错误报告。存储回收站或文件版本中的副本不会被处理:清空它们会移除这些副本,但不会移除他人保留的副本,因此并不能完成撤销。",
+            "keyslotsSetAsideConsent": "我已了解:在此服务器上通过重命名并搁置旧文件的方式替换标记文件",
+            "keyslotsSetAsideConsentRequired": "此服务器只能通过重命名并搁置旧文件的方式替换保险库标记文件:请在上方的框中确认以继续。",
+            "keyslotsMarkerReplaceUnsupported": "此服务器无法替换保险库标记文件,因此这里会拒绝槽位更改。请通过能一步替换文件的服务器(例如 SFTP)打开同一存储。"
         },
         "aerocryptProfile": {
             "enable": "Crypt (加密)",

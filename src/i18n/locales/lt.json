@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Pašalinimui patvirtinti įveskite YES",
             "keyslotsRemoveTypeYes": "Pašalinimui patvirtinti įveskite YES (didžiosiomis raidėmis).",
             "keyslotsRemoveUnlockHint": "Norėdami pašalinti lizdą, pirmiausia atrakinkite kitu likusiu lizdu (negalite pašalinti lizdo, kuriuo atrakinate).",
-            "keyslotsF6Honesty": "Veiksnio pašalinimas nuo šiol neleidžia juo atidaryti saugyklos. Tai NEPERŠIFRUOJA jūsų duomenų: bet kas, kas jau išsaugojo senos saugyklos antraštės IR pašalintų prisijungimo duomenų kopiją, vis dar gali atidaryti duomenis, prie kurių turėjo prieigą. Norėdami visiškai atšaukti prieigą, iš naujo užšifruokite saugyklą (rotuojkite Volume Key).",
+            "keyslotsF6Honesty": "Veiksnio pašalinimas nuo šiol neleidžia juo atidaryti saugyklos. Tai NEPERŠIFRUOJA jūsų duomenų: bet kas, išsaugojęs senos saugyklos antraštės IR pašalintų prisijungimo duomenų kopiją, vis dar gali atidaryti visą saugyklą, įskaitant failus, pridėtus po pašalinimo. Norėdami visiškai atšaukti prieigą, sukurkite naują saugyklą, perkelkite į ją savo failus ir ištrinkite senąją.",
             "keyslotsKindPassphrase": "Slaptafrazė",
             "keyslotsKindKeyfile": "Raktų failas",
             "keyslotsKindRecovery": "Atkūrimas",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopijuoti kodą",
             "keyslotsUnlockWithRecovery": "Taip pat galite atrakinti atkūrimo kodu (įklijuokite jį kaip slaptažodį).",
             "openDefaultSaltLabel": "Ši vault saugykla naudoja AeroCrypt numatytąją druską",
-            "openDefaultSaltHint": "Be žymeklio čia vault saugykla su numatytąja druska atsidaro tik su slaptažodžiu, kai su juo iššifruojami šio aplanko pavadinimai. Į nuotolinį serverį niekas neįrašoma."
+            "openDefaultSaltHint": "Be žymeklio čia vault saugykla su numatytąja druska atsidaro tik su slaptažodžiu, kai su juo iššifruojami šio aplanko pavadinimai. Į nuotolinį serverį niekas neįrašoma.",
+            "keyslotsSetAsideRisks": "Šis serveris negali pakeisti failo vienu žingsniu. Dabartinis žymeklis pervadinamas ir padedamas į šalį, naujasis perkeliamas į jo vietą, o senasis vėliau ištrinamas. Tuo metu seifas neturi žymeklio ir jo negalima atidaryti. Jei pakeitimas nutrūksta per vidurį, žymeklis lieka seifo aplanke pavadinimu, kuriame yra .aeroftp-replaced-, ir turi būti pervadintas atgal rankiniu būdu. Atmintyje, kuri laiko šiukšlinę arba failų versijas, ankstesnį žymeklį ten galima atkurti.",
+            "keyslotsSetAsideRevocation": "Ankstesnis žymeklis vis dar atidaro seifą su veiksniu, kurį šalinate ar keičiate. Kiekviena seifo aplanke likusi kopija po pakeitimo ištrinama, o kopija, kurios ištrinti nepavyksta, pranešama kaip klaida. Kopija atminties šiukšlinėje ar failų versijose nepasiekiama: jų ištuštinimas pašalina tas kopijas, bet ne tą, kurią pasilaikė kas nors kitas, todėl atšaukimo nebaigia.",
+            "keyslotsSetAsideConsent": "Suprantu: pakeisti žymeklį šiame serveryje pervadinant seną į šalį",
+            "keyslotsSetAsideConsentRequired": "Šis serveris gali pakeisti seifo žymeklį tik pervadindamas seną į šalį: patvirtinkite aukščiau esančiame langelyje, kad tęstumėte.",
+            "keyslotsMarkerReplaceUnsupported": "Šis serveris negali pakeisti seifo žymeklio, todėl lizdų pakeitimai čia atmetami. Atidarykite tą pačią atmintį per serverį, kuris pakeičia failą vienu žingsniu (pavyzdžiui, SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifravimas)",

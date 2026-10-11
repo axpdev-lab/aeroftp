@@ -403,6 +403,13 @@
       "folded": "aplicase",
       "twin": "aplícase",
       "reason": "aplicase is the imperfect subjunctive of aplicar (the server may have applied it); aplícase, the present reflexive, would mean something else."
+    },
+    "pl\u001fai.mcpClient.errors.busy\u001fTrwa inna autoryzacja dla tego serwera.": {
+      "locale": "pl",
+      "key": "ai.mcpClient.errors.busy",
+      "folded": "inna",
+      "twin": "inną",
+      "reason": "Nominative subject of the sentence (\"Trwa inna autoryzacja\", another authorization is in progress): inna is the correct form, inną is the accusative or instrumental."
     }
   }
 }

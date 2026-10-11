@@ -111,9 +111,10 @@ async fn a_replace_never_loses_the_file_it_replaces() {
     println!("replace over a file: new content under the old name, nothing else left");
 
     let marker = format!("{dir}/marker.tsv");
-    let publish = ftp_client_gui_lib::providers::ensure_atomic_replace(&mut provider, &marker)
-        .await
-        .expect("a free name passes");
+    let publish =
+        ftp_client_gui_lib::providers::ensure_marker_replace(&mut provider, &marker, false, None)
+            .await
+            .expect("a free name passes");
     assert_eq!(publish, StagedPublish::Create);
     put(&mut provider, &staged, b"ours").await;
     put(&mut provider, &marker, b"theirs").await;

@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Ievadiet YES, lai apstiprinātu noņemšanu",
             "keyslotsRemoveTypeYes": "Ievadiet YES (lielajiem burtiem), lai apstiprinātu noņemšanu.",
             "keyslotsRemoveUnlockHint": "Lai noņemtu slotu, vispirms atslēdziet ar citu atlikušo slotu (nevar noņemt slotu, ar kuru atslēdzāt).",
-            "keyslotsF6Honesty": "Faktora noņemšana no šī brīža neļauj ar to atvērt seifu. Tas NEpāršifrē jūsu datus: ikviens, kas jau saglabājis vecā seifa galvenes UN noņemto akreditācijas datu kopiju, joprojām var atvērt datus, kuriem bija piekļuve. Lai pilnībā atsauktu piekļuvi, pāršifrējiet seifu (rotējiet Volume Key).",
+            "keyslotsF6Honesty": "Faktora noņemšana no šī brīža neļauj ar to atvērt seifu. Tas NEpāršifrē jūsu datus: ikviens, kas saglabājis vecā seifa galvenes UN noņemto akreditācijas datu kopiju, joprojām var atvērt visu seifu, arī failus, kas pievienoti pēc noņemšanas. Lai pilnībā atsauktu piekļuvi, izveidojiet jaunu seifu, pārvietojiet tajā savus failus un izdzēsiet veco.",
             "keyslotsKindPassphrase": "Piekļuves frāze",
             "keyslotsKindKeyfile": "Atslēgas fails",
             "keyslotsKindRecovery": "Atjaunošana",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopēt kodu",
             "keyslotsUnlockWithRecovery": "Varat arī atbloķēt ar atkopšanas kodu (ielīmējiet to kā paroli).",
             "openDefaultSaltLabel": "Šis vault izmanto AeroCrypt noklusējuma sāli",
-            "openDefaultSaltHint": "Bez marķiera šeit vault ar noklusējuma sāli atveras tikai ar savu paroli, tiklīdz ar to atšifrējas šīs mapes nosaukumi. Attālajā serverī nekas netiek ierakstīts."
+            "openDefaultSaltHint": "Bez marķiera šeit vault ar noklusējuma sāli atveras tikai ar savu paroli, tiklīdz ar to atšifrējas šīs mapes nosaukumi. Attālajā serverī nekas netiek ierakstīts.",
+            "keyslotsSetAsideRisks": "Šis serveris nevar aizstāt failu vienā solī. Pašreizējais marķieris tiek pārdēvēts un nolikts malā, jaunais tiek pārvietots tā vietā, un tad vecais tiek dzēsts. Šajā brīdī seifam nav marķiera un to nevar atvērt. Ja izmaiņas tiek pārtrauktas pa vidu, marķieris paliek seifa mapē ar nosaukumu, kas satur .aeroftp-replaced-, un tas jāpārdēvē atpakaļ ar roku. Krātuvē, kas saglabā atkritni vai failu versijas, iepriekšējo marķieri tur var atjaunot.",
+            "keyslotsSetAsideRevocation": "Iepriekšējais marķieris joprojām atver seifu ar faktoru, ko noņemat vai aizstājat. Katra seifa mapē palikusī kopija pēc izmaiņām tiek dzēsta, un kopija, ko nevar izdzēst, tiek ziņota kā kļūda. Kopija krātuves atkritnē vai failu versijās netiek aizsniegta: to iztukšošana noņem šīs kopijas, bet ne to, ko paturējis kāds cits, tāpēc atsaukšana netiek pabeigta.",
+            "keyslotsSetAsideConsent": "Es saprotu: aizstāt marķieri šajā serverī, pārdēvējot veco un noliekot to malā",
+            "keyslotsSetAsideConsentRequired": "Šis serveris var aizstāt seifa marķieri tikai, pārdēvējot veco un noliekot to malā: apstipriniet to lodziņā iepriekš, lai turpinātu.",
+            "keyslotsMarkerReplaceUnsupported": "Šis serveris nevar aizstāt seifa marķieri, tāpēc slotu izmaiņas šeit tiek noraidītas. Atveriet to pašu krātuvi caur serveri, kas aizstāj failu vienā solī (piemēram, SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrēšana)",

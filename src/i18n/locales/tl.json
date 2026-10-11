@@ -5788,7 +5788,7 @@
             "keyslotsRemoveConfirmLabel": "I-type ang YES para kumpirmahin ang pag-alis",
             "keyslotsRemoveTypeYes": "I-type ang YES (malalaking letra) para kumpirmahin ang pag-alis.",
             "keyslotsRemoveUnlockHint": "Para alisin ang isang slot, i-unlock muna gamit ang ibang natitirang slot (hindi mo maaaring alisin ang slot na ginamit mo sa pag-unlock).",
-            "keyslotsF6Honesty": "Ang pag-alis ng factor ay humihinto sa pagbubukas nito ng vault mula ngayon. HINDI nito muling sine-encrypt ang iyong data: sinumang naka-keep na ng kopya ng lumang vault header AT ng inalis na credential ay maaari pa ring buksan ang data na na-access nila. Para lubos na bawiin ang access, i-re-encrypt ang vault (i-rotate ang Volume Key).",
+            "keyslotsF6Honesty": "Ang pag-alis ng factor ay humihinto sa pagbubukas nito ng vault mula ngayon. HINDI nito muling sine-encrypt ang iyong data: sinumang nagtabi ng kopya ng lumang vault header AT ng inalis na credential ay maaari pa ring buksan ang buong vault, kasama ang mga file na idinagdag pagkatapos ng pag-alis. Para lubos na bawiin ang access, gumawa ng bagong vault, ilipat doon ang iyong mga file, at burahin ang luma.",
             "keyslotsKindPassphrase": "Passphrase",
             "keyslotsKindKeyfile": "Keyfile",
             "keyslotsKindRecovery": "Pagbawi",
@@ -5811,7 +5811,12 @@
             "keyslotsRecoveryCopy": "Kopyahin ang code",
             "keyslotsUnlockWithRecovery": "Maaari mo ring i-unlock gamit ang recovery code (i-paste bilang password).",
             "openDefaultSaltLabel": "Ang vault na ito ay gumagamit ng default na salt ng AeroCrypt",
-            "openDefaultSaltHint": "Kung walang marker dito, magbubukas ang vault na may default na salt gamit lang ang password nito kapag na-decrypt na ng password ang mga pangalan sa folder na ito. Walang isinusulat sa remote."
+            "openDefaultSaltHint": "Kung walang marker dito, magbubukas ang vault na may default na salt gamit lang ang password nito kapag na-decrypt na ng password ang mga pangalan sa folder na ito. Walang isinusulat sa remote.",
+            "keyslotsSetAsideRisks": "Hindi mapapalitan ng server na ito ang isang file sa isang hakbang. Ang kasalukuyang marker ay pinapalitan ng pangalan at itinatabi, ang bago ay inililipat sa puwesto nito, at pagkatapos ay binubura ang luma. Sa sandaling iyon, walang marker ang vault at hindi ito mabubuksan. Kung maputol ang pagbabago sa gitna, mananatili ang marker sa folder ng vault sa ilalim ng pangalang may .aeroftp-replaced- at kailangan itong palitan muli ng pangalan nang mano-mano. Sa storage na may trash o mga bersyon ng file, mababawi pa roon ang dating marker.",
+            "keyslotsSetAsideRevocation": "Nabubuksan pa rin ng dating marker ang vault gamit ang factor na inaalis o pinapalitan mo. Binubura pagkatapos ng pagbabago ang bawat kopyang naiwan sa folder ng vault, at iniuulat bilang error ang kopyang hindi mabura. Hindi naaabot ang kopya sa trash ng storage o sa mga bersyon ng file: inaalis ng pag-alis ng laman sa mga iyon ang mga kopyang iyon, pero hindi ang kopyang iningatan ng iba, kaya hindi nito nakukumpleto ang pagbawi.",
+            "keyslotsSetAsideConsent": "Naiintindihan ko: palitan ang marker sa server na ito sa pamamagitan ng pagpapalit ng pangalan ng luma at pagtatabi nito",
+            "keyslotsSetAsideConsentRequired": "Mapapalitan lang ng server na ito ang marker ng vault sa pamamagitan ng pagpapalit ng pangalan ng luma at pagtatabi nito: kumpirmahin sa kahon sa itaas para magpatuloy.",
+            "keyslotsMarkerReplaceUnsupported": "Hindi mapapalitan ng server na ito ang marker ng vault, kaya tinatanggihan dito ang mga pagbabago sa slot. Buksan ang parehong storage sa pamamagitan ng server na nagpapalit ng file sa isang hakbang (halimbawa, SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Pag-encrypt)",

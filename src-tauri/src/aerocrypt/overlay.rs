@@ -3736,6 +3736,68 @@ mod tests {
         );
     }
 
+    /// What a revocation does NOT do (F6, corrected 2026-10-11): it changes
+    /// the epoch key and the header, not the object master key (OMK). Whoever
+    /// kept the old header and the revoked password still derives the OMK
+    /// that the new header gives its surviving slots, so they open every
+    /// file, those written after the revocation included: a name encrypted
+    /// under the post-revocation header decrypts with the old one.
+    #[test]
+    fn a_kept_old_header_and_a_revoked_password_open_files_written_after_the_revocation() {
+        let salt = [0xB4u8; SALT_V3_SIZE];
+        let password = "f6-revoked-pw";
+        let master = derive_master_key(&OverlayConfig::v3_bootstrap(salt), password).unwrap();
+        let v3 =
+            init_config_v3_with_vault_id(&salt, &master, &random_vault_id(), SaltMode::PerVault)
+                .unwrap();
+        let v4_json = migrate_v3_to_v4(&parse_config(&v3).unwrap(), &master).unwrap();
+        let v4_cfg = parse_config(&v4_json).unwrap();
+        let (epoch_key, vk, _) = v4_recover_from_slot0(&v4_cfg, &master);
+        let survivor_key = [0x81u8; KEY_SIZE];
+        let old_header = add_slot(
+            &v4_cfg,
+            &vk,
+            &epoch_key,
+            SlotKeyMaterial {
+                id: 1,
+                kind: SlotType::Passphrase,
+                salt: vec![0x82u8; SALT_SIZE],
+                kdf: Some(Argon2Params::v3_profile()),
+                binding: SlotBinding::None,
+                slot_key: survivor_key,
+            },
+        )
+        .unwrap();
+        let new_header = revoke_slot(
+            &parse_config(&old_header).unwrap(),
+            &vk,
+            0,
+            &[(1, survivor_key)],
+        )
+        .unwrap();
+        let new_cfg = parse_config(&new_header).unwrap();
+        assert!(unlock_overlay_from_config(&new_header, password, None).is_err());
+
+        // A file written after the revocation, under the surviving slot.
+        let OverlayConfig::V4 { slots, .. } = &new_cfg else {
+            panic!("V4");
+        };
+        let survivor = slots.iter().find(|s| s.id == 1).expect("slot 1");
+        let omk_after = unlock_v4_with_slot_key(&new_header, &new_cfg, survivor, &survivor_key)
+            .expect("surviving slot unlock");
+        let written_after = crate::aerocrypt::names::encrypt_filename(&omk_after, "after.txt")
+            .expect("encrypt name");
+
+        // The old header and the revoked password still open it.
+        let (_, omk_kept) = unlock_overlay_from_config(&old_header, password, None)
+            .expect("the kept header still opens with the revoked password");
+        assert_eq!(omk_kept, omk_after);
+        assert_eq!(
+            crate::aerocrypt::names::decrypt_filename(&omk_kept, &written_after).as_deref(),
+            Some("after.txt")
+        );
+    }
+
     #[test]
     fn unlock_v4_after_revoke_old_factor_fails() {
         let salt = [0xA3u8; SALT_V3_SIZE];

@@ -5788,7 +5788,7 @@
             "keyslotsRemoveConfirmLabel": "Sláðu inn YES til að staðfesta fjarlægingu",
             "keyslotsRemoveTypeYes": "Sláðu inn YES (hástöfum) til að staðfesta fjarlægingu.",
             "keyslotsRemoveUnlockHint": "Til að fjarlægja rauf skaltu fyrst opna með annarri rauf sem eftir er (þú getur ekki fjarlægt raufina sem þú opnaðir með).",
-            "keyslotsF6Honesty": "Að fjarlægja þátt kemur í veg fyrir að hann opni hirsluna héðan í frá. Þetta dulkóðar EKKI gögnin þín aftur: hver sem þegar hefur vistað afrit af gamla haus hirslunnar OG fjarlægðum auðkennum getur enn opnað gögnin sem hann hafði aðgang að. Til að afturkalla aðgang að fullu skaltu dulkóða hirsluna aftur (snúa Volume Key).",
+            "keyslotsF6Honesty": "Að fjarlægja þátt kemur í veg fyrir að hann opni hirsluna héðan í frá. Þetta dulkóðar EKKI gögnin þín aftur: hver sem hefur vistað afrit af gamla haus hirslunnar OG fjarlægðu auðkennunum getur enn opnað alla hirsluna, þar á meðal skrár sem bætt var við eftir að þátturinn var fjarlægður. Til að afturkalla aðgang að fullu skaltu búa til nýja hirslu, færa skrárnar þínar í hana og eyða þeirri gömlu.",
             "keyslotsKindPassphrase": "Aðgangssetning",
             "keyslotsKindKeyfile": "Lykilskrá",
             "keyslotsKindRecovery": "Endurheimt",
@@ -5811,7 +5811,12 @@
             "keyslotsRecoveryCopy": "Afrita kóða",
             "keyslotsUnlockWithRecovery": "Þú getur líka opnað með endurheimtukóða (límdu hann sem lykilorð).",
             "openDefaultSaltLabel": "Þessi vault notar sjálfgefið salt AeroCrypt",
-            "openDefaultSaltHint": "Án merkis hér opnast vault með sjálfgefnu salti eingöngu með lykilorðinu sínu, svo fremi sem nöfnin í þessari möppu afkóðast með því. Ekkert er skrifað á fjarþjóninn."
+            "openDefaultSaltHint": "Án merkis hér opnast vault með sjálfgefnu salti eingöngu með lykilorðinu sínu, svo fremi sem nöfnin í þessari möppu afkóðast með því. Ekkert er skrifað á fjarþjóninn.",
+            "keyslotsSetAsideRisks": "Þessi þjónn getur ekki skipt um skrá í einu skrefi. Núverandi merkisskrá er endurnefnd og lögð til hliðar, nýja skráin er færð á sinn stað og sú gamla síðan eytt. Á þeirri stundu hefur hvelfingin enga merkisskrá og ekki er hægt að opna hana. Ef breytingin rofnar þar á milli verður merkisskráin eftir í möppu hvelfingarinnar undir nafni sem inniheldur .aeroftp-replaced- og þarf að endurnefna hana aftur handvirkt. Í geymslu sem heldur ruslinu eða skráarútgáfum er hægt að endurheimta fyrri merkisskrá þar.",
+            "keyslotsSetAsideRevocation": "Fyrri merkisskráin opnar enn hvelfinguna með þættinum sem þú ert að fjarlægja eða skipta út. Öllum afritum sem eru eftir í möppu hvelfingarinnar er eytt eftir breytinguna og afrit sem ekki er hægt að eyða er tilkynnt sem villa. Afrit í rusli geymslunnar eða skráarútgáfum næst ekki: að tæma þau fjarlægir þessi afrit en ekki afrit sem einhver annar geymdi, svo það lýkur ekki afturkölluninni.",
+            "keyslotsSetAsideConsent": "Ég skil: skipta um merkisskrá á þessum þjóni með því að leggja þá gömlu til hliðar",
+            "keyslotsSetAsideConsentRequired": "Þessi þjónn getur aðeins skipt um merkisskrá hvelfingarinnar með því að leggja þá gömlu til hliðar: staðfestu í reitnum hér að ofan til að halda áfram.",
+            "keyslotsMarkerReplaceUnsupported": "Þessi þjónn getur ekki skipt um merkisskrá hvelfingarinnar, svo breytingum á raufum er hafnað hér. Opnaðu sömu geymslu í gegnum þjón sem skiptir um skrá í einu skrefi (til dæmis SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Dulkóðun)",

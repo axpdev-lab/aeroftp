@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Typ YES om verwijdering te bevestigen",
             "keyslotsRemoveTypeYes": "Typ YES (hoofdletters) om verwijdering te bevestigen.",
             "keyslotsRemoveUnlockHint": "Om een slot te verwijderen, ontgrendel eerst met een ander overgebleven slot (u kunt het slot waarmee u ontgrendelde niet verwijderen).",
-            "keyslotsF6Honesty": "Een factor verwijderen voorkomt dat deze de kluis vanaf nu opent. Het herversleutelt uw gegevens NIET: iedereen die al een kopie van de oude kluisheader EN de verwijderde inloggegevens bewaarde, kan de gegevens waartoe toegang bestond nog steeds openen. Om toegang volledig in te trekken, herversleutel de kluis (roteer de Volume Key).",
+            "keyslotsF6Honesty": "Een factor verwijderen voorkomt dat deze de kluis vanaf nu opent. Het herversleutelt uw gegevens NIET: iedereen die een kopie van de oude kluisheader EN de verwijderde inloggegevens heeft bewaard, kan nog steeds de hele kluis openen, inclusief bestanden die na het verwijderen zijn toegevoegd. Om toegang volledig in te trekken, maakt u een nieuwe kluis aan, verplaatst u uw bestanden daarheen en verwijdert u de oude.",
             "keyslotsKindPassphrase": "Wachtwoordzin",
             "keyslotsKindKeyfile": "Sleutelbestand",
             "keyslotsKindRecovery": "Herstel",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Code kopiëren",
             "keyslotsUnlockWithRecovery": "U kunt ook ontgrendelen met een herstelcode (plak als wachtwoord).",
             "openDefaultSaltLabel": "Deze vault gebruikt het AeroCrypt-standaard-salt",
-            "openDefaultSaltHint": "Zonder marker hier opent een vault met standaard-salt alleen met zijn wachtwoord, zodra de namen in deze map ermee worden ontsleuteld. Er wordt niets naar de externe server geschreven."
+            "openDefaultSaltHint": "Zonder marker hier opent een vault met standaard-salt alleen met zijn wachtwoord, zodra de namen in deze map ermee worden ontsleuteld. Er wordt niets naar de externe server geschreven.",
+            "keyslotsSetAsideRisks": "Deze server kan een bestand niet in één stap vervangen. De huidige markering wordt opzij hernoemd, de nieuwe wordt op zijn plaats gezet en de oude wordt daarna verwijderd. Op dat moment heeft de kluis geen markering en kan hij niet worden geopend. Als de wijziging halverwege wordt afgebroken, blijft de markering in de kluismap staan onder een naam met .aeroftp-replaced- en moet je die met de hand terughernoemen. Op opslag met een prullenbak of bestandsversies blijft de vorige markering daar herstelbaar.",
+            "keyslotsSetAsideRevocation": "De vorige markering opent de kluis nog steeds met de factor die je verwijdert of vervangt. Elke kopie die in de kluismap achterblijft, wordt na de wijziging verwijderd, en een kopie die niet kan worden verwijderd, wordt als fout gemeld. Een kopie in de prullenbak of de bestandsversies van de opslag wordt niet bereikt: als je die leegt, verdwijnen die kopieën, maar niet een kopie die iemand anders heeft bewaard, dus de intrekking is daarmee niet voltooid.",
+            "keyslotsSetAsideConsent": "Ik begrijp het: vervang de markering op deze server door de oude opzij te hernoemen",
+            "keyslotsSetAsideConsentRequired": "Deze server kan de markering van de kluis alleen vervangen door de oude opzij te hernoemen: bevestig dit in het vakje hierboven om door te gaan.",
+            "keyslotsMarkerReplaceUnsupported": "Deze server kan de markering van de kluis niet vervangen, dus slotwijzigingen worden hier geweigerd. Open dezelfde opslag via een server die een bestand in één stap vervangt (bijvoorbeeld SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Versleuteling)",
