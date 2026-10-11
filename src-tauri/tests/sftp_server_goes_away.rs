@@ -22,6 +22,9 @@
 // read on Windows.
 #![cfg(unix)]
 
+#[path = "support/scoped_env.rs"]
+mod scoped_env;
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -31,6 +34,7 @@ use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::StorageProvider;
 use russh::server::{Auth, ChannelOpenHandle, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId};
+use scoped_env::ScopedEnv;
 use tokio::sync::Notify;
 
 const SSH_FXP_INIT: u8 = 1;
@@ -400,13 +404,14 @@ async fn start_server(source: Vec<u8>, at: GoAwayAt) -> u16 {
 /// HOME is process-wide (`known_hosts`), so the tests take turns.
 static HOME_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-async fn connect(port: u16, label: &str) -> (SftpProvider, std::path::PathBuf) {
+/// A provider connected to `port`, with `HOME` on a scratch directory until
+/// the returned guard drops (under `HOME_GUARD`): the accept of the ephemeral
+/// host key stays out of the real known_hosts.
+async fn connect(port: u16, label: &str) -> (SftpProvider, std::path::PathBuf, ScopedEnv) {
     let home =
         std::env::temp_dir().join(format!("sftp-goes-away-{}-{}", label, std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
-    // Safety: test process only, under HOME_GUARD; keeps the accept of the
-    // ephemeral host key out of the real known_hosts.
-    unsafe { std::env::set_var("HOME", &home) };
+    let home_env = ScopedEnv::set("HOME", &home);
     let mut provider = SftpProvider::new(SftpConfig {
         host: "127.0.0.1".to_string(),
         port,
@@ -422,7 +427,7 @@ async fn connect(port: u16, label: &str) -> (SftpProvider, std::path::PathBuf) {
         .await
         .expect("connect timed out")
         .expect("connect to the fake SFTP server");
-    (provider, home)
+    (provider, home, home_env)
 }
 
 /// An upload with writes in flight when the server goes away fails as a lost
@@ -431,7 +436,7 @@ async fn connect(port: u16, label: &str) -> (SftpProvider, std::path::PathBuf) {
 async fn an_upload_fails_when_the_server_goes_away() {
     let _home_guard = HOME_GUARD.lock().await;
     let port = start_server(Vec::new(), GoAwayAt::Write(3)).await;
-    let (mut provider, home) = connect(port, "upload").await;
+    let (mut provider, home, _home_env) = connect(port, "upload").await;
     let local = home.join("local.bin");
     std::fs::write(&local, vec![7u8; 8 * 1024 * 1024]).unwrap();
     let outcome = tokio::time::timeout(
@@ -454,7 +459,7 @@ async fn a_download_fails_at_once_when_the_server_goes_away() {
     let _home_guard = HOME_GUARD.lock().await;
     let source: Vec<u8> = (0..8 * 1024 * 1024u32).map(|i| (i % 251) as u8).collect();
     let port = start_server(source, GoAwayAt::Read(3)).await;
-    let (mut provider, home) = connect(port, "download").await;
+    let (mut provider, home, _home_env) = connect(port, "download").await;
     let local = home.join("downloaded.bin");
     let started = std::time::Instant::now();
     let outcome = tokio::time::timeout(
@@ -480,7 +485,7 @@ async fn a_download_fails_at_once_when_the_server_goes_away() {
 async fn a_transfer_after_the_server_came_back_dials_again() {
     let _home_guard = HOME_GUARD.lock().await;
     let port = start_server(Vec::new(), GoAwayAt::Write(3)).await;
-    let (mut provider, home) = connect(port, "redial").await;
+    let (mut provider, home, _home_env) = connect(port, "redial").await;
     let big = home.join("big.bin");
     std::fs::write(&big, vec![7u8; 8 * 1024 * 1024]).unwrap();
     let first = tokio::time::timeout(

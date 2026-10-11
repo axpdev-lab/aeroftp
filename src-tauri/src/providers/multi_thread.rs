@@ -26,7 +26,6 @@
 //! regressing a proven path for no measured gain (tracked, not done in
 //! PD-HTTP-2; rev 3 principle: no overclaim, no churn on a validated path).
 
-use crate::providers::HttpResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -1495,11 +1494,14 @@ where
     run_concurrent_range_download(cfg, write_one_range, cancel, on_progress).await
 }
 
-/// A range's body that stopped arriving: a timeout or a dropped connection is
-/// recoverable, so the range is resumed from what it wrote
-/// ([`write_range_resuming`]); anything else (a body that does not decode)
-/// fails it.
-pub(crate) fn range_body_error(e: reqwest::Error) -> ProviderError {
+/// A ranged read that failed on the wire, on its request or on its body: a
+/// timeout, a request that got no answer or a body the connection dropped
+/// halfway is recoverable, so the range is resumed from what it wrote
+/// ([`write_range_resuming`]); anything else (a refused redirect, a body that
+/// does not decode) fails it. Every HTTP `read_range` maps its request and
+/// its body with it, and so do the windows of
+/// [`try_http_concurrent_range_download`].
+pub(crate) fn range_read_error(e: reqwest::Error) -> ProviderError {
     super::http_send_error(e, |e| {
         if e.is_body() || e.is_request() || e.is_connect() {
             ProviderError::NetworkError(e.to_string())
@@ -1607,7 +1609,7 @@ where
                 }
                 next = stream.next() => {
                     let Some(chunk) = next else { break };
-                    let chunk = chunk.map_err(range_body_error)?;
+                    let chunk = chunk.map_err(range_read_error)?;
                     let chunk_len = chunk.len() as u64;
                     crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, chunk_len.min(expected - written)).await;
                     if written + chunk_len > expected {
@@ -1867,7 +1869,7 @@ pub(crate) async fn try_http_concurrent_range_download(
                 .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
             let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                 .await
-                .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                .map_err(range_read_error)?;
             if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
                 return Err(ProviderError::ParallelRefused(source_changed(
                     "http range",
@@ -2039,9 +2041,161 @@ async fn http_range_source_moved(
     ))
 }
 
+/// A loopback server for the tests of every HTTP `read_range`: it answers a
+/// ranged GET (`Range`, or Azure's `x-ms-range`) with that window of
+/// [`OBJECT_SIZE`](window_server::OBJECT_SIZE) bytes of
+/// [`byte_at`](window_server::byte_at), one request per connection, and fails
+/// the first request for the window that starts at a given offset in the way
+/// it is told. Raw HTTP rather than a router: a request left without an
+/// answer is a closed connection, which a handler cannot produce.
+#[cfg(test)]
+pub(crate) mod window_server {
+    use std::net::SocketAddr;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    pub(crate) const OBJECT_SIZE: u64 = 4 * 1024 * 1024;
+
+    /// The byte at `offset` of the object.
+    pub(crate) fn byte_at(offset: u64) -> u8 {
+        (offset % 251) as u8
+    }
+
+    /// How the first request for the failing window fails.
+    #[derive(Clone, Copy, Debug)]
+    pub(crate) enum WireFailure {
+        /// The connection closes once the request is read, with no answer.
+        NoAnswer,
+        /// The head of the answer and half the window arrive, then the
+        /// connection closes.
+        CutHalfway,
+    }
+
+    pub(crate) struct WindowServer {
+        pub(crate) addr: SocketAddr,
+        /// Requests for the failing window, the failed one included.
+        pub(crate) failing_window_requests: Arc<AtomicUsize>,
+    }
+
+    /// Start the server; the first request for the window starting at
+    /// `fail_at` fails with `failure`, every other request is answered.
+    pub(crate) async fn start(failure: WireFailure, fail_at: u64) -> WindowServer {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let failed = Arc::new(AtomicBool::new(false));
+        let failing_window_requests = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&failing_window_requests);
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let failed = Arc::clone(&failed);
+                let counter = Arc::clone(&counter);
+                tokio::spawn(async move {
+                    let Some((start, end)) = read_window_request(&mut stream).await else {
+                        let _ = stream
+                            .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                            .await;
+                        return;
+                    };
+                    let end = end.min(OBJECT_SIZE - 1);
+                    let fails = start == fail_at && {
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        !failed.swap(true, Ordering::SeqCst)
+                    };
+                    if fails && matches!(failure, WireFailure::NoAnswer) {
+                        return;
+                    }
+                    let body: Vec<u8> = (start..=end).map(byte_at).collect();
+                    let head = format!(
+                        "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes {start}-{end}/{OBJECT_SIZE}\r\nContent-Length: {}\r\nETag: \"v1\"\r\nLast-Modified: Wed, 01 Jan 2025 00:00:00 GMT\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let sent = if fails {
+                        &body[..body.len() / 2]
+                    } else {
+                        &body[..]
+                    };
+                    if stream.write_all(head.as_bytes()).await.is_ok()
+                        && stream.write_all(sent).await.is_ok()
+                    {
+                        let _ = stream.flush().await;
+                    }
+                });
+            }
+        });
+        WindowServer {
+            addr,
+            failing_window_requests,
+        }
+    }
+
+    /// The property every HTTP `read_range` keeps, for both failures: the
+    /// first request for a window fails with an error the range writer
+    /// resumes from its mark ([`is_recoverable`]), and the window asked again
+    /// is the right one. `connect` gives a connected provider that reads
+    /// `/big.bin` from the server at the address.
+    ///
+    /// [`is_recoverable`]: crate::providers::ProviderError::is_recoverable
+    pub(crate) async fn assert_a_dropped_window_is_recoverable(
+        connect: impl Fn(SocketAddr) -> Box<dyn crate::providers::StorageProvider>,
+    ) {
+        const OFFSET: u64 = 1024 * 1024 + 4096;
+        const LEN: u64 = 64 * 1024;
+        for failure in [WireFailure::NoAnswer, WireFailure::CutHalfway] {
+            let server = start(failure, OFFSET).await;
+            let mut provider = connect(server.addr);
+            let error = provider
+                .read_range("/big.bin", OFFSET, LEN)
+                .await
+                .expect_err("the first request for the window fails");
+            assert!(error.is_recoverable(), "{failure:?}: {error:?}");
+            let window = provider
+                .read_range("/big.bin", OFFSET, LEN)
+                .await
+                .unwrap_or_else(|e| panic!("{failure:?}: the window asked again: {e}"));
+            assert_eq!(window.len() as u64, LEN, "{failure:?}");
+            assert!(
+                window.iter().zip(OFFSET..).all(|(&b, o)| b == byte_at(o)),
+                "{failure:?}: the window asked again is not the right one"
+            );
+            assert_eq!(
+                server.failing_window_requests.load(Ordering::SeqCst),
+                2,
+                "{failure:?}"
+            );
+        }
+    }
+
+    /// Read one request head; the window it asks for, or `None` for a
+    /// request without a range.
+    async fn read_window_request(stream: &mut tokio::net::TcpStream) -> Option<(u64, u64)> {
+        let mut head = Vec::new();
+        let mut chunk = [0u8; 4096];
+        while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+            let n = stream.read(&mut chunk).await.ok()?;
+            if n == 0 {
+                return None;
+            }
+            head.extend_from_slice(&chunk[..n]);
+        }
+        String::from_utf8_lossy(&head).lines().find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            let name = name.trim().to_ascii_lowercase();
+            if name != "range" && name != "x-ms-range" {
+                return None;
+            }
+            let (start, end) = value.trim().strip_prefix("bytes=")?.split_once('-')?;
+            Some((start.parse().ok()?, end.parse().ok()?))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::HttpResultExt;
 
     const MAX: usize = 16;
 
@@ -3346,6 +3500,51 @@ mod tests {
         assert!(
             resumed[0] <= WINDOW + WINDOW / 2,
             "the retry starts where the body stopped, not past it: {resumed:?}"
+        );
+    }
+
+    /// A window whose request gets no answer is asked again too: the request
+    /// of a window was mapped to `TransferFailed`, which failed the file.
+    #[tokio::test]
+    async fn an_http_window_with_no_answer_is_asked_again() {
+        use window_server::{WireFailure, OBJECT_SIZE};
+        let server = window_server::start(WireFailure::NoAnswer, OBJECT_SIZE / 4).await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("big.bin");
+        let attempt = try_http_concurrent_range_download(
+            HttpRangeRequest {
+                client: reqwest::Client::new(),
+                url: format!("http://{}/big.bin", server.addr),
+                headers: Vec::new(),
+                local_path: local.to_string_lossy().into_owned(),
+                provider_type: super::super::ProviderType::WebDav,
+                streams: 4,
+                max_streams: 4,
+                cutoff: 1024 * 1024,
+                known_size: Some(OBJECT_SIZE),
+            },
+            None,
+        )
+        .await;
+        assert!(
+            matches!(attempt, HttpRangeAttempt::Completed),
+            "{}",
+            match attempt {
+                HttpRangeAttempt::Failed(e) => format!("Failed({e})"),
+                HttpRangeAttempt::Fallback(_) => "Fallback".to_string(),
+                HttpRangeAttempt::Completed => "Completed".to_string(),
+            }
+        );
+        let file = std::fs::read(&local).unwrap();
+        assert_eq!(file.len() as u64, OBJECT_SIZE);
+        assert!(file
+            .iter()
+            .zip(0u64..)
+            .all(|(&b, o)| b == window_server::byte_at(o)));
+        assert_eq!(
+            server.failing_window_requests.load(Ordering::SeqCst),
+            2,
+            "the window was asked again once"
         );
     }
 

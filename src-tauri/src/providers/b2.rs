@@ -3982,7 +3982,7 @@ impl StorageProvider for B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("read_range build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(format!("read_range send: {}", e)))?;
+            .map_err(super::multi_thread::range_read_error)?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -4004,7 +4004,7 @@ impl StorageProvider for B2Provider {
         let bytes = resp
             .bytes()
             .await
-            .map_http_err(|e| ProviderError::Other(format!("read_range body: {}", e)))?;
+            .map_err(super::multi_thread::range_read_error)?;
         match super::multi_thread::ranged_answer(
             status,
             answered.as_deref(),
@@ -6376,6 +6376,21 @@ mod tests {
             .expect_err("a 403 on the windows is a failure, whatever its text says");
         assert!(!matches!(err, ProviderError::ParallelRefused(_)), "{err}");
         assert!(!out.exists(), "nothing may be published");
+    }
+
+    /// A window the connection drops is resumed from its mark. A request with
+    /// no answer was a `ConnectionFailed` and a body cut halfway an `Other`,
+    /// so on B2 only a timeout was resumed and a reset failed the download.
+    #[tokio::test]
+    async fn a_window_the_connection_drops_is_recoverable() {
+        super::super::multi_thread::window_server::assert_a_dropped_window_is_recoverable(|addr| {
+            let mut provider = empty_provider();
+            provider.download_url = format!("http://{addr}");
+            provider.auth_token = SecretString::new("token".to_string().into());
+            provider.connected = true;
+            Box::new(provider)
+        })
+        .await;
     }
 
     /// A ranged GET answered with a `Content-Range` for another window is a

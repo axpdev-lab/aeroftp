@@ -6425,7 +6425,7 @@ impl StorageProvider for S3Provider {
                 while let Some(chunk) = response
                     .chunk()
                     .await
-                    .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?
+                    .map_err(super::multi_thread::range_read_error)?
                 {
                     if chunk.len() > len as usize - bytes.len() {
                         return Err(ProviderError::ParallelRefused(
@@ -7727,7 +7727,7 @@ async fn download_range_to_offset(
     let mut stream = response.bytes_stream();
     let copied: Result<(), ProviderError> = async {
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(super::multi_thread::range_body_error)?;
+            let chunk = chunk.map_err(super::multi_thread::range_read_error)?;
             let chunk_len = chunk.len() as u64;
             crate::transfer_dag::throttle::charge(
                 crate::transfer_dag::governor::TransferDirection::Download,
@@ -11785,6 +11785,18 @@ mod tests {
             format!("{err}").contains("changed while it was being downloaded"),
             "{err}"
         );
+    }
+
+    /// A window the connection drops is resumed from its mark: a body cut
+    /// halfway was a `TransferFailed`, which failed the download.
+    #[tokio::test]
+    async fn a_window_the_connection_drops_is_recoverable() {
+        super::super::multi_thread::window_server::assert_a_dropped_window_is_recoverable(|addr| {
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            Box::new(provider)
+        })
+        .await;
     }
 
     #[tokio::test]

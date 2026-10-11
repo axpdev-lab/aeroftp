@@ -32,6 +32,9 @@
 // pretend the guard holds.
 #![cfg(unix)]
 
+#[path = "support/scoped_env.rs"]
+mod scoped_env;
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -43,6 +46,7 @@ use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::StorageProvider;
 use russh::server::{Auth, ChannelOpenHandle, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId};
+use scoped_env::ScopedEnv;
 
 const SSH_FXP_INIT: u8 = 1;
 const SSH_FXP_VERSION: u8 = 2;
@@ -556,11 +560,31 @@ async fn connect(port: u16) -> SftpProvider {
     p
 }
 
+/// A variable a test changed is put back when the test fails halfway: the
+/// tests here set `HOME` and never restored it, and a restore written at the
+/// end of a test is skipped by the panic of a failed assertion.
+#[test]
+fn a_scoped_variable_is_put_back_when_the_test_unwinds() {
+    const NAME: &str = "AEROFTP_TEST_SCOPED_ENV_PROBE";
+    let before = ScopedEnv::set(NAME, "before");
+    let unwound = std::panic::catch_unwind(|| {
+        let _during = ScopedEnv::set(NAME, "during");
+        panic!("an assertion that fails halfway");
+    });
+    assert!(unwound.is_err());
+    assert_eq!(std::env::var(NAME).as_deref(), Ok("before"));
+    drop(before);
+    assert_eq!(std::env::var_os(NAME), None, "a variable that was not set");
+}
+
 /// HOME is process-wide (`known_hosts`). Tests that redirect it take this
 /// lock so they cannot clobber each other.
 static HOME_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 struct ReadaheadCloseHarness {
+    // Fields drop in declaration order: HOME is put back before the lock
+    // that serializes it is released.
+    _home_env: ScopedEnv,
     _home_guard: tokio::sync::MutexGuard<'static, ()>,
     home: PathBuf,
     provider: SftpProvider,
@@ -574,7 +598,7 @@ async fn readahead_close_harness(label: &str) -> ReadaheadCloseHarness {
     let home =
         std::env::temp_dir().join(format!("sftp-readahead-{}-{}", label, std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
-    unsafe { std::env::set_var("HOME", &home) };
+    let home_env = ScopedEnv::set("HOME", &home);
     let large_payload: Vec<u8> = (0..524288u32).map(|i| (i % 239) as u8).collect();
     let mut files = HashMap::new();
     files.insert("/large.bin".to_string(), large_payload);
@@ -583,6 +607,7 @@ async fn readahead_close_harness(label: &str) -> ReadaheadCloseHarness {
     let mut provider = connect(port).await;
     provider.set_sftp_readahead(Some(4));
     ReadaheadCloseHarness {
+        _home_env: home_env,
         _home_guard: home_guard,
         home,
         provider,
@@ -605,9 +630,9 @@ async fn hinted_download_overlaps_stat_and_open() {
     let _home_guard = HOME_GUARD.lock().await;
     let home = std::env::temp_dir().join(format!("kimi-sftp-hint-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
-    // Safety: test process only; guards the real known_hosts from the
-    // trust_unknown_hosts accept-and-save path.
-    unsafe { std::env::set_var("HOME", &home) };
+    // Guards the real known_hosts from the trust_unknown_hosts accept-and-save
+    // path.
+    let _home_env = ScopedEnv::set("HOME", &home);
 
     // 64 KiB: under two 256 KiB buffer chunks, so no read-ahead window can
     // engage and the serial loop is the path, exactly the bench cell's 4 KiB
@@ -893,7 +918,7 @@ async fn hinted_download_overlaps_stat_and_open() {
     provider.set_sftp_readahead(None);
 
     // 14. Pipelined download, same: N handles, no awaited close.
-    unsafe { std::env::set_var("AEROFTP_SFTP_READ_PIPELINE", "4") };
+    let pipeline = ScopedEnv::set("AEROFTP_SFTP_READ_PIPELINE", "4");
     let local = home.join("out-pipeline-close.bin");
     provider
         .download_with_size_hint(
@@ -942,7 +967,7 @@ async fn hinted_download_overlaps_stat_and_open() {
         "the single-handle fallback must keep reporting progress"
     );
     assert_eq!(counts.handles.load(Ordering::SeqCst), 0);
-    unsafe { std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE") };
+    drop(pipeline);
 
     // 15. Upload opens a write handle then fails the WRITE. shutdown used
     // to run only after a successful copy.
@@ -1068,7 +1093,7 @@ async fn a_read_with_no_answer_resumes_its_window_from_the_first_missing_byte() 
     let _home_guard = HOME_GUARD.lock().await;
     let home = std::env::temp_dir().join(format!("sftp-stall-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
-    unsafe { std::env::set_var("HOME", &home) };
+    let _home_env = ScopedEnv::set("HOME", &home);
     const SIZE: usize = 4 * 1024 * 1024;
     let half = (SIZE / 2) as u64;
     let payload: Vec<u8> = (0..SIZE as u32).map(|i| (i % 239) as u8).collect();

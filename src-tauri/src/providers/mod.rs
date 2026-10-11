@@ -283,6 +283,30 @@ pub async fn response_bytes_with_limit(
     resp: reqwest::Response,
     limit: u64,
 ) -> Result<Vec<u8>, ProviderError> {
+    body_bytes_with_limit(resp, limit, |e| {
+        http_send_error(e, |e| ProviderError::TransferFailed(e.to_string()))
+    })
+    .await
+}
+
+/// [`response_bytes_with_limit`] for the window of a ranged read: a body the
+/// connection dropped halfway is a [`ProviderError::NetworkError`]
+/// ([`multi_thread::range_read_error`]), so the window is resumed from what it
+/// wrote instead of failing the download.
+pub(crate) async fn range_window_with_limit(
+    resp: reqwest::Response,
+    limit: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    body_bytes_with_limit(resp, limit, multi_thread::range_read_error).await
+}
+
+/// The reader behind [`response_bytes_with_limit`], with the mapping of a
+/// failed body read left to the caller.
+async fn body_bytes_with_limit(
+    resp: reqwest::Response,
+    limit: u64,
+    body_error: impl FnOnce(reqwest::Error) -> ProviderError,
+) -> Result<Vec<u8>, ProviderError> {
     // Check Content-Length header if present
     let expected = resp.content_length();
     if let Some(cl) = expected {
@@ -320,9 +344,7 @@ pub async fn response_bytes_with_limit(
                     );
                     break;
                 }
-                return Err(http_send_error(e, |e| {
-                    ProviderError::TransferFailed(e.to_string())
-                }));
+                return Err(body_error(e));
             }
             None => break,
         }
@@ -4285,9 +4307,10 @@ mod http_timeout_class_tests {
         "send_error",
         "connect_send_error",
         "map_reqwest_error",
-        // A range window's body: built on `http_send_error`, plus a body cut
-        // by a dropped connection, so the window is resumed from its mark.
-        "range_body_error",
+        // A range window's request and body: built on `http_send_error`, plus
+        // a body cut by a dropped connection, so the window is resumed from
+        // its mark.
+        "range_read_error",
     ];
 
     /// Files outside the class, and why. Their errors never become a
@@ -4505,6 +4528,101 @@ mod http_timeout_class_tests {
         let block = b"{ Err(e) => { g(e); continue; } Ok(r) => r }";
         let start = block.windows(2).position(|w| w == b"=>").unwrap() + 2;
         assert_eq!(arm_body(block, start), b"{ g(e); continue; }");
+    }
+
+    /// The class behind `range_read_error`: inside the `read_range` of every
+    /// provider, a request or a body read is mapped with `range_read_error`,
+    /// and a capped body is read with `range_window_with_limit`, so a window
+    /// the connection drops is resumed from its mark instead of failing the
+    /// download. B2 and Koofr filed a request with no answer as
+    /// `ConnectionFailed` / `TransferFailed`, and every HTTP provider filed a
+    /// body cut halfway as a hard failure. A request sent through a
+    /// provider's own sender (WebDAV, S3, Azure) is not seen here: that
+    /// sender files it as a `NetworkError`, and the provider's
+    /// `a_window_the_connection_drops_is_recoverable` reads through it.
+    #[test]
+    fn every_ranged_read_keeps_a_dropped_connection_resumable() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let request = regex::Regex::new(
+            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
+        )
+        .expect("regex");
+        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
+        let keeps_error =
+            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
+        let mapped = regex::Regex::new(r"^\s*\.(?:map_err|map_http_err)\(").expect("regex");
+        // Spelled in two pieces so this test is not one of its own matches.
+        let signature = concat!("async fn ", "read_range(");
+        let capped = concat!("response_bytes", "_with_limit(");
+        let mut plain = Vec::new();
+        let mut classified = std::collections::BTreeSet::new();
+        for file in &files {
+            let relative = file
+                .strip_prefix(&root)
+                .expect("under providers")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let source = std::fs::read_to_string(file).expect("read source");
+            for (at, _) in source.match_indices(signature) {
+                let open = at + source[at..].find('{').expect("a body");
+                let body = &source[open..past_close_brace(source.as_bytes(), open)];
+                let bytes = body.as_bytes();
+                let line_of = |offset: usize| source[..open + offset].matches('\n').count() + 1;
+                if let Some(found) = body.find(capped) {
+                    plain.push(format!("{relative}:{} ({capped}..)", line_of(found)));
+                }
+                if body.contains("range_window_with_limit(") {
+                    classified.insert(relative.clone());
+                }
+                for found in request.find_iter(body) {
+                    let end = if found.as_str().ends_with("()") {
+                        found.end()
+                    } else {
+                        past_close(bytes, found.end() - 1)
+                    };
+                    let Some(wait) = awaited.find(&body[end..]) else {
+                        continue;
+                    };
+                    let mut end = end + wait.end();
+                    while let Some(call) = keeps_error.find(&body[end..]) {
+                        end = past_close(bytes, end + call.end() - 1);
+                    }
+                    let Some(map) = mapped.find(&body[end..]) else {
+                        continue;
+                    };
+                    let open_map = end + map.end() - 1;
+                    if body[open_map..past_close(bytes, open_map)].contains("range_read_error") {
+                        classified.insert(relative.clone());
+                    } else {
+                        plain.push(format!("{relative}:{}", line_of(found.start())));
+                    }
+                }
+            }
+        }
+        assert!(
+            plain.is_empty(),
+            "a ranged read that files a dropped connection as a hard failure (map it with \
+             `multi_thread::range_read_error`, read a capped body with \
+             `range_window_with_limit`): {plain:?}"
+        );
+        // The scan has to see the reads it is about, or it passes on nothing.
+        for expected in [
+            "azure.rs",
+            "b2.rs",
+            "cloudinary.rs",
+            "imagekit.rs",
+            "koofr.rs",
+            "s3.rs",
+            "uploadcare.rs",
+            "webdav.rs",
+        ] {
+            assert!(
+                classified.contains(expected),
+                "no classified ranged read seen in {expected}: {classified:?}"
+            );
+        }
     }
 
     /// The same class in a second shape: the request is the scrutinee of a
