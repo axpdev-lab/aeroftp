@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
@@ -288,7 +289,7 @@ impl ImmichProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -299,7 +300,7 @@ impl ImmichProvider {
         response
             .json::<Vec<ImmichAlbum>>()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse albums: {}", e)))
+            .map_http_err(|e| ProviderError::ParseError(format!("Parse albums: {}", e)))
     }
 
     /// Every asset inside an album.
@@ -443,7 +444,7 @@ impl ImmichProvider {
                 .body(body.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -458,7 +459,7 @@ impl ImmichProvider {
             let result: SearchMetadataResponse = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(format!("Parse search: {}", e)))?;
+                .map_http_err(|e| ProviderError::ParseError(format!("Parse search: {}", e)))?;
 
             all.extend(result.assets.items);
             seen_pages += 1;
@@ -614,7 +615,7 @@ impl ImmichProvider {
             .delete(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -657,7 +658,7 @@ impl StorageProvider for ImmichProvider {
             .get(&ping_url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !ping_resp.status().is_success() {
             let status = ping_resp.status();
@@ -668,7 +669,7 @@ impl StorageProvider for ImmichProvider {
         let ping: ImmichServerPing = ping_resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse ping: {}", e)))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Parse ping: {}", e)))?;
 
         if ping.res.as_deref() != Some("pong") {
             return Err(ProviderError::ConnectionFailed(
@@ -920,7 +921,7 @@ impl StorageProvider for ImmichProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -938,7 +939,7 @@ impl StorageProvider for ImmichProvider {
 
         let mut downloaded: u64 = 0;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -967,7 +968,7 @@ impl StorageProvider for ImmichProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1050,7 +1051,7 @@ impl StorageProvider for ImmichProvider {
         let file_part = reqwest::multipart::Part::bytes(content)
             .file_name(filename.clone())
             .mime_str(&mime_type)
-            .map_err(|e| ProviderError::Other(format!("MIME error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("MIME error: {}", e)))?;
 
         let form = reqwest::multipart::Form::new()
             .part("assetData", file_part)
@@ -1067,7 +1068,7 @@ impl StorageProvider for ImmichProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1096,7 +1097,7 @@ impl StorageProvider for ImmichProvider {
         let upload_result: ImmichUploadResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse upload: {}", e)))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Parse upload: {}", e)))?;
 
         // If uploading to a specific album, add the asset to it
         if let Some(ref aid) = album_id {
@@ -1112,7 +1113,7 @@ impl StorageProvider for ImmichProvider {
                 .body(add_body.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !add_resp.status().is_success() {
                 let status = add_resp.status();
@@ -1167,7 +1168,7 @@ impl StorageProvider for ImmichProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1178,7 +1179,7 @@ impl StorageProvider for ImmichProvider {
         let created: ImmichCreateAlbumResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse create album: {}", e)))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Parse create album: {}", e)))?;
 
         // Update cache
         self.album_cache
@@ -1207,7 +1208,7 @@ impl StorageProvider for ImmichProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1327,7 +1328,7 @@ impl StorageProvider for ImmichProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::ConnectionFailed("Ping failed".to_string()));
@@ -1357,7 +1358,7 @@ impl StorageProvider for ImmichProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1368,7 +1369,7 @@ impl StorageProvider for ImmichProvider {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         use base64::Engine;
         let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -1454,7 +1455,7 @@ impl StorageProvider for ImmichProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1465,7 +1466,7 @@ impl StorageProvider for ImmichProvider {
         let shared: ImmichSharedLink = response
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse share link: {}", e)))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Parse share link: {}", e)))?;
 
         let key = shared
             .key

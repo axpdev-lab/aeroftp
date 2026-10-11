@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use std::collections::HashMap;
 
 use futures_util::StreamExt;
@@ -244,13 +245,13 @@ pub async fn download_release_asset(
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(1800))
             .build()
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?
             .get(&download_url)
             .header("Authorization", format!("Bearer {}", client.token_str()))
             .header("User-Agent", "AeroFTP")
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?
     } else {
         client.get_raw(&download_url).await?
     };
@@ -271,7 +272,7 @@ pub async fn download_release_asset(
         crate::transfer_dag::governor::TransferDirection::Download,
     ));
     while let Some(chunk) = stream.next().await {
-        let bytes = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let bytes = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         atomic
             .write_all(&bytes)
             .await

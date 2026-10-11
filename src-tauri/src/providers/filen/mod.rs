@@ -10,6 +10,7 @@
 pub mod notes;
 mod statfs;
 
+use crate::providers::HttpResultExt;
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use async_trait::async_trait;
@@ -642,7 +643,7 @@ impl FilenProvider {
     ) -> Result<reqwest::Response, ProviderError> {
         send_with_retry(&self.client, request, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Derive password hash and master key for authentication.
@@ -930,10 +931,10 @@ impl FilenProvider {
             .json(&serde_json::json!({ "masterKeys": encrypted }))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if resp["status"].as_bool() == Some(false) {
             let msg = resp["message"]
                 .as_str()
@@ -1340,13 +1341,13 @@ impl FilenProvider {
             )
             .json(body)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if resp.status {
             Ok(())
         } else {
@@ -1376,13 +1377,13 @@ impl FilenProvider {
             )
             .json(&serde_json::json!({"uuid": uuid, "to": to_folder_uuid}))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if !resp.status {
             let msg = resp.message.unwrap_or_else(|| "Move failed".to_string());
             filen_log(&format!("move {kind} FAILED: {msg}"));
@@ -1427,13 +1428,13 @@ impl FilenProvider {
                 )
                 .json(&serde_json::json!({"uuid": current_uuid}))
                 .build()
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
             let resp = self.send_retry(request).await?;
 
             let content: DirContentResponse = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !content.status {
                 return Err(ProviderError::NotFound(path.to_string()));
@@ -1514,13 +1515,13 @@ impl FilenProvider {
             )
             .json(&serde_json::json!({ "uuid": file_uuid }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: FileVersionsResponse = self
             .send_retry(request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if !resp.status {
             return Err(ProviderError::ServerError(
                 resp.message
@@ -1552,7 +1553,7 @@ impl FilenProvider {
             )
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let sent = self.send_retry(request).await;
         // Whatever the answer, not only the folder's own uuid: every folder
         // cached under it went to the trash with it.
@@ -1560,7 +1561,7 @@ impl FilenProvider {
         let resp: GenericResponse = sent?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -1604,10 +1605,10 @@ impl StorageProvider for FilenProvider {
             .json(&serde_json::json!({"email": self.config.email}))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !auth_info_resp.status {
             return Err(ProviderError::AuthenticationFailed(
@@ -1706,10 +1707,10 @@ impl StorageProvider for FilenProvider {
                 .json(&login_body)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !login_resp.status {
                 return Err(ProviderError::AuthenticationFailed(
@@ -1776,10 +1777,10 @@ impl StorageProvider for FilenProvider {
             )
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         self.root_uuid = user_resp["data"]["uuid"].as_str().unwrap_or("").to_string();
 
@@ -1809,13 +1810,13 @@ impl StorageProvider for FilenProvider {
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let account_resp: serde_json::Value = self
             .send_retry(account_request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if let Some(uuid) = account_resp["data"]["uuid"].as_str() {
             self.user_uuid = uuid.to_string();
         }
@@ -1862,13 +1863,13 @@ impl StorageProvider for FilenProvider {
             )
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = self.send_retry(request).await?;
 
         let resp_text = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         // F-LOG-01: Log raw response at debug level, truncated to 200 chars max
         let preview_len = resp_text.floor_char_boundary(200);
@@ -2426,13 +2427,13 @@ impl StorageProvider for FilenProvider {
                 "uploadKey": upload_key,
             }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let done_resp: serde_json::Value = self
             .send_retry(done_request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if done_resp["status"].as_bool() != Some(true) {
             return Err(ProviderError::TransferFailed(
@@ -2475,13 +2476,13 @@ impl StorageProvider for FilenProvider {
                 "parent": parent_uuid,
             }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: CreateFolderResponse = self
             .send_retry(request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             let msg = resp.message.unwrap_or_else(|| "mkdir failed".to_string());
@@ -2555,7 +2556,7 @@ impl StorageProvider for FilenProvider {
             )
             .json(&serde_json::json!({"uuid": uuid}))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let sent = self.send_retry(request).await;
         // Whatever the answer, a trashed folder takes the folders cached
         // under it along: `/a/sub` still resolved to a folder in the trash.
@@ -2565,7 +2566,7 @@ impl StorageProvider for FilenProvider {
         let resp: GenericResponse = sent?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -2668,7 +2669,7 @@ impl StorageProvider for FilenProvider {
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let rest_err = match self.send_retry(request).await {
             Ok(resp) => match resp.json::<UserInfoResponse>().await {
                 Ok(body) => {
@@ -2682,7 +2683,9 @@ impl StorageProvider for FilenProvider {
                     }
                     ProviderError::Other("No user info data".to_string())
                 }
-                Err(e) => ProviderError::Other(format!("user info parse: {e}")),
+                Err(e) => crate::providers::http_send_error(e, |e| {
+                    ProviderError::Other(format!("user info parse: {e}"))
+                }),
             },
             Err(e) => e,
         };
@@ -2831,13 +2834,13 @@ impl StorageProvider for FilenProvider {
             )
             .json(&link_body)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: LinkEditResponse = self
             .send_retry(request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -2897,13 +2900,13 @@ impl StorageProvider for FilenProvider {
                 "type": "disable",
             }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -3036,13 +3039,13 @@ impl StorageProvider for FilenProvider {
             )
             .json(&serde_json::json!({ "uuid": version_id, "current": current_uuid }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if !resp.status {
             return Err(ProviderError::ServerError(
                 resp.message
@@ -3371,13 +3374,13 @@ impl StorageProvider for FilenProvider {
                 "uploadKey": meta.upload_key,
             }))
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let done_resp: serde_json::Value = self
             .send_retry(done_request)
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if done_resp["status"].as_bool() != Some(true) {
             return Err(ProviderError::TransferFailed(
@@ -3505,7 +3508,7 @@ async fn upload_filen_chunk(
         .body(encrypted)
         .send()
         .await
-        .map_err(|e| ProviderError::NetworkError(sanitize_filen_transport_error(&e)))?;
+        .map_http_err(|e| ProviderError::NetworkError(sanitize_filen_transport_error(&e)))?;
 
     let status = resp.status();
     let retry_header = resp
@@ -3516,7 +3519,7 @@ async fn upload_filen_chunk(
     let resp_text = resp
         .text()
         .await
-        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
     if !status.is_success() {
         // Body preview is application JSON; still scrub in case a gateway echoes

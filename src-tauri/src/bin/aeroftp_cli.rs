@@ -7469,6 +7469,35 @@ fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
     bad
 }
 
+/// The line printed when `connect` fails: what failed, then what the user can
+/// check. A `ConnectionFailed` already reads "Connection failed: ...", so its
+/// own text follows the prefix once instead of repeating it.
+///
+/// The hint is printed for every command that connects, so a flag it names
+/// must be one every command accepts: a global flag. A timeout used to say
+/// "increase --timeout", which `ls`, `get` and `stat` refuse as an unknown
+/// argument; the limits it hits (the providers' connect and read timeouts)
+/// have no flag.
+fn connect_failure_message(e: &ProviderError) -> String {
+    let hint = match e {
+        ProviderError::ConnectionFailed(_) => {
+            " (check hostname/port and verify the service is running)"
+        }
+        ProviderError::AuthenticationFailed(_) => " (check credentials in --profile or URL)",
+        ProviderError::Timeout => {
+            " (the server did not answer in time: check that it is up and responding, and any firewall, VPN or proxy on the way)"
+        }
+        ProviderError::NetworkError(_) => " (check network connectivity and DNS resolution)",
+        ProviderError::InvalidConfig(_) => " (verify profile settings or URL format)",
+        _ => "",
+    };
+    let detail = match e {
+        ProviderError::ConnectionFailed(detail) => detail.clone(),
+        other => other.to_string(),
+    };
+    format!("Connection failed: {detail}{hint}")
+}
+
 fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
     match err {
         ProviderError::ConnectionFailed(_)
@@ -30206,17 +30235,7 @@ async fn create_and_connect_with(
 
     if let Err(e) = provider.connect().await {
         let code = provider_error_to_exit_code(&e);
-        let hint = match &e {
-            ProviderError::ConnectionFailed(_) => {
-                " (check hostname/port and verify the service is running)"
-            }
-            ProviderError::AuthenticationFailed(_) => " (check credentials in --profile or URL)",
-            ProviderError::Timeout => " (increase --timeout or check firewall rules)",
-            ProviderError::NetworkError(_) => " (check network connectivity and DNS resolution)",
-            ProviderError::InvalidConfig(_) => " (verify profile settings or URL format)",
-            _ => "",
-        };
-        print_error(format, &format!("Connection failed: {}{}", e, hint), code);
+        print_error(format, &connect_failure_message(&e), code);
         return Err(code);
     }
 
@@ -77069,6 +77088,64 @@ mod tests {
         assert_eq!(format_speed(512), "512 B/s");
         assert_eq!(format_speed(1024), "1.0 KB/s");
         assert_eq!(format_speed(1048576), "1.0 MB/s");
+    }
+
+    /// D7: the connect hint is printed for every command that connects, so
+    /// every flag it names must be one that every command accepts. The
+    /// timeout hint named `--timeout`, which `ls`, `get` and `stat` refuse.
+    #[test]
+    fn a_connect_hint_names_only_flags_every_command_accepts() {
+        // clap builds the whole command tree, which overflows the default
+        // test stack: read the global flags on a 32 MB one.
+        let global: std::collections::BTreeSet<String> = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                Cli::command()
+                    .get_arguments()
+                    .filter(|arg| arg.is_global_set())
+                    .filter_map(|arg| arg.get_long().map(|long| format!("--{long}")))
+                    .collect()
+            })
+            .expect("spawn wide-stack thread")
+            .join()
+            .expect("read the global flags");
+        let failures = [
+            ProviderError::ConnectionFailed("refused".into()),
+            ProviderError::AuthenticationFailed("401".into()),
+            ProviderError::Timeout,
+            ProviderError::NetworkError("dns".into()),
+            ProviderError::InvalidConfig("url".into()),
+            ProviderError::NotConnected,
+            ProviderError::ConnectionLost("reset".into()),
+            ProviderError::ServerError("500".into()),
+            ProviderError::PermissionDenied("403".into()),
+            ProviderError::NotFound("/x".into()),
+        ];
+        let flag = regex::Regex::new(r"--[a-z][a-z0-9-]*").expect("regex");
+        for failure in &failures {
+            let message = connect_failure_message(failure);
+            for named in flag.find_iter(&message) {
+                assert!(
+                    global.contains(named.as_str()),
+                    "{failure:?}: \"{message}\" names {}, which is not a global flag",
+                    named.as_str()
+                );
+            }
+        }
+    }
+
+    /// D7: "Connection failed: Connection failed: ..." printed the prefix
+    /// twice for every `ConnectionFailed`.
+    #[test]
+    fn a_connect_failure_says_connection_failed_once() {
+        for failure in [
+            ProviderError::ConnectionFailed("error sending request".into()),
+            ProviderError::Timeout,
+            ProviderError::AuthenticationFailed("401".into()),
+        ] {
+            let message = connect_failure_message(&failure);
+            assert_eq!(message.matches("Connection failed").count(), 1, "{message}");
+        }
     }
 
     #[test]

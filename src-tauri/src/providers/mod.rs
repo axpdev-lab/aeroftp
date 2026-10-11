@@ -210,6 +210,50 @@ pub fn is_unexpected_eof_after_full_body(e: &reqwest::Error, received: u64, expe
     false
 }
 
+/// Classify a failed HTTP request the same way in every provider: a request
+/// that got no reply inside the client's limits (the connect timeout, or the
+/// read timeout while it waited for the answer) is [`ProviderError::Timeout`],
+/// whatever the call site calls its other failures. Everything else goes to
+/// `otherwise`, which keeps the call site's own variant and wording.
+///
+/// The call sites map on the text, and reqwest's `Display` for a timeout is
+/// the generic "error sending request for url (...)": the timeout is only in
+/// the source chain. Measured against a listener that accepts and never
+/// writes, `aeroftp-cli stat` on WebDAV waited the 1800 s read timeout and
+/// then exited 1, "Connection failed ... verify the service is running",
+/// instead of 8, the exit code the CLI documents for a timeout.
+pub fn http_send_error(
+    e: reqwest::Error,
+    otherwise: impl FnOnce(reqwest::Error) -> ProviderError,
+) -> ProviderError {
+    if e.is_timeout() {
+        ProviderError::Timeout
+    } else {
+        otherwise(e)
+    }
+}
+
+/// [`http_send_error`] as a `map_err` for a reqwest result, which is how the
+/// HTTP providers map their requests: `.map_http_err(|e| ...)` in place of
+/// `.map_err(|e| ...)`, with the same closure for every failure that is not
+/// a timeout. It exists only for `reqwest::Error`, so it cannot land on a
+/// result whose error says nothing about a timeout.
+pub trait HttpResultExt<T> {
+    fn map_http_err(
+        self,
+        otherwise: impl FnOnce(reqwest::Error) -> ProviderError,
+    ) -> Result<T, ProviderError>;
+}
+
+impl<T> HttpResultExt<T> for Result<T, reqwest::Error> {
+    fn map_http_err(
+        self,
+        otherwise: impl FnOnce(reqwest::Error) -> ProviderError,
+    ) -> Result<T, ProviderError> {
+        self.map_err(|e| http_send_error(e, otherwise))
+    }
+}
+
 /// H2: Read a reqwest Response into Vec<u8> with a size cap.
 /// Checks Content-Length first; if absent, reads up to `limit` bytes via streaming.
 ///
@@ -2988,7 +3032,7 @@ pub async fn stream_response_to_resumable(
     let mut transferred = resumable.offset();
 
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         crate::transfer_dag::throttle::charge(
             crate::transfer_dag::governor::TransferDirection::Download,
             chunk.len() as u64,
@@ -3042,7 +3086,7 @@ where
     let response = build_request(range_header.as_deref())
         .send()
         .await
-        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
     match response.status() {
         StatusCode::PARTIAL_CONTENT => {
@@ -4079,5 +4123,175 @@ pub(crate) mod edit_replace_tests {
             HashMap::from([("/m.tsv".to_string(), b"ours".to_vec())])
         );
         assert!(p.replaces.is_empty(), "{:?}", p.replaces);
+    }
+}
+
+/// A local HTTP endpoint that accepts every connection and never answers,
+/// the shape of a server that hangs after `accept()`. The accepted sockets
+/// stay open for the life of the test process, so a client sees no reset.
+#[cfg(test)]
+pub(crate) fn mute_http_endpoint() -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a mute listener");
+    let url = format!(
+        "http://{}/",
+        listener.local_addr().expect("listener address")
+    );
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+    url
+}
+
+#[cfg(test)]
+mod http_send_error_tests {
+    use super::*;
+    use std::time::Duration;
+
+    async fn failed_send(url: &str) -> reqwest::Error {
+        // The providers' own limit: a read timeout, not a total one.
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .read_timeout(Duration::from_millis(300))
+            .build()
+            .expect("client");
+        client
+            .get(url)
+            .send()
+            .await
+            .expect_err("the request must fail")
+    }
+
+    #[tokio::test]
+    async fn a_request_that_gets_no_reply_is_a_timeout_whatever_the_site_calls_it() {
+        let e = failed_send(&mute_http_endpoint()).await;
+        let mapped = http_send_error(e, |e| ProviderError::ConnectionFailed(e.to_string()));
+        assert!(matches!(mapped, ProviderError::Timeout), "{mapped:?}");
+    }
+
+    #[tokio::test]
+    async fn a_refused_connection_keeps_the_sites_own_error() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let url = format!("http://{}/", closed.local_addr().expect("address"));
+        drop(closed);
+        let e = failed_send(&url).await;
+        let mapped = http_send_error(e, |e| ProviderError::ConnectionFailed(e.to_string()));
+        assert!(
+            matches!(mapped, ProviderError::ConnectionFailed(_)),
+            "{mapped:?}"
+        );
+    }
+}
+
+/// The class behind `http_send_error`: no provider maps the result of a
+/// request or of a body read with a plain `map_err`, which files a timeout
+/// under the call site's own variant. Read from the sources, so a new
+/// provider written the old way fails here instead of in a script that
+/// waited 30 minutes for an exit code that says "connection refused".
+#[cfg(test)]
+mod http_timeout_class_tests {
+    use std::path::Path;
+
+    /// Mappers that already classify a timeout, by name.
+    const CLASSIFYING: &[&str] = &[
+        "http_send_error",
+        "timed_out_or",
+        "send_error",
+        "connect_send_error",
+        "map_reqwest_error",
+    ];
+
+    /// Files outside the class, and why. Their errors never become a
+    /// `ProviderError`: the GitHub device flow and OAuth 1 sign-in return a
+    /// `String` to the interactive sign-in dialog, and OAuth 2 hands its
+    /// error to the `oauth2` crate's own type.
+    const OUTSIDE: &[&str] = &["github/auth.rs", "oauth1.rs", "oauth2.rs"];
+
+    fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read providers dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                sources(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// Index just past the parenthesis that closes the one at `open`.
+    fn past_close(s: &[u8], open: usize) -> usize {
+        let mut depth = 0usize;
+        let mut i = open;
+        while i < s.len() {
+            match s[i] {
+                b'"' => {
+                    i += 1;
+                    while s[i] != b'"' {
+                        if s[i] == b'\\' {
+                            i += 1;
+                        }
+                        i += 1;
+                    }
+                }
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return i + 1;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        s.len()
+    }
+
+    #[test]
+    fn no_provider_maps_a_request_failure_without_classifying_a_timeout() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let request = regex::Regex::new(
+            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
+        )
+        .expect("regex");
+        let then_map_err = regex::Regex::new(r"^\s*\.await\s*\.map_err\(").expect("regex");
+        let mut plain = Vec::new();
+        for file in &files {
+            let relative = file
+                .strip_prefix(&root)
+                .expect("under providers")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if OUTSIDE.contains(&relative.as_str()) {
+                continue;
+            }
+            let source = std::fs::read_to_string(file).expect("read source");
+            let bytes = source.as_bytes();
+            for found in request.find_iter(&source) {
+                let end = if found.as_str().ends_with("()") {
+                    found.end()
+                } else {
+                    past_close(bytes, found.end() - 1)
+                };
+                let Some(map) = then_map_err.find(&source[end..]) else {
+                    continue;
+                };
+                let open = end + map.end() - 1;
+                let mapper = &source[open..past_close(bytes, open)];
+                if !CLASSIFYING.iter().any(|name| mapper.contains(name)) {
+                    let line = source[..found.start()].matches('\n').count() + 1;
+                    plain.push(format!("{relative}:{line}"));
+                }
+            }
+        }
+        assert!(
+            plain.is_empty(),
+            "map_err on a request or body read that files a timeout under another variant \
+             (use `map_http_err`, see `http_send_error`): {plain:?}"
+        );
     }
 }

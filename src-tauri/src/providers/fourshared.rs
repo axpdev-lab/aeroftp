@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer};
@@ -297,10 +298,10 @@ impl FourSharedProvider {
             .get(url)
             .header("Authorization", &auth)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         self.check_auth_status(&resp)?;
         Ok(resp)
     }
@@ -359,10 +360,10 @@ impl FourSharedProvider {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         self.check_auth_status(&resp)?;
         Ok(resp)
     }
@@ -375,10 +376,10 @@ impl FourSharedProvider {
             .delete(url)
             .header("Authorization", &auth)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         self.check_auth_status(&resp)?;
         Ok(resp)
     }
@@ -410,10 +411,10 @@ impl FourSharedProvider {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         self.check_auth_status(&resp)?;
         Ok(resp)
     }
@@ -480,10 +481,10 @@ impl FourSharedProvider {
             .put(&full_url)
             .header("Authorization", &auth)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -766,7 +767,7 @@ impl FourSharedProvider {
         let body = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Read listing body: {}", e)))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Read listing body: {}", e)))?;
         parse(&body)
     }
 
@@ -1071,10 +1072,9 @@ impl StorageProvider for FourSharedProvider {
         }
 
         // Read raw body for robust parsing: 4shared may return unexpected field types
-        let body_text = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Failed to read response: {}", e)))?;
+        let body_text = resp.text().await.map_http_err(|e| {
+            ProviderError::ParseError(format!("Failed to read response: {}", e))
+        })?;
 
         let user: FourSharedUser = serde_json::from_str(&body_text).map_err(|e| {
             ProviderError::ParseError(format!(
@@ -1152,7 +1152,7 @@ impl StorageProvider for FourSharedProvider {
             let body = resp
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(format!("Read folders body: {}", e)))?;
+                .map_http_err(|e| ProviderError::ParseError(format!("Read folders body: {}", e)))?;
             tracing::debug!(
                 "[4shared] 4shared folders response ({}B): {}",
                 body.len(),
@@ -1240,7 +1240,7 @@ impl StorageProvider for FourSharedProvider {
             let body = resp
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(format!("Read files body: {}", e)))?;
+                .map_http_err(|e| ProviderError::ParseError(format!("Read files body: {}", e)))?;
             tracing::debug!(
                 "[4shared] 4shared files response ({}B): {}",
                 body.len(),
@@ -1370,7 +1370,7 @@ impl StorageProvider for FourSharedProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1476,7 +1476,7 @@ impl StorageProvider for FourSharedProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1716,7 +1716,7 @@ impl StorageProvider for FourSharedProvider {
                 let body = resp
                     .text()
                     .await
-                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
                 let file: FourSharedFile = serde_json::from_str(&body)
                     .map_err(|e| ProviderError::ParseError(format!("stat file parse: {}", e)))?;
 
@@ -1756,7 +1756,7 @@ impl StorageProvider for FourSharedProvider {
         let body = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let folder: FourSharedFolder = serde_json::from_str(&body)
             .map_err(|e| ProviderError::ParseError(format!("stat folder parse: {}", e)))?;
 
@@ -1810,7 +1810,7 @@ impl StorageProvider for FourSharedProvider {
         let body = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let user: FourSharedUser = serde_json::from_str(&body)
             .map_err(|e| ProviderError::ParseError(format!("storage_info parse: {}", e)))?;
 
@@ -1852,11 +1852,11 @@ impl StorageProvider for FourSharedProvider {
             .get(&url)
             .header("Authorization", &auth)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1871,7 +1871,7 @@ impl StorageProvider for FourSharedProvider {
         let body = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Read search body: {}", e)))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Read search body: {}", e)))?;
         let files = Self::parse_file_list(&body);
 
         let entries = files

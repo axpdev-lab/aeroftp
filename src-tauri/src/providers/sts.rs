@@ -14,6 +14,7 @@
 //! that then feed the data-plane signer through `S3Config.session_token`.
 
 use crate::providers::types::ProviderError;
+use crate::providers::HttpResultExt;
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use quick_xml::events::Event;
@@ -296,10 +297,9 @@ async fn send_assume_role(
         request = request.header("X-Amz-Security-Token", token);
     }
 
-    let response =
-        request.body(signed.body).send().await.map_err(|e| {
-            ProviderError::NetworkError(format!("STS AssumeRole request failed: {e}"))
-        })?;
+    let response = request.body(signed.body).send().await.map_http_err(|e| {
+        ProviderError::NetworkError(format!("STS AssumeRole request failed: {e}"))
+    })?;
 
     let status = response.status();
     let server_date = response
@@ -311,7 +311,7 @@ async fn send_assume_role(
     let body = response
         .text()
         .await
-        .map_err(|e| ProviderError::NetworkError(format!("STS response read failed: {e}")))?;
+        .map_http_err(|e| ProviderError::NetworkError(format!("STS response read failed: {e}")))?;
 
     Ok(StsResponse {
         status,

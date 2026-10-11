@@ -10,6 +10,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderName, HeaderValue, AUTHORIZATION, CONTENT_TYPE, RANGE};
 use secrecy::{ExposeSecret, SecretString};
@@ -384,10 +385,12 @@ impl KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(vk, vv)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// POST JSON with retry and auth
@@ -407,10 +410,12 @@ impl KoofrProvider {
             .header(vk, vv)
             .body(json)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// PUT JSON with retry and auth
@@ -430,10 +435,12 @@ impl KoofrProvider {
             .header(vk, vv)
             .body(json)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// DELETE with retry and auth
@@ -445,10 +452,12 @@ impl KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(vk, vv)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// Parse error from response body
@@ -618,7 +627,7 @@ impl StorageProvider for KoofrProvider {
         // 1. Verify credentials by fetching user info
         let resp = self.get(&self.api_url("/user")).await?;
         let resp = Self::check_response(resp).await?;
-        let user_body = resp.text().await.map_err(|e| {
+        let user_body = resp.text().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to read user body: {}", e))
         })?;
 
@@ -645,7 +654,7 @@ impl StorageProvider for KoofrProvider {
         // 2. Get mounts and find primary
         let resp = self.get(&self.api_url("/mounts")).await?;
         let resp = Self::check_response(resp).await?;
-        let body = resp.text().await.map_err(|e| {
+        let body = resp.text().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to read mounts body: {}", e))
         })?;
 
@@ -782,10 +791,9 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let file_list: KoofrFileList = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file list: {}", e)))?;
+        let file_list: KoofrFileList = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse file list: {}", e))
+        })?;
 
         let entries: Vec<RemoteEntry> = file_list
             .files
@@ -818,10 +826,9 @@ impl StorageProvider for KoofrProvider {
         );
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let info: KoofrFileInfo = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file info: {}", e)))?;
+        let info: KoofrFileInfo = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
+        })?;
 
         if info.file.file_type != "dir" {
             return Err(ProviderError::NotFound(format!(
@@ -908,11 +915,13 @@ impl StorageProvider for KoofrProvider {
             .get(&url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::TransferFailed(format!("Build request failed: {}", e))
+            })?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);
@@ -932,8 +941,8 @@ impl StorageProvider for KoofrProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
+            let chunk = chunk
+                .map_http_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1030,7 +1039,7 @@ impl StorageProvider for KoofrProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);
@@ -1219,10 +1228,9 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let info: KoofrFileInfo = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file info: {}", e)))?;
+        let info: KoofrFileInfo = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
+        })?;
 
         let (parent, _) = Self::split_path(&resolved);
         Ok(self.file_to_entry(&info.file, parent))
@@ -1357,7 +1365,7 @@ impl StorageProvider for KoofrProvider {
         let link: KoofrLink = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse link: {}", e)))?;
+            .map_http_err(|e| ProviderError::ServerError(format!("Failed to parse link: {}", e)))?;
 
         let _ = &options; // acknowledge options
         Ok(ShareLinkResult {
@@ -1375,10 +1383,9 @@ impl StorageProvider for KoofrProvider {
         let url = format!("{}/mounts/{}/links", self.api_base(), self.mount_id);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let links_resp: KoofrLinksResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse links: {}", e)))?;
+        let links_resp: KoofrLinksResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse links: {}", e))
+        })?;
 
         let resolved = self.resolve_path(path);
         let links = links_resp
@@ -1413,10 +1420,9 @@ impl StorageProvider for KoofrProvider {
         let url = format!("{}/mounts/{}/links", self.api_base(), self.mount_id);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let links: KoofrLinksResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse links: {}", e)))?;
+        let links: KoofrLinksResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse links: {}", e))
+        })?;
 
         let resolved = self.resolve_path(path);
         // No link found is not an error
@@ -1472,7 +1478,7 @@ impl StorageProvider for KoofrProvider {
         let url = format!("{}/mounts/{}", self.api_base(), self.mount_id);
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let body = resp.text().await.map_err(|e| {
+        let body = resp.text().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Failed to read mount response: {}", e))
         })?;
         koofr_log(&format!(
@@ -1539,10 +1545,9 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let search: KoofrSearchResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse search: {}", e)))?;
+        let search: KoofrSearchResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse search: {}", e))
+        })?;
 
         let entries: Vec<RemoteEntry> = search
             .hits
@@ -1599,11 +1604,15 @@ impl StorageProvider for KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(RANGE, range_value)
             .build()
-            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::TransferFailed(format!("Build request failed: {}", e))
+            })?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Resume download failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::TransferFailed(format!("Resume download failed: {}", e))
+            })?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);
@@ -1627,8 +1636,8 @@ impl StorageProvider for KoofrProvider {
 
         let mut downloaded = offset;
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
+            let chunk = chunk
+                .map_http_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
             file.write_all(&chunk)
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("Write error: {}", e)))?;
@@ -1676,10 +1685,9 @@ impl StorageProvider for KoofrProvider {
 
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let versions: KoofrVersionsResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse versions: {}", e)))?;
+        let versions: KoofrVersionsResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse versions: {}", e))
+        })?;
 
         let result: Vec<FileVersion> = versions
             .versions
@@ -1721,11 +1729,13 @@ impl StorageProvider for KoofrProvider {
             .get(&url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::TransferFailed(format!("Build request failed: {}", e))
+            })?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Download version failed: {}", e))
             })?;
 
@@ -1744,8 +1754,8 @@ impl StorageProvider for KoofrProvider {
             .map_err(|e| ProviderError::TransferFailed(format!("Create file failed: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
+            let chunk = chunk
+                .map_http_err(|e| ProviderError::TransferFailed(format!("Stream error: {}", e)))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1817,11 +1827,13 @@ impl StorageProvider for KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(RANGE, range_value)
             .build()
-            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::TransferFailed(format!("Build request failed: {}", e))
+            })?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Range read failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Range read failed: {}", e)))?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);
@@ -1840,7 +1852,7 @@ impl StorageProvider for KoofrProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {}", e)))?;
         match super::multi_thread::ranged_answer(
             status,
             answered.as_deref(),
@@ -1919,10 +1931,9 @@ impl KoofrProvider {
         let url = format!("{}/trash?pageSize=1000", self.api_base());
         let resp = self.get(&url).await?;
         let resp = Self::check_response(resp).await?;
-        let trash: KoofrTrashResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse trash: {}", e)))?;
+        let trash: KoofrTrashResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse trash: {}", e))
+        })?;
         Ok(trash.files)
     }
 

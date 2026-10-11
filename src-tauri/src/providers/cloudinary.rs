@@ -24,6 +24,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{multipart, StatusCode};
@@ -412,7 +413,7 @@ impl CloudinaryProvider {
             .auth(self.client.get(&url))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -421,7 +422,7 @@ impl CloudinaryProvider {
         let parsed = resp
             .json::<CloudinaryFolderListResponse>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         Ok(parsed.folders)
     }
 
@@ -450,7 +451,7 @@ impl CloudinaryProvider {
                 .auth(self.client.get(&url))
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             let status = resp.status();
             if !status.is_success() {
@@ -474,7 +475,7 @@ impl CloudinaryProvider {
             let page = resp
                 .json::<CloudinaryListResponse>()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
             resources.extend(page.resources);
             match page.next_cursor.filter(|c| !c.is_empty()) {
                 Some(next) => cursor = Some(next),
@@ -518,7 +519,7 @@ impl CloudinaryProvider {
                     .auth(self.client.get(&url))
                     .send()
                     .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
                 if !resp.status().is_success() {
                     return Err(self.parse_error(resp).await);
@@ -527,7 +528,7 @@ impl CloudinaryProvider {
                 let page = resp
                     .json::<CloudinaryListResponse>()
                     .await
-                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
                 for mut item in page.resources {
                     if item.resource_type.is_empty() {
                         item.resource_type = kind.to_string();
@@ -635,7 +636,7 @@ impl CloudinaryProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         if resp.status().is_success() {
             Ok(())
         } else {
@@ -714,7 +715,7 @@ impl CloudinaryProvider {
                 .auth(self.client.put(&url))
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
             if resp.status().is_success() {
                 Ok(())
             } else {
@@ -832,7 +833,7 @@ impl CloudinaryProvider {
                 .auth(self.client.post(&url))
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
             if resp.status().is_success() {
                 Ok(())
             } else {
@@ -919,7 +920,7 @@ impl CloudinaryProvider {
             .auth(self.client.delete(&url))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -929,7 +930,7 @@ impl CloudinaryProvider {
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let status = body
             .get("deleted")
             .and_then(|d| d.get(public_id))
@@ -960,13 +961,13 @@ impl CloudinaryProvider {
             .auth(self.client.get(format!("{}/usage", self.api_base())))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
         }
         resp.json::<CloudinaryUsageResponse>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 }
 
@@ -1088,7 +1089,7 @@ impl StorageProvider for CloudinaryProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
                 "Download failed: HTTP {}",
@@ -1106,7 +1107,7 @@ impl StorageProvider for CloudinaryProvider {
             crate::transfer_dag::governor::TransferDirection::Download,
         ));
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1139,7 +1140,7 @@ impl StorageProvider for CloudinaryProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
                 "Download failed: HTTP {}",
@@ -1186,7 +1187,7 @@ impl StorageProvider for CloudinaryProvider {
             .header("Range", format!("bytes={}-{}", offset, end))
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -1271,7 +1272,7 @@ impl StorageProvider for CloudinaryProvider {
         let file_part = multipart::Part::stream_with_length(body, total)
             .file_name(file_name.clone())
             .mime_str(mime.as_ref())
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            .map_http_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
 
         // Upload payload includes auth via the standard signed-or-basic flow.
         // We use Basic auth with key:secret (same path as admin endpoints), which
@@ -1292,7 +1293,7 @@ impl StorageProvider for CloudinaryProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1301,7 +1302,7 @@ impl StorageProvider for CloudinaryProvider {
         let parsed = resp
             .json::<CloudinaryUploadResponse>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if let Some(ref kind) = parsed.resource_type {
             self.cache_resource_type(&parsed.public_id, kind);
         }
@@ -1335,7 +1336,7 @@ impl StorageProvider for CloudinaryProvider {
             .auth(self.client.post(&url))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if resp.status().is_success() {
             Ok(())
@@ -1396,7 +1397,7 @@ impl StorageProvider for CloudinaryProvider {
             .auth(self.client.delete(&url))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if resp.status().is_success() {
             Ok(())
@@ -1452,7 +1453,7 @@ impl StorageProvider for CloudinaryProvider {
                 .auth(self.client.delete(&url))
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
             if !resp.status().is_success() && resp.status() != StatusCode::NOT_FOUND {
                 return Err(self.parse_error(resp).await);
             }
@@ -1796,7 +1797,7 @@ impl StorageProvider for CloudinaryProvider {
         let file_part = multipart::Part::stream_with_length(body.into_reqwest_body(), part_len)
             .file_name(meta.file_name.clone())
             .mime_str(mime.as_ref())
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            .map_http_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         let mut form = multipart::Form::new()
             .part("file", file_part)
             .text("use_filename", "true")
@@ -1814,7 +1815,7 @@ impl StorageProvider for CloudinaryProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
         }

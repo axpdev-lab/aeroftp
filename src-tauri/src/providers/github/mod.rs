@@ -30,6 +30,7 @@ use self::releases_mode::{
     get_release_info, list_release_assets, list_releases, release_to_entry, upload_release_asset,
     CreateReleaseParams, VIRTUAL_RELEASES_DIR,
 };
+use crate::providers::HttpResultExt;
 
 use super::{
     ProviderConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
@@ -1180,7 +1181,7 @@ impl StorageProvider for GitHubProvider {
 
         use futures_util::StreamExt;
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| {
+            let chunk = chunk_result.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {}", e))
             })?;
             atomic

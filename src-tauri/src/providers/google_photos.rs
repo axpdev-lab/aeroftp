@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
@@ -256,7 +257,7 @@ impl GooglePhotosProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -271,7 +272,7 @@ impl GooglePhotosProvider {
             let list: AlbumList = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             if let Some(albums) = list.albums {
                 all_albums.extend(albums);
@@ -309,7 +310,7 @@ impl GooglePhotosProvider {
                 .body(body.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -324,7 +325,7 @@ impl GooglePhotosProvider {
             let resp: SearchMediaResponse = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             if let Some(items) = resp.media_items {
                 all_items.extend(items);
@@ -356,7 +357,7 @@ impl GooglePhotosProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -371,7 +372,7 @@ impl GooglePhotosProvider {
             let resp: MediaItemList = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             if let Some(items) = resp.media_items {
                 all_items.extend(items);
@@ -413,7 +414,7 @@ impl GooglePhotosProvider {
                 .body(body.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -428,7 +429,7 @@ impl GooglePhotosProvider {
             let resp: SearchMediaResponse = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             if let Some(items) = resp.media_items {
                 all_items.extend(items);
@@ -586,7 +587,7 @@ impl GooglePhotosProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -601,7 +602,7 @@ impl GooglePhotosProvider {
         let item: MediaItem = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         let base_url = item
             .base_url
@@ -944,7 +945,7 @@ impl StorageProvider for GooglePhotosProvider {
             .get(&download_url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -962,7 +963,7 @@ impl StorageProvider for GooglePhotosProvider {
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1050,7 +1051,7 @@ impl StorageProvider for GooglePhotosProvider {
             .get(&download_url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1113,7 +1114,7 @@ impl StorageProvider for GooglePhotosProvider {
             .body(content)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !upload_response.status().is_success() {
             let status = upload_response.status();
@@ -1128,7 +1129,7 @@ impl StorageProvider for GooglePhotosProvider {
         let upload_token = upload_response
             .text()
             .await
-            .map_err(|e| ProviderError::Other(format!("Read upload token: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Read upload token: {}", e)))?;
 
         // Step 2: Create media item via batchCreate
         let mut batch_body = serde_json::json!({
@@ -1153,7 +1154,7 @@ impl StorageProvider for GooglePhotosProvider {
             .body(batch_body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !batch_response.status().is_success() {
             let status = batch_response.status();
@@ -1168,7 +1169,7 @@ impl StorageProvider for GooglePhotosProvider {
         let batch_result: BatchCreateResponse = batch_response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse batchCreate: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse batchCreate: {}", e)))?;
 
         // Check individual item status
         if let Some(results) = &batch_result.new_media_item_results {
@@ -1233,7 +1234,7 @@ impl StorageProvider for GooglePhotosProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1248,7 +1249,7 @@ impl StorageProvider for GooglePhotosProvider {
         let created: CreateAlbumResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         // Update cache
         self.album_cache

@@ -11,6 +11,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::ExposeSecret;
@@ -314,7 +315,7 @@ impl KDriveProvider {
             .get_with_retry(&format!("{}/2/profile", self.api_base()))
             .await?;
         let profile_status = profile_response.status();
-        let profile_body = profile_response.bytes().await.map_err(|e| {
+        let profile_body = profile_response.bytes().await.map_http_err(|e| {
             ProviderError::NetworkError(format!("Profile discovery read failed: {e}"))
         })?;
         if !profile_status.is_success() {
@@ -340,7 +341,7 @@ impl KDriveProvider {
             ))
             .await?;
         let status = response.status();
-        let body = response.bytes().await.map_err(|e| {
+        let body = response.bytes().await.map_http_err(|e| {
             ProviderError::NetworkError(format!("Drive discovery read failed: {e}"))
         })?;
         if !status.is_success() {
@@ -490,10 +491,12 @@ impl KDriveProvider {
             .get(url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// KD-004: Send a POST request with automatic retry on 429/5xx
@@ -510,10 +513,12 @@ impl KDriveProvider {
             .header(CONTENT_TYPE, content_type)
             .body(body)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// KD-004: Send a DELETE request with automatic retry on 429/5xx
@@ -523,10 +528,12 @@ impl KDriveProvider {
             .delete(url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
+            })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     fn api_url_v2(&self, path: &str) -> String {
@@ -665,7 +672,7 @@ impl KDriveProvider {
                     ));
                 }
 
-                let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
+                let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_http_err(|e| {
                     ProviderError::ServerError(format!("Parse list response failed: {}", e))
                 })?;
 
@@ -787,7 +794,7 @@ impl KDriveProvider {
                 return Err(api_failure("Find file failed", Some(status), &body));
             }
 
-            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
+            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Parse find response failed: {}", e))
             })?;
 
@@ -876,7 +883,7 @@ impl StorageProvider for KDriveProvider {
         }
 
         // Parse drive info to confirm access
-        let _drive_info: ApiResponse<DriveInfo> = resp.json().await.map_err(|e| {
+        let _drive_info: ApiResponse<DriveInfo> = resp.json().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to parse drive info: {}", e))
         })?;
 
@@ -988,7 +995,7 @@ impl StorageProvider for KDriveProvider {
                 ));
             }
 
-            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
+            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Parse list response failed: {}", e))
             })?;
 
@@ -1098,7 +1105,7 @@ impl StorageProvider for KDriveProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| {
+            let chunk = chunk.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {}", e))
             })?;
             atomic
@@ -1239,7 +1246,7 @@ impl StorageProvider for KDriveProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Upload request failed: {}", e))
             })?;
 
@@ -1252,7 +1259,7 @@ impl StorageProvider for KDriveProvider {
             ));
         }
 
-        let _upload_resp: ApiResponse<UploadResponse> = resp.json().await.map_err(|e| {
+        let _upload_resp: ApiResponse<UploadResponse> = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse upload response failed: {}", e))
         })?;
 
@@ -1528,7 +1535,7 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("Stat failed", Some(status), &body));
         }
 
-        let api_resp: ApiResponse<KDriveFile> = resp.json().await.map_err(|e| {
+        let api_resp: ApiResponse<KDriveFile> = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse stat response failed: {}", e))
         })?;
 
@@ -1643,7 +1650,7 @@ impl StorageProvider for KDriveProvider {
             )));
         }
 
-        let api_resp: ApiResponse<DriveInfo> = resp.json().await.map_err(|e| {
+        let api_resp: ApiResponse<DriveInfo> = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse quota response failed: {}", e))
         })?;
 
@@ -1713,7 +1720,7 @@ impl StorageProvider for KDriveProvider {
                 return Err(api_failure("Search failed", Some(status), &body));
             }
 
-            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_err(|e| {
+            let api_resp: ApiResponse<FilesPayload> = resp.json().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Parse search response failed: {}", e))
             })?;
 
@@ -1834,7 +1841,7 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("Create share link failed", Some(status), &body));
         }
 
-        let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_err(|e| {
+        let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse share link response failed: {}", e))
         })?;
 
@@ -1877,7 +1884,7 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("List share links failed", Some(status), &body));
         }
 
-        let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_err(|e| {
+        let api_resp: ApiResponse<ShareLinkData> = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse share link response failed: {}", e))
         })?;
 
@@ -1950,7 +1957,7 @@ impl StorageProvider for KDriveProvider {
             return Err(api_failure("List versions failed", Some(status), &body));
         }
 
-        let api_resp: ApiResponse<Vec<KDriveVersion>> = resp.json().await.map_err(|e| {
+        let api_resp: ApiResponse<Vec<KDriveVersion>> = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse versions response failed: {}", e))
         })?;
 
@@ -2010,7 +2017,7 @@ impl StorageProvider for KDriveProvider {
             .map_err(ProviderError::IoError)?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| {
+            let chunk = chunk.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Version download error: {}", e))
             })?;
             atomic
@@ -2099,7 +2106,7 @@ impl KDriveProvider {
             let page: TrashListing = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+                .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
             if let Some(error) = page.error {
                 return Err(ProviderError::ServerError(sanitize_api_error(
                     &error.description.or(error.code).unwrap_or_default(),

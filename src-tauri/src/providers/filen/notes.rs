@@ -15,6 +15,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -421,11 +422,11 @@ impl FilenProvider {
             .notes_post(endpoint)
             .json(body)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = self.send_retry(request).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     /// Send a notes GET request with retry and parse the response.
@@ -436,11 +437,11 @@ impl FilenProvider {
         let request = self
             .notes_get(endpoint)
             .build()
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = self.send_retry(request).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     // ── Notes CRUD ──

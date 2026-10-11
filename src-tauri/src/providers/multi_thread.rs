@@ -26,6 +26,7 @@
 //! regressing a proven path for no measured gain (tracked, not done in
 //! PD-HTTP-2; rev 3 principle: no overclaim, no churn on a validated path).
 
+use crate::providers::HttpResultExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -1365,7 +1366,7 @@ where
             }
             next = stream.next() => {
                 let Some(chunk) = next else { break };
-                let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 let chunk_len = chunk.len() as u64;
                 crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, chunk_len.min(expected - written)).await;
                 if written + chunk_len > expected {
@@ -1615,10 +1616,10 @@ pub(crate) async fn try_http_concurrent_range_download(
             let request = rb
                 .header(RANGE, range)
                 .build()
-                .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
+                .map_http_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
             let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                 .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             if response.status() == reqwest::StatusCode::PRECONDITION_FAILED {
                 return Err(ProviderError::ParallelRefused(source_changed(
                     "http range",
@@ -2317,14 +2318,14 @@ mod tests {
                     let request = client
                         .get(format!("http://{addr}/object"))
                         .build()
-                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                         .await
-                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     let body = response
                         .bytes()
                         .await
-                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     let mut f = tokio::fs::OpenOptions::new()
                         .write(true)
                         .open(&temp_path)

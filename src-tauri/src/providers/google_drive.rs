@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -411,7 +412,7 @@ impl GoogleDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 return Err(drive_error_from_response(response, "API error").await);
@@ -420,7 +421,7 @@ impl GoogleDriveProvider {
             let list: DriveFileList = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             all_files.extend(list.files);
 
@@ -447,7 +448,7 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::NotFound(file_id.to_string()));
@@ -456,7 +457,7 @@ impl GoogleDriveProvider {
         response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
     }
 
     /// The file or folder named exactly `name` in `parent_id`. Drive's
@@ -488,12 +489,12 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let list: DriveFileList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(list.files.into_iter().find(|file| file.name == name))
     }
@@ -741,7 +742,7 @@ impl GoogleDriveProvider {
             .body(metadata.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
             return Err(ProviderError::Other(format!(
@@ -793,7 +794,7 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(drive_error_from_response(response, "Download failed").await);
@@ -824,7 +825,7 @@ impl GoogleDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 return Err(drive_error_from_response(response, "List trash error").await);
@@ -833,7 +834,7 @@ impl GoogleDriveProvider {
             let list: DriveFileList = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             for file in &list.files {
                 all_files.push(self.to_remote_entry(file, "/Trash"));
@@ -878,7 +879,7 @@ impl GoogleDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -906,7 +907,7 @@ impl GoogleDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -948,7 +949,7 @@ impl GoogleDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -997,7 +998,7 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1030,7 +1031,7 @@ impl GoogleDriveProvider {
         let list: CommentList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(list.comments.iter().map(|c| serde_json::json!({
             "id": c.id,
@@ -1073,7 +1074,7 @@ impl GoogleDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1121,7 +1122,7 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1181,14 +1182,13 @@ impl GoogleDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
             if !response.status().is_success() {
                 return Err(drive_error_from_response(response, "Trash search failed:").await);
             }
-            let list: DriveFileList = response
-                .json()
-                .await
-                .map_err(|e| ProviderError::Other(format!("Trash search parse error: {}", e)))?;
+            let list: DriveFileList = response.json().await.map_http_err(|e| {
+                ProviderError::Other(format!("Trash search parse error: {}", e))
+            })?;
             ids.extend(
                 list.files
                     .into_iter()
@@ -1215,7 +1215,7 @@ impl GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 404 {
             let text = response.text().await.unwrap_or_default();
@@ -1352,7 +1352,7 @@ impl GoogleDriveProvider {
             .body(metadata.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !init_response.status().is_success() {
             let status = init_response.status().as_u16();
@@ -1553,7 +1553,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(drive_error_from_response(response, "Download failed").await);
@@ -1564,7 +1564,7 @@ impl StorageProvider for GoogleDriveProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1713,7 +1713,7 @@ impl StorageProvider for GoogleDriveProvider {
                 .body(metadata.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !init_response.status().is_success() {
                 let text = init_response.text().await.unwrap_or_default();
@@ -1757,7 +1757,7 @@ impl StorageProvider for GoogleDriveProvider {
                     .body(chunk)
                     .send()
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
                 let status = chunk_response.status().as_u16();
                 if status != 200 && status != 201 && status != 308 {
@@ -1838,7 +1838,7 @@ impl StorageProvider for GoogleDriveProvider {
                 .body(body)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
@@ -1900,7 +1900,7 @@ impl StorageProvider for GoogleDriveProvider {
             .body(metadata.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2167,7 +2167,7 @@ impl StorageProvider for GoogleDriveProvider {
             .body(permission.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(
@@ -2184,7 +2184,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             // Fallback to direct link
@@ -2207,7 +2207,7 @@ impl StorageProvider for GoogleDriveProvider {
         let link_response: FileLink = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
 
         let url = link_response.web_view_link.unwrap_or_else(|| {
             format!(
@@ -2299,7 +2299,7 @@ impl StorageProvider for GoogleDriveProvider {
             .body(metadata.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2358,7 +2358,7 @@ impl StorageProvider for GoogleDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
@@ -2371,7 +2371,7 @@ impl StorageProvider for GoogleDriveProvider {
             let list: DriveFileList = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             for file in &list.files {
                 if !super::matches_find_pattern(&file.name, pattern) {
@@ -2398,7 +2398,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2423,7 +2423,7 @@ impl StorageProvider for GoogleDriveProvider {
         let about: AboutResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         let total = about
             .storage_quota
@@ -2481,7 +2481,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2512,7 +2512,7 @@ impl StorageProvider for GoogleDriveProvider {
         let list: RevisionList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(list
             .revisions
@@ -2568,7 +2568,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2581,7 +2581,7 @@ impl StorageProvider for GoogleDriveProvider {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes)
             .await
@@ -2624,7 +2624,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2643,7 +2643,7 @@ impl StorageProvider for GoogleDriveProvider {
         let result: ThumbResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         result
             .thumbnail_link
@@ -2687,7 +2687,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2713,7 +2713,7 @@ impl StorageProvider for GoogleDriveProvider {
         let list: PermList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(list
             .permissions
@@ -2767,7 +2767,7 @@ impl StorageProvider for GoogleDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2793,7 +2793,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2812,7 +2812,7 @@ impl StorageProvider for GoogleDriveProvider {
         let result: StartPageToken = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(result.start_page_token)
     }
@@ -2836,7 +2836,7 @@ impl StorageProvider for GoogleDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
@@ -2872,7 +2872,7 @@ impl StorageProvider for GoogleDriveProvider {
             let list: ChangeList = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             for change in &list.changes {
                 let removed = change.removed.unwrap_or(false)
@@ -2945,7 +2945,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -2961,7 +2961,7 @@ impl StorageProvider for GoogleDriveProvider {
         let list: PermIdList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         let perm = list
             .permissions
@@ -2984,7 +2984,7 @@ impl StorageProvider for GoogleDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !del_response.status().is_success() {
             let text = del_response.text().await.unwrap_or_default();
@@ -3130,7 +3130,7 @@ impl StorageProvider for GoogleDriveProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status().as_u16();
         // 308 = Resume Incomplete (every non-final chunk).

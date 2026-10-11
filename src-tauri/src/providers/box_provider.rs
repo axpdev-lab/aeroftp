@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use chrono;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
@@ -515,7 +516,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await;
-        let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = sent.map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = resp.status();
         if !status.is_success() && status.as_u16() != 204 {
@@ -568,7 +569,7 @@ impl BoxProvider {
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 return Err(ProviderError::NotFound(path.to_string()));
@@ -577,7 +578,7 @@ impl BoxProvider {
             let items: BoxItemCollection = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             // Box returns names in their stored ENCODED form (a name a user
             // could not otherwise create round-trips via reversible encoding),
@@ -623,12 +624,12 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let items: BoxItemCollection = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, file_name);
         items
@@ -677,12 +678,12 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let items: BoxItemCollection = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let encoded_name = crate::restricted_chars::encode_leaf(ProviderType::Box, item_name);
         items
@@ -717,7 +718,7 @@ impl BoxProvider {
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 return Err(box_error_from_response(resp, "List trash failed:").await);
@@ -726,7 +727,7 @@ impl BoxProvider {
             let page: BoxTrashCollection = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             for item in &page.entries {
                 let mut metadata = HashMap::new();
@@ -795,7 +796,7 @@ impl BoxProvider {
                 &mut self.id_cache,
                 &Self::normalize_path(path),
             );
-            let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            let resp = sent.map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 return Err(box_error_from_response(resp, "Trash failed:").await);
@@ -831,7 +832,7 @@ impl BoxProvider {
             .body("{}")
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(box_error_from_response(resp, "Restore failed:").await);
@@ -864,7 +865,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(box_error_from_response(resp, "Permanent delete failed:").await);
@@ -905,7 +906,7 @@ impl BoxProvider {
             .body(format!(r#"{{"parent":{{"id":"{}"}}}}"#, target_id))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(box_error_from_response(resp, "Move failed:").await);
@@ -934,7 +935,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(box_error_from_response(resp, "List comments failed:").await);
@@ -943,7 +944,7 @@ impl BoxProvider {
         let result: BoxCommentCollection = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(result.entries)
     }
@@ -971,7 +972,7 @@ impl BoxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
@@ -999,7 +1000,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1042,7 +1043,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1055,7 +1056,7 @@ impl BoxProvider {
         let result: BoxCollabCollection = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(result.entries)
     }
@@ -1089,7 +1090,7 @@ impl BoxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
@@ -1117,7 +1118,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1150,7 +1151,7 @@ impl BoxProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
@@ -1180,7 +1181,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1218,7 +1219,7 @@ impl BoxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
@@ -1254,7 +1255,7 @@ impl BoxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
@@ -1282,7 +1283,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1315,7 +1316,7 @@ impl BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1328,7 +1329,7 @@ impl BoxProvider {
         let result: BoxFolderLockCollection = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(result.entries)
     }
@@ -1381,7 +1382,7 @@ impl BoxProvider {
             .body(session_body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let session_resp = if response.status().is_success() {
             response
@@ -1406,7 +1407,7 @@ impl BoxProvider {
                     .body(ver_body.to_string())
                     .send()
                     .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
                 if !ver_resp.status().is_success() {
                     let t = ver_resp.text().await.unwrap_or_default();
                     return Err(ProviderError::TransferFailed(format!(
@@ -1426,7 +1427,7 @@ impl BoxProvider {
         let parsed: UploadSessionResponse = session_resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let upload_part_url = parsed
             .session_endpoints
@@ -1488,7 +1489,7 @@ impl BoxProvider {
         let session: UploadSession = session_resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let chunk_size = session.part_size as usize;
         let upload_part_url = session
@@ -1551,7 +1552,7 @@ impl BoxProvider {
                 .body(chunk)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let t = resp.text().await.unwrap_or_default();
@@ -1564,7 +1565,7 @@ impl BoxProvider {
             let part_resp: serde_json::Value = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if let Some(part) = part_resp.get("part") {
                 parts.push(part.clone());
@@ -1613,7 +1614,7 @@ impl BoxProvider {
                 .json(commit_body)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             let status = resp.status();
             let retry_header = resp
@@ -1691,7 +1692,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::AuthenticationFailed(
@@ -1751,7 +1752,7 @@ impl StorageProvider for BoxProvider {
                 .header(AUTHORIZATION, Self::bearer_header(&token)?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -1766,7 +1767,7 @@ impl StorageProvider for BoxProvider {
             let page: BoxItemCollection = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             let page_count = page.entries.len() as u64;
             all_items.extend(page.entries);
@@ -1894,7 +1895,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -1908,7 +1909,7 @@ impl StorageProvider for BoxProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1962,7 +1963,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -2021,7 +2022,7 @@ impl StorageProvider for BoxProvider {
                 .body(session_body.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !session_resp.status().is_success() {
                 let text = session_resp.text().await.unwrap_or_default();
@@ -2043,7 +2044,7 @@ impl StorageProvider for BoxProvider {
                         .body(ver_body.to_string())
                         .send()
                         .await
-                        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
                     if !ver_resp.status().is_success() {
                         let t = ver_resp.text().await.unwrap_or_default();
@@ -2103,7 +2104,7 @@ impl StorageProvider for BoxProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -2130,7 +2131,7 @@ impl StorageProvider for BoxProvider {
                     .multipart(form2)
                     .send()
                     .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
                 if !resp2.status().is_success() {
                     return Err(ProviderError::TransferFailed(format!(
@@ -2174,7 +2175,7 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -2197,7 +2198,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 204 {
             return Err(ProviderError::Other(format!(
@@ -2317,7 +2318,7 @@ impl StorageProvider for BoxProvider {
         // case, so every capitalization of the paths goes.
         super::forget_cached_subtree_ignoring_case(&mut self.id_cache, &Self::normalize_path(from));
         super::forget_cached_subtree_ignoring_case(&mut self.id_cache, &Self::normalize_path(to));
-        let resp = sent.map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = sent.map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2363,12 +2364,12 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let item: BoxItem = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let mut metadata = HashMap::new();
         if !is_dir {
@@ -2440,12 +2441,12 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let user: BoxUser = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(StorageInfo {
             total: user.space_amount,
@@ -2485,7 +2486,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2498,7 +2499,7 @@ impl StorageProvider for BoxProvider {
         let item: BoxItemWithLink = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if let Some(link) = item.shared_link {
             Ok(vec![ShareLinkInfo {
@@ -2553,12 +2554,12 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let item: BoxItemWithLink = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let url = item
             .shared_link
@@ -2584,7 +2585,7 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         Ok(())
     }
@@ -2635,7 +2636,7 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -2665,7 +2666,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::NotFound(
@@ -2676,7 +2677,7 @@ impl StorageProvider for BoxProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
         Ok(format!("data:image/png;base64,{}", BASE64.encode(&bytes)))
@@ -2697,7 +2698,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -2709,7 +2710,7 @@ impl StorageProvider for BoxProvider {
         let versions: BoxVersionCollection = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(versions
             .entries
@@ -2744,7 +2745,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -2756,7 +2757,7 @@ impl StorageProvider for BoxProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes)
             .await
@@ -2781,7 +2782,7 @@ impl StorageProvider for BoxProvider {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -2827,7 +2828,7 @@ impl StorageProvider for BoxProvider {
             .header(AUTHORIZATION, Self::bearer_header(&token)?)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -2839,7 +2840,7 @@ impl StorageProvider for BoxProvider {
         let results: BoxSearchResult = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(results
             .entries
@@ -3038,7 +3039,7 @@ impl StorageProvider for BoxProvider {
             .body(data)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -3063,7 +3064,7 @@ impl StorageProvider for BoxProvider {
         let part_resp: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let part_field = part_resp.get("part").ok_or_else(|| {
             ProviderError::ParseError("Box upload_part response missing `part` field".to_string())
         })?;

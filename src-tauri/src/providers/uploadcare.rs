@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{multipart, StatusCode};
@@ -260,7 +261,7 @@ impl UploadcareProvider {
                 .rest(self.client.get(&url))
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if !resp.status().is_success() {
                 return Err(self.parse_error(resp).await);
@@ -269,7 +270,7 @@ impl UploadcareProvider {
             let page = resp
                 .json::<UcFileList>()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
             files.extend(page.results);
 
             if let Some(next) = page.next.filter(|n| !n.is_empty()) {
@@ -288,7 +289,7 @@ impl UploadcareProvider {
             .rest(self.client.get(format!("{}/files/{}/", API_BASE, uuid)))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -296,7 +297,7 @@ impl UploadcareProvider {
 
         resp.json::<UcFile>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     async fn delete_storage(&self, uuid: &str) -> Result<(), ProviderError> {
@@ -308,7 +309,7 @@ impl UploadcareProvider {
             )
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if resp.status().is_success() || resp.status().as_u16() == 204 {
             Ok(())
@@ -337,7 +338,7 @@ impl StorageProvider for UploadcareProvider {
             .rest(self.client.get(format!("{}/files/?limit=1", API_BASE)))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -412,7 +413,7 @@ impl StorageProvider for UploadcareProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
                 "Download failed: HTTP {}",
@@ -430,7 +431,7 @@ impl StorageProvider for UploadcareProvider {
             crate::transfer_dag::governor::TransferDirection::Download,
         ));
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -460,7 +461,7 @@ impl StorageProvider for UploadcareProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
                 "Download failed: HTTP {}",
@@ -504,7 +505,7 @@ impl StorageProvider for UploadcareProvider {
             .header("Range", format!("bytes={}-{}", offset, end))
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -593,7 +594,7 @@ impl StorageProvider for UploadcareProvider {
         let file_part = multipart::Part::stream_with_length(body, total)
             .file_name(file_name.clone())
             .mime_str(mime.as_ref())
-            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            .map_http_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         let form = multipart::Form::new()
             .text("UPLOADCARE_PUB_KEY", self.config.public_key.clone())
             .text("UPLOADCARE_STORE", "1")
@@ -606,7 +607,7 @@ impl StorageProvider for UploadcareProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -615,7 +616,7 @@ impl StorageProvider for UploadcareProvider {
         let _uploaded: HashMap<String, String> = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         Ok(())
     }
 
@@ -820,14 +821,14 @@ impl StorageProvider for UploadcareProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
         }
         let started: UcMultipartStart = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let part = uploadcare_runner_part_size(total_size);
         let total_parts = uploadcare_total_parts(total_size, part);
@@ -920,7 +921,7 @@ impl StorageProvider for UploadcareProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
@@ -966,7 +967,7 @@ impl StorageProvider for UploadcareProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
         }

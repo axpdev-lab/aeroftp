@@ -9,6 +9,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
@@ -554,7 +555,7 @@ impl S3Provider {
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|_| ProviderError::ParseError("Worker S3 list body failed".into()))?
+            .map_http_err(|_| ProviderError::ParseError("Worker S3 list body failed".into()))?
         {
             if chunk.len() > MAX_XML_BYTES - bytes.len() {
                 return Err(ProviderError::ParseError(
@@ -634,7 +635,7 @@ impl S3Provider {
             debug!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
-        let client = client_builder.build().map_err(|e| {
+        let client = client_builder.build().map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
 
@@ -1713,7 +1714,7 @@ impl S3Provider {
         let source_bytes = source_response
             .bytes()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let put_response = self
             .s3_request(Method::PUT, to_key, None, Some(source_bytes.to_vec()))
@@ -2058,7 +2059,7 @@ impl S3Provider {
             &super::HttpRetryConfig::default(),
         )
         .await
-        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
         if !status.is_success() {
@@ -2094,11 +2095,15 @@ impl S3Provider {
         let request = request
             .header("Authorization", authorization)
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("ListBuckets build failed: {e}")))?;
+            .map_http_err(|e| {
+                ProviderError::NetworkError(format!("ListBuckets build failed: {e}"))
+            })?;
         let response =
             super::send_with_retry(&self.client, request, &super::HttpRetryConfig::default())
                 .await
-                .map_err(|e| ProviderError::NetworkError(format!("ListBuckets failed: {e}")))?;
+                .map_http_err(|e| {
+                    ProviderError::NetworkError(format!("ListBuckets failed: {e}"))
+                })?;
         let status = response.status();
         // Quick Connect accepts arbitrary S3-compatible endpoints, so this body
         // arrives from a host the user has only just typed in. `text()` has no
@@ -2788,7 +2793,7 @@ impl S3Provider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
         let retry_header = response
@@ -3261,7 +3266,7 @@ impl S3Provider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let status = response.status();
         let retry_header = response
@@ -4239,7 +4244,7 @@ impl S3Provider {
             let xml_str = response
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             // Parse keys and next token using quick-xml
             let mut reader = Reader::from_str(&xml_str);
@@ -4658,7 +4663,7 @@ impl StorageProvider for S3Provider {
                     let xml = response
                         .text()
                         .await
-                        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                     // Debug: Log raw XML response (truncated for readability).
                     // Must NOT use `&xml[..2000]`: a byte slice that lands
@@ -5054,7 +5059,8 @@ impl StorageProvider for S3Provider {
                 let mut downloaded: u64 = 0;
 
                 while let Some(chunk) = stream.next().await {
-                    let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let chunk =
+                        chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     crate::transfer_dag::throttle::charge(
                         crate::transfer_dag::governor::TransferDirection::Download,
                         chunk.len() as u64,
@@ -5267,7 +5273,7 @@ impl StorageProvider for S3Provider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -5859,7 +5865,7 @@ impl StorageProvider for S3Provider {
             let xml_str = response
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             // Parse keys, sizes, and filter by pattern using quick-xml
             let mut find_reader = Reader::from_str(&xml_str);
@@ -6386,7 +6392,7 @@ impl StorageProvider for S3Provider {
                 while let Some(chunk) = response
                     .chunk()
                     .await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
+                    .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?
                 {
                     if chunk.len() > len as usize - bytes.len() {
                         return Err(ProviderError::ParallelRefused(
@@ -6488,7 +6494,7 @@ impl StorageProvider for S3Provider {
             let xml_str = response
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
 
@@ -6711,7 +6717,8 @@ impl StorageProvider for S3Provider {
                     .map_err(ProviderError::IoError)?;
 
                 while let Some(chunk) = stream.next().await {
-                    let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    let chunk =
+                        chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     crate::transfer_dag::throttle::charge(
                         crate::transfer_dag::governor::TransferDirection::Download,
                         chunk.len() as u64,
@@ -6789,7 +6796,7 @@ impl StorageProvider for S3Provider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -6900,7 +6907,7 @@ impl StorageProvider for S3Provider {
             let xml_str = response
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             let (entries, is_truncated, next_key_marker, next_version_id_marker) =
                 parse_object_versions_page(&xml_str)?;
@@ -7014,7 +7021,7 @@ impl S3Provider {
             let response = request
                 .send()
                 .await
-                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
             if response.status().is_success() {
                 // Quiet mode: a 2xx body carries ONLY <Error> elements for the
@@ -7022,7 +7029,7 @@ impl S3Provider {
                 let body = response
                     .text()
                     .await
-                    .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
                 failures.extend(parse_batch_delete_errors(&body));
             } else {
                 // Fall back to sequential delete if the batch call itself fails,
@@ -7116,7 +7123,7 @@ impl S3Provider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -7191,7 +7198,7 @@ impl S3Provider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::ACCEPTED => {
@@ -7392,7 +7399,7 @@ impl S3Provider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         match response.status() {
             StatusCode::OK | StatusCode::NO_CONTENT => {
@@ -7521,7 +7528,7 @@ impl S3Provider {
                     let xml = response
                         .text()
                         .await
-                        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                     if let Some(error) = Self::bucket_addressing_error(&xml) {
                         return Err(error);
@@ -7684,7 +7691,7 @@ async fn download_range_to_offset(
     let mut written: u64 = 0;
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let chunk_len = chunk.len() as u64;
         crate::transfer_dag::throttle::charge(
             crate::transfer_dag::governor::TransferDirection::Download,

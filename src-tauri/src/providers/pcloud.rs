@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use chrono;
 use serde::{Deserialize, Serialize};
@@ -476,11 +477,13 @@ impl PCloudProvider {
             .get(url)
             .header("Authorization", auth)
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::NetworkError(format!("Failed to build request: {}", e))
+            })?;
 
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Send GET with access_token as query param (no Authorization header).
@@ -518,14 +521,13 @@ impl PCloudProvider {
         };
         let sep = if base_url.contains('?') { "&" } else { "?" };
         let url = format!("{}{}access_token={}", base_url, sep, token_raw);
-        let request =
-            self.client.get(&url).build().map_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+        let request = self.client.get(&url).build().map_http_err(|e| {
+            ProviderError::NetworkError(format!("Failed to build request: {}", e))
+        })?;
 
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Recursively collect entries matching a pattern
@@ -578,7 +580,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
         Self::check_response(&resp)
     }
 
@@ -606,7 +608,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -633,7 +635,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
         Self::check_response(&resp)
     }
 
@@ -660,7 +662,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         match Self::check_response(&resp) {
             Ok(()) => resp.metadata.and_then(|m| m.folderid).ok_or_else(|| {
@@ -681,7 +683,9 @@ impl PCloudProvider {
                     .await?
                     .json()
                     .await
-                    .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+                    .map_http_err(|e| {
+                        ProviderError::ParseError(sanitize_api_error(&e.to_string()))
+                    })?;
                 Self::check_response(&create_resp)?;
                 create_resp
                     .metadata
@@ -710,7 +714,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
         if pcloud_is_throttle_result(resp.result) {
             return Err(pcloud_throttle_error(
                 "upload_create",
@@ -767,7 +771,7 @@ impl StorageProvider for PCloudProvider {
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if let Some(result) = body["result"].as_i64() {
             if result != 0 {
@@ -809,7 +813,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
 
@@ -863,7 +867,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         self.current_path = new_path;
@@ -908,7 +912,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if link_resp.result != 0 {
             return Err(ProviderError::TransferFailed(sanitize_api_error(
@@ -934,7 +938,7 @@ impl StorageProvider for PCloudProvider {
             .get(&download_url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         use futures_util::StreamExt;
 
@@ -946,7 +950,7 @@ impl StorageProvider for PCloudProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -989,7 +993,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if link_resp.result != 0 {
             return Err(ProviderError::TransferFailed(sanitize_api_error(
@@ -1040,7 +1044,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if link_resp.result != 0 {
             return Err(ProviderError::TransferFailed(sanitize_api_error(
@@ -1066,7 +1070,7 @@ impl StorageProvider for PCloudProvider {
             .get(&download_url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         // H2: Size-limited download to prevent OOM on large files
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
@@ -1129,7 +1133,7 @@ impl StorageProvider for PCloudProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1145,7 +1149,7 @@ impl StorageProvider for PCloudProvider {
         let upload_resp: PCloudUploadResponse = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if upload_resp.result != 0 {
             let msg = upload_resp
@@ -1174,7 +1178,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -1196,7 +1200,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == 0 {
             return Ok(());
@@ -1214,7 +1218,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -1319,7 +1323,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         // PA-006: If stat fails, fall back to listfolder to get folder metadata.
         // Only when stat says the path is absent (see classify_pcloud_result:
@@ -1347,7 +1351,7 @@ impl StorageProvider for PCloudProvider {
                 .await?
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+                .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
             Self::check_response(&folder_resp)?;
 
@@ -1425,7 +1429,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         let total = info.quota.unwrap_or(0);
         let used = info.usedquota.unwrap_or(0);
@@ -1482,7 +1486,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
@@ -1513,7 +1517,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if links_resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
@@ -1568,7 +1572,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if links_resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
@@ -1652,7 +1656,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == 0 {
             return Ok(());
@@ -1671,7 +1675,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         Ok(())
@@ -1695,7 +1699,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
             return Err(ProviderError::NotFound(sanitize_api_error(
@@ -1720,10 +1724,10 @@ impl StorageProvider for PCloudProvider {
             .get(&thumb_url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
         Ok(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)))
@@ -1748,7 +1752,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
@@ -1791,7 +1795,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if link_resp.result != 0 {
             return Err(ProviderError::TransferFailed(sanitize_api_error(
@@ -1815,10 +1819,10 @@ impl StorageProvider for PCloudProvider {
             .get(&download_url)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes)
             .await
@@ -1855,7 +1859,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result != 0 {
             return Err(ProviderError::Other(sanitize_api_error(
@@ -1898,7 +1902,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
         info!("Remote upload from {} to {}", url, dest_path);
@@ -1925,7 +1929,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         Self::check_response(&resp)?;
 
@@ -2095,7 +2099,7 @@ impl StorageProvider for PCloudProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2114,7 +2118,7 @@ impl StorageProvider for PCloudProvider {
         let parsed: PCloudUploadResponse = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
         if pcloud_is_throttle_result(parsed.result) {
             return Err(pcloud_throttle_error(
                 &format!("upload_write part {part_number}"),
@@ -2166,7 +2170,7 @@ impl StorageProvider for PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
         Self::check_response(&resp)?;
         Ok(())
     }
@@ -2221,7 +2225,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
             return Err(trash_refused_to_oauth());
@@ -2278,7 +2282,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
             return Err(trash_refused_to_oauth());
@@ -2303,7 +2307,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
             return Err(trash_refused_to_oauth());
@@ -2332,7 +2336,7 @@ impl PCloudProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::ParseError(sanitize_api_error(&e.to_string())))?;
 
         if resp.result == PCLOUD_RESULT_LOGIN_REQUIRED {
             return Err(trash_refused_to_oauth());

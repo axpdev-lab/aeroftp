@@ -12,6 +12,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use futures_util::StreamExt;
@@ -715,7 +716,7 @@ impl AzureProvider {
         }
         resp.text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     /// AZ-005/AZ-006: Send a request with retry logic for transient errors (429/5xx).
@@ -752,9 +753,9 @@ impl AzureProvider {
         // limit the body is paced (Put Block, Put Blob and every other raw
         // body land here), so the upload cap holds on Azure too.
         let body: Option<bytes::Bytes> = body.map(bytes::Bytes::from);
-        let request = builder
-            .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+        let request = builder.build().map_http_err(|e| {
+            ProviderError::NetworkError(format!("Failed to build request: {}", e))
+        })?;
         let client = self.client.clone();
         super::send_with_retry_replayable(
             &self.client,
@@ -776,7 +777,7 @@ impl AzureProvider {
             &azure_retry_config(),
         )
         .await
-        .map_err(|e| ProviderError::NetworkError(e.to_string()))
+        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Parse XML blob list response using quick-xml event-based parser.
@@ -1032,7 +1033,7 @@ impl AzureProvider {
             let body = resp
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             let (items, next_marker) = Self::parse_blob_list(&body, strip_prefix);
             all_items.extend(items);
@@ -1462,7 +1463,7 @@ impl StorageProvider for AzureProvider {
 
         let mut bytes_received: u64 = 0;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             crate::transfer_dag::throttle::charge(
                 crate::transfer_dag::governor::TransferDirection::Download,
                 chunk.len() as u64,
@@ -2282,7 +2283,7 @@ impl AzureProvider {
                 .send()
                 .await
         }
-        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();

@@ -9,6 +9,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use md5::{Digest as _, Md5};
@@ -406,24 +407,25 @@ fn refused_collection_redirect(e: &reqwest::Error) -> bool {
     insecure_redirect(e).is_some_and(InsecureRedirect::is_to_collection_form)
 }
 
-/// Map a failed send to a `ProviderError`. A refused HTTPS-to-HTTP redirect
-/// is a deterministic server misconfiguration, so it becomes a `ServerError`
-/// that names it, never the retryable `NetworkError` of a reset connection;
+/// Map a failed send to a `ProviderError`. No reply in time is a `Timeout`
+/// (see `http_send_error`). A refused HTTPS-to-HTTP redirect is a
+/// deterministic server misconfiguration, so it becomes a `ServerError` that
+/// names it, never the retryable `NetworkError` of a reset connection;
 /// everything else keeps the full source chain (see `describe_reqwest_error`).
 fn send_error(e: reqwest::Error) -> ProviderError {
-    match insecure_redirect(&e) {
+    super::http_send_error(e, |e| match insecure_redirect(&e) {
         Some(refused) => ProviderError::ServerError(refused.to_string()),
         None => ProviderError::NetworkError(describe_reqwest_error(&e)),
-    }
+    })
 }
 
 /// [`send_error`] for the connect-time probes, which report through
 /// `ConnectionFailed`.
 fn connect_send_error(e: reqwest::Error) -> ProviderError {
-    match insecure_redirect(&e) {
+    super::http_send_error(e, |e| match insecure_redirect(&e) {
         Some(refused) => ProviderError::ConnectionFailed(refused.to_string()),
         None => ProviderError::ConnectionFailed(e.to_string()),
-    }
+    })
 }
 
 /// The error for a `MOVE` or `COPY` answered `502 Bad Gateway`. RFC 4918
@@ -660,7 +662,7 @@ impl WebDavProvider {
             client_builder = client_builder.pool_max_idle_per_host(0);
         }
 
-        let client = client_builder.build().map_err(|e| {
+        let client = client_builder.build().map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
 
@@ -1761,7 +1763,7 @@ impl WebDavProvider {
         let body: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let mounts = body
             .get("mounts")
             .and_then(|v| v.as_array())
@@ -1827,7 +1829,7 @@ impl WebDavProvider {
             .map_err(send_error)?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let session_id = login
             .get("SessionID")
@@ -1845,7 +1847,7 @@ impl WebDavProvider {
             .map_err(send_error)?
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()));
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()));
 
         // Best-effort logout regardless of the users/info outcome: never
         // leak a session because the quota call failed.
@@ -1927,7 +1929,7 @@ impl WebDavProvider {
         let text = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         // If server requires password on share links (403), retry with auto-generated password
         if status == StatusCode::FORBIDDEN && text.contains("password") {
@@ -1948,7 +1950,7 @@ impl WebDavProvider {
             let text2 = resp2
                 .text()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !status2.is_success() {
                 return Err(ProviderError::ServerError(format!(
@@ -2070,7 +2072,7 @@ impl WebDavProvider {
         let xml = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         self.parse_trashbin_response(&xml)
     }
@@ -3397,7 +3399,7 @@ impl StorageProvider for WebDavProvider {
                 let xml = response
                     .text()
                     .await
-                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                 tracing::debug!("[WebDAV] Response XML length: {} bytes", xml.len());
                 tracing::debug!("[WebDAV] Full XML response:\n{}", xml);
@@ -3477,7 +3479,7 @@ impl StorageProvider for WebDavProvider {
                 let xml = response
                     .text()
                     .await
-                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                 let props = self.extract_xml_properties(&xml);
                 let is_collection = props.contains_key("_is_collection");
@@ -4137,7 +4139,7 @@ impl StorageProvider for WebDavProvider {
                     let xml = response
                         .text()
                         .await
-                        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
                     let props = self.extract_xml_properties(&xml);
                     let is_dir = props.contains_key("_is_collection");
@@ -4260,7 +4262,7 @@ impl StorageProvider for WebDavProvider {
                     let xml = response
                         .text()
                         .await
-                        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
                     let props = self.extract_xml_properties(&xml);
                     return Ok(props
                         .get("checksum")
@@ -4454,7 +4456,7 @@ impl StorageProvider for WebDavProvider {
         let xml = response
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         let props = self.extract_xml_properties(&xml);
         let used = props
@@ -5255,7 +5257,7 @@ impl StorageProvider for WebDavProvider {
                 let bytes = response
                     .bytes()
                     .await
-                    .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                 // A 206 that does not name the window it carries is written at
                 // this offset just the same, so it has to say which range it is.
                 match super::multi_thread::ranged_answer(
@@ -5478,6 +5480,49 @@ mod tests {
             provider.transfer_capabilities().atomic_rename,
             crate::transfer_dag::Capability::Unsupported
         );
+    }
+
+    /// The provider's client with its read timeout cut from 1800 s to a
+    /// fraction of a second, so a server that never answers is seen in time.
+    fn impatient_client() -> Client {
+        Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(5))
+            .redirect(webdav_redirect_policy())
+            .read_timeout(std::time::Duration::from_millis(300))
+            .build()
+            .expect("client")
+    }
+
+    /// D7: a server that accepts the connection and never answers made the
+    /// connect a `ConnectionFailed`, so the CLI exited 1 with "verify the
+    /// service is running" after the read timeout. It is a timeout.
+    #[tokio::test]
+    async fn a_connect_the_server_never_answers_is_a_timeout() {
+        let mut provider =
+            WebDavProvider::new(test_config(&crate::providers::mute_http_endpoint()))
+                .expect("provider");
+        provider.client = impatient_client();
+        let outcome = provider.connect().await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
+            "{outcome:?}"
+        );
+    }
+
+    /// The same for every request after the connect, which reported a
+    /// `NetworkError`.
+    #[tokio::test]
+    async fn a_request_the_server_never_answers_is_a_timeout() {
+        let failed = impatient_client()
+            .request(
+                Method::from_bytes(b"PROPFIND").expect("method"),
+                crate::providers::mute_http_endpoint(),
+            )
+            .send()
+            .await
+            .expect_err("no answer");
+        let mapped = send_error(failed);
+        assert!(matches!(mapped, ProviderError::Timeout), "{mapped:?}");
     }
 
     fn test_config(url: &str) -> WebDavConfig {

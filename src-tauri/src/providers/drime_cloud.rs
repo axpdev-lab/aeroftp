@@ -12,6 +12,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use secrecy::ExposeSecret;
@@ -512,7 +513,9 @@ impl DrimeCloudProvider {
                     .header(AUTHORIZATION, self.auth_header()?)
                     .send()
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(format!("List failed: {}", e)))?;
+                    .map_http_err(|e| {
+                        ProviderError::ConnectionFailed(format!("List failed: {}", e))
+                    })?;
 
                 if !resp.status().is_success() {
                     let status = resp.status();
@@ -525,7 +528,7 @@ impl DrimeCloudProvider {
                     )));
                 }
 
-                let list_resp: DrimeListResponse = resp.json().await.map_err(|e| {
+                let list_resp: DrimeListResponse = resp.json().await.map_http_err(|e| {
                     ProviderError::ServerError(format!("Parse list response failed: {}", e))
                 })?;
 
@@ -595,7 +598,7 @@ impl DrimeCloudProvider {
             .body(move_body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Move failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Move failed: {}", e)))?;
         Self::rename_outcome(resp, "Move", to).await
     }
 
@@ -644,7 +647,7 @@ impl DrimeCloudProvider {
             .body(serde_json::json!({ "name": to_name }).to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Rename failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Rename failed: {}", e)))?;
         Self::rename_outcome(resp, "Rename", to).await
     }
 
@@ -748,13 +751,13 @@ impl DrimeCloudProvider {
                     .header(AUTHORIZATION, self.auth_header()?)
                     .send()
                     .await
-                    .map_err(|e| {
+                    .map_http_err(|e| {
                         ProviderError::ConnectionFailed(format!("Find file failed: {}", e))
                     })?;
 
                 let status = resp.status();
                 if status.is_success() {
-                    break resp.json::<DrimeListResponse>().await.map_err(|e| {
+                    break resp.json::<DrimeListResponse>().await.map_http_err(|e| {
                         ProviderError::ServerError(format!("Parse find response failed: {}", e))
                     })?;
                 }
@@ -883,7 +886,7 @@ impl DrimeCloudProvider {
             .body(create_json.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Multipart create failed: {}", e))
             })?;
 
@@ -895,7 +898,7 @@ impl DrimeCloudProvider {
             )));
         }
 
-        let create_resp: DrimeMultipartCreateResponse = resp.json().await.map_err(|e| {
+        let create_resp: DrimeMultipartCreateResponse = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse multipart create response: {}", e))
         })?;
 
@@ -929,7 +932,7 @@ impl DrimeCloudProvider {
             .body(sign_body.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Sign part URLs failed: {}", e))
             })?;
 
@@ -941,10 +944,9 @@ impl DrimeCloudProvider {
             )));
         }
 
-        let sign_resp: DrimeSignPartUrlsResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Parse sign URLs response: {}", e)))?;
+        let sign_resp: DrimeSignPartUrlsResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Parse sign URLs response: {}", e))
+        })?;
 
         let signed_urls = sign_resp.urls.ok_or_else(|| {
             ProviderError::ServerError("Missing 'urls' in sign response".to_string())
@@ -966,7 +968,7 @@ impl DrimeCloudProvider {
                 .body(chunk.to_vec())
                 .send()
                 .await
-                .map_err(|e| {
+                .map_http_err(|e| {
                     ProviderError::ConnectionFailed(format!(
                         "Upload part {} failed: {}",
                         part_num, e
@@ -1016,7 +1018,7 @@ impl DrimeCloudProvider {
             .body(complete_body.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Multipart complete failed: {}", e))
             })?;
 
@@ -1050,7 +1052,7 @@ impl DrimeCloudProvider {
             .body(entry_body.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("S3 entry registration failed: {}", e))
             })?;
 
@@ -1078,10 +1080,9 @@ impl DrimeCloudProvider {
         let mut delay = std::time::Duration::from_secs(1);
 
         for attempt in 0..=MAX_RETRIES {
-            let resp = build_request()
-                .send()
-                .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))?;
+            let resp = build_request().send().await.map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Request failed: {}", e))
+            })?;
 
             if resp.status().as_u16() == 429 {
                 if attempt < MAX_RETRIES {
@@ -1143,7 +1144,7 @@ impl StorageProvider for DrimeCloudProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 drime_log(&format!(
                     "Connection error: {} (is_timeout={}, is_connect={})",
                     e,
@@ -1154,7 +1155,7 @@ impl StorageProvider for DrimeCloudProvider {
             })?;
 
         let status = resp.status();
-        let body = resp.text().await.map_err(|e| {
+        let body = resp.text().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to read response: {}", e))
         })?;
         drime_log(&format!(
@@ -1296,7 +1297,7 @@ impl StorageProvider for DrimeCloudProvider {
                 .header(AUTHORIZATION, self.auth_header()?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("List failed: {}", e)))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(format!("List failed: {}", e)))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -1309,7 +1310,7 @@ impl StorageProvider for DrimeCloudProvider {
                 )));
             }
 
-            let list_resp: DrimeListResponse = resp.json().await.map_err(|e| {
+            let list_resp: DrimeListResponse = resp.json().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Parse list response failed: {}", e))
             })?;
 
@@ -1411,7 +1412,7 @@ impl StorageProvider for DrimeCloudProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Download request failed: {}", e))
             })?;
 
@@ -1426,7 +1427,7 @@ impl StorageProvider for DrimeCloudProvider {
         }
 
         let total_size = resp.content_length().unwrap_or(0);
-        let bytes = resp.bytes().await.map_err(|e| {
+        let bytes = resp.bytes().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Failed to read download body: {}", e))
         })?;
 
@@ -1463,7 +1464,7 @@ impl StorageProvider for DrimeCloudProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Download failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Download failed: {}", e)))?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1550,7 +1551,7 @@ impl StorageProvider for DrimeCloudProvider {
             let part = reqwest::multipart::Part::bytes(data)
                 .file_name(filename.to_string())
                 .mime_str("application/octet-stream")
-                .map_err(|e| ProviderError::ServerError(format!("MIME error: {}", e)))?;
+                .map_http_err(|e| ProviderError::ServerError(format!("MIME error: {}", e)))?;
             form = form.part("file", part);
 
             let resp = self
@@ -1560,7 +1561,7 @@ impl StorageProvider for DrimeCloudProvider {
                 .multipart(form)
                 .send()
                 .await
-                .map_err(|e| {
+                .map_http_err(|e| {
                     ProviderError::ConnectionFailed(format!("Upload request failed: {}", e))
                 })?;
 
@@ -1614,7 +1615,7 @@ impl StorageProvider for DrimeCloudProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Mkdir failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Mkdir failed: {}", e)))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1671,8 +1672,8 @@ impl StorageProvider for DrimeCloudProvider {
         // capitalization: a folder lookup falls back to another case, so one
         // folder can be cached under two spellings.
         super::forget_cached_subtree_ignoring_case(&mut self.dir_cache, &resolved);
-        let resp =
-            sent.map_err(|e| ProviderError::ConnectionFailed(format!("Delete failed: {}", e)))?;
+        let resp = sent
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Delete failed: {}", e)))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1898,7 +1899,7 @@ impl StorageProvider for DrimeCloudProvider {
                 .header(AUTHORIZATION, self.auth_header()?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(format!("Stat failed: {}", e)))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(format!("Stat failed: {}", e)))?;
 
             if !resp.status().is_success() {
                 let status = resp.status();
@@ -1916,7 +1917,7 @@ impl StorageProvider for DrimeCloudProvider {
                 )));
             }
 
-            let list_resp: DrimeListResponse = resp.json().await.map_err(|e| {
+            let list_resp: DrimeListResponse = resp.json().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Parse stat response failed: {}", e))
             })?;
 
@@ -2020,7 +2021,7 @@ impl StorageProvider for DrimeCloudProvider {
             .body(dup_body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Copy failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Copy failed: {}", e)))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2048,7 +2049,7 @@ impl StorageProvider for DrimeCloudProvider {
                             .body(serde_json::json!({ "name": to_name }).to_string())
                             .send()
                             .await
-                            .map_err(|e| {
+                            .map_http_err(|e| {
                                 ProviderError::ConnectionFailed(format!(
                                     "Rename after copy failed: {}",
                                     e
@@ -2084,7 +2085,7 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        let storage: DrimeStorageResponse = resp.json().await.map_err(|e| {
+        let storage: DrimeStorageResponse = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse quota response failed: {}", e))
         })?;
 
@@ -2149,10 +2150,9 @@ impl StorageProvider for DrimeCloudProvider {
                 )));
             }
 
-            let list_resp: DrimeListResponse = resp
-                .json()
-                .await
-                .map_err(|e| ProviderError::ServerError(format!("Parse search response: {}", e)))?;
+            let list_resp: DrimeListResponse = resp.json().await.map_http_err(|e| {
+                ProviderError::ServerError(format!("Parse search response: {}", e))
+            })?;
 
             let files = list_resp.data.unwrap_or_default();
             let last_page = list_resp.last_page.unwrap_or(1);
@@ -2241,10 +2241,9 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        let link_resp: DrimeShareLinkResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Parse share link response: {}", e)))?;
+        let link_resp: DrimeShareLinkResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Parse share link response: {}", e))
+        })?;
 
         if let Some(link) = link_resp.link {
             if let Some(hash) = link.hash {
@@ -2318,10 +2317,9 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        let link_resp: DrimeShareLinkResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Parse share link response: {}", e)))?;
+        let link_resp: DrimeShareLinkResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Parse share link response: {}", e))
+        })?;
 
         let hash = link_resp.link.and_then(|l| l.hash).ok_or_else(|| {
             ProviderError::ServerError("Missing hash in share link response".to_string())
@@ -2409,10 +2407,9 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        let backup_resp: DrimeBackupResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Parse backup response: {}", e)))?;
+        let backup_resp: DrimeBackupResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Parse backup response: {}", e))
+        })?;
 
         let versions = backup_resp
             .pagination
@@ -2542,7 +2539,7 @@ impl StorageProvider for DrimeCloudProvider {
             .body(create_json.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Multipart create failed: {}", e))
             })?;
 
@@ -2556,10 +2553,9 @@ impl StorageProvider for DrimeCloudProvider {
             )));
         }
 
-        let create_resp: DrimeMultipartCreateResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse multipart create: {}", e)))?;
+        let create_resp: DrimeMultipartCreateResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ParseError(format!("Parse multipart create: {}", e))
+        })?;
         let key = create_resp
             .key
             .ok_or_else(|| ProviderError::ServerError("Drime: missing key".into()))?;
@@ -2583,7 +2579,7 @@ impl StorageProvider for DrimeCloudProvider {
             .body(sign_body.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Drime sign part URLs failed: {}", e))
             })?;
 
@@ -2599,7 +2595,7 @@ impl StorageProvider for DrimeCloudProvider {
         let sign_resp: DrimeSignPartUrlsResponse = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Parse sign URLs: {}", e)))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Parse sign URLs: {}", e)))?;
         let urls = sign_resp.urls.unwrap_or_default();
         if (urls.len() as u32) != total_parts {
             return Err(ProviderError::ServerError(format!(
@@ -2696,7 +2692,7 @@ impl StorageProvider for DrimeCloudProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "Drime upload part {} failed: {}",
                     part_number, e
@@ -2765,7 +2761,7 @@ impl StorageProvider for DrimeCloudProvider {
             .body(complete_body.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Drime multipart complete failed: {}", e))
             })?;
         if !resp.status().is_success() {
@@ -2806,7 +2802,7 @@ impl StorageProvider for DrimeCloudProvider {
             .body(entry_body.to_string())
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Drime entry registration failed: {}", e))
             })?;
         if !resp.status().is_success() {

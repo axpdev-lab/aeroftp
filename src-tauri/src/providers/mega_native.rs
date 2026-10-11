@@ -4,6 +4,7 @@
 //! MEGA Native API Provider: full JSON-RPC implementation.
 //! Connects directly to MEGA servers without MEGAcmd dependency.
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::de::DeserializeOwned;
@@ -381,10 +382,9 @@ impl MegaApiClient {
         // E_RATE) with text/plain or no Content-Type at all, which makes the
         // helper bail with "error decoding response body" before we ever see
         // the actual payload (issue #128 dev-test report).
-        let raw = response
-            .text()
-            .await
-            .map_err(|err| ProviderError::NetworkError(format!("MEGA API read failed: {err}")))?;
+        let raw = response.text().await.map_http_err(|err| {
+            ProviderError::NetworkError(format!("MEGA API read failed: {err}"))
+        })?;
         let trimmed = raw.trim();
 
         // MEGA replies as `[<value>]` for normal commands, but for global
@@ -1386,7 +1386,7 @@ impl MegaNativeProvider {
         let mut chunk_macs = Vec::with_capacity(chunks.len());
 
         while let Some(chunk_result) = stream.next().await {
-            let http_chunk = chunk_result.map_err(|e| {
+            let http_chunk = chunk_result.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {e}"))
             })?;
             chunk_buf.extend_from_slice(&http_chunk);
@@ -1744,10 +1744,9 @@ impl StorageProvider for MegaNativeProvider {
                 .map_err(map_reqwest_error)?;
 
             let status = resp.status();
-            let body = resp
-                .text()
-                .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Upload chunk failed: {e}")))?;
+            let body = resp.text().await.map_http_err(|e| {
+                ProviderError::TransferFailed(format!("Upload chunk failed: {e}"))
+            })?;
 
             if !status.is_success() {
                 return Err(ProviderError::TransferFailed(format!(
@@ -2325,7 +2324,7 @@ impl StorageProvider for MegaNativeProvider {
                 .map_err(map_reqwest_error)?;
 
             let status = resp.status();
-            let body = resp.text().await.map_err(|e| {
+            let body = resp.text().await.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("MEGA upload chunk failed: {e}"))
             })?;
 
@@ -2628,7 +2627,7 @@ impl MegaNativeProvider {
         use futures_util::StreamExt;
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| {
+            let chunk = chunk_result.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {e}"))
             })?;
             encrypted.extend_from_slice(&chunk);

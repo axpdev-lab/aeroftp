@@ -17,6 +17,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use base64::Engine;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
@@ -305,7 +306,7 @@ pub async fn begin_sign_in(
         .json(&body)
         .send()
         .await
-        .map_err(|e| {
+        .map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Cannot reach Twake instance {instance}: {e}"))
         })?;
     let status = resp.status();
@@ -317,7 +318,7 @@ pub async fn begin_sign_in(
             sanitize_api_error(&text)
         )));
     }
-    let reg: RegistrationResponse = resp.json().await.map_err(|e| {
+    let reg: RegistrationResponse = resp.json().await.map_http_err(|e| {
         ProviderError::ParseError(format!("Unexpected registration response from Twake: {e}"))
     })?;
 
@@ -373,7 +374,7 @@ pub async fn finish_sign_in(
         .body(form_urlencode(&form))
         .send()
         .await
-        .map_err(|e| ProviderError::ConnectionFailed(format!("Token exchange failed: {e}")))?;
+        .map_http_err(|e| ProviderError::ConnectionFailed(format!("Token exchange failed: {e}")))?;
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
@@ -386,7 +387,7 @@ pub async fn finish_sign_in(
     let tokens: TokenResponse = resp
         .json()
         .await
-        .map_err(|e| ProviderError::ParseError(format!("Unexpected token response: {e}")))?;
+        .map_http_err(|e| ProviderError::ParseError(format!("Unexpected token response: {e}")))?;
     let refresh_token = tokens
         .refresh_token
         .filter(|t| !t.is_empty())
@@ -436,7 +437,9 @@ async fn delete_registration(
         .bearer_auth(registration_access_token)
         .send()
         .await
-        .map_err(|e| ProviderError::ConnectionFailed(format!("Client revocation failed: {e}")))?;
+        .map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!("Client revocation failed: {e}"))
+        })?;
     match resp.status().as_u16() {
         200..=299 | 404 => Ok(()),
         code => Err(ProviderError::ServerError(format!(
@@ -687,7 +690,7 @@ impl TwakeProvider {
             .body(form_urlencode(&form))
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "Cannot reach Twake instance {}: {e}",
                     self.instance()
@@ -704,10 +707,9 @@ impl TwakeProvider {
                 sanitize_api_error(&text)
             )));
         }
-        let tokens: TokenResponse = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Unexpected token response: {e}")))?;
+        let tokens: TokenResponse = resp.json().await.map_http_err(|e| {
+            ProviderError::ParseError(format!("Unexpected token response: {e}"))
+        })?;
         self.access_token = SecretString::from(tokens.access_token);
         Ok(())
     }
@@ -722,11 +724,13 @@ impl TwakeProvider {
                 .header(AUTHORIZATION, self.bearer()?)
                 .header(ACCEPT, "application/vnd.api+json")
                 .build()
-                .map_err(|e| ProviderError::NetworkError(format!("Build request failed: {e}")))?;
+                .map_http_err(|e| {
+                    ProviderError::NetworkError(format!("Build request failed: {e}"))
+                })?;
             let (method, path) = (request.method().clone(), request.url().path().to_string());
             let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
-                .map_err(|e| ProviderError::NetworkError(format!("Request failed: {e}")))?;
+                .map_http_err(|e| ProviderError::NetworkError(format!("Request failed: {e}")))?;
             twake_log(&format!(
                 "{} {} -> {}",
                 method,
@@ -831,10 +835,9 @@ impl TwakeProvider {
         if !resp.status().is_success() {
             return Err(Self::error_from(resp, abs_path).await);
         }
-        let doc: SingleDoc = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Unexpected metadata response: {e}")))?;
+        let doc: SingleDoc = resp.json().await.map_http_err(|e| {
+            ProviderError::ParseError(format!("Unexpected metadata response: {e}"))
+        })?;
         if doc.data.attributes.trashed.unwrap_or(false) {
             return Err(ProviderError::NotFound(abs_path.to_string()));
         }
@@ -903,7 +906,7 @@ impl TwakeProvider {
             if !resp.status().is_success() {
                 return Err(Self::error_from(resp, dir_id).await);
             }
-            let page: DirListing = resp.json().await.map_err(|e| {
+            let page: DirListing = resp.json().await.map_http_err(|e| {
                 ProviderError::ParseError(format!("Unexpected listing response: {e}"))
             })?;
             docs.extend(
@@ -1094,8 +1097,8 @@ impl StorageProvider for TwakeProvider {
             cb(0, total);
         }
         while let Some(chunk) = stream.next().await {
-            let chunk =
-                chunk.map_err(|e| ProviderError::TransferFailed(format!("Stream error: {e}")))?;
+            let chunk = chunk
+                .map_http_err(|e| ProviderError::TransferFailed(format!("Stream error: {e}")))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1233,7 +1236,7 @@ impl StorageProvider for TwakeProvider {
                 .body(body)
                 .send()
                 .await
-                .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
+                .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
             twake_log(&format!(
                 "{} upload {} -> {}",
                 if existing.is_some() { "PUT" } else { "POST" },
@@ -1263,10 +1266,9 @@ impl StorageProvider for TwakeProvider {
             break (resp, sent_md5);
         };
         let (resp, sent_md5) = resp;
-        let doc: SingleDoc = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ParseError(format!("Unexpected upload response: {e}")))?;
+        let doc: SingleDoc = resp.json().await.map_http_err(|e| {
+            ProviderError::ParseError(format!("Unexpected upload response: {e}"))
+        })?;
         let server_md5 = doc
             .data
             .attributes
@@ -1537,7 +1539,7 @@ impl StorageProvider for TwakeProvider {
         if !resp.status().is_success() {
             return Err(Self::error_from(resp, "disk usage").await);
         }
-        let usage: DiskUsage = resp.json().await.map_err(|e| {
+        let usage: DiskUsage = resp.json().await.map_http_err(|e| {
             ProviderError::ParseError(format!("Unexpected disk-usage response: {e}"))
         })?;
         let used = usage.data.attributes.used.unwrap_or(0);

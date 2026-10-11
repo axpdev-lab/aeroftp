@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
@@ -526,7 +527,11 @@ impl DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| TrashCallError::hard(ProviderError::ConnectionFailed(e.to_string())))?;
+            .map_err(|e| {
+                TrashCallError::hard(crate::providers::http_send_error(e, |e| {
+                    ProviderError::ConnectionFailed(e.to_string())
+                }))
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -557,10 +562,11 @@ impl DropboxProvider {
             });
         }
 
-        response
-            .json()
-            .await
-            .map_err(|e| TrashCallError::hard(ProviderError::Other(format!("Parse error: {}", e))))
+        response.json().await.map_err(|e| {
+            TrashCallError::hard(crate::providers::http_send_error(e, |e| {
+                ProviderError::Other(format!("Parse error: {}", e))
+            }))
+        })
     }
 
     fn rpc_api_base(&self) -> &str {
@@ -583,17 +589,22 @@ impl DropboxProvider {
             }))
             .send()
             .await
-            .map_err(|e| TrashCallError::hard(ProviderError::ConnectionFailed(e.to_string())))?;
+            .map_err(|e| {
+                TrashCallError::hard(crate::providers::http_send_error(e, |e| {
+                    ProviderError::ConnectionFailed(e.to_string())
+                }))
+            })?;
         let status = response.status();
         let retry_header = response
             .headers()
             .get(reqwest::header::RETRY_AFTER)
             .and_then(|v| v.to_str().ok())
             .map(String::from);
-        let body = response
-            .text()
-            .await
-            .map_err(|e| TrashCallError::hard(ProviderError::Other(e.to_string())))?;
+        let body = response.text().await.map_err(|e| {
+            TrashCallError::hard(crate::providers::http_send_error(e, |e| {
+                ProviderError::Other(e.to_string())
+            }))
+        })?;
         // The throttle test is `dropbox_is_rate_limited`, not the presence of a
         // retry marker: Dropbox can answer 429 with no `retry_after` anywhere,
         // and that is still a throttle.
@@ -754,7 +765,7 @@ impl DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -805,7 +816,7 @@ impl DropboxProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -820,7 +831,7 @@ impl DropboxProvider {
         let body = response
             .json::<serde_json::Value>()
             .await
-            .map_err(|e| ProviderError::Other(sanitize_api_error(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::Other(sanitize_api_error(&e.to_string())))?;
         Ok(body["account_type"][".tag"]
             .as_str()
             .unwrap_or("basic")
@@ -850,7 +861,7 @@ impl DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -887,7 +898,7 @@ impl DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -964,7 +975,7 @@ impl StorageProvider for DropboxProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1085,7 +1096,7 @@ impl StorageProvider for DropboxProvider {
             .header("Dropbox-API-Arg", arg.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1103,7 +1114,7 @@ impl StorageProvider for DropboxProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1168,7 +1179,7 @@ impl StorageProvider for DropboxProvider {
             .header("Dropbox-API-Arg", arg.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1232,7 +1243,7 @@ impl StorageProvider for DropboxProvider {
                 .body(first_chunk)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !start_resp.status().is_success() {
                 let text = start_resp.text().await.unwrap_or_default();
@@ -1249,7 +1260,7 @@ impl StorageProvider for DropboxProvider {
             let session: SessionStart = start_resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             progress.report(first_chunk_size as u64);
 
@@ -1282,7 +1293,7 @@ impl StorageProvider for DropboxProvider {
                     .body(chunk)
                     .send()
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
                 if !append_resp.status().is_success() {
                     let text = append_resp.text().await.unwrap_or_default();
@@ -1320,7 +1331,7 @@ impl StorageProvider for DropboxProvider {
                 .header("Dropbox-API-Arg", finish_arg.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !finish_resp.status().is_success() {
                 let text = finish_resp.text().await.unwrap_or_default();
@@ -1360,7 +1371,7 @@ impl StorageProvider for DropboxProvider {
                 .body(body)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
@@ -1617,7 +1628,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1643,7 +1654,7 @@ impl StorageProvider for DropboxProvider {
         let result: SearchResult = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(result
             .matches
@@ -1662,7 +1673,7 @@ impl StorageProvider for DropboxProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1685,7 +1696,7 @@ impl StorageProvider for DropboxProvider {
         let usage: SpaceUsage = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(StorageInfo {
             used: usage.used,
@@ -1758,7 +1769,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = response.status();
         let text = response.text().await.unwrap_or_default();
@@ -1781,7 +1792,7 @@ impl StorageProvider for DropboxProvider {
                 .body(body.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 return Err(ProviderError::Other(
@@ -1798,10 +1809,9 @@ impl StorageProvider for DropboxProvider {
                 links: Vec<SharedLink>,
             }
 
-            let result: SharedLinksResult = response
-                .json()
-                .await
-                .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+            let result: SharedLinksResult = response.json().await.map_http_err(|e| {
+                ProviderError::Other(format!("Failed to parse response: {}", e))
+            })?;
 
             if let Some(link) = result.links.first() {
                 info!("Retrieved existing share link for {}: {}", path, link.url);
@@ -1867,7 +1877,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1895,7 +1905,7 @@ impl StorageProvider for DropboxProvider {
         let result: ListResult = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
 
         let links = result
             .links
@@ -1951,7 +1961,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::Other(
@@ -1971,7 +1981,7 @@ impl StorageProvider for DropboxProvider {
         let result: SharedLinksResult = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
 
         let link_url = result
             .links
@@ -1992,7 +2002,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2035,7 +2045,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2059,7 +2069,7 @@ impl StorageProvider for DropboxProvider {
         let list: RevisionList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(list
             .entries
@@ -2098,7 +2108,7 @@ impl StorageProvider for DropboxProvider {
             .header("Dropbox-API-Arg", arg.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2111,7 +2121,7 @@ impl StorageProvider for DropboxProvider {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         let _ = full_path; // Used for path resolution
         tokio::fs::write(local_path, &bytes)
@@ -2164,7 +2174,7 @@ impl StorageProvider for DropboxProvider {
             .header("Dropbox-API-Arg", arg.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::NotFound(
@@ -2175,7 +2185,7 @@ impl StorageProvider for DropboxProvider {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         // Return as base64 data URI
         Ok(format!(
@@ -2211,7 +2221,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2246,7 +2256,7 @@ impl StorageProvider for DropboxProvider {
         let result: LockBatchResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         if let Some(entry) = result.entries.first() {
             if entry.tag == "success" {
@@ -2292,7 +2302,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2396,7 +2406,7 @@ impl StorageProvider for DropboxProvider {
             .body(Vec::<u8>::new())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -2426,7 +2436,7 @@ impl StorageProvider for DropboxProvider {
         let session: SessionStart = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         let meta = DropboxMultipartMeta {
             session_id: session.session_id,
@@ -2515,7 +2525,7 @@ impl StorageProvider for DropboxProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -2586,7 +2596,7 @@ impl StorageProvider for DropboxProvider {
             .body(Vec::<u8>::new())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !close_response.status().is_success() {
             let status = close_response.status();
             let retry_header = close_response
@@ -2632,7 +2642,7 @@ impl StorageProvider for DropboxProvider {
             .body(Vec::<u8>::new())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
