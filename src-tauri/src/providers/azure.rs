@@ -12,6 +12,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use std::collections::HashMap;
+
 use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -267,12 +269,18 @@ fn listing_child_name(raw: &str, strip_prefix: &str, directory_prefix: bool) -> 
 
 /// Keep one directory when a blob and a `BlobPrefix` name the same path.
 /// A file that shares the display name is a different entry.
-fn push_listing_item(items: &mut Vec<BlobItem>, item: BlobItem) {
+///
+/// `directories` maps a directory name to its index. Only directories are
+/// indexed, so a file of the same name stays a second entry. The map lives
+/// for the whole enumeration, including across pages.
+fn push_listing_item(
+    items: &mut Vec<BlobItem>,
+    directories: &mut HashMap<String, usize>,
+    item: BlobItem,
+) {
     if item.is_prefix {
-        if let Some(existing) = items
-            .iter_mut()
-            .find(|entry| entry.is_prefix && entry.name == item.name)
-        {
+        if let Some(&index) = directories.get(&item.name) {
+            let existing = &mut items[index];
             if existing.last_modified.is_none() {
                 existing.last_modified = item.last_modified;
             }
@@ -281,6 +289,7 @@ fn push_listing_item(items: &mut Vec<BlobItem>, item: BlobItem) {
             }
             return;
         }
+        directories.insert(item.name.clone(), items.len());
     }
     items.push(item);
 }
@@ -856,6 +865,7 @@ impl AzureProvider {
     /// to one directory; a file that only shares the display name stays.
     fn parse_blob_list(xml: &str, strip_prefix: &str) -> (Vec<BlobItem>, Option<String>) {
         let mut items = Vec::new();
+        let mut directories = HashMap::new();
         let mut next_marker: Option<String> = None;
 
         let mut reader = Reader::from_str(xml);
@@ -891,6 +901,10 @@ impl AzureProvider {
         let mut in_blob = false;
         let mut in_prefix = false;
         let mut in_metadata = false;
+        // Depth of the `<Metadata>` container. A user key may itself be
+        // named `Metadata`, so the container closes only when this returns
+        // to zero. Later keys must not be read as blob fields.
+        let mut metadata_depth: u32 = 0;
         let mut buf = Vec::new();
 
         loop {
@@ -901,6 +915,7 @@ impl AzureProvider {
                     // Metadata keys are element names (`hdi_isfolder`), so they
                     // must not be read as blob properties.
                     if in_metadata {
+                        metadata_depth = metadata_depth.saturating_add(1);
                         state = ParseState::BlobMetaValue;
                         current_meta_key = tag.to_string();
                         current_meta_value.clear();
@@ -923,6 +938,8 @@ impl AzureProvider {
                                 hdi_isfolder = None;
                                 current_meta_key.clear();
                                 current_meta_value.clear();
+                                in_metadata = false;
+                                metadata_depth = 0;
                             }
                             "Name" if in_prefix => {
                                 state = ParseState::BlobPrefixName;
@@ -946,6 +963,7 @@ impl AzureProvider {
                             "Metadata" if in_blob => {
                                 state = ParseState::BlobMetadata;
                                 in_metadata = true;
+                                metadata_depth = 1;
                             }
                             "NextMarker" => {
                                 state = ParseState::NextMarker;
@@ -1021,12 +1039,18 @@ impl AzureProvider {
                 Ok(Event::End(ref e)) => {
                     let owned = e.name();
                     let tag = owned.as_ref();
-                    if in_metadata && tag != "Metadata" {
-                        if current_meta_key.eq_ignore_ascii_case("hdi_isfolder") {
-                            hdi_isfolder =
-                                Some(current_meta_value.trim().eq_ignore_ascii_case("true"));
+                    if in_metadata {
+                        metadata_depth = metadata_depth.saturating_sub(1);
+                        if metadata_depth > 0 {
+                            if current_meta_key.eq_ignore_ascii_case("hdi_isfolder") {
+                                hdi_isfolder =
+                                    Some(current_meta_value.trim().eq_ignore_ascii_case("true"));
+                            }
+                            state = ParseState::BlobMetadata;
+                        } else {
+                            in_metadata = false;
+                            state = ParseState::Blob;
                         }
-                        state = ParseState::BlobMetadata;
                     } else {
                         match tag {
                             "BlobPrefix" if in_prefix => {
@@ -1035,6 +1059,7 @@ impl AzureProvider {
                                 {
                                     push_listing_item(
                                         &mut items,
+                                        &mut directories,
                                         BlobItem {
                                             name: relative,
                                             size: 0,
@@ -1052,6 +1077,7 @@ impl AzureProvider {
                                 {
                                     push_listing_item(
                                         &mut items,
+                                        &mut directories,
                                         BlobItem {
                                             name: relative,
                                             size: current_size,
@@ -1067,6 +1093,7 @@ impl AzureProvider {
                                 }
                                 in_blob = false;
                                 in_metadata = false;
+                                metadata_depth = 0;
                                 state = ParseState::Root;
                             }
                             "Name" => {
@@ -1081,10 +1108,6 @@ impl AzureProvider {
                             }
                             "Content-Length" | "Last-Modified" | "ResourceType" if in_blob => {
                                 state = ParseState::BlobProperties;
-                            }
-                            "Metadata" if in_blob => {
-                                in_metadata = false;
-                                state = ParseState::Blob;
                             }
                             "NextMarker" => {
                                 state = ParseState::Root;
@@ -1128,6 +1151,7 @@ impl AzureProvider {
         strip_prefix: &str,
     ) -> Result<Vec<BlobItem>, ProviderError> {
         let mut all_items = Vec::new();
+        let mut directories = HashMap::new();
         let mut marker: Option<String> = None;
 
         loop {
@@ -1171,7 +1195,7 @@ impl AzureProvider {
             // The same directory can be a blob on one page and a BlobPrefix
             // on the next. Collapse those, and only those.
             for item in items {
-                push_listing_item(&mut all_items, item);
+                push_listing_item(&mut all_items, &mut directories, item);
             }
 
             match next_marker {
@@ -4208,6 +4232,97 @@ Time:2026-01-01</Message>
         assert!(children
             .iter()
             .any(|item| item.name == "nested" && item.is_prefix));
+    }
+
+    /// Azure metadata keys are ASCII names and may themselves be `Metadata`
+    /// or `Name`. The inner `</Metadata>` must not close the container, or
+    /// the next key is parsed as a blob field and appended to the name.
+    #[test]
+    fn parse_blob_list_metadata_key_named_metadata_does_not_rename_blob() {
+        let xml = "<EnumerationResults><Blobs><Blob><Name>notes.txt</Name>\
+            <Properties><Content-Length>4</Content-Length></Properties>\
+            <Metadata><Metadata>project</Metadata><Name>backup</Name></Metadata>\
+            </Blob></Blobs></EnumerationResults>";
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "notes.txt");
+        assert_eq!(items[0].size, 4);
+        assert!(!items[0].is_prefix);
+    }
+
+    /// The same homonym must not hide a later `hdi_isfolder` key, or a
+    /// directory stub is listed as a file.
+    #[test]
+    fn parse_blob_list_metadata_key_named_metadata_keeps_hdi_isfolder() {
+        let xml = "<EnumerationResults><Blobs><Blob><Name>empty-dir</Name>\
+            <Properties><Content-Length>0</Content-Length></Properties>\
+            <Metadata><Metadata>project</Metadata><hdi_isfolder>true</hdi_isfolder></Metadata>\
+            </Blob></Blobs></EnumerationResults>";
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "empty-dir");
+        assert!(items[0].is_prefix);
+    }
+
+    /// A metadata key named `Name` was already isolated. Keep that guard
+    /// beside the homonym cases.
+    #[test]
+    fn parse_blob_list_metadata_key_named_name_stays_isolated() {
+        let xml = "<EnumerationResults><Blobs><Blob><Name>notes.txt</Name>\
+            <Properties><Content-Length>4</Content-Length></Properties>\
+            <Metadata><Name>backup</Name></Metadata>\
+            </Blob></Blobs></EnumerationResults>";
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "notes.txt");
+        assert!(!items[0].is_prefix);
+    }
+
+    /// Directory names are indexed, so distinct directories stay in order and
+    /// a repeated directory merges date and size into the first entry. A file
+    /// that shares the display name is not indexed and stays a second entry.
+    #[test]
+    fn parse_blob_list_directory_index_keeps_order_and_merges_once() {
+        let xml = r#"<?xml version="1.0"?>
+<EnumerationResults>
+  <Blobs>
+    <BlobPrefix><Name>a/</Name></BlobPrefix>
+    <BlobPrefix><Name>b/</Name></BlobPrefix>
+    <BlobPrefix><Name>c/</Name></BlobPrefix>
+    <Blob>
+      <Name>b</Name>
+      <Properties>
+        <Last-Modified>Mon, 01 Jan 2026 12:00:00 GMT</Last-Modified>
+        <Content-Length>9</Content-Length>
+        <ResourceType>directory</ResourceType>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>b</Name>
+      <Properties>
+        <Content-Length>8</Content-Length>
+        <ResourceType>file</ResourceType>
+      </Properties>
+    </Blob>
+  </Blobs>
+</EnumerationResults>"#;
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| (item.name.as_str(), item.is_prefix, item.size))
+                .collect::<Vec<_>>(),
+            vec![
+                ("a", true, 0),
+                ("b", true, 9),
+                ("c", true, 0),
+                ("b", false, 8),
+            ]
+        );
+        assert_eq!(
+            items[1].last_modified.as_deref(),
+            Some("Mon, 01 Jan 2026 12:00:00 GMT")
+        );
     }
 
     /// The listing request asks for metadata once per page. `list` and `stat`
