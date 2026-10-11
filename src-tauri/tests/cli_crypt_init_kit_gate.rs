@@ -397,6 +397,20 @@ fn declining_the_kit_at_a_terminal_writes_nothing() {
     );
 }
 
+/// `link.key` in `folder`, a symbolic link to `target`, where a test can make
+/// one without privileges; Windows needs Developer Mode for it.
+#[cfg(unix)]
+fn link_to(target: &Path, folder: &Path) -> Option<std::path::PathBuf> {
+    let link = folder.join("link.key");
+    std::os::unix::fs::symlink(target, &link).expect("symlink");
+    Some(link)
+}
+
+#[cfg(not(unix))]
+fn link_to(_target: &Path, _folder: &Path) -> Option<std::path::PathBuf> {
+    None
+}
+
 /// CodeRabbit on #1156: the kit is renamed onto its path at the end of the
 /// run, after the config has recorded the digest of the keyfile. A kit path
 /// that is the keyfile (spelt the same, spelt otherwise, through a link, or
@@ -414,16 +428,13 @@ fn a_kit_path_that_is_the_keyfile_is_refused_before_anything_is_written() {
     std::fs::create_dir(kits.path().join("sub")).expect("sub folder");
     let keyfile_arg = keyfile.to_str().expect("utf-8 path").to_string();
 
-    let mut same_file = vec![
+    let same_file: Vec<std::path::PathBuf> = [
         keyfile.clone(),
         kits.path().join("sub").join("..").join("vault.key"),
-    ];
-    #[cfg(unix)]
-    {
-        let link = kits.path().join("link.key");
-        std::os::unix::fs::symlink(&keyfile, &link).expect("symlink");
-        same_file.push(link);
-    }
+    ]
+    .into_iter()
+    .chain(link_to(&keyfile, kits.path()))
+    .collect();
     for kit in &same_file {
         let refused = crypt_init(
             remote.path(),
