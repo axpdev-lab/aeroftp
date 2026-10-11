@@ -5261,7 +5261,8 @@
             "overlaysPathButton": "Ruta de superposicions",
             "overlaysPathButtonHint": "Vés a la ruta xifrada de superposicions: {path}",
             "lockedOverlayTitle": "Capa xifrada bloquejada",
-            "lockedOverlayDesc": "Aquest servidor té una capa xifrada que no s'ha pogut desbloquejar. Introduïu la contrasenya per desxifrar els noms, o continueu explorant el llistat en brut."
+            "lockedOverlayDesc": "Aquest servidor té una capa xifrada que no s'ha pogut desbloquejar. Introduïu la contrasenya per desxifrar els noms, o continueu explorant el llistat en brut.",
+            "overlayFolder": "Carpeta de la superposició:"
         },
         "b2": {
             "hidden": {
@@ -5718,7 +5719,7 @@
             "createAndUnlock": "Crea i desbloqueja",
             "unlocked": "Superposició desbloquejada.",
             "initialised": "Superposició creada i desbloquejada.",
-            "noOverlayFound": "No s'ha trobat cap superposició AeroCrypt a la carpeta remota actual. Canvia a «Crea'n una de nova» per crear-ne una.",
+            "noOverlayFound": "No hi ha cap marcador d'AeroCrypt en aquesta carpeta. Si el vault usa la sal predeterminada d'AeroCrypt, marca aquesta opció a sota; per crear un vault nou aquí, passa a «Crea'n una de nova».",
             "remoteUnlocked": "Remot desbloquejat (ID {id})",
             "versionLabel": "AECR v{version}",
             "lock": "Bloqueja la superposició",
@@ -5808,7 +5809,9 @@
             "keyslotsRecoveryAutoOffered": "S'ha afegit automàticament una ranura de recuperació perquè aquest vault hauria estat només amb keyfile. Deseu el codi de recuperació de sota.",
             "keyslotsRecoverySaveOnce": "Deseu ara aquest codi de recuperació (es mostra una sola vegada):",
             "keyslotsRecoveryCopy": "Copia el codi",
-            "keyslotsUnlockWithRecovery": "També podeu desbloquejar amb un codi de recuperació (enganxeu-lo com a contrasenya)."
+            "keyslotsUnlockWithRecovery": "També podeu desbloquejar amb un codi de recuperació (enganxeu-lo com a contrasenya).",
+            "openDefaultSaltLabel": "Aquest vault usa la sal predeterminada d'AeroCrypt",
+            "openDefaultSaltHint": "Sense marcador aquí, un vault amb sal predeterminada s'obre només amb la contrasenya un cop els noms d'aquesta carpeta es desxifren amb ella. No s'escriu res al remot."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",

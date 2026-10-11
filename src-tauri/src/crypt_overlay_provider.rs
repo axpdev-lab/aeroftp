@@ -2119,6 +2119,13 @@ and no local copy of its configuration, so it was rebuilt from the password afte
 folder decrypted with it. The rebuilt configuration has a new vault ID: save a new Recovery Kit, \
 since an earlier one no longer matches.";
 
+/// One-shot notice after a default-salt vault was opened from its password
+/// with nothing written, neither a marker nor a keystore copy. Public, no
+/// secrets.
+pub const DEFAULT_SALT_OPENED_IN_MEMORY_NOTICE: &str = "This default-salt AeroCrypt vault has no \
+marker here, so it was opened from the password after names in the folder decrypted with it. \
+Nothing was written: it opens the same way next time.";
+
 fn derive_aerocrypt_overlay_keys_from_config(
     config_json: &str,
     password: &str,
@@ -2664,8 +2671,8 @@ async fn unlock_overlay_keys_encrypting(
             };
 
             // Clobber-safe existence probe. A fresh empty target must bootstrap a v3
-            // overlay (mirrors the legacy `aerocrypt_provider::aerocrypt_unlock` None
-            // branch the Phase-3 migration replaced), but a read/network error must
+            // overlay (as the standalone unlock command the Phase-3 migration
+            // replaced did with no config), but a read/network error must
             // NEVER be taken for "absent": re-init rotates the salt and would orphan
             // every file already encrypted under the existing overlay. So only an
             // explicit `exists == false` triggers the bootstrap.
@@ -2758,7 +2765,8 @@ async fn unlock_overlay_keys_encrypting(
                 // keystore cache when a saved profile owns the vault. Both are
                 // conveniences here, never the vault's only record (the password
                 // rebuilds it again), so a failed write is reported, not fatal.
-                let mut notice = DEFAULT_SALT_REOPENED_WARNING.to_string();
+                let mut persisted = false;
+                let mut marker_error = None;
                 if headed_intent {
                     match restore_headed_marker_from_config(
                         provider,
@@ -2771,11 +2779,9 @@ async fn unlock_overlay_keys_encrypting(
                         Ok(path) => {
                             marker_restored = true;
                             marker_path = Some(path);
+                            persisted = true;
                         }
-                        Err(e) => notice.push_str(&format!(
-                            " The remote marker could not be written ({e}); the vault stays \
-                             open from its password."
-                        )),
+                        Err(e) => marker_error = Some(e),
                     }
                 }
                 if let Some(id) = params.profile_id.as_deref().filter(|s| !s.is_empty()) {
@@ -2783,14 +2789,29 @@ async fn unlock_overlay_keys_encrypting(
                         use base64::Engine as _;
                         let salt_b64 = base64::engine::general_purpose::STANDARD
                             .encode(crate::aerocrypt::AEROCRYPT_DEFAULT_SALT_V1);
-                        if let Err(e) =
-                            persist_public_overlay_config(&store, id, &config_text, &salt_b64)
-                        {
-                            eprintln!(
+                        match persist_public_overlay_config(&store, id, &config_text, &salt_b64) {
+                            Ok(()) => persisted = true,
+                            Err(e) => eprintln!(
                                 "[aerocrypt] rebuilt default-salt config not cached for {id}: {e}"
-                            );
+                            ),
                         }
                     }
+                }
+                // A copy written somewhere carries the new vault ID, so an older
+                // Recovery Kit no longer matches; a rebuild kept in memory only
+                // (the unlock dialog on a connection with no saved profile)
+                // changes nothing anyone holds.
+                let mut notice = if persisted {
+                    DEFAULT_SALT_REOPENED_WARNING
+                } else {
+                    DEFAULT_SALT_OPENED_IN_MEMORY_NOTICE
+                }
+                .to_string();
+                if let Some(e) = marker_error {
+                    notice.push_str(&format!(
+                        " The remote marker could not be written ({e}); the vault stays \
+                         open from its password."
+                    ));
                 }
                 warning = Some(notice);
                 (config, master_key)
@@ -3022,6 +3043,7 @@ pub async fn apply_overlay_in_place(
     salt: &str,
     keyfile_digest: Option<&[u8; 32]>,
     with_header: bool,
+    allow_init: bool,
 ) -> Result<ApplyOverlayResult, String> {
     // Revert any prior overlay so a re-apply (re-anchor / scope change) can never
     // stack a second decorator on top of the first.
@@ -3032,17 +3054,18 @@ pub async fn apply_overlay_in_place(
     // Derive keys against the live raw connection. On error the slot still holds
     // the raw provider (we borrowed via `&mut`, never took), so the session is
     // preserved and the caller surfaces the unlock error.
-    // Interactive GUI activation: bootstrap a fresh v3 overlay when the target
-    // folder has no config yet (clobber-safe), so "activate overlay here" works on
-    // an empty folder instead of failing "could not be unlocked". A Some
-    // keyfile_digest makes that bootstrap a keyfile vault (Tier 1).
+    // `allow_init`: a saved profile's activation bootstraps a fresh v3 overlay
+    // when its folder has no config yet (clobber-safe), so the first connect of
+    // a new binding works on an empty folder. The unlock dialog's "Open" passes
+    // false: opening never creates. A Some keyfile_digest makes that bootstrap
+    // a keyfile vault (Tier 1).
     let outcome = unlock_overlay_keys_encrypting(
         &mut **provider,
         binding,
         password,
         salt,
         keyfile_digest,
-        true,
+        allow_init,
         with_header || binding.with_header,
     )
     .await?;
@@ -4481,9 +4504,10 @@ mod tests {
             salt_form: None,
         };
         let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(MemProvider::new()));
-        let applied = apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true)
-            .await
-            .unwrap();
+        let applied =
+            apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true, true)
+                .await
+                .unwrap();
         assert!(
             applied.warning.is_none(),
             "an empty folder is not a wrong key"
@@ -4500,13 +4524,14 @@ mod tests {
             .unwrap();
         tokio::fs::remove_dir_all(&dir).await.ok();
 
-        let right = apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true)
+        let right = apply_overlay_in_place(&mut slot, &binding(()), "pw", "salt", None, true, true)
             .await
             .unwrap();
         assert!(right.warning.is_none(), "{:?}", right.warning);
-        let wrong = apply_overlay_in_place(&mut slot, &binding(()), "other", "salt", None, true)
-            .await
-            .unwrap();
+        let wrong =
+            apply_overlay_in_place(&mut slot, &binding(()), "other", "salt", None, true, true)
+                .await
+                .unwrap();
         let warning = wrong.warning.expect("a wrong key is reported");
         assert!(warning.contains("None of the 1 names"), "{warning}");
     }
@@ -4540,7 +4565,7 @@ mod tests {
         );
 
         // Apply: the slot now holds a decorator.
-        let applied = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
+        let applied = apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, true)
             .await
             .unwrap();
         assert_eq!(applied.scope, "");
@@ -4555,7 +4580,7 @@ mod tests {
         );
 
         // Re-apply (re-anchor): must revert the prior overlay first, never stack.
-        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true)
+        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, true, true)
             .await
             .unwrap();
 
@@ -5158,10 +5183,102 @@ mod tests {
         .unwrap_or_else(|e| panic!("headerless default-salt reopen: {e}"));
         assert!(!outcome.marker_restored);
         assert!(mem.raw_bytes("/Vault/.aerocrypt.tsv").is_none());
-        assert!(
-            outcome.warning.is_some(),
-            "the rebuild must be reported once"
+        // Nothing was persisted (no marker, no saved profile to cache it for),
+        // so there is no new vault ID to save a Recovery Kit for.
+        assert_eq!(
+            outcome.warning.as_deref(),
+            Some(DEFAULT_SALT_OPENED_IN_MEMORY_NOTICE),
+            "the rebuild must be reported once, as what it did"
         );
+    }
+
+    /// The unlock dialog's Open on a folder it was pointed at (#1081 row 43):
+    /// an ad-hoc binding, no saved profile, no header, `allow_init=false`. The
+    /// password alone opens the default-salt vault there, and the remote is
+    /// left exactly as it was.
+    #[tokio::test]
+    async fn dialog_open_reopens_a_default_salt_vault_and_writes_nothing() {
+        let mut mem = MemProvider::new();
+        default_salt_vault_without_marker(&mut mem, "/home/user/Vault").await;
+        let mut before: Vec<(String, Vec<u8>)> = mem
+            .raw_paths()
+            .into_iter()
+            .map(|p| {
+                let bytes = mem.raw_bytes(&p).unwrap();
+                (p, bytes)
+            })
+            .collect();
+        before.sort();
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(mem));
+
+        let applied = apply_overlay_in_place(
+            &mut slot,
+            &default_salt_binding("/home/user/Vault", false),
+            DEFAULT_SALT_PW,
+            "",
+            None,
+            false,
+            false,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("the dialog's Open must reopen it: {e}"));
+        assert_eq!(applied.scope, "/home/user/Vault");
+        assert!(!applied.marker_restored);
+        assert_eq!(
+            applied.warning.as_deref(),
+            Some(DEFAULT_SALT_OPENED_IN_MEMORY_NOTICE)
+        );
+
+        assert!(clear_overlay_in_place(&mut slot));
+        let mem = slot
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let mut after: Vec<(String, Vec<u8>)> = mem
+            .raw_paths()
+            .into_iter()
+            .map(|p| {
+                let bytes = mem.raw_bytes(&p).unwrap();
+                (p, bytes)
+            })
+            .collect();
+        after.sort();
+        assert_eq!(after, before, "an ad-hoc open writes nothing");
+    }
+
+    /// The dialog's Open never creates: with `allow_init=false` a folder with
+    /// no vault is refused, left untouched and the slot stays raw, where the
+    /// profile activation (`allow_init=true`) would bootstrap one there.
+    #[tokio::test]
+    async fn dialog_open_never_creates_an_aerocrypt_vault() {
+        let binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Empty".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+            with_header: false,
+            use_default_salt: false,
+            password_form: None,
+            salt_form: None,
+        };
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(MemProvider::new()));
+        let err = apply_overlay_in_place(&mut slot, &binding, "pw", "", None, false, false)
+            .await
+            .expect_err("Open on a folder with no vault must be refused");
+        assert!(err.contains("no overlay at /Empty"), "{err}");
+        let mem = slot
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .expect("a refused open leaves the raw provider in the slot");
+        assert!(mem.raw_paths().is_empty(), "nothing written");
     }
 
     #[tokio::test]

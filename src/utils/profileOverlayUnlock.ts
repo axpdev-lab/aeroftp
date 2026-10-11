@@ -23,6 +23,12 @@ export interface ProviderCryptOverlayApply {
   withHeader?: boolean | null;
   /** AeroCrypt default salt: create with the public constant, reopen from the password alone. */
   useDefaultSalt?: boolean | null;
+  /**
+   * Open an existing vault, never create one. The unlock dialog's Open sets it:
+   * a folder with no vault there is an error to show, not an empty folder to
+   * initialise (#1081 row 43).
+   */
+  openOnly?: boolean | null;
 }
 
 /**

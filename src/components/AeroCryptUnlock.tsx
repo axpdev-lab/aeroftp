@@ -7,8 +7,9 @@
 // names with AES-256-SIV (no filename-encryption / dir-name / dirIV options), and
 // the salt is generated automatically and stored in the remote marker
 // (.aerocrypt.tsv for new vaults, legacy .aeroftp-crypt.json still readable), so
-// there is no salt field. Opening an existing overlay reads that config from the
-// provider's current directory first (aerocrypt_provider_read_config).
+// there is no salt field. The dialog works on one folder, `scope`, given by
+// whoever opened it: the marker probe, the create and the overlay App applies all
+// look there, never at whatever folder the provider happens to be in (#1081 row 43).
 //
 // i18n note: this modal uses the dedicated `aerocryptNative.*` namespace. The
 // rclone modal still owns `aerocrypt.*`; the coordinated split/rename is P6.
@@ -29,19 +30,34 @@ import { QRCodeSVG } from 'qrcode.react';
 
 interface AeroCryptUnlockProps {
     onClose: () => void;
-    onUnlocked?: (details: {
-        vaultId: string;
+    /**
+     * Apply the overlay. Resolves once it is open and rejects with the reason it
+     * was refused: the dialog reports either one, so it never says "unlocked"
+     * for an overlay the backend turned down.
+     */
+    onUnlocked: (details: {
         password: string;
-        remoteScope?: string;
+        /** The folder to open: the dialog's own, or the one its Create just made. */
+        scope: string;
         /** AeroCrypt Tier 1 optional keyfile second factor (local path). */
         keyfilePath?: string;
-    }) => void;
+        /** Open a default-salt vault that has no marker in this folder. */
+        useDefaultSalt?: boolean;
+    }) => Promise<void>;
     onLocked?: () => void;
     activeVaultId?: string | null;
-    /** Saved profile id (when connected via a crypt-bound profile). Enables offline kit + keystore backfill. */
+    /** Saved profile id, only when the dialog unlocks that profile's binding. Enables offline kit + keystore backfill. */
     profileId?: string | null;
-    /** Remote overlay scope for marker probe/migrate (profile remoteScope / initialPath). */
-    remoteScope?: string | null;
+    /** Absolute folder the overlay is opened at, `/` for the remote root. */
+    scope: string;
+    /** Opened for a saved profile's binding: it decides the intents, so Create and the default-salt choice are not offered. */
+    bound?: boolean;
+}
+
+interface AeroCryptCreatedVault {
+    root: string;
+    version: number;
+    configJson: string;
 }
 
 interface AeroCryptVaultInfo {
@@ -78,10 +94,16 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     onLocked,
     activeVaultId,
     profileId,
-    remoteScope,
+    scope,
+    bound = false,
 }) => {
     const t = useTranslation();
     const [mode, setMode] = useState<'open' | 'create'>('open');
+    // The folder every probe and the apply use: the dialog's, then the one a
+    // Create rooted its vault at (a subfolder of it).
+    const [vaultRoot, setVaultRoot] = useState(scope);
+    // Open: the vault uses the default salt and has no marker in this folder.
+    const [openDefaultSalt, setOpenDefaultSalt] = useState(false);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [keyfilePath, setKeyfilePath] = useState('');
@@ -131,10 +153,21 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         vaultInfoRef.current = vaultInfo;
     }, [vaultInfo]);
 
+    // An Open or a Create still pending when the dialog closes returns after
+    // the unmount: `closedRef` tells it the dialog is gone (set back on mount
+    // because StrictMode runs a cleanup between its two mounts).
+    const closedRef = useRef(false);
+    useEffect(() => {
+        closedRef.current = false;
+        return () => {
+            closedRef.current = true;
+        };
+    }, []);
+
     const refreshMarkerStatus = useCallback(async () => {
         try {
             const status = await invoke<AeroCryptMarkerStatus>('aerocrypt_provider_marker_status', {
-                basePath: remoteScope || null,
+                basePath: vaultRoot,
             });
             setMarkerStatus(status);
             return status;
@@ -142,7 +175,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             setMarkerStatus(null);
             return null;
         }
-    }, [remoteScope]);
+    }, [vaultRoot]);
 
     // Hydrate the unlocked panel when the provider overlay is already live.
     // Never invent version:2 with empty config_json — that made Recovery kit fail
@@ -155,7 +188,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                 const status = await refreshMarkerStatus();
                 let configJson =
                     (await invoke<string | null>('aerocrypt_provider_read_config', {
-                        basePath: remoteScope || null,
+                        basePath: vaultRoot,
                     }).catch(() => null)) || '';
                 // Prefer keystore kit-ready blob when the remote is still pre-Tier-1.
                 if (profileId) {
@@ -198,7 +231,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [activeVaultId, profileId, remoteScope, refreshMarkerStatus]);
+    }, [activeVaultId, profileId, vaultRoot, refreshMarkerStatus]);
 
     useEffect(() => {
         void refreshMarkerStatus();
@@ -211,37 +244,43 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         setSuccess(null);
         setKitData(null);
         setAeroCryptDefaultSalt(false);
+        setOpenDefaultSalt(false);
         setMarkerStatus(null);
     }, []);
 
-    const lockVault = useCallback(async (vaultId: string) => {
-        await invoke('aerocrypt_lock', { vaultId });
-    }, []);
+    // No marker of either name in the folder. Only an ad-hoc Open asks: a bound
+    // dialog's binding may be headerless, which has no marker by design.
+    const noMarkerHere = !!markerStatus && !markerStatus.hasCurrentMarker && !markerStatus.hasLegacyMarker;
+    const offerOpenDefaultSalt = mode === 'open' && !bound && noMarkerHere;
+    // The choice counts only while it is offered: it belongs to an Open of a
+    // folder with no marker, not to whatever folder or mode follows.
+    const openWithDefaultSalt = offerOpenDefaultSalt && openDefaultSalt;
 
     const handleUnlock = async () => {
         // Tier 1: an empty password is legal when a keyfile is the (only) factor.
-        if (!password && !keyfilePath) return;
+        // Enter in a field still works while the button is disabled.
+        if ((!password && !keyfilePath) || loading) return;
         setLoading(true);
         setError(null);
         try {
-            // The native overlay's salt lives in the remote marker: read it from
-            // the current directory before deriving the key.
-            const configJson = await invoke<string | null>('aerocrypt_provider_read_config', {});
-            if (!configJson) {
-                setError(t('aerocryptNative.noOverlayFound'));
-                return;
+            // An ad-hoc Open needs a vault to open: a marker in the folder, or
+            // the word that it is a default-salt vault, whose config the password
+            // rebuilds once names here decrypt with it. A failed probe proceeds:
+            // the backend opens without ever creating, and says why it refused.
+            if (!bound && !openWithDefaultSalt) {
+                const status = await refreshMarkerStatus();
+                if (status && !status.hasCurrentMarker && !status.hasLegacyMarker) {
+                    setError(t('aerocryptNative.noOverlayFound'));
+                    return;
+                }
             }
-            const info = await invoke<AeroCryptVaultInfo>('aerocrypt_unlock', {
+            // Closed while probing: open nothing for a dialog nobody is looking at.
+            if (closedRef.current) return;
+            await onUnlocked({
                 password,
-                configJson,
-                keyfilePath: keyfilePath || null,
-            });
-            setVaultInfo(info);
-            onUnlocked?.({
-                vaultId: info.vault_id,
-                password,
-                remoteScope: '',
+                scope: vaultRoot,
                 keyfilePath: keyfilePath || undefined,
+                useDefaultSalt: openWithDefaultSalt || undefined,
             });
             setPassword('');
             setSuccess(t('aerocryptNative.unlocked'));
@@ -254,7 +293,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
 
     const handleCreate = async () => {
         // Tier 1: keyfile-only vaults (empty password) are legal by design.
-        if ((!password && !keyfilePath) || password !== confirmPassword) return;
+        if ((!password && !keyfilePath) || password !== confirmPassword || loading) return;
         // #276: never create the vault with default-salt intent the backend would
         // reject for entropy. Refusing is the point: the alternative is a vault
         // that silently got a per-vault salt while the toggle read as on.
@@ -262,8 +301,9 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         setLoading(true);
         setError(null);
         try {
-            const info = await invoke<AeroCryptVaultInfo>('aerocrypt_provider_create_remote', {
+            const created = await invoke<AeroCryptCreatedVault>('aerocrypt_provider_create_remote', {
                 password,
+                basePath: vaultRoot,
                 targetSubpath: createSubpath.trim() ? createSubpath.trim() : null,
                 keyfilePath: keyfilePath || null,
                 useDefaultSalt: effectiveUseDefaultSalt || null,
@@ -274,12 +314,19 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             // available on demand via the "Recovery kit" button in the unlocked
             // view (rebuilt from the persisted config, re-viewable and re-savable
             // any time), so the create+connect flow is never interrupted.
-            setVaultInfo(info);
+            //
+            // Closed while creating: the vault exists, Open finds it later; no
+            // overlay is opened for a dialog nobody is looking at.
+            if (closedRef.current) return;
+            // From here on the dialog is about the new vault: if the apply below
+            // fails, Open retries it where it is instead of a second create.
+            setVaultRoot(created.root);
+            setOpenDefaultSalt(false);
             setCreateSubpath('');
-            onUnlocked?.({
-                vaultId: info.vault_id,
+            setMode('open');
+            await onUnlocked({
                 password,
-                remoteScope: '',
+                scope: created.root,
                 keyfilePath: keyfilePath || undefined,
             });
             setPassword('');
@@ -320,7 +367,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             const result = await invoke<AeroCryptMarkerMigrationResult>('aerocrypt_provider_migrate_legacy_marker', {
                 password: pw || '',
                 keyfilePath: kf || null,
-                basePath: remoteScope || null,
+                basePath: vaultRoot,
             });
             await refreshMarkerStatus();
             if (result.warning) {
@@ -332,7 +379,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                 try {
                     const configJson =
                         (await invoke<string | null>('aerocrypt_provider_read_config', {
-                            basePath: remoteScope || null,
+                            basePath: vaultRoot,
                         })) || '';
                     if (configJson && profileId) {
                         // Parse salt from TSV/JSON for salt-of-record.
@@ -400,7 +447,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             if (!configJson) {
                 configJson =
                     (await invoke<string | null>('aerocrypt_provider_read_config', {
-                        basePath: remoteScope || null,
+                        basePath: vaultRoot,
                     })) || '';
             }
             if (!configJson) {
@@ -499,16 +546,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     };
 
     const handleLock = async () => {
-        // Provider-path auto-unlock uses a sentinel vault id ("provider-overlay:…")
-        // that is not an aerocrypt_unlock session — skip aerocrypt_lock and let
-        // onLocked clear the live CryptOverlayProvider instead.
-        if (vaultInfo?.vault_id && vaultInfo.vault_id !== 'provider' && !String(vaultInfo.vault_id).startsWith('provider-overlay:')) {
-            try {
-                await lockVault(vaultInfo.vault_id);
-            } catch (_) {
-                // Ignore lock errors, local state still needs cleanup.
-            }
-        }
+        // Every overlay this dialog opens lives in the provider decorator (no
+        // standalone key copy is made any more): onLocked clears it.
         clearSensitiveState();
         onLocked?.();
     };
@@ -551,8 +590,14 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                         </div>
                     )}
 
+                    <p className="text-xs text-gray-500 dark:text-gray-400 break-all">
+                        {t('aerocrypt.overlayFolder')}{' '}
+                        <code className="font-mono text-gray-700 dark:text-gray-200">{vaultRoot}</code>
+                    </p>
+
                     {!vaultInfo ? (
                         <>
+                            {!bound && (
                             <div className="flex gap-2">
                                 <button
                                     type="button"
@@ -569,6 +614,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     {t('aerocryptNative.createNew')}
                                 </button>
                             </div>
+                            )}
 
                             <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {mode === 'open' ? t('aerocryptNative.openHint') : t('aerocryptNative.createHint')}
@@ -693,6 +739,22 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                             <DefaultSaltDisclosure className="ml-5" />
                                         </>
                                     )}
+                                </div>
+                            )}
+
+                            {offerOpenDefaultSalt && (
+                                <div className="space-y-1 border border-gray-200 dark:border-gray-700 rounded p-2 text-xs">
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={openDefaultSalt}
+                                            onChange={(e) => setOpenDefaultSalt(e.target.checked)}
+                                        />
+                                        <span>{t('aerocryptNative.openDefaultSaltLabel')}</span>
+                                    </label>
+                                    <p className="ml-5 text-gray-500 dark:text-gray-400 leading-relaxed">
+                                        {t('aerocryptNative.openDefaultSaltHint')}
+                                    </p>
                                 </div>
                             )}
 
