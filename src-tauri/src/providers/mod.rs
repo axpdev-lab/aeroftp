@@ -4325,6 +4325,11 @@ mod http_timeout_class_tests {
     /// call does not move the count. Raw strings are read as plain ones, which
     /// is wrong only for a raw string that ends in a backslash.
     fn past_close(s: &[u8], open: usize) -> usize {
+        past_close_pair(s, open, b'(', b')')
+    }
+
+    /// [`past_close`] for any pair of delimiters, braces included.
+    fn past_close_pair(s: &[u8], open: usize, opening: u8, closing: u8) -> usize {
         let mut depth = 0usize;
         let mut i = open;
         while i < s.len() {
@@ -4343,8 +4348,8 @@ mod http_timeout_class_tests {
                         i = end;
                     }
                 }
-                b'(' => depth += 1,
-                b')' => {
+                b if b == opening => depth += 1,
+                b if b == closing => {
                     depth = depth.saturating_sub(1);
                     if depth == 0 {
                         return i + 1;
@@ -4422,6 +4427,167 @@ mod http_timeout_class_tests {
             plain.is_empty(),
             "map_err on a request or body read that files a timeout under another variant \
              (use `map_http_err`, see `http_send_error`): {plain:?}"
+        );
+    }
+
+    /// Requests whose failure is handled by a `match` arm and deliberately
+    /// never becomes a `ProviderError`, by file and enclosing function, and
+    /// why. A best-effort cleanup or discovery logs and gives up; a probe
+    /// falls back to the path that reports its own failure.
+    const ARM_OUTSIDE: &[(&str, &str)] = &[
+        // Logs and moves on; the upload it follows has already succeeded.
+        ("onedrive.rs", "purge_old_versions"),
+        // Optional discovery: the listing goes on without team folders.
+        ("zoho_workdrive.rs", "discover_team_folders"),
+        // A probe: on any failure the v2 sign-in runs and reports its own.
+        ("swift.rs", "detect_auth_version"),
+        // An opportunistic probe: the provider's own download reports.
+        ("multi_thread.rs", "try_http_concurrent_range_download"),
+        // A reason string for "did the object change", not an error.
+        ("multi_thread.rs", "http_range_source_moved"),
+    ];
+
+    /// The body of the arm that starts at `start` (just past its `=>`): a
+    /// block, or an expression up to the comma or brace that ends it.
+    fn arm_body(s: &[u8], start: usize) -> &[u8] {
+        let mut i = start;
+        while i < s.len() && s[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if s.get(i) == Some(&b'{') {
+            return &s[i..past_close_brace(s, i)];
+        }
+        let begin = i;
+        let mut depth = 0usize;
+        while i < s.len() {
+            match s[i] {
+                b'"' => {
+                    i += 1;
+                    while i < s.len() && s[i] != b'"' {
+                        if s[i] == b'\\' {
+                            i += 1;
+                        }
+                        i += 1;
+                    }
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                b',' if depth == 0 => break,
+                _ => {}
+            }
+            i += 1;
+        }
+        &s[begin..i]
+    }
+
+    fn past_close_brace(s: &[u8], open: usize) -> usize {
+        past_close_pair(s, open, b'{', b'}')
+    }
+
+    #[test]
+    fn an_arm_body_ends_at_its_comma_or_block() {
+        let arms = br#"{ Err(e) => f(e, "a,b"), Ok(r) => r }"#;
+        let start = arms.windows(2).position(|w| w == b"=>").unwrap() + 2;
+        assert_eq!(arm_body(arms, start), br#"f(e, "a,b")"#);
+        let block = b"{ Err(e) => { g(e); continue; } Ok(r) => r }";
+        let start = block.windows(2).position(|w| w == b"=>").unwrap() + 2;
+        assert_eq!(arm_body(block, start), b"{ g(e); continue; }");
+    }
+
+    /// The same class in a second shape: the request is the scrutinee of a
+    /// `match` (or an `if let`) and its `Err(e)` arm handles the error by
+    /// hand. Filen's chunk download kept only the error's text, Yandex's
+    /// chunked PUT and Internxt's start-upload filed a timeout as
+    /// `TransferFailed` / `ServerError`; the `map_err` scan above never saw
+    /// them. An arm passes when it classifies (a name from `CLASSIFYING`, or
+    /// `is_timeout`) or hands the error on unchanged.
+    #[test]
+    fn no_provider_handles_a_failed_request_without_classifying_a_timeout() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let request = regex::Regex::new(
+            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
+        )
+        .expect("regex");
+        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
+        let keeps_error =
+            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
+        let opens_block = regex::Regex::new(r"^\s*\{").expect("regex");
+        let err_arm = regex::Regex::new(r"Err\((\w+)\)\s*=>").expect("regex");
+        let enclosing = regex::Regex::new(r"\bfn\s+(\w+)").expect("regex");
+        let mut plain = Vec::new();
+        for file in &files {
+            let relative = file
+                .strip_prefix(&root)
+                .expect("under providers")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if OUTSIDE.contains(&relative.as_str()) {
+                continue;
+            }
+            let source = std::fs::read_to_string(file).expect("read source");
+            let bytes = source.as_bytes();
+            for found in request.find_iter(&source) {
+                let end = if found.as_str().ends_with("()") {
+                    found.end()
+                } else {
+                    past_close(bytes, found.end() - 1)
+                };
+                let Some(wait) = awaited.find(&source[end..]) else {
+                    continue;
+                };
+                let mut end = end + wait.end();
+                while let Some(call) = keeps_error.find(&source[end..]) {
+                    end = past_close(bytes, end + call.end() - 1);
+                }
+                let Some(open) = opens_block.find(&source[end..]) else {
+                    continue;
+                };
+                let open = end + open.end() - 1;
+                let block = &source[open..past_close_brace(bytes, open)];
+                let function = enclosing
+                    .captures_iter(&source[..found.start()])
+                    .last()
+                    .map(|c| c[1].to_string())
+                    .unwrap_or_default();
+                if ARM_OUTSIDE
+                    .iter()
+                    .any(|(f, name)| *f == relative && *name == function)
+                {
+                    continue;
+                }
+                for arm in err_arm.captures_iter(block) {
+                    let name = &arm[1];
+                    let body = String::from_utf8_lossy(arm_body(
+                        block.as_bytes(),
+                        arm.get(0).expect("whole match").end(),
+                    ))
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                    let classifies =
+                        CLASSIFYING.iter().any(|c| body.contains(c)) || body.contains("is_timeout");
+                    let handed_on = body == format!("Err({name})")
+                        || body == format!("return Err({name})")
+                        || body == format!("return Err({name});");
+                    if !classifies && !handed_on {
+                        let line = source[..found.start()].matches('\n').count() + 1;
+                        plain.push(format!("{relative}:{line} ({function})"));
+                    }
+                }
+            }
+        }
+        assert!(
+            plain.is_empty(),
+            "a request failure handled in a match arm that files a timeout under another \
+             variant (classify it with `http_send_error`, or list the site in ARM_OUTSIDE \
+             with the reason): {plain:?}"
         );
     }
 

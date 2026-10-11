@@ -2135,10 +2135,12 @@ impl StorageProvider for FilenProvider {
             {
                 Ok(buf) => buf,
                 Err(e) => {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "Download chunk {}/{} failed after {} retries: {}",
-                        chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
-                    )))
+                    return Err(e.into_provider_error(|e| {
+                        format!(
+                            "Download chunk {}/{} failed after {} retries: {}",
+                            chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
+                        )
+                    }))
                 }
             };
 
@@ -2223,10 +2225,12 @@ impl StorageProvider for FilenProvider {
             {
                 Ok(buf) => buf,
                 Err(e) => {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "Download chunk {}/{} failed after {} retries: {}",
-                        chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
-                    )))
+                    return Err(e.into_provider_error(|e| {
+                        format!(
+                            "Download chunk {}/{} failed after {} retries: {}",
+                            chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
+                        )
+                    }))
                 }
             };
 
@@ -3011,10 +3015,12 @@ impl StorageProvider for FilenProvider {
             )
             .await
             .map_err(|e| {
-                ProviderError::TransferFailed(format!(
-                    "Download version chunk {}/{} failed after {} retries: {}",
-                    chunk_idx, version.chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e
-                ))
+                e.into_provider_error(|e| {
+                    format!(
+                        "Download version chunk {}/{} failed after {} retries: {}",
+                        chunk_idx, version.chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e
+                    )
+                })
             })?;
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             atomic
@@ -3571,8 +3577,8 @@ async fn download_filen_chunk(
     url: &str,
     chunk_idx: u32,
     max_retries: u32,
-) -> Result<Vec<u8>, String> {
-    let mut last_err: Option<String> = None;
+) -> Result<Vec<u8>, ChunkError> {
+    let mut last_err: Option<ChunkError> = None;
     for attempt in 0..=max_retries {
         if attempt > 0 {
             // Exponential backoff: 250 ms * 2^(attempt-1), capped at 4 s.
@@ -3587,7 +3593,7 @@ async fn download_filen_chunk(
         let request = match client.get(url).build() {
             Ok(r) => r,
             Err(e) => {
-                last_err = Some(format!("request build: {}", e));
+                last_err = Some(ChunkError::failed(format!("request build: {}", e)));
                 continue;
             }
         };
@@ -3595,7 +3601,10 @@ async fn download_filen_chunk(
         let resp = match client.execute(request).await {
             Ok(r) => r,
             Err(e) => {
-                last_err = Some(format!("send: {}", e));
+                last_err = Some(ChunkError {
+                    timed_out: e.is_timeout(),
+                    message: format!("send: {}", e),
+                });
                 continue;
             }
         };
@@ -3612,7 +3621,7 @@ async fn download_filen_chunk(
             // Retry only on classes that may recover. 4xx (except 408/429)
             // are authoritative, so we surface them immediately.
             let retryable = filen_status_is_retryable(status.as_u16());
-            let err = format!("status {}: {}", status, body_preview);
+            let err = ChunkError::failed(format!("status {}: {}", status, body_preview));
             if !retryable {
                 return Err(err);
             }
@@ -3630,11 +3639,10 @@ async fn download_filen_chunk(
             match part {
                 Ok(bytes) => encrypted.extend_from_slice(&bytes),
                 Err(e) => {
-                    last_err = Some(format!(
-                        "body decode after {} bytes: {}",
-                        encrypted.len(),
-                        e
-                    ));
+                    last_err = Some(ChunkError {
+                        timed_out: e.is_timeout(),
+                        message: format!("body decode after {} bytes: {}", encrypted.len(), e),
+                    });
                     body_failed = true;
                     break;
                 }
@@ -3645,12 +3653,86 @@ async fn download_filen_chunk(
         }
         return Ok(encrypted);
     }
-    Err(last_err.unwrap_or_else(|| "exhausted retries with no error".to_string()))
+    Err(last_err.unwrap_or_else(|| ChunkError::failed("exhausted retries with no error".into())))
+}
+
+/// The last failure of [`download_filen_chunk`]. A chunk whose last attempt
+/// got no answer, or whose body stopped coming, inside the client's limits is
+/// a timeout like any other HTTP request (see `providers::http_send_error`);
+/// every other failure keeps the caller's wording.
+#[derive(Debug)]
+struct ChunkError {
+    timed_out: bool,
+    message: String,
+}
+
+impl ChunkError {
+    fn failed(message: String) -> Self {
+        Self {
+            timed_out: false,
+            message,
+        }
+    }
+
+    fn into_provider_error(self, describe: impl FnOnce(&str) -> String) -> ProviderError {
+        if self.timed_out {
+            ProviderError::Timeout
+        } else {
+            ProviderError::TransferFailed(describe(&self.message))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn impatient_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(300))
+            .build()
+            .expect("client")
+    }
+
+    fn chunk_failure(error: ChunkError) -> ProviderError {
+        error.into_provider_error(|e| format!("Download chunk 1/1 failed: {e}"))
+    }
+
+    #[tokio::test]
+    async fn a_chunk_the_server_never_answers_is_a_timeout() {
+        let url = crate::providers::mute_http_endpoint();
+        let error = download_filen_chunk(&impatient_client(), &url, 0, 0)
+            .await
+            .expect_err("a server that never answers");
+        assert!(
+            matches!(chunk_failure(error), ProviderError::Timeout),
+            "a chunk request with no reply must stay a timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_chunk_whose_body_stops_is_a_timeout() {
+        let url = crate::providers::stalled_body_endpoint();
+        let error = download_filen_chunk(&impatient_client(), &url, 0, 0)
+            .await
+            .expect_err("a body that stops coming");
+        assert!(
+            matches!(chunk_failure(error), ProviderError::Timeout),
+            "a chunk body that stops coming must stay a timeout"
+        );
+    }
+
+    #[test]
+    fn a_chunk_failure_that_is_not_a_timeout_keeps_its_wording() {
+        let error = ChunkError::failed("status 404 Not Found: gone".into());
+        match chunk_failure(error) {
+            ProviderError::TransferFailed(message) => assert_eq!(
+                message,
+                "Download chunk 1/1 failed: status 404 Not Found: gone"
+            ),
+            other => panic!("expected TransferFailed, got {other:?}"),
+        }
+    }
 
     #[tokio::test]
     async fn find_propagates_listing_failure() {

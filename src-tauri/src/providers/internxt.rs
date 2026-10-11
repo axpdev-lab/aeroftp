@@ -2047,7 +2047,11 @@ impl StorageProvider for InternxtProvider {
 
         let mut start_data: Option<StartUploadResp> = None;
         let mut last_error = String::new();
+        // Whether the last attempt got no answer: then the upload failed on a
+        // timeout, whatever the earlier attempts said.
+        let mut last_timed_out = false;
         for attempt in 0..3 {
+            last_timed_out = false;
             if attempt > 0 {
                 let delay = std::time::Duration::from_millis(1000 * (1 << attempt));
                 internxt_log(&format!(
@@ -2069,6 +2073,7 @@ impl StorageProvider for InternxtProvider {
             let resp = match resp {
                 Ok(r) => r,
                 Err(e) => {
+                    last_timed_out = matches!(e, ProviderError::Timeout);
                     last_error = format!("Request failed: {}", e);
                     internxt_log(&format!(
                         "[UPLOAD] Attempt {} failed: {}",
@@ -2132,12 +2137,8 @@ impl StorageProvider for InternxtProvider {
             }
         }
 
-        let start_data = start_data.ok_or_else(|| {
-            ProviderError::ServerError(format!(
-                "Start upload failed after 3 attempts: {}",
-                last_error
-            ))
-        })?;
+        let start_data =
+            start_data.ok_or_else(|| start_upload_failure(last_timed_out, &last_error))?;
 
         if start_data.uploads.is_empty() {
             return Err(ProviderError::ServerError(
@@ -2992,9 +2993,38 @@ fn rename_refused(what: &str, status: reqwest::StatusCode, body: &str, to: &str)
     ))
 }
 
+/// The error of an upload whose start request failed every attempt. A last
+/// attempt that got no answer is a timeout (the exit code and the transfer
+/// engine's retry read it as one); anything else is the server's failure,
+/// with the last reason.
+fn start_upload_failure(last_timed_out: bool, last_error: &str) -> ProviderError {
+    if last_timed_out {
+        ProviderError::Timeout
+    } else {
+        ProviderError::ServerError(format!(
+            "Start upload failed after 3 attempts: {}",
+            last_error
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_start_upload_whose_last_attempt_timed_out_is_a_timeout() {
+        assert!(matches!(
+            start_upload_failure(true, "Request failed: Timeout"),
+            ProviderError::Timeout
+        ));
+        match start_upload_failure(false, "HTTP 500") {
+            ProviderError::ServerError(message) => {
+                assert_eq!(message, "Start upload failed after 3 attempts: HTTP 500")
+            }
+            other => panic!("expected ServerError, got {other:?}"),
+        }
+    }
 
     /// Internxt refuses a taken name and has no overwrite on rename or move, so
     /// there is no one-step replace. The answer is no, so the callers that need

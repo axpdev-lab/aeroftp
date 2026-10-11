@@ -1408,7 +1408,7 @@ impl StorageProvider for JottacloudProvider {
 
         // Strategy: try persisted refresh token first (avoids consuming the single-use login token).
         // If that fails, fall back to the login token from config.
-        let used_refresh = self.try_connect_with_refresh().await.unwrap_or(false);
+        let used_refresh = refresh_or_login_token(self.try_connect_with_refresh().await)?;
 
         if !used_refresh {
             // Step 1: Decode login token
@@ -3330,9 +3330,39 @@ impl JottacloudProvider {
     }
 }
 
+/// Whether `connect` may go on to the single-use login token after the
+/// persisted refresh chain was tried. A refresh that failed definitely
+/// (revoked, expired, no chain) falls back, as it always did. A refresh that
+/// got no answer did not fail: its outcome is unknown, and spending the
+/// login token on it would burn the one credential that still works if the
+/// server comes back. It is returned as the timeout it is.
+fn refresh_or_login_token(refresh: Result<bool, ProviderError>) -> Result<bool, ProviderError> {
+    match refresh {
+        Ok(used_refresh) => Ok(used_refresh),
+        Err(ProviderError::Timeout) => Err(ProviderError::Timeout),
+        Err(_) => Ok(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refresh_with_no_answer_does_not_spend_the_login_token() {
+        assert!(matches!(
+            refresh_or_login_token(Err(ProviderError::Timeout)),
+            Err(ProviderError::Timeout)
+        ));
+        assert!(matches!(
+            refresh_or_login_token(Err(ProviderError::AuthenticationFailed(
+                "Refresh token exchange failed: invalid_grant".into()
+            ))),
+            Ok(false)
+        ));
+        assert!(matches!(refresh_or_login_token(Ok(true)), Ok(true)));
+        assert!(matches!(refresh_or_login_token(Ok(false)), Ok(false)));
+    }
 
     /// JFS does not document whether `mv` onto a file swaps the two in one
     /// step, so a one-step replace cannot be claimed. The answer is no, so the

@@ -86,11 +86,13 @@ fn is_yandex_upload_retryable_status(status: reqwest::StatusCode) -> bool {
 }
 
 /// ProviderError variants raised during the GET upload-target step that
-/// indicate a transient failure worth retrying with backoff.
+/// indicate a transient failure worth retrying with backoff. A request the
+/// server never answered is `Timeout` (it was a `NetworkError` before timeouts
+/// were classified), and is as transient as a reset connection.
 fn is_yandex_upload_retryable_error(err: &ProviderError) -> bool {
     matches!(
         err,
-        ProviderError::NetworkError(_) | ProviderError::ServerError(_),
+        ProviderError::NetworkError(_) | ProviderError::ServerError(_) | ProviderError::Timeout,
     )
 }
 
@@ -1010,7 +1012,9 @@ impl YandexDiskProvider {
                                     .await;
                                 continue;
                             }
-                            return Err(ProviderError::TransferFailed(e.to_string()));
+                            return Err(crate::providers::http_send_error(e, |e| {
+                                ProviderError::TransferFailed(e.to_string())
+                            }));
                         }
                     }
                 }
@@ -2459,11 +2463,12 @@ mod tests {
     }
 
     #[test]
-    fn upload_retryable_error_accepts_network_and_server() {
+    fn upload_retryable_error_accepts_network_server_and_timeout() {
         let net = ProviderError::NetworkError("connection reset".into());
         let srv = ProviderError::ServerError("upstream timeout".into());
         assert!(is_yandex_upload_retryable_error(&net));
         assert!(is_yandex_upload_retryable_error(&srv));
+        assert!(is_yandex_upload_retryable_error(&ProviderError::Timeout));
     }
 
     #[test]
