@@ -327,7 +327,7 @@ jobs:
 
       - name: Upload Linux payload for the snap job
         if: matrix.target == 'linux' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: aeroftp-linux-payload-${{ github.sha }}
           path: payload-stage/linux-payload.tar
@@ -678,7 +678,7 @@ jobs:
       # `publish-github-release`, which needs linux-validate first.
       - name: Upload Linux installers
         if: matrix.target == 'linux'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: aeroftp-linux-${{ github.sha }}
           path: |
@@ -694,7 +694,7 @@ jobs:
 
       - name: Upload Windows installers
         if: matrix.target == 'windows'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: aeroftp-windows-${{ github.sha }}
           path: |
@@ -706,7 +706,7 @@ jobs:
 
       - name: Upload macOS installers
         if: matrix.target == 'macos'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: aeroftp-macos-${{ matrix.arch }}-${{ github.sha }}
           path: src-tauri/target/release/bundle/dmg/*.dmg
@@ -993,7 +993,7 @@ jobs:
       # rejected artifact is exactly what you need in hand to diagnose it.
       # Publishing still happens only after both gates pass.
       - name: Upload Snap as workflow artifact (validation runs)
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: aeroftp-snap-${{ github.sha }}
           path: ${{ steps.snap-check.outputs.snap }}
@@ -1088,7 +1088,7 @@ jobs:
       # is not the blank one from #462; keep it on failure above all.
       - name: Upload the confined GUI frame
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: snap-gui-frame-${{ github.sha }}
           path: ${{ runner.temp }}/snap-gui-screenshot.png
