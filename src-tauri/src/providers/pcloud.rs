@@ -477,9 +477,7 @@ impl PCloudProvider {
             .get(url)
             .header("Authorization", auth)
             .build()
-            .map_http_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
 
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
@@ -521,9 +519,10 @@ impl PCloudProvider {
         };
         let sep = if base_url.contains('?') { "&" } else { "?" };
         let url = format!("{}{}access_token={}", base_url, sep, token_raw);
-        let request = self.client.get(&url).build().map_http_err(|e| {
-            ProviderError::NetworkError(format!("Failed to build request: {}", e))
-        })?;
+        let request =
+            self.client.get(&url).build().map_err(|e| {
+                ProviderError::NetworkError(format!("Failed to build request: {}", e))
+            })?;
 
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await

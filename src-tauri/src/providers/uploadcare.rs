@@ -594,7 +594,7 @@ impl StorageProvider for UploadcareProvider {
         let file_part = multipart::Part::stream_with_length(body, total)
             .file_name(file_name.clone())
             .mime_str(mime.as_ref())
-            .map_http_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         let form = multipart::Form::new()
             .text("UPLOADCARE_PUB_KEY", self.config.public_key.clone())
             .text("UPLOADCARE_STORE", "1")

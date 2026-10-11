@@ -1665,7 +1665,7 @@ impl ZohoWorkdriveProvider {
                 .get(&url)
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .build()
-                .map_http_err(|e| {
+                .map_err(|e| {
                     ProviderError::NetworkError(format!("Failed to build request: {}", e))
                 })?;
 
@@ -1926,9 +1926,7 @@ impl ZohoWorkdriveProvider {
             )
             .body(move_body.to_string())
             .build()
-            .map_http_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -1973,9 +1971,7 @@ impl ZohoWorkdriveProvider {
             )
             .body(rename_body.to_string())
             .build()
-            .map_http_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -2598,7 +2594,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let file_part = reqwest::multipart::Part::stream(body)
             .file_name(file_name.to_string())
             .mime_str("application/octet-stream")
-            .map_http_err(|e| ProviderError::Other(format!("MIME error: {}", e)))?;
+            .map_err(|e| ProviderError::Other(format!("MIME error: {}", e)))?;
 
         let form = reqwest::multipart::Form::new()
             .text("parent_id", parent_id.clone())
@@ -2683,9 +2679,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             )
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
@@ -2742,9 +2736,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             )
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await

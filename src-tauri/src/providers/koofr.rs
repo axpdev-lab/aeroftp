@@ -385,9 +385,7 @@ impl KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(vk, vv)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -410,9 +408,7 @@ impl KoofrProvider {
             .header(vk, vv)
             .body(json)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -435,9 +431,7 @@ impl KoofrProvider {
             .header(vk, vv)
             .body(json)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -452,9 +446,7 @@ impl KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(vk, vv)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -915,9 +907,7 @@ impl StorageProvider for KoofrProvider {
             .get(&url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_http_err(|e| {
-                ProviderError::TransferFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
@@ -1604,9 +1594,7 @@ impl StorageProvider for KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(RANGE, range_value)
             .build()
-            .map_http_err(|e| {
-                ProviderError::TransferFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
@@ -1729,9 +1717,7 @@ impl StorageProvider for KoofrProvider {
             .get(&url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_http_err(|e| {
-                ProviderError::TransferFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
@@ -1827,9 +1813,7 @@ impl StorageProvider for KoofrProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(RANGE, range_value)
             .build()
-            .map_http_err(|e| {
-                ProviderError::TransferFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::TransferFailed(format!("Build request failed: {}", e)))?;
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await

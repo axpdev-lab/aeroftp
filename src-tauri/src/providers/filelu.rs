@@ -453,7 +453,7 @@ impl FileLuProvider {
     }
 
     async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
-        let request = self.client.get(url).build().map_http_err(|e| {
+        let request = self.client.get(url).build().map_err(|e| {
             ProviderError::ConnectionFailed(format!(
                 "Build GET failed: {}",
                 redact_key(&e.to_string())
@@ -484,7 +484,7 @@ impl FileLuProvider {
             )
             .body(body)
             .build()
-            .map_http_err(|e| {
+            .map_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "Build POST failed: {}",
                     redact_key(&e.to_string())

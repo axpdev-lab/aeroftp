@@ -245,7 +245,7 @@ pub async fn download_release_asset(
             .connect_timeout(std::time::Duration::from_secs(30))
             .read_timeout(std::time::Duration::from_secs(1800))
             .build()
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?
+            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?
             .get(&download_url)
             .header("Authorization", format!("Bearer {}", client.token_str()))
             .header("User-Agent", "AeroFTP")

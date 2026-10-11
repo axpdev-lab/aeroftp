@@ -1360,10 +1360,12 @@ impl StorageProvider for GitHubProvider {
                     self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha)
                         .await
                         .map_err(|e2| {
-                            ProviderError::TransferFailed(format!(
-                                "Cannot create working branch '{}': {}",
-                                workflow_branch, e2
-                            ))
+                            crate::providers::keep_timeout(e2, |e2| {
+                                ProviderError::TransferFailed(format!(
+                                    "Cannot create working branch '{}': {}",
+                                    workflow_branch, e2
+                                ))
+                            })
                         })?;
                     self.write_mode = GitHubWriteMode::BranchWorkflow {
                         branch: workflow_branch,

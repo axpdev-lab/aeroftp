@@ -753,9 +753,9 @@ impl AzureProvider {
         // limit the body is paced (Put Block, Put Blob and every other raw
         // body land here), so the upload cap holds on Azure too.
         let body: Option<bytes::Bytes> = body.map(bytes::Bytes::from);
-        let request = builder.build().map_http_err(|e| {
-            ProviderError::NetworkError(format!("Failed to build request: {}", e))
-        })?;
+        let request = builder
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
         let client = self.client.clone();
         super::send_with_retry_replayable(
             &self.client,
@@ -1290,7 +1290,11 @@ impl StorageProvider for AzureProvider {
         let resp = self
             .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_err(|e| {
+                crate::providers::keep_timeout(e, |e| {
+                    ProviderError::ConnectionFailed(e.to_string())
+                })
+            })?;
 
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -2792,6 +2796,29 @@ mod tests {
             sas_token: None,
             endpoint: None,
         }
+    }
+
+    /// D7 on Azure: a blob service that accepts the connection and never
+    /// answers made the connect test a `ConnectionFailed`, because the connect
+    /// filed every failure of its request as one. It is a timeout.
+    #[tokio::test]
+    async fn a_connect_the_service_never_answers_is_a_timeout() {
+        let mut config = test_config();
+        config.endpoint = Some(
+            crate::providers::mute_http_endpoint()
+                .trim_end_matches('/')
+                .to_string(),
+        );
+        let mut provider = AzureProvider::new(config);
+        provider.client = reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(300))
+            .build()
+            .unwrap();
+        let outcome = provider.connect().await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
+            "{outcome:?}"
+        );
     }
 
     /// A blob service double for container `mycontainer` holding `existing`

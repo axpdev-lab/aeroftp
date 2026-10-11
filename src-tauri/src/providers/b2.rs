@@ -743,7 +743,7 @@ impl B2Provider {
             .get(&self.authorize_url)
             .header(AUTHORIZATION, format!("Basic {}", basic))
             .build()
-            .map_http_err(|e| ProviderError::ConnectionFailed(format!("authorize build: {}", e)))?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("authorize build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("authorize send: {}", e)))?;
@@ -789,9 +789,7 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("list_buckets build: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("list_buckets build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_http_err(|e| {
@@ -1031,7 +1029,7 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
+            .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("list_file_names build: {}", e))
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
@@ -1072,9 +1070,7 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("get_upload_url build: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("get_upload_url build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_http_err(|e| {
@@ -1850,7 +1846,7 @@ impl B2Provider {
             .get(&url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_http_err(|e| ProviderError::ConnectionFailed(format!("download build: {}", e)))?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("download build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("download send: {}", e)))?;
@@ -2134,9 +2130,7 @@ impl B2Provider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(RANGE, format!("bytes=0-{}", MAX_DOWNLOAD_TO_BYTES - 1))
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("download_bytes build: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("download_bytes build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_http_err(|e| {
@@ -2288,7 +2282,7 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
+            .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("list_file_versions build: {}", e))
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
@@ -2327,9 +2321,7 @@ impl B2Provider {
             .get(&url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("download_by_id build: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("download_by_id build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_http_err(|e| {
@@ -2393,7 +2385,7 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
+            .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("get_download_authorization build: {}", e))
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
@@ -2439,7 +2431,7 @@ impl B2Provider {
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .build()
-            .map_http_err(|e| {
+            .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("list_unfinished build: {}", e))
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
@@ -3985,9 +3977,7 @@ impl StorageProvider for B2Provider {
             .header(AUTHORIZATION, self.auth_header()?)
             .header(RANGE, format!("bytes={}-{}", offset, end))
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("read_range build: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("read_range build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("read_range send: {}", e)))?;

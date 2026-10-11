@@ -1307,8 +1307,8 @@ impl InternxtProvider {
             .json(&access_body)
             .send()
             .await
+            .inspect_err(|e| internxt_log(&format!("[WEB AUTH FAIL] Request error: {}", e)))
             .map_http_err(|e| {
-                internxt_log(&format!("[WEB AUTH FAIL] Request error: {}", e));
                 ProviderError::ConnectionFailed(format!(
                     "{}, and the web login fallback could not be reached: {}",
                     plan_refused, e
@@ -1453,8 +1453,8 @@ impl StorageProvider for InternxtProvider {
             .json(&login_body)
             .send()
             .await
+            .inspect_err(|e| internxt_log(&format!("[STEP 1 FAIL] Request error: {}", e)))
             .map_http_err(|e| {
-                internxt_log(&format!("[STEP 1 FAIL] Request error: {}", e));
                 ProviderError::ConnectionFailed(format!(
                     "Internxt login could not be reached: {}",
                     e
@@ -1476,13 +1476,16 @@ impl StorageProvider for InternxtProvider {
             ));
         }
 
-        let login_data: LoginResponse = login_resp.json().await.map_http_err(|e| {
-            internxt_log(&format!("[STEP 1 FAIL] JSON parse: {}", e));
-            ProviderError::ServerError(format!(
-                "Internxt login answered an unreadable response: {}",
-                e
-            ))
-        })?;
+        let login_data: LoginResponse = login_resp
+            .json()
+            .await
+            .inspect_err(|e| internxt_log(&format!("[STEP 1 FAIL] JSON parse: {}", e)))
+            .map_http_err(|e| {
+                ProviderError::ServerError(format!(
+                    "Internxt login answered an unreadable response: {}",
+                    e
+                ))
+            })?;
 
         tracing::debug!(target: "internxt", "[STEP 1 OK] sKey length={}, tfa_required={}", login_data.s_key.len(), login_data.tfa);
 
@@ -1518,8 +1521,8 @@ impl StorageProvider for InternxtProvider {
             .json(&access_body)
             .send()
             .await
+            .inspect_err(|e| internxt_log(&format!("[STEP 3 FAIL] Request error: {}", e)))
             .map_http_err(|e| {
-                internxt_log(&format!("[STEP 3 FAIL] Request error: {}", e));
                 ProviderError::ConnectionFailed(format!(
                     "Internxt CLI login could not be reached: {}",
                     e
@@ -1563,13 +1566,16 @@ impl StorageProvider for InternxtProvider {
             ));
         }
 
-        let access_data: AccessResponse = access_resp.json().await.map_http_err(|e| {
-            internxt_log(&format!("[STEP 3 FAIL] JSON parse: {}", e));
-            ProviderError::ServerError(format!(
-                "Internxt CLI login answered an unreadable response: {}",
-                e
-            ))
-        })?;
+        let access_data: AccessResponse = access_resp
+            .json()
+            .await
+            .inspect_err(|e| internxt_log(&format!("[STEP 3 FAIL] JSON parse: {}", e)))
+            .map_http_err(|e| {
+                ProviderError::ServerError(format!(
+                    "Internxt CLI login answered an unreadable response: {}",
+                    e
+                ))
+            })?;
 
         tracing::debug!(target: "internxt", "[STEP 3 OK] token_len={}", access_data.token.len());
 
@@ -2708,9 +2714,9 @@ impl InternxtProvider {
         &self,
         rb: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, ProviderError> {
-        let request = rb.build().map_http_err(|e| {
-            ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-        })?;
+        let request = rb
+            .build()
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &self.retry_config)
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))

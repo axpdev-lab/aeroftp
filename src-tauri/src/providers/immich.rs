@@ -1051,7 +1051,7 @@ impl StorageProvider for ImmichProvider {
         let file_part = reqwest::multipart::Part::bytes(content)
             .file_name(filename.clone())
             .mime_str(&mime_type)
-            .map_http_err(|e| ProviderError::Other(format!("MIME error: {}", e)))?;
+            .map_err(|e| ProviderError::Other(format!("MIME error: {}", e)))?;
 
         let form = reqwest::multipart::Form::new()
             .part("assetData", file_part)

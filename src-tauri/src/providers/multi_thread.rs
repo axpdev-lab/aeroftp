@@ -1616,7 +1616,7 @@ pub(crate) async fn try_http_concurrent_range_download(
             let request = rb
                 .header(RANGE, range)
                 .build()
-                .map_http_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
+                .map_err(|e| ProviderError::TransferFailed(format!("Build request: {}", e)))?;
             let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                 .await
                 .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
@@ -2318,7 +2318,7 @@ mod tests {
                     let request = client
                         .get(format!("http://{addr}/object"))
                         .build()
-                        .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                        .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
                     let response = send_with_retry(&client, request, &HttpRetryConfig::default())
                         .await
                         .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;

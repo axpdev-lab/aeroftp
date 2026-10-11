@@ -724,9 +724,7 @@ impl TwakeProvider {
                 .header(AUTHORIZATION, self.bearer()?)
                 .header(ACCEPT, "application/vnd.api+json")
                 .build()
-                .map_http_err(|e| {
-                    ProviderError::NetworkError(format!("Build request failed: {e}"))
-                })?;
+                .map_err(|e| ProviderError::NetworkError(format!("Build request failed: {e}")))?;
             let (method, path) = (request.method().clone(), request.url().path().to_string());
             let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await

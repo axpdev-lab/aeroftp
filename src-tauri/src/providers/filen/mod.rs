@@ -1341,7 +1341,7 @@ impl FilenProvider {
             )
             .json(body)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
@@ -1377,7 +1377,7 @@ impl FilenProvider {
             )
             .json(&serde_json::json!({"uuid": uuid, "to": to_folder_uuid}))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
@@ -1428,7 +1428,7 @@ impl FilenProvider {
                 )
                 .json(&serde_json::json!({"uuid": current_uuid}))
                 .build()
-                .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+                .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
             let resp = self.send_retry(request).await?;
 
             let content: DirContentResponse = resp
@@ -1515,7 +1515,7 @@ impl FilenProvider {
             )
             .json(&serde_json::json!({ "uuid": file_uuid }))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: FileVersionsResponse = self
             .send_retry(request)
             .await?
@@ -1553,7 +1553,7 @@ impl FilenProvider {
             )
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let sent = self.send_retry(request).await;
         // Whatever the answer, not only the folder's own uuid: every folder
         // cached under it went to the trash with it.
@@ -1670,10 +1670,12 @@ impl StorageProvider for FilenProvider {
                 }
                 Err(e) => {
                     filen_log(&format!("connect: /v3/user/masterKeys failed: {}", e));
-                    return Err(ProviderError::AuthenticationFailed(format!(
-                        "Cannot load Filen master keys via API key ({}); reconnect with the account password to refresh the ring",
-                        e
-                    )));
+                    return Err(crate::providers::keep_timeout(e, |e| {
+                        ProviderError::AuthenticationFailed(format!(
+                            "Cannot load Filen master keys via API key ({}); reconnect with the account password to refresh the ring",
+                            e
+                        ))
+                    }));
                 }
             }
         } else {
@@ -1810,7 +1812,7 @@ impl StorageProvider for FilenProvider {
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let account_resp: serde_json::Value = self
             .send_retry(account_request)
             .await?
@@ -1863,7 +1865,7 @@ impl StorageProvider for FilenProvider {
             )
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = self.send_retry(request).await?;
 
         let resp_text = resp
@@ -2427,7 +2429,7 @@ impl StorageProvider for FilenProvider {
                 "uploadKey": upload_key,
             }))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let done_resp: serde_json::Value = self
             .send_retry(done_request)
             .await?
@@ -2476,7 +2478,7 @@ impl StorageProvider for FilenProvider {
                 "parent": parent_uuid,
             }))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: CreateFolderResponse = self
             .send_retry(request)
             .await?
@@ -2556,7 +2558,7 @@ impl StorageProvider for FilenProvider {
             )
             .json(&serde_json::json!({"uuid": uuid}))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let sent = self.send_retry(request).await;
         // Whatever the answer, a trashed folder takes the folders cached
         // under it along: `/a/sub` still resolved to a folder in the trash.
@@ -2669,7 +2671,7 @@ impl StorageProvider for FilenProvider {
                     .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
             )
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let rest_err = match self.send_retry(request).await {
             Ok(resp) => match resp.json::<UserInfoResponse>().await {
                 Ok(body) => {
@@ -2834,7 +2836,7 @@ impl StorageProvider for FilenProvider {
             )
             .json(&link_body)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: LinkEditResponse = self
             .send_retry(request)
             .await?
@@ -2900,7 +2902,7 @@ impl StorageProvider for FilenProvider {
                 "type": "disable",
             }))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
@@ -3039,7 +3041,7 @@ impl StorageProvider for FilenProvider {
             )
             .json(&serde_json::json!({ "uuid": version_id, "current": current_uuid }))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: GenericResponse = self
             .send_retry(request)
             .await?
@@ -3374,7 +3376,7 @@ impl StorageProvider for FilenProvider {
                 "uploadKey": meta.upload_key,
             }))
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let done_resp: serde_json::Value = self
             .send_retry(done_request)
             .await?
@@ -3668,6 +3670,47 @@ mod tests {
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(ref message))
             if message == "folder access denied"),
+            "{outcome:?}"
+        );
+    }
+
+    /// A connect with an API key whose master-keys request gets no answer is a
+    /// timeout. It was "authentication failed": the branch filed every
+    /// failure of that request as one, which told the user to sign in again
+    /// with the password and kept the CLI from exiting 8.
+    #[tokio::test]
+    async fn an_api_key_connect_whose_master_keys_never_come_is_a_timeout() {
+        use axum::{routing::post, Router};
+
+        let app = Router::new()
+            .route(
+                "/v3/auth/info",
+                // Version 1 derives with one SHA-512, so the test spends no
+                // time in the KDF on its way to the request under test.
+                post(|| async { r#"{"status":true,"data":{"authVersion":1,"salt":"s"}}"# }),
+            )
+            .route(
+                "/v3/user/masterKeys",
+                post(|| async {
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                    ""
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut config = demo_cfg();
+        config.api_key = Some(SecretString::from("api-key-not-real".to_string()));
+        let mut provider = FilenProvider::new(config);
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        provider.client = reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(300))
+            .build()
+            .unwrap();
+        let outcome = provider.connect().await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
             "{outcome:?}"
         );
     }

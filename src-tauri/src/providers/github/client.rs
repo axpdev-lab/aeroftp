@@ -437,7 +437,7 @@ impl GitHubHttpClient {
         resp.bytes()
             .await
             .map(|b| b.to_vec())
-            .map_err(|e| GitHubError::NetworkError(e.to_string()))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::NetworkError(e.to_string())))
     }
 
     /// Upload raw binary data (for release assets).

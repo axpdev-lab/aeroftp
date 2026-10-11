@@ -254,6 +254,26 @@ impl<T> HttpResultExt<T> for Result<T, reqwest::Error> {
     }
 }
 
+/// The rule of [`http_send_error`] one level up: a caller that wraps an error
+/// its own request already classified (a connect that files every failure of
+/// a step as "authentication failed", a step that adds its own context)
+/// passes a [`ProviderError::Timeout`] through as it is, so the retry, the
+/// exit code and the session handling still see a timeout. Every other error
+/// goes to `otherwise`.
+///
+/// Not for a step that leaves an operation half done (the second rename of a
+/// move, the delete after a copy): there the error describes where things
+/// are now, and a timeout read as "retry" would repeat the first half.
+pub fn keep_timeout(
+    e: ProviderError,
+    otherwise: impl FnOnce(ProviderError) -> ProviderError,
+) -> ProviderError {
+    match e {
+        ProviderError::Timeout => e,
+        other => otherwise(other),
+    }
+}
+
 /// H2: Read a reqwest Response into Vec<u8> with a size cap.
 /// Checks Content-Length first; if absent, reads up to `limit` bytes via streaming.
 ///
@@ -300,7 +320,9 @@ pub async fn response_bytes_with_limit(
                     );
                     break;
                 }
-                return Err(ProviderError::TransferFailed(e.to_string()));
+                return Err(http_send_error(e, |e| {
+                    ProviderError::TransferFailed(e.to_string())
+                }));
             }
             None => break,
         }
@@ -4145,6 +4167,31 @@ pub(crate) fn mute_http_endpoint() -> String {
     url
 }
 
+/// A local HTTP endpoint that answers `200` with a `Content-Length` of 1000,
+/// sends the first 7 bytes of the body and then goes quiet, the shape of a
+/// download whose server stalls halfway. The sockets are held like the mute
+/// endpoint's, so a client sees no reset.
+#[cfg(test)]
+pub(crate) fn stalled_body_endpoint() -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a stalling listener");
+    let url = format!(
+        "http://{}/",
+        listener.local_addr().expect("listener address")
+    );
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for mut stream in listener.incoming().flatten() {
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\npartial");
+            let _ = stream.flush();
+            held.push(stream);
+        }
+    });
+    url
+}
+
 #[cfg(test)]
 mod http_send_error_tests {
     use super::*;
@@ -4181,6 +4228,38 @@ mod http_send_error_tests {
         assert!(
             matches!(mapped, ProviderError::ConnectionFailed(_)),
             "{mapped:?}"
+        );
+    }
+
+    /// A body that stops coming is the same timeout as an answer that never
+    /// came: the limited reader used to file it as `TransferFailed`.
+    #[tokio::test]
+    async fn a_body_that_stops_coming_is_a_timeout() {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .read_timeout(Duration::from_millis(300))
+            .build()
+            .expect("client");
+        let response = client
+            .get(stalled_body_endpoint())
+            .send()
+            .await
+            .expect("the head arrives");
+        let read = response_bytes_with_limit(response, 1 << 20).await;
+        assert!(matches!(read, Err(ProviderError::Timeout)), "{read:?}");
+    }
+
+    #[test]
+    fn a_wrapper_passes_a_timeout_through_and_wraps_the_rest() {
+        let wrap = |e: ProviderError| ProviderError::AuthenticationFailed(format!("step: {e}"));
+        assert!(matches!(
+            keep_timeout(ProviderError::Timeout, wrap),
+            ProviderError::Timeout
+        ));
+        let wrapped = keep_timeout(ProviderError::ConnectionFailed("refused".into()), wrap);
+        assert!(
+            matches!(&wrapped, ProviderError::AuthenticationFailed(m) if m.contains("refused")),
+            "{wrapped:?}"
         );
     }
 }
@@ -4220,7 +4299,31 @@ mod http_timeout_class_tests {
         }
     }
 
-    /// Index just past the parenthesis that closes the one at `open`.
+    /// The index of the quote that closes a character literal opening at
+    /// `quote` (`'"'`, `'('`, `'\''`, `'\u{2014}'`), or `None` for a lifetime
+    /// (`'a`, `'static`), which has no closing quote.
+    fn char_literal_end(s: &[u8], quote: usize) -> Option<usize> {
+        let first = *s.get(quote + 1)?;
+        let close = if first == b'\\' {
+            (quote + 3..s.len().min(quote + 12)).find(|&i| s[i] == b'\'')?
+        } else {
+            // One character, which in UTF-8 takes up to four bytes.
+            quote
+                + 1
+                + std::str::from_utf8(&s[quote + 1..s.len().min(quote + 5)])
+                    .or_else(|e| std::str::from_utf8(&s[quote + 1..quote + 1 + e.valid_up_to()]))
+                    .ok()?
+                    .chars()
+                    .next()?
+                    .len_utf8()
+        };
+        (s.get(close) == Some(&b'\'')).then_some(close)
+    }
+
+    /// Index just past the parenthesis that closes the one at `open`. String
+    /// and character literals are skipped, so a `"("` or a `'"'` inside the
+    /// call does not move the count. Raw strings are read as plain ones, which
+    /// is wrong only for a raw string that ends in a backslash.
     fn past_close(s: &[u8], open: usize) -> usize {
         let mut depth = 0usize;
         let mut i = open;
@@ -4228,16 +4331,21 @@ mod http_timeout_class_tests {
             match s[i] {
                 b'"' => {
                     i += 1;
-                    while s[i] != b'"' {
+                    while i < s.len() && s[i] != b'"' {
                         if s[i] == b'\\' {
                             i += 1;
                         }
                         i += 1;
                     }
                 }
+                b'\'' => {
+                    if let Some(end) = char_literal_end(s, i) {
+                        i = end;
+                    }
+                }
                 b'(' => depth += 1,
                 b')' => {
-                    depth -= 1;
+                    depth = depth.saturating_sub(1);
                     if depth == 0 {
                         return i + 1;
                     }
@@ -4250,6 +4358,13 @@ mod http_timeout_class_tests {
     }
 
     #[test]
+    fn the_scan_skips_literals_that_hold_a_parenthesis_or_a_quote() {
+        let call = br#"f(a, '(', b'"', "x)", 'static_lifetime, '\u{29}', ')') tail"#;
+        let end = past_close(call, 1);
+        assert_eq!(&call[..end], &call[..call.len() - " tail".len()]);
+    }
+
+    #[test]
     fn no_provider_maps_a_request_failure_without_classifying_a_timeout() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
         let mut files = Vec::new();
@@ -4258,7 +4373,15 @@ mod http_timeout_class_tests {
             r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
         )
         .expect("regex");
-        let then_map_err = regex::Regex::new(r"^\s*\.await\s*\.map_err\(").expect("regex");
+        // The mapper is read after the `.await` and after any calls that keep
+        // the error as it is (`.map(|b| b.to_vec())`, `.and_then(..)`, a log
+        // in `.inspect_err(..)`): `get_raw_bytes` of the GitHub client hid its
+        // `map_err` behind a `.map` and filed a body timeout as a network
+        // error. A call that changes the error ends the chain.
+        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
+        let keeps_error =
+            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
+        let then_map_err = regex::Regex::new(r"^\s*\.map_err\(").expect("regex");
         let mut plain = Vec::new();
         for file in &files {
             let relative = file
@@ -4277,6 +4400,13 @@ mod http_timeout_class_tests {
                 } else {
                     past_close(bytes, found.end() - 1)
                 };
+                let Some(wait) = awaited.find(&source[end..]) else {
+                    continue;
+                };
+                let mut end = end + wait.end();
+                while let Some(call) = keeps_error.find(&source[end..]) {
+                    end = past_close(bytes, end + call.end() - 1);
+                }
                 let Some(map) = then_map_err.find(&source[end..]) else {
                     continue;
                 };
@@ -4292,6 +4422,34 @@ mod http_timeout_class_tests {
             plain.is_empty(),
             "map_err on a request or body read that files a timeout under another variant \
              (use `map_http_err`, see `http_send_error`): {plain:?}"
+        );
+    }
+
+    /// The other side of the class: `map_http_err` only where a timeout can
+    /// happen. Building a request or a client, and naming a multipart part's
+    /// type, fail before anything is sent, so the timeout branch there would
+    /// only tell the reader a story that cannot happen.
+    #[test]
+    fn no_provider_classifies_a_timeout_where_nothing_was_sent() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let offline = regex::Regex::new(
+            r"(?:\.build\(\)|\.mime_str\((?:[^()]|\([^()]*\))*\))\s*\.map_http_err\(",
+        )
+        .expect("regex");
+        let mut misplaced = Vec::new();
+        for file in &files {
+            let source = std::fs::read_to_string(file).expect("read source");
+            for found in offline.find_iter(&source) {
+                let relative = file.strip_prefix(&root).expect("under providers");
+                let line = source[..found.start()].matches('\n').count() + 1;
+                misplaced.push(format!("{}:{line}", relative.display()));
+            }
+        }
+        assert!(
+            misplaced.is_empty(),
+            "map_http_err where nothing was sent yet (use `map_err`): {misplaced:?}"
         );
     }
 }

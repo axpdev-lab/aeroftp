@@ -1144,15 +1144,15 @@ impl StorageProvider for DrimeCloudProvider {
             .header(AUTHORIZATION, self.auth_header()?)
             .send()
             .await
-            .map_http_err(|e| {
+            .inspect_err(|e| {
                 drime_log(&format!(
                     "Connection error: {} (is_timeout={}, is_connect={})",
                     e,
                     e.is_timeout(),
                     e.is_connect()
-                ));
-                ProviderError::ConnectionFailed(e.to_string())
-            })?;
+                ))
+            })
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let body = resp.text().await.map_http_err(|e| {
@@ -1551,7 +1551,7 @@ impl StorageProvider for DrimeCloudProvider {
             let part = reqwest::multipart::Part::bytes(data)
                 .file_name(filename.to_string())
                 .mime_str("application/octet-stream")
-                .map_http_err(|e| ProviderError::ServerError(format!("MIME error: {}", e)))?;
+                .map_err(|e| ProviderError::ServerError(format!("MIME error: {}", e)))?;
             form = form.part("file", part);
 
             let resp = self

@@ -635,7 +635,7 @@ impl S3Provider {
             debug!("[S3] accepting invalid TLS certificates (self-signed / loopback)");
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
-        let client = client_builder.build().map_http_err(|e| {
+        let client = client_builder.build().map_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
 
@@ -2095,9 +2095,7 @@ impl S3Provider {
         let request = request
             .header("Authorization", authorization)
             .build()
-            .map_http_err(|e| {
-                ProviderError::NetworkError(format!("ListBuckets build failed: {e}"))
-            })?;
+            .map_err(|e| ProviderError::NetworkError(format!("ListBuckets build failed: {e}")))?;
         let response =
             super::send_with_retry(&self.client, request, &super::HttpRetryConfig::default())
                 .await
@@ -2115,7 +2113,9 @@ impl S3Provider {
         let body = super::response_bytes_with_limit(response, MAX_LIST_BUCKETS_BODY)
             .await
             .map_err(|e| {
-                ProviderError::ServerError(format!("ListBuckets response rejected: {e}"))
+                super::keep_timeout(e, |e| {
+                    ProviderError::ServerError(format!("ListBuckets response rejected: {e}"))
+                })
             })?;
         let body = String::from_utf8_lossy(&body);
         if !status.is_success() {
@@ -8379,6 +8379,24 @@ mod tests {
         assert_eq!(
             errors,
             vec![("a & b.txt".to_string(), "AccessDenied".to_string())]
+        );
+    }
+
+    /// A ListBuckets answer that stops halfway is a timeout. The limited
+    /// reader now says so, and the bucket discovery used to file whatever it
+    /// said as "ListBuckets response rejected", a server error.
+    #[tokio::test]
+    async fn a_bucket_listing_whose_body_stops_is_a_timeout() {
+        let endpoint = crate::providers::stalled_body_endpoint();
+        let mut provider = cleartext_test_provider(endpoint.trim_end_matches('/'), true, None);
+        provider.client = reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(300))
+            .build()
+            .unwrap();
+        let outcome = provider.discover_buckets().await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
+            "{outcome:?}"
         );
     }
 

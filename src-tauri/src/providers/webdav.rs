@@ -662,7 +662,7 @@ impl WebDavProvider {
             client_builder = client_builder.pool_max_idle_per_host(0);
         }
 
-        let client = client_builder.build().map_http_err(|e| {
+        let client = client_builder.build().map_err(|e| {
             ProviderError::ConnectionFailed(format!("HTTP client init failed: {e}"))
         })?;
 
@@ -3687,9 +3687,11 @@ impl StorageProvider for WebDavProvider {
                                 );
                                 break;
                             }
-                            return Err(ProviderError::TransferFailed(body_cut_short(
-                                &e, downloaded, total_size,
-                            )));
+                            return Err(super::http_send_error(e, |e| {
+                                ProviderError::TransferFailed(body_cut_short(
+                                    &e, downloaded, total_size,
+                                ))
+                            }));
                         }
                         None => break,
                     }
@@ -5523,6 +5525,29 @@ mod tests {
             .expect_err("no answer");
         let mapped = send_error(failed);
         assert!(matches!(mapped, ProviderError::Timeout), "{mapped:?}");
+    }
+
+    /// The same timeout after the answer began: a download whose body stops
+    /// halfway was `TransferFailed`, which the CLI reports with exit 1 and the
+    /// transfer engine does not treat as a stall.
+    #[tokio::test]
+    async fn a_download_whose_body_stops_is_a_timeout() {
+        let mut provider =
+            WebDavProvider::new(test_config(&crate::providers::stalled_body_endpoint()))
+                .expect("provider");
+        provider.client = impatient_client();
+        provider.connected = true;
+        provider.multi_thread_streams = 1;
+        let target = tempfile::tempdir().expect("tempdir");
+        let local = target.path().join("f.bin");
+        let outcome = provider
+            .download_with_size_hint("/f.bin", local.to_str().expect("utf-8"), None, None)
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
+            "{outcome:?}"
+        );
+        assert!(!local.exists(), "a stalled download leaves no file behind");
     }
 
     fn test_config(url: &str) -> WebDavConfig {

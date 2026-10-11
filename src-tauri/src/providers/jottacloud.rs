@@ -617,9 +617,7 @@ impl JottacloudProvider {
             .get(url)
             .header(AUTHORIZATION, self.auth_header())
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -644,9 +642,7 @@ impl JottacloudProvider {
             .header(AUTHORIZATION, self.auth_header())
             .header(CONTENT_LENGTH, "0")
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -1761,7 +1757,7 @@ impl StorageProvider for JottacloudProvider {
         )
         .file_name(filename)
         .mime_str("application/octet-stream")
-        .map_http_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
+        .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
         let form = reqwest::multipart::Form::new().part("file", file_part);
 
         let resp = self
@@ -2213,7 +2209,7 @@ impl JottacloudProvider {
             .header("JCreated", created)
             .header("JModified", modified)
             .build()
-            .map_http_err(|e| {
+            .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("Build restore request failed: {}", e))
             })?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
@@ -3029,7 +3025,7 @@ impl JottacloudProvider {
             .header(AUTHORIZATION, self.auth_header())
             .header(CONTENT_LENGTH, "0")
             .build()
-            .map_http_err(|e| {
+            .map_err(|e| {
                 ProviderError::ConnectionFailed(format!("Build purge_trash request failed: {}", e))
             })?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())

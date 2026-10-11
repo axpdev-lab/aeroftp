@@ -2073,7 +2073,9 @@ impl StorageProvider for MegaNativeProvider {
             }))
             .await
             .map_err(|e| {
-                ProviderError::ServerError(format!("MEGA `l` (export) command failed: {e}"))
+                crate::providers::keep_timeout(e, |e| {
+                    ProviderError::ServerError(format!("MEGA `l` (export) command failed: {e}"))
+                })
             })?;
 
         if public_handle.is_empty() {

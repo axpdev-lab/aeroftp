@@ -422,7 +422,7 @@ impl FilenProvider {
             .notes_post(endpoint)
             .json(body)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = self.send_retry(request).await?;
         resp.json::<T>()
             .await
@@ -437,7 +437,7 @@ impl FilenProvider {
         let request = self
             .notes_get(endpoint)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = self.send_retry(request).await?;
         resp.json::<T>()
             .await

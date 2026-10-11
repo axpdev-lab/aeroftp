@@ -491,9 +491,7 @@ impl KDriveProvider {
             .get(url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -513,9 +511,7 @@ impl KDriveProvider {
             .header(CONTENT_TYPE, content_type)
             .body(body)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
@@ -528,9 +524,7 @@ impl KDriveProvider {
             .delete(url)
             .header(AUTHORIZATION, self.auth_header()?)
             .build()
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Build request failed: {}", e))
-            })?;
+            .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))

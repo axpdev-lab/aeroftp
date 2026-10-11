@@ -1272,7 +1272,7 @@ impl StorageProvider for CloudinaryProvider {
         let file_part = multipart::Part::stream_with_length(body, total)
             .file_name(file_name.clone())
             .mime_str(mime.as_ref())
-            .map_http_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
 
         // Upload payload includes auth via the standard signed-or-basic flow.
         // We use Basic auth with key:secret (same path as admin endpoints), which
@@ -1797,7 +1797,7 @@ impl StorageProvider for CloudinaryProvider {
         let file_part = multipart::Part::stream_with_length(body.into_reqwest_body(), part_len)
             .file_name(meta.file_name.clone())
             .mime_str(mime.as_ref())
-            .map_http_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+            .map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
         let mut form = multipart::Form::new()
             .part("file", file_part)
             .text("use_filename", "true")

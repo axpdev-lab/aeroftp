@@ -298,7 +298,7 @@ impl FourSharedProvider {
             .get(url)
             .header("Authorization", &auth)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -360,7 +360,7 @@ impl FourSharedProvider {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -376,7 +376,7 @@ impl FourSharedProvider {
             .delete(url)
             .header("Authorization", &auth)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -411,7 +411,7 @@ impl FourSharedProvider {
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -481,7 +481,7 @@ impl FourSharedProvider {
             .put(&full_url)
             .header("Authorization", &auth)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
@@ -1852,7 +1852,7 @@ impl StorageProvider for FourSharedProvider {
             .get(&url)
             .header("Authorization", &auth)
             .build()
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         let resp = send_with_retry(&self.client, request, &Self::retry_config())
             .await
