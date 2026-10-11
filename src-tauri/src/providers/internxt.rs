@@ -18,6 +18,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use aes::cipher::{KeyIvInit, StreamCipher};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -1068,7 +1069,7 @@ impl InternxtProvider {
             )));
         }
 
-        let raw = resp.text().await.map_err(|e| {
+        let raw = resp.text().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Failed to read {} response: {}", kind, e))
         })?;
         tracing::debug!(target: "internxt", "[LIST {}] Response ({} bytes): {}", kind, raw.len(), &raw[..raw.floor_char_boundary(200)]);
@@ -1306,8 +1307,8 @@ impl InternxtProvider {
             .json(&access_body)
             .send()
             .await
-            .map_err(|e| {
-                internxt_log(&format!("[WEB AUTH FAIL] Request error: {}", e));
+            .inspect_err(|e| internxt_log(&format!("[WEB AUTH FAIL] Request error: {}", e)))
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "{}, and the web login fallback could not be reached: {}",
                     plan_refused, e
@@ -1332,7 +1333,7 @@ impl InternxtProvider {
             ));
         }
 
-        let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
+        let access_data: AccessResponse = access_resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!(
                 "{}, and the web login fallback answered an unreadable response: {}",
                 plan_refused, e
@@ -1452,8 +1453,8 @@ impl StorageProvider for InternxtProvider {
             .json(&login_body)
             .send()
             .await
-            .map_err(|e| {
-                internxt_log(&format!("[STEP 1 FAIL] Request error: {}", e));
+            .inspect_err(|e| internxt_log(&format!("[STEP 1 FAIL] Request error: {}", e)))
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "Internxt login could not be reached: {}",
                     e
@@ -1475,13 +1476,16 @@ impl StorageProvider for InternxtProvider {
             ));
         }
 
-        let login_data: LoginResponse = login_resp.json().await.map_err(|e| {
-            internxt_log(&format!("[STEP 1 FAIL] JSON parse: {}", e));
-            ProviderError::ServerError(format!(
-                "Internxt login answered an unreadable response: {}",
-                e
-            ))
-        })?;
+        let login_data: LoginResponse = login_resp
+            .json()
+            .await
+            .inspect_err(|e| internxt_log(&format!("[STEP 1 FAIL] JSON parse: {}", e)))
+            .map_http_err(|e| {
+                ProviderError::ServerError(format!(
+                    "Internxt login answered an unreadable response: {}",
+                    e
+                ))
+            })?;
 
         tracing::debug!(target: "internxt", "[STEP 1 OK] sKey length={}, tfa_required={}", login_data.s_key.len(), login_data.tfa);
 
@@ -1517,8 +1521,8 @@ impl StorageProvider for InternxtProvider {
             .json(&access_body)
             .send()
             .await
-            .map_err(|e| {
-                internxt_log(&format!("[STEP 3 FAIL] Request error: {}", e));
+            .inspect_err(|e| internxt_log(&format!("[STEP 3 FAIL] Request error: {}", e)))
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "Internxt CLI login could not be reached: {}",
                     e
@@ -1562,13 +1566,16 @@ impl StorageProvider for InternxtProvider {
             ));
         }
 
-        let access_data: AccessResponse = access_resp.json().await.map_err(|e| {
-            internxt_log(&format!("[STEP 3 FAIL] JSON parse: {}", e));
-            ProviderError::ServerError(format!(
-                "Internxt CLI login answered an unreadable response: {}",
-                e
-            ))
-        })?;
+        let access_data: AccessResponse = access_resp
+            .json()
+            .await
+            .inspect_err(|e| internxt_log(&format!("[STEP 3 FAIL] JSON parse: {}", e)))
+            .map_http_err(|e| {
+                ProviderError::ServerError(format!(
+                    "Internxt CLI login answered an unreadable response: {}",
+                    e
+                ))
+            })?;
 
         tracing::debug!(target: "internxt", "[STEP 3 OK] token_len={}", access_data.token.len());
 
@@ -1849,10 +1856,9 @@ impl StorageProvider for InternxtProvider {
             )));
         }
 
-        let bucket_info: BucketFileInfo = info_resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to parse file info: {}", e)))?;
+        let bucket_info: BucketFileInfo = info_resp.json().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to parse file info: {}", e))
+        })?;
 
         // Handle empty files: atomic write for consistency
         if bucket_info.size == 0 {
@@ -1890,10 +1896,9 @@ impl StorageProvider for InternxtProvider {
         }
 
         let total_size = dl_resp.content_length().unwrap_or(bucket_info.size as u64);
-        let encrypted_data = dl_resp
-            .bytes()
-            .await
-            .map_err(|e| ProviderError::Other(format!("Failed to read download stream: {}", e)))?;
+        let encrypted_data = dl_resp.bytes().await.map_http_err(|e| {
+            ProviderError::Other(format!("Failed to read download stream: {}", e))
+        })?;
 
         if let Some(ref progress) = on_progress {
             progress(encrypted_data.len() as u64, total_size);
@@ -2042,7 +2047,11 @@ impl StorageProvider for InternxtProvider {
 
         let mut start_data: Option<StartUploadResp> = None;
         let mut last_error = String::new();
+        // Whether the last attempt got no answer: then the upload failed on a
+        // timeout, whatever the earlier attempts said.
+        let mut last_timed_out = false;
         for attempt in 0..3 {
+            last_timed_out = false;
             if attempt > 0 {
                 let delay = std::time::Duration::from_millis(1000 * (1 << attempt));
                 internxt_log(&format!(
@@ -2064,6 +2073,7 @@ impl StorageProvider for InternxtProvider {
             let resp = match resp {
                 Ok(r) => r,
                 Err(e) => {
+                    last_timed_out = matches!(e, ProviderError::Timeout);
                     last_error = format!("Request failed: {}", e);
                     internxt_log(&format!(
                         "[UPLOAD] Attempt {} failed: {}",
@@ -2105,7 +2115,7 @@ impl StorageProvider for InternxtProvider {
                 )));
             }
 
-            let raw = resp.text().await.map_err(|e| {
+            let raw = resp.text().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Failed to read start upload response: {}", e))
             })?;
             tracing::debug!(target: "internxt", "[UPLOAD] Start response ({} bytes): {}", raw.len(), &raw[..raw.floor_char_boundary(200)]);
@@ -2127,12 +2137,8 @@ impl StorageProvider for InternxtProvider {
             }
         }
 
-        let start_data = start_data.ok_or_else(|| {
-            ProviderError::ServerError(format!(
-                "Start upload failed after 3 attempts: {}",
-                last_error
-            ))
-        })?;
+        let start_data =
+            start_data.ok_or_else(|| start_upload_failure(last_timed_out, &last_error))?;
 
         if start_data.uploads.is_empty() {
             return Err(ProviderError::ServerError(
@@ -2166,7 +2172,7 @@ impl StorageProvider for InternxtProvider {
             &self.retry_config,
         )
         .await
-        .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))?;
+        .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))?;
 
         if !transfer_resp.status().is_success() {
             let status = transfer_resp.status();
@@ -2210,7 +2216,7 @@ impl StorageProvider for InternxtProvider {
             )));
         }
 
-        let finish_data: FinishUploadResp = finish_resp.json().await.map_err(|e| {
+        let finish_data: FinishUploadResp = finish_resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Failed to parse finish upload: {}", e))
         })?;
 
@@ -2274,7 +2280,7 @@ impl StorageProvider for InternxtProvider {
             )));
         }
 
-        let folder_data: CreateFolderResponse = resp.json().await.map_err(|e| {
+        let folder_data: CreateFolderResponse = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Failed to parse create folder response: {}", e))
         })?;
 
@@ -2697,7 +2703,7 @@ impl InternxtProvider {
             )));
         }
 
-        resp.json::<CreateMetaResponse>().await.map_err(|e| {
+        resp.json::<CreateMetaResponse>().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Failed to parse create file meta response: {}", e))
         })
     }
@@ -2714,7 +2720,7 @@ impl InternxtProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     async fn send_auth_checked(
@@ -2869,7 +2875,7 @@ impl InternxtProvider {
                 )));
             }
 
-            let raw = resp.text().await.map_err(|e| {
+            let raw = resp.text().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Failed to read trash response: {}", e))
             })?;
             let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
@@ -2987,9 +2993,38 @@ fn rename_refused(what: &str, status: reqwest::StatusCode, body: &str, to: &str)
     ))
 }
 
+/// The error of an upload whose start request failed every attempt. A last
+/// attempt that got no answer is a timeout (the exit code and the transfer
+/// engine's retry read it as one); anything else is the server's failure,
+/// with the last reason.
+fn start_upload_failure(last_timed_out: bool, last_error: &str) -> ProviderError {
+    if last_timed_out {
+        ProviderError::Timeout
+    } else {
+        ProviderError::ServerError(format!(
+            "Start upload failed after 3 attempts: {}",
+            last_error
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_start_upload_whose_last_attempt_timed_out_is_a_timeout() {
+        assert!(matches!(
+            start_upload_failure(true, "Request failed: Timeout"),
+            ProviderError::Timeout
+        ));
+        match start_upload_failure(false, "HTTP 500") {
+            ProviderError::ServerError(message) => {
+                assert_eq!(message, "Start upload failed after 3 attempts: HTTP 500")
+            }
+            other => panic!("expected ServerError, got {other:?}"),
+        }
+    }
 
     /// Internxt refuses a taken name and has no overwrite on rename or move, so
     /// there is no one-step replace. The answer is no, so the callers that need

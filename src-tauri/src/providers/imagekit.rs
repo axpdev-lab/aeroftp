@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use reqwest::{multipart, StatusCode};
@@ -325,7 +326,7 @@ impl ImageKitProvider {
             .auth(self.client.get(url))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -333,7 +334,7 @@ impl ImageKitProvider {
 
         resp.json::<Vec<IkFile>>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     async fn find_entry(&self, path: &str) -> Result<IkFile, ProviderError> {
@@ -383,7 +384,7 @@ impl ImageKitProvider {
             )
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if resp.status().is_success() {
             Ok(())
@@ -401,7 +402,7 @@ impl ImageKitProvider {
             })
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if resp.status().is_success() {
             Ok(())
@@ -422,7 +423,7 @@ impl ImageKitProvider {
             })
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -449,7 +450,7 @@ impl ImageKitProvider {
             })
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if resp.status().is_success() {
             Ok(())
@@ -479,7 +480,7 @@ impl ImageKitProvider {
             })
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         if resp.status().is_success() {
             Ok(())
         } else {
@@ -663,14 +664,14 @@ impl ImageKitProvider {
             })
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
         }
         let job = resp
             .json::<IkBulkJob>()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("bulk job response: {e}")))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("bulk job response: {e}")))?;
         if job.job_id.is_empty() {
             return Err(ProviderError::ParseError(
                 "ImageKit queued the folder rename without a jobId, so its outcome cannot be \
@@ -759,7 +760,7 @@ impl ImageKitProvider {
             })
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -770,7 +771,7 @@ impl ImageKitProvider {
         let job = resp
             .json::<IkBulkJob>()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("bulk job response: {e}")))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("bulk job response: {e}")))?;
         if job.job_id.is_empty() {
             return Err(ProviderError::ParseError(
                 "ImageKit queued the folder job without a jobId, so its outcome cannot be checked"
@@ -809,7 +810,11 @@ impl ImageKitProvider {
                 .await
             {
                 Ok(resp) => resp,
-                Err(e) => return unknown(ProviderError::NetworkError(e.to_string())),
+                Err(e) => {
+                    return unknown(crate::providers::http_send_error(e, |e| {
+                        ProviderError::NetworkError(e.to_string())
+                    }))
+                }
             };
             let status = resp.status();
             if !status.is_success() {
@@ -834,7 +839,9 @@ impl ImageKitProvider {
             let job = match resp.json::<IkBulkJobStatus>().await {
                 Ok(job) => job,
                 Err(e) => {
-                    return unknown(ProviderError::ParseError(format!("bulk job status: {e}")))
+                    return unknown(crate::providers::http_send_error(e, |e| {
+                        ProviderError::ParseError(format!("bulk job status: {e}"))
+                    }))
                 }
             };
             match job.status.as_str() {
@@ -889,7 +896,7 @@ impl StorageProvider for ImageKitProvider {
             )
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -969,7 +976,7 @@ impl StorageProvider for ImageKitProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
                 "Download failed: HTTP {}",
@@ -987,7 +994,7 @@ impl StorageProvider for ImageKitProvider {
             crate::transfer_dag::governor::TransferDirection::Download,
         ));
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1022,7 +1029,7 @@ impl StorageProvider for ImageKitProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
                 "Download failed: HTTP {}",
@@ -1071,7 +1078,7 @@ impl StorageProvider for ImageKitProvider {
             .header("Range", format!("bytes={}-{}", offset, end))
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         let status = resp.status();
         if !status.is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -1169,7 +1176,7 @@ impl StorageProvider for ImageKitProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1178,7 +1185,7 @@ impl StorageProvider for ImageKitProvider {
         let uploaded = resp
             .json::<IkUploadResponse>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let _ = (
             uploaded.file_id,
             uploaded.name,
@@ -1210,7 +1217,7 @@ impl StorageProvider for ImageKitProvider {
             })
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
         if resp.status().is_success() {
             Ok(())

@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use reqwest::header::{
@@ -745,16 +746,15 @@ impl B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("authorize build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("authorize send: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("authorize send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
             return Err(map_b2_status(status, &body, "b2_authorize_account"));
         }
-        let body_bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("authorize read body: {}", e)))?;
+        let body_bytes = resp.bytes().await.map_http_err(|e| {
+            ProviderError::ConnectionFailed(format!("authorize read body: {}", e))
+        })?;
         let parsed: AuthorizeResponse = serde_json::from_slice(&body_bytes).map_err(|e| {
             let preview = String::from_utf8_lossy(&body_bytes);
             let masked = mask_authorize_secrets(&preview);
@@ -792,7 +792,9 @@ impl B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("list_buckets build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("list_buckets send: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("list_buckets send: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -801,7 +803,7 @@ impl B2Provider {
         let parsed: ListBucketsResponse = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("list_buckets parse: {}", e)))?;
+            .map_http_err(|e| ProviderError::ServerError(format!("list_buckets parse: {}", e)))?;
         Ok(parsed.buckets)
     }
 
@@ -1032,7 +1034,9 @@ impl B2Provider {
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("list_file_names send: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("list_file_names send: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1040,7 +1044,7 @@ impl B2Provider {
         }
         resp.json::<ListFileNamesResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("list_file_names parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("list_file_names parse: {}", e)))
     }
 
     /// Re-authorize on a token failure once, then retry the caller.
@@ -1069,7 +1073,9 @@ impl B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("get_upload_url build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("get_upload_url send: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("get_upload_url send: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1077,7 +1083,7 @@ impl B2Provider {
         }
         resp.json::<GetUploadUrlResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("get_upload_url parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("get_upload_url parse: {}", e)))
     }
 
     async fn start_large_file(
@@ -1098,7 +1104,9 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("start_large_file: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("start_large_file: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1106,7 +1114,7 @@ impl B2Provider {
         }
         resp.json::<StartLargeFileResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("start_large_file parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("start_large_file parse: {}", e)))
     }
 
     async fn get_upload_part_url(
@@ -1123,7 +1131,9 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("get_upload_part_url: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("get_upload_part_url: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1131,7 +1141,9 @@ impl B2Provider {
         }
         resp.json::<GetUploadPartUrlResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("get_upload_part_url parse: {}", e)))
+            .map_http_err(|e| {
+                ProviderError::ServerError(format!("get_upload_part_url parse: {}", e))
+            })
     }
 
     /// Issue a single `b2_upload_part` against an already-acquired part URL.
@@ -1165,7 +1177,7 @@ impl B2Provider {
             ))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("upload_part: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("upload_part: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1173,7 +1185,7 @@ impl B2Provider {
         }
         resp.json::<UploadPartResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("upload_part parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("upload_part parse: {}", e)))
     }
 
     async fn finish_large_file(
@@ -1194,7 +1206,9 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("finish_large_file: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("finish_large_file: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1202,7 +1216,7 @@ impl B2Provider {
         }
         resp.json::<UploadFileResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("finish_large_file parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("finish_large_file parse: {}", e)))
     }
 
     /// Large-file upload converged on the shared concurrent part-upload
@@ -1322,7 +1336,7 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("copy_file: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("copy_file: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1330,7 +1344,7 @@ impl B2Provider {
         }
         resp.json::<UploadFileResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("copy_file parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("copy_file parse: {}", e)))
     }
 
     /// `b2_copy_part`: server-side copy of a byte range from a source file
@@ -1358,7 +1372,7 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("copy_part: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("copy_part: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -1366,7 +1380,7 @@ impl B2Provider {
         }
         resp.json::<CopyPartResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("copy_part parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("copy_part parse: {}", e)))
     }
 
     /// Server-side rename for files larger than 5 GB via the chunked
@@ -1835,7 +1849,7 @@ impl B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("download build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("download send: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("download send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1852,7 +1866,8 @@ impl B2Provider {
         let mut stream = resp.bytes_stream();
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
-            let bytes = chunk.map_err(|e| ProviderError::Other(format!("read chunk: {}", e)))?;
+            let bytes =
+                chunk.map_http_err(|e| ProviderError::Other(format!("read chunk: {}", e)))?;
             crate::transfer_dag::throttle::charge(
                 crate::transfer_dag::governor::TransferDirection::Download,
                 bytes.len() as u64,
@@ -2118,7 +2133,9 @@ impl B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("download_bytes build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("download_bytes send: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("download_bytes send: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -2127,7 +2144,7 @@ impl B2Provider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::Other(format!("read body: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("read body: {}", e)))?;
         crate::transfer_dag::throttle::charge(
             crate::transfer_dag::governor::TransferDirection::Download,
             bytes.len() as u64,
@@ -2151,7 +2168,7 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("hide_file send: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("hide_file send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2180,7 +2197,9 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("delete_file_version: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("delete_file_version: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2268,7 +2287,7 @@ impl B2Provider {
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("list_file_versions send: {}", e))
             })?;
         let status = resp.status();
@@ -2278,7 +2297,9 @@ impl B2Provider {
         }
         resp.json::<ListFileVersionsResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("list_file_versions parse: {}", e)))
+            .map_http_err(|e| {
+                ProviderError::ServerError(format!("list_file_versions parse: {}", e))
+            })
     }
 
     /// Streaming download of a specific version by `fileId` via
@@ -2303,7 +2324,9 @@ impl B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("download_by_id build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("download_by_id send: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("download_by_id send: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -2320,7 +2343,8 @@ impl B2Provider {
         let mut stream = resp.bytes_stream();
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
-            let bytes = chunk.map_err(|e| ProviderError::Other(format!("read chunk: {}", e)))?;
+            let bytes =
+                chunk.map_http_err(|e| ProviderError::Other(format!("read chunk: {}", e)))?;
             crate::transfer_dag::throttle::charge(
                 crate::transfer_dag::governor::TransferDirection::Download,
                 bytes.len() as u64,
@@ -2366,7 +2390,7 @@ impl B2Provider {
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("get_download_authorization send: {}", e))
             })?;
         let status = resp.status();
@@ -2380,7 +2404,7 @@ impl B2Provider {
         }
         resp.json::<GetDownloadAuthorizationResponse>()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ServerError(format!("get_download_authorization parse: {}", e))
             })
     }
@@ -2412,7 +2436,9 @@ impl B2Provider {
             })?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("list_unfinished send: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("list_unfinished send: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2424,7 +2450,7 @@ impl B2Provider {
         }
         resp.json::<ListUnfinishedLargeFilesResponse>()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("list_unfinished parse: {}", e)))
+            .map_http_err(|e| ProviderError::ServerError(format!("list_unfinished parse: {}", e)))
     }
 
     /// `b2_cancel_large_file` releases parts already uploaded for an
@@ -2440,7 +2466,9 @@ impl B2Provider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("cancel_large_file: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("cancel_large_file: {}", e))
+            })?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -3126,7 +3154,7 @@ impl StorageProvider for B2Provider {
             .body(progress.bytes_body(bytes::Bytes::from(bytes)))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("upload send: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("upload send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -3140,7 +3168,7 @@ impl StorageProvider for B2Provider {
         let parsed: UploadFileResponse = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("upload parse: {}", e)))?;
+            .map_http_err(|e| ProviderError::ServerError(format!("upload parse: {}", e)))?;
         progress.complete();
         b2_log(&format!("uploaded: {}", parsed.file_name));
         Ok(())
@@ -3186,7 +3214,7 @@ impl StorageProvider for B2Provider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("mkdir send: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("mkdir send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -3952,7 +3980,7 @@ impl StorageProvider for B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("read_range build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("read_range send: {}", e)))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("read_range send: {}", e)))?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -3974,7 +4002,7 @@ impl StorageProvider for B2Provider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::Other(format!("read_range body: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("read_range body: {}", e)))?;
         match super::multi_thread::ranged_answer(
             status,
             answered.as_deref(),

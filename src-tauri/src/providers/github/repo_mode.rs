@@ -8,6 +8,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
 use futures_util::StreamExt;
@@ -466,7 +467,7 @@ impl GitHubProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| {
+            let chunk = chunk_result.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {}", e))
             })?;
 

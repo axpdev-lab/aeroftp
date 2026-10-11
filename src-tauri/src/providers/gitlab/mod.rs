@@ -17,6 +17,7 @@ mod model;
 
 use self::client::GitLabHttpClient;
 use self::model::*;
+use crate::providers::HttpResultExt;
 
 use super::{ProviderConfig, ProviderError, ProviderType, RemoteEntry, StorageProvider};
 use async_trait::async_trait;
@@ -469,7 +470,7 @@ impl GitLabProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
         tokio::fs::write(local_path, &bytes)
             .await
             .map_err(|e| ProviderError::TransferFailed(format!("Failed to write file: {}", e)))?;
@@ -831,7 +832,7 @@ impl StorageProvider for GitLabProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Download failed: {}", e)))?;
 
         if let Some(ref progress) = on_progress {
             progress(total_size, total_size);

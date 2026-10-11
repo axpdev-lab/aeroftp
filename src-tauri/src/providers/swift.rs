@@ -24,6 +24,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use log::{debug, info, warn};
 use reqwest::{Client, Method, StatusCode};
@@ -430,7 +431,9 @@ impl SwiftProvider {
             .header("X-Auth-Key", self.config.password.expose_secret())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Auth request failed: {e}")))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("Auth request failed: {e}"))
+            })?;
 
         match resp.status() {
             StatusCode::OK | StatusCode::NO_CONTENT => {
@@ -534,7 +537,7 @@ impl SwiftProvider {
             .json(body)
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Keystone v2 request failed: {e}"))
             })
     }
@@ -621,7 +624,7 @@ impl SwiftProvider {
 
         match resp.status() {
             StatusCode::OK => {
-                let json: serde_json::Value = resp.json().await.map_err(|e| {
+                let json: serde_json::Value = resp.json().await.map_http_err(|e| {
                     ProviderError::AuthenticationFailed(format!("Invalid Keystone response: {e}"))
                 })?;
 
@@ -779,7 +782,7 @@ impl SwiftProvider {
         let text = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("Read body failed: {e}")))?;
+            .map_http_err(|e| ProviderError::ServerError(format!("Read body failed: {e}")))?;
         debug!(
             "Container list (HTTP {}): {}",
             status,
@@ -889,7 +892,7 @@ impl SwiftProvider {
             // the JSON body (`Errors` array). Accept is already application/json;
             // parse it so we do not report a full success when objects remain.
             // Spec: https://docs.openstack.org/swift/latest/middleware.html#bulk-delete
-            let body_bytes = resp.bytes().await.map_err(|e| {
+            let body_bytes = resp.bytes().await.map_http_err(|e| {
                 ProviderError::ServerError(format!("Bulk delete body read failed: {e}"))
             })?;
             if !body_bytes.is_empty() {
@@ -968,7 +971,7 @@ impl SwiftProvider {
         let entries: Vec<ObjectEntry> = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(format!("Listing {name}/: {e}")))?;
+            .map_http_err(|e| ProviderError::ParseError(format!("Listing {name}/: {e}")))?;
         Ok(!entries.is_empty())
     }
 
@@ -1111,7 +1114,7 @@ impl SwiftProvider {
             &HttpRetryConfig::default(),
         )
         .await
-        .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {e}")))?;
+        .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {e}")))?;
 
         if resp.status() == StatusCode::UNAUTHORIZED {
             // Re-auth and retry once
@@ -1124,7 +1127,7 @@ impl SwiftProvider {
                 &HttpRetryConfig::default(),
             )
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Retry failed: {e}")))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Retry failed: {e}")))
         } else {
             Ok(resp)
         }
@@ -1340,10 +1343,9 @@ impl StorageProvider for SwiftProvider {
                 )));
             }
 
-            let entries: Vec<ObjectEntry> = resp
-                .json()
-                .await
-                .map_err(|e| ProviderError::ServerError(format!("List JSON parse failed: {e}")))?;
+            let entries: Vec<ObjectEntry> = resp.json().await.map_http_err(|e| {
+                ProviderError::ServerError(format!("List JSON parse failed: {e}"))
+            })?;
 
             if entries.is_empty() {
                 break;
@@ -1479,7 +1481,7 @@ impl StorageProvider for SwiftProvider {
         let total = resp.content_length().unwrap_or(0);
 
         // Read full response body
-        let bytes = resp.bytes().await.map_err(|e| {
+        let bytes = resp.bytes().await.map_http_err(|e| {
             ProviderError::TransferFailed(format!("Download body read failed: {e}"))
         })?;
         let bytes_written = bytes.len() as u64;
@@ -1545,7 +1547,7 @@ impl StorageProvider for SwiftProvider {
         resp.bytes()
             .await
             .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {e}")))
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {e}")))
     }
 
     /// PUT {storage_url}/{container}/{object}
@@ -1691,7 +1693,7 @@ impl StorageProvider for SwiftProvider {
         let body = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::ServerError(format!("List for rmdir failed: {e}")))?;
+            .map_http_err(|e| ProviderError::ServerError(format!("List for rmdir failed: {e}")))?;
         let names: Vec<String> = if status == StatusCode::NO_CONTENT
             || body.iter().all(u8::is_ascii_whitespace)
         {
@@ -1766,10 +1768,9 @@ impl StorageProvider for SwiftProvider {
                 )));
             }
             // An empty listing may be a 204 with no body instead of `[]`.
-            let body = resp
-                .bytes()
-                .await
-                .map_err(|e| ProviderError::ServerError(format!("List for delete failed: {e}")))?;
+            let body = resp.bytes().await.map_http_err(|e| {
+                ProviderError::ServerError(format!("List for delete failed: {e}"))
+            })?;
             if status == StatusCode::NO_CONTENT || body.iter().all(u8::is_ascii_whitespace) {
                 break;
             }

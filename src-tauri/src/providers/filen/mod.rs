@@ -10,6 +10,7 @@
 pub mod notes;
 mod statfs;
 
+use crate::providers::HttpResultExt;
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use async_trait::async_trait;
@@ -642,7 +643,7 @@ impl FilenProvider {
     ) -> Result<reqwest::Response, ProviderError> {
         send_with_retry(&self.client, request, &self.retry_config)
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Derive password hash and master key for authentication.
@@ -930,10 +931,10 @@ impl FilenProvider {
             .json(&serde_json::json!({ "masterKeys": encrypted }))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if resp["status"].as_bool() == Some(false) {
             let msg = resp["message"]
                 .as_str()
@@ -1346,7 +1347,7 @@ impl FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if resp.status {
             Ok(())
         } else {
@@ -1382,7 +1383,7 @@ impl FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if !resp.status {
             let msg = resp.message.unwrap_or_else(|| "Move failed".to_string());
             filen_log(&format!("move {kind} FAILED: {msg}"));
@@ -1433,7 +1434,7 @@ impl FilenProvider {
             let content: DirContentResponse = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !content.status {
                 return Err(ProviderError::NotFound(path.to_string()));
@@ -1520,7 +1521,7 @@ impl FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if !resp.status {
             return Err(ProviderError::ServerError(
                 resp.message
@@ -1560,7 +1561,7 @@ impl FilenProvider {
         let resp: GenericResponse = sent?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -1604,10 +1605,10 @@ impl StorageProvider for FilenProvider {
             .json(&serde_json::json!({"email": self.config.email}))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !auth_info_resp.status {
             return Err(ProviderError::AuthenticationFailed(
@@ -1669,10 +1670,12 @@ impl StorageProvider for FilenProvider {
                 }
                 Err(e) => {
                     filen_log(&format!("connect: /v3/user/masterKeys failed: {}", e));
-                    return Err(ProviderError::AuthenticationFailed(format!(
-                        "Cannot load Filen master keys via API key ({}); reconnect with the account password to refresh the ring",
-                        e
-                    )));
+                    return Err(crate::providers::keep_timeout(e, |e| {
+                        ProviderError::AuthenticationFailed(format!(
+                            "Cannot load Filen master keys via API key ({}); reconnect with the account password to refresh the ring",
+                            e
+                        ))
+                    }));
                 }
             }
         } else {
@@ -1706,10 +1709,10 @@ impl StorageProvider for FilenProvider {
                 .json(&login_body)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !login_resp.status {
                 return Err(ProviderError::AuthenticationFailed(
@@ -1776,10 +1779,10 @@ impl StorageProvider for FilenProvider {
             )
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         self.root_uuid = user_resp["data"]["uuid"].as_str().unwrap_or("").to_string();
 
@@ -1815,7 +1818,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if let Some(uuid) = account_resp["data"]["uuid"].as_str() {
             self.user_uuid = uuid.to_string();
         }
@@ -1868,7 +1871,7 @@ impl StorageProvider for FilenProvider {
         let resp_text = resp
             .text()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         // F-LOG-01: Log raw response at debug level, truncated to 200 chars max
         let preview_len = resp_text.floor_char_boundary(200);
@@ -2132,10 +2135,12 @@ impl StorageProvider for FilenProvider {
             {
                 Ok(buf) => buf,
                 Err(e) => {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "Download chunk {}/{} failed after {} retries: {}",
-                        chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
-                    )))
+                    return Err(e.into_provider_error(|e| {
+                        format!(
+                            "Download chunk {}/{} failed after {} retries: {}",
+                            chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
+                        )
+                    }))
                 }
             };
 
@@ -2220,10 +2225,12 @@ impl StorageProvider for FilenProvider {
             {
                 Ok(buf) => buf,
                 Err(e) => {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "Download chunk {}/{} failed after {} retries: {}",
-                        chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
-                    )))
+                    return Err(e.into_provider_error(|e| {
+                        format!(
+                            "Download chunk {}/{} failed after {} retries: {}",
+                            chunk_idx, chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e,
+                        )
+                    }))
                 }
             };
 
@@ -2432,7 +2439,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if done_resp["status"].as_bool() != Some(true) {
             return Err(ProviderError::TransferFailed(
@@ -2481,7 +2488,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             let msg = resp.message.unwrap_or_else(|| "mkdir failed".to_string());
@@ -2565,7 +2572,7 @@ impl StorageProvider for FilenProvider {
         let resp: GenericResponse = sent?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -2682,7 +2689,9 @@ impl StorageProvider for FilenProvider {
                     }
                     ProviderError::Other("No user info data".to_string())
                 }
-                Err(e) => ProviderError::Other(format!("user info parse: {e}")),
+                Err(e) => crate::providers::http_send_error(e, |e| {
+                    ProviderError::Other(format!("user info parse: {e}"))
+                }),
             },
             Err(e) => e,
         };
@@ -2837,7 +2846,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -2903,7 +2912,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if !resp.status {
             return Err(ProviderError::Other(
@@ -3006,10 +3015,12 @@ impl StorageProvider for FilenProvider {
             )
             .await
             .map_err(|e| {
-                ProviderError::TransferFailed(format!(
-                    "Download version chunk {}/{} failed after {} retries: {}",
-                    chunk_idx, version.chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e
-                ))
+                e.into_provider_error(|e| {
+                    format!(
+                        "Download version chunk {}/{} failed after {} retries: {}",
+                        chunk_idx, version.chunks, FILEN_DOWNLOAD_CHUNK_RETRIES, e
+                    )
+                })
             })?;
             let decrypted = Self::decrypt_file_content(&encrypted, &file_key)?;
             atomic
@@ -3042,7 +3053,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         if !resp.status {
             return Err(ProviderError::ServerError(
                 resp.message
@@ -3377,7 +3388,7 @@ impl StorageProvider for FilenProvider {
             .await?
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         if done_resp["status"].as_bool() != Some(true) {
             return Err(ProviderError::TransferFailed(
@@ -3505,7 +3516,7 @@ async fn upload_filen_chunk(
         .body(encrypted)
         .send()
         .await
-        .map_err(|e| ProviderError::NetworkError(sanitize_filen_transport_error(&e)))?;
+        .map_http_err(|e| ProviderError::NetworkError(sanitize_filen_transport_error(&e)))?;
 
     let status = resp.status();
     let retry_header = resp
@@ -3516,7 +3527,7 @@ async fn upload_filen_chunk(
     let resp_text = resp
         .text()
         .await
-        .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+        .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
     if !status.is_success() {
         // Body preview is application JSON; still scrub in case a gateway echoes
@@ -3566,8 +3577,8 @@ async fn download_filen_chunk(
     url: &str,
     chunk_idx: u32,
     max_retries: u32,
-) -> Result<Vec<u8>, String> {
-    let mut last_err: Option<String> = None;
+) -> Result<Vec<u8>, ChunkError> {
+    let mut last_err: Option<ChunkError> = None;
     for attempt in 0..=max_retries {
         if attempt > 0 {
             // Exponential backoff: 250 ms * 2^(attempt-1), capped at 4 s.
@@ -3582,7 +3593,7 @@ async fn download_filen_chunk(
         let request = match client.get(url).build() {
             Ok(r) => r,
             Err(e) => {
-                last_err = Some(format!("request build: {}", e));
+                last_err = Some(ChunkError::failed(format!("request build: {}", e)));
                 continue;
             }
         };
@@ -3590,7 +3601,10 @@ async fn download_filen_chunk(
         let resp = match client.execute(request).await {
             Ok(r) => r,
             Err(e) => {
-                last_err = Some(format!("send: {}", e));
+                last_err = Some(ChunkError {
+                    timed_out: e.is_timeout(),
+                    message: format!("send: {}", e),
+                });
                 continue;
             }
         };
@@ -3607,7 +3621,7 @@ async fn download_filen_chunk(
             // Retry only on classes that may recover. 4xx (except 408/429)
             // are authoritative, so we surface them immediately.
             let retryable = filen_status_is_retryable(status.as_u16());
-            let err = format!("status {}: {}", status, body_preview);
+            let err = ChunkError::failed(format!("status {}: {}", status, body_preview));
             if !retryable {
                 return Err(err);
             }
@@ -3625,11 +3639,10 @@ async fn download_filen_chunk(
             match part {
                 Ok(bytes) => encrypted.extend_from_slice(&bytes),
                 Err(e) => {
-                    last_err = Some(format!(
-                        "body decode after {} bytes: {}",
-                        encrypted.len(),
-                        e
-                    ));
+                    last_err = Some(ChunkError {
+                        timed_out: e.is_timeout(),
+                        message: format!("body decode after {} bytes: {}", encrypted.len(), e),
+                    });
                     body_failed = true;
                     break;
                 }
@@ -3640,12 +3653,86 @@ async fn download_filen_chunk(
         }
         return Ok(encrypted);
     }
-    Err(last_err.unwrap_or_else(|| "exhausted retries with no error".to_string()))
+    Err(last_err.unwrap_or_else(|| ChunkError::failed("exhausted retries with no error".into())))
+}
+
+/// The last failure of [`download_filen_chunk`]. A chunk whose last attempt
+/// got no answer, or whose body stopped coming, inside the client's limits is
+/// a timeout like any other HTTP request (see `providers::http_send_error`);
+/// every other failure keeps the caller's wording.
+#[derive(Debug)]
+struct ChunkError {
+    timed_out: bool,
+    message: String,
+}
+
+impl ChunkError {
+    fn failed(message: String) -> Self {
+        Self {
+            timed_out: false,
+            message,
+        }
+    }
+
+    fn into_provider_error(self, describe: impl FnOnce(&str) -> String) -> ProviderError {
+        if self.timed_out {
+            ProviderError::Timeout
+        } else {
+            ProviderError::TransferFailed(describe(&self.message))
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn impatient_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(300))
+            .build()
+            .expect("client")
+    }
+
+    fn chunk_failure(error: ChunkError) -> ProviderError {
+        error.into_provider_error(|e| format!("Download chunk 1/1 failed: {e}"))
+    }
+
+    #[tokio::test]
+    async fn a_chunk_the_server_never_answers_is_a_timeout() {
+        let url = crate::providers::mute_http_endpoint();
+        let error = download_filen_chunk(&impatient_client(), &url, 0, 0)
+            .await
+            .expect_err("a server that never answers");
+        assert!(
+            matches!(chunk_failure(error), ProviderError::Timeout),
+            "a chunk request with no reply must stay a timeout"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_chunk_whose_body_stops_is_a_timeout() {
+        let url = crate::providers::stalled_body_endpoint();
+        let error = download_filen_chunk(&impatient_client(), &url, 0, 0)
+            .await
+            .expect_err("a body that stops coming");
+        assert!(
+            matches!(chunk_failure(error), ProviderError::Timeout),
+            "a chunk body that stops coming must stay a timeout"
+        );
+    }
+
+    #[test]
+    fn a_chunk_failure_that_is_not_a_timeout_keeps_its_wording() {
+        let error = ChunkError::failed("status 404 Not Found: gone".into());
+        match chunk_failure(error) {
+            ProviderError::TransferFailed(message) => assert_eq!(
+                message,
+                "Download chunk 1/1 failed: status 404 Not Found: gone"
+            ),
+            other => panic!("expected TransferFailed, got {other:?}"),
+        }
+    }
 
     #[tokio::test]
     async fn find_propagates_listing_failure() {
@@ -3665,6 +3752,47 @@ mod tests {
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(ref message))
             if message == "folder access denied"),
+            "{outcome:?}"
+        );
+    }
+
+    /// A connect with an API key whose master-keys request gets no answer is a
+    /// timeout. It was "authentication failed": the branch filed every
+    /// failure of that request as one, which told the user to sign in again
+    /// with the password and kept the CLI from exiting 8.
+    #[tokio::test]
+    async fn an_api_key_connect_whose_master_keys_never_come_is_a_timeout() {
+        use axum::{routing::post, Router};
+
+        let app = Router::new()
+            .route(
+                "/v3/auth/info",
+                // Version 1 derives with one SHA-512, so the test spends no
+                // time in the KDF on its way to the request under test.
+                post(|| async { r#"{"status":true,"data":{"authVersion":1,"salt":"s"}}"# }),
+            )
+            .route(
+                "/v3/user/masterKeys",
+                post(|| async {
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                    ""
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut config = demo_cfg();
+        config.api_key = Some(SecretString::from("api-key-not-real".to_string()));
+        let mut provider = FilenProvider::new(config);
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        provider.client = reqwest::Client::builder()
+            .read_timeout(std::time::Duration::from_millis(300))
+            .build()
+            .unwrap();
+        let outcome = provider.connect().await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
             "{outcome:?}"
         );
     }

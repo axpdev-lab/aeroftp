@@ -210,6 +210,70 @@ pub fn is_unexpected_eof_after_full_body(e: &reqwest::Error, received: u64, expe
     false
 }
 
+/// Classify a failed HTTP request the same way in every provider: a request
+/// that got no reply inside the client's limits (the connect timeout, or the
+/// read timeout while it waited for the answer) is [`ProviderError::Timeout`],
+/// whatever the call site calls its other failures. Everything else goes to
+/// `otherwise`, which keeps the call site's own variant and wording.
+///
+/// The call sites map on the text, and reqwest's `Display` for a timeout is
+/// the generic "error sending request for url (...)": the timeout is only in
+/// the source chain. Measured against a listener that accepts and never
+/// writes, `aeroftp-cli stat` on WebDAV waited the 1800 s read timeout and
+/// then exited 1, "Connection failed ... verify the service is running",
+/// instead of 8, the exit code the CLI documents for a timeout.
+pub fn http_send_error(
+    e: reqwest::Error,
+    otherwise: impl FnOnce(reqwest::Error) -> ProviderError,
+) -> ProviderError {
+    if e.is_timeout() {
+        ProviderError::Timeout
+    } else {
+        otherwise(e)
+    }
+}
+
+/// [`http_send_error`] as a `map_err` for a reqwest result, which is how the
+/// HTTP providers map their requests: `.map_http_err(|e| ...)` in place of
+/// `.map_err(|e| ...)`, with the same closure for every failure that is not
+/// a timeout. It exists only for `reqwest::Error`, so it cannot land on a
+/// result whose error says nothing about a timeout.
+pub trait HttpResultExt<T> {
+    fn map_http_err(
+        self,
+        otherwise: impl FnOnce(reqwest::Error) -> ProviderError,
+    ) -> Result<T, ProviderError>;
+}
+
+impl<T> HttpResultExt<T> for Result<T, reqwest::Error> {
+    fn map_http_err(
+        self,
+        otherwise: impl FnOnce(reqwest::Error) -> ProviderError,
+    ) -> Result<T, ProviderError> {
+        self.map_err(|e| http_send_error(e, otherwise))
+    }
+}
+
+/// The rule of [`http_send_error`] one level up: a caller that wraps an error
+/// its own request already classified (a connect that files every failure of
+/// a step as "authentication failed", a step that adds its own context)
+/// passes a [`ProviderError::Timeout`] through as it is, so the retry, the
+/// exit code and the session handling still see a timeout. Every other error
+/// goes to `otherwise`.
+///
+/// Not for a step that leaves an operation half done (the second rename of a
+/// move, the delete after a copy): there the error describes where things
+/// are now, and a timeout read as "retry" would repeat the first half.
+pub fn keep_timeout(
+    e: ProviderError,
+    otherwise: impl FnOnce(ProviderError) -> ProviderError,
+) -> ProviderError {
+    match e {
+        ProviderError::Timeout => e,
+        other => otherwise(other),
+    }
+}
+
 /// H2: Read a reqwest Response into Vec<u8> with a size cap.
 /// Checks Content-Length first; if absent, reads up to `limit` bytes via streaming.
 ///
@@ -256,7 +320,9 @@ pub async fn response_bytes_with_limit(
                     );
                     break;
                 }
-                return Err(ProviderError::TransferFailed(e.to_string()));
+                return Err(http_send_error(e, |e| {
+                    ProviderError::TransferFailed(e.to_string())
+                }));
             }
             None => break,
         }
@@ -2988,7 +3054,7 @@ pub async fn stream_response_to_resumable(
     let mut transferred = resumable.offset();
 
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+        let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         crate::transfer_dag::throttle::charge(
             crate::transfer_dag::governor::TransferDirection::Download,
             chunk.len() as u64,
@@ -3042,7 +3108,7 @@ where
     let response = build_request(range_header.as_deref())
         .send()
         .await
-        .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
 
     match response.status() {
         StatusCode::PARTIAL_CONTENT => {
@@ -4079,5 +4145,482 @@ pub(crate) mod edit_replace_tests {
             HashMap::from([("/m.tsv".to_string(), b"ours".to_vec())])
         );
         assert!(p.replaces.is_empty(), "{:?}", p.replaces);
+    }
+}
+
+/// A local HTTP endpoint that accepts every connection and never answers,
+/// the shape of a server that hangs after `accept()`. The accepted sockets
+/// stay open for the life of the test process, so a client sees no reset.
+#[cfg(test)]
+pub(crate) fn mute_http_endpoint() -> String {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a mute listener");
+    let url = format!(
+        "http://{}/",
+        listener.local_addr().expect("listener address")
+    );
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for stream in listener.incoming() {
+            held.push(stream);
+        }
+    });
+    url
+}
+
+/// A local HTTP endpoint that answers `200` with a `Content-Length` of 1000,
+/// sends the first 7 bytes of the body and then goes quiet, the shape of a
+/// download whose server stalls halfway. The sockets are held like the mute
+/// endpoint's, so a client sees no reset.
+#[cfg(test)]
+pub(crate) fn stalled_body_endpoint() -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind a stalling listener");
+    let url = format!(
+        "http://{}/",
+        listener.local_addr().expect("listener address")
+    );
+    std::thread::spawn(move || {
+        let mut held = Vec::new();
+        for mut stream in listener.incoming().flatten() {
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\npartial");
+            let _ = stream.flush();
+            held.push(stream);
+        }
+    });
+    url
+}
+
+#[cfg(test)]
+mod http_send_error_tests {
+    use super::*;
+    use std::time::Duration;
+
+    async fn failed_send(url: &str, read_timeout: Duration) -> reqwest::Error {
+        // The providers' own limit: a read timeout, not a total one.
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .read_timeout(read_timeout)
+            .build()
+            .expect("client");
+        client
+            .get(url)
+            .send()
+            .await
+            .expect_err("the request must fail")
+    }
+
+    #[tokio::test]
+    async fn a_request_that_gets_no_reply_is_a_timeout_whatever_the_site_calls_it() {
+        let e = failed_send(&mute_http_endpoint(), Duration::from_millis(300)).await;
+        let mapped = http_send_error(e, |e| ProviderError::ConnectionFailed(e.to_string()));
+        assert!(matches!(mapped, ProviderError::Timeout), "{mapped:?}");
+    }
+
+    #[tokio::test]
+    async fn a_refused_connection_keeps_the_sites_own_error() {
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let url = format!("http://{}/", closed.local_addr().expect("address"));
+        drop(closed);
+        // reqwest starts its read timeout when the request is sent, so it
+        // covers the connect too, and Windows answers a connect to a closed
+        // localhost port only after about 2 s of SYN retries: a read timeout
+        // shorter than that turns the refusal into a timeout there. The
+        // providers' own read timeout is far longer than that wait.
+        let e = failed_send(&url, Duration::from_secs(30)).await;
+        let mapped = http_send_error(e, |e| ProviderError::ConnectionFailed(e.to_string()));
+        assert!(
+            matches!(mapped, ProviderError::ConnectionFailed(_)),
+            "{mapped:?}"
+        );
+    }
+
+    /// A body that stops coming is the same timeout as an answer that never
+    /// came: the limited reader used to file it as `TransferFailed`.
+    #[tokio::test]
+    async fn a_body_that_stops_coming_is_a_timeout() {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .read_timeout(Duration::from_millis(300))
+            .build()
+            .expect("client");
+        let response = client
+            .get(stalled_body_endpoint())
+            .send()
+            .await
+            .expect("the head arrives");
+        let read = response_bytes_with_limit(response, 1 << 20).await;
+        assert!(matches!(read, Err(ProviderError::Timeout)), "{read:?}");
+    }
+
+    #[test]
+    fn a_wrapper_passes_a_timeout_through_and_wraps_the_rest() {
+        let wrap = |e: ProviderError| ProviderError::AuthenticationFailed(format!("step: {e}"));
+        assert!(matches!(
+            keep_timeout(ProviderError::Timeout, wrap),
+            ProviderError::Timeout
+        ));
+        let wrapped = keep_timeout(ProviderError::ConnectionFailed("refused".into()), wrap);
+        assert!(
+            matches!(&wrapped, ProviderError::AuthenticationFailed(m) if m.contains("refused")),
+            "{wrapped:?}"
+        );
+    }
+}
+
+/// The class behind `http_send_error`: no provider maps the result of a
+/// request or of a body read with a plain `map_err`, which files a timeout
+/// under the call site's own variant. Read from the sources, so a new
+/// provider written the old way fails here instead of in a script that
+/// waited 30 minutes for an exit code that says "connection refused".
+#[cfg(test)]
+mod http_timeout_class_tests {
+    use std::path::Path;
+
+    /// Mappers that already classify a timeout, by name.
+    const CLASSIFYING: &[&str] = &[
+        "http_send_error",
+        "timed_out_or",
+        "send_error",
+        "connect_send_error",
+        "map_reqwest_error",
+    ];
+
+    /// Files outside the class, and why. Their errors never become a
+    /// `ProviderError`: the GitHub device flow and OAuth 1 sign-in return a
+    /// `String` to the interactive sign-in dialog, and OAuth 2 hands its
+    /// error to the `oauth2` crate's own type.
+    const OUTSIDE: &[&str] = &["github/auth.rs", "oauth1.rs", "oauth2.rs"];
+
+    fn sources(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(dir).expect("read providers dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                sources(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
+
+    /// The index of the quote that closes a character literal opening at
+    /// `quote` (`'"'`, `'('`, `'\''`, `'\u{2014}'`), or `None` for a lifetime
+    /// (`'a`, `'static`), which has no closing quote.
+    fn char_literal_end(s: &[u8], quote: usize) -> Option<usize> {
+        let first = *s.get(quote + 1)?;
+        let close = if first == b'\\' {
+            (quote + 3..s.len().min(quote + 12)).find(|&i| s[i] == b'\'')?
+        } else {
+            // One character, which in UTF-8 takes up to four bytes.
+            quote
+                + 1
+                + std::str::from_utf8(&s[quote + 1..s.len().min(quote + 5)])
+                    .or_else(|e| std::str::from_utf8(&s[quote + 1..quote + 1 + e.valid_up_to()]))
+                    .ok()?
+                    .chars()
+                    .next()?
+                    .len_utf8()
+        };
+        (s.get(close) == Some(&b'\'')).then_some(close)
+    }
+
+    /// Index just past the parenthesis that closes the one at `open`. String
+    /// and character literals are skipped, so a `"("` or a `'"'` inside the
+    /// call does not move the count. Raw strings are read as plain ones, which
+    /// is wrong only for a raw string that ends in a backslash.
+    fn past_close(s: &[u8], open: usize) -> usize {
+        past_close_pair(s, open, b'(', b')')
+    }
+
+    /// [`past_close`] for any pair of delimiters, braces included.
+    fn past_close_pair(s: &[u8], open: usize, opening: u8, closing: u8) -> usize {
+        let mut depth = 0usize;
+        let mut i = open;
+        while i < s.len() {
+            match s[i] {
+                b'"' => {
+                    i += 1;
+                    while i < s.len() && s[i] != b'"' {
+                        if s[i] == b'\\' {
+                            i += 1;
+                        }
+                        i += 1;
+                    }
+                }
+                b'\'' => {
+                    if let Some(end) = char_literal_end(s, i) {
+                        i = end;
+                    }
+                }
+                b if b == opening => depth += 1,
+                b if b == closing => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return i + 1;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        s.len()
+    }
+
+    #[test]
+    fn the_scan_skips_literals_that_hold_a_parenthesis_or_a_quote() {
+        let call = br#"f(a, '(', b'"', "x)", 'static_lifetime, '\u{29}', ')') tail"#;
+        let end = past_close(call, 1);
+        assert_eq!(&call[..end], &call[..call.len() - " tail".len()]);
+    }
+
+    #[test]
+    fn no_provider_maps_a_request_failure_without_classifying_a_timeout() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let request = regex::Regex::new(
+            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
+        )
+        .expect("regex");
+        // The mapper is read after the `.await` and after any calls that keep
+        // the error as it is (`.map(|b| b.to_vec())`, `.and_then(..)`, a log
+        // in `.inspect_err(..)`): `get_raw_bytes` of the GitHub client hid its
+        // `map_err` behind a `.map` and filed a body timeout as a network
+        // error. A call that changes the error ends the chain.
+        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
+        let keeps_error =
+            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
+        let then_map_err = regex::Regex::new(r"^\s*\.map_err\(").expect("regex");
+        let mut plain = Vec::new();
+        for file in &files {
+            let relative = file
+                .strip_prefix(&root)
+                .expect("under providers")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if OUTSIDE.contains(&relative.as_str()) {
+                continue;
+            }
+            let source = std::fs::read_to_string(file).expect("read source");
+            let bytes = source.as_bytes();
+            for found in request.find_iter(&source) {
+                let end = if found.as_str().ends_with("()") {
+                    found.end()
+                } else {
+                    past_close(bytes, found.end() - 1)
+                };
+                let Some(wait) = awaited.find(&source[end..]) else {
+                    continue;
+                };
+                let mut end = end + wait.end();
+                while let Some(call) = keeps_error.find(&source[end..]) {
+                    end = past_close(bytes, end + call.end() - 1);
+                }
+                let Some(map) = then_map_err.find(&source[end..]) else {
+                    continue;
+                };
+                let open = end + map.end() - 1;
+                let mapper = &source[open..past_close(bytes, open)];
+                if !CLASSIFYING.iter().any(|name| mapper.contains(name)) {
+                    let line = source[..found.start()].matches('\n').count() + 1;
+                    plain.push(format!("{relative}:{line}"));
+                }
+            }
+        }
+        assert!(
+            plain.is_empty(),
+            "map_err on a request or body read that files a timeout under another variant \
+             (use `map_http_err`, see `http_send_error`): {plain:?}"
+        );
+    }
+
+    /// Requests whose failure is handled by a `match` arm and deliberately
+    /// never becomes a `ProviderError`, by file and enclosing function, and
+    /// why. A best-effort cleanup or discovery logs and gives up; a probe
+    /// falls back to the path that reports its own failure.
+    const ARM_OUTSIDE: &[(&str, &str)] = &[
+        // Logs and moves on; the upload it follows has already succeeded.
+        ("onedrive.rs", "purge_old_versions"),
+        // Optional discovery: the listing goes on without team folders.
+        ("zoho_workdrive.rs", "discover_team_folders"),
+        // A probe: on any failure the v2 sign-in runs and reports its own.
+        ("swift.rs", "detect_auth_version"),
+        // An opportunistic probe: the provider's own download reports.
+        ("multi_thread.rs", "try_http_concurrent_range_download"),
+        // A reason string for "did the object change", not an error.
+        ("multi_thread.rs", "http_range_source_moved"),
+    ];
+
+    /// The body of the arm that starts at `start` (just past its `=>`): a
+    /// block, or an expression up to the comma or brace that ends it.
+    fn arm_body(s: &[u8], start: usize) -> &[u8] {
+        let mut i = start;
+        while i < s.len() && s[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if s.get(i) == Some(&b'{') {
+            return &s[i..past_close_brace(s, i)];
+        }
+        let begin = i;
+        let mut depth = 0usize;
+        while i < s.len() {
+            match s[i] {
+                b'"' => {
+                    i += 1;
+                    while i < s.len() && s[i] != b'"' {
+                        if s[i] == b'\\' {
+                            i += 1;
+                        }
+                        i += 1;
+                    }
+                }
+                b'(' | b'[' | b'{' => depth += 1,
+                b')' | b']' | b'}' => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                b',' if depth == 0 => break,
+                _ => {}
+            }
+            i += 1;
+        }
+        &s[begin..i]
+    }
+
+    fn past_close_brace(s: &[u8], open: usize) -> usize {
+        past_close_pair(s, open, b'{', b'}')
+    }
+
+    #[test]
+    fn an_arm_body_ends_at_its_comma_or_block() {
+        let arms = br#"{ Err(e) => f(e, "a,b"), Ok(r) => r }"#;
+        let start = arms.windows(2).position(|w| w == b"=>").unwrap() + 2;
+        assert_eq!(arm_body(arms, start), br#"f(e, "a,b")"#);
+        let block = b"{ Err(e) => { g(e); continue; } Ok(r) => r }";
+        let start = block.windows(2).position(|w| w == b"=>").unwrap() + 2;
+        assert_eq!(arm_body(block, start), b"{ g(e); continue; }");
+    }
+
+    /// The same class in a second shape: the request is the scrutinee of a
+    /// `match` (or an `if let`) and its `Err(e)` arm handles the error by
+    /// hand. Filen's chunk download kept only the error's text, Yandex's
+    /// chunked PUT and Internxt's start-upload filed a timeout as
+    /// `TransferFailed` / `ServerError`; the `map_err` scan above never saw
+    /// them. An arm passes when it classifies (a name from `CLASSIFYING`, or
+    /// `is_timeout`) or hands the error on unchanged.
+    #[test]
+    fn no_provider_handles_a_failed_request_without_classifying_a_timeout() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let request = regex::Regex::new(
+            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
+        )
+        .expect("regex");
+        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
+        let keeps_error =
+            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
+        let opens_block = regex::Regex::new(r"^\s*\{").expect("regex");
+        let err_arm = regex::Regex::new(r"Err\((\w+)\)\s*=>").expect("regex");
+        let enclosing = regex::Regex::new(r"\bfn\s+(\w+)").expect("regex");
+        let mut plain = Vec::new();
+        for file in &files {
+            let relative = file
+                .strip_prefix(&root)
+                .expect("under providers")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if OUTSIDE.contains(&relative.as_str()) {
+                continue;
+            }
+            let source = std::fs::read_to_string(file).expect("read source");
+            let bytes = source.as_bytes();
+            for found in request.find_iter(&source) {
+                let end = if found.as_str().ends_with("()") {
+                    found.end()
+                } else {
+                    past_close(bytes, found.end() - 1)
+                };
+                let Some(wait) = awaited.find(&source[end..]) else {
+                    continue;
+                };
+                let mut end = end + wait.end();
+                while let Some(call) = keeps_error.find(&source[end..]) {
+                    end = past_close(bytes, end + call.end() - 1);
+                }
+                let Some(open) = opens_block.find(&source[end..]) else {
+                    continue;
+                };
+                let open = end + open.end() - 1;
+                let block = &source[open..past_close_brace(bytes, open)];
+                let function = enclosing
+                    .captures_iter(&source[..found.start()])
+                    .last()
+                    .map(|c| c[1].to_string())
+                    .unwrap_or_default();
+                if ARM_OUTSIDE
+                    .iter()
+                    .any(|(f, name)| *f == relative && *name == function)
+                {
+                    continue;
+                }
+                for arm in err_arm.captures_iter(block) {
+                    let name = &arm[1];
+                    let body = String::from_utf8_lossy(arm_body(
+                        block.as_bytes(),
+                        arm.get(0).expect("whole match").end(),
+                    ))
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                    let classifies =
+                        CLASSIFYING.iter().any(|c| body.contains(c)) || body.contains("is_timeout");
+                    let handed_on = body == format!("Err({name})")
+                        || body == format!("return Err({name})")
+                        || body == format!("return Err({name});");
+                    if !classifies && !handed_on {
+                        let line = source[..found.start()].matches('\n').count() + 1;
+                        plain.push(format!("{relative}:{line} ({function})"));
+                    }
+                }
+            }
+        }
+        assert!(
+            plain.is_empty(),
+            "a request failure handled in a match arm that files a timeout under another \
+             variant (classify it with `http_send_error`, or list the site in ARM_OUTSIDE \
+             with the reason): {plain:?}"
+        );
+    }
+
+    /// The other side of the class: `map_http_err` only where a timeout can
+    /// happen. Building a request or a client, and naming a multipart part's
+    /// type, fail before anything is sent, so the timeout branch there would
+    /// only tell the reader a story that cannot happen.
+    #[test]
+    fn no_provider_classifies_a_timeout_where_nothing_was_sent() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        let offline = regex::Regex::new(
+            r"(?:\.build\(\)|\.mime_str\((?:[^()]|\([^()]*\))*\))\s*\.map_http_err\(",
+        )
+        .expect("regex");
+        let mut misplaced = Vec::new();
+        for file in &files {
+            let source = std::fs::read_to_string(file).expect("read source");
+            for found in offline.find_iter(&source) {
+                let relative = file.strip_prefix(&root).expect("under providers");
+                let line = source[..found.start()].matches('\n').count() + 1;
+                misplaced.push(format!("{}:{line}", relative.display()));
+            }
+        }
+        assert!(
+            misplaced.is_empty(),
+            "map_http_err where nothing was sent yet (use `map_err`): {misplaced:?}"
+        );
     }
 }

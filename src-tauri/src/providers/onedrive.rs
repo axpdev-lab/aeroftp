@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
@@ -637,7 +638,7 @@ impl OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if response.status().as_u16() == 404 {
             return Err(ProviderError::NotFound(path.to_string()));
@@ -650,7 +651,7 @@ impl OneDriveProvider {
         response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
     }
 
     /// Get item by ID
@@ -663,7 +664,7 @@ impl OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::NotFound(item_id.to_string()));
@@ -672,7 +673,7 @@ impl OneDriveProvider {
         response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))
     }
 
     /// List children with pagination
@@ -695,7 +696,7 @@ impl OneDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 return Err(onedrive_error_from_response(response, "List error").await);
@@ -704,7 +705,7 @@ impl OneDriveProvider {
             let result: ChildrenResponse = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             all_items.extend(result.value);
 
@@ -745,7 +746,7 @@ impl OneDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let status = response.status();
@@ -771,7 +772,7 @@ impl OneDriveProvider {
             let result: ChildrenResponse = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             for item in &result.value {
                 all_entries.push(self.to_remote_entry(item, "/Trash"));
@@ -818,7 +819,7 @@ impl OneDriveProvider {
             .body("{}")
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
             return Err(onedrive_error_from_response(response, "Restore failed:").await);
@@ -869,7 +870,7 @@ impl OneDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
             if !response.status().is_success() {
                 let status = response.status();
                 let text = response.text().await.unwrap_or_default();
@@ -884,10 +885,9 @@ impl OneDriveProvider {
                     sanitize_api_error(&text)
                 )));
             }
-            let result: ChildrenResponse = response
-                .json()
-                .await
-                .map_err(|e| ProviderError::Other(format!("Recycle bin parse error: {}", e)))?;
+            let result: ChildrenResponse = response.json().await.map_http_err(|e| {
+                ProviderError::Other(format!("Recycle bin parse error: {}", e))
+            })?;
             matches.extend(result.value.into_iter().filter_map(|item| {
                 let from = item.parent_reference.as_ref()?.id.as_deref()?;
                 (item.name == basename && from == parent_id).then_some(item.id)
@@ -917,7 +917,7 @@ impl OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         // 204 No Content is success, 404 means already gone
         if !response.status().is_success() && response.status().as_u16() != 404 {
@@ -1024,7 +1024,7 @@ impl OneDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -1081,7 +1081,7 @@ impl OneDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(
@@ -1097,7 +1097,7 @@ impl OneDriveProvider {
         let session: UploadSession = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
         Ok(session.upload_url)
     }
 }
@@ -1136,7 +1136,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::AuthenticationFailed(
@@ -1300,7 +1300,7 @@ impl StorageProvider for OneDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             // Follow redirect to get actual download URL
             if response.status().is_redirection() {
@@ -1323,7 +1323,7 @@ impl StorageProvider for OneDriveProvider {
             .get(&download_url)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !response.status().is_success() {
             return Err(onedrive_error_from_response(response, "Download failed").await);
         }
@@ -1333,7 +1333,7 @@ impl StorageProvider for OneDriveProvider {
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1377,7 +1377,7 @@ impl StorageProvider for OneDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if response.status().is_redirection() {
                 response
@@ -1425,7 +1425,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         // The status first: Graph answers a missing file with 404 and an
         // error JSON, which was returned as the file's content.
         if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -1488,7 +1488,7 @@ impl StorageProvider for OneDriveProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(onedrive_error_from_response(response, "Upload failed:").await);
@@ -1558,7 +1558,7 @@ impl StorageProvider for OneDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -1608,7 +1608,7 @@ impl StorageProvider for OneDriveProvider {
                 &mut self.path_cache,
                 full_path.trim_matches('/'),
             );
-            let response = sent.map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            let response = sent.map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
             let status = response.status();
             if status.as_u16() == 404 {
                 if resolved_again {
@@ -1652,7 +1652,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if response.status().as_u16() == 404 {
             return Err(ProviderError::NotFound(path.to_string()));
         }
@@ -1665,7 +1665,7 @@ impl StorageProvider for OneDriveProvider {
         let item: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         let Some(folder) = item.get("folder") else {
             return Err(ProviderError::InvalidPath(format!(
                 "{path} is not a folder"
@@ -1692,7 +1692,7 @@ impl StorageProvider for OneDriveProvider {
             .header(reqwest::header::IF_MATCH, etag)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         match response.status().as_u16() {
             412 => {
                 return Err(ProviderError::DirectoryNotEmpty(format!(
@@ -1893,7 +1893,7 @@ impl StorageProvider for OneDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = response.status();
 
@@ -1919,7 +1919,7 @@ impl StorageProvider for OneDriveProvider {
         let result: CreateLinkResponse = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Failed to parse response: {}", e)))?;
 
         let url = result
             .link
@@ -1978,7 +1978,7 @@ impl StorageProvider for OneDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         // OneDrive copy returns 202 Accepted (async operation)
         if !response.status().is_success() {
@@ -2033,7 +2033,7 @@ impl StorageProvider for OneDriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !response.status().is_success() {
                 let text = response.text().await.unwrap_or_default();
@@ -2046,7 +2046,7 @@ impl StorageProvider for OneDriveProvider {
             let result: ChildrenResponse = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+                .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
             for item in &result.value {
                 let entry = self.to_remote_entry(item, path);
@@ -2073,7 +2073,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2097,7 +2097,7 @@ impl StorageProvider for OneDriveProvider {
         let info: DriveInfo = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         let quota = info
             .quota
@@ -2132,7 +2132,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2167,7 +2167,7 @@ impl StorageProvider for OneDriveProvider {
         let list: VersionList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(list
             .value
@@ -2204,7 +2204,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2217,7 +2217,7 @@ impl StorageProvider for OneDriveProvider {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         tokio::fs::write(local_path, &bytes)
             .await
@@ -2240,7 +2240,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() && response.status().as_u16() != 204 {
             let text = response.text().await.unwrap_or_default();
@@ -2268,7 +2268,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::NotFound(
@@ -2279,7 +2279,7 @@ impl StorageProvider for OneDriveProvider {
         let bytes = response
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         Ok(format!(
             "data:image/jpeg;base64,{}",
@@ -2304,7 +2304,7 @@ impl StorageProvider for OneDriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2338,7 +2338,7 @@ impl StorageProvider for OneDriveProvider {
         let list: PermList = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         Ok(list
             .value
@@ -2392,7 +2392,7 @@ impl StorageProvider for OneDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2449,7 +2449,7 @@ impl StorageProvider for OneDriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !response.status().is_success() {
             let text = response.text().await.unwrap_or_default();
@@ -2468,7 +2468,7 @@ impl StorageProvider for OneDriveProvider {
         let session: UploadSession = response
             .json()
             .await
-            .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
 
         // Upload in 10MB chunks: read each chunk from file
         let chunk_size = 10 * 1024 * 1024u64;
@@ -2499,7 +2499,7 @@ impl StorageProvider for OneDriveProvider {
                 .body(chunk)
                 .send()
                 .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
             let status = resp.status();
             if !status.is_success() && status.as_u16() != 202 {
@@ -2667,7 +2667,7 @@ impl StorageProvider for OneDriveProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         let status = resp.status().as_u16();
         // 200/201 = session finalised; 202 = Accepted (non-final chunk).

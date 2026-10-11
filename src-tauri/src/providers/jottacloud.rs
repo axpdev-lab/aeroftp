@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use base64::Engine;
 use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE};
@@ -315,16 +316,21 @@ impl JottacloudProvider {
                 "OIDC well-known URL must use HTTPS".to_string(),
             ));
         }
-        let resp = self.client.get(well_known_url).send().await.map_err(|e| {
-            ProviderError::AuthenticationFailed(format!("OIDC discovery failed: {}", e))
-        })?;
+        let resp = self
+            .client
+            .get(well_known_url)
+            .send()
+            .await
+            .map_http_err(|e| {
+                ProviderError::AuthenticationFailed(format!("OIDC discovery failed: {}", e))
+            })?;
         if !resp.status().is_success() {
             return Err(ProviderError::AuthenticationFailed(format!(
                 "OIDC discovery returned {}",
                 resp.status()
             )));
         }
-        let config: OidcConfig = resp.json().await.map_err(|e| {
+        let config: OidcConfig = resp.json().await.map_http_err(|e| {
             ProviderError::AuthenticationFailed(format!("OIDC config parse failed: {}", e))
         })?;
         config.token_endpoint.ok_or_else(|| {
@@ -351,7 +357,7 @@ impl JottacloudProvider {
             .body(form_body)
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::AuthenticationFailed(format!("Token exchange failed: {}", e))
             })?;
         if !resp.status().is_success() {
@@ -361,7 +367,7 @@ impl JottacloudProvider {
                 sanitize_api_error(&body)
             )));
         }
-        let token_resp: TokenResponse = resp.json().await.map_err(|e| {
+        let token_resp: TokenResponse = resp.json().await.map_http_err(|e| {
             ProviderError::AuthenticationFailed(format!("Token response parse failed: {}", e))
         })?;
         if token_resp.access_token.is_none() {
@@ -400,7 +406,7 @@ impl JottacloudProvider {
             .body(form_body)
             .send()
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::AuthenticationFailed(format!("Token refresh failed: {}", e))
             })?;
         if !resp.status().is_success() {
@@ -410,7 +416,7 @@ impl JottacloudProvider {
                 sanitize_api_error(&body)
             )));
         }
-        let token_resp: TokenResponse = resp.json().await.map_err(|e| {
+        let token_resp: TokenResponse = resp.json().await.map_http_err(|e| {
             ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
         })?;
         if let Some(ref at) = token_resp.access_token {
@@ -541,7 +547,7 @@ impl JottacloudProvider {
                 .body(form_body)
                 .send()
                 .await
-                .map_err(|e| {
+                .map_http_err(|e| {
                     ProviderError::AuthenticationFailed(format!(
                         "Refresh token exchange failed: {}",
                         e
@@ -573,7 +579,7 @@ impl JottacloudProvider {
                 continue;
             }
 
-            let token_resp: TokenResponse = resp.json().await.map_err(|e| {
+            let token_resp: TokenResponse = resp.json().await.map_http_err(|e| {
                 ProviderError::AuthenticationFailed(format!("Refresh response parse failed: {}", e))
             })?;
             if token_resp.access_token.is_none() {
@@ -614,7 +620,7 @@ impl JottacloudProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// POST with no body and no `Content-Type`.
@@ -639,7 +645,7 @@ impl JottacloudProvider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
+            .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
 
     /// JFS `mv` (a file) or `mvDir` (a folder) from `resolved_from` to
@@ -743,10 +749,9 @@ impl JottacloudProvider {
             });
         }
 
-        let xml = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to read response: {}", e)))?;
+        let xml = resp.text().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to read response: {}", e))
+        })?;
 
         // Check if response is a folder or file
         let (_, name) = Self::split_path(resolved);
@@ -1403,7 +1408,7 @@ impl StorageProvider for JottacloudProvider {
 
         // Strategy: try persisted refresh token first (avoids consuming the single-use login token).
         // If that fails, fall back to the login token from config.
-        let used_refresh = self.try_connect_with_refresh().await.unwrap_or(false);
+        let used_refresh = refresh_or_login_token(self.try_connect_with_refresh().await)?;
 
         if !used_refresh {
             // Step 1: Decode login token
@@ -1460,7 +1465,7 @@ impl StorageProvider for JottacloudProvider {
             )));
         }
 
-        let customer: CustomerInfo = resp.json().await.map_err(|e| {
+        let customer: CustomerInfo = resp.json().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to parse customer info: {}", e))
         })?;
 
@@ -1573,10 +1578,9 @@ impl StorageProvider for JottacloudProvider {
             )));
         }
 
-        let xml = resp
-            .text()
-            .await
-            .map_err(|e| ProviderError::ServerError(format!("Failed to read response: {}", e)))?;
+        let xml = resp.text().await.map_http_err(|e| {
+            ProviderError::ServerError(format!("Failed to read response: {}", e))
+        })?;
 
         jotta_log(&format!(
             "List XML for '{}' ({} bytes): {}",
@@ -1629,7 +1633,7 @@ impl StorageProvider for JottacloudProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| {
+            let chunk = chunk.map_http_err(|e| {
                 ProviderError::TransferFailed(format!("Download stream error: {}", e))
             })?;
             atomic
@@ -1767,7 +1771,7 @@ impl StorageProvider for JottacloudProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
+            .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1929,7 +1933,7 @@ impl StorageProvider for JottacloudProvider {
             ));
         }
 
-        let customer: CustomerInfo = resp.json().await.map_err(|e| {
+        let customer: CustomerInfo = resp.json().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Parse customer info failed: {}", e))
         })?;
 
@@ -2210,7 +2214,7 @@ impl JottacloudProvider {
             })?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!("Restore request failed: {}", e))
             })?;
         if !resp.status().is_success() {
@@ -3026,7 +3030,9 @@ impl JottacloudProvider {
             })?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(format!("purge_trash failed: {}", e)))?;
+            .map_http_err(|e| {
+                ProviderError::ConnectionFailed(format!("purge_trash failed: {}", e))
+            })?;
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
         if !status.is_success() {
@@ -3324,9 +3330,39 @@ impl JottacloudProvider {
     }
 }
 
+/// Whether `connect` may go on to the single-use login token after the
+/// persisted refresh chain was tried. A refresh that failed definitely
+/// (revoked, expired, no chain) falls back, as it always did. A refresh that
+/// got no answer did not fail: its outcome is unknown, and spending the
+/// login token on it would burn the one credential that still works if the
+/// server comes back. It is returned as the timeout it is.
+fn refresh_or_login_token(refresh: Result<bool, ProviderError>) -> Result<bool, ProviderError> {
+    match refresh {
+        Ok(used_refresh) => Ok(used_refresh),
+        Err(ProviderError::Timeout) => Err(ProviderError::Timeout),
+        Err(_) => Ok(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refresh_with_no_answer_does_not_spend_the_login_token() {
+        assert!(matches!(
+            refresh_or_login_token(Err(ProviderError::Timeout)),
+            Err(ProviderError::Timeout)
+        ));
+        assert!(matches!(
+            refresh_or_login_token(Err(ProviderError::AuthenticationFailed(
+                "Refresh token exchange failed: invalid_grant".into()
+            ))),
+            Ok(false)
+        ));
+        assert!(matches!(refresh_or_login_token(Ok(true)), Ok(true)));
+        assert!(matches!(refresh_or_login_token(Ok(false)), Ok(false)));
+    }
 
     /// JFS does not document whether `mv` onto a file swaps the two in one
     /// step, so a one-step replace cannot be claimed. The answer is no, so the

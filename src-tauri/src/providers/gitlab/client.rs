@@ -10,6 +10,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use reqwest::{Client, Method, RequestBuilder, Response, StatusCode};
 use secrecy::{ExposeSecret, SecretString};
 use serde::de::DeserializeOwned;
@@ -108,7 +109,7 @@ impl GitLabHttpClient {
             .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
         let response = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 if e.is_timeout() {
                     ProviderError::Timeout
                 } else {
@@ -192,7 +193,7 @@ impl GitLabHttpClient {
         let resp = self.execute_with_retry(builder).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::Other(format!("GitLab JSON parse error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("GitLab JSON parse error: {}", e)))
     }
 
     /// GET paginated array using `x-next-page` header.
@@ -219,10 +220,9 @@ impl GitLabHttpClient {
                 .and_then(|v| v.to_str().ok())
                 .and_then(|s| s.parse::<u32>().ok());
 
-            let mut items: Vec<T> = resp
-                .json()
-                .await
-                .map_err(|e| ProviderError::Other(format!("GitLab JSON parse error: {}", e)))?;
+            let mut items: Vec<T> = resp.json().await.map_http_err(|e| {
+                ProviderError::Other(format!("GitLab JSON parse error: {}", e))
+            })?;
 
             all_items.append(&mut items);
 
@@ -246,7 +246,7 @@ impl GitLabHttpClient {
         let resp = self.execute_with_retry(builder).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::Other(format!("GitLab JSON parse error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("GitLab JSON parse error: {}", e)))
     }
 
     /// GET raw bytes (file download).
@@ -257,7 +257,7 @@ impl GitLabHttpClient {
         resp.bytes()
             .await
             .map(|b| b.to_vec())
-            .map_err(|e| ProviderError::Other(format!("GitLab download error: {}", e)))
+            .map_http_err(|e| ProviderError::Other(format!("GitLab download error: {}", e)))
     }
 
     /// GET raw response (for streaming downloads with progress).

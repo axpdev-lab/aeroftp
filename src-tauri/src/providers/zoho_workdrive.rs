@@ -11,6 +11,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::header::{HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{de, Deserialize, Deserializer};
@@ -754,7 +755,7 @@ impl ZohoWorkdriveProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
@@ -801,7 +802,7 @@ impl ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status_code = resp.status();
@@ -853,7 +854,7 @@ impl ZohoWorkdriveProvider {
                 .body(body.to_string())
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if !resp.status().is_success() {
                 let status_code = resp.status();
@@ -928,7 +929,7 @@ impl ZohoWorkdriveProvider {
                     .header(AUTHORIZATION, self.auth_header().await?)
                     .send()
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
                 if !resp.status().is_success() {
                     break;
@@ -1027,7 +1028,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let resp_body = resp.text().await.unwrap_or_default();
@@ -1062,7 +1063,7 @@ impl ZohoWorkdriveProvider {
             )
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status_code = resp.status().as_u16();
         if status_code != 200 && status_code != 204 {
@@ -1132,7 +1133,7 @@ impl ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let resp_body = resp.text().await.unwrap_or_default();
@@ -1203,7 +1204,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let mut user_id: Option<String> = None;
         if resp.status().is_success() {
@@ -1232,7 +1233,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let team = if resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -1276,7 +1277,7 @@ impl ZohoWorkdriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if resp.status().is_success() {
                 let body = resp.text().await.unwrap_or_default();
@@ -1350,7 +1351,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let team_user_id = if resp.status().is_success() {
             let body_text = resp.text().await.unwrap_or_default();
@@ -1414,7 +1415,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1463,7 +1464,7 @@ impl ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let mut used = 0u64;
         let mut total = 0u64;
@@ -1670,7 +1671,7 @@ impl ZohoWorkdriveProvider {
 
             let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             let status = resp.status();
             let body_text = resp.text().await.unwrap_or_default();
@@ -1928,7 +1929,7 @@ impl ZohoWorkdriveProvider {
             .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
@@ -1973,7 +1974,7 @@ impl ZohoWorkdriveProvider {
             .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
         if !resp.status().is_success() {
             if resp.status() == reqwest::StatusCode::CONFLICT {
                 return Err(ProviderError::AlreadyExists(to.to_string()));
@@ -2368,7 +2369,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(ACCEPT, HeaderValue::from_static("*/*"))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let final_url = resp.url().to_string();
@@ -2403,7 +2404,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let mut downloaded: u64 = 0;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -2518,7 +2519,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(ACCEPT, HeaderValue::from_static("*/*"))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2610,7 +2611,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         if !status.is_success() {
@@ -2682,7 +2683,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -2739,7 +2740,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 404 {
             let status = resp.status();
@@ -2870,7 +2871,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
             if let Ok(body) = resp.json::<JsonApiResponse<TeamResource>>().await {
                 body.data.attributes.name
@@ -2955,7 +2956,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -3083,13 +3084,13 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .body(body.to_string())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let resp_text = resp
             .text()
             .await
-            .map_err(|e| ProviderError::Other(format!("Read response: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Read response: {}", e)))?;
 
         if !status.is_success() {
             info!(
@@ -3143,7 +3144,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::Other(format!(
@@ -3155,7 +3156,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let body = resp
             .text()
             .await
-            .map_err(|e| ProviderError::Other(format!("Read team response: {}", e)))?;
+            .map_http_err(|e| ProviderError::Other(format!("Read team response: {}", e)))?;
 
         let team: JsonApiResponse<TeamResource> = serde_json::from_str(&body)
             .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
@@ -3174,12 +3175,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 .header(AUTHORIZATION, self.auth_header().await?)
                 .send()
                 .await
-                .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
             if teams_resp.status().is_success() {
-                let body = teams_resp
-                    .text()
-                    .await
-                    .map_err(|e| ProviderError::Other(format!("Read teams response: {}", e)))?;
+                let body = teams_resp.text().await.map_http_err(|e| {
+                    ProviderError::Other(format!("Read teams response: {}", e))
+                })?;
                 if let Ok(teams) = serde_json::from_str::<JsonApiListResponse<TeamResource>>(&body)
                 {
                     if let Some(found) = teams.data.into_iter().find(|team| team.id == *team_id) {
@@ -3277,7 +3277,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -3333,7 +3333,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(AUTHORIZATION, self.auth_header().await?)
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
@@ -3420,7 +3420,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .header(ACCEPT, HeaderValue::from_static("*/*"))
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -3440,7 +3440,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .map_err(|e| ProviderError::Other(format!("Create file error: {}", e)))?;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -3480,7 +3480,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .body("{}")
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             let status = resp.status();

@@ -60,6 +60,24 @@ fn normalised_path_hint(path_hint: &str) -> Option<&str> {
     (!path_hint.is_empty()).then_some(path_hint)
 }
 
+/// A failed request or body read: one that got no reply in time is the
+/// 408 the error mapping turns into `ProviderError::Timeout`, whatever the
+/// call site calls its other failures (see `providers::http_send_error`).
+/// The body reads called a timeout a parse error.
+fn timed_out_or(
+    e: reqwest::Error,
+    otherwise: impl FnOnce(reqwest::Error) -> GitHubError,
+) -> GitHubError {
+    if e.is_timeout() {
+        GitHubError::ApiError {
+            status: 408,
+            message: "request timed out".to_string(),
+        }
+    } else {
+        otherwise(e)
+    }
+}
+
 impl GitHubHttpClient {
     /// Create a new client with the given personal access token.
     /// QA-GH-004: Returns Result instead of panicking on TLS init failure.
@@ -183,16 +201,10 @@ impl GitHubHttpClient {
         &mut self,
         builder: RequestBuilder,
     ) -> Result<Response, GitHubError> {
-        let response = builder.send().await.map_err(|e| {
-            if e.is_timeout() {
-                GitHubError::ApiError {
-                    status: 408,
-                    message: "request timed out".to_string(),
-                }
-            } else {
-                GitHubError::NetworkError(e.to_string())
-            }
-        })?;
+        let response = builder
+            .send()
+            .await
+            .map_err(|e| timed_out_or(e, |e| GitHubError::NetworkError(e.to_string())))?;
 
         self.rate_limit.update_from_headers(response.headers());
         Ok(response)
@@ -238,7 +250,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, path_hint).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))
     }
 
     /// `GET` a paginated JSON array endpoint by following `Link: ... rel="next"`.
@@ -271,7 +283,7 @@ impl GitHubHttpClient {
             let mut page_items = resp
                 .json::<Vec<T>>()
                 .await
-                .map_err(|e| GitHubError::ParseError(format!("json: {e}")))?;
+                .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))?;
 
             all_items.append(&mut page_items);
             next_url = next_link;
@@ -292,7 +304,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))
     }
 
     /// `POST` with a JSON body; returns the response JSON.
@@ -306,7 +318,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))
     }
 
     /// `POST` with empty body. Returns `()` on 2xx.
@@ -329,7 +341,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("json: {e}")))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))
     }
 
     /// `DELETE` with a JSON body. Returns `()` on success.
@@ -367,7 +379,7 @@ impl GitHubHttpClient {
         let json: serde_json::Value = resp
             .json()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("graphql: {e}")))?;
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("graphql: {e}"))))?;
 
         // Check for GraphQL-level errors.
         if let Some(errors) = json.get("errors") {
@@ -398,7 +410,7 @@ impl GitHubHttpClient {
         let resp = self.execute_with_retry(builder, None).await?;
         resp.json::<serde_json::Value>()
             .await
-            .map_err(|e| GitHubError::ParseError(format!("graphql: {e}")))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("graphql: {e}"))))
     }
 
     /// Download raw file content (sets `Accept: application/octet-stream`).
@@ -425,7 +437,7 @@ impl GitHubHttpClient {
         resp.bytes()
             .await
             .map(|b| b.to_vec())
-            .map_err(|e| GitHubError::NetworkError(e.to_string()))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::NetworkError(e.to_string())))
     }
 
     /// Upload raw binary data (for release assets).

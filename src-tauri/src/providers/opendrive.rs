@@ -6,6 +6,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use flate2::{write::ZlibEncoder, Compression};
@@ -704,12 +705,10 @@ impl OpenDriveProvider {
     }
 
     async fn get_json<T: for<'de> Deserialize<'de>>(&self, url: &str) -> Result<T, ProviderError> {
-        let resp = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
+        let resp =
+            self.client.get(url).send().await.map_http_err(|e| {
+                ProviderError::NetworkError(self.redact_session(&e.to_string()))
+            })?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -717,7 +716,7 @@ impl OpenDriveProvider {
 
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(self.redact_session(&e.to_string())))
+            .map_http_err(|e| ProviderError::ParseError(self.redact_session(&e.to_string())))
     }
 
     async fn post_form<T: for<'de> Deserialize<'de>>(
@@ -743,7 +742,7 @@ impl OpenDriveProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -751,7 +750,7 @@ impl OpenDriveProvider {
 
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(self.redact_session(&e.to_string())))
+            .map_http_err(|e| ProviderError::ParseError(self.redact_session(&e.to_string())))
     }
 
     async fn post_form_unit(
@@ -777,7 +776,7 @@ impl OpenDriveProvider {
             .body(body)
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1430,7 +1429,7 @@ impl OpenDriveProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1488,7 +1487,7 @@ impl OpenDriveProvider {
             .delete(self.endpoint(relative_path))
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -1879,7 +1878,7 @@ impl StorageProvider for OpenDriveProvider {
                     url.query_pairs_mut()
                         .append_pair("session_id", &this.session_id);
 
-                    let resp = this.client.get(url).send().await.map_err(|e| {
+                    let resp = this.client.get(url).send().await.map_http_err(|e| {
                         ProviderError::TransferFailed(this.redact_session(&e.to_string()))
                     })?;
 
@@ -1902,8 +1901,9 @@ impl StorageProvider for OpenDriveProvider {
         let mut downloaded = 0_u64;
         let mut stream = resp.bytes_stream();
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk
-                .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
+            let chunk = chunk.map_http_err(|e| {
+                ProviderError::TransferFailed(self.redact_session(&e.to_string()))
+            })?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1980,7 +1980,7 @@ impl StorageProvider for OpenDriveProvider {
                     url.query_pairs_mut()
                         .append_pair("session_id", &this.session_id);
 
-                    let resp = this.client.get(url).send().await.map_err(|e| {
+                    let resp = this.client.get(url).send().await.map_http_err(|e| {
                         ProviderError::TransferFailed(this.redact_session(&e.to_string()))
                     })?;
 
@@ -2324,12 +2324,10 @@ impl StorageProvider for OpenDriveProvider {
             )
         });
 
-        let resp = self
-            .client
-            .get(&thumb_url)
-            .send()
-            .await
-            .map_err(|e| ProviderError::NetworkError(self.redact_session(&e.to_string())))?;
+        let resp =
+            self.client.get(&thumb_url).send().await.map_http_err(|e| {
+                ProviderError::NetworkError(self.redact_session(&e.to_string()))
+            })?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
@@ -2338,7 +2336,7 @@ impl StorageProvider for OpenDriveProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
 
         Ok(format!("data:image/jpeg;base64,{}", BASE64.encode(&bytes)))
     }
@@ -2565,7 +2563,7 @@ impl StorageProvider for OpenDriveProvider {
             .multipart(form)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
+            .map_http_err(|e| ProviderError::TransferFailed(self.redact_session(&e.to_string())))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);

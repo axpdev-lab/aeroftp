@@ -15,6 +15,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -425,7 +426,7 @@ impl FilenProvider {
         let resp = self.send_retry(request).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     /// Send a notes GET request with retry and parse the response.
@@ -440,7 +441,7 @@ impl FilenProvider {
         let resp = self.send_retry(request).await?;
         resp.json::<T>()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     // ── Notes CRUD ──

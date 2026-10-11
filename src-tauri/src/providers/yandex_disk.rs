@@ -14,6 +14,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
 use reqwest::header::{HeaderValue, AUTHORIZATION};
@@ -85,11 +86,13 @@ fn is_yandex_upload_retryable_status(status: reqwest::StatusCode) -> bool {
 }
 
 /// ProviderError variants raised during the GET upload-target step that
-/// indicate a transient failure worth retrying with backoff.
+/// indicate a transient failure worth retrying with backoff. A request the
+/// server never answered is `Timeout` (it was a `NetworkError` before timeouts
+/// were classified), and is as transient as a reset connection.
 fn is_yandex_upload_retryable_error(err: &ProviderError) -> bool {
     matches!(
         err,
-        ProviderError::NetworkError(_) | ProviderError::ServerError(_),
+        ProviderError::NetworkError(_) | ProviderError::ServerError(_) | ProviderError::Timeout,
     )
 }
 
@@ -458,7 +461,7 @@ impl YandexDiskProvider {
         let resp = rb
             .send()
             .await
-            .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
         if resp.status().as_u16() == 401 {
             return Err(self.parse_error(resp).await);
         }
@@ -574,7 +577,7 @@ impl YandexDiskProvider {
             let link: YdLink = response
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
             let url = yandex_operation_url(&link.href)?;
             loop {
                 let response = self
@@ -590,7 +593,7 @@ impl YandexDiskProvider {
                 let result: serde_json::Value = response
                     .json()
                     .await
-                    .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                    .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
                 if yandex_operation_done(
                     result.get("status").and_then(|v| v.as_str()).unwrap_or(""),
                 )? {
@@ -680,7 +683,7 @@ impl YandexDiskProvider {
             let resource: YdResource = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if let Some(embedded) = resource.embedded {
                 let count = embedded.items.len() as u64;
@@ -718,7 +721,7 @@ impl YandexDiskProvider {
 
         resp.json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
     }
 
     // ─── Public trash methods (not in StorageProvider trait) ─────────
@@ -749,7 +752,7 @@ impl YandexDiskProvider {
             let resource: YdResource = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if let Some(embedded) = resource.embedded {
                 let count = embedded.items.len() as u64;
@@ -843,7 +846,7 @@ impl YandexDiskProvider {
         let link: YdLink = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         validate_yd_url(&link.href)?;
         Ok(link)
     }
@@ -879,7 +882,7 @@ impl YandexDiskProvider {
                 .body(Vec::<u8>::new())
                 .send()
                 .await
-                .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             return if resp.status().is_success() {
                 Ok(())
             } else {
@@ -1009,7 +1012,9 @@ impl YandexDiskProvider {
                                     .await;
                                 continue;
                             }
-                            return Err(ProviderError::TransferFailed(e.to_string()));
+                            return Err(crate::providers::http_send_error(e, |e| {
+                                ProviderError::TransferFailed(e.to_string())
+                            }));
                         }
                     }
                 }
@@ -1065,14 +1070,14 @@ impl StorageProvider for YandexDiskProvider {
             .header(AUTHORIZATION, self.auth_header())
             .send()
             .await
-            .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(self.parse_error(resp).await);
         }
 
         // Verify we can parse the disk info
-        let _info: YdDiskInfo = resp.json().await.map_err(|e| {
+        let _info: YdDiskInfo = resp.json().await.map_http_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to parse disk info: {}", e))
         })?;
 
@@ -1165,7 +1170,7 @@ impl StorageProvider for YandexDiskProvider {
         let link: YdLink = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         validate_yd_url(&link.href)?;
 
         // Step 2: Download from the URL (no auth needed, streaming)
@@ -1174,7 +1179,7 @@ impl StorageProvider for YandexDiskProvider {
             .get(&link.href)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -1193,7 +1198,7 @@ impl StorageProvider for YandexDiskProvider {
         use futures_util::StreamExt;
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
             atomic
                 .write_all(&chunk)
                 .await
@@ -1243,7 +1248,7 @@ impl StorageProvider for YandexDiskProvider {
         let link: YdLink = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         validate_yd_url(&link.href)?;
 
         // Step 2: Resumable download (Yandex CDN URLs don't need auth)
@@ -1285,7 +1290,7 @@ impl StorageProvider for YandexDiskProvider {
         let link: YdLink = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
         validate_yd_url(&link.href)?;
 
         // Step 2: Download with size limit
@@ -1294,7 +1299,7 @@ impl StorageProvider for YandexDiskProvider {
             .get(&link.href)
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         if !resp.status().is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -1431,12 +1436,15 @@ impl StorageProvider for YandexDiskProvider {
                     return Err(err);
                 }
                 Err(e) => {
-                    let err = ProviderError::TransferFailed(e.to_string());
+                    let detail = e.to_string();
+                    let err = crate::providers::http_send_error(e, |e| {
+                        ProviderError::TransferFailed(e.to_string())
+                    });
                     if attempt < YANDEX_UPLOAD_MAX_ATTEMPTS {
                         let backoff_ms = YANDEX_UPLOAD_BACKOFF_BASE_MS * (1u64 << (attempt - 1));
                         yd_log(&format!(
                             "upload network error on attempt {}/{}: {}. Retry in {} ms with fresh upload-target",
-                            attempt, YANDEX_UPLOAD_MAX_ATTEMPTS, e, backoff_ms,
+                            attempt, YANDEX_UPLOAD_MAX_ATTEMPTS, detail, backoff_ms,
                         ));
                         last_error = Some(err);
                         tokio::time::sleep(std::time::Duration::from_millis(backoff_ms)).await;
@@ -1585,7 +1593,7 @@ impl StorageProvider for YandexDiskProvider {
         let info: YdDiskInfo = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(format!(
             "Yandex Disk | Total: {:.1} GB | Used: {:.1} GB | Trash: {:.1} MB",
@@ -1732,7 +1740,7 @@ impl StorageProvider for YandexDiskProvider {
             let list: YdFilesResourceList = resp
                 .json()
                 .await
-                .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             let count = list.items.len() as u64;
             for item in &list.items {
@@ -1773,7 +1781,7 @@ impl StorageProvider for YandexDiskProvider {
         let info: YdDiskInfo = resp
             .json()
             .await
-            .map_err(|e| ProviderError::ParseError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
         Ok(StorageInfo {
             used: info.used_space,
@@ -1996,7 +2004,7 @@ impl StorageProvider for YandexDiskProvider {
             .body(body.into_reqwest_body())
             .send()
             .await
-            .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
 
         let status = resp.status();
         let code = status.as_u16();
@@ -2455,11 +2463,12 @@ mod tests {
     }
 
     #[test]
-    fn upload_retryable_error_accepts_network_and_server() {
+    fn upload_retryable_error_accepts_network_server_and_timeout() {
         let net = ProviderError::NetworkError("connection reset".into());
         let srv = ProviderError::ServerError("upstream timeout".into());
         assert!(is_yandex_upload_retryable_error(&net));
         assert!(is_yandex_upload_retryable_error(&srv));
+        assert!(is_yandex_upload_retryable_error(&ProviderError::Timeout));
     }
 
     #[test]

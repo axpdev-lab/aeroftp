@@ -13,6 +13,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use reqwest::multipart;
 use secrecy::ExposeSecret;
@@ -460,7 +461,7 @@ impl FileLuProvider {
         })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "GET failed: {}",
                     redact_key(&e.to_string())
@@ -491,7 +492,7 @@ impl FileLuProvider {
             })?;
         send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_err(|e| {
+            .map_http_err(|e| {
                 ProviderError::ConnectionFailed(format!(
                     "POST failed: {}",
                     redact_key(&e.to_string())
@@ -503,7 +504,7 @@ impl FileLuProvider {
         resp: reqwest::Response,
     ) -> Result<T, ProviderError> {
         let status = resp.status();
-        let text = resp.text().await.map_err(|e| {
+        let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
                 "Failed to read response: {}",
                 redact_key(&e.to_string())
@@ -565,7 +566,7 @@ impl FileLuProvider {
 
     async fn ensure_api_ok(resp: reqwest::Response) -> Result<(), ProviderError> {
         let status = resp.status();
-        let text = resp.text().await.map_err(|e| {
+        let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
                 "Failed to read response: {}",
                 redact_key(&e.to_string())
@@ -1281,7 +1282,7 @@ impl FileLuProvider {
         let url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&url).await?;
         let status = resp.status();
-        let body = resp.text().await.map_err(|e| {
+        let body = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
                 "clone_file read failed: {}",
                 redact_key(&e.to_string())
@@ -1467,7 +1468,7 @@ impl FileLuProvider {
         );
         let resp = self.get_with_retry(&url).await?;
         // Response is an array: [{"file_code":"..."}]
-        let text = resp.text().await.map_err(|e| {
+        let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
                 "remote_url_upload read failed: {}",
                 redact_key(&e.to_string())
@@ -1611,7 +1612,7 @@ impl StorageProvider for FileLuProvider {
         let mut stream = resp.bytes_stream();
 
         while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|e| {
+            let chunk = chunk.map_http_err(|e| {
                 ProviderError::TransferFailed(format!(
                     "Download chunk error: {}",
                     redact_key(&e.to_string())
@@ -1681,7 +1682,7 @@ impl StorageProvider for FileLuProvider {
             }
         }
 
-        resp.bytes().await.map(|b| b.to_vec()).map_err(|e| {
+        resp.bytes().await.map(|b| b.to_vec()).map_http_err(|e| {
             ProviderError::TransferFailed(format!(
                 "Download failed: {}",
                 redact_key(&e.to_string())
@@ -1731,7 +1732,7 @@ impl StorageProvider for FileLuProvider {
         // sess_id is at root (NOT inside result), result is a plain URL string.
         let server_url = self.api_url_with("upload/server", &[("fld_id", &fld_id.to_string())]);
         let resp = self.get_with_retry(&server_url).await?;
-        let text = resp.text().await.map_err(|e| {
+        let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
                 "Failed to read upload server response: {}",
                 redact_key(&e.to_string())
@@ -1802,7 +1803,7 @@ impl StorageProvider for FileLuProvider {
             &HttpRetryConfig::default(),
         )
         .await
-        .map_err(|e| {
+        .map_http_err(|e| {
             ProviderError::TransferFailed(format!("Upload failed: {}", redact_key(&e.to_string())))
         })?;
 
@@ -1814,7 +1815,7 @@ impl StorageProvider for FileLuProvider {
             )));
         }
 
-        let upload_body = resp.text().await.map_err(|e| {
+        let upload_body = resp.text().await.map_http_err(|e| {
             ProviderError::TransferFailed(format!(
                 "Failed to read upload response: {}",
                 redact_key(&e.to_string())
@@ -2271,7 +2272,7 @@ impl StorageProvider for FileLuProvider {
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_with_retry(&clone_url).await?;
-        let body: serde_json::Value = resp.json().await.map_err(|e| {
+        let body: serde_json::Value = resp.json().await.map_http_err(|e| {
             ProviderError::ParseError(format!("clone response: {}", redact_key(&e.to_string())))
         })?;
 
