@@ -405,17 +405,21 @@ fn list_storages_on(device: &IPortableDevice) -> Result<Vec<MtpStorage>, Provide
     let content = content_of(device)?;
     let props = properties_of(&content)?;
 
+    // windows 0.58 declares both out-parameters of this collection `*const`
+    // (the WPD metadata lacks `[out]`). The callee writes through them, and a
+    // pointer derived from a shared borrow may not be written through, so they
+    // are passed as `&mut`, which coerces to the same `*const`.
     let mut count = 0u32;
     unsafe {
         objects
-            .GetCount(&count)
+            .GetCount(&mut count)
             .map_err(|e| map_com(e, "storage collection GetCount"))?;
     }
 
     let mut out = Vec::new();
     for i in 0..count {
         let mut pv = PROPVARIANT::new();
-        if unsafe { objects.GetAt(i, &pv) }.is_err() {
+        if unsafe { objects.GetAt(i, &mut pv) }.is_err() {
             continue;
         }
         let Some(storage_id) = propvar_to_string(&pv) else {

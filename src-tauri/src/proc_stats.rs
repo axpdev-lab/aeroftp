@@ -166,7 +166,7 @@ fn parse_status_vm_rss(status: &str) -> Option<u64> {
 
 /// Counts entries of `/proc/self/fd`. `None` means the directory could not
 /// be read at all; callers treat that as "unknown", not as zero fds.
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 fn count_fds() -> Option<u32> {
     let entries = std::fs::read_dir("/proc/self/fd").ok()?;
     let mut count: u32 = 0;

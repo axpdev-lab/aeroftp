@@ -260,12 +260,15 @@ fn secure_hash_drop_dir() -> Result<std::path::PathBuf, String> {
         for _ in 0..16 {
             let path =
                 std::env::temp_dir().join(format!("aeroftp-hash-drops-{}", uuid::Uuid::new_v4()));
-            let mut builder = std::fs::DirBuilder::new();
             #[cfg(unix)]
-            {
+            let builder = {
                 use std::os::unix::fs::DirBuilderExt;
+                let mut builder = std::fs::DirBuilder::new();
                 builder.mode(0o700);
-            }
+                builder
+            };
+            #[cfg(not(unix))]
+            let builder = std::fs::DirBuilder::new();
             match builder.create(&path) {
                 Ok(()) => return Ok(path),
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,

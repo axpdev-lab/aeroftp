@@ -251,6 +251,22 @@ fn main() {
         println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
     }
 
+    // LNK4099 ("PDB 'ossl_static.pdb' was not found ... linking object as if
+    // no debug info") is about OpenSSL's objects, not ours. OpenSSL's
+    // VC-WIN64A configuration compiles libcrypto with `/Zi
+    // /Fdossl_static.pdb`, the objects reach our link inside libssh2-sys's
+    // rlib, and the PDB stays in openssl-src's build tree, where the linker
+    // does not look. The only consequence is that those objects carry no
+    // debug info. rustc reports linker output through the warn-by-default
+    // `linker_messages` lint, so a debuginfo link of the lib test binary
+    // printed 807 of these lines (Windows Unit Tests, run 38072169081), and
+    // the `build.warnings="deny"` guard in windows-unit-tests.yml fails on
+    // them. `/IGNORE:4099` drops that one code; every other linker message
+    // still reaches the lint.
+    if link_target.contains("windows-msvc") {
+        println!("cargo:rustc-link-arg=/IGNORE:4099");
+    }
+
     // Detect Rust compiler version at build time: "rustc 1.84.0 (...)" → "1.84.0"
     if let Ok(output) = std::process::Command::new("rustc")
         .arg("--version")

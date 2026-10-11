@@ -35,8 +35,13 @@ use crate::mount_manager::locate_cli;
 struct ActiveVaultMount {
     child: tokio::process::Child,
     mountpoint: PathBuf,
+    // Entries are only created by the Linux `start`; these fields carry the
+    // cfg of the code that reads them.
+    #[cfg(target_os = "linux")]
     kind: String,
+    #[cfg(target_os = "linux")]
     display_name: String,
+    #[cfg(unix)]
     pid: u32,
 }
 

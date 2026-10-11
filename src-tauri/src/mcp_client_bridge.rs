@@ -68,7 +68,9 @@ impl BridgeError {
     pub(crate) const fn code(&self) -> &'static str {
         match self {
             Self::Installation(code) => code,
+            #[cfg(target_os = "linux")]
             Self::Stdio(TransportError::DirectoryChanged) => "MCP_DIRECTORY_CHANGED",
+            #[cfg(target_os = "linux")]
             Self::Stdio(TransportError::InstallIntegrity) => "MCP_INSTALL_INTEGRITY",
             Self::Gate(error) => error.code(),
             Self::Schema(SchemaError::Arguments) => "MCP_TOOL_ARGUMENTS",

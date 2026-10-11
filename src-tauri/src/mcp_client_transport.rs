@@ -28,7 +28,9 @@ pub(crate) enum TransportError {
     InvalidConfig,
     Spawn,
     SandboxUnavailable,
+    #[cfg(target_os = "linux")]
     DirectoryChanged,
+    #[cfg(target_os = "linux")]
     InstallIntegrity,
     Io,
     Frame(FrameError),
@@ -231,7 +233,9 @@ async fn prepare_command(
         result = prepared => result.map_err(|_| TransportError::Spawn)?.map_err(|error| match error {
             SandboxError::Unavailable => TransportError::SandboxUnavailable,
             SandboxError::InvalidPath => TransportError::InvalidConfig,
+            #[cfg(target_os = "linux")]
             SandboxError::DirectoryChanged => TransportError::DirectoryChanged,
+            #[cfg(target_os = "linux")]
             SandboxError::IntegrityFailure => TransportError::InstallIntegrity,
         }),
     }
