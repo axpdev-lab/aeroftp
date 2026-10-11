@@ -23,10 +23,19 @@ updates:
       # =2.11.0 in Cargo.toml; unblock only with a deliberate migration.
       - dependency-name: "tauri"
         versions: [">=2.11.1"]
-      # tauri-build is intentionally NOT blocked: it tracks its own 2.6.x
-      # line, is the build-script crate (not the runtime that regressed),
-      # and its patch/minor updates are safe. The runtime `tauri` pin
-      # above is the actual protection.
+      # tauri-build moves with the runtime pin above. It generates the app
+      # context (the `codegen` feature, see src-tauri/build.rs), so it writes
+      # code the pinned runtime compiles: 2.6.x is the tauri 2.11 line, while
+      # tauri-build 2.7 pulls tauri-codegen 2.7, whose Windows context calls
+      # `tauri::image::default_window_icon_from_app_icon_resource()`, which
+      # tauri 2.11.0 does not have. Patch updates inside 2.6.x stay open.
+      # tauri-codegen is the generator both tauri-build and tauri-macros call;
+      # Cargo.toml holds it on ~2.6.3 because their own requirements accept
+      # 2.7, so it moves with tauri-build, never alone.
+      - dependency-name: "tauri-build"
+        versions: [">=2.7.0"]
+      - dependency-name: "tauri-codegen"
+        versions: [">=2.7.0"]
       - dependency-name: "suppaftp"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rand"
