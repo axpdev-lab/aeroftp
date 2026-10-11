@@ -2128,8 +2128,11 @@ pub async fn ensure_atomic_replace(
 /// and the slot commands, in the CLI and in the app's slots dialog) may
 /// replace it through a set-aside only with the user's consent
 /// (`allow_non_atomic`, owner decision 2026-10-11): with it, a backend that
-/// replaces atomically or sets the old file aside passes as a replace, and
-/// every other one is refused, before anything is staged. Without it the
+/// sets the old file aside passes as a replace when a marker is at
+/// `target` and as a creation when the name is free (the consent is to
+/// replace the marker that is there, not one written after the check), and
+/// a backend that neither replaces atomically nor sets aside is refused,
+/// before anything is staged. Without it the
 /// check is [`ensure_atomic_replace`]'s, and on a set-aside backend the
 /// refusal names the caller's opt-in (`opt_in`, its spelling of it) and what
 /// it risks ([`marker_set_aside_opt_in_hint`]); `None` where the caller has
@@ -2142,14 +2145,14 @@ pub async fn ensure_marker_replace(
     allow_non_atomic: bool,
     opt_in: Option<&str>,
 ) -> Result<StagedPublish, ProviderError> {
-    if allow_non_atomic {
-        if provider.supports_atomic_replace().await? || provider.replace_sets_aside() {
-            return Ok(StagedPublish::Replace);
-        }
-        return Err(ProviderError::NotSupported(marker_refusal(target)));
-    }
     match staged_publish(provider, target).await? {
         Some(publish) => Ok(publish),
+        // The consent covers the one case it was asked for: a set-aside
+        // backend and a marker at the target. Onto a free name the publish
+        // stays the creation above, so a marker another client writes after
+        // this check is refused by the rename, never set aside and deleted.
+        None if allow_non_atomic && provider.replace_sets_aside() => Ok(StagedPublish::Replace),
+        None if allow_non_atomic => Err(ProviderError::NotSupported(marker_refusal(target))),
         None => {
             let refusal = marker_refusal(target);
             Err(ProviderError::NotSupported(
@@ -2261,9 +2264,12 @@ async fn staged_publish(
 /// The crypt and AeroCrypt marker paths call [`ensure_marker_replace`],
 /// which has its own opt-in and its own refusal.
 ///
-/// The answer is the publish, as for [`ensure_atomic_replace`]: the opt-in
-/// is a replace, and without it a set-aside backend passes only onto a free
-/// name (the file went away after it was read), which makes it a creation.
+/// The answer is the publish, as for [`ensure_atomic_replace`]: on a
+/// set-aside backend the opt-in is a replace of the file still at the
+/// target, and onto a free name (the file went away after it was read) the
+/// publish is a creation with or without it, so a file another client puts
+/// there after the check is refused by the rename, not set aside and
+/// deleted under an edit made from what was read before.
 pub async fn ensure_edit_can_replace(
     provider: &mut dyn StorageProvider,
     target: &str,
@@ -2271,12 +2277,16 @@ pub async fn ensure_edit_can_replace(
     opt_in: &str,
 ) -> Result<StagedPublish, ProviderError> {
     if allow_non_atomic {
-        if provider.supports_atomic_replace().await? || provider.replace_sets_aside() {
-            return Ok(StagedPublish::Replace);
-        }
-        return Err(ProviderError::NotSupported(opt_in_cannot_set_aside(
-            target, opt_in,
-        )));
+        // The opt-in covers the one case it was asked for, a set-aside
+        // backend and a file at the target, as for a marker
+        // ([`ensure_marker_replace`]).
+        return match staged_publish(provider, target).await? {
+            Some(publish) => Ok(publish),
+            None if provider.replace_sets_aside() => Ok(StagedPublish::Replace),
+            None => Err(ProviderError::NotSupported(opt_in_cannot_set_aside(
+                target, opt_in,
+            ))),
+        };
     }
     match ensure_atomic_replace(provider, target).await {
         Err(ProviderError::NotSupported(refusal)) if provider.replace_sets_aside() => Err(
@@ -2293,12 +2303,13 @@ pub async fn ensure_edit_can_replace(
 /// [`StagedPublish::publish`], never with a bare [`StorageProvider::replace`].
 ///
 /// The check and the publish are separate requests (CodeRabbit on #1154).
-/// On a backend that replaces atomically, or under an edit's opt-in, the
-/// check passes whatever is at the target and the publish replaces it:
-/// whoever writes last wins, which is what a replace is. A backend whose
-/// replace sets the old item aside passes only because nothing was at the
-/// target, and a replace would set aside and delete an item another client
-/// put there in between. Its publish is therefore the rename, which refuses
+/// On a backend that replaces atomically the check passes whatever is at
+/// the target and the publish replaces it: whoever writes last wins, which
+/// is what a replace is. A backend whose replace sets the old item aside
+/// passes without an opt-in only because nothing was at the target, and
+/// with one it is a replace only of an item the check found there; onto a
+/// name found free a replace would set aside and delete an item another
+/// client put there in between. Its publish is therefore the rename, which refuses
 /// a taken name. On WebDAV (a MOVE with `Overwrite: F`, 412), Dropbox,
 /// Koofr, kDrive (409) and Drime (a rename within one folder) the server
 /// refuses it, which closes that window. MEGA, Filen and FileLu keep two
@@ -4147,6 +4158,28 @@ pub(crate) mod edit_replace_tests {
         }
     }
 
+    /// CodeRabbit on #1180: the opt-in replaces through a set-aside only a
+    /// file the check found at the target. Onto a free name the publish is
+    /// the creation, which refuses what another client writes there after
+    /// the check instead of setting it aside and deleting it.
+    #[tokio::test]
+    async fn an_opt_in_onto_a_free_name_stays_a_creation() {
+        let mut p = EditFake::new(false, true);
+        p.files.clear();
+        let edit = ensure_edit_can_replace(&mut p, "/t.txt", true, "`--opt`").await;
+        assert_eq!(edit.ok(), Some(StagedPublish::Create));
+        let marker = ensure_marker_replace(&mut p, "/.aerocrypt.tsv", true, None).await;
+        assert_eq!(marker.ok(), Some(StagedPublish::Create));
+        p.files.insert("/t.txt".to_string(), b"theirs".to_vec());
+        p.files
+            .insert("/.aerocrypt.tsv".to_string(), b"theirs".to_vec());
+        let edit = ensure_edit_can_replace(&mut p, "/t.txt", true, "`--opt`").await;
+        assert_eq!(edit.ok(), Some(StagedPublish::Replace));
+        let marker = ensure_marker_replace(&mut p, "/.aerocrypt.tsv", true, None).await;
+        assert_eq!(marker.ok(), Some(StagedPublish::Replace));
+        assert!(p.uploads.is_empty() && p.replaces.is_empty());
+    }
+
     #[test]
     fn permission_mode_reads_the_forms_providers_report() {
         for (text, mode) in [
@@ -4241,8 +4274,9 @@ pub(crate) mod edit_replace_tests {
     /// Policy C (owner, 2026-10-11): a marker that already exists is
     /// replaced through a set-aside only with the user's consent. Every
     /// combination of backend, target and consent, before anything is
-    /// staged: with consent an atomic or set-aside backend replaces and any
-    /// other is refused; without it the check is the file one, and a refusal
+    /// staged: with consent a set-aside backend replaces the marker that is
+    /// there and still only creates onto a free name, and a backend with
+    /// neither is refused; without it the check is the file one, and a refusal
     /// on a set-aside backend names the caller's opt-in, nowhere else.
     #[tokio::test]
     async fn a_marker_is_replaced_through_a_set_aside_only_with_consent() {
@@ -4263,10 +4297,14 @@ pub(crate) mod edit_replace_tests {
                             "atomic {atomic}, sets aside {sets_aside}, occupied {occupied}, \
                              consent {consent}: {outcome:?}"
                         );
-                        let expected = if atomic || (consent && sets_aside) {
+                        // Consent widens a set-aside backend to the marker
+                        // that is there, never to a name found free.
+                        let expected = if atomic {
                             Some(StagedPublish::Replace)
                         } else if sets_aside && !occupied {
                             Some(StagedPublish::Create)
+                        } else if sets_aside && consent {
+                            Some(StagedPublish::Replace)
                         } else {
                             None
                         };
