@@ -29,6 +29,10 @@ use super::{
     ShareLinkOptions, ShareLinkResult, StorageProvider, UploadedPart, WebDavConfig,
 };
 
+#[cfg(test)]
+#[path = "webdav_nextcloud_retry_tests.rs"]
+mod nextcloud_retry_tests;
+
 /// Encode one untrusted Nextcloud trash identifier as exactly one URL segment.
 /// Dots are encoded too so an identifier equal to `..` cannot traverse out of
 /// the `trash` / `restore` collection after URL normalization.
@@ -415,6 +419,30 @@ fn send_error(e: reqwest::Error) -> ProviderError {
         Some(refused) => ProviderError::ServerError(refused.to_string()),
         None => ProviderError::NetworkError(describe_reqwest_error(&e)),
     }
+}
+
+/// reqwest can wrap a streamed source read failure as a request error rather
+/// than `is_body()`. Do not spend the network budget reopening a broken source.
+fn nextcloud_chunk_send_retryable(error: &reqwest::Error) -> bool {
+    use std::error::Error;
+    if error.is_builder()
+        || error.is_body()
+        || error.is_redirect()
+        || insecure_redirect(error).is_some()
+    {
+        return false;
+    }
+    let mut source = error.source();
+    while let Some(cause) = source {
+        if cause
+            .downcast_ref::<hyper::Error>()
+            .is_some_and(|e| e.is_user())
+        {
+            return false;
+        }
+        source = cause.source();
+    }
+    true
 }
 
 /// [`send_error`] for the connect-time probes, which report through
@@ -1731,6 +1759,98 @@ impl WebDavProvider {
                 &self.config.username,
                 Some(self.config.password.expose_secret()),
             )
+        }
+    }
+
+    /// Replay an idempotent chunk PUT in its existing upload session. Disk
+    /// sources reopen the same bounded window; owned bytes share one allocation.
+    /// Digest repair gets at most one extra attempt across the whole budget.
+    async fn send_nextcloud_chunk(
+        &self,
+        chunk_url: &str,
+        total_size: u64,
+        body: crate::transfer_multipart::PartBody,
+    ) -> Result<reqwest::Response, ProviderError> {
+        use super::http_retry::{
+            calculate_delay, parse_retry_after, send_with_retry_replayable, HttpRetryConfig,
+        };
+        use crate::transfer_multipart::{DiskSlicePart, PartBody};
+
+        enum Replay {
+            Owned(bytes::Bytes),
+            DiskSlice(DiskSlicePart),
+        }
+        let part_len = body.len();
+        let source = match body {
+            PartBody::Owned(data) => Replay::Owned(bytes::Bytes::from(data)),
+            PartBody::DiskSlice(slice) => Replay::DiskSlice(slice),
+        };
+        let config = HttpRetryConfig::default();
+        // This loop owns retries, while the shared sender still accounts for
+        // each attempt's rate-limit toll and time to response headers.
+        let single_attempt = HttpRetryConfig {
+            max_retries: 0,
+            ..config.clone()
+        };
+        let mut retries = 0;
+        let mut nonce_replayed = false;
+        loop {
+            let response = send_with_retry_replayable(
+                &self.client,
+                || {
+                    let body = match &source {
+                        Replay::Owned(bytes) => crate::transfer_dag::throttle::owned_body_bytes(
+                            bytes.clone(),
+                            crate::transfer_dag::governor::TransferDirection::Upload,
+                        ),
+                        Replay::DiskSlice(slice) => {
+                            PartBody::DiskSlice(slice.clone()).into_reqwest_body()
+                        }
+                    };
+                    // Rebuild Digest Authorization too: cloned workers share
+                    // the latest nonce and each send needs its own nc value.
+                    self.request_url(Method::PUT, chunk_url)
+                        .header("Content-Length", part_len)
+                        .header("OC-Total-Length", total_size)
+                        .body(body)
+                },
+                &single_attempt,
+            )
+            .await;
+            let response = match response {
+                Ok(response) => response,
+                Err(error)
+                    if retries < config.max_retries && nextcloud_chunk_send_retryable(&error) =>
+                {
+                    let delay = calculate_delay(retries, &config);
+                    retries += 1;
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                Err(error) => return Err(send_error(error)),
+            };
+            if !nonce_replayed
+                && response.status() == StatusCode::UNAUTHORIZED
+                && self.adopt_rotated_nonce(&response)
+            {
+                nonce_replayed = true;
+                drop(response);
+                continue;
+            }
+            if retries >= config.max_retries
+                || !matches!(
+                    response.status().as_u16(),
+                    408 | 429 | 500 | 502 | 503 | 504
+                )
+            {
+                return Ok(response);
+            }
+            let delay =
+                parse_retry_after(&response).unwrap_or_else(|| calculate_delay(retries, &config));
+            retries += 1;
+            // Release the connection/body before a possibly long server wait.
+            drop(response);
+            tokio::time::sleep(delay).await;
         }
     }
 
@@ -4795,7 +4915,7 @@ impl StorageProvider for WebDavProvider {
         })
     }
 
-    // DAG-P2-05: Nextcloud chunked PUT is a single send with a known length and
+    // DAG-P2-05: Nextcloud chunked PUT has a known length and
     // no whole-part hashing, so stream the part body one bounded window at a time
     // instead of buffering the whole part in memory.
     fn multipart_streams_part_body(&self) -> bool {
@@ -4838,57 +4958,9 @@ impl StorageProvider for WebDavProvider {
                 ProviderError::Other("Failed to build Nextcloud chunk URL".to_string())
             })?;
 
-        let part_len = body.len();
-        // Capture the SOURCE, not the bytes. `into_reqwest_body` consumes the
-        // part, so a replay needs it again, and `DiskSlicePart` is an
-        // `Arc<PathBuf>` plus two integers: cloning it bumps a refcount and
-        // copies nothing. The second attempt re-opens and re-seeks the same
-        // window, which is exactly what `PartBody`'s replayability contract
-        // means by "disk re-opens and re-seeks".
-        //
-        // Buffering the bytes instead would be an unaccounted overcommit, not
-        // merely a cost: this provider returns true from
-        // `multipart_streams_part_body`, so the shaping profile reserves only
-        // one streaming window of `buffer_bytes` per part (DAG-P2-05). Holding
-        // a whole part to be able to replay it would put resident bytes the
-        // governor never leased in flight, once per concurrent part.
-        //
-        // `Owned` is deliberately not replayed. Its bytes are already fully
-        // resident, so copying them is the same overcommit, and it does not
-        // arise here in practice: both DAG sites build `disk_slice`, and
-        // `Owned` reaches this method only through the compat `upload_part`
-        // path. On that path a rotation still repairs the shared challenge for
-        // every sibling worker below, so the next part succeeds; only this one
-        // fails, exactly as it did before.
-        let replay = match &body {
-            crate::transfer_multipart::PartBody::DiskSlice(slice) => Some(slice.clone()),
-            crate::transfer_multipart::PartBody::Owned(_) => None,
-        };
-        let mut response = self
-            .request_url(Method::PUT, &chunk_url)
-            .header("Content-Length", part_len)
-            .header("OC-Total-Length", payload.total_size)
-            .body(body.into_reqwest_body())
-            .send()
-            .await
-            .map_err(send_error)?;
-
-        // The batch case that motivated the whole deferral: eight clone workers
-        // share one challenge, the server rotates the nonce mid-upload, and
-        // every in-flight chunk 401s at once. One of them adopts the rotation
-        // and repairs the challenge for all of them.
-        if response.status() == StatusCode::UNAUTHORIZED && self.adopt_rotated_nonce(&response) {
-            if let Some(slice) = replay {
-                response = self
-                    .request_url(Method::PUT, &chunk_url)
-                    .header("Content-Length", part_len)
-                    .header("OC-Total-Length", payload.total_size)
-                    .body(crate::transfer_multipart::PartBody::DiskSlice(slice).into_reqwest_body())
-                    .send()
-                    .await
-                    .map_err(send_error)?;
-            }
-        }
+        let response = self
+            .send_nextcloud_chunk(&chunk_url, payload.total_size, body)
+            .await?;
 
         match response.status() {
             // Nextcloud returns 201 Created for a new chunk and 204 No

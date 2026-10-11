@@ -78,7 +78,7 @@ struct MultipartFileRuntime {
     /// `None` = not yet acquired; acquire is serialised by this mutex.
     session_lease: Mutex<SessionLeaseSlot>,
     /// Process-global endpoint plus local-device lease for the multipart file.
-    /// Held from the first part through terminal commit/abort so individual
+    /// Held from AcquireResource through terminal commit/abort so individual
     /// part nodes cannot bypass the provider-job governor.
     governor_lease: Mutex<Option<crate::transfer_dag::GovernorJobLease>>,
 }
@@ -469,6 +469,7 @@ where
             .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
             .collect();
         let state = MultipartFileState::new(layout, node_to_part);
+        node_to_entry.insert(shaped.acquire, 0);
         node_to_entry.insert(shaped.commit, 0);
         Some(Arc::new(MultipartFileRuntime {
             state,
@@ -514,6 +515,23 @@ where
             let file_counters = Arc::clone(&file_counters);
             Box::pin(async move {
                 match node.kind {
+                    TransferNodeKind::AcquireResource => {
+                        let Some(&index) = node_to_entry.get(&node.id) else {
+                            return NodeOutcome::Completed;
+                        };
+                        let Some(runtime) = multipart_runtimes[index].as_ref() else {
+                            return NodeOutcome::Completed;
+                        };
+                        acquire_multipart_file(
+                            runtime,
+                            &entries[index],
+                            &executor,
+                            &cancel,
+                            &session_pool,
+                            &progress,
+                        )
+                        .await
+                    }
                     TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile => {
                         let direction = match node.kind {
                             TransferNodeKind::DownloadFile => TransferDirection::Download,
@@ -544,10 +562,6 @@ where
                             &preflight_failed,
                             &executor,
                             &cancel,
-                            &session_pool,
-                            &progress,
-                            &sink,
-                            progress_observer.as_ref(),
                         )
                         .await
                     }
@@ -567,7 +581,7 @@ where
                         )
                         .await
                     }
-                    // Structural anchors: discover / acquire / verify / preserve / emit.
+                    // Structural anchors: discover / verify / preserve / emit.
                     _ => NodeOutcome::Completed,
                 }
             })
@@ -725,71 +739,26 @@ fn mark_file_active(snapshot: &mut BatchProgressSnapshot) {
     snapshot.peak_active = snapshot.peak_active.max(snapshot.active);
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_multipart_part_node<E>(
-    node_id: usize,
-    node_to_entry: &HashMap<usize, usize>,
-    entries: &[crate::transfer_domain::TransferEntry],
-    multipart_runtimes: &[Option<Arc<MultipartFileRuntime>>],
-    preflight_failed: &std::sync::Mutex<std::collections::HashSet<usize>>,
+/// Acquire file-lifetime leases before scheduling any chunk nodes. A waiting
+/// second file must not hold the chunk credit the first file needs to finish
+/// and release its session. AcquireResource has no scarce node resources.
+async fn acquire_multipart_file<E>(
+    runtime: &MultipartFileRuntime,
+    entry: &TransferEntry,
     executor: &Arc<E>,
     cancel: &AtomicBool,
-    session_pool: &crate::transfer_dag::TransferSessionPoolHandle,
+    session_pool: &TransferSessionPoolHandle,
     progress: &Mutex<BatchProgressSnapshot>,
-    _sink: &Arc<dyn TransferEventSink>,
-    _progress_observer: Option<&ProgressObserver>,
 ) -> NodeOutcome
 where
     E: TransferExecutor + Send + Sync + 'static,
 {
-    let Some(&entry_index) = node_to_entry.get(&node_id) else {
-        return NodeOutcome::Completed;
-    };
-    if preflight_failed
-        .lock()
-        .expect("preflight set")
-        .contains(&entry_index)
+    let state = &runtime.state;
+    if state.has_failure().await
+        || multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun())
     {
         return NodeOutcome::Completed;
     }
-    let Some(runtime) = multipart_runtimes
-        .get(entry_index)
-        .and_then(|r| r.as_ref())
-        .cloned()
-    else {
-        return NodeOutcome::Completed;
-    };
-    let entry = entries[entry_index].clone();
-    let state = Arc::clone(&runtime.state);
-
-    // Already failed: drain as no-op so siblings finish before commit.
-    if state.has_failure().await {
-        return NodeOutcome::Completed;
-    }
-
-    // Pre-cancel before begin/lease: leave the file unaccounted (legacy contract).
-    // After begin, record cancellation so CommitTemp aborts once.
-    let cancelled_now =
-        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
-    if cancelled_now {
-        if state.is_begun() {
-            state.record_failure(cancelled_failure()).await;
-        }
-        return NodeOutcome::Completed;
-    }
-
-    let Some(part_number) = state.part_number_for_node(node_id) else {
-        state
-            .record_failure(TransferFailure {
-                kind: TransferFailureKind::Unknown,
-                message: format!("UploadPart node {node_id} not mapped to a part number"),
-                retryable: false,
-                retry_after_secs: None,
-            })
-            .await;
-        return NodeOutcome::Completed;
-    };
-
     // Serialize the one job-level governor acquire with the multipart file
     // state. Once acquired it remains held until CommitTemp has completed or
     // aborted the file, so parallel parts cannot each consume a fresh endpoint
@@ -859,11 +828,75 @@ where
     }
 
     // Lazy begin once under the begin gate.
-    ensure_multipart_begun(executor, &entry, &state).await;
+    ensure_multipart_begun(executor, entry, state).await;
 
     if state.has_failure().await {
         return NodeOutcome::Completed;
     }
+    NodeOutcome::Completed
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_multipart_part_node<E>(
+    node_id: usize,
+    node_to_entry: &HashMap<usize, usize>,
+    entries: &[crate::transfer_domain::TransferEntry],
+    multipart_runtimes: &[Option<Arc<MultipartFileRuntime>>],
+    preflight_failed: &std::sync::Mutex<std::collections::HashSet<usize>>,
+    executor: &Arc<E>,
+    cancel: &AtomicBool,
+) -> NodeOutcome
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    let Some(&entry_index) = node_to_entry.get(&node_id) else {
+        return NodeOutcome::Completed;
+    };
+    if preflight_failed
+        .lock()
+        .expect("preflight set")
+        .contains(&entry_index)
+    {
+        return NodeOutcome::Completed;
+    }
+    let Some(runtime) = multipart_runtimes
+        .get(entry_index)
+        .and_then(|r| r.as_ref())
+        .cloned()
+    else {
+        return NodeOutcome::Completed;
+    };
+    let entry = entries[entry_index].clone();
+    let state = Arc::clone(&runtime.state);
+
+    // Already failed: drain as no-op so siblings finish before commit.
+    if state.has_failure().await {
+        return NodeOutcome::Completed;
+    }
+
+    // Pre-cancel before begin/lease: leave the file unaccounted (legacy contract).
+    // After begin, record cancellation so CommitTemp aborts once.
+    let cancelled_now =
+        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
+    if cancelled_now {
+        if state.is_begun() {
+            state.record_failure(cancelled_failure()).await;
+        }
+        return NodeOutcome::Completed;
+    }
+
+    let Some(part_number) = state.part_number_for_node(node_id) else {
+        state
+            .record_failure(TransferFailure {
+                kind: TransferFailureKind::Unknown,
+                message: format!("UploadPart node {node_id} not mapped to a part number"),
+                retryable: false,
+                retry_after_secs: None,
+            })
+            .await;
+        return NodeOutcome::Completed;
+    };
+
     if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
