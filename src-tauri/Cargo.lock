@@ -153,6 +153,7 @@ dependencies = [
  "tar",
  "tauri",
  "tauri-build",
+ "tauri-codegen",
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-fs",

@@ -29,7 +29,12 @@ updates:
       # tauri-build 2.7 pulls tauri-codegen 2.7, whose Windows context calls
       # `tauri::image::default_window_icon_from_app_icon_resource()`, which
       # tauri 2.11.0 does not have. Patch updates inside 2.6.x stay open.
+      # tauri-codegen is the generator both tauri-build and tauri-macros call;
+      # Cargo.toml holds it on ~2.6.3 because their own requirements accept
+      # 2.7, so it moves with tauri-build, never alone.
       - dependency-name: "tauri-build"
+        versions: [">=2.7.0"]
+      - dependency-name: "tauri-codegen"
         versions: [">=2.7.0"]
       - dependency-name: "suppaftp"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]

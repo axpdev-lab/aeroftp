@@ -67,7 +67,10 @@ jobs:
     # for a slower runner), 45 for running 3916 tests, and 10 for checkout,
     # cache restore and the CMake purge. Raised to 150 on 2026-10-11 for the
     # 15-minute budget of the step that confirms the test binary needs no
-    # rebuild.
+    # rebuild. The same day the two checks got their 40 minutes as step caps,
+    # 25 and 15 (slowest of eight runs from 2026-10-09 to 2026-10-11: 15m07s
+    # and 6m00s), so every compile and test step now has a cap and they sum
+    # to 140; the remaining 10 are for the uncapped setup steps.
     timeout-minutes: 150
 
     steps:
@@ -144,6 +147,7 @@ jobs:
       # back into the cross-OS surface.
       - name: cargo check (--no-default-features, classic-only fallback)
         working-directory: src-tauri
+        timeout-minutes: 25
         run: cargo check --locked --no-default-features --config 'build.warnings="deny"'
 
       # Compile-surface gate for the shipping configuration (default
@@ -154,6 +158,7 @@ jobs:
       # all build cleanly under MSVC with the feature on.
       - name: "cargo check (default features: shipping configuration)"
         working-directory: src-tauri
+        timeout-minutes: 15
         run: cargo check --locked --all-targets --config 'build.warnings="deny"'
       # G105, 2026-09-18. Until today this job's name promised "native
       # unit tests" and it ran none: every `cargo test` in the repository
@@ -228,13 +233,21 @@ jobs:
         run: |
           $messages = cargo test --locked --lib --no-default-features --features aerorsync --no-run --message-format=json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $rebuilt = @($messages | ForEach-Object { $_ | ConvertFrom-Json } |
-            Where-Object { $_.reason -eq 'compiler-artifact' -and -not $_.fresh })
+          $artifacts = @($messages | ForEach-Object { $_ | ConvertFrom-Json } |
+            Where-Object { $_.reason -eq 'compiler-artifact' })
+          $rebuilt = @($artifacts | Where-Object { -not $_.fresh })
           foreach ($artifact in $rebuilt) {
             Write-Host "::error::$($artifact.target.name) ($($artifact.package_id)) was compiled again"
           }
           if ($rebuilt.Count -gt 0) { exit 1 }
-          Write-Host "Every artifact of the test build is fresh."
+          # No rebuilt artifact is also what an empty selection reports, so the
+          # test executable the next step runs has to be among the fresh ones.
+          $tests = @($artifacts | Where-Object { $_.profile.test -and $_.executable })
+          if ($tests.Count -ne 1) {
+            Write-Host "::error::expected the lib test executable among the artifacts, cargo reported $($tests.Count) test executables"
+            exit 1
+          }
+          Write-Host "Every artifact of the test build is fresh, including $($tests[0].executable)."
 
       - name: "Unit tests: cross-platform assertions under MSVC"
         working-directory: src-tauri
