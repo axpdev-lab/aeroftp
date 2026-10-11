@@ -24,6 +24,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
 
+#[cfg(test)]
+#[path = "webdav_owncloud_tests.rs"]
+mod owncloud_tests;
+
 use super::{
     sanitize_api_error, MultipartHandle, ProviderError, ProviderListExecutorKind,
     ProviderTransferExecutorKind, ProviderType, RemoteEntry, ShareLinkCapabilities,
@@ -2430,6 +2434,7 @@ impl WebDavProvider {
         xml: &str,
         base_path: &str,
     ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        validate_propfind_xml(xml, base_path)?;
         let mut entries = Vec::new();
 
         tracing::debug!(
@@ -2699,7 +2704,12 @@ impl WebDavProvider {
 
     /// Extract a single property value from a PROPFIND Depth:0 XML response using quick-xml.
     /// Used by stat() and storage_info() for simple single-response parsing.
-    fn extract_xml_properties(&self, xml: &str) -> HashMap<String, String> {
+    fn extract_xml_properties(
+        &self,
+        xml: &str,
+        path: &str,
+    ) -> Result<HashMap<String, String>, ProviderError> {
+        validate_propfind_xml(xml, path)?;
         let mut props = HashMap::new();
         let mut reader = Reader::from_str(xml);
         // No trim_text: fragments around XML entities must survive intact;
@@ -2787,7 +2797,133 @@ impl WebDavProvider {
             }
             buf.clear();
         }
-        props
+        Ok(props)
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum PropfindDocument {
+    Multistatus,
+    NotFound,
+    DavError,
+    Other,
+}
+
+/// Validate the complete document before accepting any partial metadata.
+/// Only a DAV:error root's direct Sabre exception child is an error signal.
+fn inspect_propfind_document(xml: &str) -> Result<PropfindDocument, String> {
+    use quick_xml::name::ResolveResult;
+    use quick_xml::reader::NsReader;
+    let mut reader = NsReader::from_str(xml);
+    let mut depth = 0usize;
+    let mut roots = 0;
+    let mut kind = PropfindDocument::Other;
+    let mut in_exception = false;
+    let mut exception = String::new();
+    loop {
+        let (namespace, event) = reader
+            .read_resolved_event()
+            .map_err(|_| "Malformed PROPFIND XML".to_string())?;
+        if matches!(namespace, ResolveResult::Unknown(_)) {
+            return Err("Unknown PROPFIND XML namespace".into());
+        }
+        let namespace = match namespace {
+            ResolveResult::Bound(ns) => ns.into_inner(),
+            _ => "",
+        };
+        match event {
+            Event::Start(ref element) | Event::Empty(ref element) => {
+                let local = element.local_name();
+                if depth == 0 {
+                    roots += 1;
+                    if roots > 1 {
+                        return Err("Multiple PROPFIND XML roots".into());
+                    }
+                    kind = match (namespace, local.as_ref()) {
+                        ("DAV:", "multistatus") => PropfindDocument::Multistatus,
+                        ("DAV:", "error") => PropfindDocument::DavError,
+                        _ => PropfindDocument::Other,
+                    };
+                }
+                in_exception = kind == PropfindDocument::DavError
+                    && depth == 1
+                    && namespace == "http://sabredav.org/ns"
+                    && local.as_ref() == "exception";
+                if in_exception {
+                    exception.clear();
+                }
+                if matches!(event, Event::Start(_)) {
+                    depth += 1;
+                }
+            }
+            Event::End(_) => {
+                if in_exception && depth == 2 {
+                    if exception.trim() == r"Sabre\DAV\Exception\NotFound" {
+                        kind = PropfindDocument::NotFound;
+                    }
+                    in_exception = false;
+                }
+                depth = depth.checked_sub(1).ok_or("Unexpected PROPFIND XML end")?;
+            }
+            Event::Text(text) => {
+                if depth == 0 && !text.as_ref().trim().is_empty() {
+                    return Err("Text outside PROPFIND XML root".into());
+                }
+                if in_exception && depth == 2 {
+                    exception.push_str(text.as_ref());
+                }
+            }
+            Event::CData(text) => {
+                if depth == 0 {
+                    return Err("CDATA outside PROPFIND XML root".into());
+                }
+                if in_exception && depth == 2 {
+                    exception.push_str(text.as_ref());
+                }
+            }
+            Event::GeneralRef(reference) if in_exception && depth == 2 => {
+                let value = super::xml_text::xml_entity_to_str(reference.as_ref())
+                    .ok_or("Unknown entity in DAV exception")?;
+                exception.push_str(&value);
+            }
+            Event::Decl(_) if depth != 0 || roots != 0 => {
+                return Err("Misplaced PROPFIND XML declaration".into())
+            }
+            Event::Eof => {
+                if depth != 0 || roots != 1 {
+                    return Err("Incomplete PROPFIND XML document".into());
+                }
+                return Ok(kind);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_propfind_xml(xml: &str, path: &str) -> Result<(), ProviderError> {
+    match inspect_propfind_document(xml) {
+        Ok(PropfindDocument::NotFound) => Err(ProviderError::NotFound(path.to_string())),
+        Ok(PropfindDocument::DavError) => Err(ProviderError::ServerError(
+            "WebDAV returned an error document".into(),
+        )),
+        Ok(_) => Ok(()),
+        Err(error) => {
+            // ownCloud 10.16 can interrupt the multistatus OPENING TAG and
+            // append an independently declared DAV error document. Recover
+            // only that shape; arbitrary text/filenames never qualify.
+            if let Some(split) = xml.rfind("<?xml") {
+                if split > 0 {
+                    let head = format!("{}/>", xml[..split].trim_end());
+                    if inspect_propfind_document(&head) == Ok(PropfindDocument::Multistatus)
+                        && inspect_propfind_document(&xml[split..])
+                            == Ok(PropfindDocument::NotFound)
+                    {
+                        return Err(ProviderError::NotFound(path.to_string()));
+                    }
+                }
+            }
+            Err(ProviderError::ParseError(error))
+        }
     }
 }
 
@@ -3481,7 +3617,7 @@ impl StorageProvider for WebDavProvider {
                     .await
                     .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-                let props = self.extract_xml_properties(&xml);
+                let props = self.extract_xml_properties(&xml, path)?;
                 let is_collection = props.contains_key("_is_collection");
 
                 if is_collection {
@@ -4143,7 +4279,7 @@ impl StorageProvider for WebDavProvider {
                         .await
                         .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-                    let props = self.extract_xml_properties(&xml);
+                    let props = self.extract_xml_properties(&xml, path)?;
                     let is_dir = props.contains_key("_is_collection");
                     let size: u64 = props
                         .get("getcontentlength")
@@ -4265,7 +4401,7 @@ impl StorageProvider for WebDavProvider {
                         .text()
                         .await
                         .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-                    let props = self.extract_xml_properties(&xml);
+                    let props = self.extract_xml_properties(&xml, path)?;
                     return Ok(props
                         .get("checksum")
                         .map(|s| parse_oc_checksums(s))
@@ -4460,7 +4596,7 @@ impl StorageProvider for WebDavProvider {
             .await
             .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        let props = self.extract_xml_properties(&xml);
+        let props = self.extract_xml_properties(&xml, &self.current_path)?;
         let used = props
             .get("quota-used-bytes")
             .and_then(|s| s.parse::<u64>().ok())
@@ -5800,7 +5936,7 @@ mod tests {
                 </d:propstat>
             </d:response>
         </d:multistatus>"#;
-        let props = provider.extract_xml_properties(xml);
+        let props = provider.extract_xml_properties(xml, "/").unwrap();
         assert_eq!(props.get("getcontentlength"), Some(&"12345".to_string()));
         assert_eq!(props.get("getcontenttype"), Some(&"text/plain".to_string()));
 
@@ -5814,7 +5950,7 @@ mod tests {
                 </D:propstat>
             </D:response>
         </D:multistatus>"#;
-        let props2 = provider.extract_xml_properties(xml2);
+        let props2 = provider.extract_xml_properties(xml2, "/").unwrap();
         assert_eq!(props2.get("getcontentlength"), Some(&"99".to_string()));
 
         // Test collection detection
@@ -5827,7 +5963,7 @@ mod tests {
                 </d:propstat>
             </d:response>
         </d:multistatus>"#;
-        let props3 = provider.extract_xml_properties(xml3);
+        let props3 = provider.extract_xml_properties(xml3, "/").unwrap();
         assert!(props3.contains_key("_is_collection"));
     }
 
