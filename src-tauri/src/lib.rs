@@ -20097,7 +20097,7 @@ pub fn run() {
             transfer_dag::commands::checkpoint_endpoints,
             transfer_dag::commands::checkpoint_forget_endpoint,
         ])
-        .run(tauri::generate_context!())
+        .run(tauri::tauri_build_context!())
         .expect("error while running tauri application");
 }
 

@@ -289,7 +289,28 @@ fn main() {
     // list drifting out of sync.
     generate_tauri_command_registry();
 
-    tauri_build::build()
+    // The Tauri context is generated here and included by
+    // `tauri::tauri_build_context!()` in lib.rs, not expanded by
+    // `tauri::generate_context!()`, because the macro made every first build
+    // of the crate cost a second one. It caches the window icon as RGBA in
+    // `$OUT_DIR/<blake3 of the pixels>` and embeds it with `include_bytes!`, so
+    // the file lands in the dep-info of the crate being compiled, and it writes
+    // it while rustc is running. Cargo stamps that dep-info with the time the
+    // rustc invocation started, so on the next invocation the icon is newer
+    // than the stamp and the whole lib recompiles once, with nothing changed.
+    // Measured on Linux with `CARGO_LOG=cargo::core::compiler::fingerprint=info`:
+    // the only stale item was that icon (32x32 RGBA, 4096 bytes), written 6 s
+    // after the stamp. The repeat build took 2m36s there and 6m42s to 8m18s in
+    // the Windows Unit Tests job, and takes 0.85s once the file predates the
+    // stamp. A build script runs before rustc, so the same file written here
+    // is older than the stamp from the start. The generated code is the same:
+    // `tauri_codegen::context_codegen` produces it in both cases, from the same
+    // tauri.conf.json, with the `dev` flag read from the `tauri` crate's
+    // `custom-protocol` feature.
+    tauri_build::try_build(
+        tauri_build::Attributes::new().codegen(tauri_build::CodegenContext::new()),
+    )
+    .unwrap_or_else(|error| panic!("build.rs: tauri-build failed: {error:#}"));
 }
 
 /// Emit `TAURI_COMMANDS` from the single `tauri::generate_handler!` block in

@@ -32,7 +32,16 @@ path = "test-support/seed_test_profiles.rs"
 required-features = ["test-seed"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+# `codegen`: build.rs generates the Tauri context instead of
+# `tauri::generate_context!`, see the comment above `tauri_build::try_build`.
+# That makes tauri-build the crate that writes the code the `tauri` runtime
+# compiles, so it stays on the runtime's line: 2.6.x goes with `tauri` 2.11.x
+# and pulls `tauri-codegen` 2.6.x, the version `tauri-macros` already uses.
+# tauri-build 2.7 requires `tauri-codegen` ~2.7, whose Windows context calls
+# `tauri::image::default_window_icon_from_app_icon_resource()`, a function
+# `tauri` 2.12 added and 2.11.0 does not have. Move it with the `tauri` pin
+# below, never ahead of it (dependabot.yml ignores tauri-build >=2.7.0).
+tauri-build = { version = "~2.6.3", features = ["codegen"] }
 # build.rs derives the Dependencies panel from the manifests and Cargo.lock:
 # toml reads the manifests, semver picks the locked version a requirement
 # selects. Both are already in the graph as normal dependencies.

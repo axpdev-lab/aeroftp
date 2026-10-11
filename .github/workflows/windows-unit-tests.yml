@@ -65,8 +65,10 @@ jobs:
     # once the test step was split in two and measured: 40 for the two compile
     # surface checks, 40 for building the test binary (18m54s cold, with room
     # for a slower runner), 45 for running 3916 tests, and 10 for checkout,
-    # cache restore and the CMake purge.
-    timeout-minutes: 135
+    # cache restore and the CMake purge. Raised to 150 on 2026-10-11 for the
+    # 15-minute budget of the step that confirms the test binary needs no
+    # rebuild.
+    timeout-minutes: 150
 
     steps:
       - name: Checkout
@@ -204,6 +206,35 @@ jobs:
         env:
           AEROFTP_EMBED_TEST_MANIFEST: "1"
         run: cargo test --locked --lib --no-default-features --features aerorsync --no-run --config 'build.warnings="deny"'
+
+      # The step after this one must run the binary built above and compile
+      # nothing. Until 2026-10-11 it recompiled the whole lib first, 6m42s to
+      # 8m18s charged to the test budget, because `tauri::generate_context!`
+      # wrote a file the crate includes while the crate was compiling (the
+      # comment above `tauri_build::try_build` in src-tauri/build.rs has the
+      # mechanism). The run stayed green, so nothing said so. This asks cargo
+      # the same question the next step would: every artifact it reports as
+      # not fresh fails the step by name, and the fingerprint log printed above
+      # the failure names the file or variable that made it stale. It runs in
+      # the same shell with the same variables as the next step, plus the log
+      # switch, because an environment difference can itself be a reason to
+      # rebuild.
+      - name: Confirm the test binary needs no rebuild
+        working-directory: src-tauri
+        timeout-minutes: 15
+        env:
+          AEROFTP_EMBED_TEST_MANIFEST: "1"
+          CARGO_LOG: cargo::core::compiler::fingerprint=info
+        run: |
+          $messages = cargo test --locked --lib --no-default-features --features aerorsync --no-run --message-format=json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $rebuilt = @($messages | ForEach-Object { $_ | ConvertFrom-Json } |
+            Where-Object { $_.reason -eq 'compiler-artifact' -and -not $_.fresh })
+          foreach ($artifact in $rebuilt) {
+            Write-Host "::error::$($artifact.target.name) ($($artifact.package_id)) was compiled again"
+          }
+          if ($rebuilt.Count -gt 0) { exit 1 }
+          Write-Host "Every artifact of the test build is fresh."
 
       - name: "Unit tests: cross-platform assertions under MSVC"
         working-directory: src-tauri
