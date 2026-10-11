@@ -635,7 +635,11 @@
             "modeSafeDescription": "En anslutning: en fil i taget, en ström per fil",
             "modeBalancedDescription": "Upp till 3 anslutningar: parallella filer eller intervallkanaler i en stor fil",
             "modeMaxDescription": "Upp till 5 anslutningar: parallella filer eller intervallkanaler i en stor fil",
-            "moreActions": "Fler åtgärder"
+            "moreActions": "Fler åtgärder",
+            "speedGraph": "Hastighetsgraf",
+            "hideSpeedGraph": "Dölj hastighetsgraf",
+            "speedAvg": "snitt {speed}",
+            "speedPeak": "topp {speed}"
         },
         "settings": {
             "title": "Inställningar",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Inte ansluten till server",
             "clearSearch": "Rensa sökning",
             "searchFiles": "Sök filer",
-            "locked": "Låst",
             "localDisk": "Lokal disk",
             "localPathMismatch": "Lokal sökväg matchar inte den anslutna servern",
             "downloadFormat": "Ladda ner .{format}",

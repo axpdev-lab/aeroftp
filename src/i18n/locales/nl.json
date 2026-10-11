@@ -635,7 +635,11 @@
             "modeSafeDescription": "Eén verbinding: één bestand tegelijk, één stream per bestand",
             "modeBalancedDescription": "Maximaal 3 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand",
             "modeMaxDescription": "Maximaal 5 verbindingen: parallelle bestanden of bereikkanalen binnen één groot bestand",
-            "moreActions": "Meer acties"
+            "moreActions": "Meer acties",
+            "speedGraph": "Snelheidsgrafiek",
+            "hideSpeedGraph": "Snelheidsgrafiek verbergen",
+            "speedAvg": "gem. {speed}",
+            "speedPeak": "piek {speed}"
         },
         "settings": {
             "title": "Instellingen",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Niet verbonden met server",
             "clearSearch": "Zoekopdracht wissen",
             "searchFiles": "Bestanden zoeken",
-            "locked": "Vergrendeld",
             "localDisk": "Lokale schijf",
             "localPathMismatch": "Lokaal pad komt niet overeen met de verbonden server",
             "downloadFormat": ".{format} downloaden",

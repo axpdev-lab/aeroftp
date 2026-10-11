@@ -635,7 +635,11 @@
             "modeSafeDescription": "Egy kapcsolat: egyszerre egy fájl, egy adatfolyam fájlonként",
             "modeBalancedDescription": "Legfeljebb 3 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül",
             "modeMaxDescription": "Legfeljebb 5 kapcsolat: párhuzamos fájlok vagy tartománycsatornák egy nagy fájlon belül",
-            "moreActions": "További műveletek"
+            "moreActions": "További műveletek",
+            "speedGraph": "Sebességgrafikon",
+            "hideSpeedGraph": "Sebességgrafikon elrejtése",
+            "speedAvg": "átl. {speed}",
+            "speedPeak": "csúcs {speed}"
         },
         "settings": {
             "title": "Beállítások",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Nincs csatlakozva szerverhez",
             "clearSearch": "Keresés törlése",
             "searchFiles": "Fájlok keresése",
-            "locked": "Zárolva",
             "localDisk": "Helyi lemez",
             "localPathMismatch": "A helyi útvonal nem egyezik a csatlakozott szerverrel",
             "downloadFormat": ".{format} letöltése",

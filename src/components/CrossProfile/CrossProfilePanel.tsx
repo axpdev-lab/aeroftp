@@ -233,9 +233,6 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
         speedBps: number;
     }
     const [liveProgress, setLiveProgress] = useState<LiveProgress | null>(null);
-    // Track transfer start time locally to compute speed from aggregate bytes.
-    const executeStartRef = useRef<number | null>(null);
-    const speedHistoryRef = useRef<number[]>([]);
 
     // Skip the auto-reset of source/dest path on the first render after seeding -
     // otherwise the second useEffect would overwrite the seeded path with the
@@ -345,18 +342,12 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                 const cumBytesUpTo = (completed: number): number =>
                     plan.entries.slice(0, completed).reduce((sum, e) => sum + (e.size || 0), 0);
 
-                const updateSpeed = (cumBytes: number) => {
-                    const elapsedMs = executeStartRef.current
-                        ? Date.now() - executeStartRef.current
-                        : 0;
-                    const speed = elapsedMs > 0 ? Math.round((cumBytes * 1000) / elapsedMs) : 0;
-                    if (speed > 0) {
-                        const history = speedHistoryRef.current;
-                        history.push(speed);
-                        if (history.length > 120) history.shift();
-                    }
-                    return speed;
-                };
+                // The speed is the backend's: the bytes moved over the last
+                // few seconds (SpeedMeter, transfer_speed.rs). It used to be
+                // recomputed here as the bytes of the completed files over
+                // the time since the start, i.e. the average of the whole
+                // copy, which barely moves after a few minutes (#658 test).
+                const speedOf = (data: TransferEvent) => data.progress?.speed_bps ?? 0;
 
                 // Byte-based percentage matches what the user actually sees transferring
                 // (e.g. "183 MB / 202 MB" reads 91%, not the file-count 17/69 = 24%).
@@ -377,7 +368,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                         totalFiles: data.progress.total,
                         bytesTransferred: cumBytes,
                         percentage: bytePct(cumBytes, completed, data.progress.total),
-                        speedBps: updateSpeed(cumBytes),
+                        speedBps: speedOf(data),
                     });
                 } else if (data.event_type === 'file_complete' && data.progress) {
                     const total = data.progress.total || 1;
@@ -389,7 +380,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                         totalFiles: total,
                         bytesTransferred: cumBytes,
                         percentage: bytePct(cumBytes, done, total),
-                        speedBps: updateSpeed(cumBytes),
+                        speedBps: speedOf(data),
                     });
                 } else if (data.event_type === 'file_skip' && data.progress) {
                     const total = data.progress.total || 1;
@@ -401,7 +392,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                         totalFiles: total,
                         bytesTransferred: cumBytes,
                         percentage: bytePct(cumBytes, done, total),
-                        speedBps: updateSpeed(cumBytes),
+                        speedBps: speedOf(data),
                     });
                 }
             });
@@ -438,8 +429,6 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
             percentage: 0,
             speedBps: 0,
         });
-        executeStartRef.current = Date.now();
-        speedHistoryRef.current = [];
 
         try {
             const result = await invoke<TransferSummary>('cross_profile_execute', {
@@ -455,7 +444,6 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
         } finally {
             setLoading(false);
             setLiveProgress(null);
-            executeStartRef.current = null;
         }
     };
 
@@ -734,17 +722,11 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                         totalFiles={liveProgress.totalFiles}
                                         size="md"
                                         variant={liveProgress.percentage > 0 ? 'gradient' : 'indeterminate'}
-                                        speedHistory={speedHistoryRef.current}
-                                        showGraph={false}
                                     />
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                                        <span>
-                                            {formatBytes(liveProgress.bytesTransferred)} / {formatBytes(plan?.total_bytes || 0)}
-                                        </span>
-                                        {liveProgress.speedBps > 0 && (
-                                            <span>{formatBytes(liveProgress.speedBps)}/s</span>
-                                        )}
-                                        <span>{liveProgress.percentage}%</span>
+                                    {/* Bytes and speed are in the bar's details row
+                                        above; this row printed them a second time. */}
+                                    <div className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                                        {liveProgress.percentage}%
                                     </div>
                                 </div>
                             )}

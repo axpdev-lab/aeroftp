@@ -635,7 +635,11 @@
             "modeSafeDescription": "Konexio bat: fitxategi bat aldi bakoitzean, korronte bakarra fitxategiko",
             "modeBalancedDescription": "Gehienez 3 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan",
             "modeMaxDescription": "Gehienez 5 konexio: fitxategi paraleloak edo tarte-kanalak fitxategi handi baten barruan",
-            "moreActions": "Ekintza gehiago"
+            "moreActions": "Ekintza gehiago",
+            "speedGraph": "Abiaduraren grafikoa",
+            "hideSpeedGraph": "Ezkutatu abiaduraren grafikoa",
+            "speedAvg": "batez best. {speed}",
+            "speedPeak": "gailurra {speed}"
         },
         "settings": {
             "title": "Ezarpenak",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Ez zaude zerbitzarira konektatuta",
             "clearSearch": "Garbitu bilaketa",
             "searchFiles": "Bilatu fitxategiak",
-            "locked": "Blokeatuta",
             "localDisk": "Tokiko diskoa",
             "localPathMismatch": "Tokiko bidea ez dator bat konektatutako zerbitzariarekin",
             "downloadFormat": "Deskargatu .{format}",

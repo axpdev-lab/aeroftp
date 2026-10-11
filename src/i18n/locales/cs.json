@@ -635,7 +635,11 @@
             "modeSafeDescription": "Jedno připojení: jeden soubor po druhém, jediný datový tok na soubor",
             "modeBalancedDescription": "Až 3 připojení: paralelní soubory nebo rozsahové kanály v rámci jednoho velkého souboru",
             "modeMaxDescription": "Až 5 připojení: paralelní soubory nebo rozsahové kanály v rámci jednoho velkého souboru",
-            "moreActions": "Další akce"
+            "moreActions": "Další akce",
+            "speedGraph": "Graf rychlosti",
+            "hideSpeedGraph": "Skrýt graf rychlosti",
+            "speedAvg": "prům. {speed}",
+            "speedPeak": "max. {speed}"
         },
         "settings": {
             "title": "Nastavení",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Nepřipojeno k serveru",
             "clearSearch": "Vymazat hledání",
             "searchFiles": "Hledat soubory",
-            "locked": "Zamknuto",
             "localDisk": "Lokální disk",
             "localPathMismatch": "Lokální cesta neodpovídá připojenému serveru",
             "downloadFormat": "Stáhnout .{format}",

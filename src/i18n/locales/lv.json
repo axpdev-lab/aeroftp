@@ -635,7 +635,11 @@
             "modeSafeDescription": "Viens savienojums: viens fails vienlaikus, viena plūsma katram failam",
             "modeBalancedDescription": "Līdz 3 savienojumiem: paralēlie faili vai diapazona kanāli vienā lielā failā",
             "modeMaxDescription": "Līdz 5 savienojumiem: paralēlie faili vai diapazona kanāli vienā lielā failā",
-            "moreActions": "Vairāk darbību"
+            "moreActions": "Vairāk darbību",
+            "speedGraph": "Ātruma grafiks",
+            "hideSpeedGraph": "Slēpt ātruma grafiku",
+            "speedAvg": "vid. {speed}",
+            "speedPeak": "maks. {speed}"
         },
         "settings": {
             "title": "Iestatījumi",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Nav pieslēgts serverim",
             "clearSearch": "Notīrīt meklēšanu",
             "searchFiles": "Meklēt failus",
-            "locked": "Bloķēts",
             "localDisk": "Lokālais disks",
             "localPathMismatch": "Lokālais ceļš neatbilst pieslēgtajam serverim",
             "downloadFormat": "Lejupielādēt .{format}",

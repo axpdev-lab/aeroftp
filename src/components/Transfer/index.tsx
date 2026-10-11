@@ -6,10 +6,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Download, Upload, Folder, X, Minus, Maximize2, Lock } from 'lucide-react';
+import { Download, Upload, Folder, X, Minus, ArrowUpDown } from 'lucide-react';
 import { formatBytes, formatSpeed, formatETA } from '../../utils/formatters';
 import { useTheme, getEffectiveTheme } from '../../hooks/useTheme';
 import { useTranslation } from '../../i18n';
+import { liveEta, useLiveSpeed } from '../../utils/liveSpeed';
+import { hasSpeedData, type SpeedProfile } from '../../utils/speedProfile';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { isTransferComplete } from './transferCompletion';
 
@@ -58,8 +60,8 @@ export interface TransferToastState {
     lanes?: TransferToastLane[];
     reservedLaneSlots?: number;
     maxChannels?: number;
-    /** Rolling aggregate speed samples (bytes/sec) for the collapsible graph. */
-    speedHistory?: number[];
+    /** Speed over the whole transfer for the collapsible graph. */
+    speedProfile?: SpeedProfile;
 }
 
 // ============ Animated Bytes (Matrix-style for uploads) ============
@@ -136,63 +138,79 @@ export const ProgressLanes: React.FC<ProgressLanesProps> = ({ lanes, styles, bar
     if (!lanes || lanes.length === 0) return null;
     return (
         <div className="mt-2.5 border-t border-current/10 pt-2 space-y-1.5 max-h-44 overflow-y-auto pr-1">
-            {lanes.map((lane) => {
-                const laneUpload = lane.direction === 'upload';
-                const tone = lane.state === 'error' ? 'error' : lane.state === 'completed' ? 'success' : 'default';
-                const laneName = lane.path ? truncatePath(lane.path, 30) : lane.filename;
-                const laneEta = lane.speed_bps > 0 && lane.total > lane.transferred
-                    ? Math.round((lane.total - lane.transferred) / lane.speed_bps)
-                    : 0;
-                const right = lane.state === 'error'
-                    ? 'error'
-                    : lane.state === 'completed'
-                        ? 'done'
-                        : lane.speed_bps > 0
-                            ? `${formatSpeed(lane.speed_bps)}${laneEta > 0 ? ` · ${formatETA(laneEta)}` : ''}`
-                            : `${lane.percentage}%`;
-                return (
-                    <div key={lane.id} className="flex items-center gap-2">
-                        <div className="shrink-0">
-                            {laneUpload
-                                ? <Upload size={11} className="text-cyan-400" />
-                                : <Download size={11} className="text-orange-400" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2 mb-0.5">
-                                <span className={`truncate text-[11px] ${styles.subtitle}`} title={lane.path || lane.filename}>
-                                    {laneName}
-                                </span>
-                                <span className={`shrink-0 tabular-nums text-[10px] ${styles.subtitle}`}>{right}</span>
-                            </div>
-                            <TransferProgressBar
-                                percentage={lane.percentage}
-                                size="sm"
-                                variant={lane.total <= 0 && lane.state !== 'completed' ? 'indeterminate' : 'gradient'}
-                                animated={lane.state === 'active' || !lane.state}
-                                effectiveTheme={barTheme}
-                                tone={tone}
-                            />
-                        </div>
-                    </div>
-                );
-            })}
+            {lanes.map((lane) => (
+                <ProgressLane key={lane.id} lane={lane} styles={styles} barTheme={barTheme} />
+            ))}
+        </div>
+    );
+};
+
+interface ProgressLaneProps {
+    lane: TransferToastLane;
+    styles: ReturnType<typeof getToastStyles>;
+    barTheme: BarTheme;
+}
+
+const ProgressLane: React.FC<ProgressLaneProps> = ({ lane, styles, barTheme }) => {
+    const laneActive = lane.state === 'active' || !lane.state;
+    // The lane's speed falls while its frames stop (a stalled file sends none).
+    const live = useLiveSpeed(lane.speed_bps, `${lane.transferred}|${lane.speed_bps}`, laneActive);
+    const laneUpload = lane.direction === 'upload';
+    const tone = lane.state === 'error' ? 'error' : lane.state === 'completed' ? 'success' : 'default';
+    const laneName = lane.path ? truncatePath(lane.path, 30) : lane.filename;
+    const laneEta = lane.speed_bps > 0 && lane.total > lane.transferred
+        ? liveEta(Math.round((lane.total - lane.transferred) / lane.speed_bps), live.factor)
+        : 0;
+    const right = lane.state === 'error'
+        ? 'error'
+        : lane.state === 'completed'
+            ? 'done'
+            : lane.speed_bps > 0
+                ? `${formatSpeed(live.bps)}${laneEta > 0 ? ` · ${formatETA(laneEta)}` : ''}`
+                : `${lane.percentage}%`;
+    return (
+        <div className="flex items-center gap-2">
+            <div className="shrink-0">
+                {laneUpload
+                    ? <Upload size={11} className="text-cyan-400" />
+                    : <Download size={11} className="text-orange-400" />}
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className={`truncate text-[11px] ${styles.subtitle}`} title={lane.path || lane.filename}>
+                        {laneName}
+                    </span>
+                    <span className={`shrink-0 tabular-nums text-[10px] ${styles.subtitle}`}>{right}</span>
+                </div>
+                <TransferProgressBar
+                    percentage={lane.percentage}
+                    size="sm"
+                    variant={lane.total <= 0 && lane.state !== 'completed' ? 'indeterminate' : 'gradient'}
+                    animated={laneActive}
+                    effectiveTheme={barTheme}
+                    tone={tone}
+                />
+            </div>
         </div>
     );
 };
 
 // ============ Progress Card (AeroProgress flagship floating card) ============
 // Aggregate header + aggregate bar (speed/ETA/bytes) + per-file lanes + the
-// collapsible advanced speed graph (built into TransferProgressBar via
-// showGraph/speedHistory). Restored and extended from the pre-TQ-5 TransferToast.
+// collapsible speed graph over the whole transfer (built into
+// TransferProgressBar via showGraph/speedProfile). Restored and extended from
+// the pre-TQ-5 TransferToast.
 interface ProgressCardProps {
     transfer: TransferToastState;
     onCancel: () => void;
     onMinimize: () => void;
-    /** Open the full Transfer Queue panel (optional secondary action). */
-    onOpenPanel?: () => void;
+    /** Show or hide the Transfer Queue panel (optional secondary action). */
+    onToggleQueue?: () => void;
+    /** Whether the Transfer Queue panel is on screen (the toggle reads pressed). */
+    queueOpen?: boolean;
 }
 
-export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, onMinimize, onOpenPanel }) => {
+export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, onMinimize, onToggleQueue, queueOpen = false }) => {
     const t = useTranslation();
     const { theme, isDark } = useTheme();
     const effectiveTheme = getEffectiveTheme(theme, isDark);
@@ -209,18 +227,19 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
     const headerPct = Number.isFinite(summary.percentage)
         ? Math.max(0, Math.min(100, Math.round(summary.percentage)))
         : 0;
-    // Lock the card while a transfer is in flight (owner request): no full
+    // The card stays while a transfer is in flight (owner request): no full
     // dismiss until 100%, only minimize-to-chip, so the user never loses track
-    // of an active transfer. Unlocks (shows the close button) at completion.
+    // of an active transfer. The close button appears at completion; no lock
+    // icon stands in for it meanwhile, because among the header buttons it read
+    // as one that does nothing (#658 test, 2026-10-10).
     // Completion is asked of the raw percentage, never of `headerPct`: that one
     // is rounded for display, so at 99.6 it reads 100 and would unlock a live
     // transfer onto a close button that calls `onCancel`.
     const isComplete = isTransferComplete(summary.percentage, lanes);
-    const isTransferring = !isComplete;
     const displayName = summary.path ? truncatePath(summary.path) : summary.filename;
     const transferModeLabel = isUpload ? 'UPLOAD' : 'DOWNLOAD';
     const transferStateLabel = isFolderTransfer ? 'BATCH' : (isIndeterminate ? 'STREAM' : 'LIVE');
-    const hasGraph = !!transfer.speedHistory && transfer.speedHistory.length > 1;
+    const hasGraph = !!transfer.speedProfile && hasSpeedData(transfer.speedProfile);
 
     // Auto-dismiss safety: once the summary is complete AND no lane is still
     // active, collapse after 3s (mirrors the legacy toast's behaviour). Same
@@ -244,23 +263,25 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                 onClick={onMinimize}
                 title={t('ui.minimize')}
             >
-                <span className={`min-w-0 truncate font-semibold ${styles.title}`} title={summary.path || summary.filename}>
-                    {t('transfer.progress')} · {displayName}
-                </span>
-                <div className="flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
-                    <span className={`mr-1 text-base font-semibold tabular-nums ${styles.title}`}>
+                <span className={`flex min-w-0 items-baseline gap-1.5 font-semibold ${styles.title}`} title={summary.path || summary.filename}>
+                    <span className="shrink-0 text-base tabular-nums">
                         {isIndeterminate ? '...' : `${headerPct}%`}
                     </span>
-                    {onOpenPanel && (
-                        <button onClick={onOpenPanel} className={`p-1 rounded-md transition-opacity opacity-60 hover:opacity-100 ${styles.title}`} title={t('transfer.queue')} aria-label={t('transfer.queue')}>
-                            <Maximize2 size={13} />
+                    <span className="truncate">· {t('transfer.progress')} · {displayName}</span>
+                </span>
+                <div className="flex shrink-0 items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
+                    {onToggleQueue && (
+                        <button
+                            onClick={onToggleQueue}
+                            className={`p-1 rounded-md transition-opacity ${queueOpen ? styles.badge : `opacity-60 hover:opacity-100 ${styles.title}`}`}
+                            title={t('statusbar.transferQueue')}
+                            aria-label={t('statusbar.transferQueue')}
+                            aria-pressed={queueOpen}
+                        >
+                            <ArrowUpDown size={13} />
                         </button>
                     )}
-                    {isTransferring ? (
-                        <span className={`p-1 ${styles.subtitle}`} title={t('ui.locked')}>
-                            <Lock size={13} />
-                        </span>
-                    ) : (
+                    {isComplete && (
                         <button onClick={onCancel} className={`p-1 rounded-full transition-colors ${styles.cancel}`} title={t('ui.dismiss')}>
                             <X size={14} />
                         </button>
@@ -299,6 +320,9 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                         </div>
                     </div>
 
+                    {/* Bytes (or files), speed and ETA are the bar's own details
+                        row: a second row under the bar printed the same three
+                        values again. */}
                     <div className="mt-2.5">
                         <TransferProgressBar
                             percentage={summary.percentage}
@@ -313,22 +337,8 @@ export const ProgressCard: React.FC<ProgressCardProps> = ({ transfer, onCancel, 
                             animated={!isIndeterminate}
                             effectiveTheme={barTheme}
                             showGraph={hasGraph}
-                            speedHistory={transfer.speedHistory}
+                            speedProfile={transfer.speedProfile}
                         />
-                        <div className={`mt-1.5 flex justify-between gap-3 text-[11px] ${styles.subtitle}`}>
-                            <span className="tabular-nums">
-                                {isFolderTransfer
-                                    ? <>{summary.transferred} / {summary.total} files</>
-                                    : isIndeterminate
-                                        ? formatBytes(summary.total)
-                                        : <>{formatBytes(summary.transferred)} / {formatBytes(summary.total)}</>}
-                            </span>
-                            <span className="tabular-nums text-right">
-                                {summary.speed_bps > 0
-                                    ? `${formatSpeed(summary.speed_bps)}${summary.eta_seconds > 0 ? ` - ETA ${formatETA(summary.eta_seconds)}` : ''}`
-                                    : (isIndeterminate ? 'Streaming...' : (isUpload ? 'Uploading...' : 'Downloading...'))}
-                            </span>
-                        </div>
                     </div>
 
                     <ProgressLanes lanes={lanes} styles={styles} barTheme={barTheme} />
@@ -411,13 +421,9 @@ export const MinimizedTransferIndicator: React.FC<MinimizedTransferIndicatorProp
                         ? '...'
                         : `${pct}%`}
             </span>
-            {/* Locked until completion: no dismiss while transferring (click the
-                chip to reopen the full card instead). */}
-            {!isComplete ? (
-                <span className={`shrink-0 p-0.5 ${styles.subtitle}`} title={t('ui.locked')}>
-                    <Lock size={11} />
-                </span>
-            ) : (
+            {/* No dismiss while transferring (click the chip to reopen the full
+                card instead); the close button appears at completion. */}
+            {isComplete && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onCancel(); }}
                     className={`shrink-0 p-0.5 rounded-full transition-colors ${styles.cancel}`}

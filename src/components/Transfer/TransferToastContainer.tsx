@@ -63,13 +63,17 @@ export function toggleTransferToast(): void {
 }
 
 interface TransferToastContainerProps {
-    /** Open the Transfer Queue panel. Wired by App.tsx to the hook's toggle
-     *  function so a click on the minimized indicator pops the panel back
-     *  open after a manual dismiss. */
-    onOpen?: () => void;
+    /** Show or hide the Transfer Queue panel, from the card's queue button.
+     *  Wired by App.tsx to the queue hook's toggle, the same action as the
+     *  status-bar Queue chip. It used to be a one-way "show": with the panel
+     *  already on screen (the default during a transfer) the button changed
+     *  nothing, and read as broken (#658 test, 2026-10-10). */
+    onToggleQueue?: () => void;
+    /** Whether the Transfer Queue panel is on screen. */
+    queueOpen?: boolean;
 }
 
-export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ onOpen }) => {
+export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ onToggleQueue, queueOpen = false }) => {
     const [transfer, setTransfer] = useState<TransferToastState | null>(null);
     const [minimized, setMinimized] = useState(false);
     const lastProgressUpdate = useRef<number>(Date.now());
@@ -133,9 +137,9 @@ export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ 
         dismissTransferToast();
     }, []);
 
-    const handleOpenPanel = useCallback(() => {
-        onOpen?.();
-    }, [onOpen]);
+    const handleToggleQueue = useCallback(() => {
+        onToggleQueue?.();
+    }, [onToggleQueue]);
 
     if (!transfer) return null;
     if (minimized) {
@@ -152,7 +156,8 @@ export const TransferToastContainer: React.FC<TransferToastContainerProps> = ({ 
             transfer={transfer}
             onCancel={handleCancel}
             onMinimize={() => setMinimized(true)}
-            onOpenPanel={onOpen ? handleOpenPanel : undefined}
+            onToggleQueue={onToggleQueue ? handleToggleQueue : undefined}
+            queueOpen={queueOpen}
         />
     );
 };

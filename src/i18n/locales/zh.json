@@ -635,7 +635,11 @@
             "modeSafeDescription": "单连接：一次一个文件，每个文件单流",
             "modeBalancedDescription": "最多 3 个连接：并行传输多个文件，或在一个大文件内使用范围通道",
             "modeMaxDescription": "最多 5 个连接：并行传输多个文件，或在一个大文件内使用范围通道",
-            "moreActions": "更多操作"
+            "moreActions": "更多操作",
+            "speedGraph": "速度图表",
+            "hideSpeedGraph": "隐藏速度图表",
+            "speedAvg": "平均 {speed}",
+            "speedPeak": "峰值 {speed}"
         },
         "settings": {
             "title": "设置",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "未连接到服务器",
             "clearSearch": "清除搜索",
             "searchFiles": "搜索文件",
-            "locked": "已锁定",
             "localDisk": "本地磁盘",
             "localPathMismatch": "本地路径与已连接的服务器不匹配",
             "downloadFormat": "下载 .{format}",

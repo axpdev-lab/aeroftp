@@ -635,7 +635,11 @@
             "modeSafeDescription": "Մեկ կապ. միաժամանակ մեկ ֆայլ, մեկ հոսք յուրաքանչյուր ֆայլի համար",
             "modeBalancedDescription": "Մինչև 3 կապ. զուգահեռ ֆայլեր կամ միջակայքի ալիքներ մեկ մեծ ֆայլի ներսում",
             "modeMaxDescription": "Մինչև 5 կապ. զուգահեռ ֆայլեր կամ միջակայքի ալիքներ մեկ մեծ ֆայլի ներսում",
-            "moreActions": "Այլ գործողություններ"
+            "moreActions": "Այլ գործողություններ",
+            "speedGraph": "Արագության գրաֆիկ",
+            "hideSpeedGraph": "Թաքցնել արագության գրաֆիկը",
+            "speedAvg": "միջ. {speed}",
+            "speedPeak": "առավ. {speed}"
         },
         "settings": {
             "title": "Կարգավորումներ",
@@ -2292,7 +2296,6 @@
             "notConnectedToServer": "Միացված չէ սերվերին",
             "clearSearch": "Մաքրել որոնումը",
             "searchFiles": "Որոնել ֆայլեր",
-            "locked": "Կողպված է",
             "localDisk": "Տեղական սկավառակ",
             "localPathMismatch": "Տեղական ուղին չի համապատասխանում միացված սերվերին",
             "downloadFormat": "Ներբեռնել .{format}",

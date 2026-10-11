@@ -10,15 +10,38 @@
  * Features:
  * - 4 levels: base (bar only) → details (filename/speed/ETA) → batch (X/Y files) → graph
  * - Theme-aware animated shimmer (light/dark/tokyo/cyber)
- * - Optional real-time speed graph (canvas-based)
+ * - Optional speed graph over the whole transfer (canvas-based, `SpeedGraph`)
+ * - The speed and ETA shown fall while no progress frame arrives (`useLiveSpeed`)
  * - Slide-down/up animation for mount/unmount
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, ChevronUp, Activity } from 'lucide-react';
 import { formatBytes, formatSpeed, formatETA } from '../utils/formatters';
+import { liveEta, useLiveSpeed } from '../utils/liveSpeed';
+import { hasSpeedData, type SpeedProfile } from '../utils/speedProfile';
+import { useTranslation } from '../i18n';
 import { SpeedGraph } from './SpeedGraph';
 import './TransferProgressBar.css';
+
+/** Remembers whether the user left the speed graph open, across transfers. */
+const GRAPH_OPEN_KEY = 'aeroftp.speedGraphOpen';
+
+function readGraphOpen(): boolean {
+    try {
+        return localStorage.getItem(GRAPH_OPEN_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function writeGraphOpen(open: boolean): void {
+    try {
+        localStorage.setItem(GRAPH_OPEN_KEY, open ? '1' : '0');
+    } catch {
+        // Storage unavailable: the choice lasts for this card only.
+    }
+}
 
 type EffectiveTheme = 'light' | 'dark' | 'truedark' | 'tokyo' | 'cyber' | 'green' | 'ice' | 'redhorse';
 
@@ -66,10 +89,10 @@ export interface TransferProgressBarProps {
     /** Show slide animation on mount/unmount */
     slideAnimation?: boolean;
 
-    /** Enable expandable speed graph */
+    /** Enable expandable speed graph (needs `speedProfile`) */
     showGraph?: boolean;
-    /** Speed history samples for graph (bytes/sec values) */
-    speedHistory?: number[];
+    /** Speed over the whole transfer for the graph (`utils/speedProfile.ts`) */
+    speedProfile?: SpeedProfile;
 
     /** Additional CSS class */
     className?: string;
@@ -123,13 +146,14 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     animated = true,
     slideAnimation = false,
     showGraph = false,
-    speedHistory,
+    speedProfile,
     className = '',
     effectiveTheme,
     tone = 'default',
 }) => {
+    const t = useTranslation();
     const resolvedTheme = effectiveTheme ?? resolveThemeFromDom();
-    const [graphExpanded, setGraphExpanded] = useState(false);
+    const [graphExpanded, setGraphExpanded] = useState(readGraphOpen);
     const containerRef = useRef<HTMLDivElement>(null);
     const [mounted, setMounted] = useState(!slideAnimation);
 
@@ -147,7 +171,23 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
     const pctLabel = Math.round(clampedPct);
     const hasDetails = filename || speedBps !== undefined || etaSeconds !== undefined;
     const hasBatch = currentFile !== undefined && totalFiles !== undefined;
-    const hasBytes = transferredBytes !== undefined && totalBytes !== undefined;
+    const hasBytes = transferredBytes !== undefined && totalBytes !== undefined && totalBytes > 0;
+    // Size unknown (a stream): the bytes moved so far, without a "/ 0 B".
+    const hasBytesOnly = !hasBytes && transferredBytes !== undefined && transferredBytes > 0;
+    // The speed and ETA shown fall while no frame arrives (a stalled server
+    // sends none); a finished or failed transfer has nothing left to fall.
+    const live = useLiveSpeed(
+        speedBps,
+        `${transferredBytes ?? ''}|${percentage}|${currentFile ?? ''}|${speedBps ?? ''}`,
+        clampedPct < 100 && tone === 'default',
+    );
+    const shownEta = etaSeconds === undefined ? undefined : liveEta(etaSeconds, live.factor);
+    const graphReady = showGraph && !!speedProfile && hasSpeedData(speedProfile);
+    const toggleGraph = () => {
+        const open = !graphExpanded;
+        setGraphExpanded(open);
+        writeGraphOpen(open);
+    };
 
     // Determine theme class for CSS animations (use resolved theme, not raw 'auto')
     const themeClass = resolvedTheme === 'tokyo' ? 'tpb-tokyo'
@@ -177,16 +217,19 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
                         {hasBytes && (
                             <span>{formatBytes(transferredBytes)} / {formatBytes(totalBytes)}</span>
                         )}
+                        {hasBytesOnly && (
+                            <span>{formatBytes(transferredBytes)}</span>
+                        )}
                         {speedBps !== undefined && speedBps > 0 && (
                             <span>
-                                {(hasBytes || hasBatch) && ' · '}
-                                {formatSpeed(speedBps)}
+                                {(hasBytes || hasBytesOnly || hasBatch) && ' · '}
+                                {formatSpeed(live.bps)}
                             </span>
                         )}
-                        {etaSeconds !== undefined && etaSeconds > 0 && (
-                            <span> · {formatETA(etaSeconds)}</span>
+                        {shownEta !== undefined && shownEta > 0 && (
+                            <span> · {formatETA(shownEta)}</span>
                         )}
-                        {!hasBytes && !hasBatch && speedBps === undefined && (
+                        {!hasBytes && !hasBytesOnly && !hasBatch && speedBps === undefined && (
                             <span>{pctLabel}%</span>
                         )}
                     </span>
@@ -219,20 +262,27 @@ export const TransferProgressBar: React.FC<TransferProgressBarProps> = ({
             )}
 
             {/* Graph toggle + graph area */}
-            {showGraph && speedHistory && speedHistory.length > 0 && (
+            {graphReady && speedProfile && (
                 <>
                     <button
                         type="button"
-                        onClick={() => setGraphExpanded(prev => !prev)}
+                        onClick={toggleGraph}
                         className="tpb-graph-toggle"
+                        aria-expanded={graphExpanded}
+                        style={{
+                            color: colors.from,
+                            borderColor: colors.shimmer,
+                            ['--tpb-toggle-bg' as string]: colors.shimmer,
+                        }}
                     >
-                        <Activity size={10} />
-                        <span>{graphExpanded ? 'Hide graph' : 'Speed graph'}</span>
-                        {graphExpanded ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                        <Activity size={12} />
+                        <span>{graphExpanded ? t('transfer.hideSpeedGraph') : t('transfer.speedGraph')}</span>
+                        {graphExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </button>
                     <div className={`tpb-graph-wrapper ${graphExpanded ? 'tpb-graph-open' : 'tpb-graph-closed'}`}>
                         <SpeedGraph
-                            speedHistory={speedHistory}
+                            profile={speedProfile}
+                            currentBps={live.bps}
                             theme={resolvedTheme}
                             active={graphExpanded}
                         />

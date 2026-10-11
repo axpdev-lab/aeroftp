@@ -6,6 +6,7 @@ import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Upload, Download, Check, X, Clock, Loader2, Folder, RotateCcw, Trash2, Copy, Square, ChevronDown, Zap, AlertTriangle, Play, Minus, Plus } from 'lucide-react';
 import { formatBytes, formatSpeed } from '../utils/formatters';
+import { useLiveSpeed } from '../utils/liveSpeed';
 import { useTranslation } from '../i18n';
 import { TransferProgressBar } from './TransferProgressBar';
 import type { BatchProgressSnapshot } from '../hooks/useTransferEvents';
@@ -280,6 +281,8 @@ interface QueueItemRowProps {
 const QueueItemRow = React.memo<QueueItemRowProps>(({
     item, realIndex, t, onContextMenu, onStartItem, onRetryItem, onRemoveItem,
 }) => {
+    // The row's speed falls while the file's frames stop (a stalled server sends none).
+    const live = useLiveSpeed(item.speedBps, `${item.progress}|${item.speedBps}`, item.status === 'transferring');
     return (
         <div
             data-testid={TID.queueItem}
@@ -354,7 +357,7 @@ const QueueItemRow = React.memo<QueueItemRowProps>(({
             {/* Per-file live speed (real, only while transferring) */}
             {item.status === 'transferring' && item.speedBps !== undefined && item.speedBps > 0 && (
                 <span className="w-16 text-right tabular-nums text-cyan-600 dark:text-cyan-400 shrink-0 hidden sm:inline">
-                    {formatSpeed(item.speedBps)}
+                    {formatSpeed(live.bps)}
                 </span>
             )}
 
@@ -1017,22 +1020,12 @@ export const useTransferQueue = () => {
         }
         setIsVisible(v => {
             const next = !v;
-            // If user is closing the panel, remember this choice
-            if (!next) userDismissedRef.current = true;
+            // Closing remembers the choice (new items stop popping the panel
+            // open); opening it again forgets it, as the removed one-way
+            // show() of the progress card did.
+            userDismissedRef.current = !next;
             return next;
         });
-    };
-
-    // TQ-5: explicit show, used by the minimized transfer indicator to
-    // pop the panel back open after a manual dismiss. Unlike toggle()
-    // this never hides the panel and always clears the dismiss flag.
-    const show = () => {
-        if (autoHideTimeoutRef.current) {
-            clearTimeout(autoHideTimeoutRef.current);
-            autoHideTimeoutRef.current = null;
-        }
-        userDismissedRef.current = false;
-        setIsVisible(true);
     };
 
     // Check if there's any active transfer. STAGED entries are intentionally
@@ -1070,7 +1063,6 @@ export const useTransferQueue = () => {
         clearRestoredFlags,
         discardRestored,
         toggle,
-        show,
         // TQ-3 staging lifecycle
         startStaged,
         startAll,

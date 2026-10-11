@@ -635,7 +635,11 @@
             "modeSafeDescription": "Én forbindelse: én fil ad gangen, én strøm pr. fil",
             "modeBalancedDescription": "Op til 3 forbindelser: parallelle filer eller intervalkanaler i én stor fil",
             "modeMaxDescription": "Op til 5 forbindelser: parallelle filer eller intervalkanaler i én stor fil",
-            "moreActions": "Flere handlinger"
+            "moreActions": "Flere handlinger",
+            "speedGraph": "Hastighedsgraf",
+            "hideSpeedGraph": "Skjul hastighedsgraf",
+            "speedAvg": "gns. {speed}",
+            "speedPeak": "maks. {speed}"
         },
         "settings": {
             "title": "Indstillinger",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Ikke forbundet til server",
             "clearSearch": "Ryd søgning",
             "searchFiles": "Søg filer",
-            "locked": "Låst",
             "localDisk": "Lokal disk",
             "localPathMismatch": "Lokal sti matcher ikke den forbundne server",
             "downloadFormat": "Download .{format}",

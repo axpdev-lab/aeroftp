@@ -635,7 +635,11 @@
             "modeSafeDescription": "Vienas ryšys: vienas failas vienu metu, vienas srautas vienam failui",
             "modeBalancedDescription": "Iki 3 ryšių: lygiagretūs failai arba diapazono kanalai viename dideliame faile",
             "modeMaxDescription": "Iki 5 ryšių: lygiagretūs failai arba diapazono kanalai viename dideliame faile",
-            "moreActions": "Daugiau veiksmų"
+            "moreActions": "Daugiau veiksmų",
+            "speedGraph": "Greičio grafikas",
+            "hideSpeedGraph": "Slėpti greičio grafiką",
+            "speedAvg": "vid. {speed}",
+            "speedPeak": "maks. {speed}"
         },
         "settings": {
             "title": "Nustatymai",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Neprisijungta prie serverio",
             "clearSearch": "Išvalyti paiešką",
             "searchFiles": "Ieškoti failų",
-            "locked": "Užrakinta",
             "localDisk": "Vietinis diskas",
             "localPathMismatch": "Vietinis kelias neatitinka prijungto serverio",
             "downloadFormat": "Atsisiųsti .{format}",

@@ -635,7 +635,11 @@
             "modeSafeDescription": "Một kết nối: mỗi lần một tệp, một luồng cho mỗi tệp",
             "modeBalancedDescription": "Tối đa 3 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn",
             "modeMaxDescription": "Tối đa 5 kết nối: các tệp song song, hoặc các kênh phạm vi trong một tệp lớn",
-            "moreActions": "Thao tác khác"
+            "moreActions": "Thao tác khác",
+            "speedGraph": "Biểu đồ tốc độ",
+            "hideSpeedGraph": "Ẩn biểu đồ tốc độ",
+            "speedAvg": "TB {speed}",
+            "speedPeak": "đỉnh {speed}"
         },
         "settings": {
             "title": "Cài đặt",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Chưa kết nối tới máy chủ",
             "clearSearch": "Xóa tìm kiếm",
             "searchFiles": "Tìm kiếm tệp",
-            "locked": "Đã khóa",
             "localDisk": "Đĩa cục bộ",
             "localPathMismatch": "Đường dẫn cục bộ không khớp với máy chủ đã kết nối",
             "downloadFormat": "Tải xuống .{format}",

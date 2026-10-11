@@ -635,7 +635,11 @@
             "modeSafeDescription": "Yksi yhteys: yksi tiedosto kerrallaan, yksi virta tiedostoa kohti",
             "modeBalancedDescription": "Enintään 3 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä",
             "modeMaxDescription": "Enintään 5 yhteyttä: rinnakkaisia tiedostoja tai aluekanavia yhden suuren tiedoston sisällä",
-            "moreActions": "Lisää toimintoja"
+            "moreActions": "Lisää toimintoja",
+            "speedGraph": "Nopeuskäyrä",
+            "hideSpeedGraph": "Piilota nopeuskäyrä",
+            "speedAvg": "keski {speed}",
+            "speedPeak": "huippu {speed}"
         },
         "settings": {
             "title": "Asetukset",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Ei yhteyttä palvelimeen",
             "clearSearch": "Tyhjennä haku",
             "searchFiles": "Hae tiedostoja",
-            "locked": "Lukittu",
             "localDisk": "Paikallinen levy",
             "localPathMismatch": "Paikallinen polku ei vastaa yhdistettyä palvelinta",
             "downloadFormat": "Lataa .{format}",

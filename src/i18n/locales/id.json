@@ -635,7 +635,11 @@
             "modeSafeDescription": "Satu koneksi: satu file sekaligus, satu aliran per file",
             "modeBalancedDescription": "Hingga 3 koneksi: file paralel, atau saluran rentang dalam satu file besar",
             "modeMaxDescription": "Hingga 5 koneksi: file paralel, atau saluran rentang dalam satu file besar",
-            "moreActions": "Tindakan lainnya"
+            "moreActions": "Tindakan lainnya",
+            "speedGraph": "Grafik kecepatan",
+            "hideSpeedGraph": "Sembunyikan grafik kecepatan",
+            "speedAvg": "rata-rata {speed}",
+            "speedPeak": "puncak {speed}"
         },
         "settings": {
             "title": "Pengaturan",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Tidak terhubung ke server",
             "clearSearch": "Bersihkan pencarian",
             "searchFiles": "Cari file",
-            "locked": "Terkunci",
             "localDisk": "Disk Lokal",
             "localPathMismatch": "Jalur lokal tidak cocok dengan server yang terhubung",
             "downloadFormat": "Unduh .{format}",

@@ -635,7 +635,11 @@
             "modeSafeDescription": "O conexiune: un fișier odată, un singur flux per fișier",
             "modeBalancedDescription": "Până la 3 conexiuni: fișiere în paralel sau canale de intervale într-un fișier mare",
             "modeMaxDescription": "Până la 5 conexiuni: fișiere în paralel sau canale de intervale într-un fișier mare",
-            "moreActions": "Mai multe acțiuni"
+            "moreActions": "Mai multe acțiuni",
+            "speedGraph": "Grafic viteză",
+            "hideSpeedGraph": "Ascunde graficul vitezei",
+            "speedAvg": "med. {speed}",
+            "speedPeak": "vârf {speed}"
         },
         "settings": {
             "title": "Setări",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Nu sunteți conectat la server",
             "clearSearch": "Șterge căutarea",
             "searchFiles": "Caută fișiere",
-            "locked": "Blocat",
             "localDisk": "Disc local",
             "localPathMismatch": "Calea locală nu corespunde serverului conectat",
             "downloadFormat": "Descarcă .{format}",

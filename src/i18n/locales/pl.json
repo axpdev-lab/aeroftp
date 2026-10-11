@@ -635,7 +635,11 @@
             "modeSafeDescription": "Jedno połączenie: jeden plik naraz, jeden strumień na plik",
             "modeBalancedDescription": "Do 3 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku",
             "modeMaxDescription": "Do 5 połączeń: równoległe pliki lub kanały zakresowe w jednym dużym pliku",
-            "moreActions": "Więcej akcji"
+            "moreActions": "Więcej akcji",
+            "speedGraph": "Wykres prędkości",
+            "hideSpeedGraph": "Ukryj wykres prędkości",
+            "speedAvg": "śr. {speed}",
+            "speedPeak": "maks. {speed}"
         },
         "settings": {
             "title": "Ustawienia",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Brak połączenia z serwerem",
             "clearSearch": "Wyczyść wyszukiwanie",
             "searchFiles": "Szukaj plików",
-            "locked": "Zablokowano",
             "localDisk": "Dysk lokalny",
             "localPathMismatch": "Ścieżka lokalna nie odpowiada połączonemu serwerowi",
             "downloadFormat": "Pobierz .{format}",

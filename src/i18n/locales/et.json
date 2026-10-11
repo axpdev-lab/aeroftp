@@ -635,7 +635,11 @@
             "modeSafeDescription": "Üks ühendus: üks fail korraga, üks voog faili kohta",
             "modeBalancedDescription": "Kuni 3 ühendust: paralleelsed failid või vahemikukanalid ühe suure faili sees",
             "modeMaxDescription": "Kuni 5 ühendust: paralleelsed failid või vahemikukanalid ühe suure faili sees",
-            "moreActions": "Rohkem toiminguid"
+            "moreActions": "Rohkem toiminguid",
+            "speedGraph": "Kiirusegraafik",
+            "hideSpeedGraph": "Peida kiirusegraafik",
+            "speedAvg": "keskm {speed}",
+            "speedPeak": "tipp {speed}"
         },
         "settings": {
             "title": "Seaded",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Serveriga pole ühendatud",
             "clearSearch": "Tühjenda otsing",
             "searchFiles": "Otsi faile",
-            "locked": "Lukustatud",
             "localDisk": "Kohalik ketas",
             "localPathMismatch": "Kohalik tee ei vasta ühendatud serverile",
             "downloadFormat": "Laadi alla .{format}",

@@ -635,7 +635,11 @@
             "modeSafeDescription": "Једна веза: једна датотека истовремено, један ток по датоци",
             "modeBalancedDescription": "До 3 везе: паралелне датотеке или канали опсега у једној великој датотеци",
             "modeMaxDescription": "До 5 веза: паралелне датотеке или канали опсега у једној великој датотеци",
-            "moreActions": "Још радњи"
+            "moreActions": "Још радњи",
+            "speedGraph": "График брзине",
+            "hideSpeedGraph": "Сакриј график брзине",
+            "speedAvg": "просек {speed}",
+            "speedPeak": "макс. {speed}"
         },
         "settings": {
             "title": "Подешавања",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Није повезано са сервером",
             "clearSearch": "Обриши претрагу",
             "searchFiles": "Претражи фајлове",
-            "locked": "Закључано",
             "localDisk": "Локални диск",
             "localPathMismatch": "Локална путања не одговара повезаном серверу",
             "downloadFormat": "Преузми .{format}",

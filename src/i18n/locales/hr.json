@@ -635,7 +635,11 @@
             "modeSafeDescription": "Jedna veza: jedna datoteka odjednom, jedan tok po datoteci",
             "modeBalancedDescription": "Do 3 veze: paralelne datoteke ili kanali raspona unutar jedne velike datoteke",
             "modeMaxDescription": "Do 5 veza: paralelne datoteke ili kanali raspona unutar jedne velike datoteke",
-            "moreActions": "Više radnji"
+            "moreActions": "Više radnji",
+            "speedGraph": "Graf brzine",
+            "hideSpeedGraph": "Sakrij graf brzine",
+            "speedAvg": "prosj. {speed}",
+            "speedPeak": "maks. {speed}"
         },
         "settings": {
             "title": "Postavke",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Nije povezano s poslužiteljem",
             "clearSearch": "Očisti pretraživanje",
             "searchFiles": "Pretraži datoteke",
-            "locked": "Zaključano",
             "localDisk": "Lokalni disk",
             "localPathMismatch": "Lokalna putanja se ne podudara s povezanim poslužiteljem",
             "downloadFormat": "Preuzmi .{format}",

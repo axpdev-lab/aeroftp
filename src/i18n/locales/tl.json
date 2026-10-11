@@ -635,7 +635,11 @@
             "modeSafeDescription": "Isang koneksyon: isang file nang sabay, isang stream bawat file",
             "modeBalancedDescription": "Hanggang 3 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file",
             "modeMaxDescription": "Hanggang 5 koneksyon: magkatuloy na mga file, o mga channel ng range sa loob ng isang malaking file",
-            "moreActions": "Higit pang aksyon"
+            "moreActions": "Higit pang aksyon",
+            "speedGraph": "Graph ng bilis",
+            "hideSpeedGraph": "Itago ang graph ng bilis",
+            "speedAvg": "avg {speed}",
+            "speedPeak": "pinakamataas {speed}"
         },
         "settings": {
             "title": "Mga Setting",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Hindi nakakonekta sa server",
             "clearSearch": "I-clear ang paghahanap",
             "searchFiles": "Maghanap ng mga file",
-            "locked": "Naka-lock",
             "localDisk": "Lokal na Disk",
             "localPathMismatch": "Hindi tugma ang lokal na path sa nakakonektang server",
             "downloadFormat": "I-download ang .{format}",

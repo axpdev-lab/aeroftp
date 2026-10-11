@@ -635,7 +635,11 @@
             "modeSafeDescription": "Одно соединение: по одному файлу за раз, один поток на файл",
             "modeBalancedDescription": "До 3 соединений: параллельные файлы или каналы диапазонов в одном большом файле",
             "modeMaxDescription": "До 5 соединений: параллельные файлы или каналы диапазонов в одном большом файле",
-            "moreActions": "Другие действия"
+            "moreActions": "Другие действия",
+            "speedGraph": "График скорости",
+            "hideSpeedGraph": "Скрыть график скорости",
+            "speedAvg": "сред. {speed}",
+            "speedPeak": "макс. {speed}"
         },
         "settings": {
             "title": "Настройки",
@@ -2299,7 +2303,6 @@
             "notConnectedToServer": "Нет подключения к серверу",
             "clearSearch": "Очистить поиск",
             "searchFiles": "Искать файлы",
-            "locked": "Заблокировано",
             "localDisk": "Локальный диск",
             "localPathMismatch": "Локальный путь не соответствует подключённому серверу",
             "downloadFormat": "Скачать .{format}",
