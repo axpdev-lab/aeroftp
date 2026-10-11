@@ -56679,11 +56679,30 @@ enum EmergencyKitDestination {
     Terminal,
 }
 
+/// Where `path` leads: the file itself when it exists (a symlink followed),
+/// otherwise its name in its resolved folder, so two spellings of one file
+/// compare equal even before it is written.
+fn resolved_local_path(path: &std::path::Path) -> std::path::PathBuf {
+    if let Ok(resolved) = std::fs::canonicalize(path) {
+        return resolved;
+    }
+    let folder = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => std::path::Path::new("."),
+    };
+    match (std::fs::canonicalize(folder), path.file_name()) {
+        (Ok(folder), Some(name)) => folder.join(name),
+        _ => path.to_path_buf(),
+    }
+}
+
 /// Settle where the kit goes. In JSON or non-interactive mode the path is
-/// mandatory; a path must name a file in a folder this process can write.
-/// Returns the message and the exit code of a refusal.
+/// mandatory; a path must name a file in a folder this process can write,
+/// and not the keyfile of the init (`keyfile`, given or about to be
+/// generated). Returns the message and the exit code of a refusal.
 fn emergency_kit_destination(
     out_path: Option<&str>,
+    keyfile: Option<&str>,
     format: OutputFormat,
 ) -> Result<EmergencyKitDestination, (String, i32)> {
     let Some(p) = out_path else {
@@ -56711,6 +56730,20 @@ fn emergency_kit_destination(
     } else {
         given
     };
+    // The kit is renamed onto its path after the config has recorded the
+    // keyfile's digest: onto the keyfile, it would replace the file the
+    // vault is opened with. A hard link to the keyfile is not refused: the
+    // rename replaces that name only, and the keyfile keeps its content.
+    if let Some(keyfile) = keyfile {
+        if resolved_local_path(&path) == resolved_local_path(std::path::Path::new(keyfile)) {
+            return Err((
+                format!(
+                    "--emergency-kit {p} is the keyfile of this init ({keyfile}): the kit would replace it, and the vault could not be opened with it. Give the kit a path of its own. Nothing was written."
+                ),
+                5,
+            ));
+        }
+    }
     let folder = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
         _ => std::path::PathBuf::from("."),
@@ -72566,8 +72599,11 @@ async fn main() {
                                 if !require_secret(&pw, kf.as_ref(), "init") {
                                     5
                                 } else {
+                                    let keyfile_path =
+                                        keyfile_gen.as_deref().or(keyfile.as_deref());
                                     match emergency_kit_destination(
                                         emergency_kit.as_deref(),
+                                        keyfile_path,
                                         format,
                                     ) {
                                         Err((e, code)) => {
@@ -72581,8 +72617,6 @@ async fn main() {
                                                 path,
                                                 "/",
                                             );
-                                            let keyfile_path =
-                                                keyfile_gen.as_deref().or(keyfile.as_deref());
                                             cmd_crypt_init(
                                                 &u,
                                                 &dir,

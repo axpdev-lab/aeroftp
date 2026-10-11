@@ -396,3 +396,100 @@ fn declining_the_kit_at_a_terminal_writes_nothing() {
         "a declined kit left the vault folder on the remote; the terminal showed:\n{seen}"
     );
 }
+
+/// CodeRabbit on #1156: the kit is renamed onto its path at the end of the
+/// run, after the config has recorded the digest of the keyfile. A kit path
+/// that is the keyfile (spelt the same, spelt otherwise, through a link, or
+/// the file `--keyfile-gen` is about to write) replaced the keyfile with the
+/// kit, and the vault could no longer be opened with it. It is refused
+/// before anything is written.
+#[test]
+fn a_kit_path_that_is_the_keyfile_is_refused_before_anything_is_written() {
+    let remote = tempfile::tempdir().expect("remote folder");
+    let config = tempfile::tempdir().expect("isolated config");
+    let kits = tempfile::tempdir().expect("kit folder");
+    let keyfile = kits.path().join("vault.key");
+    let content = ftp_client_gui_lib::aerocrypt::generate_keyfile_v1();
+    std::fs::write(&keyfile, &content).expect("keyfile");
+    std::fs::create_dir(kits.path().join("sub")).expect("sub folder");
+    let keyfile_arg = keyfile.to_str().expect("utf-8 path").to_string();
+
+    let mut same_file = vec![
+        keyfile.clone(),
+        kits.path().join("sub").join("..").join("vault.key"),
+    ];
+    #[cfg(unix)]
+    {
+        let link = kits.path().join("link.key");
+        std::os::unix::fs::symlink(&keyfile, &link).expect("symlink");
+        same_file.push(link);
+    }
+    for kit in &same_file {
+        let refused = crypt_init(
+            remote.path(),
+            config.path(),
+            &[
+                "--keyfile",
+                &keyfile_arg,
+                "--emergency-kit",
+                kit.to_str().expect("utf-8 path"),
+            ],
+        );
+        assert_eq!(
+            refused.status.code(),
+            Some(5),
+            "kit {kit:?}: {}",
+            describe(&refused)
+        );
+        assert_eq!(
+            std::fs::read_to_string(&keyfile).expect("keyfile"),
+            content,
+            "kit {kit:?} replaced the keyfile: {}",
+            describe(&refused)
+        );
+        assert!(
+            !remote.path().join("vault").exists(),
+            "{}",
+            describe(&refused)
+        );
+    }
+
+    let generated = kits.path().join("gen.key");
+    for kit in [generated.clone(), kits.path().join(".").join("gen.key")] {
+        let refused = crypt_init(
+            remote.path(),
+            config.path(),
+            &[
+                "--keyfile-gen",
+                generated.to_str().expect("utf-8 path"),
+                "--emergency-kit",
+                kit.to_str().expect("utf-8 path"),
+            ],
+        );
+        assert_eq!(
+            refused.status.code(),
+            Some(5),
+            "kit {kit:?}: {}",
+            describe(&refused)
+        );
+        assert!(!generated.exists(), "{}", describe(&refused));
+        assert!(
+            !remote.path().join("vault").exists(),
+            "{}",
+            describe(&refused)
+        );
+    }
+
+    // Nothing staged was left beside the files.
+    let mut left: Vec<_> = std::fs::read_dir(kits.path())
+        .expect("kit folder")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    let mut expected = vec!["sub", "vault.key"];
+    if cfg!(unix) {
+        expected.insert(0, "link.key");
+    }
+    assert_eq!(left, expected);
+}
