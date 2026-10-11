@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { ServerProfile } from '../types';
 import {
     countSelectedOutside,
+    deriveProviderId,
     filterServersByQuery,
     getServerSearchText,
     matchesServerQuery,
@@ -79,6 +80,26 @@ describe('server list filter predicate', () => {
             id: 'o', name: 'Drive', host: '', protocol: 'opendrive', providerId: 'opendrive-webdav',
         }));
         expect(text).not.toContain('webdav');
+    });
+});
+
+describe('deriveProviderId MEGA S4 host boundary', () => {
+    const s3 = (host: string) => ({ name: 's', host, username: '', protocol: 's3' as const });
+
+    it('classifies the current zone, the legacy zone, and mega.nz', () => {
+        expect(deriveProviderId(s3('s3.eu-amsterdam-1.megas4.com'))).toBe('mega-s4');
+        expect(deriveProviderId(s3('https://bucket.s3.ca-vancouver-1.megas4.com:443/bucket'))).toBe('mega-s4');
+        expect(deriveProviderId(s3('s3.eu-central-1.s4.mega.io'))).toBe('mega-s4');
+        expect(deriveProviderId(s3('https://mega.nz'))).toBe('mega-s4');
+    });
+
+    it('rejects lookalikes the old substring match accepted', () => {
+        expect(deriveProviderId(s3('notmega.io'))).toBeUndefined();
+        expect(deriveProviderId(s3('mega.io.example'))).toBeUndefined();
+        expect(deriveProviderId(s3('s4.mega.io.example'))).toBeUndefined();
+        expect(deriveProviderId(s3('notmegas4.com'))).toBeUndefined();
+        expect(deriveProviderId(s3('megas4.com.evil.com'))).toBeUndefined();
+        expect(deriveProviderId(s3('evilmega.nz'))).toBeUndefined();
     });
 });
 

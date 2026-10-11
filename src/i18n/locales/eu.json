@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 hodei-objektu biltegiratzea",
             "discoverGoogleCloudStorage": "Google Cloud S3-rekin bateragarria den objektu biltegiratzea (5 GB doan)",
             "discoverBackblaze": "Hodei biltegiratze merkea S3 bateragarritasunarekin",
-            "discoverMegaS4": "S3-rekin bateragarria, Pro plana behar da, 4 eskualde (EU/CA)",
+            "discoverMegaS4": "S3-rekin bateragarria, Pro plana behar da, EU, Kanada eta Asia-Pazifikoa",
             "discoverCloudflareR2": "S3-rekin bateragarria den biltegiratzea irteera kosturik gabe (10 GB doan)",
             "discoverIDriveE2": "S3-rekin bateragarria den biltegiratze beroa (10 GB doan)",
             "discoverWasabi": "Hodei biltegiratze beroa, irteera kosturik gabe",

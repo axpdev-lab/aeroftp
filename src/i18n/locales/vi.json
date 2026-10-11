@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Lưu trữ đối tượng đám mây Amazon Web Services S3",
             "discoverGoogleCloudStorage": "Lưu trữ đối tượng Google Cloud tương thích S3 (5 GB miễn phí)",
             "discoverBackblaze": "Lưu trữ đám mây giá cả phải chăng tương thích S3",
-            "discoverMegaS4": "Tương thích S3, cần gói Pro, 4 khu vực (EU/CA)",
+            "discoverMegaS4": "Tương thích S3, cần gói Pro, EU, Canada và châu Á-Thái Bình Dương",
             "discoverCloudflareR2": "Lưu trữ tương thích S3 không phí lưu lượng ra (10 GB miễn phí)",
             "discoverIDriveE2": "Lưu trữ nóng tương thích S3 (10 GB miễn phí)",
             "discoverWasabi": "Lưu trữ đám mây nóng không phí lưu lượng ra",

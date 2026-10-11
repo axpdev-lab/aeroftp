@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Hifadhi ya vitu kwenye wingu la Amazon Web Services S3",
             "discoverGoogleCloudStorage": "Hifadhi ya vitu ya Google Cloud inayolingana na S3 (5 GB bure)",
             "discoverBackblaze": "Hifadhi ya wingu ya bei nafuu yenye ulinganifu wa S3",
-            "discoverMegaS4": "Inalingana na S3, mpango wa Pro unahitajika, mikoa 4 (EU/CA)",
+            "discoverMegaS4": "Inalingana na S3, mpango wa Pro unahitajika, EU, Kanada na Asia-Pasifiki",
             "discoverCloudflareR2": "Hifadhi inayolingana na S3 bila ada ya trafiki ya nje (10 GB bure)",
             "discoverIDriveE2": "Hifadhi ya moto inayolingana na S3 (10 GB bure)",
             "discoverWasabi": "Hifadhi ya wingu ya moto bila ada ya trafiki ya nje",

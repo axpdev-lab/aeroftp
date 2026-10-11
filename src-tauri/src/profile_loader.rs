@@ -286,14 +286,14 @@ fn s3_profile_static_endpoint(provider_id: &str) -> Option<&'static str> {
 /// template, a template with other placeholders, or a host the template does
 /// not produce (a virtual-hosted `bucket.` host, another provider). Mirrors
 /// `regionFromS3Endpoint` in `src/providers/registry.ts`.
-pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<String> {
+fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
     fn without_scheme(value: &str) -> &str {
         value
             .strip_prefix("https://")
             .or_else(|| value.strip_prefix("http://"))
             .unwrap_or(value)
     }
-    let template = without_scheme(s3_profile_endpoint_template(provider_id)?);
+    let template = without_scheme(template);
     let (prefix, suffix) = template.split_once("{region}")?;
     if prefix.contains('{') || suffix.contains('{') {
         return None;
@@ -312,6 +312,17 @@ pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<Stri
     .then(|| region.to_string())
 }
 
+pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<String> {
+    let template = s3_profile_endpoint_template(provider_id)?;
+    region_from_s3_template(template, endpoint).or_else(|| {
+        if provider_id == "mega-s4" {
+            region_from_s3_template(MEGA_S4_LEGACY_ENDPOINT_TEMPLATE, endpoint)
+        } else {
+            None
+        }
+    })
+}
+
 /// Endpoint host segment for a Cloudflare R2 jurisdiction code.
 ///
 /// `eu` and `us` are the two jurisdictions R2 publishes; everything else,
@@ -328,9 +339,20 @@ pub fn r2_jurisdiction_segment(value: &str) -> &'static str {
     }
 }
 
+/// Previous MEGA S4 region ids. They still expand to `s4.mega.io`.
+/// The current preset does not offer them, and `megas4.com` rejects them.
+const MEGA_S4_LEGACY_ENDPOINT_TEMPLATE: &str = "s3.{region}.s4.mega.io";
+
+fn mega_s4_legacy_region(region: &str) -> bool {
+    matches!(
+        region,
+        "eu-central-1" | "eu-central-2" | "ca-central-1" | "ca-west-1"
+    )
+}
+
 fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
     match provider_id {
-        "mega-s4" => Some("s3.{region}.s4.mega.io"),
+        "mega-s4" => Some("s3.{region}.megas4.com"),
         "cloudflare-r2" => Some("{accountId}{jurisdiction}.r2.cloudflarestorage.com"),
         "google-cloud-storage" => Some("https://storage.googleapis.com"),
         "wasabi" => Some("https://s3.{region}.wasabisys.com"),
@@ -441,6 +463,19 @@ pub fn apply_s3_profile_defaults(
         Some(endpoint.to_string())
     } else {
         let template = s3_profile_endpoint_template(provider_id)?;
+        // A stored legacy MEGA region expands to the legacy host. The
+        // current template would build a host MEGA does not publish.
+        // An endpoint already stored on the profile is returned above
+        // and is not rewritten.
+        let template = if provider_id == "mega-s4"
+            && extra
+                .get("region")
+                .is_some_and(|region| mega_s4_legacy_region(region))
+        {
+            MEGA_S4_LEGACY_ENDPOINT_TEMPLATE
+        } else {
+            template
+        };
         let mut endpoint = template.to_string();
 
         if endpoint.contains("{region}") {
@@ -709,6 +744,26 @@ mod tests {
                 Some("eu-central-2"),
             ),
             (
+                "mega-s4",
+                "s3.eu-central-1.s4.mega.io",
+                Some("eu-central-1"),
+            ),
+            (
+                "mega-s4",
+                "https://s3.eu-amsterdam-1.megas4.com",
+                Some("eu-amsterdam-1"),
+            ),
+            (
+                "mega-s4",
+                "https://S3.CA-VANCOUVER-1.megas4.com:443",
+                Some("ca-vancouver-1"),
+            ),
+            (
+                "mega-s4",
+                "https://bucket.s3.eu-amsterdam-1.megas4.com",
+                None,
+            ),
+            (
                 "alibaba-oss",
                 "https://oss-eu-central-1.aliyuncs.com",
                 Some("eu-central-1"),
@@ -781,6 +836,50 @@ mod tests {
         let mut extra = HashMap::new();
         apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "cos.example.internal");
         assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
+    }
+
+    #[test]
+    fn mega_s4_legacy_endpoint_keeps_its_region_and_host() {
+        // A saved s4.mega.io host with no stored region must not fall
+        // through to us-east-1, and must not be rewritten onto megas4.com.
+        let mut extra = HashMap::new();
+        let endpoint =
+            apply_s3_profile_defaults(&mut extra, Some("mega-s4"), "s3.eu-central-1.s4.mega.io");
+        assert_eq!(endpoint.as_deref(), Some("s3.eu-central-1.s4.mega.io"));
+        assert_eq!(
+            extra.get("region").map(String::as_str),
+            Some("eu-central-1")
+        );
+        assert_eq!(
+            extra.get(S3_REGION_SOURCE_META_KEY).map(String::as_str),
+            Some("endpoint")
+        );
+
+        // Region only, legacy id: expand the legacy template.
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "ca-west-1".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("mega-s4"), "");
+        assert_eq!(endpoint.as_deref(), Some("s3.ca-west-1.s4.mega.io"));
+
+        // Region only, current id: expand the current template.
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "eu-amsterdam-1".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("mega-s4"), "");
+        assert_eq!(endpoint.as_deref(), Some("s3.eu-amsterdam-1.megas4.com"));
+
+        // A stored endpoint is not migrated.
+        let mut extra = HashMap::new();
+        extra.insert("region".to_string(), "eu-central-1".to_string());
+        extra.insert(
+            "endpoint".to_string(),
+            "s3.eu-central-1.s4.mega.io".to_string(),
+        );
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("mega-s4"), "");
+        assert_eq!(endpoint.as_deref(), Some("s3.eu-central-1.s4.mega.io"));
+        assert_eq!(
+            extra.get("region").map(String::as_str),
+            Some("eu-central-1")
+        );
     }
 
     #[test]

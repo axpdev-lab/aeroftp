@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 云对象存储",
             "discoverGoogleCloudStorage": "Google Cloud S3 兼容对象存储（5 GB 免费）",
             "discoverBackblaze": "实悃的 S3 兼容云存储",
-            "discoverMegaS4": "S3 兼容，需要 Pro 计划，4 个区域（EU/CA）",
+            "discoverMegaS4": "S3 兼容，需要 Pro 计划，EU、加拿大和亚太",
             "discoverCloudflareR2": "零出口费用的 S3 兼容存储（10 GB 免费）",
             "discoverIDriveE2": "S3 兼容热存储（10 GB 免费）",
             "discoverWasabi": "无出口费用的热云存储",

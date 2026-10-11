@@ -623,7 +623,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 archiviazione oggetti cloud",
             "discoverGoogleCloudStorage": "Google Cloud archiviazione oggetti S3-compatibile (5 GB gratis)",
             "discoverBackblaze": "Archiviazione cloud conveniente con compatibilita S3",
-            "discoverMegaS4": "S3-compatibile, piano Pro richiesto, 4 regioni (EU/CA)",
+            "discoverMegaS4": "S3-compatibile, piano Pro richiesto, EU, Canada e Asia-Pacifico",
             "discoverCloudflareR2": "Archiviazione S3-compatibile senza costi di uscita (10 GB gratis)",
             "discoverIDriveE2": "Archiviazione S3-compatibile (10 GB gratis)",
             "discoverWasabi": "Archiviazione cloud senza costi di uscita",

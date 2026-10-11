@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 skýjahlutageymla",
             "discoverGoogleCloudStorage": "Google Cloud S3-samhæfð hlutageymla (5 GB ókeypis)",
             "discoverBackblaze": "Hagstæð skýjageymsla með S3 samhæfni",
-            "discoverMegaS4": "S3-samhæft, Pro áskrift krafist, 4 svæði (EU/CA)",
+            "discoverMegaS4": "S3-samhæft, Pro áskrift krafist, EU, Kanada og Asíu-Kyrrahaf",
             "discoverCloudflareR2": "S3-samhæfð geymsla án útflæðiskostnaðar (10 GB ókeypis)",
             "discoverIDriveE2": "S3-samhæfð geymsla (10 GB ókeypis)",
             "discoverWasabi": "Skýjageymsla án útflæðisgjalda",

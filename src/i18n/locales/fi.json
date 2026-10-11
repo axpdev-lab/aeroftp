@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 pilviobjektitallennus",
             "discoverGoogleCloudStorage": "Google Cloud S3-yhteensopiva objektitallennus (5 GB ilmaiseksi)",
             "discoverBackblaze": "Edullinen pilvitallennus S3-yhteensopivuudella",
-            "discoverMegaS4": "S3-yhteensopiva, Pro-paketti vaaditaan, 4 aluetta (EU/CA)",
+            "discoverMegaS4": "S3-yhteensopiva, Pro-paketti vaaditaan, EU, Kanada ja Aasia-Tyynimeri",
             "discoverCloudflareR2": "S3-yhteensopiva tallennus ilman ulosmenomaksuja (10 GB ilmaiseksi)",
             "discoverIDriveE2": "S3-yhteensopiva kuuma tallennus (10 GB ilmaiseksi)",
             "discoverWasabi": "Kuuma pilvitallennus ilman ulosmenomaksuja",

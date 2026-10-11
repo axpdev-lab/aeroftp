@@ -331,7 +331,7 @@ The sync engine never uses these digests: `supports_checksum()` stays false for 
 | **FileLu** | Native | - | - | - | Makes file public, returns share URL |
 | **Yandex Disk** | Native | - | - | - | Publish/unpublish via REST API |
 | **OpenDrive** | Native | - | Yes (default 1 year) | - | Expiring share links |
-| **MEGA S4** | Presigned | - | Yes (max 7d) | - | S3-compatible presigned URLs, 4 regions (EU/CA) |
+| **MEGA S4** | Presigned | - | Yes (max 7d) | - | S3-compatible presigned URLs, EU, Canada and Asia-Pacific endpoints |
 | **Azure Blob** | SAS | - | Yes (default 7d) | - | Service SAS with HMAC-SHA256 |
 | **GitHub** | URL | - | - | - | Permanent blob/release URL |
 

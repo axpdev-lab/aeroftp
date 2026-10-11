@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 pilvepõhine objektisalvestus",
             "discoverGoogleCloudStorage": "Google Cloud S3-ühilduv objektisalvestus (5 GB tasuta)",
             "discoverBackblaze": "Taskukohane pilvesalvestus S3 ühilduvusega",
-            "discoverMegaS4": "S3-ühilduv, nõuab Pro plaani, 4 piirkonda (EU/CA)",
+            "discoverMegaS4": "S3-ühilduv, nõuab Pro plaani, EU, Kanada ja Aasia-Vaikse ookeani piirkond",
             "discoverCloudflareR2": "S3-ühilduv salvestus ilma väljundtasudeta (10 GB tasuta)",
             "discoverIDriveE2": "S3-ühilduv kuum salvestus (10 GB tasuta)",
             "discoverWasabi": "Kuum pilvesalvestus ilma väljundtasudeta",

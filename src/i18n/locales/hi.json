@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 क्लाउड ऑब्जेक्ट स्टोरेज",
             "discoverGoogleCloudStorage": "Google Cloud S3-संगत ऑब्जेक्ट स्टोरेज (5 GB मुफ्त)",
             "discoverBackblaze": "S3 संगतता के साथ किफायती क्लाउड स्टोरेज",
-            "discoverMegaS4": "S3-संगत, Pro प्लान आवश्यक, 4 क्षेत्र (EU/CA)",
+            "discoverMegaS4": "S3-संगत, Pro प्लान आवश्यक, EU, कनाडा और एशिया-प्रशांत",
             "discoverCloudflareR2": "शून्य-एग्रेस S3-संगत स्टोरेज (10 GB मुफ्त)",
             "discoverIDriveE2": "S3-संगत हॉट स्टोरेज (10 GB मुफ्त)",
             "discoverWasabi": "हॉट क्लाउड स्टोरेज, कोई एग्रेस शुल्क नहीं",

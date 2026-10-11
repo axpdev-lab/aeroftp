@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "พื้นที่จัดเก็บออบเจกต์บนคลาวด์ Amazon Web Services S3",
             "discoverGoogleCloudStorage": "พื้นที่จัดเก็บออบเจกต์ Google Cloud รองรับ S3 (5 GB ฟรี)",
             "discoverBackblaze": "พื้นที่จัดเก็บบนคลาวด์ราคาประหยัดรองรับ S3",
-            "discoverMegaS4": "รองรับ S3 ต้องใช้แผน Pro 4 ภูมิภาค (EU/CA)",
+            "discoverMegaS4": "รองรับ S3, ต้องใช้แผน Pro, EU, แคนาดา และเอเชีย-แปซิฟิก",
             "discoverCloudflareR2": "พื้นที่จัดเก็บรองรับ S3 ไม่มีค่าถ่ายโอนข้อมูล (10 GB ฟรี)",
             "discoverIDriveE2": "พื้นที่จัดเก็บแบบฮอตรองรับ S3 (10 GB ฟรี)",
             "discoverWasabi": "พื้นที่จัดเก็บแบบฮอตบนคลาวด์ ไม่มีค่าถ่ายโอนข้อมูล",

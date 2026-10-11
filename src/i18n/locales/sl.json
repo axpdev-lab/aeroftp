@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Oblačno objektno shranjevanje Amazon Web Services S3",
             "discoverGoogleCloudStorage": "S3-združljivo objektno shranjevanje Google Cloud (5 GB brezplačno)",
             "discoverBackblaze": "Cenovno ugodno oblačno shranjevanje z združljivostjo S3",
-            "discoverMegaS4": "S3-združljivo, zahtevan načrt Pro, 4 regije (EU/CA)",
+            "discoverMegaS4": "S3-združljivo, zahtevan načrt Pro, EU, Kanada in azijsko-pacifiška regija",
             "discoverCloudflareR2": "S3-združljivo shranjevanje brez stroškov izhodnega prometa (10 GB brezplačno)",
             "discoverIDriveE2": "S3-združljivo vroče shranjevanje (10 GB brezplačno)",
             "discoverWasabi": "Vroče oblačno shranjevanje brez stroškov izhodnega prometa",

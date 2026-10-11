@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 molnobjektlagring",
             "discoverGoogleCloudStorage": "S3-kompatibel objektlagring från Google Cloud (5 GB gratis)",
             "discoverBackblaze": "Prisvanlig molnlagring med S3-kompatibilitet",
-            "discoverMegaS4": "S3-kompatibel, Pro-plan krävs, 4 regioner (EU/CA)",
+            "discoverMegaS4": "S3-kompatibel, Pro-plan krävs, EU, Kanada och Asien-Stillahavsområdet",
             "discoverCloudflareR2": "S3-kompatibel lagring utan utgående avgifter (10 GB gratis)",
             "discoverIDriveE2": "S3-kompatibel varmlagring (10 GB gratis)",
             "discoverWasabi": "Varm molnlagring utan utgående avgifter",

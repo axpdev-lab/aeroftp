@@ -1401,12 +1401,15 @@ impl S3Provider {
     /// Detect MEGA S4 Object Storage endpoints.
     /// S4 deviates from standard S3 in several ways: no versioning, no tagging,
     /// no SSE headers, no storage classes, presigned URL max 7 days.
+    /// The host is parsed, not substring-matched, so `megas4.com` and the
+    /// legacy `s4.mega.io` zone match (including virtual-hosted bucket
+    /// subdomains) and lookalikes do not.
     fn is_mega_s4_endpoint(&self) -> bool {
         self.config
             .endpoint
             .as_deref()
-            .map(|ep| ep.to_ascii_lowercase().contains("s4.mega.io"))
-            .unwrap_or(false)
+            .and_then(super::types::mega_s4_zone)
+            .is_some()
     }
 
     /// Detect Filebase endpoints.
@@ -13307,6 +13310,37 @@ mod tests {
     /// KE-B1.4: MEGA S4 skips the entire enterprise-headers block, including
     /// the ACL override. Users wiring `--s3-acl` against MEGA must rely on
     /// MEGA's permission UI, not S3 ACLs.
+    #[test]
+    fn mega_s4_endpoint_detection_is_host_specific() {
+        assert!(make_provider(Some("https://s3.eu-amsterdam-1.megas4.com")).is_mega_s4_endpoint());
+        assert!(make_provider(Some("HTTPS://S3.EU-AMSTERDAM-1.MEGAS4.COM")).is_mega_s4_endpoint());
+        assert!(
+            make_provider(Some("https://s3.eu-amsterdam-1.megas4.com:443")).is_mega_s4_endpoint()
+        );
+        assert!(
+            make_provider(Some("https://my-bucket.s3.eu-amsterdam-1.megas4.com"))
+                .is_mega_s4_endpoint()
+        );
+        assert!(make_provider(Some("https://eu-central-1.s4.mega.io")).is_mega_s4_endpoint());
+        assert!(make_provider(Some("https://s3.eu-central-1.s4.mega.io")).is_mega_s4_endpoint());
+        assert!(
+            !make_provider(Some("https://s3.eu-amsterdam-1.megas4.com.example"))
+                .is_mega_s4_endpoint()
+        );
+        assert!(!make_provider(Some("https://notmegas4.com")).is_mega_s4_endpoint());
+        assert!(!make_provider(Some("https://s4.mega.io.example")).is_mega_s4_endpoint());
+        assert!(!make_provider(Some("https://nots4.mega.io")).is_mega_s4_endpoint());
+        assert!(!make_provider(Some("https://s3.us-east-1.amazonaws.com")).is_mega_s4_endpoint());
+        assert!(!make_provider(None).is_mega_s4_endpoint());
+        // The new host must not skip the S4 constraints.
+        assert!(!make_provider(Some("https://s3.eu-amsterdam-1.megas4.com")).supports_versions());
+        let mut provider = make_provider(Some("https://s3.ap-tokyo-1.megas4.com"));
+        provider.set_acl(Some("public-read".to_string()));
+        let mut headers = HashMap::new();
+        provider.append_upload_headers(&mut headers);
+        assert!(!headers.contains_key("x-amz-acl"));
+    }
+
     #[test]
     fn append_upload_headers_skips_acl_on_mega_s4() {
         let mut provider = make_provider(Some("https://eu-central-1.s4.mega.io"));

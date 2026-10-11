@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 debesies objektų saugykla",
             "discoverGoogleCloudStorage": "Google Cloud S3 suderinama objektų saugykla (5 GB nemokamai)",
             "discoverBackblaze": "Prieinama debesies saugykla su S3 suderinamumu",
-            "discoverMegaS4": "S3 suderinama, reikalingas Pro planas, 4 regionai (EU/CA)",
+            "discoverMegaS4": "S3 suderinama, reikalingas Pro planas, EU, Kanada ir Azijos ir Ramiojo vandenyno regionas",
             "discoverCloudflareR2": "S3 suderinama saugykla be išeinančio srauto mokesčių (10 GB nemokamai)",
             "discoverIDriveE2": "S3 suderinama saugykla (10 GB nemokamai)",
             "discoverWasabi": "Debesies saugykla be išeinančio srauto mokesčių",

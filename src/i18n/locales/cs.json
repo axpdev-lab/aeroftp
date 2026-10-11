@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 cloudové objektové úložiště",
             "discoverGoogleCloudStorage": "Google Cloud S3-kompatibilní objektové úložiště (5 GB zdarma)",
             "discoverBackblaze": "Cenově dostupné cloudové úložiště s S3 kompatibilitou",
-            "discoverMegaS4": "S3-kompatibilní, vyžaduje plán Pro, 4 regiony (EU/CA)",
+            "discoverMegaS4": "S3-kompatibilní, vyžaduje plán Pro, EU, Kanada a asijsko-tichomořská oblast",
             "discoverCloudflareR2": "S3-kompatibilní úložiště bez poplatků za výstup (10 GB zdarma)",
             "discoverIDriveE2": "S3-kompatibilní hot úložiště (10 GB zdarma)",
             "discoverWasabi": "Hot cloudové úložiště bez poplatků za výstup",

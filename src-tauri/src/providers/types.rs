@@ -895,6 +895,54 @@ pub struct S3Config {
     pub filen_desktop_bridge: bool,
 }
 
+/// Which MEGA S4 zone an endpoint host belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MegaS4Zone {
+    /// `*.megas4.com`. Endpoints published 25 September 2026.
+    Current,
+    /// `*.s4.mega.io`. Still resolved. Saved profiles stay on this host.
+    Legacy,
+}
+
+/// Host boundary for MEGA S4, same shape as the Filebase check.
+/// Matches the service host and a virtual-hosted bucket subdomain.
+/// Rejects `s4.mega.io.example`, `notmegas4.com` and `nots4.mega.io`.
+pub(crate) fn mega_s4_zone(endpoint: &str) -> Option<MegaS4Zone> {
+    let host = url::Url::parse(endpoint)
+        .ok()
+        .or_else(|| url::Url::parse(&format!("https://{endpoint}")).ok())
+        .and_then(|parsed| parsed.host_str().map(|host| host.to_ascii_lowercase()))?;
+    if host == "megas4.com" || host.ends_with(".megas4.com") {
+        Some(MegaS4Zone::Current)
+    } else if host == "s4.mega.io" || host.ends_with(".s4.mega.io") {
+        Some(MegaS4Zone::Legacy)
+    } else {
+        None
+    }
+}
+
+fn mega_s4_regions(zone: MegaS4Zone) -> &'static [&'static str] {
+    match zone {
+        MegaS4Zone::Legacy => &["eu-central-1", "eu-central-2", "ca-central-1", "ca-west-1"],
+        MegaS4Zone::Current => &[
+            "eu-amsterdam-1",
+            "eu-amsterdam-2",
+            "eu-luxembourg-1",
+            "eu-luxembourg-2",
+            "eu-paris-1",
+            "eu-paris-2",
+            "eu-barcelona-1",
+            "eu-barcelona-2",
+            "ca-montreal-1",
+            "ca-montreal-2",
+            "ca-vancouver-1",
+            "ca-vancouver-2",
+            "ap-tokyo-1",
+            "ap-tokyo-2",
+        ],
+    }
+}
+
 impl S3Config {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         let bucket = config
@@ -913,18 +961,13 @@ impl S3Config {
             .to_string();
 
         let (endpoint, path_style) = s3_endpoint_and_path_style(config);
-        if endpoint
-            .as_deref()
-            .map(|ep| ep.to_ascii_lowercase().contains("s4.mega.io"))
-            .unwrap_or(false)
-        {
-            const MEGA_S4_REGIONS: &[&str] =
-                &["eu-central-1", "eu-central-2", "ca-central-1", "ca-west-1"];
-            if !MEGA_S4_REGIONS.contains(&region.as_str()) {
+        if let Some(zone) = endpoint.as_deref().and_then(mega_s4_zone) {
+            let allowed = mega_s4_regions(zone);
+            if !allowed.contains(&region.as_str()) {
                 return Err(ProviderError::InvalidConfig(format!(
                     "Invalid MEGA S4 region '{}'. Supported regions: {}",
                     region,
-                    MEGA_S4_REGIONS.join(", ")
+                    allowed.join(", ")
                 )));
             }
         }
@@ -2642,6 +2685,73 @@ mod tests {
 
         let s3_config = S3Config::from_provider_config(&config).unwrap();
         assert_eq!(s3_config.region, "eu-central-1");
+    }
+
+    fn mega_s4_config(endpoint: &str, region: &str) -> ProviderConfig {
+        let mut extra = HashMap::new();
+        extra.insert("bucket".to_string(), "bucket".to_string());
+        extra.insert("region".to_string(), region.to_string());
+        extra.insert("endpoint".to_string(), endpoint.to_string());
+        ProviderConfig {
+            name: "MEGA S4".to_string(),
+            provider_type: ProviderType::S3,
+            host: String::new(),
+            port: Some(443),
+            username: Some("access".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra,
+        }
+    }
+
+    #[test]
+    fn test_mega_s4_current_host_accepts_only_published_regions() {
+        let ok = S3Config::from_provider_config(&mega_s4_config(
+            "https://s3.eu-amsterdam-1.megas4.com",
+            "eu-amsterdam-1",
+        ))
+        .unwrap();
+        assert_eq!(ok.region, "eu-amsterdam-1");
+        let virtual_ok = S3Config::from_provider_config(&mega_s4_config(
+            "https://bucket.s3.ap-tokyo-2.megas4.com",
+            "ap-tokyo-2",
+        ))
+        .unwrap();
+        assert_eq!(virtual_ok.region, "ap-tokyo-2");
+
+        // The four old ids stay valid only on the old domain.
+        let err = S3Config::from_provider_config(&mega_s4_config(
+            "https://s3.eu-amsterdam-1.megas4.com",
+            "eu-central-1",
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("Invalid MEGA S4 region"));
+        let err = S3Config::from_provider_config(&mega_s4_config(
+            "s3.eu-central-1.s4.mega.io",
+            "eu-amsterdam-1",
+        ))
+        .unwrap_err();
+        assert!(err.to_string().contains("Invalid MEGA S4 region"));
+    }
+
+    #[test]
+    fn test_mega_s4_lookalike_host_is_not_an_s4_endpoint() {
+        // us-east-1 would be rejected on a real S4 host. A lookalike must
+        // not take that path.
+        let config = S3Config::from_provider_config(&mega_s4_config(
+            "https://s4.mega.io.example",
+            "us-east-1",
+        ))
+        .unwrap();
+        assert_eq!(config.region, "us-east-1");
+        let config =
+            S3Config::from_provider_config(&mega_s4_config("https://notmegas4.com", "us-east-1"))
+                .unwrap();
+        assert_eq!(config.region, "us-east-1");
+        let config =
+            S3Config::from_provider_config(&mega_s4_config("https://nots4.mega.io", "us-east-1"))
+                .unwrap();
+        assert_eq!(config.region, "us-east-1");
     }
 
     #[test]

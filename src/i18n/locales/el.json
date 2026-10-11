@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 αποθήκευση αντικειμένων στο cloud",
             "discoverGoogleCloudStorage": "Google Cloud αποθήκευση αντικειμένων συμβατή με S3 (5 GB δωρεάν)",
             "discoverBackblaze": "Οικονομική αποθήκευση στο cloud με συμβατότητα S3",
-            "discoverMegaS4": "Συμβατό με S3, απαιτείται πρόγραμμα Pro, 4 περιοχές (EU/CA)",
+            "discoverMegaS4": "Συμβατό με S3, απαιτείται πρόγραμμα Pro, EU, Καναδάς και Ασία-Ειρηνικός",
             "discoverCloudflareR2": "Αποθήκευση συμβατή με S3 χωρίς χρεώσεις εξόδου (10 GB δωρεάν)",
             "discoverIDriveE2": "Θερμή αποθήκευση συμβατή με S3 (10 GB δωρεάν)",
             "discoverWasabi": "Θερμή αποθήκευση στο cloud, χωρίς χρεώσεις εξόδου",

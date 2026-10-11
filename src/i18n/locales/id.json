@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 penyimpanan objek cloud",
             "discoverGoogleCloudStorage": "Google Cloud penyimpanan objek S3-kompatibel (5 GB gratis)",
             "discoverBackblaze": "Penyimpanan cloud terjangkau dengan kompatibilitas S3",
-            "discoverMegaS4": "S3-kompatibel, paket Pro diperlukan, 4 wilayah (EU/CA)",
+            "discoverMegaS4": "S3-kompatibel, paket Pro diperlukan, EU, Kanada dan Asia-Pasifik",
             "discoverCloudflareR2": "Penyimpanan S3-kompatibel tanpa biaya keluar (10 GB gratis)",
             "discoverIDriveE2": "Penyimpanan S3-kompatibel (10 GB gratis)",
             "discoverWasabi": "Penyimpanan cloud tanpa biaya keluar",

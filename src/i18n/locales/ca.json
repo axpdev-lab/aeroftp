@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Emmagatzematge d'objectes al núvol Amazon Web Services S3",
             "discoverGoogleCloudStorage": "Emmagatzematge d'objectes compatible amb S3 de Google Cloud (5 GB gratuïts)",
             "discoverBackblaze": "Emmagatzematge al núvol assequible amb compatibilitat S3",
-            "discoverMegaS4": "Compatible amb S3, pla Pro requerit, 4 regions (EU/CA)",
+            "discoverMegaS4": "Compatible amb S3, pla Pro requerit, EU, Canadà i Àsia-Pacífic",
             "discoverCloudflareR2": "Emmagatzematge compatible amb S3 sense cost de sortida (10 GB gratuïts)",
             "discoverIDriveE2": "Emmagatzematge actiu compatible amb S3 (10 GB gratuïts)",
             "discoverWasabi": "Emmagatzematge al núvol actiu, sense costos de sortida",

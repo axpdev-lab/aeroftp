@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 felhőalapú objektumtárolás",
             "discoverGoogleCloudStorage": "Google Cloud S3-kompatibilis objektumtárolás (5 GB ingyenes)",
             "discoverBackblaze": "Megfizethető felhőtárolás S3 kompatibilitással",
-            "discoverMegaS4": "S3-kompatibilis, Pro csomag szükséges, 4 régió (EU/CA)",
+            "discoverMegaS4": "S3-kompatibilis, Pro csomag szükséges, EU, Kanada és az ázsiai-csendes-óceáni térség",
             "discoverCloudflareR2": "S3-kompatibilis tárolás kimenő forgalmi díj nélkül (10 GB ingyenes)",
             "discoverIDriveE2": "S3-kompatibilis tárolás (10 GB ingyenes)",
             "discoverWasabi": "Felhőtárolás kimenő forgalmi díjak nélkül",

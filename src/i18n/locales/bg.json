@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 облачно обектно съхранение",
             "discoverGoogleCloudStorage": "Google Cloud S3-съвместимо обектно съхранение (5 GB безплатно)",
             "discoverBackblaze": "Достъпно облачно съхранение със S3 съвместимост",
-            "discoverMegaS4": "S3-съвместимо, изисква Pro план, 4 региона (EU/CA)",
+            "discoverMegaS4": "S3-съвместимо, изисква Pro план, EU, Канада и Азиатско-тихоокеански регион",
             "discoverCloudflareR2": "S3-съвместимо съхранение без такси за изходящ трафик (10 GB безплатно)",
             "discoverIDriveE2": "S3-съвместимо горещо съхранение (10 GB безплатно)",
             "discoverWasabi": "Горещо облачно съхранение без такси за изходящ трафик",

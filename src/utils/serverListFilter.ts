@@ -32,7 +32,13 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
         const s3Host = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
         if (s3Host === 's3.filebase.io' || s3Host.endsWith('.s3.filebase.io')) return 'filebase';
         if (host.includes('storj')) return 'storj';
-        if (host.includes('mega.io') || host.includes('mega.nz')) return 'mega-s4';
+        // Host boundary, same idea as Filebase. The old includes('mega.io')
+        // also matched notmega.io and mega.io.example. s4.mega.io is named
+        // on its own so a later edit of the mega.io rule cannot drop the
+        // legacy S4 zone. megas4.com is the current zone and is not a
+        // subdomain of mega.io.
+        const megaHost = (domain: string) => s3Host === domain || s3Host.endsWith('.' + domain);
+        if (megaHost('megas4.com') || megaHost('s4.mega.io') || megaHost('mega.io') || megaHost('mega.nz')) return 'mega-s4';
         if (host.includes('amazonaws.com')) return 'amazon-s3';
         if (host.includes('aliyuncs.com')) return 'alibaba-oss';
         if (host.includes('myqcloud.com')) return 'tencent-cos';

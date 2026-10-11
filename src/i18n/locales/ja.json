@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 クラウドオブジェクトストレージ",
             "discoverGoogleCloudStorage": "Google Cloud S3互換オブジェクトストレージ (5 GB無料)",
             "discoverBackblaze": "S3互換の手頃なクラウドストレージ",
-            "discoverMegaS4": "S3互換、Proプラン必要、4リージョン (EU/CA)",
+            "discoverMegaS4": "S3互換、Proプラン必要、EU、カナダおよびアジア太平洋",
             "discoverCloudflareR2": "エグレス料金なしのS3互換ストレージ (10 GB無料)",
             "discoverIDriveE2": "S3互換ストレージ (10 GB無料)",
             "discoverWasabi": "エグレス料金なしのクラウドストレージ",
