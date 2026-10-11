@@ -35,7 +35,7 @@ interface AeroCryptUnlockProps {
      * was refused: the dialog reports either one, so it never says "unlocked"
      * for an overlay the backend turned down.
      */
-    onUnlocked?: (details: {
+    onUnlocked: (details: {
         password: string;
         /** The folder to open: the dialog's own, or the one its Create just made. */
         scope: string;
@@ -252,6 +252,9 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     // dialog's binding may be headerless, which has no marker by design.
     const noMarkerHere = !!markerStatus && !markerStatus.hasCurrentMarker && !markerStatus.hasLegacyMarker;
     const offerOpenDefaultSalt = mode === 'open' && !bound && noMarkerHere;
+    // The choice counts only while it is offered: it belongs to an Open of a
+    // folder with no marker, not to whatever folder or mode follows.
+    const openWithDefaultSalt = offerOpenDefaultSalt && openDefaultSalt;
 
     const handleUnlock = async () => {
         // Tier 1: an empty password is legal when a keyfile is the (only) factor.
@@ -264,7 +267,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             // the word that it is a default-salt vault, whose config the password
             // rebuilds once names here decrypt with it. A failed probe proceeds:
             // the backend opens without ever creating, and says why it refused.
-            if (!bound && !openDefaultSalt) {
+            if (!bound && !openWithDefaultSalt) {
                 const status = await refreshMarkerStatus();
                 if (status && !status.hasCurrentMarker && !status.hasLegacyMarker) {
                     setError(t('aerocryptNative.noOverlayFound'));
@@ -273,11 +276,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             }
             // Closed while probing: open nothing for a dialog nobody is looking at.
             if (closedRef.current) return;
-            await onUnlocked?.({
+            await onUnlocked({
                 password,
                 scope: vaultRoot,
                 keyfilePath: keyfilePath || undefined,
-                useDefaultSalt: (!bound && openDefaultSalt) || undefined,
+                useDefaultSalt: openWithDefaultSalt || undefined,
             });
             setPassword('');
             setSuccess(t('aerocryptNative.unlocked'));
@@ -318,9 +321,10 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             // From here on the dialog is about the new vault: if the apply below
             // fails, Open retries it where it is instead of a second create.
             setVaultRoot(created.root);
+            setOpenDefaultSalt(false);
             setCreateSubpath('');
             setMode('open');
-            await onUnlocked?.({
+            await onUnlocked({
                 password,
                 scope: created.root,
                 keyfilePath: keyfilePath || undefined,

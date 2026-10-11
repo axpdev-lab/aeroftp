@@ -20,7 +20,7 @@ interface RcloneCryptUnlockProps {
      * Apply the overlay. Resolves once it is open and rejects with the reason it
      * was refused, which the dialog shows where the secrets were typed.
      */
-    onUnlocked?: (details: {
+    onUnlocked: (details: {
         password: string;
         salt?: string | null;
         passwordForm: CryptSecretForm;
@@ -138,7 +138,7 @@ export const RcloneCryptUnlock: React.FC<RcloneCryptUnlockProps> = ({ onClose, o
             return;
         }
         try {
-            await onUnlocked?.({
+            await onUnlocked({
                 password,
                 salt: salt || null,
                 ...forms,

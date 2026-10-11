@@ -7,7 +7,7 @@
 // nor leave behind the standalone rclone keys its Decrypt tools would have used
 // (#1162 review).
 
-import { act, createElement } from 'react';
+import { act, createElement, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RcloneCryptUnlock } from './RcloneCryptUnlock';
@@ -167,5 +167,43 @@ describe('AeroCryptUnlock closed while it works', () => {
         await pressEnter(confirm);
         expect(invoke.mock.calls.filter(([command]) => command === 'aerocrypt_provider_create_remote')).toHaveLength(1);
         await act(async () => create.resolve({ root: '/Vault/New', version: 3, configJson: '{}' }));
+    });
+});
+
+describe('AeroCryptUnlock default-salt choice', () => {
+    it('does not carry it into the vault a Create made in its folder', async () => {
+        invoke.mockImplementation(async (command: string, args?: { basePath?: string }) => {
+            if (command === 'aerocrypt_provider_marker_status') {
+                return { hasCurrentMarker: args?.basePath === '/Vault/New', hasLegacyMarker: false };
+            }
+            if (command === 'aerocrypt_provider_create_remote') return { root: '/Vault/New', version: 3, configJson: '{}' };
+            return undefined;
+        });
+        const onUnlocked = vi.fn().mockRejectedValueOnce('apply refused').mockResolvedValue(undefined);
+        await act(async () => root.render(createElement(AeroCryptUnlock, { onClose: () => {}, onUnlocked, scope: '/Vault' })));
+        const option = host.querySelector<HTMLInputElement>('input[type=checkbox]');
+        if (!option) throw new Error('default-salt option not offered for a folder without a marker');
+        await act(async () => option.click());
+        await click('Create new');
+        const [password, confirm] = passwordFields();
+        await type(password, 'Xq7#mP2$vL9&wR4!tZ6^kNb');
+        await type(confirm, 'Xq7#mP2$vL9&wR4!tZ6^kNb');
+        await click('Create and unlock');
+        expect(host.textContent).toContain('apply refused');
+        await click('Unlock');
+        expect(onUnlocked).toHaveBeenCalledTimes(2);
+        expect(onUnlocked.mock.calls[1][0]).toMatchObject({ scope: '/Vault/New', useDefaultSalt: undefined });
+    });
+});
+
+describe('unlock dialogs need the apply callback', () => {
+    // Pinned by tsc, which type-checks this file: without onUnlocked an Open
+    // would report "unlocked" with no overlay applied.
+    it('is a required prop of both dialogs', () => {
+        // @ts-expect-error onUnlocked is required
+        const aero: ComponentProps<typeof AeroCryptUnlock> = { onClose: () => {}, scope: '/' };
+        // @ts-expect-error onUnlocked is required
+        const rclone: ComponentProps<typeof RcloneCryptUnlock> = { onClose: () => {}, scope: '/' };
+        expect([aero.scope, rclone.scope]).toEqual(['/', '/']);
     });
 });
