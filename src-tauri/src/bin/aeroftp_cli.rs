@@ -31585,19 +31585,35 @@ async fn webdav_dispatch(
 
             let mut provider = state.provider.lock().await;
 
-            // Stat the target
-            let self_entry = if relative_path.is_empty() {
-                RemoteEntry::directory("/".to_string(), remote_path.clone())
+            // Stat the target. A backend whose `stat` does not answer for a
+            // folder reports NotFound for it, so a NotFound is a folder only
+            // when it can be listed, the rule GET and `serve http` apply. A
+            // path that is neither is 404 (RFC 4918 section 9.1): taking
+            // every NotFound for a folder made any missing path look like an
+            // existing one to every client.
+            let (self_entry, listed) = if relative_path.is_empty() {
+                (
+                    RemoteEntry::directory("/".to_string(), remote_path.clone()),
+                    None,
+                )
             } else {
                 match provider.stat(&remote_path).await {
-                    Ok(e) => e,
-                    Err(ProviderError::NotFound(_)) => {
-                        // Might be a directory that doesn't support stat
-                        RemoteEntry::directory(
-                            remote_path.rsplit('/').next().unwrap_or("").to_string(),
-                            remote_path.clone(),
-                        )
-                    }
+                    Ok(e) => (e, None),
+                    Err(ProviderError::NotFound(_)) => match provider.list(&remote_path).await {
+                        Ok(entries) => (
+                            RemoteEntry::directory(
+                                remote_path.rsplit('/').next().unwrap_or("").to_string(),
+                                remote_path.clone(),
+                            ),
+                            Some(entries),
+                        ),
+                        Err(e) => {
+                            return serve_error_response(
+                                provider_error_to_status_code(&e),
+                                &e.to_string(),
+                            )
+                        }
+                    },
                     Err(e) => {
                         return serve_error_response(
                             provider_error_to_status_code(&e),
@@ -31608,7 +31624,11 @@ async fn webdav_dispatch(
             };
 
             let children = if self_entry.is_dir && depth != "0" {
-                match provider.list(&remote_path).await {
+                let listing = match listed {
+                    Some(entries) => Ok(entries),
+                    None => provider.list(&remote_path).await,
+                };
+                match listing {
                     Ok(mut entries) => {
                         entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
                             (true, false) => std::cmp::Ordering::Less,
