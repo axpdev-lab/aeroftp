@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Taip YES untuk mengesahkan penyingkiran",
             "keyslotsRemoveTypeYes": "Taip YES (huruf besar) untuk mengesahkan penyingkiran.",
             "keyslotsRemoveUnlockHint": "Untuk membuang slot, buka kunci dahulu dengan slot lain yang masih ada (anda tidak boleh membuang slot yang digunakan untuk membuka kunci).",
-            "keyslotsF6Honesty": "Membuang faktor menghentikannya membuka vault mulai sekarang. Ini TIDAK menyulitkan semula data anda: sesiapa yang sudah menyimpan salinan header vault lama DAN kelayakan yang dibuang masih boleh membuka data yang pernah diakses. Untuk membatalkan akses sepenuhnya, sulitkan semula vault (putar Volume Key).",
+            "keyslotsF6Honesty": "Membuang faktor menghentikannya membuka vault mulai sekarang. Ini TIDAK menyulitkan semula data anda: sesiapa yang menyimpan salinan header vault lama DAN kelayakan yang dibuang masih boleh membuka keseluruhan vault, termasuk fail yang ditambah selepas pembuangan. Untuk membatalkan akses sepenuhnya, cipta vault baharu, pindahkan fail anda ke dalamnya dan padam vault lama.",
             "keyslotsKindPassphrase": "Frasa laluan",
             "keyslotsKindKeyfile": "Fail kunci",
             "keyslotsKindRecovery": "Pemulihan",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Salin kod",
             "keyslotsUnlockWithRecovery": "Anda juga boleh buka kunci dengan kod pemulihan (tampal sebagai kata laluan).",
             "openDefaultSaltLabel": "Vault ini menggunakan salt lalai AeroCrypt",
-            "openDefaultSaltHint": "Tanpa marker di sini, vault salt lalai dibuka dengan kata laluannya sahaja apabila nama dalam folder ini berjaya dinyahsulit dengannya. Tiada apa-apa yang ditulis ke pelayan jauh."
+            "openDefaultSaltHint": "Tanpa marker di sini, vault salt lalai dibuka dengan kata laluannya sahaja apabila nama dalam folder ini berjaya dinyahsulit dengannya. Tiada apa-apa yang ditulis ke pelayan jauh.",
+            "keyslotsSetAsideRisks": "Pelayan ini tidak dapat menggantikan fail dalam satu langkah. Penanda semasa dinamakan semula dan diketepikan, penanda baharu dialihkan ke tempatnya, kemudian yang lama dipadam. Pada ketika itu peti besi tidak mempunyai penanda dan tidak dapat dibuka. Jika perubahan terhenti di tengah-tengah, penanda tertinggal dalam folder peti besi dengan nama yang mengandungi .aeroftp-replaced- dan mesti dinamakan semula secara manual. Pada storan yang menyimpan tong sampah atau versi fail, penanda sebelumnya masih boleh dipulihkan di sana.",
+            "keyslotsSetAsideRevocation": "Penanda sebelumnya masih membuka peti besi dengan faktor yang anda alih keluar atau gantikan. Setiap salinan yang tertinggal dalam folder peti besi dipadam selepas perubahan, dan salinan yang tidak dapat dipadam dilaporkan sebagai ralat. Salinan dalam tong sampah atau versi fail storan tidak dicapai: kosongkan kedua-duanya untuk melengkapkan pembatalan.",
+            "keyslotsSetAsideConsent": "Saya faham: gantikan penanda pada pelayan ini dengan mengetepikan yang lama melalui penamaan semula",
+            "keyslotsSetAsideConsentRequired": "Pelayan ini hanya boleh menggantikan penanda peti besi dengan mengetepikan yang lama melalui penamaan semula: sahkan dalam kotak di atas untuk meneruskan.",
+            "keyslotsMarkerReplaceUnsupported": "Pelayan ini tidak dapat menggantikan penanda peti besi, jadi perubahan slot ditolak di sini. Buka storan yang sama melalui pelayan yang menggantikan fail dalam satu langkah (contohnya SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Penyulitan)",

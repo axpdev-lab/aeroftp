@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Wpisz YES, aby potwierdzić usunięcie",
             "keyslotsRemoveTypeYes": "Wpisz YES (wielkimi literami), aby potwierdzić usunięcie.",
             "keyslotsRemoveUnlockHint": "Aby usunąć slot, najpierw odblokuj innym pozostałym slotem (nie można usunąć slotu, którym odblokowano).",
-            "keyslotsF6Honesty": "Usunięcie czynnika od teraz uniemożliwia otwieranie skarbca. NIE szyfruje ponownie Twoich danych: każdy, kto już zachował kopię starego nagłówka skarbca ORAZ usuniętych poświadczeń, nadal może otworzyć dane, do których miał dostęp. Aby całkowicie cofnąć dostęp, zaszyfruj skarbiec ponownie (zrotuj Volume Key).",
+            "keyslotsF6Honesty": "Usunięcie czynnika od teraz uniemożliwia otwieranie nim skarbca. NIE szyfruje ponownie Twoich danych: każdy, kto zachował kopię starego nagłówka skarbca ORAZ usuniętych poświadczeń, nadal może otworzyć cały skarbiec, łącznie z plikami dodanymi po usunięciu. Aby całkowicie cofnąć dostęp, utwórz nowy skarbiec, przenieś do niego swoje pliki i usuń stary.",
             "keyslotsKindPassphrase": "Hasło frazowe",
             "keyslotsKindKeyfile": "Plik klucza",
             "keyslotsKindRecovery": "Odzyskiwanie",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopiuj kod",
             "keyslotsUnlockWithRecovery": "Możesz też odblokować kodem odzyskiwania (wklej jako hasło).",
             "openDefaultSaltLabel": "Ten vault używa domyślnej soli AeroCrypt",
-            "openDefaultSaltHint": "Bez znacznika vault z domyślną solą otwiera się samym hasłem, gdy tylko nazwy w tym folderze da się nim odszyfrować. Na zdalnym serwerze nic nie jest zapisywane."
+            "openDefaultSaltHint": "Bez znacznika vault z domyślną solą otwiera się samym hasłem, gdy tylko nazwy w tym folderze da się nim odszyfrować. Na zdalnym serwerze nic nie jest zapisywane.",
+            "keyslotsSetAsideRisks": "Ten serwer nie potrafi zastąpić pliku w jednym kroku. Bieżący znacznik jest zmieniany na inną nazwę i odkładany na bok, nowy trafia na jego miejsce, a stary jest potem usuwany. W tym momencie sejf nie ma znacznika i nie można go otworzyć. Jeśli zmiana zostanie przerwana w połowie, znacznik zostaje w folderze sejfu pod nazwą zawierającą .aeroftp-replaced- i trzeba ręcznie przywrócić jego nazwę. W magazynie, który przechowuje kosz lub wersje plików, poprzedni znacznik pozostaje tam możliwy do odzyskania.",
+            "keyslotsSetAsideRevocation": "Poprzedni znacznik nadal otwiera sejf za pomocą czynnika, który usuwasz lub zastępujesz. Każda kopia pozostawiona w folderze sejfu jest usuwana po zmianie, a kopia, której nie można usunąć, jest zgłaszana jako błąd. Kopia w koszu magazynu lub w wersjach plików nie jest osiągana: opróżnij je, aby dokończyć unieważnienie.",
+            "keyslotsSetAsideConsent": "Rozumiem: zastąp znacznik na tym serwerze, odkładając stary na bok przez zmianę nazwy",
+            "keyslotsSetAsideConsentRequired": "Ten serwer może zastąpić znacznik sejfu tylko przez odłożenie starego na bok zmianą nazwy: potwierdź w polu powyżej, aby kontynuować.",
+            "keyslotsMarkerReplaceUnsupported": "Ten serwer nie może zastąpić znacznika sejfu, dlatego zmiany slotów są tu odrzucane. Otwórz ten sam magazyn przez serwer, który zastępuje plik w jednym kroku (na przykład SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Szyfrowanie)",

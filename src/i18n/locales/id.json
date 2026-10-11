@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Ketik YES untuk mengonfirmasi penghapusan",
             "keyslotsRemoveTypeYes": "Ketik YES (huruf besar) untuk mengonfirmasi penghapusan.",
             "keyslotsRemoveUnlockHint": "Untuk menghapus slot, buka kunci dulu dengan slot lain yang tersisa (Anda tidak dapat menghapus slot yang digunakan untuk membuka kunci).",
-            "keyslotsF6Honesty": "Menghapus faktor menghentikannya membuka vault mulai sekarang. Ini TIDAK mengenkripsi ulang data Anda: siapa pun yang sudah menyimpan salinan header vault lama DAN kredensial yang dihapus masih dapat membuka data yang pernah diaksesnya. Untuk mencabut akses sepenuhnya, enkripsi ulang vault (rotasi Volume Key).",
+            "keyslotsF6Honesty": "Menghapus faktor menghentikannya membuka vault mulai sekarang. Ini TIDAK mengenkripsi ulang data Anda: siapa pun yang menyimpan salinan header vault lama DAN kredensial yang dihapus masih dapat membuka seluruh vault, termasuk file yang ditambahkan setelah penghapusan. Untuk mencabut akses sepenuhnya, buat vault baru, pindahkan file Anda ke dalamnya, lalu hapus vault lama.",
             "keyslotsKindPassphrase": "Frasa sandi",
             "keyslotsKindKeyfile": "File kunci",
             "keyslotsKindRecovery": "Pemulihan",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Salin kode",
             "keyslotsUnlockWithRecovery": "Anda juga dapat membuka kunci dengan kode pemulihan (tempel sebagai kata sandi).",
             "openDefaultSaltLabel": "Vault ini menggunakan salt default AeroCrypt",
-            "openDefaultSaltHint": "Tanpa marker di sini, vault dengan salt default terbuka hanya dengan kata sandinya setelah nama-nama di folder ini berhasil didekripsi dengannya. Tidak ada yang ditulis ke server jarak jauh."
+            "openDefaultSaltHint": "Tanpa marker di sini, vault dengan salt default terbuka hanya dengan kata sandinya setelah nama-nama di folder ini berhasil didekripsi dengannya. Tidak ada yang ditulis ke server jarak jauh.",
+            "keyslotsSetAsideRisks": "Server ini tidak dapat mengganti file dalam satu langkah. Penanda saat ini diganti namanya dan disisihkan, penanda baru dipindahkan ke tempatnya, lalu yang lama dihapus. Pada saat itu vault tidak memiliki penanda dan tidak dapat dibuka. Jika perubahan terhenti di tengah, penanda tertinggal di folder vault dengan nama yang memuat .aeroftp-replaced- dan harus diganti namanya kembali secara manual. Pada penyimpanan yang menyimpan tempat sampah atau versi file, penanda sebelumnya tetap dapat dipulihkan di sana.",
+            "keyslotsSetAsideRevocation": "Penanda sebelumnya masih membuka vault dengan faktor yang Anda hapus atau ganti. Setiap salinan yang tertinggal di folder vault dihapus setelah perubahan, dan salinan yang tidak dapat dihapus dilaporkan sebagai kesalahan. Salinan di tempat sampah atau versi file penyimpanan tidak terjangkau: kosongkan keduanya untuk menyelesaikan pencabutan.",
+            "keyslotsSetAsideConsent": "Saya mengerti: ganti penanda di server ini dengan menyisihkan yang lama lewat penggantian nama",
+            "keyslotsSetAsideConsentRequired": "Server ini hanya dapat mengganti penanda vault dengan menyisihkan yang lama lewat penggantian nama: konfirmasi di kotak di atas untuk melanjutkan.",
+            "keyslotsMarkerReplaceUnsupported": "Server ini tidak dapat mengganti penanda vault, sehingga perubahan slot ditolak di sini. Buka penyimpanan yang sama melalui server yang mengganti file dalam satu langkah (misalnya SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Enkripsi)",

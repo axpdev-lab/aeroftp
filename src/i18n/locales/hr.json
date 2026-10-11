@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Upišite YES za potvrdu uklanjanja",
             "keyslotsRemoveTypeYes": "Upišite YES (velikim slovima) za potvrdu uklanjanja.",
             "keyslotsRemoveUnlockHint": "Za uklanjanje utora prvo otključajte drugim preostalim utorom (ne možete ukloniti utor kojim ste otključali).",
-            "keyslotsF6Honesty": "Uklanjanje faktora od sada ga sprečava da otvara trezor. To NE šifrira ponovno vaše podatke: svatko tko je već zadržao kopiju starog zaglavlja trezora I uklonjenih vjerodajnica i dalje može otvoriti podatke kojima je imao pristup. Za potpuno opozivanje pristupa ponovno šifrirajte trezor (rotirajte Volume Key).",
+            "keyslotsF6Honesty": "Uklanjanje faktora od sada ga sprečava da otvara trezor. To NE šifrira ponovno vaše podatke: svatko tko je zadržao kopiju starog zaglavlja trezora I uklonjenih vjerodajnica i dalje može otvoriti cijeli trezor, uključujući datoteke dodane nakon uklanjanja. Za potpuno opozivanje pristupa stvorite novi trezor, premjestite u njega svoje datoteke i izbrišite stari.",
             "keyslotsKindPassphrase": "Pristupna fraza",
             "keyslotsKindKeyfile": "Keyfile",
             "keyslotsKindRecovery": "Oporavak",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopiraj kod",
             "keyslotsUnlockWithRecovery": "Također možete otključati kodom za oporavak (zalijepite ga kao lozinku).",
             "openDefaultSaltLabel": "Ovaj vault koristi zadanu sol AeroCrypta",
-            "openDefaultSaltHint": "Bez markera ovdje se vault sa zadanom soli otvara samo svojom lozinkom, čim se nazivi u ovoj mapi dešifriraju njome. Na udaljeni poslužitelj ne zapisuje se ništa."
+            "openDefaultSaltHint": "Bez markera ovdje se vault sa zadanom soli otvara samo svojom lozinkom, čim se nazivi u ovoj mapi dešifriraju njome. Na udaljeni poslužitelj ne zapisuje se ništa.",
+            "keyslotsSetAsideRisks": "Ovaj poslužitelj ne može zamijeniti datoteku u jednom koraku. Trenutačni marker se preimenuje sa strane, novi se premješta na njegovo mjesto, a stari se zatim briše. U tom trenutku trezor nema marker i ne može se otvoriti. Ako se promjena prekine usred postupka, marker ostaje u mapi trezora pod imenom koje sadrži .aeroftp-replaced- i mora se ručno preimenovati natrag. Na pohrani koja čuva smeće ili verzije datoteka, prethodni marker ostaje ondje oporaviv.",
+            "keyslotsSetAsideRevocation": "Prethodni marker i dalje otvara trezor faktorom koji uklanjate ili zamjenjujete. Svaka kopija ostavljena u mapi trezora briše se nakon promjene, a kopija koja se ne može izbrisati prijavljuje se kao pogreška. Kopija u smeću pohrane ili u verzijama datoteka ne dohvaća se: ispraznite ih da dovršite opoziv.",
+            "keyslotsSetAsideConsent": "Razumijem: zamijeni marker na ovom poslužitelju preimenovanjem starog sa strane",
+            "keyslotsSetAsideConsentRequired": "Ovaj poslužitelj može zamijeniti marker trezora samo preimenovanjem starog sa strane: potvrdite u gornjem okviru za nastavak.",
+            "keyslotsMarkerReplaceUnsupported": "Ovaj poslužitelj ne može zamijeniti marker trezora pa se promjene utora ovdje odbijaju. Otvorite istu pohranu preko poslužitelja koji zamjenjuje datoteku u jednom koraku (primjerice SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifriranje)",

@@ -3818,7 +3818,7 @@
             "keyslotsRemoveConfirmLabel": "Digita YES per confermare la rimozione",
             "keyslotsRemoveTypeYes": "Digita YES (maiuscolo) per confermare la rimozione.",
             "keyslotsRemoveUnlockHint": "Per rimuovere uno slot, sblocca prima con un altro slot rimanente (non puoi rimuovere lo slot con cui hai sbloccato).",
-            "keyslotsF6Honesty": "Rimuovere un fattore ne impedisce d’ora in poi l’apertura del vault. NON ricritta i tuoi dati: chiunque abbia già conservato una copia della vecchia intestazione del vault E della credenziale rimossa può ancora aprire i dati a cui aveva accesso. Per revocare completamente l’accesso, ricritta il vault (ruota la Volume Key).",
+            "keyslotsF6Honesty": "Rimuovere un fattore gli impedisce da ora in poi di aprire il vault. NON cifra di nuovo i tuoi dati: chiunque abbia conservato una copia della vecchia intestazione del vault E la credenziale rimossa può ancora aprire l’intero vault, compresi i file aggiunti dopo la rimozione. Per revocare del tutto l’accesso, crea un nuovo vault, spostaci i tuoi file ed elimina quello vecchio.",
             "keyslotsKindPassphrase": "Frase segreta",
             "keyslotsKindKeyfile": "Keyfile",
             "keyslotsKindRecovery": "Recupero",
@@ -3841,7 +3841,12 @@
             "keyslotsRecoveryCopy": "Copia codice",
             "keyslotsUnlockWithRecovery": "Puoi anche sbloccare con un codice di recupero (incollalo come password).",
             "openDefaultSaltLabel": "Questo vault usa il salt predefinito di AeroCrypt",
-            "openDefaultSaltHint": "Senza marker, un vault con salt predefinito si apre dalla sola password, una volta che i nomi in questa cartella si decifrano con essa. Sul remoto non viene scritto nulla."
+            "openDefaultSaltHint": "Senza marker, un vault con salt predefinito si apre dalla sola password, una volta che i nomi in questa cartella si decifrano con essa. Sul remoto non viene scritto nulla.",
+            "keyslotsSetAsideRisks": "Questo server non può sostituire un file in un solo passaggio. Il marker attuale viene rinominato e messo da parte, quello nuovo prende il suo posto e solo allora quello vecchio viene eliminato. In quell'istante il vault non ha un marker e non si può aprire. Se la modifica si interrompe a metà, il marker resta nella cartella del vault con un nome che inizia con .aeroftp-replaced- e va rinominato a mano. Su uno storage che tiene un cestino o le versioni dei file, il marker precedente resta recuperabile lì.",
+            "keyslotsSetAsideRevocation": "Il marker precedente apre ancora il vault con il fattore che stai rimuovendo o sostituendo. Dopo la modifica ogni copia rimasta nella cartella del vault viene eliminata, e una copia che non si riesce a eliminare viene segnalata come errore. Le copie nel cestino o nelle versioni dei file dello storage restano: svuotali per completare la revoca.",
+            "keyslotsSetAsideConsent": "Ho capito: su questo server sostituisci il marker mettendo da parte quello attuale",
+            "keyslotsSetAsideConsentRequired": "Su questo server il marker del vault si può sostituire solo mettendo da parte quello attuale: conferma nella casella qui sopra per continuare.",
+            "keyslotsMarkerReplaceUnsupported": "Questo server non può sostituire il marker del vault, quindi qui le modifiche agli slot vengono rifiutate. Apri lo stesso storage tramite un server che sostituisce un file in un solo passaggio (per esempio SFTP)."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",

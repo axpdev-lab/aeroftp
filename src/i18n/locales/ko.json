@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "제거를 확인하려면 YES 입력",
             "keyslotsRemoveTypeYes": "제거를 확인하려면 YES(대문자)를 입력하세요.",
             "keyslotsRemoveUnlockHint": "슬롯을 제거하려면 먼저 다른 남은 슬롯으로 잠금 해제하세요(잠금 해제한 슬롯은 제거할 수 없습니다).",
-            "keyslotsF6Honesty": "팩터를 제거하면 이제부터 해당 팩터로 볼트를 열 수 없습니다. 데이터는 재암호화되지 않습니다. 이전 볼트 헤더와 제거된 자격 증명의 사본을 모두 보관한 사람은 이전에 접근할 수 있었던 데이터를 계속 열 수 있습니다. 접근을 완전히 철회하려면 볼트를 재암호화하세요(Volume Key 교체).",
+            "keyslotsF6Honesty": "팩터를 제거하면 이제부터 해당 팩터로 볼트를 열 수 없습니다. 데이터는 재암호화되지 않습니다. 이전 볼트 헤더와 제거된 자격 증명의 사본을 모두 보관한 사람은 제거 이후에 추가된 파일을 포함해 볼트 전체를 계속 열 수 있습니다. 접근을 완전히 철회하려면 새 볼트를 만들고 파일을 그곳으로 옮긴 다음 이전 볼트를 삭제하세요.",
             "keyslotsKindPassphrase": "암호문",
             "keyslotsKindKeyfile": "키파일",
             "keyslotsKindRecovery": "복구",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "코드 복사",
             "keyslotsUnlockWithRecovery": "복구 코드로도 잠금을 해제할 수 있습니다(비밀번호로 붙여넣기).",
             "openDefaultSaltLabel": "이 vault는 AeroCrypt 기본 salt를 사용합니다",
-            "openDefaultSaltHint": "여기에 마커가 없으면 기본 salt를 쓰는 vault는 이 폴더의 이름이 비밀번호로 복호화되는 즉시 비밀번호만으로 열립니다. 원격에는 아무것도 기록되지 않습니다."
+            "openDefaultSaltHint": "여기에 마커가 없으면 기본 salt를 쓰는 vault는 이 폴더의 이름이 비밀번호로 복호화되는 즉시 비밀번호만으로 열립니다. 원격에는 아무것도 기록되지 않습니다.",
+            "keyslotsSetAsideRisks": "이 서버는 파일을 한 번에 교체할 수 없습니다. 현재 마커의 이름을 바꿔 따로 옮겨 두고, 새 마커를 그 자리로 옮긴 다음, 이전 마커를 삭제합니다. 그 순간에는 볼트에 마커가 없어 열 수 없습니다. 그 사이에 변경이 중단되면 마커는 볼트 폴더에 .aeroftp-replaced- 가 들어간 이름으로 남으며, 직접 원래 이름으로 되돌려야 합니다. 휴지통이나 파일 버전을 보관하는 스토리지에서는 이전 마커를 그곳에서 복구할 수 있습니다.",
+            "keyslotsSetAsideRevocation": "이전 마커는 제거하거나 교체하는 인증 요소로 여전히 볼트를 열 수 있습니다. 변경 후 볼트 폴더에 남은 모든 사본은 삭제되며, 삭제할 수 없는 사본은 오류로 보고됩니다. 스토리지 휴지통이나 파일 버전에 있는 사본은 처리되지 않습니다. 폐기를 완료하려면 이를 비우세요.",
+            "keyslotsSetAsideConsent": "이해했습니다: 이 서버에서 이전 마커의 이름을 바꿔 따로 옮겨 두는 방식으로 마커를 교체합니다",
+            "keyslotsSetAsideConsentRequired": "이 서버는 이전 마커를 따로 옮겨 두는 방식으로만 볼트 마커를 교체할 수 있습니다. 계속하려면 위 상자에서 확인하세요.",
+            "keyslotsMarkerReplaceUnsupported": "이 서버는 볼트 마커를 교체할 수 없으므로 여기서는 슬롯 변경이 거부됩니다. 파일을 한 번에 교체하는 서버(예: SFTP)를 통해 같은 스토리지를 여세요."
         },
         "aerocryptProfile": {
             "enable": "Crypt (암호화)",

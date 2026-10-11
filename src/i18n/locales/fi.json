@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Kirjoita YES vahvistaaksesi poiston",
             "keyslotsRemoveTypeYes": "Kirjoita YES (isoilla kirjaimilla) vahvistaaksesi poiston.",
             "keyslotsRemoveUnlockHint": "Poistaaksesi paikan avaa ensin lukitus toisella jäljellä olevalla paikalla (et voi poistaa paikkaa, jolla avasit lukituksen).",
-            "keyslotsF6Honesty": "Tekijän poistaminen estää sitä avaamasta holvia tästä eteenpäin. Se EI salaa dataasi uudelleen: kuka tahansa, joka jo säilytti kopion vanhasta holvin otsakkeesta JA poistetusta tunnisteesta, voi yhä avata datan, johon hänellä oli pääsy. Peruuttaaksesi pääsyn kokonaan salaa holvi uudelleen (kierrätä Volume Key).",
+            "keyslotsF6Honesty": "Tekijän poistaminen estää sitä avaamasta holvia tästä eteenpäin. Se EI salaa dataasi uudelleen: kuka tahansa, joka säilytti kopion vanhasta holvin otsakkeesta JA poistetusta tunnisteesta, voi yhä avata koko holvin, myös poiston jälkeen lisätyt tiedostot. Peruuttaaksesi pääsyn kokonaan luo uusi holvi, siirrä tiedostosi sinne ja poista vanha.",
             "keyslotsKindPassphrase": "Tunnuslause",
             "keyslotsKindKeyfile": "Avaintiedosto",
             "keyslotsKindRecovery": "Palautus",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopioi koodi",
             "keyslotsUnlockWithRecovery": "Voit avata myös palautuskoodilla (liitä se salasanaksi).",
             "openDefaultSaltLabel": "Tämä vault käyttää AeroCryptin oletussuolaa",
-            "openDefaultSaltHint": "Ilman merkintää oletussuolaa käyttävä vault avautuu pelkällä salasanallaan, kun tämän kansion nimet saadaan sillä purettua. Etäpalvelimelle ei kirjoiteta mitään."
+            "openDefaultSaltHint": "Ilman merkintää oletussuolaa käyttävä vault avautuu pelkällä salasanallaan, kun tämän kansion nimet saadaan sillä purettua. Etäpalvelimelle ei kirjoiteta mitään.",
+            "keyslotsSetAsideRisks": "Tämä palvelin ei voi korvata tiedostoa yhdellä askeleella. Nykyinen merkkitiedosto nimetään uudelleen sivuun, uusi siirretään sen paikalle ja vanha poistetaan sen jälkeen. Sillä hetkellä holvilla ei ole merkkitiedostoa, eikä sitä voi avata. Jos muutos keskeytyy välillä, merkkitiedosto jää holvin kansioon nimellä, jossa on .aeroftp-replaced-, ja se on nimettävä takaisin käsin. Tallennustilassa, joka säilyttää roskakorin tai tiedostoversiot, edellinen merkkitiedosto on palautettavissa sieltä.",
+            "keyslotsSetAsideRevocation": "Edellinen merkkitiedosto avaa holvin edelleen tekijällä, jonka poistat tai korvaat. Jokainen holvin kansioon jäänyt kopio poistetaan muutoksen jälkeen, ja kopio, jota ei voi poistaa, ilmoitetaan virheenä. Tallennustilan roskakorissa tai tiedostoversioissa olevaa kopiota ei tavoiteta: tyhjennä ne peruutuksen viimeistelemiseksi.",
+            "keyslotsSetAsideConsent": "Ymmärrän: korvaa merkkitiedosto tällä palvelimella nimeämällä vanha sivuun",
+            "keyslotsSetAsideConsentRequired": "Tämä palvelin voi korvata holvin merkkitiedoston vain nimeämällä vanhan sivuun: vahvista se yllä olevasta ruudusta jatkaaksesi.",
+            "keyslotsMarkerReplaceUnsupported": "Tämä palvelin ei voi korvata holvin merkkitiedostoa, joten paikkamuutokset hylätään tässä. Avaa sama tallennustila palvelimen kautta, joka korvaa tiedoston yhdellä askeleella (esimerkiksi SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Salaus)",

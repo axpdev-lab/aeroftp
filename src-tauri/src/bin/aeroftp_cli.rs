@@ -5589,6 +5589,15 @@ enum CryptCommands {
         /// Keyfile, required if the v3 overlay was created with one
         #[arg(long)]
         keyfile: Option<String>,
+        /// On a server whose replace sets the previous file aside (MEGA
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, WebDAV):
+        /// replace the marker anyway. The current marker is renamed aside, the
+        /// new one moves into its place, then the old one is deleted: for that
+        /// moment the vault has no marker, and a cut-off run leaves it under a
+        /// `.aeroftp-replaced-` name to rename back. Without this flag such a
+        /// server refuses and nothing is written.
+        #[arg(long)]
+        allow_non_atomic: bool,
     },
     /// List keyslots on a v4 vault (id, type, salt length; no secrets)
     #[command(name = "list-slots")]
@@ -5631,6 +5640,15 @@ enum CryptCommands {
         /// New keyfile path for a keyfile slot
         #[arg(long)]
         new_keyfile: Option<String>,
+        /// On a server whose replace sets the previous file aside (MEGA
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, WebDAV):
+        /// replace the marker anyway. The current marker is renamed aside, the
+        /// new one moves into its place, then the old one is deleted: for that
+        /// moment the vault has no marker, and a cut-off run leaves it under a
+        /// `.aeroftp-replaced-` name to rename back. Without this flag such a
+        /// server refuses and nothing is written.
+        #[arg(long)]
+        allow_non_atomic: bool,
     },
     /// Remove (revoke) a keyslot from a v4 vault (epoch bump). T5 supports the
     /// single-survivor case: unlock with a slot you keep, then remove the other.
@@ -5651,6 +5669,17 @@ enum CryptCommands {
         /// Keyfile for a surviving slot (if required)
         #[arg(long)]
         keyfile: Option<String>,
+        /// On a server whose replace sets the previous file aside (MEGA
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, WebDAV):
+        /// replace the marker anyway. The current marker is renamed aside, the
+        /// new one moves into its place, then the old one is deleted: for that
+        /// moment the vault has no marker, and a cut-off run leaves it under a
+        /// `.aeroftp-replaced-` name to rename back. Without this flag such a
+        /// server refuses and nothing is written. A copy of the old marker
+        /// that cannot be deleted afterwards is an error: it still opens with
+        /// the revoked slot.
+        #[arg(long)]
+        allow_non_atomic: bool,
     },
     /// Rotate one keyslot's factor (same epoch; re-wrap that slot only)
     #[command(name = "rotate-slot")]
@@ -5676,6 +5705,17 @@ enum CryptCommands {
         /// New keyfile path (for keyfile slots)
         #[arg(long)]
         new_keyfile: Option<String>,
+        /// On a server whose replace sets the previous file aside (MEGA
+        /// native API, Filen, FileLu, Dropbox, Koofr, Drime, kDrive, WebDAV):
+        /// replace the marker anyway. The current marker is renamed aside, the
+        /// new one moves into its place, then the old one is deleted: for that
+        /// moment the vault has no marker, and a cut-off run leaves it under a
+        /// `.aeroftp-replaced-` name to rename back. Without this flag such a
+        /// server refuses and nothing is written. A copy of the old marker
+        /// that cannot be deleted afterwards is an error: it still opens with
+        /// the old factor.
+        #[arg(long)]
+        allow_non_atomic: bool,
     },
     /// Re-parse a saved Emergency Kit or headed marker and confirm it still
     /// matches the active profile keystore config (vault_id, salt, version, KDF).
@@ -56320,18 +56360,22 @@ async fn cmd_crypt_to_headed(
     // Asked while the server is still untouched (G119): if this backend cannot
     // put one file over another, refusing now means the marker really is
     // unchanged and no temporary was left behind.
-    let publish =
-        match ftp_client_gui_lib::providers::ensure_atomic_replace(provider.as_mut(), &config_path)
-            .await
-        {
-            Ok(publish) => publish,
-            Err(e) => {
-                let code = provider_error_to_exit_code(&e);
-                print_error(format, &format!("{e}"), code);
-                let _ = provider.disconnect().await;
-                return code;
-            }
-        };
+    let publish = match ftp_client_gui_lib::providers::ensure_marker_replace(
+        provider.as_mut(),
+        &config_path,
+        false,
+        None,
+    )
+    .await
+    {
+        Ok(publish) => publish,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("{e}"), code);
+            let _ = provider.disconnect().await;
+            return code;
+        }
+    };
     let remote_tmp = format!("{config_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -56572,9 +56616,11 @@ async fn cmd_crypt_migrate_marker(
         }
         // Asked while the server is still untouched (G119), see the sibling
         // above: the refusal has to be able to say the marker is unchanged.
-        let publish = match ftp_client_gui_lib::providers::ensure_atomic_replace(
+        let publish = match ftp_client_gui_lib::providers::ensure_marker_replace(
             provider.as_mut(),
             &current_path,
+            false,
+            None,
         )
         .await
         {
@@ -57945,6 +57991,7 @@ async fn publish_crypt_marker(
     marker_text: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    allow_non_atomic: bool,
     format: OutputFormat,
 ) -> Result<(), i32> {
     let current_path = crypt_marker_path(base_path, CryptMarkerKind::Current);
@@ -57961,15 +58008,21 @@ async fn publish_crypt_marker(
     }
     // Asked while the server is still untouched (G119), see the siblings
     // above: the refusal has to be able to say the marker is unchanged.
-    let publish =
-        match ftp_client_gui_lib::providers::ensure_atomic_replace(provider, &current_path).await {
-            Ok(publish) => publish,
-            Err(e) => {
-                let code = provider_error_to_exit_code(&e);
-                print_error(format, &format!("{e}"), code);
-                return Err(code);
-            }
-        };
+    let publish = match ftp_client_gui_lib::providers::ensure_marker_replace(
+        provider,
+        &current_path,
+        allow_non_atomic,
+        Some("`--allow-non-atomic`"),
+    )
+    .await
+    {
+        Ok(publish) => publish,
+        Err(e) => {
+            let code = provider_error_to_exit_code(&e);
+            print_error(format, &format!("{e}"), code);
+            return Err(code);
+        }
+    };
     let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
     if let Err(e) = provider
         .upload(&local_tmp.path().to_string_lossy(), &remote_tmp, None)
@@ -58035,6 +58088,7 @@ async fn cmd_crypt_migrate_v4(
     path: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
+    allow_non_atomic: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -58083,6 +58137,7 @@ async fn cmd_crypt_migrate_v4(
         v4_marker,
         password,
         keyfile_digest,
+        allow_non_atomic,
         format,
     )
     .await
@@ -58188,6 +58243,7 @@ async fn cmd_crypt_add_slot(
     slot_type: &str,
     new_password: &str,
     new_keyfile_digest: Option<&[u8; 32]>,
+    allow_non_atomic: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -58255,6 +58311,7 @@ async fn cmd_crypt_add_slot(
         new_marker,
         password,
         keyfile_digest,
+        allow_non_atomic,
         format,
     )
     .await
@@ -58285,12 +58342,14 @@ async fn cmd_crypt_add_slot(
     0
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn cmd_crypt_remove_slot(
     url: &str,
     path: &str,
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
     slot_id: u32,
+    allow_non_atomic: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -58338,12 +58397,34 @@ async fn cmd_crypt_remove_slot(
         &new_marker,
         password,
         keyfile_digest,
+        allow_non_atomic,
         format,
     )
     .await
     {
         let _ = provider.disconnect().await;
         return code;
+    }
+    // A revocation published through a set-aside leaves the previous
+    // marker under a set-aside name until its delete; a copy still on the
+    // server opens the vault with the factor just revoked (policy C).
+    if provider.replace_sets_aside() {
+        let left = ftp_client_gui_lib::providers::remove_set_aside_copies(
+            &mut *provider,
+            &base_path,
+            ftp_client_gui_lib::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME,
+        )
+        .await;
+        if let Some((_, first)) = left.first() {
+            let code = provider_error_to_exit_code(first);
+            print_error(
+                format,
+                &ftp_client_gui_lib::providers::revoked_marker_copies_left(&left),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
     }
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
@@ -58368,6 +58449,7 @@ async fn cmd_crypt_rotate_slot(
     slot_id: u32,
     new_password: &str,
     new_keyfile_digest: Option<&[u8; 32]>,
+    allow_non_atomic: bool,
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
@@ -58429,12 +58511,34 @@ async fn cmd_crypt_rotate_slot(
         &new_marker,
         verify_pw,
         verify_kf,
+        allow_non_atomic,
         format,
     )
     .await
     {
         let _ = provider.disconnect().await;
         return code;
+    }
+    // A revocation published through a set-aside leaves the previous
+    // marker under a set-aside name until its delete; a copy still on the
+    // server opens the vault with the factor just revoked (policy C).
+    if provider.replace_sets_aside() {
+        let left = ftp_client_gui_lib::providers::remove_set_aside_copies(
+            &mut *provider,
+            &base_path,
+            ftp_client_gui_lib::aerocrypt::overlay::CRYPT_CONFIG_WRITE_NAME,
+        )
+        .await;
+        if let Some((_, first)) = left.first() {
+            let code = provider_error_to_exit_code(first);
+            print_error(
+                format,
+                &ftp_client_gui_lib::providers::revoked_marker_copies_left(&left),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            return code;
+        }
     }
     if matches!(format, OutputFormat::Json) {
         print_json(&serde_json::json!({
@@ -72785,6 +72889,7 @@ async fn main() {
                     path,
                     password,
                     keyfile,
+                    allow_non_atomic,
                 } => match read_keyfile_digest(keyfile) {
                     Err(e) => {
                         print_error(format, &e, 6);
@@ -72801,7 +72906,16 @@ async fn main() {
                                 path,
                                 "/",
                             );
-                            cmd_crypt_migrate_v4(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            cmd_crypt_migrate_v4(
+                                &u,
+                                &dir,
+                                &pw,
+                                kf.as_ref(),
+                                *allow_non_atomic,
+                                &cli,
+                                format,
+                            )
+                            .await
                         }
                     }
                 },
@@ -72838,6 +72952,7 @@ async fn main() {
                     keyfile,
                     new_password,
                     new_keyfile,
+                    allow_non_atomic,
                 } => match (
                     read_keyfile_digest(keyfile),
                     read_keyfile_digest(new_keyfile),
@@ -72866,6 +72981,7 @@ async fn main() {
                                 slot_type,
                                 &new_pw,
                                 new_kf.as_ref(),
+                                *allow_non_atomic,
                                 &cli,
                                 format,
                             )
@@ -72879,6 +72995,7 @@ async fn main() {
                     slot_id,
                     password,
                     keyfile,
+                    allow_non_atomic,
                 } => match read_keyfile_digest(keyfile) {
                     Err(e) => {
                         print_error(format, &e, 6);
@@ -72901,6 +73018,7 @@ async fn main() {
                                 &pw,
                                 kf.as_ref(),
                                 *slot_id,
+                                *allow_non_atomic,
                                 &cli,
                                 format,
                             )
@@ -72916,6 +73034,7 @@ async fn main() {
                     keyfile,
                     new_password,
                     new_keyfile,
+                    allow_non_atomic,
                 } => match (
                     read_keyfile_digest(keyfile),
                     read_keyfile_digest(new_keyfile),
@@ -72944,6 +73063,7 @@ async fn main() {
                                 *slot_id,
                                 &new_pw,
                                 new_kf.as_ref(),
+                                *allow_non_atomic,
                                 &cli,
                                 format,
                             )
@@ -91322,10 +91442,17 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         provider.sets_aside = true;
         provider.appears_on_upload = Some((current.clone(), b"theirs".to_vec()));
 
-        let code =
-            publish_crypt_marker(&mut provider, "/", &marker, "pw", None, OutputFormat::Json)
-                .await
-                .unwrap_err();
+        let code = publish_crypt_marker(
+            &mut provider,
+            "/",
+            &marker,
+            "pw",
+            None,
+            false,
+            OutputFormat::Json,
+        )
+        .await
+        .unwrap_err();
 
         assert_eq!(code, 9);
         assert!(provider.replaces.is_empty(), "{:?}", provider.replaces);

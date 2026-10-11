@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Andika YES kuthibitisha uondoaji",
             "keyslotsRemoveTypeYes": "Andika YES (herufi kubwa) kuthibitisha uondoaji.",
             "keyslotsRemoveUnlockHint": "Ili kuondoa sloti, fungua kwanza kwa sloti nyingine iliyobaki (huwezi kuondoa sloti uliyofungua nayo).",
-            "keyslotsF6Honesty": "Kuondoa kigezo kunakizuia kufungua vault kuanzia sasa. HAKIENKRIPTI tena data yako: yeyote aliyeshika nakala ya kichwa cha zamani cha vault NA uthibitisho ulioondolewa bado anaweza kufungua data aliyokuwa nayo ufikiaji. Ili kufuta ufikiaji kabisa, encripti tena vault (zungusha Volume Key).",
+            "keyslotsF6Honesty": "Kuondoa kigezo kunakizuia kufungua vault kuanzia sasa. HAKIENKRIPTI tena data yako: yeyote aliyehifadhi nakala ya kichwa cha zamani cha vault NA uthibitisho ulioondolewa bado anaweza kufungua vault nzima, ikiwemo faili zilizoongezwa baada ya kuondoa. Ili kufuta ufikiaji kabisa, unda vault mpya, hamishia faili zako humo, kisha futa ile ya zamani.",
             "keyslotsKindPassphrase": "Maneno ya siri",
             "keyslotsKindKeyfile": "Faili ya ufunguo",
             "keyslotsKindRecovery": "Urejeshaji",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Nakili msimbo",
             "keyslotsUnlockWithRecovery": "Unaweza pia kufungua kwa msimbo wa urejeshaji (ubandike kama nenosiri).",
             "openDefaultSaltLabel": "Vault hii inatumia salt chaguomsingi ya AeroCrypt",
-            "openDefaultSaltHint": "Bila alama hapa, vault ya salt chaguomsingi hufunguka kwa nenosiri lake pekee mara majina katika folda hii yanapofichuliwa kwa nenosiri hilo. Hakuna kinachoandikwa kwenye seva ya mbali."
+            "openDefaultSaltHint": "Bila alama hapa, vault ya salt chaguomsingi hufunguka kwa nenosiri lake pekee mara majina katika folda hii yanapofichuliwa kwa nenosiri hilo. Hakuna kinachoandikwa kwenye seva ya mbali.",
+            "keyslotsSetAsideRisks": "Seva hii haiwezi kubadilisha faili kwa hatua moja. Alama ya sasa inabadilishwa jina na kuwekwa kando, mpya inahamishiwa mahali pake, kisha ya zamani inafutwa. Kwa wakati huo chumba salama hakina alama na hakiwezi kufunguliwa. Mabadiliko yakikatizwa katikati, alama inabaki kwenye folda ya chumba salama ikiwa na jina lenye .aeroftp-replaced- na lazima ibadilishwe jina kurudi kwa mkono. Kwenye hifadhi inayoweka tupio au matoleo ya faili, alama ya awali inaweza kurejeshwa huko.",
+            "keyslotsSetAsideRevocation": "Alama ya awali bado inafungua chumba salama kwa kipengele unachokiondoa au kukibadilisha. Kila nakala iliyobaki kwenye folda ya chumba salama inafutwa baada ya mabadiliko, na nakala isiyoweza kufutwa inaripotiwa kama hitilafu. Nakala iliyo kwenye tupio la hifadhi au matoleo ya faili haifikiwi: safisha yote mawili ili ukamilishe ubatilishaji.",
+            "keyslotsSetAsideConsent": "Naelewa: badilisha alama kwenye seva hii kwa kubadilisha jina la ya zamani na kuiweka kando",
+            "keyslotsSetAsideConsentRequired": "Seva hii inaweza kubadilisha alama ya chumba salama kwa kubadilisha jina la ya zamani na kuiweka kando tu: thibitisha kwenye kisanduku hapo juu ili kuendelea.",
+            "keyslotsMarkerReplaceUnsupported": "Seva hii haiwezi kubadilisha alama ya chumba salama, kwa hiyo mabadiliko ya nafasi yanakataliwa hapa. Fungua hifadhi hiyo hiyo kupitia seva inayobadilisha faili kwa hatua moja (kwa mfano SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Usimbaji fiche)",

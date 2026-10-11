@@ -1116,7 +1116,8 @@ pub trait StorageProvider: Send + Sync {
     /// whose atomicity is not documented, not a set-aside. The overlays
     /// (crypt, compress) forward the inner answer. Onto a free name the
     /// replace of every one of them is its rename, which is what lets
-    /// [`ensure_atomic_replace`] pass a publish where nothing is yet.
+    /// [`ensure_atomic_replace`] and [`ensure_marker_replace`] pass a publish
+    /// where nothing is yet.
     ///
     /// [`replace`]: StorageProvider::replace
     fn replace_sets_aside(&self) -> bool {
@@ -2097,20 +2098,152 @@ pub async fn ensure_atomic_replace(
     provider: &mut dyn StorageProvider,
     target: &str,
 ) -> Result<StagedPublish, ProviderError> {
+    match staged_publish(provider, target).await? {
+        Some(publish) => Ok(publish),
+        None => Err(ProviderError::NotSupported(format!(
+            "cannot replace `{target}` atomically: this server offers no way to put one file \
+             over another in a single step, and doing it in two would leave a moment with no \
+             file at all. Nothing was written and `{target}` is unchanged. To overwrite it \
+             anyway, upload over it with `put`, which truncates and rewrites in place: that \
+             is not atomic either, but it is your choice and its bad moment is a partial \
+             file rather than no file."
+        ))),
+    }
+}
+
+/// [`ensure_atomic_replace`] for a crypt marker (`.aerocrypt.tsv` and the
+/// legacy names): the same check, a refusal that fits a marker, and an
+/// explicit opt-in for the backends whose replace sets the old file aside.
+///
+/// The way around a refused replace that [`ensure_atomic_replace`] offers is
+/// to upload over the file with `put`. For a marker it is no way at all: the
+/// new marker exists only inside the operation that built it (a slot added
+/// or revoked, a migration, a header written for a headerless vault), so the
+/// user has nothing to upload, and a marker rewritten in place and cut short
+/// cannot open the vault. This refusal says what is true instead:
+/// nothing was written, the vault is as it was, and the change needs a
+/// server that can put one file over another in one step.
+///
+/// The operations that rewrite a marker already there (`crypt migrate-v4`
+/// and the slot commands, in the CLI and in the app's slots dialog) may
+/// replace it through a set-aside only with the user's consent
+/// (`allow_non_atomic`, owner decision 2026-10-11): with it, a backend that
+/// replaces atomically or sets the old file aside passes as a replace, and
+/// every other one is refused, before anything is staged. Without it the
+/// check is [`ensure_atomic_replace`]'s, and on a set-aside backend the
+/// refusal names the caller's opt-in (`opt_in`, its spelling of it) and what
+/// it risks ([`marker_set_aside_opt_in_hint`]); `None` where the caller has
+/// no opt-in. The publishes that only ever write onto a free name
+/// (`crypt to-headed`, `crypt migrate-marker`, the heal of a missing marker,
+/// the legacy marker migration) pass `false` and `None`.
+pub async fn ensure_marker_replace(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+    allow_non_atomic: bool,
+    opt_in: Option<&str>,
+) -> Result<StagedPublish, ProviderError> {
+    if allow_non_atomic {
+        if provider.supports_atomic_replace().await? || provider.replace_sets_aside() {
+            return Ok(StagedPublish::Replace);
+        }
+        return Err(ProviderError::NotSupported(marker_refusal(target)));
+    }
+    match staged_publish(provider, target).await? {
+        Some(publish) => Ok(publish),
+        None => {
+            let refusal = marker_refusal(target);
+            Err(ProviderError::NotSupported(
+                match opt_in.filter(|_| provider.replace_sets_aside()) {
+                    Some(opt_in) => format!("{refusal} {}", marker_set_aside_opt_in_hint(opt_in)),
+                    None => refusal,
+                },
+            ))
+        }
+    }
+}
+
+fn marker_refusal(target: &str) -> String {
+    format!(
+        "cannot write the crypt marker `{target}` on this server: it offers no way to put one \
+         file over another in a single step, and replacing a marker in two would leave the \
+         vault a moment without one. Nothing was written and the vault is as it was. \
+         Uploading a marker by hand is no way around it: the new one exists only inside this \
+         operation, and a marker rewritten in place and cut short cannot open the vault. Run \
+         it where the same storage is reached through a server that replaces in one step \
+         (SFTP with `posix-rename@openssh.com`, for one)."
+    )
+}
+
+/// The sentence a marker refusal adds on a backend whose replace sets the
+/// previous file aside: the opt-in `opt_in` and the risks the user takes
+/// with it, the ones the set-aside has (`replace_by_setting_aside`).
+pub fn marker_set_aside_opt_in_hint(opt_in: &str) -> String {
+    format!(
+        "To replace it anyway, pass {opt_in}: the current marker is renamed aside, the new \
+         one moves into its place, and the old one is then deleted. For that moment the \
+         vault has no marker, and anyone opening it then is refused. If the operation is \
+         cut off in between, the marker is left under a `.aeroftp-replaced-` name in the \
+         same folder and has to be renamed back by hand. On storage that keeps a trash or \
+         file versions, the previous marker stays recoverable there after it is deleted."
+    )
+}
+
+/// The error for copies of the previous marker still on the server after a
+/// revocation, shared by the app and the CLI.
+pub fn revoked_marker_copies_left(left: &[(String, ProviderError)]) -> String {
+    let listed = left
+        .iter()
+        .map(|(path, e)| format!("{path} ({e})"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "The marker was updated and the slot is revoked in it, but a copy of the previous \
+         marker could not be confirmed gone: {listed}. Such a copy still opens the vault with \
+         the revoked factor. Delete every `.aeroftp-replaced-*..aerocrypt.tsv` in that folder \
+         by hand."
+    )
+}
+
+/// How a crypt marker that already exists can be replaced on this backend,
+/// for a dialog that asks the user's consent before it offers the operation
+/// ([`ensure_marker_replace`] decides the same at publish time).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MarkerReplaceMode {
+    /// One step: no consent needed.
+    Atomic,
+    /// Through a set-aside: possible with the user's consent.
+    SetsAside,
+    /// Not at all on this backend.
+    Unsupported,
+}
+
+/// [`MarkerReplaceMode`] of `provider`.
+pub async fn marker_replace_mode(
+    provider: &mut dyn StorageProvider,
+) -> Result<MarkerReplaceMode, ProviderError> {
+    Ok(if provider.supports_atomic_replace().await? {
+        MarkerReplaceMode::Atomic
+    } else if provider.replace_sets_aside() {
+        MarkerReplaceMode::SetsAside
+    } else {
+        MarkerReplaceMode::Unsupported
+    })
+}
+
+/// The check behind [`ensure_atomic_replace`] and [`ensure_marker_replace`]:
+/// how to publish, or `None` where this backend cannot do it.
+async fn staged_publish(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+) -> Result<Option<StagedPublish>, ProviderError> {
     if provider.supports_atomic_replace().await? {
-        return Ok(StagedPublish::Replace);
+        return Ok(Some(StagedPublish::Replace));
     }
     if provider.replace_sets_aside() && !provider.exists(target).await? {
-        return Ok(StagedPublish::Create);
+        return Ok(Some(StagedPublish::Create));
     }
-    Err(ProviderError::NotSupported(format!(
-        "cannot replace `{target}` atomically: this server offers no way to put one file \
-         over another in a single step, and doing it in two would leave a moment with no \
-         file at all. Nothing was written and `{target}` is unchanged. To overwrite it \
-         anyway, upload over it with `put`, which truncates and rewrites in place: that \
-         is not atomic either, but it is your choice and its bad moment is a partial \
-         file rather than no file."
-    )))
+    Ok(None)
 }
 
 /// The preflight of an edit that publishes a staged temporary with
@@ -2125,8 +2258,8 @@ pub async fn ensure_atomic_replace(
 /// passes, and every other one is refused here: its replace would refuse
 /// the taken name after the temporary had been uploaded.
 ///
-/// The crypt and AeroCrypt marker paths call [`ensure_atomic_replace`]
-/// directly: they have no opt-in, so their refusal names none.
+/// The crypt and AeroCrypt marker paths call [`ensure_marker_replace`],
+/// which has its own opt-in and its own refusal.
 ///
 /// The answer is the publish, as for [`ensure_atomic_replace`]: the opt-in
 /// is a replace, and without it a set-aside backend passes only onto a free
@@ -2154,10 +2287,10 @@ pub async fn ensure_edit_can_replace(
 }
 
 /// How a temporary staged beside its target goes into the target's place,
-/// as [`ensure_atomic_replace`] or [`ensure_edit_can_replace`] answered
-/// before it was staged. The answer carries why the check passed, and the
-/// publish keeps to it: publish with [`StagedPublish::publish`], never with
-/// a bare [`StorageProvider::replace`].
+/// as [`ensure_atomic_replace`], [`ensure_marker_replace`] or
+/// [`ensure_edit_can_replace`] answered before it was staged. The answer
+/// carries why the check passed, and the publish keeps to it: publish with
+/// [`StagedPublish::publish`], never with a bare [`StorageProvider::replace`].
 ///
 /// The check and the publish are separate requests (CodeRabbit on #1154).
 /// On a backend that replaces atomically, or under an edit's opt-in, the
@@ -2424,6 +2557,54 @@ pub async fn keep_edit_original(
 pub(crate) fn set_aside_name(name: &str) -> String {
     let unique = uuid::Uuid::new_v4().simple().to_string();
     format!(".aeroftp-replaced-{}.{name}", &unique[..8])
+}
+
+/// Whether `entry` is a copy of `name` set aside by [`set_aside_name`]:
+/// `.aeroftp-replaced-` and eight lowercase hex digits, a dot, then `name`.
+pub(crate) fn is_set_aside_copy_of(entry: &str, name: &str) -> bool {
+    entry
+        .strip_prefix(".aeroftp-replaced-")
+        .and_then(|rest| rest.split_at_checked(8))
+        .is_some_and(|(hex, rest)| {
+            hex.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                && rest.strip_prefix('.') == Some(name)
+        })
+}
+
+/// Delete every copy of `dir`/`name` that a set-aside replace left in `dir`
+/// (its delete failed, or the run that made it was cut off), this run's and
+/// any earlier one's. Answers the copies that are still there, with why:
+/// the ones whose delete failed, or, when `dir` could not be listed, `dir`
+/// itself with the listing error, since then nothing says there are none.
+///
+/// For a crypt marker after a revocation (`remove-slot`, `rotate-slot`) a
+/// copy is not litter: it still opens with the factor just revoked, so the
+/// caller reports what is left as an error (policy C, owner 2026-10-11).
+pub async fn remove_set_aside_copies(
+    provider: &mut dyn StorageProvider,
+    dir: &str,
+    name: &str,
+) -> Vec<(String, ProviderError)> {
+    let entries = match provider.list(dir).await {
+        Ok(entries) => entries,
+        Err(e) => return vec![(dir.to_string(), e)],
+    };
+    let mut left = Vec::new();
+    for entry in entries {
+        if entry.is_dir || !is_set_aside_copy_of(&entry.name, name) {
+            continue;
+        }
+        let path = if dir.ends_with('/') {
+            format!("{dir}{}", entry.name)
+        } else {
+            format!("{dir}/{}", entry.name)
+        };
+        if let Err(e) = provider.delete(&path).await {
+            left.push((path, e));
+        }
+    }
+    left
 }
 
 /// The error of a set-aside replace whose move of the new item into `to`
@@ -3731,6 +3912,11 @@ pub(crate) mod edit_replace_tests {
         /// its bytes land on the server right after the upload, between a
         /// caller's preflight and its publish.
         pub(crate) appears_on_upload: Option<(String, Vec<u8>)>,
+        /// When set, `list` answers the files directly under the folder
+        /// (otherwise an empty folder, which the edit tests rely on).
+        pub(crate) lists_files: bool,
+        /// Paths whose `delete` fails with PermissionDenied.
+        pub(crate) undeletable: Vec<String>,
     }
 
     impl EditFake {
@@ -3748,6 +3934,8 @@ pub(crate) mod edit_replace_tests {
                 chmod: false,
                 chmod_fails_with: None,
                 appears_on_upload: None,
+                lists_files: false,
+                undeletable: Vec::new(),
             }
         }
     }
@@ -3772,8 +3960,20 @@ pub(crate) mod edit_replace_tests {
         fn is_connected(&self) -> bool {
             true
         }
-        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-            Ok(Vec::new())
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            if !self.lists_files {
+                return Ok(Vec::new());
+            }
+            let dir = path.trim_end_matches('/');
+            Ok(self
+                .files
+                .iter()
+                .filter_map(|(p, data)| {
+                    let (parent, name) = p.rsplit_once('/')?;
+                    (parent == dir)
+                        .then(|| RemoteEntry::file(name.to_string(), p.clone(), data.len() as u64))
+                })
+                .collect())
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
             Ok("/".to_string())
@@ -3818,6 +4018,9 @@ pub(crate) mod edit_replace_tests {
             Ok(())
         }
         async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            if self.undeletable.iter().any(|p| p == path) {
+                return Err(ProviderError::PermissionDenied(format!("delete {path}")));
+            }
             self.deleted.push(path.to_string());
             self.files.remove(path);
             Ok(())
@@ -4002,24 +4205,155 @@ pub(crate) mod edit_replace_tests {
         );
     }
 
-    /// The crypt and AeroCrypt marker paths publish through
-    /// `ensure_atomic_replace` too, and they have no edit flag: the shared
-    /// refusal named `--allow-non-atomic` and `allow_non_atomic` there.
+    /// A refused marker publish names no way around it. The generic refusal
+    /// offers `put` over the file, and before that the edit flags: a marker
+    /// has neither, since the new one exists only inside the operation that
+    /// built it and a marker cut short by a rewrite in place cannot open the
+    /// vault. It says that nothing was written, and which marker.
     #[tokio::test]
-    async fn the_shared_refusal_names_no_edit_opt_in() {
+    async fn a_marker_refusal_offers_no_put_and_no_edit_opt_in() {
         for sets_aside in [false, true] {
             let mut p = EditFake::new(false, sets_aside);
             p.files
                 .insert("/.aerocrypt.tsv".to_string(), b"marker".to_vec());
-            let text = ensure_atomic_replace(&mut p, "/.aerocrypt.tsv")
+            let text = ensure_marker_replace(&mut p, "/.aerocrypt.tsv", false, None)
                 .await
                 .unwrap_err()
                 .to_string();
             assert!(text.contains("Nothing was written"), "{text}");
+            assert!(text.contains("`/.aerocrypt.tsv`"), "{text}");
+            assert!(
+                !text.contains("`put`"),
+                "a marker refusal must not send the user to upload over it: {text}"
+            );
             assert!(
                 !text.contains("allow-non-atomic") && !text.contains("allow_non_atomic"),
                 "a marker refusal must not suggest an edit flag: {text}"
             );
+            assert!(p.uploads.is_empty() && p.replaces.is_empty());
+            assert_eq!(
+                p.files.get("/.aerocrypt.tsv").map(Vec::as_slice),
+                Some(&b"marker"[..])
+            );
+        }
+    }
+
+    /// Policy C (owner, 2026-10-11): a marker that already exists is
+    /// replaced through a set-aside only with the user's consent. Every
+    /// combination of backend, target and consent, before anything is
+    /// staged: with consent an atomic or set-aside backend replaces and any
+    /// other is refused; without it the check is the file one, and a refusal
+    /// on a set-aside backend names the caller's opt-in, nowhere else.
+    #[tokio::test]
+    async fn a_marker_is_replaced_through_a_set_aside_only_with_consent() {
+        const OPT_IN: &str = "`--allow-non-atomic`";
+        for atomic in [false, true] {
+            for sets_aside in [false, true] {
+                for occupied in [false, true] {
+                    for consent in [false, true] {
+                        let mut p = EditFake::new(atomic, sets_aside);
+                        if occupied {
+                            p.files
+                                .insert("/.aerocrypt.tsv".to_string(), b"marker".to_vec());
+                        }
+                        let outcome =
+                            ensure_marker_replace(&mut p, "/.aerocrypt.tsv", consent, Some(OPT_IN))
+                                .await;
+                        let case = format!(
+                            "atomic {atomic}, sets aside {sets_aside}, occupied {occupied}, \
+                             consent {consent}: {outcome:?}"
+                        );
+                        let expected = if atomic || (consent && sets_aside) {
+                            Some(StagedPublish::Replace)
+                        } else if sets_aside && !occupied {
+                            Some(StagedPublish::Create)
+                        } else {
+                            None
+                        };
+                        match (&outcome, expected) {
+                            (Ok(publish), Some(want)) => assert_eq!(*publish, want, "{case}"),
+                            (Err(ProviderError::NotSupported(text)), None) => {
+                                assert!(text.contains("Nothing was written"), "{case}");
+                                assert_eq!(
+                                    text.contains(OPT_IN),
+                                    sets_aside && !consent,
+                                    "the opt-in is named only where it would work: {case}"
+                                );
+                            }
+                            _ => panic!("{case}"),
+                        }
+                        assert!(p.uploads.is_empty() && p.replaces.is_empty(), "{case}");
+                    }
+                }
+            }
+        }
+        let mut no_opt_in = EditFake::new(false, true);
+        no_opt_in
+            .files
+            .insert("/.aerocrypt.tsv".to_string(), b"marker".to_vec());
+        let text = ensure_marker_replace(&mut no_opt_in, "/.aerocrypt.tsv", false, None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!text.contains("allow-non-atomic"), "{text}");
+    }
+
+    #[test]
+    fn a_set_aside_copy_is_recognised_by_its_exact_shape() {
+        let name = ".aerocrypt.tsv";
+        let made = set_aside_name(name);
+        assert!(is_set_aside_copy_of(&made, name), "{made}");
+        assert!(is_set_aside_copy_of(
+            ".aeroftp-replaced-0a1b2c3d..aerocrypt.tsv",
+            name
+        ));
+        for other in [
+            ".aerocrypt.tsv",
+            ".aeroftp-replaced-0a1b2c3d.aerocrypt.tsv",
+            ".aeroftp-replaced-0A1B2C3D..aerocrypt.tsv",
+            ".aeroftp-replaced-0a1b2c3..aerocrypt.tsv",
+            ".aeroftp-replaced-0a1b2c3d..aerocrypt.tsv.bak",
+            ".aeroftp-replaced-0a1b2c3d..aeroftp-crypt.json",
+        ] {
+            assert!(!is_set_aside_copy_of(other, name), "{other}");
+        }
+    }
+
+    /// After a revocation a set-aside copy of the marker still opens with
+    /// the revoked factor: every copy in the folder goes, this run's and
+    /// older ones, and one that cannot be deleted is answered by its path.
+    #[tokio::test]
+    async fn set_aside_copies_are_deleted_and_the_undeletable_named() {
+        let mut p = EditFake::new(false, true);
+        p.lists_files = true;
+        for path in [
+            "/v/.aerocrypt.tsv",
+            "/v/.aeroftp-replaced-00000001..aerocrypt.tsv",
+            "/v/.aeroftp-replaced-00000002..aerocrypt.tsv",
+            "/v/.aeroftp-replaced-00000003.other.txt",
+            "/w/.aeroftp-replaced-00000004..aerocrypt.tsv",
+        ] {
+            p.files.insert(path.to_string(), b"x".to_vec());
+        }
+        p.undeletable
+            .push("/v/.aeroftp-replaced-00000002..aerocrypt.tsv".to_string());
+        let left = remove_set_aside_copies(&mut p, "/v", ".aerocrypt.tsv").await;
+        assert_eq!(p.deleted, ["/v/.aeroftp-replaced-00000001..aerocrypt.tsv"]);
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].0, "/v/.aeroftp-replaced-00000002..aerocrypt.tsv");
+        assert!(matches!(left[0].1, ProviderError::PermissionDenied(_)));
+    }
+
+    #[tokio::test]
+    async fn the_marker_replace_mode_matches_what_the_publish_check_allows() {
+        for (atomic, sets_aside, mode) in [
+            (true, false, MarkerReplaceMode::Atomic),
+            (true, true, MarkerReplaceMode::Atomic),
+            (false, true, MarkerReplaceMode::SetsAside),
+            (false, false, MarkerReplaceMode::Unsupported),
+        ] {
+            let mut p = EditFake::new(atomic, sets_aside);
+            assert_eq!(marker_replace_mode(&mut p).await.unwrap(), mode);
         }
     }
 
@@ -4033,15 +4367,20 @@ pub(crate) mod edit_replace_tests {
     async fn a_publish_onto_a_free_name_passes_where_the_replace_sets_aside() {
         for (sets_aside, passes) in [(true, true), (false, false)] {
             let mut p = EditFake::new(false, sets_aside);
-            let outcome = ensure_atomic_replace(&mut p, "/.aerocrypt.tsv").await;
-            assert_eq!(
-                outcome.as_ref().ok(),
-                passes.then_some(&StagedPublish::Create),
-                "sets aside {sets_aside}: {outcome:?}"
-            );
+            let marker = ensure_marker_replace(&mut p, "/.aerocrypt.tsv", false, None).await;
+            let file = ensure_atomic_replace(&mut p, "/.aerocrypt.tsv").await;
+            for outcome in [&marker, &file] {
+                assert_eq!(
+                    outcome.as_ref().ok(),
+                    passes.then_some(&StagedPublish::Create),
+                    "sets aside {sets_aside}: {outcome:?}"
+                );
+            }
             assert!(p.uploads.is_empty() && p.replaces.is_empty());
         }
         let mut atomic = EditFake::new(true, false);
+        let publish = ensure_marker_replace(&mut atomic, "/.aerocrypt.tsv", false, None).await;
+        assert_eq!(publish.ok(), Some(StagedPublish::Replace));
         let publish = ensure_atomic_replace(&mut atomic, "/.aerocrypt.tsv").await;
         assert_eq!(publish.ok(), Some(StagedPublish::Replace));
     }

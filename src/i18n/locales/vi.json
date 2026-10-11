@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Gõ YES để xác nhận gỡ",
             "keyslotsRemoveTypeYes": "Gõ YES (chữ hoa) để xác nhận gỡ.",
             "keyslotsRemoveUnlockHint": "Để gỡ một khe, trước tiên mở khóa bằng khe còn lại khác (không thể gỡ khe bạn đã dùng để mở khóa).",
-            "keyslotsF6Honesty": "Gỡ một yếu tố sẽ khiến nó không còn mở vault kể từ bây giờ. Việc này KHÔNG mã hóa lại dữ liệu của bạn: ai đã giữ bản sao header vault cũ VÀ thông tin xác thực đã gỡ vẫn có thể mở dữ liệu họ từng truy cập. Để thu hồi quyền truy cập hoàn toàn, hãy mã hóa lại vault (xoay Volume Key).",
+            "keyslotsF6Honesty": "Gỡ một yếu tố sẽ khiến nó không còn mở vault kể từ bây giờ. Việc này KHÔNG mã hóa lại dữ liệu của bạn: ai đã giữ bản sao header vault cũ VÀ thông tin xác thực đã gỡ vẫn có thể mở toàn bộ vault, kể cả các tệp được thêm sau khi gỡ. Để thu hồi quyền truy cập hoàn toàn, hãy tạo một vault mới, chuyển các tệp của bạn vào đó và xóa vault cũ.",
             "keyslotsKindPassphrase": "Cụm mật khẩu",
             "keyslotsKindKeyfile": "Tệp khóa",
             "keyslotsKindRecovery": "Khôi phục",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Sao chép mã",
             "keyslotsUnlockWithRecovery": "Bạn cũng có thể mở khóa bằng mã khôi phục (dán làm mật khẩu).",
             "openDefaultSaltLabel": "Vault này dùng salt mặc định của AeroCrypt",
-            "openDefaultSaltHint": "Khi không có marker ở đây, vault dùng salt mặc định sẽ mở chỉ bằng mật khẩu, miễn là tên trong thư mục này giải mã được bằng mật khẩu đó. Không có gì được ghi lên máy chủ từ xa."
+            "openDefaultSaltHint": "Khi không có marker ở đây, vault dùng salt mặc định sẽ mở chỉ bằng mật khẩu, miễn là tên trong thư mục này giải mã được bằng mật khẩu đó. Không có gì được ghi lên máy chủ từ xa.",
+            "keyslotsSetAsideRisks": "Máy chủ này không thể thay thế một tệp trong một bước. Tệp đánh dấu hiện tại được đổi tên và để sang một bên, tệp mới được chuyển vào chỗ của nó, rồi tệp cũ bị xóa. Trong khoảnh khắc đó, kho an toàn không có tệp đánh dấu và không thể mở. Nếu thay đổi bị ngắt giữa chừng, tệp đánh dấu sẽ còn lại trong thư mục kho an toàn với tên có chứa .aeroftp-replaced- và phải đổi tên lại bằng tay. Trên bộ nhớ có giữ thùng rác hoặc phiên bản tệp, tệp đánh dấu trước đó vẫn có thể khôi phục tại đó.",
+            "keyslotsSetAsideRevocation": "Tệp đánh dấu trước đó vẫn mở được kho an toàn bằng yếu tố mà bạn đang gỡ bỏ hoặc thay thế. Mọi bản sao còn lại trong thư mục kho an toàn đều bị xóa sau thay đổi, và bản sao không xóa được sẽ được báo là lỗi. Bản sao trong thùng rác hoặc phiên bản tệp của bộ nhớ không được xử lý: hãy làm trống chúng để hoàn tất việc thu hồi.",
+            "keyslotsSetAsideConsent": "Tôi hiểu: thay tệp đánh dấu trên máy chủ này bằng cách đổi tên tệp cũ và để sang một bên",
+            "keyslotsSetAsideConsentRequired": "Máy chủ này chỉ có thể thay tệp đánh dấu của kho an toàn bằng cách đổi tên tệp cũ và để sang một bên: hãy xác nhận ở ô phía trên để tiếp tục.",
+            "keyslotsMarkerReplaceUnsupported": "Máy chủ này không thể thay tệp đánh dấu của kho an toàn, nên các thay đổi khe ở đây bị từ chối. Hãy mở cùng bộ nhớ đó qua một máy chủ thay thế tệp trong một bước (ví dụ SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Mã hóa)",

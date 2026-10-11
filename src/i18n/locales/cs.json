@@ -5769,7 +5769,7 @@
             "keyslotsRemoveConfirmLabel": "Pro potvrzení odebrání zadejte YES",
             "keyslotsRemoveTypeYes": "Pro potvrzení odebrání zadejte YES (velkými písmeny).",
             "keyslotsRemoveUnlockHint": "Chcete-li odebrat slot, nejprve odemkněte jiným zbývajícím slotem (nelze odebrat slot, kterým jste odemkli).",
-            "keyslotsF6Honesty": "Odebrání faktoru mu od teď zabrání otevírat trezor. NEšifruje znovu vaše data: kdokoli, kdo si už uchoval kopii staré hlavičky trezoru A odebraných přihlašovacích údajů, stále může otevřít data, ke kterým měl přístup. Pro úplné odebrání přístupu trezor znovu zašifrujte (rotujte Volume Key).",
+            "keyslotsF6Honesty": "Odebrání faktoru mu od teď zabrání otevírat trezor. NEšifruje znovu vaše data: kdokoli, kdo si uchoval kopii staré hlavičky trezoru A odebraných přihlašovacích údajů, stále může otevřít celý trezor, včetně souborů přidaných po odebrání. Pro úplné odebrání přístupu vytvořte nový trezor, přesuňte do něj své soubory a starý smažte.",
             "keyslotsKindPassphrase": "Přístupová fráze",
             "keyslotsKindKeyfile": "Keyfile",
             "keyslotsKindRecovery": "Obnova",
@@ -5792,7 +5792,12 @@
             "keyslotsRecoveryCopy": "Kopírovat kód",
             "keyslotsUnlockWithRecovery": "Můžete také odemknout obnovovacím kódem (vložte jej jako heslo).",
             "openDefaultSaltLabel": "Tento vault používá výchozí sůl AeroCrypt",
-            "openDefaultSaltHint": "Bez markeru se vault s výchozí solí otevře pouze heslem, jakmile se s ním dešifrují názvy v této složce. Na vzdálený server se nic nezapisuje."
+            "openDefaultSaltHint": "Bez markeru se vault s výchozí solí otevře pouze heslem, jakmile se s ním dešifrují názvy v této složce. Na vzdálený server se nic nezapisuje.",
+            "keyslotsSetAsideRisks": "Tento server nemůže nahradit soubor jedním krokem. Aktuální značka se přejmenuje stranou, nová se přesune na její místo a stará se poté smaže. Po tuto chvíli trezor nemá žádnou značku a nelze ho otevřít. Pokud se změna uprostřed přeruší, značka zůstane ve složce trezoru pod názvem obsahujícím .aeroftp-replaced- a je nutné ji přejmenovat zpět ručně. Na úložišti, které uchovává koš nebo verze souborů, zůstává předchozí značka obnovitelná tam.",
+            "keyslotsSetAsideRevocation": "Předchozí značka stále otevírá trezor pomocí faktoru, který odebíráte nebo nahrazujete. Každá kopie ponechaná ve složce trezoru se po změně smaže a kopie, kterou nelze smazat, je hlášena jako chyba. Kopie v koši úložiště nebo ve verzích souborů se nedotkne: vyprázdněte je, aby bylo odvolání dokončeno.",
+            "keyslotsSetAsideConsent": "Rozumím: nahradit značku na tomto serveru přejmenováním staré stranou",
+            "keyslotsSetAsideConsentRequired": "Tento server může značku trezoru nahradit pouze přejmenováním staré stranou: pro pokračování to potvrďte v poli výše.",
+            "keyslotsMarkerReplaceUnsupported": "Tento server nemůže nahradit značku trezoru, proto jsou zde změny slotů odmítnuty. Otevřete totéž úložiště přes server, který nahrazuje soubor jedním krokem (například SFTP)."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrování)",
