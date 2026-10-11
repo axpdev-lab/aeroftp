@@ -123,6 +123,25 @@ futures-util = "0.3"
 # not do, so the residual risk is not applicable to our surface.
 # Keep =2.11.0; ignore tauri 2.11.x in dependabot.yml.
 tauri = { version = "=2.11.0", features = ["tray-icon", "protocol-asset"] }
+# Hold the layer under the pin on the pin's own line. `tauri` 2.11.0 accepts
+# tauri-runtime and tauri-runtime-wry `^2.11.0` and tauri-utils `^2.9.0`, so
+# the `=` above does not stop a plain `cargo update` from moving them to the
+# 2.12 line (runtime 2.12.1, runtime-wry 2.12.1 with wry 0.57 and tao 0.37,
+# tauri-utils 2.10), which is what `tauri` 2.12 requires with `~`. tauri
+# 2.11.0 does not compile against runtime 2.12: `available_monitors()` changed
+# shape (app.rs), and on Windows the WebView2 types come from two
+# webview2-com versions (0.38 in tauri, 0.39 in runtime-wry). tauri-utils
+# 2.10 compiles, but every release through v4.2.2 shipped 2.9.3 and 2.10 is
+# the 2.12 line, so it is held too; that also keeps tauri-plugin on 2.6.x
+# (2.7 requires tauri-utils ~2.10). wry, tao and webview2-com follow from the
+# runtime-wry line (`^0.55.0`, `^0.35.0`, `^0.38`). None of these is used
+# directly and no features are added: the requirements are the reason the
+# lines exist. Move them with the `tauri` pin, in the same PR
+# (dependabot.yml ignores runtime and runtime-wry >=2.12.0, tauri-utils
+# >=2.10.0).
+tauri-runtime = { version = "~2.11.3", default-features = false }
+tauri-runtime-wry = { version = "~2.11.4", default-features = false }
+tauri-utils = { version = "~2.9.3", default-features = false }
 tauri-plugin-log = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"

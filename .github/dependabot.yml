@@ -36,6 +36,19 @@ updates:
         versions: [">=2.7.0"]
       - dependency-name: "tauri-codegen"
         versions: [">=2.7.0"]
+      # The runtime layer under the pin stays on its line too (Cargo.toml
+      # holds it): tauri 2.11.0 accepts runtime/runtime-wry ^2.11 and
+      # tauri-utils ^2.9, but does not compile against runtime 2.12
+      # (available_monitors, and two webview2-com versions on Windows), and
+      # tauri-utils 2.10 is the 2.12 line no release has shipped. wry, tao
+      # and webview2-com follow runtime-wry. Patch updates on the line stay
+      # open; all three move with the tauri pin, never alone.
+      - dependency-name: "tauri-runtime"
+        versions: [">=2.12.0"]
+      - dependency-name: "tauri-runtime-wry"
+        versions: [">=2.12.0"]
+      - dependency-name: "tauri-utils"
+        versions: [">=2.10.0"]
       - dependency-name: "suppaftp"
         update-types: ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "rand"

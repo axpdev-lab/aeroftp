@@ -118,13 +118,17 @@ ignore = [
     "RUSTSEC-2024-0370",  # proc-macro-error
 
     # ----------------------------------------------------------------
-    # unic-* unmaintained (build-dep only via tauri-utils / urlpattern)
+    # unic-* unmaintained (runtime, via tauri-utils / urlpattern)
     # ----------------------------------------------------------------
     # `unic-char-property`, `unic-char-range`, `unic-common`, `unic-ucd-ident`,
     # `unic-ucd-version` are all pulled by `urlpattern 0.3.0` <- `tauri-utils`
-    # <- `tauri-build` (build-dependency) <- aeroftp. Used at build-time for
-    # URL pattern matching in Tauri's CSP / asset scope code generation.
-    # Not in runtime binary. Tauri tracks the urlpattern bump upstream.
+    # 2.9 <- `tauri` 2.11.0 <- aeroftp. They ARE in the shipped binary:
+    # tauri-utils parses capability `remote` URLs with urlpattern
+    # (`acl::RemoteUrlPattern`), at build time in tauri-build and at runtime
+    # in `tauri`. Unmaintained is the whole advisory (no vulnerability), and
+    # the inputs are our own capability files, not remote data. tauri-utils
+    # stays on 2.9 with the `tauri` =2.11.0 pin (see Cargo.toml); 2.10 moves
+    # to urlpattern 0.6, which drops unic-*, so these clear with that move.
     "RUSTSEC-2025-0075",  # unic-char-range
     "RUSTSEC-2025-0080",  # unic-common
     "RUSTSEC-2025-0081",  # unic-char-property
