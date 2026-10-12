@@ -263,7 +263,7 @@ For languages with non-Latin scripts (Cyrillic, CJK, Thai, Hindi, Bengali, Khmer
 - Use `ensure_ascii=False` in `json.dump()` to preserve Unicode in output
 - Split non-Latin languages into **smaller batches** (3-5 langs per agent) to avoid hitting the 32K output token limit
 - Write the translation directly in the native script. Never build it by transliteration or by substituting characters: that yields words that are not words, or words carrying a look-alike letter from another alphabet, which reads correctly and breaks search
-- Verify with `npm run i18n:contamination`. A check that the native script is present (`has_armenian()`, `has_cyrillic()`) passes a string that is half another alphabet; the gate checks that nothing else is there
+- Verify with `npm run i18n:contamination`. A check that the native script is present (`has_armenian()`, `has_cyrillic()`) passes a string that is half another alphabet. The gate flags letters from a script the locale does not declare, invisible or broken characters, and Latin letters inside or between native words. It accepts Latin everywhere, so a string transliterated wholly into Latin passes it: native-script wording still needs a reader of the language
 
 ### Delegation and Parallel Workflows
 

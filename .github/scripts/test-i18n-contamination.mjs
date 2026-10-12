@@ -45,7 +45,11 @@ test('what each writing system legitimately uses is not a hit', (t) => {
         bn: { danda: 'ফাইল।', zwj: 'র\u200D্যাপ' },
         hi: { version: 'संस्करण v{version} चल रहा है' },
         uk: { apostrophe: 'звʼязці', brand: 'через Google Drive' },
-        en: { emoji: 'Family 👨\u200D👩\u200D👧 sync' },
+        en: {
+            emoji: 'Family 👨\u200D👩\u200D👧 sync',
+            selector: 'Couple \u{1F469}\u200D\u2764\uFE0F\u200D\u{1F468}',
+            skinTone: 'Coder \u{1F469}\u{1F3FD}\u200D\u{1F4BB}',
+        },
         de: { softHyphen: 'Sicherheits\u00ADwerkzeuge' },
         km: { zwsp: 'សួស្តី\u200Bពិភពលោក' },
         ja: { glued: 'SSHキー' },
@@ -82,10 +86,10 @@ test('a Latin look-alike inside a native word fails, glued or standing alone', (
 test('an invisible or broken character fails where the script does not use it', (t) => {
     const args = fixture(t, {
         et: { zwsp: 'tühis\u200Btatud' },
-        en: { bidi: 'abc\u202Edef', replacement: 'broken \uFFFD' },
+        en: { bidi: 'abc\u202Edef', replacement: 'broken \uFFFD', strayZwj: 'a\uFE0F\u200D\u{1F468}' },
         bn: { zwsp: 'ফা\u200Bইল' },
     });
-    assert.deepEqual([...hits(args)].sort(), ['bn.zwsp', 'en.bidi', 'en.replacement', 'et.zwsp']);
+    assert.deepEqual([...hits(args)].sort(), ['bn.zwsp', 'en.bidi', 'en.replacement', 'en.strayZwj', 'et.zwsp']);
 });
 
 test('the gate fails on a hit, an undeclared locale and a stale acceptance, and honours a live one', (t) => {

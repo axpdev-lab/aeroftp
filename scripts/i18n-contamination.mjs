@@ -175,11 +175,21 @@ const scriptsOf = (ch) => {
 
 const describe = (ch) => `${JSON.stringify(ch)} ${codePoint(ch)} ${scriptsOf(ch)}`;
 
-/** ZWJ between two pictographs is part of an emoji sequence, not text. */
-const inEmojiSequence = (chars, i) =>
-    chars[i] === '\u200D'
-    && /\p{Extended_Pictographic}/u.test(chars[i - 1] ?? '')
-    && /\p{Extended_Pictographic}/u.test(chars[i + 1] ?? '');
+const PICTOGRAPH = /^\p{Extended_Pictographic}$/u;
+/** What may follow a pictograph before a ZWJ: a presentation selector or a skin tone. */
+const EMOJI_TAIL = /^[\uFE0E\uFE0F\p{Emoji_Modifier}]$/u;
+
+/**
+ * ZWJ between two pictographs is part of an emoji sequence, not text. The
+ * first pictograph may carry a selector or skin tone before the ZWJ, as in
+ * 👩‍❤️‍👨 and 👩🏽‍💻.
+ */
+const inEmojiSequence = (chars, i) => {
+    if (chars[i] !== '\u200D' || !PICTOGRAPH.test(chars[i + 1] ?? '')) return false;
+    let j = i - 1;
+    while (j >= 0 && EMOJI_TAIL.test(chars[j])) j -= 1;
+    return PICTOGRAPH.test(chars[j] ?? '');
+};
 
 /**
  * Every finding in one value, as `{ rule, chars, word }` records. Pure: the
