@@ -83,12 +83,27 @@ fn internxt_login_refused(
     retry_after: Option<&str>,
     body: &str,
 ) -> ProviderError {
-    let detail = format!(
-        "{} ({}): {}",
-        context,
-        status,
-        super::sanitize_api_error(body)
-    );
+    // The gateway's setup refusal is an exact JSON code, not free-form text.
+    // Other statuses retain their plan, rate-limit or server diagnosis.
+    let setup_pending = matches!(status.as_u16(), 401 | 403)
+        && serde_json::from_str::<serde_json::Value>(body)
+            .ok()
+            .is_some_and(|value| {
+                value.get("code").and_then(serde_json::Value::as_str) == Some("AccountSetupPending")
+            });
+    let detail = if setup_pending {
+        format!(
+            "{} ({}): Complete your Internxt account setup using the link sent to your email, then try again.",
+            context, status
+        )
+    } else {
+        format!(
+            "{} ({}): {}",
+            context,
+            status,
+            super::sanitize_api_error(body)
+        )
+    };
     match status.as_u16() {
         401 => ProviderError::AuthenticationFailed(detail),
         402 | 403 => ProviderError::PermissionDenied(detail),
@@ -4309,6 +4324,93 @@ mod tests {
         match provider.connect().await {
             Err(ProviderError::ConnectionFailed(_)) => {}
             other => panic!("{other:?}"),
+        }
+    }
+
+    const SETUP_PENDING: &str =
+        r#"{"code":"AccountSetupPending","message":"Account not ready","token":"response-secret"}"#;
+
+    #[tokio::test]
+    async fn pending_setup_in_every_login_step_explains_the_email_link() {
+        let unused = || (200, "{}".to_string(), None);
+        for status in [401, 403] {
+            for step in 0..3 {
+                let pending = || (status, SETUP_PENDING.to_string(), None);
+                let (login, cli, web) = match step {
+                    0 => (pending(), unused(), unused()),
+                    1 => (login_hands_out_an_s_key(), pending(), unused()),
+                    _ => (
+                        login_hands_out_an_s_key(),
+                        (TIER_402.0, TIER_402.1.to_string(), None),
+                        pending(),
+                    ),
+                };
+                let (mut provider, requests) = provider_on_login_steps(login, cli, web).await;
+                let error = provider.connect().await.unwrap_err();
+                let message = match error {
+                    ProviderError::AuthenticationFailed(message) if status == 401 => message,
+                    ProviderError::PermissionDenied(message) if status == 403 => message,
+                    other => panic!("{other:?}"),
+                };
+                assert!(
+                    message.contains("account setup")
+                        && message.contains("email")
+                        && message.contains("link"),
+                    "step {step}: {message}"
+                );
+                assert!(!message.contains("response-secret"));
+                assert!(!provider.is_connected());
+                assert_eq!(
+                    requests.lock().unwrap().len(),
+                    step + 1,
+                    "no further login after pending setup"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pending_setup_requires_the_exact_top_level_json_code() {
+        for body in [
+            r#"{"message":"AccountSetupPending"}"#,
+            r#"{"code":"AccountSetupPendingOther"}"#,
+            r#"{"code":"accountsetuppending"}"#,
+            r#"{"error":{"code":"AccountSetupPending"}}"#,
+            r#"{"code":["AccountSetupPending"]}"#,
+            r#"{"code":"AccountSetupPending""#,
+        ] {
+            let error =
+                internxt_login_refused("fixture login", reqwest::StatusCode::FORBIDDEN, None, body);
+            assert!(
+                matches!(error, ProviderError::PermissionDenied(ref message) if !message.contains("using the link")),
+                "{error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn pending_code_cannot_override_plan_rate_limit_or_server_errors() {
+        for status in [402, 429, 500, 502, 503] {
+            let error = internxt_login_refused(
+                "fixture login",
+                reqwest::StatusCode::from_u16(status).unwrap(),
+                Some("12"),
+                SETUP_PENDING,
+            );
+            match error {
+                ProviderError::PermissionDenied(message) if status == 402 => {
+                    assert!(!message.contains("using the link"))
+                }
+                ProviderError::ServerError(message) => {
+                    assert!(!message.contains("using the link"));
+                    if status == 429 {
+                        assert!(message.contains("retry in 12 seconds"));
+                    } else {
+                        assert!(message.contains(&status.to_string()));
+                    }
+                }
+                other => panic!("{status}: {other:?}"),
+            }
         }
     }
 }
