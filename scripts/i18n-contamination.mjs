@@ -242,8 +242,14 @@ function inspect(value, declaration) {
         // it in the corpus. Tokens split on whitespace and punctuation only, so
         // `v{version}` stays one token and is not a lone letter.
         const tokens = value.match(/[^\s.,;:!?()[\]«»"“”„/]+/gu) ?? [];
+        // A shared letter whose extensions include the locale's script counts
+        // as native here: the apostrophe `ʼ` in `обʼєктів` is Common by Script
+        // but Cyrillic by extension, and must not hide the Latin i next to it.
+        const shared = declaration.scripts.map(scx);
+        const nativeLetter = (ch) => native.some((re) => re.test(ch))
+            || (!latin.test(ch) && shared.some((re) => re.test(ch)));
         const nativeWord = (token) => /^\p{L}/u.test(token ?? '')
-            && [...token].every((ch) => !LETTER.test(ch) || native.some((re) => re.test(ch)));
+            && [...token].every((ch) => !LETTER.test(ch) || nativeLetter(ch));
         tokens.forEach((token, i) => {
             if (!/^\p{Script=Latin}$/u.test(token)) return;
             if (!nativeWord(tokens[i - 1]) || !nativeWord(tokens[i + 1])) return;

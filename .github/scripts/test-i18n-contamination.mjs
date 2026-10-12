@@ -74,12 +74,12 @@ test('a letter from another script fails, including a mark shared only by other 
 
 test('a Latin look-alike inside a native word fails, glued or standing alone', (t) => {
     const args = fixture(t, {
-        uk: { mixed: 'Введiть', lone: 'папок i перевпорядкувати' },
+        uk: { mixed: 'Введiть', lone: 'папок i перевпорядкувати', loneApostrophe: 'папок i обʼєктів' },
         mk: { grave: 'Избери сè' },
         km: { glued: 'គណនីKoofr' },
     });
     const found = report(args).contaminated;
-    assert.deepEqual(found.map((h) => `${h.locale}.${h.key}`).sort(), ['km.glued', 'mk.grave', 'uk.lone', 'uk.mixed']);
+    assert.deepEqual(found.map((h) => `${h.locale}.${h.key}`).sort(), ['km.glued', 'mk.grave', 'uk.lone', 'uk.loneApostrophe', 'uk.mixed']);
     assert.equal(found.find((h) => h.key === 'lone').findings[0].rule, 'lone');
 });
 
