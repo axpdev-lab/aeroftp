@@ -4534,16 +4534,19 @@ mod http_timeout_class_tests {
     /// into the body).
     #[derive(Debug, Default, PartialEq)]
     struct RangedReads {
-        /// Requests whose error goes through `range_read_error`.
+        /// Requests whose error goes through `range_read_error` and then to
+        /// the caller as it is (`?`).
         requests: Vec<usize>,
-        /// Body reads whose error goes through `range_read_error`, and capped
-        /// body reads made with `range_window_with_limit`.
+        /// Body reads whose error does the same, and capped body reads made
+        /// with `range_window_with_limit`, whose error goes to the caller as
+        /// it is.
         bodies: Vec<usize>,
         /// Every other read: a mapper that files a dropped connection as a
-        /// hard failure, the whole-object reader, or a shape the scan cannot
-        /// follow (a `match` or an `if let` on the read, a request not
-        /// awaited where it is made). The scan cannot tell what such a shape
-        /// does with the error, so it does not pass it.
+        /// hard failure (before `range_read_error` or after it), the
+        /// whole-object reader, or a shape the scan cannot follow (a `match`
+        /// or an `if let` on the read, a request not awaited where it is
+        /// made). The scan cannot tell what such a shape does with the
+        /// error, so it does not pass it.
         plain: Vec<usize>,
     }
 
@@ -4556,6 +4559,7 @@ mod http_timeout_class_tests {
         let keeps_error =
             regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
         let mapped = regex::Regex::new(r"^\s*\.(?:map_err|map_http_err)\(").expect("regex");
+        let propagated = regex::Regex::new(r"^\s*\?").expect("regex");
         // The text of an error status, read for its message: its error
         // cannot leave the call.
         let dropped = regex::Regex::new(
@@ -4566,13 +4570,29 @@ mod http_timeout_class_tests {
         let whole = concat!("response_bytes", "_with_limit(");
         let window = concat!("range_window", "_with_limit(");
         let bytes = body.as_bytes();
+        // Past the calls that keep the error as it is, the error has to go
+        // to the caller: a classified error converted again is lost.
+        let reaches_caller = |mut end: usize| {
+            while let Some(call) = keeps_error.find(&body[end..]) {
+                end = past_close(bytes, end + call.end() - 1);
+            }
+            propagated.is_match(&body[end..])
+        };
         let mut reads = RangedReads::default();
         reads
             .plain
             .extend(body.match_indices(whole).map(|(at, _)| at));
-        reads
-            .bodies
-            .extend(body.match_indices(window).map(|(at, _)| at));
+        for (at, _) in body.match_indices(window) {
+            let end = past_close(bytes, at + window.len() - 1);
+            let kept = awaited
+                .find(&body[end..])
+                .is_some_and(|wait| reaches_caller(end + wait.end()));
+            if kept {
+                reads.bodies.push(at);
+            } else {
+                reads.plain.push(at);
+            }
+        }
         for found in read.find_iter(body) {
             let text = found.as_str();
             let request =
@@ -4600,7 +4620,8 @@ mod http_timeout_class_tests {
             }
             let kept = mapped.find(&body[end..]).is_some_and(|map| {
                 let open = end + map.end() - 1;
-                body[open..past_close(bytes, open)].contains("range_read_error")
+                let close = past_close(bytes, open);
+                body[open..close].contains("range_read_error") && reaches_caller(close)
             });
             match (kept, request) {
                 (true, true) => reads.requests.push(found.start()),
@@ -4611,11 +4632,13 @@ mod http_timeout_class_tests {
         reads
     }
 
-    /// The scan judges each read by itself. A request handled by a `match`
-    /// passed it while the body read of the same provider was classified,
-    /// with an arm that kept the timeout and filed the dropped connection as
-    /// a hard failure. The reads are spelled through constants so that these
-    /// lines are not reads of this file for the other scans.
+    /// The scan judges each read by itself, up to where its error leaves. A
+    /// request handled by a `match` passed it while the body read of the same
+    /// provider was classified, with an arm that kept the timeout and filed
+    /// the dropped connection as a hard failure; then a capped body read
+    /// passed it on its name alone, with its error converted again to
+    /// `TransferFailed`. The reads are spelled through constants so that
+    /// these lines are not reads of this file for the other scans.
     #[test]
     fn the_ranged_read_scan_judges_every_read_by_itself() {
         const SEND: &str = concat!(".se", "nd()");
@@ -4649,6 +4672,23 @@ mod http_timeout_class_tests {
         assert_eq!(counts(&ranged_reads(&deferred)), (0, 0, 1));
         let status = format!("let text = resp{TEXT}.await.unwrap_or_default();");
         assert_eq!(ranged_reads(&status), RangedReads::default());
+        let capped_again = format!(
+            "let bytes = super::{}resp, MAX)
+                 .await
+                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;",
+            concat!("range_window", "_with_limit(")
+        );
+        assert_eq!(counts(&ranged_reads(&capped_again)), (0, 0, 1));
+        let capped_kept = format!(
+            "let bytes = super::{}resp, MAX).await.map(|b| b.len())?;",
+            concat!("range_window", "_with_limit(")
+        );
+        assert_eq!(counts(&ranged_reads(&capped_kept)), (0, 1, 0));
+        let mapped_again = format!(
+            "resp{BYTES}.await.map_err(super::multi_thread::range_read_error)
+                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?"
+        );
+        assert_eq!(counts(&ranged_reads(&mapped_again)), (0, 0, 1));
     }
 
     /// The class behind `range_read_error`: inside the `read_range` of every
