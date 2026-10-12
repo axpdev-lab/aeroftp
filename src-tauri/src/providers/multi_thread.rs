@@ -978,10 +978,12 @@ where
     }
 
     let temp_path = segmented_temp_path_for(&config.final_path);
-    // DAG-P2-01b: a segmented transfer remains one foreground job for the
-    // global governor. The lease covers pre-allocation and every range; range
-    // fan-out must not multiply endpoint permits. The publication is the
-    // caller's, under the claim the run hands back with the temporary.
+    // DAG-P2-01b: a segmented transfer remains one job for the global
+    // governor. When the caller already holds that job (a batch file, a
+    // single-file graph, a sync tree), this acquire joins it instead of
+    // taking a second endpoint or disk slot. On its own it still takes one
+    // job, and range fan-out does not multiply permits. The publication is
+    // the caller's, under the claim the run hands back with the temporary.
     let _governor_lease = crate::transfer_dag::governor::global()
         .acquire_job(
             config.endpoint_identity.clone(),

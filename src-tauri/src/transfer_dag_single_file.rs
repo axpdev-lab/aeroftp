@@ -623,8 +623,9 @@ async fn run_copy_shape(
         .unwrap_or_default();
     // A user-initiated copy is foreground work. The lease covers the whole
     // graph, so native and download-upload fallback shapes cannot exceed the
-    // endpoint or local-device caps between nodes.
-    let _job_lease = crate::transfer_dag::governor::global()
+    // endpoint or local-device caps between nodes. `scope` publishes the job
+    // to spawned nodes, including a `block_on` root with no task id.
+    let job_lease = crate::transfer_dag::governor::global()
         .acquire_job(endpoint, TransferPriority::Foreground, disk_requests)
         .await;
     let first_error: Arc<StdMutex<Option<ProviderError>>> = Arc::new(StdMutex::new(None));
@@ -694,23 +695,27 @@ async fn run_copy_shape(
     // DAG-P2-01: shared process-global buffer-byte pool (see governor.rs).
     let manager =
         crate::transfer_dag::governor::global().child_manager(TransferBudget::from_file_slots(1));
-    match execute_dag_with_options(
-        &built.dag,
-        &manager,
-        runner,
-        observer,
-        None,
-        DagExecuteOptions::default(),
-    )
-    .await
-    {
-        Ok(_) => Ok(()),
-        Err(error) => Err(first_error
-            .lock()
-            .expect("copy first-error slot poisoned")
-            .take()
-            .unwrap_or_else(|| ProviderError::TransferFailed(error.to_string()))),
-    }
+    job_lease
+        .scope(async {
+            match execute_dag_with_options(
+                &built.dag,
+                &manager,
+                runner,
+                observer,
+                None,
+                DagExecuteOptions::default(),
+            )
+            .await
+            {
+                Ok(_) => Ok(()),
+                Err(error) => Err(first_error
+                    .lock()
+                    .expect("copy first-error slot poisoned")
+                    .take()
+                    .unwrap_or_else(|| ProviderError::TransferFailed(error.to_string()))),
+            }
+        })
+        .await
 }
 
 fn cancelled_transfer_error() -> ProviderError {
@@ -1442,8 +1447,10 @@ pub async fn execute_single_file_dag_with(
     };
     // Single-file GUI/CLI actions are foreground work. Hold one endpoint and
     // directional local-device lease for the complete graph, including native
-    // multipart fan-out and terminal cleanup.
-    let _job_lease = crate::transfer_dag::governor::global()
+    // multipart fan-out and terminal cleanup. `scope` publishes that job to
+    // nodes spawned below, including when this future is a `block_on` root
+    // with no task id, so a segmented download joins this lease.
+    let job_lease = crate::transfer_dag::governor::global()
         .acquire_job(
             endpoint.clone(),
             TransferPriority::Foreground,
@@ -1476,56 +1483,60 @@ pub async fn execute_single_file_dag_with(
         wire_bytes_total,
         direction,
     });
-    let outcome = execute_dag_with_options(
-        &built.dag,
-        &manager,
-        runner,
-        observer,
-        aimd,
-        DagExecuteOptions {
-            parent_cancel: cancel_token,
-            ..DagExecuteOptions::default()
-        },
-    )
-    .await;
+    job_lease
+        .scope(async {
+            let outcome = execute_dag_with_options(
+                &built.dag,
+                &manager,
+                runner,
+                observer,
+                aimd,
+                DagExecuteOptions {
+                    parent_cancel: cancel_token,
+                    ..DagExecuteOptions::default()
+                },
+            )
+            .await;
 
-    // A durable multipart session is intentionally preserved after a failure:
-    // its journaled receipts are the proof that a restart may submit only the
-    // missing parts. Legacy in-memory multipart state keeps the old best-effort
-    // abort behavior. Expired durable records are scavenged conservatively by
-    // a later connected run, which can abort the matching provider session.
-    if outcome.is_err() {
-        if let Some(checkpoint) = durable_checkpoint.as_ref() {
-            // A transfer that will not be resumed aborts its session instead,
-            // and drops the record only once the provider confirmed the abort:
-            // a record left behind is still found and retried by the
-            // scavenger, a record dropped too early would orphan the parts.
-            let aborted = on_failure == MultipartFailure::Abort
-                && abort_open_session(multipart_state.as_deref(), &provider).await;
-            let mut checkpoint = checkpoint.lock().expect("checkpoint mutex poisoned");
-            if aborted {
-                checkpoint.remove();
-            } else {
-                checkpoint.mark_failed();
-            }
-        } else if let Some(state) = multipart_state.as_ref() {
-            if let Some(handle) = state.take_for_abort().await {
-                let mut guard = provider.lock().await;
-                if let Some(p) = guard.as_mut() {
-                    let _ = p.abort_multipart_upload(handle).await;
+            // A durable multipart session is intentionally preserved after a failure:
+            // its journaled receipts are the proof that a restart may submit only the
+            // missing parts. Legacy in-memory multipart state keeps the old best-effort
+            // abort behavior. Expired durable records are scavenged conservatively by
+            // a later connected run, which can abort the matching provider session.
+            if outcome.is_err() {
+                if let Some(checkpoint) = durable_checkpoint.as_ref() {
+                    // A transfer that will not be resumed aborts its session instead,
+                    // and drops the record only once the provider confirmed the abort:
+                    // a record left behind is still found and retried by the
+                    // scavenger, a record dropped too early would orphan the parts.
+                    let aborted = on_failure == MultipartFailure::Abort
+                        && abort_open_session(multipart_state.as_deref(), &provider).await;
+                    let mut checkpoint = checkpoint.lock().expect("checkpoint mutex poisoned");
+                    if aborted {
+                        checkpoint.remove();
+                    } else {
+                        checkpoint.mark_failed();
+                    }
+                } else if let Some(state) = multipart_state.as_ref() {
+                    if let Some(handle) = state.take_for_abort().await {
+                        let mut guard = provider.lock().await;
+                        if let Some(p) = guard.as_mut() {
+                            let _ = p.abort_multipart_upload(handle).await;
+                        }
+                    }
                 }
             }
-        }
-    }
 
-    match outcome {
-        Ok(_summary) => Ok(()),
-        Err(dag_err) => Err(first_error
-            .lock()
-            .expect("first-error slot poisoned")
-            .take()
-            .unwrap_or_else(|| ProviderError::TransferFailed(dag_err.to_string()))),
-    }
+            match outcome {
+                Ok(_summary) => Ok(()),
+                Err(dag_err) => Err(first_error
+                    .lock()
+                    .expect("first-error slot poisoned")
+                    .take()
+                    .unwrap_or_else(|| ProviderError::TransferFailed(dag_err.to_string()))),
+            }
+        })
+        .await
 }
 
 /// [`execute_single_file_dag_with`] for a production transfer: a failed or

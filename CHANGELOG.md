@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A segmented download finishes when its own file already holds the only free transfer slot. With several large files at the maximum parallel setting, or with the endpoint or disk slot cap set to one, that download asked for a second slot and waited forever.
 - `aeroftp-cli serve sftp` stores uploaded files. It acknowledged every write and discarded the data, so a client saw a finished upload and no file existed, on every backend; it also left the OpenSSH client hanging at the end of a session.
 - `aeroftp-cli sync <folder> <local> <remote>` with a folder as the first argument no longer drops the third one: it syncs against the folder as a remote instead of copying folder to folder.
 - AeroAgent works with Anthropic. Every request carried an `anthropic-version` header the API rejects, so chat, the model list and the Test button all failed with HTTP 400, and the Test button sent the key as a Bearer token. Claude Sonnet 5.5, Haiku 5.5, Opus 5.5, Fable 5.1 and the 5 and 4.7/4.8 models now use the request shape the API requires (adaptive thinking with effort, no sampling parameters), the model list has Sonnet 5.5 and Haiku 5.5 and no retired model, and it is readable in the light theme.

@@ -44,6 +44,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use tokio::task::Id as TaskId;
 use tokio::time::Instant;
 
 use super::resources::{
@@ -700,11 +701,198 @@ impl DiskLeaseRequest {
     }
 }
 
-/// RAII aggregate for the process endpoint and local-device leases held by one
-/// transfer job. Dropping it returns every child permit in reverse field order.
-pub struct GovernorJobLease {
+/// Permits of one transfer job. Every nested and inherited lease holds this
+/// `Arc`, so the slots stay taken until the last of them drops.
+struct HeldJobPermits {
     _endpoint: EndpointOpLease,
     _disk: Vec<DiskOpLease>,
+}
+
+/// One task's participation in a job. `depth` counts the leases on that task.
+/// The map's `Arc` is removed at depth 0; the permits themselves live as long
+/// as any lease still holds one.
+struct TaskJob {
+    depth: u32,
+    governor: usize,
+    permits: Arc<HeldJobPermits>,
+}
+
+fn job_tasks() -> &'static Mutex<HashMap<TaskId, TaskJob>> {
+    static JOBS: OnceLock<Mutex<HashMap<TaskId, TaskJob>>> = OnceLock::new();
+    JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn governor_key(governor: &GlobalTransferGovernor) -> usize {
+    governor as *const GlobalTransferGovernor as usize
+}
+
+/// Decrements this task's job depth. Declared before the permit `Arc` on the
+/// lease so it runs first and the map does not keep the permits alive.
+struct JobDepthGuard {
+    task: TaskId,
+}
+
+impl Drop for JobDepthGuard {
+    fn drop(&mut self) {
+        let mut jobs = job_tasks().lock().expect("governor job map poisoned");
+        let Some(job) = jobs.get_mut(&self.task) else {
+            return;
+        };
+        job.depth = job.depth.saturating_sub(1);
+        if job.depth == 0 {
+            jobs.remove(&self.task);
+        }
+    }
+}
+
+tokio::task_local! {
+    static CURRENT_JOB: JobShare;
+}
+
+/// A clone of the job the current task holds, captured so a spawned graph
+/// node or sync worker can join it instead of taking a second slot.
+#[derive(Clone)]
+pub(crate) struct JobShare {
+    governor: usize,
+    permits: Arc<HeldJobPermits>,
+}
+
+impl JobShare {
+    /// Mark the current task as inside this job and keep its permits alive.
+    pub(crate) fn enter(self) -> GovernorJobLease {
+        let Some(task) = tokio::task::try_id() else {
+            return GovernorJobLease {
+                depth: None,
+                governor: self.governor,
+                permits: self.permits,
+            };
+        };
+        let mut jobs = job_tasks().lock().expect("governor job map poisoned");
+        match jobs.get_mut(&task) {
+            Some(job) if job.governor == self.governor => {
+                job.depth = job.depth.saturating_add(1);
+            }
+            Some(_) => {
+                drop(jobs);
+                return GovernorJobLease {
+                    depth: None,
+                    governor: self.governor,
+                    permits: self.permits,
+                };
+            }
+            None => {
+                jobs.insert(
+                    task,
+                    TaskJob {
+                        depth: 1,
+                        governor: self.governor,
+                        permits: Arc::clone(&self.permits),
+                    },
+                );
+            }
+        }
+        drop(jobs);
+        GovernorJobLease {
+            depth: Some(JobDepthGuard { task }),
+            governor: self.governor,
+            permits: self.permits,
+        }
+    }
+}
+
+/// The job held by the current task, if it has one. Spawn sites read this on
+/// the parent and call [`JobShare::enter`] inside the child.
+///
+/// A [`GovernorJobLease::scope`] publishes the job even when this future is
+/// not itself a spawned task (a `block_on` root, a `#[tokio::test]`). The
+/// task map covers a spawned file node that acquired the job directly.
+pub(crate) fn current_job_share() -> Option<JobShare> {
+    if let Ok(share) = CURRENT_JOB.try_with(Clone::clone) {
+        return Some(share);
+    }
+    let task = tokio::task::try_id()?;
+    let jobs = job_tasks().lock().expect("governor job map poisoned");
+    let job = jobs.get(&task)?;
+    Some(JobShare {
+        governor: job.governor,
+        permits: Arc::clone(&job.permits),
+    })
+}
+
+fn reentrant_from_scope(governor: usize) -> Option<GovernorJobLease> {
+    let share = CURRENT_JOB.try_with(Clone::clone).ok()?;
+    if share.governor != governor {
+        return None;
+    }
+    Some(GovernorJobLease {
+        depth: None,
+        governor: share.governor,
+        permits: share.permits,
+    })
+}
+
+fn reentrant_job(governor: usize) -> Option<GovernorJobLease> {
+    let task = tokio::task::try_id()?;
+    let mut jobs = job_tasks().lock().expect("governor job map poisoned");
+    let job = jobs.get_mut(&task)?;
+    if job.governor != governor {
+        return None;
+    }
+    job.depth = job.depth.saturating_add(1);
+    let permits = Arc::clone(&job.permits);
+    drop(jobs);
+    Some(GovernorJobLease {
+        depth: Some(JobDepthGuard { task }),
+        governor,
+        permits,
+    })
+}
+
+fn register_job(governor: usize, permits: Arc<HeldJobPermits>) -> Option<JobDepthGuard> {
+    let task = tokio::task::try_id()?;
+    let mut jobs = job_tasks().lock().expect("governor job map poisoned");
+    if jobs.contains_key(&task) {
+        // This task already tracks a different governor. Do not retarget it.
+        return None;
+    }
+    jobs.insert(
+        task,
+        TaskJob {
+            depth: 1,
+            governor,
+            permits,
+        },
+    );
+    Some(JobDepthGuard { task })
+}
+
+/// RAII aggregate for the process endpoint and local-device leases held by one
+/// transfer job. Nested acquires on the same job share one set of permits.
+/// Dropping the last lease returns every child permit.
+pub struct GovernorJobLease {
+    /// Removes this task from the job map when the last lease on that task
+    /// drops. The guard's `Drop` is the effect; nothing else reads the field.
+    #[allow(dead_code)]
+    depth: Option<JobDepthGuard>,
+    governor: usize,
+    permits: Arc<HeldJobPermits>,
+}
+
+impl GovernorJobLease {
+    /// Run `future` inside this job. A nested [`GlobalTransferGovernor::acquire_job`]
+    /// on this governor joins the permits instead of taking a second slot, and
+    /// a spawn during `future` can read [`current_job_share`].
+    pub(crate) async fn scope<T>(self, future: impl std::future::Future<Output = T>) -> T {
+        let share = JobShare {
+            governor: self.governor,
+            permits: Arc::clone(&self.permits),
+        };
+        // `self` stays alive across `future`, so its task-map guard drops only
+        // after the job has finished.
+        let outcome = CURRENT_JOB.scope(share, future).await;
+        drop(self);
+        outcome
+    }
 }
 
 /// The process-global hierarchical governor.
@@ -849,12 +1037,24 @@ impl GlobalTransferGovernor {
     /// sorted and de-duplicated before acquisition, giving same-device jobs one
     /// shared directional cap and avoiding lock-order cycles for copies that
     /// touch two devices.
+    ///
+    /// A task that already holds a job on this governor, and a spawned node
+    /// that inherited that job, does not take a second permit. A segmented
+    /// download runs inside the file, copy, or sync job that already holds
+    /// the cap. A second permit deadlocks when those holders fill the endpoint
+    /// or disk slots and then wait for the nested acquire. A segmented
+    /// download with no job around it still takes its own.
     pub async fn acquire_job(
         &self,
         endpoint: EndpointIdentity,
         priority: TransferPriority,
         disk_requests: impl IntoIterator<Item = DiskLeaseRequest>,
     ) -> GovernorJobLease {
+        let key = governor_key(self);
+        if let Some(shared) = reentrant_from_scope(key).or_else(|| reentrant_job(key)) {
+            return shared;
+        }
+
         let endpoint = self.endpoint(&endpoint);
         let endpoint_lease = endpoint.acquire_op_with_priority(priority).await;
 
@@ -874,9 +1074,15 @@ impl GlobalTransferGovernor {
         for (identity, direction) in requests {
             disk.push(self.disk(&identity).acquire(direction).await);
         }
-        GovernorJobLease {
+        let permits = Arc::new(HeldJobPermits {
             _endpoint: endpoint_lease,
             _disk: disk,
+        });
+        let depth = register_job(key, Arc::clone(&permits));
+        GovernorJobLease {
+            depth,
+            governor: key,
+            permits,
         }
     }
 
@@ -1249,6 +1455,177 @@ mod tests {
             .expect("same endpoint waiter did not release after job lease drop")
             .expect("same endpoint task panicked");
         drop(same_lease);
+    }
+
+    #[tokio::test]
+    async fn nested_acquire_on_the_holding_task_does_not_take_a_second_slot() {
+        // A batch file node is a spawned task. It acquires the job, then the
+        // segmented download acquires again on that same task. A `#[tokio::test]`
+        // body is not a spawned task (`try_id` is empty), so this proof runs
+        // inside `tokio::spawn`, which is the batch shape.
+        let gov = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: BUFFER_QUANTUM_BYTES,
+            bandwidth_bps: 0,
+            endpoint_slots: 1,
+            disk_device_slots: 1,
+        });
+        let endpoint = EndpointIdentity::new("sftp", "nested.test", "alice");
+        let path = std::env::temp_dir().join("aeroftp-governor-nested-lease");
+
+        let gov_for_holder = Arc::clone(&gov);
+        let endpoint_for_holder = endpoint.clone();
+        let path_for_holder = path.clone();
+        let holder = tokio::spawn(async move {
+            let outer = gov_for_holder
+                .acquire_job(
+                    endpoint_for_holder.clone(),
+                    TransferPriority::Background,
+                    [DiskLeaseRequest::write(path_for_holder.clone())],
+                )
+                .await;
+            let nested = tokio::time::timeout(
+                Duration::from_millis(500),
+                gov_for_holder.acquire_job(
+                    endpoint_for_holder.clone(),
+                    TransferPriority::Foreground,
+                    [DiskLeaseRequest::write(path_for_holder.clone())],
+                ),
+            )
+            .await
+            .expect("nested acquire deadlocked on the slot this task holds");
+
+            let endpoint_gov = gov_for_holder.endpoint(&endpoint_for_holder);
+            let disk = gov_for_holder.disk_for_path(&path_for_holder);
+            assert_eq!(endpoint_gov.available_ops(), 0);
+            assert_eq!(disk.available(DiskDirection::Write), 0);
+            drop(nested);
+            assert_eq!(endpoint_gov.available_ops(), 0, "inner drop freed the job");
+            assert_eq!(disk.available(DiskDirection::Write), 0);
+
+            let gov_for_other = Arc::clone(&gov_for_holder);
+            let endpoint_for_other = endpoint_for_holder.clone();
+            let path_for_other = path_for_holder.clone();
+            let other = tokio::spawn(async move {
+                gov_for_other
+                    .acquire_job(
+                        endpoint_for_other,
+                        TransferPriority::Foreground,
+                        [DiskLeaseRequest::write(path_for_other)],
+                    )
+                    .await
+            });
+            for _ in 0..16 {
+                if endpoint_gov.waiter_counts().0 == 1 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+            assert!(
+                !other.is_finished(),
+                "another task took the slot the outer job still holds"
+            );
+            other.abort();
+            let _ = other.await;
+            drop(outer);
+        });
+        holder.await.expect("holding task panicked");
+
+        assert_eq!(gov.endpoint(&endpoint).available_ops(), 1);
+        assert_eq!(gov.disk_for_path(&path).available(DiskDirection::Write), 1);
+    }
+
+    #[tokio::test]
+    async fn a_scoped_job_reenters_and_a_spawned_worker_joins_it() {
+        // Single-file, copy, and sync hold the job on the caller. That caller
+        // may be a `block_on` root, which has no task id. `scope` publishes
+        // the job for a nested acquire and for a worker spawned during it.
+        let gov = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: BUFFER_QUANTUM_BYTES,
+            bandwidth_bps: 0,
+            endpoint_slots: 1,
+            disk_device_slots: 1,
+        });
+        let endpoint = EndpointIdentity::new("sftp", "inherit.test", "alice");
+        let path = std::env::temp_dir().join("aeroftp-governor-inherited-lease");
+        let outer = gov
+            .acquire_job(
+                endpoint.clone(),
+                TransferPriority::Foreground,
+                [DiskLeaseRequest::write(path.clone())],
+            )
+            .await;
+        let endpoint_gov = gov.endpoint(&endpoint);
+        let disk = gov.disk_for_path(&path);
+        assert_eq!(endpoint_gov.available_ops(), 0);
+
+        outer
+            .scope(async {
+                let nested = tokio::time::timeout(
+                    Duration::from_millis(500),
+                    gov.acquire_job(
+                        endpoint.clone(),
+                        TransferPriority::Foreground,
+                        [DiskLeaseRequest::write(path.clone())],
+                    ),
+                )
+                .await
+                .expect("scoped nested acquire deadlocked on the slot this task holds");
+                drop(nested);
+                assert_eq!(endpoint_gov.available_ops(), 0, "inner drop freed the job");
+                assert_eq!(disk.available(DiskDirection::Write), 0);
+
+                let share = current_job_share().expect("scope publishes the job");
+                let gov_for_child = Arc::clone(&gov);
+                let endpoint_for_child = endpoint.clone();
+                let path_for_child = path.clone();
+                let child = tokio::spawn(async move {
+                    let _joined = share.enter();
+                    tokio::time::timeout(
+                        Duration::from_millis(500),
+                        gov_for_child.acquire_job(
+                            endpoint_for_child,
+                            TransferPriority::Foreground,
+                            [DiskLeaseRequest::write(path_for_child)],
+                        ),
+                    )
+                    .await
+                });
+                child
+                    .await
+                    .expect("inherited worker panicked")
+                    .expect("inherited worker deadlocked on the driver's slot");
+                assert_eq!(endpoint_gov.available_ops(), 0);
+                assert_eq!(disk.available(DiskDirection::Write), 0);
+
+                let gov_for_other = Arc::clone(&gov);
+                let endpoint_for_other = endpoint.clone();
+                let path_for_other = path.clone();
+                let other = tokio::spawn(async move {
+                    gov_for_other
+                        .acquire_job(
+                            endpoint_for_other,
+                            TransferPriority::Foreground,
+                            [DiskLeaseRequest::write(path_for_other)],
+                        )
+                        .await
+                });
+                for _ in 0..16 {
+                    if endpoint_gov.waiter_counts().0 == 1 {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+                assert!(
+                    !other.is_finished(),
+                    "another task took the slot the outer job still holds"
+                );
+                other.abort();
+                let _ = other.await;
+            })
+            .await;
+
+        assert_eq!(endpoint_gov.available_ops(), 1);
+        assert_eq!(disk.available(DiskDirection::Write), 1);
     }
 
     #[test]
