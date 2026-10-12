@@ -4530,6 +4530,127 @@ mod http_timeout_class_tests {
         assert_eq!(arm_body(block, start), b"{ g(e); continue; }");
     }
 
+    /// The reads of one `read_range` body, each judged by itself (offsets
+    /// into the body).
+    #[derive(Debug, Default, PartialEq)]
+    struct RangedReads {
+        /// Requests whose error goes through `range_read_error`.
+        requests: Vec<usize>,
+        /// Body reads whose error goes through `range_read_error`, and capped
+        /// body reads made with `range_window_with_limit`.
+        bodies: Vec<usize>,
+        /// Every other read: a mapper that files a dropped connection as a
+        /// hard failure, the whole-object reader, or a shape the scan cannot
+        /// follow (a `match` or an `if let` on the read, a request not
+        /// awaited where it is made). The scan cannot tell what such a shape
+        /// does with the error, so it does not pass it.
+        plain: Vec<usize>,
+    }
+
+    fn ranged_reads(body: &str) -> RangedReads {
+        let read = regex::Regex::new(
+            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
+        )
+        .expect("regex");
+        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
+        let keeps_error =
+            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
+        let mapped = regex::Regex::new(r"^\s*\.(?:map_err|map_http_err)\(").expect("regex");
+        // The text of an error status, read for its message: its error
+        // cannot leave the call.
+        let dropped = regex::Regex::new(
+            r"^\s*\.(?:unwrap_or_default\(\)|unwrap_or\(|unwrap_or_else\(|ok\(\))",
+        )
+        .expect("regex");
+        // Spelled in two pieces so this test is not one of its own matches.
+        let whole = concat!("response_bytes", "_with_limit(");
+        let window = concat!("range_window", "_with_limit(");
+        let bytes = body.as_bytes();
+        let mut reads = RangedReads::default();
+        reads
+            .plain
+            .extend(body.match_indices(whole).map(|(at, _)| at));
+        reads
+            .bodies
+            .extend(body.match_indices(window).map(|(at, _)| at));
+        for found in read.find_iter(body) {
+            let text = found.as_str();
+            let request =
+                text.starts_with(".send") || text.starts_with("send_with") || text == ".execute(";
+            let end = if text.ends_with("()") {
+                found.end()
+            } else {
+                past_close(bytes, found.end() - 1)
+            };
+            let Some(wait) = awaited.find(&body[end..]) else {
+                // A body helper of another type (`str::bytes`) is no read; a
+                // request whose future is awaited elsewhere is one the scan
+                // cannot follow.
+                if request {
+                    reads.plain.push(found.start());
+                }
+                continue;
+            };
+            let mut end = end + wait.end();
+            while let Some(call) = keeps_error.find(&body[end..]) {
+                end = past_close(bytes, end + call.end() - 1);
+            }
+            if dropped.is_match(&body[end..]) {
+                continue;
+            }
+            let kept = mapped.find(&body[end..]).is_some_and(|map| {
+                let open = end + map.end() - 1;
+                body[open..past_close(bytes, open)].contains("range_read_error")
+            });
+            match (kept, request) {
+                (true, true) => reads.requests.push(found.start()),
+                (true, false) => reads.bodies.push(found.start()),
+                (false, _) => reads.plain.push(found.start()),
+            }
+        }
+        reads
+    }
+
+    /// The scan judges each read by itself. A request handled by a `match`
+    /// passed it while the body read of the same provider was classified,
+    /// with an arm that kept the timeout and filed the dropped connection as
+    /// a hard failure. The reads are spelled through constants so that these
+    /// lines are not reads of this file for the other scans.
+    #[test]
+    fn the_ranged_read_scan_judges_every_read_by_itself() {
+        const SEND: &str = concat!(".se", "nd()");
+        const BYTES: &str = concat!(".by", "tes()");
+        const TEXT: &str = concat!(".te", "xt()");
+        let counts =
+            |reads: &RangedReads| (reads.requests.len(), reads.bodies.len(), reads.plain.len());
+        let classified = format!(
+            "let resp = client.get(url){SEND}.await.map_err(super::multi_thread::range_read_error)?;
+             let body = resp{BYTES}.await.map_err(super::multi_thread::range_read_error)?;"
+        );
+        assert_eq!(counts(&ranged_reads(&classified)), (1, 1, 0));
+        let by_hand = format!(
+            "let resp = match client.get(url){SEND}.await {{
+                 Ok(resp) => resp,
+                 Err(e) => return Err(super::http_send_error(e, |e| {{
+                     ProviderError::TransferFailed(e.to_string())
+                 }})),
+             }};
+             let body = super::{}resp, MAX).await?;",
+            concat!("range_window", "_with_limit(")
+        );
+        assert_eq!(counts(&ranged_reads(&by_hand)), (0, 1, 1));
+        let hard = format!(
+            "resp{BYTES}.await.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?"
+        );
+        assert_eq!(counts(&ranged_reads(&hard)), (0, 0, 1));
+        let whole = concat!("super::response_bytes", "_with_limit(resp, MAX).await?");
+        assert_eq!(counts(&ranged_reads(whole)), (0, 0, 1));
+        let deferred = format!("let pending = client.get(url){SEND}; timeout(wait, pending).await");
+        assert_eq!(counts(&ranged_reads(&deferred)), (0, 0, 1));
+        let status = format!("let text = resp{TEXT}.await.unwrap_or_default();");
+        assert_eq!(ranged_reads(&status), RangedReads::default());
+    }
+
     /// The class behind `range_read_error`: inside the `read_range` of every
     /// provider, a request or a body read is mapped with `range_read_error`,
     /// and a capped body is read with `range_window_with_limit`, so a window
@@ -4545,19 +4666,10 @@ mod http_timeout_class_tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
         let mut files = Vec::new();
         sources(&root, &mut files);
-        let request = regex::Regex::new(
-            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
-        )
-        .expect("regex");
-        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
-        let keeps_error =
-            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
-        let mapped = regex::Regex::new(r"^\s*\.(?:map_err|map_http_err)\(").expect("regex");
         // Spelled in two pieces so this test is not one of its own matches.
         let signature = concat!("async fn ", "read_range(");
-        let capped = concat!("response_bytes", "_with_limit(");
         let mut plain = Vec::new();
-        let mut classified = std::collections::BTreeSet::new();
+        let mut seen = std::collections::BTreeSet::new();
         for file in &files {
             let relative = file
                 .strip_prefix(&root)
@@ -4568,59 +4680,49 @@ mod http_timeout_class_tests {
             for (at, _) in source.match_indices(signature) {
                 let open = at + source[at..].find('{').expect("a body");
                 let body = &source[open..past_close_brace(source.as_bytes(), open)];
-                let bytes = body.as_bytes();
                 let line_of = |offset: usize| source[..open + offset].matches('\n').count() + 1;
-                if let Some(found) = body.find(capped) {
-                    plain.push(format!("{relative}:{} ({capped}..)", line_of(found)));
+                let reads = ranged_reads(body);
+                plain.extend(
+                    reads
+                        .plain
+                        .iter()
+                        .map(|&offset| format!("{relative}:{}", line_of(offset))),
+                );
+                if !reads.requests.is_empty() {
+                    seen.insert((relative.clone(), "request"));
                 }
-                if body.contains("range_window_with_limit(") {
-                    classified.insert(relative.clone());
-                }
-                for found in request.find_iter(body) {
-                    let end = if found.as_str().ends_with("()") {
-                        found.end()
-                    } else {
-                        past_close(bytes, found.end() - 1)
-                    };
-                    let Some(wait) = awaited.find(&body[end..]) else {
-                        continue;
-                    };
-                    let mut end = end + wait.end();
-                    while let Some(call) = keeps_error.find(&body[end..]) {
-                        end = past_close(bytes, end + call.end() - 1);
-                    }
-                    let Some(map) = mapped.find(&body[end..]) else {
-                        continue;
-                    };
-                    let open_map = end + map.end() - 1;
-                    if body[open_map..past_close(bytes, open_map)].contains("range_read_error") {
-                        classified.insert(relative.clone());
-                    } else {
-                        plain.push(format!("{relative}:{}", line_of(found.start())));
-                    }
+                if !reads.bodies.is_empty() {
+                    seen.insert((relative.clone(), "body"));
                 }
             }
         }
         assert!(
             plain.is_empty(),
-            "a ranged read that files a dropped connection as a hard failure (map it with \
-             `multi_thread::range_read_error`, read a capped body with \
-             `range_window_with_limit`): {plain:?}"
+            "a ranged read that files a dropped connection as a hard failure, or that the scan \
+             cannot follow (map it with `multi_thread::range_read_error`, read a capped body \
+             with `range_window_with_limit`): {plain:?}"
         );
-        // The scan has to see the reads it is about, or it passes on nothing.
-        for expected in [
-            "azure.rs",
-            "b2.rs",
-            "cloudinary.rs",
-            "imagekit.rs",
-            "koofr.rs",
-            "s3.rs",
-            "uploadcare.rs",
-            "webdav.rs",
+        // The scan has to see each read it is about: a request moved into a
+        // helper it does not read would pass on nothing. WebDAV, S3 and Azure
+        // send through their own sender.
+        for (file, kind) in [
+            ("azure.rs", "body"),
+            ("b2.rs", "request"),
+            ("b2.rs", "body"),
+            ("cloudinary.rs", "request"),
+            ("cloudinary.rs", "body"),
+            ("imagekit.rs", "request"),
+            ("imagekit.rs", "body"),
+            ("koofr.rs", "request"),
+            ("koofr.rs", "body"),
+            ("s3.rs", "body"),
+            ("uploadcare.rs", "request"),
+            ("uploadcare.rs", "body"),
+            ("webdav.rs", "body"),
         ] {
             assert!(
-                classified.contains(expected),
-                "no classified ranged read seen in {expected}: {classified:?}"
+                seen.contains(&(file.to_string(), kind)),
+                "no classified {kind} seen in the read_range of {file}: {seen:?}"
             );
         }
     }

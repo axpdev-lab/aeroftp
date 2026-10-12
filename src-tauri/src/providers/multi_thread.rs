@@ -335,25 +335,36 @@ pub fn range_read_failed(what: &str, offset: u64, e: ProviderError) -> ProviderE
 pub(crate) const FAILED_RANGE_DISCONNECT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// The worker a failed range attempt leaves to the next one, for the engines
-/// that take their workers from a pool: a fresh clone of `worker` (a
-/// connection of its own, as the first attempt had, with `validator` pinning
-/// the object), or, for a provider that cannot clone, `worker` itself,
-/// disconnected, which dials again on its next call where it can. The failed
-/// connection is closed either way: one left open keeps the server serving a
-/// session nobody reads.
+/// that take their workers from a pool, and the error the attempt reports.
+/// The failed connection is closed either way: one left open keeps the
+/// server serving a session nobody reads. The next worker is a fresh clone of
+/// `worker` (a connection of its own, as the first attempt had) or, for a
+/// provider that cannot clone, `worker` itself connected again when the range
+/// will be resumed: not every provider dials by itself on its next call
+/// (Koofr, Cloudinary and ImageKit answer `NotConnected` after a disconnect).
+/// A reconnect that fails is what the attempt reports, with its own class: a
+/// refused sign-in fails the range, a network still down is resumed, and the
+/// next attempt dials again. `validator` pins the next worker to the object.
 pub async fn replace_failed_range_worker(
     mut worker: Box<dyn super::StorageProvider>,
     validator: Option<String>,
-) -> Box<dyn super::StorageProvider> {
+    failure: ProviderError,
+) -> (Box<dyn super::StorageProvider>, ProviderError) {
     let fresh = worker.clone_for_transfer().ok();
     let _ = tokio::time::timeout(FAILED_RANGE_DISCONNECT, worker.disconnect()).await;
-    match fresh {
-        Some(mut fresh) => {
-            fresh.set_range_validator(validator);
-            fresh
-        }
-        None => worker,
-    }
+    let (mut next, failure) = match fresh {
+        Some(fresh) => (fresh, failure),
+        None if failure.is_recoverable() => match worker.connect().await {
+            Ok(()) => (worker, failure),
+            Err(e) => {
+                tracing::warn!("Range worker: reconnecting after {failure} failed: {e}");
+                (worker, e)
+            }
+        },
+        None => (worker, failure),
+    };
+    next.set_range_validator(validator);
+    (next, failure)
 }
 
 /// Bytes of every range in the temporary, for the progress report.
@@ -3215,6 +3226,255 @@ mod tests {
             );
             assert_eq!(run.starts, vec![run.target.0], "graph={graph}");
         }
+    }
+
+    /// A provider that cannot clone and does not dial by itself, as Koofr,
+    /// Cloudinary and ImageKit: after a disconnect every read answers
+    /// `NotConnected` until `connect` runs. Its first read fails with
+    /// `first`; the others serve the bytes of [`window_server::byte_at`].
+    struct NoCloneWorker {
+        connected: bool,
+        first: Option<ProviderError>,
+        reconnect: fn() -> Result<(), ProviderError>,
+        calls: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl super::super::StorageProvider for NoCloneWorker {
+        async fn read_range(
+            &mut self,
+            _path: &str,
+            offset: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, ProviderError> {
+            self.calls.lock().unwrap().push("read");
+            if !self.connected {
+                return Err(ProviderError::NotConnected);
+            }
+            if let Some(e) = self.first.take() {
+                return Err(e);
+            }
+            Ok((offset..offset + len).map(window_server::byte_at).collect())
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> super::super::ProviderType {
+            super::super::ProviderType::Koofr
+        }
+        fn display_name(&self) -> String {
+            "no-clone".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            self.calls.lock().unwrap().push("connect");
+            (self.reconnect)()?;
+            self.connected = true;
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.calls.lock().unwrap().push("disconnect");
+            self.connected = false;
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            self.connected
+        }
+        async fn list(
+            &mut self,
+            _path: &str,
+        ) -> Result<Vec<super::super::RemoteEntry>, ProviderError> {
+            Err(ProviderError::NotSupported("list".to_string()))
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<super::super::RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("no-clone".to_string())
+        }
+    }
+
+    /// One window of 64 KiB through a pool of one [`NoCloneWorker`], written
+    /// the way `pget` writes its windows: a failed attempt hands its worker to
+    /// [`replace_failed_range_worker`] and puts the one it gets back in the
+    /// pool, and [`write_range_resuming`] runs the window again from its mark.
+    async fn run_no_clone_pool(
+        tag: &str,
+        first: ProviderError,
+        reconnect: fn() -> Result<(), ProviderError>,
+    ) -> (
+        Result<ConcurrentRangeOutcome, ProviderError>,
+        Vec<u8>,
+        Vec<&'static str>,
+    ) {
+        let total: u64 = 1 << 16;
+        let dir = scratch_dir(tag);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let temp = segmented_temp_path_for(&dir.join("r.bin"));
+        prealloc(&temp, total).await;
+        let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let worker: Box<dyn super::super::StorageProvider> = Box::new(NoCloneWorker {
+            connected: true,
+            first: Some(first),
+            reconnect,
+            calls: calls.clone(),
+        });
+        let pool = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
+            vec![worker],
+        )));
+        let write = |from: u64,
+                     end: u64,
+                     temp: PathBuf,
+                     _bytes: Arc<AtomicU64>,
+                     _cancel: CancellationToken,
+                     mark: RangeMark| {
+            let pool = pool.clone();
+            async move {
+                let mut provider = pool.lock().await.pop_front().expect("a worker");
+                let mut file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&temp)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                file.seek(std::io::SeekFrom::Start(from))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                let copied: Result<(), ProviderError> = async {
+                    let data = provider
+                        .read_range("/big.bin", from, end - from + 1)
+                        .await?;
+                    file.write_all(&data)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    mark.advance(from + data.len() as u64);
+                    Ok(())
+                }
+                .await;
+                if let Err(e) = settle_range_attempt(&mut file, copied).await {
+                    let (next, e) = replace_failed_range_worker(provider, None, e).await;
+                    pool.lock().await.push_back(next);
+                    return Err(e);
+                }
+                file.flush().await.map_err(ProviderError::IoError)?;
+                pool.lock().await.push_back(provider);
+                Ok(ConcurrentRangeOutcome::Completed)
+            }
+        };
+        let result = write_range_resuming(
+            &write,
+            0,
+            total - 1,
+            &temp,
+            Arc::new(AtomicU64::new(0)),
+            &CancellationToken::new(),
+        )
+        .await;
+        let file = tokio::fs::read(&temp).await.unwrap();
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+        let calls = calls.lock().unwrap().clone();
+        (result, file, calls)
+    }
+
+    /// `pget` takes any provider with ranged reads, Koofr, Cloudinary and
+    /// ImageKit included, and none of them can clone or dials by itself after
+    /// a disconnect: the worker a failed window left answered `NotConnected`
+    /// to every retry, and the download failed as before the resume.
+    #[tokio::test(start_paused = true)]
+    async fn a_worker_that_cannot_clone_is_connected_again_for_the_retry() {
+        let (result, file, calls) = run_no_clone_pool(
+            "no-clone-retry",
+            ProviderError::NetworkError("the connection closed".to_string()),
+            || Ok(()),
+        )
+        .await;
+        assert_eq!(result.ok(), Some(ConcurrentRangeOutcome::Completed));
+        let expected: Vec<u8> = (0..file.len() as u64).map(window_server::byte_at).collect();
+        assert!(file == expected, "the window holds the object's bytes");
+        assert_eq!(calls, ["read", "disconnect", "connect", "read"]);
+    }
+
+    /// A reconnect that fails is what the range reports: a refused sign-in
+    /// fails it at once, with its own error, not three `NotConnected` later.
+    /// A hard failure is not resumed, so its worker is not dialled again.
+    #[tokio::test(start_paused = true)]
+    async fn a_reconnect_that_fails_is_what_the_range_reports() {
+        let (result, _, calls) = run_no_clone_pool(
+            "no-clone-refused",
+            ProviderError::NetworkError("the connection closed".to_string()),
+            || Err(ProviderError::AuthenticationFailed("refused".to_string())),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(ProviderError::AuthenticationFailed(ref m)) if m == "refused"),
+            "{result:?}"
+        );
+        assert_eq!(calls, ["read", "disconnect", "connect"]);
+
+        let (result, _, calls) = run_no_clone_pool(
+            "no-clone-hard",
+            ProviderError::TransferFailed("refused range".to_string()),
+            || Ok(()),
+        )
+        .await;
+        assert!(
+            matches!(result, Err(ProviderError::TransferFailed(ref m)) if m == "refused range"),
+            "{result:?}"
+        );
+        assert_eq!(calls, ["read", "disconnect"]);
     }
 
     /// A range that fails without moving fails the download after

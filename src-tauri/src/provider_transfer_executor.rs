@@ -528,7 +528,7 @@ pub async fn run_provider_segmented_download(
                 }
                 .await;
                 if let Err(e) = settle_range_attempt(&mut file, copied).await {
-                    let next = replace_failed_range_worker(provider, validator).await;
+                    let (next, e) = replace_failed_range_worker(provider, validator, e).await;
                     pool.lock().await.push_back(next);
                     return Err(e);
                 }
