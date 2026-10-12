@@ -1441,9 +1441,13 @@ pub async fn execute_single_file_dag_with(
 
     // DAG-P2-01: shared process-global buffer-byte pool (see governor.rs).
     let manager = crate::transfer_dag::governor::global().child_manager(single_file_budget(built));
-    let disk_request = match direction {
-        TransferDirection::Upload => DiskLeaseRequest::read(local_path.clone()),
-        TransferDirection::Download => DiskLeaseRequest::write(local_path.clone()),
+    // A download also names the segmented sibling. Identity follows a symlink,
+    // and that sibling can be another device. Same device collapses to one slot.
+    let disk_requests = match direction {
+        TransferDirection::Upload => vec![DiskLeaseRequest::read(local_path.clone())],
+        TransferDirection::Download => crate::providers::multi_thread::download_job_disk_requests(
+            std::path::Path::new(&local_path),
+        ),
     };
     // Single-file GUI/CLI actions are foreground work. Hold one endpoint and
     // directional local-device lease for the complete graph, including native
@@ -1454,7 +1458,7 @@ pub async fn execute_single_file_dag_with(
         .acquire_job(
             endpoint.clone(),
             TransferPriority::Foreground,
-            [disk_request],
+            disk_requests,
         )
         .await;
 

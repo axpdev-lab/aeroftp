@@ -1629,6 +1629,90 @@ mod tests {
     }
 
     #[test]
+    fn download_job_disk_requests_names_the_segmented_sibling() {
+        let path = std::path::Path::new("/tmp/aeroftp-governor-final");
+        let requests = crate::providers::multi_thread::download_job_disk_requests(path);
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].path, path);
+        assert_eq!(
+            requests[1].path,
+            crate::providers::multi_thread::segmented_temp_path_for(path)
+        );
+        assert_eq!(requests[0].direction, DiskDirection::Write);
+        assert_eq!(requests[1].direction, DiskDirection::Write);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn two_device_write_requests_hold_both_disk_caps() {
+        // A symlink's identity is the target device. The segmented sibling is
+        // the link's directory. When those differ, one job must hold both.
+        let shm = std::path::PathBuf::from("/dev/shm");
+        if !shm.is_dir() {
+            return;
+        }
+        let name = format!("aeroftp-gov-dev-{}", std::process::id());
+        let target = shm.join(&name);
+        let link = std::env::temp_dir().join(format!("{name}-link"));
+        let sibling = crate::providers::multi_thread::segmented_temp_path_for(&link);
+        let _ = std::fs::remove_file(&target);
+        let _ = std::fs::remove_file(&link);
+        if std::fs::write(&target, b"x").is_err() {
+            return;
+        }
+        if std::os::unix::fs::symlink(&target, &link).is_err() {
+            let _ = std::fs::remove_file(&target);
+            return;
+        }
+        struct Rm(Vec<std::path::PathBuf>);
+        impl Drop for Rm {
+            fn drop(&mut self) {
+                for path in &self.0 {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+        let _rm = Rm(vec![link.clone(), target.clone()]);
+
+        if DiskDeviceIdentity::for_path(&link) == DiskDeviceIdentity::for_path(&sibling) {
+            return;
+        }
+
+        let gov = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: BUFFER_QUANTUM_BYTES,
+            bandwidth_bps: 0,
+            endpoint_slots: 4,
+            disk_device_slots: 1,
+        });
+        let held = gov
+            .acquire_job(
+                EndpointIdentity::new("sftp", "two-device.test", "alice"),
+                TransferPriority::Foreground,
+                [
+                    DiskLeaseRequest::write(link.clone()),
+                    DiskLeaseRequest::write(sibling.clone()),
+                ],
+            )
+            .await;
+        assert_eq!(
+            gov.disk_for_path(&link).available(DiskDirection::Write),
+            0,
+            "symlink target device was not leased"
+        );
+        assert_eq!(
+            gov.disk_for_path(&sibling).available(DiskDirection::Write),
+            0,
+            "segmented sibling device was not leased"
+        );
+        drop(held);
+        assert_eq!(gov.disk_for_path(&link).available(DiskDirection::Write), 1);
+        assert_eq!(
+            gov.disk_for_path(&sibling).available(DiskDirection::Write),
+            1
+        );
+    }
+
+    #[test]
     fn bandwidth_token_accounting_bounds_aggregate() {
         // Test #1: the token pool every transfer draws from grants at most
         // `burst + rate * elapsed` bytes over any window, regardless of how many
