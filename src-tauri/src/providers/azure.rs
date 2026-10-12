@@ -12,6 +12,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use std::collections::HashMap;
+
 use crate::providers::HttpResultExt;
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -183,7 +185,10 @@ struct BlobItem {
     name: String,
     size: u64,
     last_modified: Option<String>,
-    is_prefix: bool, // virtual directory
+    /// Directory entry: a `BlobPrefix`, an HNS blob whose `ResourceType` is
+    /// `directory`, or a flat `hdi_isfolder=true` stub. A zero-byte file is
+    /// not a directory.
+    is_prefix: bool,
 }
 
 /// Azure Blob Storage Provider
@@ -227,6 +232,66 @@ impl Clone for AzureProvider {
             archive_tier_delete: self.archive_tier_delete,
         }
     }
+}
+
+/// `ResourceType` wins, then `hdi_isfolder=true`. Same order as `stat`.
+/// An empty element is absent. Size is not consulted.
+fn blob_lists_as_directory(resource_type: Option<&str>, hdi_isfolder: Option<bool>) -> bool {
+    match resource_type.map(str::trim).filter(|kind| !kind.is_empty()) {
+        Some(kind) => kind.eq_ignore_ascii_case("directory"),
+        None => hdi_isfolder == Some(true),
+    }
+}
+
+/// One child of the listed prefix.
+///
+/// `directory_prefix` trims the delimiter off a `BlobPrefix` name. A blob
+/// keeps a trailing slash, so the `<path>/` marker `mkdir` writes still fails
+/// the depth filter and does not show up as a file. A name that does not
+/// start with the requested prefix is dropped: a hierarchical-namespace
+/// account returns the directory `photos` while listing `photos/`.
+fn listing_child_name(raw: &str, strip_prefix: &str, directory_prefix: bool) -> Option<String> {
+    if !strip_prefix.is_empty() && !raw.starts_with(strip_prefix) {
+        return None;
+    }
+    let rest = raw.strip_prefix(strip_prefix).unwrap_or(raw);
+    let rest = if directory_prefix {
+        rest.trim_end_matches('/')
+    } else {
+        rest
+    };
+    let rest = rest.trim_start_matches('/');
+    if rest.is_empty() || rest.contains('/') {
+        return None;
+    }
+    Some(rest.to_string())
+}
+
+/// Keep one directory when a blob and a `BlobPrefix` name the same path.
+/// A file that shares the display name is a different entry.
+///
+/// `directories` maps a directory name to its index. Only directories are
+/// indexed, so a file of the same name stays a second entry. The map lives
+/// for the whole enumeration, including across pages.
+fn push_listing_item(
+    items: &mut Vec<BlobItem>,
+    directories: &mut HashMap<String, usize>,
+    item: BlobItem,
+) {
+    if item.is_prefix {
+        if let Some(&index) = directories.get(&item.name) {
+            let existing = &mut items[index];
+            if existing.last_modified.is_none() {
+                existing.last_modified = item.last_modified;
+            }
+            if existing.size == 0 {
+                existing.size = item.size;
+            }
+            return;
+        }
+        directories.insert(item.name.clone(), items.len());
+    }
+    items.push(item);
 }
 
 impl AzureProvider {
@@ -791,8 +856,16 @@ impl AzureProvider {
     /// instead made every one-shot `ls /a/b` (CLI, MCP, first GUI call, sync
     /// scan) return an empty directory, because each blob still carried a `/`
     /// and was dropped by the depth filter below.
+    ///
+    /// Directory classification matches `stat`. `ResourceType` (List Blobs,
+    /// version 2020-10-02 and later, inside `Properties`) wins. Otherwise
+    /// `hdi_isfolder=true` in `Metadata` is a directory. That metadata is
+    /// absent unless the request sent `include=metadata`. Size is never
+    /// enough. A `BlobPrefix` and a directory blob of the same name collapse
+    /// to one directory; a file that only shares the display name stays.
     fn parse_blob_list(xml: &str, strip_prefix: &str) -> (Vec<BlobItem>, Option<String>) {
         let mut items = Vec::new();
+        let mut directories = HashMap::new();
         let mut next_marker: Option<String> = None;
 
         let mut reader = Reader::from_str(xml);
@@ -811,6 +884,9 @@ impl AzureProvider {
             BlobProperties,
             BlobContentLength,
             BlobLastModified,
+            BlobResourceType,
+            BlobMetadata,
+            BlobMetaValue,
             NextMarker,
         }
 
@@ -818,52 +894,97 @@ impl AzureProvider {
         let mut current_name = String::new();
         let mut current_size: u64 = 0;
         let mut current_modified: Option<String> = None;
+        let mut current_resource_type: Option<String> = None;
+        let mut hdi_isfolder: Option<bool> = None;
+        let mut current_meta_key = String::new();
+        let mut current_meta_value = String::new();
         let mut in_blob = false;
         let mut in_prefix = false;
+        let mut in_metadata = false;
+        // Depth of the `<Metadata>` container. A user key may itself be
+        // named `Metadata`, so the container closes only when this returns
+        // to zero. Later keys must not be read as blob fields.
+        let mut metadata_depth: u32 = 0;
         let mut buf = Vec::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) => match e.name().as_ref() {
-                    "BlobPrefix" => {
-                        state = ParseState::BlobPrefix;
-                        in_prefix = true;
-                        current_name.clear();
+                Ok(Event::Start(ref e)) => {
+                    let owned = e.name();
+                    let tag = owned.as_ref();
+                    // Metadata keys are element names (`hdi_isfolder`), so they
+                    // must not be read as blob properties.
+                    if in_metadata {
+                        metadata_depth = metadata_depth.saturating_add(1);
+                        state = ParseState::BlobMetaValue;
+                        current_meta_key = tag.to_string();
+                        current_meta_value.clear();
+                    } else {
+                        match tag {
+                            "BlobPrefix" => {
+                                state = ParseState::BlobPrefix;
+                                in_prefix = true;
+                                in_blob = false;
+                                current_name.clear();
+                            }
+                            "Blob" => {
+                                state = ParseState::Blob;
+                                in_blob = true;
+                                in_prefix = false;
+                                current_name.clear();
+                                current_size = 0;
+                                current_modified = None;
+                                current_resource_type = None;
+                                hdi_isfolder = None;
+                                current_meta_key.clear();
+                                current_meta_value.clear();
+                                in_metadata = false;
+                                metadata_depth = 0;
+                            }
+                            "Name" if in_prefix => {
+                                state = ParseState::BlobPrefixName;
+                            }
+                            "Name" if in_blob => {
+                                state = ParseState::BlobName;
+                            }
+                            "Properties" if in_blob => {
+                                state = ParseState::BlobProperties;
+                            }
+                            "Content-Length" if in_blob => {
+                                state = ParseState::BlobContentLength;
+                            }
+                            "Last-Modified" if in_blob => {
+                                state = ParseState::BlobLastModified;
+                            }
+                            "ResourceType" if in_blob => {
+                                state = ParseState::BlobResourceType;
+                                current_resource_type = Some(String::new());
+                            }
+                            "Metadata" if in_blob => {
+                                state = ParseState::BlobMetadata;
+                                in_metadata = true;
+                                metadata_depth = 1;
+                            }
+                            "NextMarker" => {
+                                state = ParseState::NextMarker;
+                            }
+                            _ => {}
+                        }
                     }
-                    "Blob" => {
-                        state = ParseState::Blob;
-                        in_blob = true;
-                        current_name.clear();
-                        current_size = 0;
-                        current_modified = None;
-                    }
-                    "Name" if in_prefix => {
-                        state = ParseState::BlobPrefixName;
-                    }
-                    "Name" if in_blob => {
-                        state = ParseState::BlobName;
-                    }
-                    "Properties" if in_blob => {
-                        state = ParseState::BlobProperties;
-                    }
-                    "Content-Length" if in_blob => {
-                        state = ParseState::BlobContentLength;
-                    }
-                    "Last-Modified" if in_blob => {
-                        state = ParseState::BlobLastModified;
-                    }
-                    "NextMarker" => {
-                        state = ParseState::NextMarker;
-                    }
-                    _ => {}
-                },
+                }
                 Ok(Event::Text(ref e)) => {
                     let text = e.as_ref().to_string();
                     // Skip indentation-only fragments, but preserve
                     // whitespace while a blob/prefix <Name> is open: there
                     // it is payload (e.g. `a&amp; &amp;b.txt`).
                     if text.trim().is_empty()
-                        && !matches!(state, ParseState::BlobName | ParseState::BlobPrefixName)
+                        && !matches!(
+                            state,
+                            ParseState::BlobName
+                                | ParseState::BlobPrefixName
+                                | ParseState::BlobResourceType
+                                | ParseState::BlobMetaValue
+                        )
                     {
                         buf.clear();
                         continue;
@@ -882,6 +1003,14 @@ impl AzureProvider {
                             current_modified
                                 .get_or_insert_with(String::new)
                                 .push_str(&text);
+                        }
+                        ParseState::BlobResourceType => {
+                            current_resource_type
+                                .get_or_insert_with(String::new)
+                                .push_str(&text);
+                        }
+                        ParseState::BlobMetaValue => {
+                            current_meta_value.push_str(&text);
                         }
                         ParseState::NextMarker => {
                             next_marker.get_or_insert_with(String::new).push_str(&text);
@@ -907,60 +1036,86 @@ impl AzureProvider {
                         }
                     }
                 }
-                Ok(Event::End(ref e)) => match e.name().as_ref() {
-                    "BlobPrefix" if in_prefix => {
-                        let display_name = current_name.trim_end_matches('/');
-                        let relative = display_name
-                            .strip_prefix(strip_prefix)
-                            .unwrap_or(display_name);
-                        let relative = relative.trim_start_matches('/');
-                        if !relative.is_empty() {
-                            items.push(BlobItem {
-                                name: relative.to_string(),
-                                size: 0,
-                                last_modified: None,
-                                is_prefix: true,
-                            });
-                        }
-                        in_prefix = false;
-                        state = ParseState::Root;
-                    }
-                    "Blob" if in_blob => {
-                        let relative = current_name
-                            .strip_prefix(strip_prefix)
-                            .unwrap_or(&current_name);
-                        let relative = relative.trim_start_matches('/');
-                        if !relative.is_empty() && !relative.contains('/') {
-                            items.push(BlobItem {
-                                name: relative.to_string(),
-                                size: current_size,
-                                last_modified: current_modified
-                                    .as_ref()
-                                    .map(|m| m.trim().to_string()),
-                                is_prefix: false,
-                            });
-                        }
-                        in_blob = false;
-                        state = ParseState::Root;
-                    }
-                    "Name" => {
-                        if in_prefix {
-                            state = ParseState::BlobPrefix;
-                        } else if in_blob {
+                Ok(Event::End(ref e)) => {
+                    let owned = e.name();
+                    let tag = owned.as_ref();
+                    if in_metadata {
+                        metadata_depth = metadata_depth.saturating_sub(1);
+                        if metadata_depth > 0 {
+                            if current_meta_key.eq_ignore_ascii_case("hdi_isfolder") {
+                                hdi_isfolder =
+                                    Some(current_meta_value.trim().eq_ignore_ascii_case("true"));
+                            }
+                            state = ParseState::BlobMetadata;
+                        } else {
+                            in_metadata = false;
                             state = ParseState::Blob;
                         }
+                    } else {
+                        match tag {
+                            "BlobPrefix" if in_prefix => {
+                                if let Some(relative) =
+                                    listing_child_name(&current_name, strip_prefix, true)
+                                {
+                                    push_listing_item(
+                                        &mut items,
+                                        &mut directories,
+                                        BlobItem {
+                                            name: relative,
+                                            size: 0,
+                                            last_modified: None,
+                                            is_prefix: true,
+                                        },
+                                    );
+                                }
+                                in_prefix = false;
+                                state = ParseState::Root;
+                            }
+                            "Blob" if in_blob => {
+                                if let Some(relative) =
+                                    listing_child_name(&current_name, strip_prefix, false)
+                                {
+                                    push_listing_item(
+                                        &mut items,
+                                        &mut directories,
+                                        BlobItem {
+                                            name: relative,
+                                            size: current_size,
+                                            last_modified: current_modified
+                                                .as_ref()
+                                                .map(|modified| modified.trim().to_string()),
+                                            is_prefix: blob_lists_as_directory(
+                                                current_resource_type.as_deref(),
+                                                hdi_isfolder,
+                                            ),
+                                        },
+                                    );
+                                }
+                                in_blob = false;
+                                in_metadata = false;
+                                metadata_depth = 0;
+                                state = ParseState::Root;
+                            }
+                            "Name" => {
+                                if in_prefix {
+                                    state = ParseState::BlobPrefix;
+                                } else if in_blob {
+                                    state = ParseState::Blob;
+                                }
+                            }
+                            "Properties" if in_blob => {
+                                state = ParseState::Blob;
+                            }
+                            "Content-Length" | "Last-Modified" | "ResourceType" if in_blob => {
+                                state = ParseState::BlobProperties;
+                            }
+                            "NextMarker" => {
+                                state = ParseState::Root;
+                            }
+                            _ => {}
+                        }
                     }
-                    "Properties" if in_blob => {
-                        state = ParseState::Blob;
-                    }
-                    "Content-Length" | "Last-Modified" if in_blob => {
-                        state = ParseState::BlobProperties;
-                    }
-                    "NextMarker" => {
-                        state = ParseState::Root;
-                    }
-                    _ => {}
-                },
+                }
                 Ok(Event::Eof) => break,
                 // AZ-002: Log XML parse errors at debug level instead of silently swallowing
                 Err(e) => {
@@ -996,6 +1151,7 @@ impl AzureProvider {
         strip_prefix: &str,
     ) -> Result<Vec<BlobItem>, ProviderError> {
         let mut all_items = Vec::new();
+        let mut directories = HashMap::new();
         let mut marker: Option<String> = None;
 
         loop {
@@ -1036,7 +1192,11 @@ impl AzureProvider {
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             let (items, next_marker) = Self::parse_blob_list(&body, strip_prefix);
-            all_items.extend(items);
+            // The same directory can be a blob on one page and a BlobPrefix
+            // on the next. Collapse those, and only those.
+            for item in items {
+                push_listing_item(&mut all_items, &mut directories, item);
+            }
 
             match next_marker {
                 Some(m) if !m.is_empty() => {
@@ -1335,8 +1495,10 @@ impl StorageProvider for AzureProvider {
             format!("&prefix={}", urlencoding::encode(&listing_prefix))
         };
 
+        // `include=metadata` is what puts `hdi_isfolder` in the page.
+        // `ResourceType` is a property and does not need it. No per-blob HEAD.
         let base_url = format!(
-            "{}/{}?restype=container&comp=list&delimiter=/{}",
+            "{}/{}?restype=container&comp=list&delimiter=/&include=metadata{}",
             self.config.blob_endpoint(),
             self.config.container,
             prefix_param
@@ -3907,6 +4069,383 @@ Time:2026-01-01</Message>
         assert_eq!(dir.name, "2026", "sub-prefix relative to the listed prefix");
 
         assert_eq!(marker, None, "no NextMarker -> last page");
+    }
+
+    /// HNS and flat directory markers must agree with `stat`.
+    ///
+    /// List Blobs on API 2020-10-02 and later (this client sends 2024-11-04)
+    /// puts `<ResourceType>file|directory</ResourceType>` in `Properties` for
+    /// a hierarchical namespace. `hdi_isfolder` is metadata and is present
+    /// only when the request asked `include=metadata`. A zero-byte blob with
+    /// neither flag stays a file. A BlobPrefix and a directory blob for the
+    /// same name collapse to one directory; a real file that shares that
+    /// display name stays beside the directory. Listing `photos/` drops the
+    /// parent blob `photos` that HNS echoes back.
+    #[test]
+    fn parse_blob_list_classifies_hns_directories_without_promoting_files() {
+        let root = r#"<?xml version="1.0" encoding="utf-8"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>empty-dir</Name>
+      <Properties>
+        <Last-Modified>Mon, 01 Jan 2026 12:00:00 GMT</Last-Modified>
+        <Content-Length>0</Content-Length>
+        <ResourceType>directory</ResourceType>
+      </Properties>
+    </Blob>
+    <BlobPrefix><Name>empty-dir/</Name></BlobPrefix>
+    <Blob>
+      <Name>zero.bin</Name>
+      <Properties>
+        <Content-Length>0</Content-Length>
+        <ResourceType>file</ResourceType>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>stub</Name>
+      <Properties><Content-Length>0</Content-Length></Properties>
+      <Metadata><hdi_isfolder>true</hdi_isfolder></Metadata>
+    </Blob>
+    <Blob>
+      <Name>not-a-stub</Name>
+      <Properties><Content-Length>0</Content-Length></Properties>
+      <Metadata><hdi_isfolder>false</hdi_isfolder></Metadata>
+    </Blob>
+    <Blob>
+      <Name>file-wins</Name>
+      <Properties>
+        <Content-Length>0</Content-Length>
+        <ResourceType>file</ResourceType>
+      </Properties>
+      <Metadata><hdi_isfolder>TRUE</hdi_isfolder></Metadata>
+    </Blob>
+    <Blob>
+      <Name>photos</Name>
+      <Properties><Content-Length>8</Content-Length><ResourceType>file</ResourceType></Properties>
+    </Blob>
+    <BlobPrefix><Name>photos/</Name></BlobPrefix>
+    <Blob>
+      <Name>a&amp; &amp;b.txt</Name>
+      <Properties><Content-Length>3</Content-Length></Properties>
+    </Blob>
+  </Blobs>
+  <NextMarker>page-2</NextMarker>
+</EnumerationResults>"#;
+
+        let (items, marker) = AzureProvider::parse_blob_list(root, "");
+        assert_eq!(marker.as_deref(), Some("page-2"));
+
+        let find = |name: &str| {
+            items
+                .iter()
+                .filter(|item| item.name == name)
+                .collect::<Vec<_>>()
+        };
+
+        let empty = find("empty-dir");
+        assert_eq!(
+            empty.len(),
+            1,
+            "directory blob and BlobPrefix are one entry"
+        );
+        assert!(empty[0].is_prefix, "ResourceType directory is a directory");
+        assert_eq!(
+            empty[0].last_modified.as_deref(),
+            Some("Mon, 01 Jan 2026 12:00:00 GMT")
+        );
+
+        let zero = find("zero.bin");
+        assert_eq!(zero.len(), 1);
+        assert!(!zero[0].is_prefix, "a zero-byte file stays a file");
+
+        assert!(
+            find("stub")[0].is_prefix,
+            "hdi_isfolder true is a directory"
+        );
+        assert!(
+            !find("not-a-stub")[0].is_prefix,
+            "hdi_isfolder false stays a file"
+        );
+        assert!(
+            !find("file-wins")[0].is_prefix,
+            "ResourceType file wins over hdi_isfolder"
+        );
+
+        let photos = find("photos");
+        assert_eq!(photos.len(), 2, "a file and a virtual directory both stay");
+        assert!(photos.iter().any(|item| item.is_prefix));
+        assert!(photos.iter().any(|item| !item.is_prefix && item.size == 8));
+
+        let named = find("a& &b.txt");
+        assert_eq!(named.len(), 1);
+        assert!(!named[0].is_prefix);
+
+        let nested = r#"<?xml version="1.0"?>
+<EnumerationResults>
+  <Blobs>
+    <Blob>
+      <Name>photos</Name>
+      <Properties>
+        <ResourceType>Directory</ResourceType>
+        <Content-Length>0</Content-Length>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>photos/empty</Name>
+      <Properties>
+        <ResourceType>Directory</ResourceType>
+        <Content-Length>0</Content-Length>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>photos/zero.bin</Name>
+      <Properties>
+        <ResourceType>file</ResourceType>
+        <Content-Length>0</Content-Length>
+      </Properties>
+    </Blob>
+    <BlobPrefix><Name>photos/nested/</Name></BlobPrefix>
+    <Blob>
+      <Name>photos/deep/hidden.txt</Name>
+      <Properties><Content-Length>1</Content-Length></Properties>
+    </Blob>
+  </Blobs>
+</EnumerationResults>"#;
+        let (children, marker) = AzureProvider::parse_blob_list(nested, "photos/");
+        assert_eq!(marker, None);
+        assert!(
+            !children.iter().any(|item| item.name == "photos"),
+            "the HNS parent blob is not a child of itself"
+        );
+        assert!(
+            !children.iter().any(|item| item.name.contains("hidden")),
+            "deeper blobs stay filtered"
+        );
+        assert_eq!(children.len(), 3, "{children:?}");
+        assert!(children
+            .iter()
+            .any(|item| item.name == "empty" && item.is_prefix));
+        assert!(children
+            .iter()
+            .any(|item| item.name == "zero.bin" && !item.is_prefix));
+        assert!(children
+            .iter()
+            .any(|item| item.name == "nested" && item.is_prefix));
+    }
+
+    /// Azure metadata keys are ASCII names and may themselves be `Metadata`
+    /// or `Name`. The inner `</Metadata>` must not close the container, or
+    /// the next key is parsed as a blob field and appended to the name.
+    #[test]
+    fn parse_blob_list_metadata_key_named_metadata_does_not_rename_blob() {
+        let xml = "<EnumerationResults><Blobs><Blob><Name>notes.txt</Name>\
+            <Properties><Content-Length>4</Content-Length></Properties>\
+            <Metadata><Metadata>project</Metadata><Name>backup</Name></Metadata>\
+            </Blob></Blobs></EnumerationResults>";
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "notes.txt");
+        assert_eq!(items[0].size, 4);
+        assert!(!items[0].is_prefix);
+    }
+
+    /// The same homonym must not hide a later `hdi_isfolder` key, or a
+    /// directory stub is listed as a file.
+    #[test]
+    fn parse_blob_list_metadata_key_named_metadata_keeps_hdi_isfolder() {
+        let xml = "<EnumerationResults><Blobs><Blob><Name>empty-dir</Name>\
+            <Properties><Content-Length>0</Content-Length></Properties>\
+            <Metadata><Metadata>project</Metadata><hdi_isfolder>true</hdi_isfolder></Metadata>\
+            </Blob></Blobs></EnumerationResults>";
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "empty-dir");
+        assert!(items[0].is_prefix);
+    }
+
+    /// A metadata key named `Name` was already isolated. Keep that guard
+    /// beside the homonym cases.
+    #[test]
+    fn parse_blob_list_metadata_key_named_name_stays_isolated() {
+        let xml = "<EnumerationResults><Blobs><Blob><Name>notes.txt</Name>\
+            <Properties><Content-Length>4</Content-Length></Properties>\
+            <Metadata><Name>backup</Name></Metadata>\
+            </Blob></Blobs></EnumerationResults>";
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "notes.txt");
+        assert!(!items[0].is_prefix);
+    }
+
+    /// Directory names are indexed, so distinct directories stay in order and
+    /// a repeated directory merges date and size into the first entry. A file
+    /// that shares the display name is not indexed and stays a second entry.
+    #[test]
+    fn parse_blob_list_directory_index_keeps_order_and_merges_once() {
+        let xml = r#"<?xml version="1.0"?>
+<EnumerationResults>
+  <Blobs>
+    <BlobPrefix><Name>a/</Name></BlobPrefix>
+    <BlobPrefix><Name>b/</Name></BlobPrefix>
+    <BlobPrefix><Name>c/</Name></BlobPrefix>
+    <Blob>
+      <Name>b</Name>
+      <Properties>
+        <Last-Modified>Mon, 01 Jan 2026 12:00:00 GMT</Last-Modified>
+        <Content-Length>9</Content-Length>
+        <ResourceType>directory</ResourceType>
+      </Properties>
+    </Blob>
+    <Blob>
+      <Name>b</Name>
+      <Properties>
+        <Content-Length>8</Content-Length>
+        <ResourceType>file</ResourceType>
+      </Properties>
+    </Blob>
+  </Blobs>
+</EnumerationResults>"#;
+        let (items, _) = AzureProvider::parse_blob_list(xml, "");
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| (item.name.as_str(), item.is_prefix, item.size))
+                .collect::<Vec<_>>(),
+            vec![
+                ("a", true, 0),
+                ("b", true, 9),
+                ("c", true, 0),
+                ("b", false, 8),
+            ]
+        );
+        assert_eq!(
+            items[1].last_modified.as_deref(),
+            Some("Mon, 01 Jan 2026 12:00:00 GMT")
+        );
+    }
+
+    /// The listing request asks for metadata once per page. `list` and `stat`
+    /// then agree on an HNS directory, a flat `hdi_isfolder` stub, a
+    /// zero-byte file and a normal file. The directory blob and its
+    /// `BlobPrefix` arrive on different pages and stay one entry. No HEAD
+    /// is issued while listing.
+    #[tokio::test]
+    async fn list_agrees_with_stat_for_hns_directory_stub_and_zero_byte_file() {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {path}?{query}"));
+                    if method == "GET" && path == "/mycontainer" {
+                        let body = if query.contains("marker=") {
+                            "<EnumerationResults><Blobs>\
+                                <BlobPrefix><Name>empty-dir/</Name></BlobPrefix>\
+                                <Blob><Name>zero.bin</Name><Properties>\
+                                <Content-Length>0</Content-Length>\
+                                <ResourceType>file</ResourceType></Properties></Blob>\
+                                <Blob><Name>stub</Name><Properties>\
+                                <Content-Length>0</Content-Length></Properties>\
+                                <Metadata><hdi_isfolder>true</hdi_isfolder></Metadata></Blob>\
+                                <Blob><Name>notes.txt</Name><Properties>\
+                                <Content-Length>4</Content-Length>\
+                                <ResourceType>file</ResourceType></Properties></Blob>\
+                                </Blobs></EnumerationResults>"
+                        } else {
+                            "<EnumerationResults><Blobs>\
+                                <Blob><Name>empty-dir</Name><Properties>\
+                                <Last-Modified>Mon, 01 Jan 2026 12:00:00 GMT</Last-Modified>\
+                                <Content-Length>0</Content-Length>\
+                                <ResourceType>directory</ResourceType></Properties></Blob>\
+                                </Blobs><NextMarker>page-2</NextMarker></EnumerationResults>"
+                        };
+                        return axum::response::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(body))
+                            .unwrap();
+                    }
+                    if method == "HEAD" {
+                        let mut response = axum::response::Response::builder()
+                            .status(200)
+                            .header("content-type", "application/octet-stream");
+                        let len = if path.ends_with("/notes.txt") {
+                            "4"
+                        } else {
+                            "0"
+                        };
+                        response = response.header("content-length", len);
+                        if path.ends_with("/empty-dir") {
+                            response = response.header("x-ms-resource-type", "Directory");
+                        } else if path.ends_with("/zero.bin") || path.ends_with("/notes.txt") {
+                            response = response.header("x-ms-resource-type", "file");
+                        } else if path.ends_with("/stub") {
+                            response = response.header("x-ms-meta-hdi_isfolder", "true");
+                        }
+                        return response.body(axum::body::Body::empty()).unwrap();
+                    }
+                    axum::response::Response::builder()
+                        .status(404)
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+
+        let entries = provider.list("/").await.expect("list");
+        let during_list = log.lock().unwrap().clone();
+        let gets: Vec<&String> = during_list
+            .iter()
+            .filter(|line| line.starts_with("GET "))
+            .collect();
+        assert_eq!(gets.len(), 2, "one request per page: {gets:?}");
+        assert!(
+            gets.iter()
+                .all(|line| line.contains("include=metadata") && line.contains("delimiter=/")),
+            "{gets:?}"
+        );
+        assert!(
+            during_list.iter().all(|line| !line.starts_with("HEAD ")),
+            "listing must classify from the page, not a HEAD per blob: {during_list:?}"
+        );
+
+        let entry = |name: &str| -> &RemoteEntry {
+            let mut found = entries.iter().filter(|item| item.name == name);
+            let item = found.next().unwrap_or_else(|| panic!("missing {name}"));
+            assert!(found.next().is_none(), "duplicate {name} in {entries:?}");
+            item
+        };
+        assert!(entry("empty-dir").is_dir);
+        assert_eq!(
+            entry("empty-dir").modified.as_deref(),
+            Some("Mon, 01 Jan 2026 12:00:00 GMT")
+        );
+        assert!(!entry("zero.bin").is_dir);
+        assert_eq!(entry("zero.bin").size, 0);
+        assert!(entry("stub").is_dir);
+        assert!(!entry("notes.txt").is_dir);
+        assert_eq!(entry("notes.txt").size, 4);
+
+        for name in ["empty-dir", "zero.bin", "stub", "notes.txt"] {
+            let stat = provider
+                .stat(&format!("/{name}"))
+                .await
+                .unwrap_or_else(|err| panic!("stat {name}: {err}"));
+            assert_eq!(entry(name).is_dir, stat.is_dir, "{name}");
+        }
     }
 
     /// AZURE-LIST-1 regression: a nested listing must strip the prefix the
