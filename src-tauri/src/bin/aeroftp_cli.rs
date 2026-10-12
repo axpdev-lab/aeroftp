@@ -50660,7 +50660,7 @@ async fn cmd_sync(
     let checkers_cap = effective_checkers(cli);
     let mut immutable_refusals: Vec<String> = Vec::new();
     if cli.no_traverse && !cli.no_check_dest && !to_upload.is_empty() {
-        let candidates: Vec<&str> = to_upload.drain(..).collect();
+        let candidates: Vec<&str> = std::mem::take(&mut to_upload);
         let sweep = no_traverse_stat_sweep(provider.as_mut(), cli, remote, candidates, |path| {
             local_map.get(path).map(|(s, _)| *s).unwrap_or(0)
         })

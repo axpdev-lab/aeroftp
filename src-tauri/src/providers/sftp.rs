@@ -3659,7 +3659,21 @@ impl StorageProvider for SftpProvider {
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
-        map_sftp_try_exists(until_sftp_ends(&sftp.ended, sftp.try_exists(&full_path)).await)
+        // An ambiguous status is settled as `stat` settles it, by listing the
+        // parent: a server that answers a missing path with FAILURE said
+        // nothing here, and the existence checks that write only on a
+        // confirmed absence refused every new marker on it.
+        match until_sftp_ends(&sftp.ended, sftp.try_exists(&full_path)).await {
+            Err(e) if is_ambiguous_sftp_status(&e) => {
+                match classify_sftp_stat_failure(sftp, &full_path, e, "Failed to check existence")
+                    .await
+                {
+                    ProviderError::NotFound(_) => Ok(false),
+                    other => Err(other),
+                }
+            }
+            result => map_sftp_try_exists(result),
+        }
     }
 
     fn supports_checksum(&self) -> bool {
@@ -7111,6 +7125,108 @@ mod tests {
         let mut provider = provider_without_a_session();
         provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
         (provider, writes)
+    }
+
+    /// An SFTP server that answers every STAT with FAILURE, as some servers
+    /// answer a missing path instead of NO_SUCH_FILE, and lists each folder
+    /// as holding `listed`.
+    struct FailureOnStatServer {
+        listed: Vec<String>,
+        listing_sent: bool,
+    }
+
+    impl russh_sftp::server::Handler for FailureOnStatServer {
+        type Error = russh_sftp::protocol::StatusCode;
+
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+
+        async fn init(
+            &mut self,
+            _version: u32,
+            _extensions: std::collections::HashMap<String, String>,
+        ) -> Result<russh_sftp::protocol::Version, Self::Error> {
+            Ok(russh_sftp::protocol::Version::new())
+        }
+
+        async fn stat(
+            &mut self,
+            _id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Err(russh_sftp::protocol::StatusCode::Failure)
+        }
+
+        async fn opendir(
+            &mut self,
+            id: u32,
+            path: String,
+        ) -> Result<russh_sftp::protocol::Handle, Self::Error> {
+            self.listing_sent = false;
+            Ok(russh_sftp::protocol::Handle { id, handle: path })
+        }
+
+        async fn readdir(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Name, Self::Error> {
+            if std::mem::replace(&mut self.listing_sent, true) {
+                return Err(russh_sftp::protocol::StatusCode::Eof);
+            }
+            Ok(russh_sftp::protocol::Name {
+                id,
+                files: self
+                    .listed
+                    .iter()
+                    .map(|name| russh_sftp::protocol::File::new(name, Default::default()))
+                    .collect(),
+            })
+        }
+
+        async fn close(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Status, Self::Error> {
+            Ok(GoingAwayServer::ok(id))
+        }
+    }
+
+    async fn provider_on_a_failure_on_stat_server(listed: &[&str]) -> SftpProvider {
+        let (client, server) = tokio::io::duplex(1 << 20);
+        russh_sftp::server::run(
+            server,
+            FailureOnStatServer {
+                listed: listed.iter().map(|name| name.to_string()).collect(),
+                listing_sent: false,
+            },
+        )
+        .await;
+        let mut provider = provider_without_a_session();
+        provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+        provider
+    }
+
+    /// `exists` settles FAILURE as `stat` does, by listing the parent. It
+    /// passed FAILURE on as an error, so on a server that answers a missing
+    /// path with it, every check that writes only on a confirmed absence
+    /// (the AeroCrypt markers, the AeroCloud remote folder) refused.
+    #[tokio::test]
+    async fn exists_reads_failure_for_an_unlisted_name_as_absent() {
+        let mut provider = provider_on_a_failure_on_stat_server(&["data.bin"]).await;
+        assert!(!provider
+            .exists("/vault/.aerocrypt.tsv")
+            .await
+            .expect("a name its folder does not list is absent"));
+
+        let mut provider = provider_on_a_failure_on_stat_server(&[".aerocrypt.tsv"]).await;
+        let outcome = provider.exists("/vault/.aerocrypt.tsv").await;
+        assert!(
+            outcome.is_err(),
+            "a listed name whose stat fails is not absent: {outcome:?}"
+        );
     }
 
     /// Every WRITE of an upload but the last is a whole one at OpenSSH's

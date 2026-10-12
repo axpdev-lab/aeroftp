@@ -465,11 +465,17 @@ pub enum OverlayConfigProbe {
 
 /// C4: whether a config exists at `config_path`. Only a NotFound reads as
 /// absent; the app's create and the CLI's `crypt init` both decide on this.
+///
+/// The probe is `stat`, the call every other existence check here makes,
+/// not `size`: FTP's SIZE turns its `550` for a missing file into a
+/// ServerError, so a new vault on FTP or FTPS read as unverified and could
+/// not be created. FTP's `stat` answers NotFound only when the listing of
+/// the parent came back without the name, and an error when it was refused.
 pub async fn probe_overlay_config(
     provider: &mut dyn crate::providers::StorageProvider,
     config_path: &str,
 ) -> OverlayConfigProbe {
-    match provider.size(config_path).await {
+    match provider.stat(config_path).await {
         Ok(_) => OverlayConfigProbe::Present,
         Err(crate::providers::ProviderError::NotFound(_)) => OverlayConfigProbe::Absent,
         Err(e) => OverlayConfigProbe::Unverified(e),
@@ -1499,7 +1505,7 @@ mod tests {
     use super::*;
 
     /// C4 on a probe that did not answer: the config is there, but its
-    /// `size` timed out. Read as "no overlay", the create uploaded a new
+    /// probe timed out. Read as "no overlay", the create uploaded a new
     /// config with a new salt over it, orphaning every encrypted file.
     #[tokio::test]
     async fn create_writes_no_config_when_the_probe_does_not_answer() {
