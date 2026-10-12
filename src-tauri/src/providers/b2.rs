@@ -3199,14 +3199,27 @@ impl StorageProvider for B2Provider {
             // holds its high-water mark and completes only on acknowledgement.
             // Do not retry a lost response: b2_upload_file creates a new
             // version on every POST, including in Object Lock buckets.
-            let resp = self
+            let delay = match self
                 .send_upload_attempt(req.body(progress.bytes_body(bytes.clone())))
                 .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(format!("upload send: {}", e)))?;
-            let Some(delay) = b2_upload_retry_delay(&resp, attempt, &self.retry_config) else {
-                break resp;
+            {
+                // The connection to the pod never opened: no request reached
+                // it, so no version can exist. B2 answers a busy or
+                // unreachable pod with "get a new upload URL", and the
+                // executor no longer retries B2 uploads on its own.
+                Err(error) if error.is_connect() && attempt < self.retry_config.max_retries => {
+                    super::http_retry::calculate_delay(attempt, &self.retry_config)
+                }
+                sent => {
+                    let resp = sent.map_http_err(|e| {
+                        ProviderError::ConnectionFailed(format!("upload send: {}", e))
+                    })?;
+                    match b2_upload_retry_delay(&resp, attempt, &self.retry_config) {
+                        Some(delay) => delay,
+                        None => break resp,
+                    }
+                }
             };
-            drop(resp);
             tokio::time::sleep(delay).await;
             attempt += 1;
             upload = match self.get_upload_url().await {
@@ -5643,6 +5656,89 @@ mod tests {
             let bodies = posted.lock().unwrap();
             assert_eq!(bodies.len(), if part { 2 } else { 1 });
             assert!(bodies.iter().all(|b| b == b"content"));
+        }
+    }
+
+    /// A connection refused by the pod sent nothing, so even a small file,
+    /// which is never reposted after a lost response, moves to a fresh pod.
+    /// Exactly one body is stored.
+    #[tokio::test]
+    async fn upload_retry_moves_to_a_fresh_pod_when_the_connection_is_refused() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for part in [false, true] {
+            let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let refused = format!("http://{}", closed.local_addr().unwrap());
+            drop(closed);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let posted = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let urls_served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let seen = std::sync::Arc::clone(&posted);
+            let served = std::sync::Arc::clone(&urls_served);
+            let url = base.clone();
+            let server = tokio::spawn(async move {
+                loop {
+                    let (mut socket, _) = listener.accept().await.unwrap();
+                    let mut wire = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    let (head_end, length) = loop {
+                        let n = socket.read(&mut buf).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        wire.extend_from_slice(&buf[..n]);
+                        if let Some(end) = wire.windows(4).position(|s| s == b"\r\n\r\n") {
+                            let head = String::from_utf8_lossy(&wire[..end]).to_lowercase();
+                            let len = head
+                                .lines()
+                                .find_map(|line| {
+                                    line.strip_prefix("content-length:")
+                                        .and_then(|n| n.trim().parse::<usize>().ok())
+                                })
+                                .unwrap_or(0);
+                            break (end + 4, len);
+                        }
+                    };
+                    while wire.len() < head_end + length {
+                        let n = socket.read(&mut buf).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        wire.extend_from_slice(&buf[..n]);
+                    }
+                    let api =
+                        String::from_utf8_lossy(&wire[..head_end]).starts_with("POST /b2api/");
+                    let body = if api {
+                        // The first upload URL names a pod that refuses the
+                        // connection; the next one names this fixture.
+                        let number = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                        let host = if number == 1 { &refused } else { &url };
+                        serde_json::json!({"uploadUrl": format!("{host}/upload/{number}"), "authorizationToken": "upload-token"}).to_string()
+                    } else {
+                        seen.lock()
+                            .unwrap()
+                            .push(wire[head_end..head_end + length].to_vec());
+                        serde_json::json!({"fileId": "large-id", "fileName": "f.dat", "partNumber": 7, "contentSha1": sha1_hex(b"content"), "contentLength": 7}).to_string()
+                    };
+                    socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+                }
+            });
+            let mut provider = empty_provider();
+            provider.api_url = base;
+            provider.auth_token = SecretString::new("master-token".into());
+            provider.connected = true;
+            provider.retry_config.base_delay_ms = 1;
+            let result = run_retry_upload(&mut provider, part, b"content").await;
+            server.abort();
+            assert!(result.is_ok(), "part={part}: {result:?}");
+            assert_eq!(
+                urls_served.load(std::sync::atomic::Ordering::SeqCst),
+                2,
+                "part={part}: a fresh upload URL after the refusal"
+            );
+            let bodies = posted.lock().unwrap();
+            assert_eq!(bodies.len(), 1, "part={part}: one stored body");
+            assert_eq!(bodies[0], b"content");
         }
     }
 

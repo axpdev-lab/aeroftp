@@ -53,10 +53,14 @@ fn parse_retry_after_value(value: &str, now: std::time::SystemTime) -> Option<Du
         return Some(Duration::from_secs(secs.min(300)));
     }
     let date = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    // A date already reached (or a client clock ahead of the server's) asks
+    // for no wait at all: callers then apply their own backoff instead of
+    // retrying at once against a server that has just refused.
     let remaining = date
         .signed_duration_since(chrono::DateTime::<chrono::Utc>::from(now))
         .to_std()
-        .unwrap_or_default();
+        .ok()
+        .filter(|remaining| !remaining.is_zero())?;
     Some(remaining.min(Duration::from_secs(300)))
 }
 
@@ -244,9 +248,14 @@ mod tests {
             parse_retry_after_value("Wed, 21 Oct 2015 07:28:10 GMT", now),
             Some(Duration::from_secs(10))
         );
+        // A date in the past, or exactly now, is no explicit wait.
         assert_eq!(
             parse_retry_after_value("Wed, 21 Oct 2015 07:27:00 GMT", now),
-            Some(Duration::ZERO)
+            None
+        );
+        assert_eq!(
+            parse_retry_after_value("Wed, 21 Oct 2015 07:28:00 GMT", now),
+            None
         );
         assert_eq!(
             parse_retry_after_value("Thu, 22 Oct 2015 07:28:00 GMT", now),
