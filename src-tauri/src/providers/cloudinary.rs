@@ -1187,7 +1187,7 @@ impl StorageProvider for CloudinaryProvider {
             .header("Range", format!("bytes={}-{}", offset, end))
             .send()
             .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            .map_err(super::multi_thread::range_read_error)?;
         let status = resp.status();
         if !status.is_success() {
             return Err(ProviderError::TransferFailed(format!(
@@ -1200,7 +1200,7 @@ impl StorageProvider for CloudinaryProvider {
             .get(reqwest::header::CONTENT_RANGE)
             .and_then(|value| value.to_str().ok())
             .map(|value| value.to_string());
-        let bytes = response_bytes_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await?;
+        let bytes = super::range_window_with_limit(resp, MAX_DOWNLOAD_TO_BYTES).await?;
         // A 206 that does not name the window it carries is written at this
         // offset just the same, so it has to say which range it is.
         match super::multi_thread::ranged_answer(

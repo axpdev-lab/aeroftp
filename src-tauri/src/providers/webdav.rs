@@ -5467,7 +5467,7 @@ impl StorageProvider for WebDavProvider {
                 let bytes = response
                     .bytes()
                     .await
-                    .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+                    .map_err(super::multi_thread::range_read_error)?;
                 // A 206 that does not name the window it carries is written at
                 // this offset just the same, so it has to say which range it is.
                 match super::multi_thread::ranged_answer(
@@ -5649,6 +5649,19 @@ const MOVE_DEPTH: &str = "infinity";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A window the connection drops is resumed from its mark: a body cut
+    /// halfway was a `TransferFailed`, which failed the download.
+    #[tokio::test]
+    async fn a_window_the_connection_drops_is_recoverable() {
+        super::super::multi_thread::window_server::assert_a_dropped_window_is_recoverable(|addr| {
+            let mut provider =
+                WebDavProvider::new(test_config(&format!("http://{addr}/"))).unwrap();
+            provider.connected = true;
+            Box::new(provider)
+        })
+        .await;
+    }
 
     /// #368: the Filen Desktop WebDAV bridge has the same local cache as the
     /// S3 one, so its benchmark carries the same note; a plain server none.

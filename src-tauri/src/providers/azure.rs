@@ -1925,7 +1925,7 @@ impl StorageProvider for AzureProvider {
             .get(reqwest::header::CONTENT_RANGE)
             .and_then(|value| value.to_str().ok())
             .map(|value| value.to_string());
-        let bytes = super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await?;
+        let bytes = super::range_window_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await?;
         // A 206 that does not name the window it carries is written at this
         // offset just the same, so it has to say which range it is.
         match super::multi_thread::ranged_answer(
@@ -2958,6 +2958,21 @@ mod tests {
             sas_token: None,
             endpoint: None,
         }
+    }
+
+    /// A window the connection drops is resumed from its mark: a body cut
+    /// halfway was a `TransferFailed` from the capped reader, which failed
+    /// the download.
+    #[tokio::test]
+    async fn a_window_the_connection_drops_is_recoverable() {
+        super::super::multi_thread::window_server::assert_a_dropped_window_is_recoverable(|addr| {
+            let mut config = test_config();
+            config.endpoint = Some(format!("http://{addr}"));
+            let mut provider = AzureProvider::new(config);
+            provider.connected = true;
+            Box::new(provider)
+        })
+        .await;
     }
 
     /// D7 on Azure: a blob service that accepts the connection and never

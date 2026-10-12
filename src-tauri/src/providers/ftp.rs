@@ -146,8 +146,8 @@ use super::checksum_matrix;
 use super::ftp_site;
 use super::multi_thread::{
     parallel_refused, range_source_changed_through, read_range_source_through,
-    run_concurrent_range_download, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
-    SegmentedRun, SegmentedTemp,
+    run_concurrent_range_download, settle_range_attempt, source_changed, ConcurrentRangeConfig,
+    ConcurrentRangeOutcome, RangeMark, SegmentedRun, SegmentedTemp,
 };
 use super::{
     ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
@@ -412,7 +412,8 @@ impl FtpProvider {
                                     end: u64,
                                     temp_path: PathBuf,
                                     aggregate: Arc<AtomicU64>,
-                                    cancel: CancellationToken| {
+                                    cancel: CancellationToken,
+                                    mark: RangeMark| {
             let spec = spec.clone();
             let remote_path = remote_path_owned.clone();
             async move {
@@ -425,6 +426,7 @@ impl FtpProvider {
                     temp_path,
                     aggregate,
                     cancel,
+                    mark,
                 )
                 .await
             }
@@ -4478,6 +4480,7 @@ async fn ftp_download_one_range(
     temp_path: PathBuf,
     aggregate: Arc<AtomicU64>,
     cancel: CancellationToken,
+    mark: RangeMark,
 ) -> Result<ConcurrentRangeOutcome, ProviderError> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt as _};
 
@@ -4529,34 +4532,45 @@ async fn ftp_download_one_range(
     let mut buf = vec![0u8; chunk_size];
     let mut written: u64 = 0;
 
-    while written < expected {
-        tokio::select! {
-            _ = cancel.cancelled() => {
-                return Err(ProviderError::TransferFailed(
-                    "Transfer cancelled by user".to_string(),
-                ));
-            }
-            read = data_stream.read(&mut buf) => {
-                let n = read.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Range read error: {}", e))
-                })?;
-                if n == 0 {
-                    // Strict gate: premature EOF, no silent short read.
-                    return Err(ProviderError::TransferFailed(format!(
-                        "FTP range short read: expected {} bytes at offset {}, got {}",
-                        expected, start, written
-                    )));
+    // A connection that drops, or data that stops for longer than a
+    // single-stream download waits, fails the window as recoverable: the
+    // engine resumes it from its mark on a connection of its own.
+    let copied: Result<(), ProviderError> = async {
+        while written < expected {
+            tokio::select! {
+                _ = cancel.cancelled() => {
+                    return Err(ProviderError::TransferFailed(
+                        "Transfer cancelled by user".to_string(),
+                    ));
                 }
-                let take = std::cmp::min(n as u64, expected - written) as usize;
-                crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, take as u64).await;
-                out.write_all(&buf[..take])
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                aggregate.fetch_add(take as u64, Ordering::Relaxed);
-                written += take as u64;
+                read = tokio::time::timeout(DATA_IDLE_TIMEOUT, data_stream.read(&mut buf)) => {
+                    let n = match read {
+                        Ok(Ok(n)) => n,
+                        Ok(Err(e)) => return Err(ftp_range_read_error(e)),
+                        Err(_) => return Err(ProviderError::Timeout),
+                    };
+                    if n == 0 {
+                        // Strict gate: premature EOF, no silent short read.
+                        return Err(ProviderError::TransferFailed(format!(
+                            "FTP range short read: expected {} bytes at offset {}, got {}",
+                            expected, start, written
+                        )));
+                    }
+                    let take = std::cmp::min(n as u64, expected - written) as usize;
+                    crate::transfer_dag::throttle::charge(crate::transfer_dag::governor::TransferDirection::Download, take as u64).await;
+                    out.write_all(&buf[..take])
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    aggregate.fetch_add(take as u64, Ordering::Relaxed);
+                    written += take as u64;
+                    mark.advance(start + written);
+                }
             }
         }
+        Ok(())
     }
+    .await;
+    settle_range_attempt(&mut out, copied).await?;
 
     out.flush().await.map_err(ProviderError::IoError)?;
     out.sync_all().await.map_err(ProviderError::IoError)?;
@@ -4575,6 +4589,19 @@ async fn ftp_download_one_range(
     }
 
     Ok(ConcurrentRangeOutcome::Completed)
+}
+
+/// A failed read of a window's data connection. A connection that dropped
+/// is recoverable, so the engine resumes the window from its mark on a
+/// connection of its own; anything else fails the window.
+fn ftp_range_read_error(e: std::io::Error) -> ProviderError {
+    if e.kind() == std::io::ErrorKind::TimedOut {
+        ProviderError::Timeout
+    } else if super::types::is_session_closed_error_message(&e.to_string()) {
+        ProviderError::ConnectionLost(format!("Range read error: {e}"))
+    } else {
+        ProviderError::TransferFailed(format!("Range read error: {e}"))
+    }
 }
 
 /// Whether a server's refusal of `RMD` names a directory that is not empty.
@@ -7843,6 +7870,7 @@ mod transfer_verdict_tests {
                 temp,
                 Arc::new(AtomicU64::new(0)),
                 CancellationToken::new(),
+                RangeMark::new(0),
             ),
         )
         .await

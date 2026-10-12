@@ -283,6 +283,30 @@ pub async fn response_bytes_with_limit(
     resp: reqwest::Response,
     limit: u64,
 ) -> Result<Vec<u8>, ProviderError> {
+    body_bytes_with_limit(resp, limit, |e| {
+        http_send_error(e, |e| ProviderError::TransferFailed(e.to_string()))
+    })
+    .await
+}
+
+/// [`response_bytes_with_limit`] for the window of a ranged read: a body the
+/// connection dropped halfway is a [`ProviderError::NetworkError`]
+/// ([`multi_thread::range_read_error`]), so the window is resumed from what it
+/// wrote instead of failing the download.
+pub(crate) async fn range_window_with_limit(
+    resp: reqwest::Response,
+    limit: u64,
+) -> Result<Vec<u8>, ProviderError> {
+    body_bytes_with_limit(resp, limit, multi_thread::range_read_error).await
+}
+
+/// The reader behind [`response_bytes_with_limit`], with the mapping of a
+/// failed body read left to the caller.
+async fn body_bytes_with_limit(
+    resp: reqwest::Response,
+    limit: u64,
+    body_error: impl FnOnce(reqwest::Error) -> ProviderError,
+) -> Result<Vec<u8>, ProviderError> {
     // Check Content-Length header if present
     let expected = resp.content_length();
     if let Some(cl) = expected {
@@ -320,9 +344,7 @@ pub async fn response_bytes_with_limit(
                     );
                     break;
                 }
-                return Err(http_send_error(e, |e| {
-                    ProviderError::TransferFailed(e.to_string())
-                }));
+                return Err(body_error(e));
             }
             None => break,
         }
@@ -4669,6 +4691,10 @@ mod http_timeout_class_tests {
         "send_error",
         "connect_send_error",
         "map_reqwest_error",
+        // A range window's request and body: built on `http_send_error`, plus
+        // a body cut by a dropped connection, so the window is resumed from
+        // its mark.
+        "range_read_error",
     ];
 
     /// Files outside the class, and why. Their errors never become a
@@ -4886,6 +4912,243 @@ mod http_timeout_class_tests {
         let block = b"{ Err(e) => { g(e); continue; } Ok(r) => r }";
         let start = block.windows(2).position(|w| w == b"=>").unwrap() + 2;
         assert_eq!(arm_body(block, start), b"{ g(e); continue; }");
+    }
+
+    /// The reads of one `read_range` body, each judged by itself (offsets
+    /// into the body).
+    #[derive(Debug, Default, PartialEq)]
+    struct RangedReads {
+        /// Requests whose error goes through `range_read_error` and then to
+        /// the caller as it is (`?`).
+        requests: Vec<usize>,
+        /// Body reads whose error does the same, and capped body reads made
+        /// with `range_window_with_limit`, whose error goes to the caller as
+        /// it is.
+        bodies: Vec<usize>,
+        /// Every other read: a mapper that files a dropped connection as a
+        /// hard failure (before `range_read_error` or after it), the
+        /// whole-object reader, or a shape the scan cannot follow (a `match`
+        /// or an `if let` on the read, a request not awaited where it is
+        /// made). The scan cannot tell what such a shape does with the
+        /// error, so it does not pass it.
+        plain: Vec<usize>,
+    }
+
+    fn ranged_reads(body: &str) -> RangedReads {
+        let read = regex::Regex::new(
+            r"\.(?:send|text|bytes|chunk|json(?:::<[^()]*?>)?)\(\)|\bsend_with_retry(?:_replayable)?\(|\.execute\(",
+        )
+        .expect("regex");
+        let awaited = regex::Regex::new(r"^\s*\.await").expect("regex");
+        let keeps_error =
+            regex::Regex::new(r"^\s*\.(?:map|and_then|inspect|inspect_err)\(").expect("regex");
+        let mapped = regex::Regex::new(r"^\s*\.(?:map_err|map_http_err)\(").expect("regex");
+        let propagated = regex::Regex::new(r"^\s*\?").expect("regex");
+        // The text of an error status, read for its message: its error
+        // cannot leave the call.
+        let dropped = regex::Regex::new(
+            r"^\s*\.(?:unwrap_or_default\(\)|unwrap_or\(|unwrap_or_else\(|ok\(\))",
+        )
+        .expect("regex");
+        // Spelled in two pieces so this test is not one of its own matches.
+        let whole = concat!("response_bytes", "_with_limit(");
+        let window = concat!("range_window", "_with_limit(");
+        let bytes = body.as_bytes();
+        // Past the calls that keep the error as it is, the error has to go
+        // to the caller: a classified error converted again is lost.
+        let reaches_caller = |mut end: usize| {
+            while let Some(call) = keeps_error.find(&body[end..]) {
+                end = past_close(bytes, end + call.end() - 1);
+            }
+            propagated.is_match(&body[end..])
+        };
+        let mut reads = RangedReads::default();
+        reads
+            .plain
+            .extend(body.match_indices(whole).map(|(at, _)| at));
+        for (at, _) in body.match_indices(window) {
+            let end = past_close(bytes, at + window.len() - 1);
+            let kept = awaited
+                .find(&body[end..])
+                .is_some_and(|wait| reaches_caller(end + wait.end()));
+            if kept {
+                reads.bodies.push(at);
+            } else {
+                reads.plain.push(at);
+            }
+        }
+        for found in read.find_iter(body) {
+            let text = found.as_str();
+            let request =
+                text.starts_with(".send") || text.starts_with("send_with") || text == ".execute(";
+            let end = if text.ends_with("()") {
+                found.end()
+            } else {
+                past_close(bytes, found.end() - 1)
+            };
+            let Some(wait) = awaited.find(&body[end..]) else {
+                // A body helper of another type (`str::bytes`) is no read; a
+                // request whose future is awaited elsewhere is one the scan
+                // cannot follow.
+                if request {
+                    reads.plain.push(found.start());
+                }
+                continue;
+            };
+            let mut end = end + wait.end();
+            while let Some(call) = keeps_error.find(&body[end..]) {
+                end = past_close(bytes, end + call.end() - 1);
+            }
+            if dropped.is_match(&body[end..]) {
+                continue;
+            }
+            let kept = mapped.find(&body[end..]).is_some_and(|map| {
+                let open = end + map.end() - 1;
+                let close = past_close(bytes, open);
+                body[open..close].contains("range_read_error") && reaches_caller(close)
+            });
+            match (kept, request) {
+                (true, true) => reads.requests.push(found.start()),
+                (true, false) => reads.bodies.push(found.start()),
+                (false, _) => reads.plain.push(found.start()),
+            }
+        }
+        reads
+    }
+
+    /// The scan judges each read by itself, up to where its error leaves. A
+    /// request handled by a `match` passed it while the body read of the same
+    /// provider was classified, with an arm that kept the timeout and filed
+    /// the dropped connection as a hard failure; then a capped body read
+    /// passed it on its name alone, with its error converted again to
+    /// `TransferFailed`. The reads are spelled through constants so that
+    /// these lines are not reads of this file for the other scans.
+    #[test]
+    fn the_ranged_read_scan_judges_every_read_by_itself() {
+        const SEND: &str = concat!(".se", "nd()");
+        const BYTES: &str = concat!(".by", "tes()");
+        const TEXT: &str = concat!(".te", "xt()");
+        let counts =
+            |reads: &RangedReads| (reads.requests.len(), reads.bodies.len(), reads.plain.len());
+        let classified = format!(
+            "let resp = client.get(url){SEND}.await.map_err(super::multi_thread::range_read_error)?;
+             let body = resp{BYTES}.await.map_err(super::multi_thread::range_read_error)?;"
+        );
+        assert_eq!(counts(&ranged_reads(&classified)), (1, 1, 0));
+        let by_hand = format!(
+            "let resp = match client.get(url){SEND}.await {{
+                 Ok(resp) => resp,
+                 Err(e) => return Err(super::http_send_error(e, |e| {{
+                     ProviderError::TransferFailed(e.to_string())
+                 }})),
+             }};
+             let body = super::{}resp, MAX).await?;",
+            concat!("range_window", "_with_limit(")
+        );
+        assert_eq!(counts(&ranged_reads(&by_hand)), (0, 1, 1));
+        let hard = format!(
+            "resp{BYTES}.await.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?"
+        );
+        assert_eq!(counts(&ranged_reads(&hard)), (0, 0, 1));
+        let whole = concat!("super::response_bytes", "_with_limit(resp, MAX).await?");
+        assert_eq!(counts(&ranged_reads(whole)), (0, 0, 1));
+        let deferred = format!("let pending = client.get(url){SEND}; timeout(wait, pending).await");
+        assert_eq!(counts(&ranged_reads(&deferred)), (0, 0, 1));
+        let status = format!("let text = resp{TEXT}.await.unwrap_or_default();");
+        assert_eq!(ranged_reads(&status), RangedReads::default());
+        let capped_again = format!(
+            "let bytes = super::{}resp, MAX)
+                 .await
+                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;",
+            concat!("range_window", "_with_limit(")
+        );
+        assert_eq!(counts(&ranged_reads(&capped_again)), (0, 0, 1));
+        let capped_kept = format!(
+            "let bytes = super::{}resp, MAX).await.map(|b| b.len())?;",
+            concat!("range_window", "_with_limit(")
+        );
+        assert_eq!(counts(&ranged_reads(&capped_kept)), (0, 1, 0));
+        let mapped_again = format!(
+            "resp{BYTES}.await.map_err(super::multi_thread::range_read_error)
+                 .map_err(|e| ProviderError::TransferFailed(e.to_string()))?"
+        );
+        assert_eq!(counts(&ranged_reads(&mapped_again)), (0, 0, 1));
+    }
+
+    /// The class behind `range_read_error`: inside the `read_range` of every
+    /// provider, a request or a body read is mapped with `range_read_error`,
+    /// and a capped body is read with `range_window_with_limit`, so a window
+    /// the connection drops is resumed from its mark instead of failing the
+    /// download. B2 and Koofr filed a request with no answer as
+    /// `ConnectionFailed` / `TransferFailed`, and every HTTP provider filed a
+    /// body cut halfway as a hard failure. A request sent through a
+    /// provider's own sender (WebDAV, S3, Azure) is not seen here: that
+    /// sender files it as a `NetworkError`, and the provider's
+    /// `a_window_the_connection_drops_is_recoverable` reads through it.
+    #[test]
+    fn every_ranged_read_keeps_a_dropped_connection_resumable() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/providers");
+        let mut files = Vec::new();
+        sources(&root, &mut files);
+        // Spelled in two pieces so this test is not one of its own matches.
+        let signature = concat!("async fn ", "read_range(");
+        let mut plain = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for file in &files {
+            let relative = file
+                .strip_prefix(&root)
+                .expect("under providers")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let source = std::fs::read_to_string(file).expect("read source");
+            for (at, _) in source.match_indices(signature) {
+                let open = at + source[at..].find('{').expect("a body");
+                let body = &source[open..past_close_brace(source.as_bytes(), open)];
+                let line_of = |offset: usize| source[..open + offset].matches('\n').count() + 1;
+                let reads = ranged_reads(body);
+                plain.extend(
+                    reads
+                        .plain
+                        .iter()
+                        .map(|&offset| format!("{relative}:{}", line_of(offset))),
+                );
+                if !reads.requests.is_empty() {
+                    seen.insert((relative.clone(), "request"));
+                }
+                if !reads.bodies.is_empty() {
+                    seen.insert((relative.clone(), "body"));
+                }
+            }
+        }
+        assert!(
+            plain.is_empty(),
+            "a ranged read that files a dropped connection as a hard failure, or that the scan \
+             cannot follow (map it with `multi_thread::range_read_error`, read a capped body \
+             with `range_window_with_limit`): {plain:?}"
+        );
+        // The scan has to see each read it is about: a request moved into a
+        // helper it does not read would pass on nothing. WebDAV, S3 and Azure
+        // send through their own sender.
+        for (file, kind) in [
+            ("azure.rs", "body"),
+            ("b2.rs", "request"),
+            ("b2.rs", "body"),
+            ("cloudinary.rs", "request"),
+            ("cloudinary.rs", "body"),
+            ("imagekit.rs", "request"),
+            ("imagekit.rs", "body"),
+            ("koofr.rs", "request"),
+            ("koofr.rs", "body"),
+            ("s3.rs", "body"),
+            ("uploadcare.rs", "request"),
+            ("uploadcare.rs", "body"),
+            ("webdav.rs", "body"),
+        ] {
+            assert!(
+                seen.contains(&(file.to_string(), kind)),
+                "no classified {kind} seen in the read_range of {file}: {seen:?}"
+            );
+        }
     }
 
     /// The same class in a second shape: the request is the scrutinee of a

@@ -20,6 +20,9 @@
 // no environment variable redirects on Windows.
 #![cfg(unix)]
 
+#[path = "support/scoped_env.rs"]
+mod scoped_env;
+
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -30,6 +33,7 @@ use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::{ProviderError, StorageProvider};
 use russh::server::{Auth, ChannelOpenHandle, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId};
+use scoped_env::ScopedEnv;
 
 const SSH_FXP_INIT: u8 = 1;
 const SSH_FXP_VERSION: u8 = 2;
@@ -374,9 +378,9 @@ async fn connect(port: u16) -> SftpProvider {
 async fn rename_reports_a_taken_name_and_skips_its_own_path() {
     let home = std::env::temp_dir().join(format!("sftp-rename-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
-    // Safety: test process only; guards the real known_hosts from the
-    // trust_unknown_hosts accept-and-save path.
-    unsafe { std::env::set_var("HOME", &home) };
+    // Guards the real known_hosts from the trust_unknown_hosts accept-and-save
+    // path.
+    let _home_env = ScopedEnv::set("HOME", &home);
 
     let (port, store) = start_server(&["/a.txt", "/b.txt"], true).await;
     let mut provider = connect(port).await;

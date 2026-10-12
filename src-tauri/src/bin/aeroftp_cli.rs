@@ -34296,8 +34296,10 @@ async fn pget_segmented_download(
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
-        open_after_transfer, range_source_changed_through, read_range_source_through,
-        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome, SegmentedRun,
+        open_after_transfer, range_read_failed, range_source_changed_through,
+        read_range_source_through, replace_failed_range_worker, run_concurrent_range_download,
+        settle_range_attempt, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeMark,
+        SegmentedRun,
     };
 
     let actual_segments = pget_effective_segments(file_size, segments);
@@ -34440,7 +34442,10 @@ async fn pget_segmented_download(
 
     // Shared queue of the pre-established connections. The engine produces
     // exactly `actual_segments` windows, so each window pops exactly one
-    // connection: N real parallel transfers, never silently serialized.
+    // connection: N real parallel transfers, never silently serialized. A
+    // window that fails with a recoverable error is attempted again from its
+    // mark on the connection its failure left here.
+    let validator = before.validator();
     let pool = Arc::new(tokio::sync::Mutex::new(std::collections::VecDeque::from(
         conns,
     )));
@@ -34473,39 +34478,41 @@ async fn pget_segmented_download(
     };
 
     let (sub_read_size, paced) = pget_sub_reads(cli_speed_limit_bps(cli));
-    let write_one_range =
-        move |start_off: u64,
-              end_off: u64,
-              temp_path: PathBuf,
-              aggregate: Arc<AtomicU64>,
-              cancel: tokio_util::sync::CancellationToken| {
-            let pool = pool.clone();
-            let remote = remote_owned.clone();
-            async move {
-                use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+    let write_one_range = move |start_off: u64,
+                                end_off: u64,
+                                temp_path: PathBuf,
+                                aggregate: Arc<AtomicU64>,
+                                cancel: tokio_util::sync::CancellationToken,
+                                mark: RangeMark| {
+        let pool = pool.clone();
+        let remote = remote_owned.clone();
+        let validator = validator.clone();
+        async move {
+            use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-                let mut provider = {
-                    let mut guard = pool.lock().await;
-                    guard.pop_front().ok_or_else(|| {
-                        ProviderError::TransferFailed(
-                            "pget: connection pool exhausted (internal invariant)".to_string(),
-                        )
-                    })?
-                };
+            let mut provider = {
+                let mut guard = pool.lock().await;
+                guard.pop_front().ok_or_else(|| {
+                    ProviderError::TransferFailed(
+                        "pget: connection pool exhausted (internal invariant)".to_string(),
+                    )
+                })?
+            };
 
-                let window_len = end_off - start_off + 1;
-                // The engine pre-allocated and sized the temp; open without
-                // truncate and seek to the absolute window offset.
-                let mut file = tokio::fs::OpenOptions::new()
-                    .write(true)
-                    .open(&temp_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                file.seek(std::io::SeekFrom::Start(start_off))
-                    .await
-                    .map_err(ProviderError::IoError)?;
+            let window_len = end_off - start_off + 1;
+            // The engine pre-allocated and sized the temp; open without
+            // truncate and seek to the absolute window offset.
+            let mut file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&temp_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+            file.seek(std::io::SeekFrom::Start(start_off))
+                .await
+                .map_err(ProviderError::IoError)?;
 
-                let mut written = 0u64;
+            let mut written = 0u64;
+            let copied: Result<(), ProviderError> = async {
                 while written < window_len {
                     if cancel.is_cancelled() {
                         let _ = provider.disconnect().await;
@@ -34524,13 +34531,7 @@ async fn pget_segmented_download(
                     let data = provider
                         .read_range(&remote, start_off + written, sub_len)
                         .await
-                        .map_err(|e| {
-                            ProviderError::TransferFailed(format!(
-                                "pget: read_range at offset {} failed: {}",
-                                start_off + written,
-                                e
-                            ))
-                        })?;
+                        .map_err(|e| range_read_failed("pget", start_off + written, e))?;
                     if data.is_empty() {
                         // Hard error, never a soft short-read: read_range has no
                         // HTTP-200 semantics, so this is not ServerIgnoredRange
@@ -34550,19 +34551,27 @@ async fn pget_segmented_download(
                         .map_err(ProviderError::IoError)?;
                     written += data.len() as u64;
                     aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                    mark.advance(start_off + written);
                 }
-                file.flush().await.map_err(ProviderError::IoError)?;
-                let _ = provider.disconnect().await;
-
-                if written != window_len {
-                    return Err(ProviderError::TransferFailed(format!(
-                        "pget: window [{}, {}] wrote {} bytes, expected {}",
-                        start_off, end_off, written, window_len
-                    )));
-                }
-                Ok(ConcurrentRangeOutcome::Completed)
+                Ok(())
             }
-        };
+            .await;
+            if let Err(e) = settle_range_attempt(&mut file, copied).await {
+                let (next, e) = replace_failed_range_worker(provider, validator, e).await;
+                pool.lock().await.push_back(next);
+                return Err(e);
+            }
+            file.flush().await.map_err(ProviderError::IoError)?;
+            let _ = provider.disconnect().await;
+            if written != window_len {
+                return Err(ProviderError::TransferFailed(format!(
+                    "pget: window [{}, {}] wrote {} bytes, expected {}",
+                    start_off, end_off, written, window_len
+                )));
+            }
+            Ok(ConcurrentRangeOutcome::Completed)
+        }
+    };
 
     let start = Instant::now();
     let outcome =

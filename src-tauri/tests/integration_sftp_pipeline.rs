@@ -30,6 +30,9 @@
 
 #![cfg(unix)]
 
+#[path = "support/scoped_env.rs"]
+mod scoped_env;
+
 use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use std::time::Instant;
@@ -38,10 +41,16 @@ use ftp_client_gui_lib::providers::sftp::SftpProvider;
 use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::StorageProvider;
 use ftp_client_gui_lib::transfer_dag::Capability;
+use scoped_env::ScopedEnv;
 use sha2::{Digest, Sha256};
 
 const PORT: u16 = 2222;
 const CHUNK: usize = 256 * 1024; // SftpProvider default buffer_size
+
+/// The pipeline flag is process-wide and both tests turn it on and off, so
+/// they take turns.
+static PIPELINE_FLAG: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+const PIPELINE: &str = "AEROFTP_SFTP_READ_PIPELINE";
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sftp-rsync")
@@ -118,6 +127,7 @@ fn aerotmp_residue(dir: &Path) -> Vec<PathBuf> {
 #[tokio::test]
 #[ignore = "live: requires the sftp-rsync Docker fixture up on :2222"]
 async fn sftp_read_pipeline_is_byte_identical_to_serial() {
+    let _flag_lock = PIPELINE_FLAG.lock().await;
     if !ssh_key_path().exists() {
         eprintln!("SKIP: fixture ssh_key missing (run fixtures/sftp-rsync/setup.sh)");
         return;
@@ -169,7 +179,7 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
         let src = src_hash.get(name).cloned().unwrap();
 
         // Serial (flag unset = shipped default).
-        std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE");
+        let flag = ScopedEnv::remove(PIPELINE);
         let serial_out = out_root.join(format!("{name}.serial"));
         let t0 = Instant::now();
         base.download(&remote, serial_out.to_str().unwrap(), None)
@@ -179,7 +189,8 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
         let serial_h = sha256_file(&serial_out);
 
         // Pipelined (window 8).
-        std::env::set_var("AEROFTP_SFTP_READ_PIPELINE", "8");
+        drop(flag);
+        let flag = ScopedEnv::set(PIPELINE, "8");
         let pipe_out = out_root.join(format!("{name}.pipe"));
         let t1 = Instant::now();
         base.download(&remote, pipe_out.to_str().unwrap(), None)
@@ -187,7 +198,7 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
             .unwrap_or_else(|e| panic!("pipelined download {name} failed: {e}"));
         let pipe_s = t1.elapsed().as_secs_f64();
         let pipe_h = sha256_file(&pipe_out);
-        std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE");
+        drop(flag);
 
         assert_eq!(serial_h, src, "serial != source for {name}");
         assert_eq!(
@@ -210,7 +221,7 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
 
     // Error path with the flag on: a missing remote must Err and leave no
     // .aerotmp behind (AtomicFile temp guard, same as the serial path).
-    std::env::set_var("AEROFTP_SFTP_READ_PIPELINE", "8");
+    let flag = ScopedEnv::set(PIPELINE, "8");
     let err_out = out_root.join("missing.out");
     let err = base
         .download(
@@ -219,7 +230,7 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
             None,
         )
         .await;
-    std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE");
+    drop(flag);
     assert!(err.is_err(), "missing remote must error with the flag on");
     assert!(
         aerotmp_residue(&out_root).is_empty(),
@@ -243,6 +254,7 @@ async fn sftp_read_pipeline_is_byte_identical_to_serial() {
 #[tokio::test]
 #[ignore = "live: requires the sftp-rsync Docker fixture up on :2222"]
 async fn sftp_read_pipeline_is_byte_identical_on_the_pooled_path() {
+    let _flag_lock = PIPELINE_FLAG.lock().await;
     if !ssh_key_path().exists() {
         eprintln!("SKIP: fixture ssh_key missing (run fixtures/sftp-rsync/setup.sh)");
         return;
@@ -288,7 +300,7 @@ async fn sftp_read_pipeline_is_byte_identical_on_the_pooled_path() {
     let total_mib = BIG_BYTES as f64 / 1_048_576.0;
 
     // Pooled path, flag OFF: serial range worker (shipped PD-SFTP-2).
-    std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE");
+    let flag = ScopedEnv::remove(PIPELINE);
     let off_out = out_root.join("n4_off.bin");
     let mut w_off = base
         .clone_for_transfer()
@@ -311,7 +323,8 @@ async fn sftp_read_pipeline_is_byte_identical_on_the_pooled_path() {
 
     // Pooled path, flag ON: each of the N=4 range windows now reads K deep
     // on its OWN session (PD-PIPE-2). Must be byte-identical.
-    std::env::set_var("AEROFTP_SFTP_READ_PIPELINE", "8");
+    drop(flag);
+    let flag = ScopedEnv::set(PIPELINE, "8");
     let on_out = out_root.join("n4_on.bin");
     let mut w_on = base
         .clone_for_transfer()
@@ -322,7 +335,7 @@ async fn sftp_read_pipeline_is_byte_identical_on_the_pooled_path() {
         .await
         .expect("pooled download (flag on)");
     let on_s = t_on.elapsed().as_secs_f64();
-    std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE");
+    drop(flag);
     assert_eq!(
         src_hash,
         sha256_file(&on_out),

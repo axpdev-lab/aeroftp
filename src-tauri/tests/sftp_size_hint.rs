@@ -32,10 +32,13 @@
 // pretend the guard holds.
 #![cfg(unix)]
 
+#[path = "support/scoped_env.rs"]
+mod scoped_env;
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use ftp_client_gui_lib::providers::sftp::SftpProvider;
@@ -43,6 +46,7 @@ use ftp_client_gui_lib::providers::types::SftpConfig;
 use ftp_client_gui_lib::providers::StorageProvider;
 use russh::server::{Auth, ChannelOpenHandle, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId};
+use scoped_env::ScopedEnv;
 
 const SSH_FXP_INIT: u8 = 1;
 const SSH_FXP_VERSION: u8 = 2;
@@ -97,6 +101,15 @@ struct WireCounts {
     /// once. Combined with `fail_read_after`, this keeps sibling readers
     /// in-flight so dropping them cannot sneak a close in before the assert.
     read_delay_ms: AtomicU32,
+    /// The first READ at or past this offset gets no reply for
+    /// `stall_ms`: a server that stops answering one connection, as the NAS
+    /// did in the #658 re-test. Zero never stalls.
+    stall_from: AtomicU64,
+    stall_ms: AtomicU32,
+    /// Offset of the READ that was held back.
+    stalled_at: AtomicU64,
+    /// Offset of every READ, in arrival order.
+    read_offsets: std::sync::Mutex<Vec<u64>>,
     /// Set by the first READ in the second half of `/moving.bin`: from then
     /// on the path is `/moving.bin.v2`, one byte longer and made of other
     /// bytes, for STAT and READ alike. An object replaced mid-transfer.
@@ -314,6 +327,15 @@ impl TestSftpHandler {
                     return;
                 };
                 let path = self.handles.get(&handle).cloned().unwrap_or_default();
+                self.counts.read_offsets.lock().unwrap().push(offset);
+                let stall_from = self.counts.stall_from.load(Ordering::SeqCst);
+                let stall = stall_from > 0
+                    && offset >= stall_from
+                    && self
+                        .counts
+                        .stalled_at
+                        .compare_exchange(0, offset, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_ok();
                 if path == "/moving.bin"
                     && self
                         .files
@@ -337,7 +359,11 @@ impl TestSftpHandler {
                 let mut r = vec![SSH_FXP_DATA];
                 w32(&mut r, id);
                 wstr(&mut r, &content[offset..end]);
-                let delay = self.counts.read_delay_ms.load(Ordering::SeqCst);
+                let delay = if stall {
+                    self.counts.stall_ms.load(Ordering::SeqCst)
+                } else {
+                    self.counts.read_delay_ms.load(Ordering::SeqCst)
+                };
                 if delay == 0 {
                     self.send(channel, r, session);
                 } else {
@@ -534,11 +560,31 @@ async fn connect(port: u16) -> SftpProvider {
     p
 }
 
+/// A variable a test changed is put back when the test fails halfway: the
+/// tests here set `HOME` and never restored it, and a restore written at the
+/// end of a test is skipped by the panic of a failed assertion.
+#[test]
+fn a_scoped_variable_is_put_back_when_the_test_unwinds() {
+    const NAME: &str = "AEROFTP_TEST_SCOPED_ENV_PROBE";
+    let before = ScopedEnv::set(NAME, "before");
+    let unwound = std::panic::catch_unwind(|| {
+        let _during = ScopedEnv::set(NAME, "during");
+        panic!("an assertion that fails halfway");
+    });
+    assert!(unwound.is_err());
+    assert_eq!(std::env::var(NAME).as_deref(), Ok("before"));
+    drop(before);
+    assert_eq!(std::env::var_os(NAME), None, "a variable that was not set");
+}
+
 /// HOME is process-wide (`known_hosts`). Tests that redirect it take this
 /// lock so they cannot clobber each other.
 static HOME_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 struct ReadaheadCloseHarness {
+    // Fields drop in declaration order: HOME is put back before the lock
+    // that serializes it is released.
+    _home_env: ScopedEnv,
     _home_guard: tokio::sync::MutexGuard<'static, ()>,
     home: PathBuf,
     provider: SftpProvider,
@@ -552,7 +598,7 @@ async fn readahead_close_harness(label: &str) -> ReadaheadCloseHarness {
     let home =
         std::env::temp_dir().join(format!("sftp-readahead-{}-{}", label, std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
-    unsafe { std::env::set_var("HOME", &home) };
+    let home_env = ScopedEnv::set("HOME", &home);
     let large_payload: Vec<u8> = (0..524288u32).map(|i| (i % 239) as u8).collect();
     let mut files = HashMap::new();
     files.insert("/large.bin".to_string(), large_payload);
@@ -561,6 +607,7 @@ async fn readahead_close_harness(label: &str) -> ReadaheadCloseHarness {
     let mut provider = connect(port).await;
     provider.set_sftp_readahead(Some(4));
     ReadaheadCloseHarness {
+        _home_env: home_env,
         _home_guard: home_guard,
         home,
         provider,
@@ -583,9 +630,9 @@ async fn hinted_download_overlaps_stat_and_open() {
     let _home_guard = HOME_GUARD.lock().await;
     let home = std::env::temp_dir().join(format!("kimi-sftp-hint-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
-    // Safety: test process only; guards the real known_hosts from the
-    // trust_unknown_hosts accept-and-save path.
-    unsafe { std::env::set_var("HOME", &home) };
+    // Guards the real known_hosts from the trust_unknown_hosts accept-and-save
+    // path.
+    let _home_env = ScopedEnv::set("HOME", &home);
 
     // 64 KiB: under two 256 KiB buffer chunks, so no read-ahead window can
     // engage and the serial loop is the path, exactly the bench cell's 4 KiB
@@ -871,7 +918,7 @@ async fn hinted_download_overlaps_stat_and_open() {
     provider.set_sftp_readahead(None);
 
     // 14. Pipelined download, same: N handles, no awaited close.
-    unsafe { std::env::set_var("AEROFTP_SFTP_READ_PIPELINE", "4") };
+    let pipeline = ScopedEnv::set("AEROFTP_SFTP_READ_PIPELINE", "4");
     let local = home.join("out-pipeline-close.bin");
     provider
         .download_with_size_hint(
@@ -920,7 +967,7 @@ async fn hinted_download_overlaps_stat_and_open() {
         "the single-handle fallback must keep reporting progress"
     );
     assert_eq!(counts.handles.load(Ordering::SeqCst), 0);
-    unsafe { std::env::remove_var("AEROFTP_SFTP_READ_PIPELINE") };
+    drop(pipeline);
 
     // 15. Upload opens a write handle then fails the WRITE. shutdown used
     // to run only after a successful copy.
@@ -1033,4 +1080,70 @@ async fn readahead_writer_error_closes_reader_handles() {
     );
     h.provider.set_fail_readahead_write(false);
     h.shutdown().await;
+}
+
+/// One READ that gets no answer for longer than russh-sftp waits (10 s) used
+/// to fail a whole segmented download, and the temporary went with it: a
+/// 25 GB download from a NAS failed twice that way, from zero (#658 re-test,
+/// 2026-10-10). The window now goes on from the first byte it is missing, on
+/// a connection of its own; the read-ahead had already written pieces past
+/// the stalled one, and those are read again, not the window from its start.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_read_with_no_answer_resumes_its_window_from_the_first_missing_byte() {
+    let _home_guard = HOME_GUARD.lock().await;
+    let home = std::env::temp_dir().join(format!("sftp-stall-{}", std::process::id()));
+    std::fs::create_dir_all(&home).unwrap();
+    let _home_env = ScopedEnv::set("HOME", &home);
+    const SIZE: usize = 4 * 1024 * 1024;
+    let half = (SIZE / 2) as u64;
+    let payload: Vec<u8> = (0..SIZE as u32).map(|i| (i % 239) as u8).collect();
+    let mut files = HashMap::new();
+    files.insert("/large.bin".to_string(), payload.clone());
+    let (port, counts) = start_server(files).await;
+    counts.stall_from.store(half + 256 * 1024, Ordering::SeqCst);
+    counts.stall_ms.store(11_000, Ordering::SeqCst);
+
+    let mut provider = connect(port).await;
+    provider.set_sftp_readahead(Some(4));
+    provider.set_multi_thread_download(2, 1024 * 1024);
+    let local = home.join("out-stalled.bin");
+    let began = std::time::Instant::now();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        provider.download("/large.bin", local.to_str().unwrap(), None),
+    )
+    .await
+    .expect("the download ends")
+    .expect("the stalled window resumes and the download completes");
+
+    let stalled = counts.stalled_at.load(Ordering::SeqCst);
+    assert!(stalled >= half + 256 * 1024, "the stall fired at {stalled}");
+    assert!(
+        began.elapsed() >= std::time::Duration::from_secs(10),
+        "the READ timed out before the retry: {:?}",
+        began.elapsed()
+    );
+    assert_eq!(std::fs::read(&local).unwrap(), payload);
+    let offsets = counts.read_offsets.lock().unwrap().clone();
+    assert_eq!(
+        offsets.iter().filter(|&&o| o == stalled).count(),
+        2,
+        "the stalled READ is asked again once: {offsets:?}"
+    );
+    let mut before_stall: Vec<u64> = offsets
+        .iter()
+        .copied()
+        .filter(|&o| o >= half && o < stalled)
+        .collect();
+    let read = before_stall.len();
+    before_stall.sort_unstable();
+    before_stall.dedup();
+    assert_eq!(
+        before_stall.len(),
+        read,
+        "what the window had before the stall is not read again: {offsets:?}"
+    );
+
+    provider.disconnect().await.ok();
+    std::fs::remove_dir_all(&home).ok();
 }

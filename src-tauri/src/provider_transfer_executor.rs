@@ -364,9 +364,10 @@ pub async fn run_provider_segmented_download(
     cancel_token: CancellationToken,
 ) -> Result<(), SegmentedDownloadError> {
     use crate::providers::multi_thread::{
-        parallel_refused, range_source_changed_through, read_range_source_through,
-        run_concurrent_range_download, source_changed, ConcurrentRangeConfig,
-        ConcurrentRangeOutcome, SegmentedRun,
+        parallel_refused, range_read_failed, range_source_changed_through,
+        read_range_source_through, replace_failed_range_worker, run_concurrent_range_download,
+        settle_range_attempt, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome,
+        SegmentedRun,
     };
     use crate::providers::ProviderError;
     use std::collections::VecDeque;
@@ -438,8 +439,11 @@ pub async fn run_provider_segmented_download(
         }
     }
 
+    // A window that fails with a recoverable error is attempted again from
+    // its mark (`write_range_resuming`) on the worker its failure left here.
     let pool = Arc::new(tokio::sync::Mutex::new(VecDeque::from(workers)));
     let remote_owned = remote_path.to_string();
+    let validator = before.validator();
 
     let cfg = ConcurrentRangeConfig {
         final_path: PathBuf::from(local_path),
@@ -451,86 +455,95 @@ pub async fn run_provider_segmented_download(
         max_parallel: segments,
     };
 
-    let write_one_range = move |start_off: u64,
-                                end_off: u64,
-                                temp_path: PathBuf,
-                                aggregate: Arc<std::sync::atomic::AtomicU64>,
-                                cancel: CancellationToken| {
-        let pool = pool.clone();
-        let remote = remote_owned.clone();
-        async move {
-            use std::sync::atomic::Ordering;
-            use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+    let write_one_range =
+        move |start_off: u64,
+              end_off: u64,
+              temp_path: PathBuf,
+              aggregate: Arc<std::sync::atomic::AtomicU64>,
+              cancel: CancellationToken,
+              mark: crate::providers::multi_thread::RangeMark| {
+            let pool = pool.clone();
+            let remote = remote_owned.clone();
+            let validator = validator.clone();
+            async move {
+                use std::sync::atomic::Ordering;
+                use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-            let mut provider = {
-                let mut guard = pool.lock().await;
-                guard.pop_front().ok_or_else(|| {
-                    ProviderError::TransferFailed(
-                        "segmented download: worker pool exhausted (internal invariant)"
-                            .to_string(),
-                    )
-                })?
-            };
+                let mut provider = {
+                    let mut guard = pool.lock().await;
+                    guard.pop_front().ok_or_else(|| {
+                        ProviderError::TransferFailed(
+                            "segmented download: worker pool exhausted (internal invariant)"
+                                .to_string(),
+                        )
+                    })?
+                };
 
-            let window_len = end_off - start_off + 1;
-            let mut file = tokio::fs::OpenOptions::new()
-                .write(true)
-                .open(&temp_path)
-                .await
-                .map_err(ProviderError::IoError)?;
-            file.seek(std::io::SeekFrom::Start(start_off))
-                .await
-                .map_err(ProviderError::IoError)?;
-
-            let mut written = 0u64;
-            while written < window_len {
-                if cancel.is_cancelled() {
-                    let _ = provider.disconnect().await;
-                    return Err(ProviderError::TransferFailed(
-                        "Transfer cancelled by user".to_string(),
-                    ));
-                }
-                let sub_len =
-                    (window_len - written).min(segmented_sub_read_size(segments, window_len));
-                let data = provider
-                    .read_range(&remote, start_off + written, sub_len)
-                    .await
-                    .map_err(|e| {
-                        ProviderError::TransferFailed(format!(
-                            "segmented download: read_range at offset {} failed: {}",
-                            start_off + written,
-                            e
-                        ))
-                    })?;
-                if data.is_empty() {
-                    let _ = provider.disconnect().await;
-                    return Err(ProviderError::TransferFailed(format!(
-                        "segmented download: short read at offset {} ({} of {} bytes, window [{}, {}])",
-                        start_off + written,
-                        written,
-                        window_len,
-                        start_off,
-                        end_off
-                    )));
-                }
-                file.write_all(&data)
+                let window_len = end_off - start_off + 1;
+                let mut file = tokio::fs::OpenOptions::new()
+                    .write(true)
+                    .open(&temp_path)
                     .await
                     .map_err(ProviderError::IoError)?;
-                written += data.len() as u64;
-                aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
-            }
-            file.flush().await.map_err(ProviderError::IoError)?;
-            let _ = provider.disconnect().await;
+                file.seek(std::io::SeekFrom::Start(start_off))
+                    .await
+                    .map_err(ProviderError::IoError)?;
 
-            if written != window_len {
-                return Err(ProviderError::TransferFailed(format!(
-                    "segmented download: window [{}, {}] wrote {} bytes, expected {}",
-                    start_off, end_off, written, window_len
-                )));
+                let mut written = 0u64;
+                let copied: Result<(), ProviderError> = async {
+                    while written < window_len {
+                        if cancel.is_cancelled() {
+                            let _ = provider.disconnect().await;
+                            return Err(ProviderError::TransferFailed(
+                                "Transfer cancelled by user".to_string(),
+                            ));
+                        }
+                        let sub_len = (window_len - written)
+                            .min(segmented_sub_read_size(segments, window_len));
+                        let data = provider
+                            .read_range(&remote, start_off + written, sub_len)
+                            .await
+                            .map_err(|e| {
+                                range_read_failed("segmented download", start_off + written, e)
+                            })?;
+                        if data.is_empty() {
+                            let _ = provider.disconnect().await;
+                            return Err(ProviderError::TransferFailed(format!(
+                                "segmented download: short read at offset {} ({} of {} bytes, window [{}, {}])",
+                                start_off + written,
+                                written,
+                                window_len,
+                                start_off,
+                                end_off
+                            )));
+                        }
+                        file.write_all(&data)
+                            .await
+                            .map_err(ProviderError::IoError)?;
+                        written += data.len() as u64;
+                        aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                        mark.advance(start_off + written);
+                    }
+                    Ok(())
+                }
+                .await;
+                if let Err(e) = settle_range_attempt(&mut file, copied).await {
+                    let (next, e) = replace_failed_range_worker(provider, validator, e).await;
+                    pool.lock().await.push_back(next);
+                    return Err(e);
+                }
+                file.flush().await.map_err(ProviderError::IoError)?;
+                let _ = provider.disconnect().await;
+
+                if written != window_len {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "segmented download: window [{}, {}] wrote {} bytes, expected {}",
+                        start_off, end_off, written, window_len
+                    )));
+                }
+                Ok(ConcurrentRangeOutcome::Completed)
             }
-            Ok(ConcurrentRangeOutcome::Completed)
-        }
-    };
+        };
 
     // Internal fail-fast cancels this child, while the caller's token retains
     // an unambiguous user-cancellation signal for the typed outcome below.
@@ -2869,6 +2882,49 @@ mod tests {
         block_metadata: Option<usize>,
         cancel_on_metadata: Option<CancellationToken>,
         metadata_calls: Arc<std::sync::atomic::AtomicUsize>,
+        stall: Option<Arc<StallOnce>>,
+    }
+
+    /// A server that stops answering once, at `at`, on one connection: the
+    /// read that covers `at` returns only the bytes before it, the next one
+    /// (starting at `at`) times out, and every later read is served. The
+    /// content is `(offset % 251)`; `reads` gets the offset of every read.
+    struct StallOnce {
+        at: u64,
+        fired: std::sync::atomic::AtomicBool,
+        reads: std::sync::Mutex<Vec<u64>>,
+        clones: std::sync::atomic::AtomicUsize,
+    }
+
+    impl StallOnce {
+        fn at(at: u64) -> Arc<Self> {
+            Arc::new(Self {
+                at,
+                fired: std::sync::atomic::AtomicBool::new(false),
+                reads: std::sync::Mutex::new(Vec::new()),
+                clones: std::sync::atomic::AtomicUsize::new(0),
+            })
+        }
+
+        fn read(
+            &self,
+            offset: u64,
+            length: u64,
+        ) -> Result<Vec<u8>, crate::providers::ProviderError> {
+            use std::sync::atomic::Ordering;
+            self.reads.lock().unwrap().push(offset);
+            let mut end = offset + length;
+            if !self.fired.load(Ordering::SeqCst) {
+                if offset == self.at {
+                    self.fired.store(true, Ordering::SeqCst);
+                    return Err(crate::providers::ProviderError::Timeout);
+                }
+                if offset < self.at && self.at < end {
+                    end = self.at;
+                }
+            }
+            Ok((offset..end).map(|o| (o % 251) as u8).collect())
+        }
     }
 
     struct FlakyDownloadProvider {
@@ -2918,16 +2974,24 @@ mod tests {
             }
             let mut worker = Self::fail_first(0);
             worker.ranges = self.ranges.clone();
+            if let Some(stall) = self.ranges.as_ref().and_then(|r| r.stall.as_ref()) {
+                stall
+                    .clones
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
             Ok(Box::new(worker))
         }
         async fn read_range(
             &mut self,
             _path: &str,
-            _offset: u64,
+            offset: u64,
             length: u64,
         ) -> Result<Vec<u8>, crate::providers::ProviderError> {
             let ranges = self.ranges.as_ref().expect("scripted range provider");
             ranges.started.notify_one();
+            if let Some(stall) = &ranges.stall {
+                return stall.read(offset, length);
+            }
             if ranges.fail {
                 return Err(crate::providers::ProviderError::TransferFailed(format!(
                     "scripted range failure for {_path}"
@@ -3093,6 +3157,7 @@ mod tests {
             block_metadata: None,
             cancel_on_metadata: None,
             metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: None,
         };
         let mut provider = FlakyDownloadProvider::fail_first(0);
         provider.ranges = Some(ranges.clone());
@@ -3129,6 +3194,59 @@ mod tests {
         );
     }
 
+    /// A window whose connection stops answering is read again from where it
+    /// stopped, on a connection of its own, and the download completes. It
+    /// used to fail whole: the timeout came back as a transfer failure, and
+    /// the window had no worker left to try again with.
+    #[tokio::test(start_paused = true)]
+    async fn segmented_window_that_times_out_resumes_from_its_mark() {
+        const MIB: u64 = 1024 * 1024;
+        let stall = StallOnce::at(MIB + 1000);
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: Some(stall.clone()),
+        };
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ranges);
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("large.bin");
+        run_provider_segmented_download(
+            &mut provider,
+            "/large.bin",
+            target.to_str().unwrap(),
+            2 * MIB,
+            2,
+            None,
+            CancellationToken::new(),
+        )
+        .await
+        .expect("the stalled window resumes and the download completes");
+
+        let mut second_window: Vec<u64> = stall
+            .reads
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|&offset| offset >= MIB)
+            .collect();
+        second_window.sort_unstable();
+        assert_eq!(second_window, vec![MIB, MIB + 1000, MIB + 1000]);
+        // Two workers for the windows, one more for the retry.
+        assert_eq!(stall.clones.load(std::sync::atomic::Ordering::SeqCst), 3);
+        let file = std::fs::read(&target).unwrap();
+        assert_eq!(file.len() as u64, 2 * MIB);
+        for (o, byte) in file.iter().enumerate() {
+            assert_eq!(*byte, ((o as u64) % 251) as u8, "byte mismatch at {o}");
+        }
+    }
+
     #[tokio::test]
     async fn segmented_stop_interrupts_metadata_before_and_after_ranges() {
         for metadata_call in [1, 2] {
@@ -3141,6 +3259,7 @@ mod tests {
                 block_metadata: Some(metadata_call),
                 cancel_on_metadata: None,
                 metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                stall: None,
             };
             let mut provider = FlakyDownloadProvider::fail_first(0);
             provider.ranges = Some(ranges.clone());
@@ -3199,6 +3318,7 @@ mod tests {
             block_metadata: None,
             cancel_on_metadata: Some(session.clone()),
             metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: None,
         };
         let mut provider = FlakyDownloadProvider::fail_first(0);
         provider.ranges = Some(ranges);
@@ -3232,6 +3352,7 @@ mod tests {
             block_metadata: None,
             cancel_on_metadata: None,
             metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: None,
         };
         let mut provider = FlakyDownloadProvider::fail_first(0);
         provider.ranges = Some(ranges.clone());

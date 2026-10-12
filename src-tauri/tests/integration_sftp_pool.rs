@@ -1107,7 +1107,8 @@ async fn pget_via_shared_engine(
     segments: usize,
 ) -> Result<(), ftp_client_gui_lib::providers::ProviderError> {
     use ftp_client_gui_lib::providers::multi_thread::{
-        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome, SegmentedRun,
+        run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeMark,
+        SegmentedRun,
     };
     use ftp_client_gui_lib::providers::ProviderError;
     use std::collections::VecDeque;
@@ -1144,7 +1145,8 @@ async fn pget_via_shared_engine(
                                 end_off: u64,
                                 temp_path: std::path::PathBuf,
                                 aggregate: Arc<AtomicU64>,
-                                cancel: CancellationToken| {
+                                cancel: CancellationToken,
+                                mark: RangeMark| {
         let pool = pool.clone();
         let remote = remote_owned.clone();
         async move {
@@ -1189,6 +1191,7 @@ async fn pget_via_shared_engine(
                     .map_err(ProviderError::IoError)?;
                 written += data.len() as u64;
                 aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                mark.advance(start_off + written);
             }
             file.flush().await.map_err(ProviderError::IoError)?;
             let _ = provider.disconnect().await;

@@ -1947,8 +1947,8 @@ impl B2Provider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<crate::providers::multi_thread::SegmentedTemp, ProviderError> {
         use crate::providers::multi_thread::{
-            run_concurrent_range_download, ConcurrentRangeConfig, ConcurrentRangeOutcome,
-            SegmentedRun,
+            range_read_failed, run_concurrent_range_download, settle_range_attempt,
+            ConcurrentRangeConfig, ConcurrentRangeOutcome, SegmentedRun,
         };
         use std::collections::VecDeque;
         use std::path::PathBuf;
@@ -1958,9 +1958,11 @@ impl B2Provider {
 
         // Pre-acquire exactly `streams` independent workers. The range planner
         // emits exactly `streams` windows (object is well above the cutoff), so
-        // each window pops one worker and the pool is never exhausted. Cloning
-        // is cheap: `reqwest::Client` is Arc-internal and the auth token is
-        // already authorized on `self`.
+        // each window pops one worker and the pool is never exhausted: a window
+        // that fails with a recoverable error puts its worker back for the
+        // attempt that resumes it from its mark. Cloning is cheap:
+        // `reqwest::Client` is Arc-internal and the auth token is already
+        // authorized on `self`.
         let mut workers: VecDeque<B2Provider> = VecDeque::with_capacity(streams);
         for _ in 0..streams {
             workers.push_back(self.clone());
@@ -1983,7 +1985,8 @@ impl B2Provider {
                   end_off: u64,
                   temp_path: PathBuf,
                   aggregate: Arc<std::sync::atomic::AtomicU64>,
-                  cancel: tokio_util::sync::CancellationToken| {
+                  cancel: tokio_util::sync::CancellationToken,
+                  mark: crate::providers::multi_thread::RangeMark| {
                 let pool = pool.clone();
                 let remote = remote_owned.clone();
                 async move {
@@ -2011,52 +2014,51 @@ impl B2Provider {
                         .map_err(ProviderError::IoError)?;
 
                     let mut written = 0u64;
-                    while written < window_len {
-                        if cancel.is_cancelled() {
-                            return Err(ProviderError::TransferFailed(
-                                "Transfer cancelled by user".to_string(),
-                            ));
-                        }
-                        let sub_len = (window_len - written).min(MULTI_THREAD_SUB_READ_SIZE);
-                        let data = worker
-                            .read_range(&remote, start_off + written, sub_len)
-                            .await
-                            .map_err(|e| {
-                                let text = format!(
-                                    "b2 multi-thread: read_range at offset {} failed: {}",
+                    let copied: Result<(), ProviderError> = async {
+                        while written < window_len {
+                            if cancel.is_cancelled() {
+                                return Err(ProviderError::TransferFailed(
+                                    "Transfer cancelled by user".to_string(),
+                                ));
+                            }
+                            let sub_len = (window_len - written).min(MULTI_THREAD_SUB_READ_SIZE);
+                            let data = worker
+                                .read_range(&remote, start_off + written, sub_len)
+                                .await
+                                .map_err(|e| {
+                                    // The offset is added to the message, and a
+                                    // refusal stays one on the way up.
+                                    range_read_failed("b2 multi-thread", start_off + written, e)
+                                })?;
+                            // Charged here, not in `read_range`, which like every
+                            // other provider's leaves the limiter to its caller
+                            // (pget charged it a second time).
+                            crate::transfer_dag::throttle::charge(
+                                crate::transfer_dag::governor::TransferDirection::Download,
+                                data.len() as u64,
+                            )
+                            .await;
+                            if data.is_empty() {
+                                return Err(ProviderError::TransferFailed(format!(
+                                    "b2 multi-thread: short read at offset {} ({} of {} bytes)",
                                     start_off + written,
-                                    e
-                                );
-                                // The offset is added to the message, and a
-                                // refusal stays one on the way up.
-                                match e {
-                                    ProviderError::ParallelRefused(_) => {
-                                        ProviderError::ParallelRefused(text)
-                                    }
-                                    _ => ProviderError::TransferFailed(text),
-                                }
-                            })?;
-                        // Charged here, not in `read_range`, which like every
-                        // other provider's leaves the limiter to its caller
-                        // (pget charged it a second time).
-                        crate::transfer_dag::throttle::charge(
-                            crate::transfer_dag::governor::TransferDirection::Download,
-                            data.len() as u64,
-                        )
-                        .await;
-                        if data.is_empty() {
-                            return Err(ProviderError::TransferFailed(format!(
-                                "b2 multi-thread: short read at offset {} ({} of {} bytes)",
-                                start_off + written,
-                                written,
-                                window_len
-                            )));
+                                    written,
+                                    window_len
+                                )));
+                            }
+                            file.write_all(&data)
+                                .await
+                                .map_err(ProviderError::IoError)?;
+                            written += data.len() as u64;
+                            aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                            mark.advance(start_off + written);
                         }
-                        file.write_all(&data)
-                            .await
-                            .map_err(ProviderError::IoError)?;
-                        written += data.len() as u64;
-                        aggregate.fetch_add(data.len() as u64, Ordering::Relaxed);
+                        Ok(())
+                    }
+                    .await;
+                    if let Err(e) = settle_range_attempt(&mut file, copied).await {
+                        pool.lock().await.push_back(worker);
+                        return Err(e);
                     }
                     file.flush().await.map_err(ProviderError::IoError)?;
                     if written != window_len {
@@ -4046,7 +4048,7 @@ impl StorageProvider for B2Provider {
             .map_err(|e| ProviderError::ConnectionFailed(format!("read_range build: {}", e)))?;
         let resp = send_with_retry(&self.client, req, &self.retry_config)
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(format!("read_range send: {}", e)))?;
+            .map_err(super::multi_thread::range_read_error)?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
@@ -4068,7 +4070,7 @@ impl StorageProvider for B2Provider {
         let bytes = resp
             .bytes()
             .await
-            .map_http_err(|e| ProviderError::Other(format!("read_range body: {}", e)))?;
+            .map_err(super::multi_thread::range_read_error)?;
         match super::multi_thread::ranged_answer(
             status,
             answered.as_deref(),
@@ -7034,6 +7036,21 @@ mod tests {
             .expect_err("a 403 on the windows is a failure, whatever its text says");
         assert!(!matches!(err, ProviderError::ParallelRefused(_)), "{err}");
         assert!(!out.exists(), "nothing may be published");
+    }
+
+    /// A window the connection drops is resumed from its mark. A request with
+    /// no answer was a `ConnectionFailed` and a body cut halfway an `Other`,
+    /// so on B2 only a timeout was resumed and a reset failed the download.
+    #[tokio::test]
+    async fn a_window_the_connection_drops_is_recoverable() {
+        super::super::multi_thread::window_server::assert_a_dropped_window_is_recoverable(|addr| {
+            let mut provider = empty_provider();
+            provider.download_url = format!("http://{addr}");
+            provider.auth_token = SecretString::new("token".to_string().into());
+            provider.connected = true;
+            Box::new(provider)
+        })
+        .await;
     }
 
     /// A ranged GET answered with a `Content-Range` for another window is a

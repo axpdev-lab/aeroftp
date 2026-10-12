@@ -1817,7 +1817,7 @@ impl StorageProvider for KoofrProvider {
 
         let resp = send_with_retry(&self.client, request, &HttpRetryConfig::default())
             .await
-            .map_http_err(|e| ProviderError::TransferFailed(format!("Range read failed: {}", e)))?;
+            .map_err(super::multi_thread::range_read_error)?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);
@@ -1836,7 +1836,7 @@ impl StorageProvider for KoofrProvider {
         let bytes = resp
             .bytes()
             .await
-            .map_http_err(|e| ProviderError::TransferFailed(format!("Read bytes failed: {}", e)))?;
+            .map_err(super::multi_thread::range_read_error)?;
         match super::multi_thread::ranged_answer(
             status,
             answered.as_deref(),
@@ -2162,6 +2162,25 @@ mod tests {
             KoofrProvider::classify_koofr_error(409, taken),
             ProviderError::AlreadyExists(_)
         ));
+    }
+
+    /// A window the connection drops is resumed from its mark: a request with
+    /// no answer and a body cut halfway were both `TransferFailed`, which
+    /// failed the download.
+    #[tokio::test]
+    async fn a_window_the_connection_drops_is_recoverable() {
+        super::super::multi_thread::window_server::assert_a_dropped_window_is_recoverable(|addr| {
+            let mut provider = KoofrProvider::new(KoofrConfig {
+                email: "u@example.com".to_string(),
+                password: secrecy::SecretString::from("p".to_string()),
+                initial_path: None,
+            });
+            provider.connected = true;
+            provider.mount_id = "M".to_string();
+            provider.content_base_override = Some(format!("http://{addr}"));
+            Box::new(provider)
+        })
+        .await;
     }
 
     /// A provider on a Koofr double that answers every request 409
