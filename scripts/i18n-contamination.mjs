@@ -13,7 +13,7 @@
  * Bulgarian, Hebrew and Telugu inside Armenian, Cyrillic inside Croatian and
  * Basque, Latin look-alikes inside Ukrainian and Macedonian words.
  *
- * Three rules, each the evidence for a different way the damage gets in.
+ * Four rules, each the evidence for a different way the damage gets in.
  *
  *  FOREIGN: a character whose script is neither Latin nor one of the locale's
  *    own. Latin is always allowed, because every locale legitimately carries
@@ -44,6 +44,16 @@
  *    can reorder what the user reads. Khmer separates words with U+200B and the
  *    Indic scripts shape conjuncts with ZWJ and ZWNJ, so those are declared per
  *    locale. The soft hyphen is a hyphenation hint and is allowed everywhere.
+ *
+ *  PUNCTUATION: a middle dot `·` (U+00B7) the English source of the same key
+ *    does not have. One translation batch wrote it in place of "...", "." and
+ *    ":" in Armenian, Georgian, Khmer and Macedonian (`Поврзување···` for mk
+ *    speedTest.connecting), and no other rule sees it: its Script_Extensions
+ *    include Latin, so every locale may use it. The count is compared with the
+ *    English value, not banned outright, because en.json has keys that carry
+ *    one and every locale mirrors them. Catalan writes it inside words
+ *    (`col·lecció`), Greek as the ano teleia, Korean between list items, so for
+ *    them it is declared.
  *
  * Consequences worth knowing before trusting the number:
  *  - It sees letters, not language. A string that is nonsense in the right
@@ -87,17 +97,18 @@ const LATIN_ONLY = { scripts: [] };
 /**
  * What each locale is written in, besides Latin. `glued` turns the MIXED rule
  * off for writing systems that attach Latin terms to native text without a
- * space. `format` lists the format characters the script itself uses.
+ * space. `format` lists the format characters the script itself uses, and
+ * `punctuation` the marks of the PUNCTUATION rule the language itself writes.
  */
 const LOCALES = {
     bg: { scripts: ['Cyrillic'] },
     bn: { scripts: ['Bengali'], format: ['\u200C', '\u200D'] },
-    ca: LATIN_ONLY,
+    ca: { scripts: [], punctuation: ['\u00B7'] },
     cs: LATIN_ONLY,
     cy: LATIN_ONLY,
     da: LATIN_ONLY,
     de: LATIN_ONLY,
-    el: { scripts: ['Greek'] },
+    el: { scripts: ['Greek'], punctuation: ['\u00B7'] },
     en: LATIN_ONLY,
     es: LATIN_ONLY,
     et: LATIN_ONLY,
@@ -115,7 +126,7 @@ const LOCALES = {
     ja: { scripts: ['Han', 'Hiragana', 'Katakana'], glued: true },
     ka: { scripts: ['Georgian'] },
     km: { scripts: ['Khmer'], format: ['\u200B'] },
-    ko: { scripts: ['Hangul'], glued: true },
+    ko: { scripts: ['Hangul'], glued: true, punctuation: ['\u00B7'] },
     lt: LATIN_ONLY,
     lv: LATIN_ONLY,
     mk: { scripts: ['Cyrillic'] },
@@ -142,6 +153,9 @@ const LOCALES = {
 /** Allowed in every locale: a hyphenation hint, invisible unless the line breaks
  *  there. fi and no use it on purpose in the long Security Tools title. */
 const FORMAT_EVERYWHERE = new Set(['\u00AD']);
+
+/** Marks the PUNCTUATION rule counts against the English source. */
+const SUBSTITUTED_PUNCTUATION = ['\u00B7'];
 
 /** Only used to NAME a script in the report; detection never consults it, so a
  *  script missing here is still caught and reported by code point. */
@@ -194,8 +208,9 @@ const inEmojiSequence = (chars, i) => {
 /**
  * Every finding in one value, as `{ rule, chars, word }` records. Pure: the
  * baseline logic below and the report read nothing else about a string.
+ * `source` is the English value of the same key, '' when en.json has none.
  */
-function inspect(value, declaration) {
+function inspect(value, declaration, source = '') {
     const allowed = ['Latin', ...declaration.scripts].map(scx);
     const format = new Set([...FORMAT_EVERYWHERE, ...(declaration.format ?? [])]);
     const findings = [];
@@ -218,6 +233,12 @@ function inspect(value, declaration) {
     });
     if (foreign.length) findings.push({ rule: 'foreign', chars: foreign });
     if (invisible.length) findings.push({ rule: 'invisible', chars: invisible });
+
+    const count = (text, mark) => [...text].filter((ch) => ch === mark).length;
+    const extra = SUBSTITUTED_PUNCTUATION
+        .filter((mark) => !(declaration.punctuation ?? []).includes(mark))
+        .flatMap((mark) => Array(Math.max(0, count(value, mark) - count(source, mark))).fill(mark));
+    if (extra.length) findings.push({ rule: 'punctuation', chars: extra });
 
     if (declaration.scripts.length && !declaration.glued) {
         // Script, not Script_Extensions, on both sides: a letter shared by
@@ -287,6 +308,9 @@ const asJson = process.argv.includes('--json');
 const undeclared = files.filter((loc) => !Object.hasOwn(LOCALES, loc));
 const orphaned = Object.keys(LOCALES).filter((loc) => !files.includes(loc));
 
+// The PUNCTUATION rule reads the English source of each key.
+const english = files.includes('en') ? read('en') : {};
+
 const found = [];
 const matchedAcceptances = new Set();
 let suppressed = 0;
@@ -295,7 +319,7 @@ for (const loc of files) {
     const declaration = LOCALES[loc];
     if (!declaration) continue;
     for (const [key, value] of Object.entries(read(loc))) {
-        const findings = inspect(value, declaration);
+        const findings = inspect(value, declaration, english[key] ?? '');
         if (!findings.length) continue;
         const id = acceptedKey(loc, key, value);
         if (Object.hasOwn(accepted, id)) {
@@ -326,6 +350,7 @@ if (asJson) {
         mixed: 'mixed-script word',
         lone: 'lone Latin letter between native words',
         invisible: 'invisible or broken character',
+        punctuation: 'punctuation the English does not have',
     };
     let current = null;
     for (const hit of found) {
