@@ -92,6 +92,22 @@ test('an invisible or broken character fails where the script does not use it', 
     assert.deepEqual([...hits(args)].sort(), ['bn.zwsp', 'en.bidi', 'en.replacement', 'en.strayZwj', 'et.zwsp']);
 });
 
+test('a middle dot the English does not have fails, except where the language writes it', (t) => {
+    const args = fixture(t, {
+        // The English carries one here, so a locale mirroring it is not a hit.
+        en: { separator: 'Add · Replace' },
+        hy: { ellipsis: 'Միացում···', separator: 'Ավելացնել · Փոխարինել' },
+        mk: { colon: 'Рачно избришете ја оваа привремена датотека·' },
+        ca: { geminate: 'col·lecció' },
+        el: { anoTeleia: 'Τι είναι αυτό·' },
+        ko: { list: '추가·교체·제거' },
+    });
+    const found = report(args).contaminated;
+    assert.deepEqual(found.map((h) => `${h.locale}.${h.key}`).sort(), ['hy.ellipsis', 'mk.colon']);
+    assert.equal(found.find((h) => h.key === 'ellipsis').findings[0].rule, 'punctuation');
+    assert.equal(found.find((h) => h.key === 'ellipsis').findings[0].chars.length, 3);
+});
+
 test('the gate fails on a hit, an undeclared locale and a stale acceptance, and honours a live one', (t) => {
     // A language named in its own script is the legitimate case the baseline exists for.
     const value = 'Русский';
