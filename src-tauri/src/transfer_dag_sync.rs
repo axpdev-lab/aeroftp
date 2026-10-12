@@ -843,7 +843,12 @@ fn spawn_normal_worker(
         .pop_front()
         .expect("normal worker dispatch must have a clone lease");
     let running = Arc::clone(running);
+    // The sync driver already holds one job for the whole tree. A segmented
+    // file on this worker joins that job instead of taking a slot the driver
+    // does not release until every file has finished.
+    let inherited_job = crate::transfer_dag::governor::current_job_share();
     jobs.spawn(async move {
+        let _inherited_job = inherited_job.map(|share| share.enter());
         let mut progress = RecordingProgressSink {
             events: Vec::new(),
             last_progress: HashMap::new(),
@@ -1268,7 +1273,7 @@ pub async fn execute_sync_dag(
         // plan, so it holds one directional lease for each local-root side.
         // The device registry coalesces both requests when they resolve to the
         // same physical disk.
-        let _job_lease = crate::transfer_dag::governor::global()
+        let job_lease = crate::transfer_dag::governor::global()
             .acquire_job(
                 endpoint.clone(),
                 TransferPriority::Background,
@@ -1373,7 +1378,12 @@ pub async fn execute_sync_dag(
             &opts.error_correction,
             normal_workers,
         );
-        let (mut stream_summary, peak_running) = tokio::join!(stream_future, driver_future);
+        // Workers are spawned while the driver is polled. The scope keeps this
+        // job visible to them, including when the sync future is a `block_on`
+        // root and has no task id for the job map.
+        let (mut stream_summary, peak_running) = job_lease
+            .scope(async { tokio::join!(stream_future, driver_future) })
+            .await;
         // The frontier's fold keeps the max of per-file `slot_peak`, 1 for a
         // whole file whatever ran beside it. The driver knows how many ran
         // together (#591).

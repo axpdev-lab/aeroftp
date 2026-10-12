@@ -931,6 +931,21 @@ pub fn segmented_temp_path_for(final_path: &Path) -> PathBuf {
     PathBuf::from(p)
 }
 
+/// Disk writes for one download job.
+///
+/// The segmented engine writes a sibling of the path string, then renames it
+/// over the final name. Device identity follows a symlink, so an existing
+/// link to another device makes the final path and that sibling two devices.
+/// Both requests are returned. The governor de-duplicates them when they are
+/// the same device, and it sorts them before waiting so two devices cannot
+/// deadlock each other.
+pub fn download_job_disk_requests(local_path: &Path) -> Vec<crate::transfer_dag::DiskLeaseRequest> {
+    vec![
+        crate::transfer_dag::DiskLeaseRequest::write(local_path),
+        crate::transfer_dag::DiskLeaseRequest::write(segmented_temp_path_for(local_path)),
+    ]
+}
+
 /// Transport-agnostic concurrent range download orchestrator (PD-SFTP-2).
 ///
 /// This is the single shared engine for splitting a large file into N
@@ -978,10 +993,12 @@ where
     }
 
     let temp_path = segmented_temp_path_for(&config.final_path);
-    // DAG-P2-01b: a segmented transfer remains one foreground job for the
-    // global governor. The lease covers pre-allocation and every range; range
-    // fan-out must not multiply endpoint permits. The publication is the
-    // caller's, under the claim the run hands back with the temporary.
+    // DAG-P2-01b: a segmented transfer remains one job for the global
+    // governor. When the caller already holds that job (a batch file, a
+    // single-file graph, a sync tree), this acquire joins it instead of
+    // taking a second endpoint or disk slot. On its own it still takes one
+    // job, and range fan-out does not multiply permits. The publication is
+    // the caller's, under the claim the run hands back with the temporary.
     let _governor_lease = crate::transfer_dag::governor::global()
         .acquire_job(
             config.endpoint_identity.clone(),

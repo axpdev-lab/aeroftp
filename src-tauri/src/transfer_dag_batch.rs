@@ -701,15 +701,19 @@ where
     }
 
     let endpoint = executor.endpoint_identity().await;
-    let disk_request = match direction {
-        TransferDirection::Upload => DiskLeaseRequest::read(entry.local_path.clone()),
-        TransferDirection::Download => DiskLeaseRequest::write(entry.local_path.clone()),
+    // A download also names the segmented sibling. Identity follows a symlink,
+    // and that sibling can be another device. Same device collapses to one slot.
+    let disk_requests = match direction {
+        TransferDirection::Upload => vec![DiskLeaseRequest::read(entry.local_path.clone())],
+        TransferDirection::Download => crate::providers::multi_thread::download_job_disk_requests(
+            std::path::Path::new(&entry.local_path),
+        ),
     };
     // Batches are background work. The endpoint and local-device permits are
     // held only while this file's session is active, preserving file-level
     // parallelism across different endpoints and disks.
     let (session_lease, _job_lease) =
-        match acquire_session_then_job(session_pool, governor, endpoint, [disk_request], async {
+        match acquire_session_then_job(session_pool, governor, endpoint, disk_requests, async {
             !cancel.load(Ordering::Relaxed)
         })
         .await

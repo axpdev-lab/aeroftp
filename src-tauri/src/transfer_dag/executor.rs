@@ -459,7 +459,13 @@ pub async fn execute_dag_with_options(
                 let runner = Arc::clone(&runner);
                 let controller = controller.clone();
                 let graph_cancel = graph_cancel.clone();
+                // A single-file or copy graph already holds one governor job on
+                // this task. The node must join it: its segmented download
+                // would otherwise wait for a second slot the parent keeps
+                // until the node finishes.
+                let inherited_job = super::governor::current_job_share();
                 let abort_handle = join_set.spawn(async move {
+                    let _inherited_job = inherited_job.map(|share| share.enter());
                     run_dispatched_node(
                         node,
                         manager,
