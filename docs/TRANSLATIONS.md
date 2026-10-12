@@ -202,6 +202,7 @@ npm run i18n:stats
 npm run i18n:diacritics      # accents stripped from a word
 npm run i18n:untranslated    # a string still in English
 npm run i18n:contamination   # letters from another writing system
+npm run i18n:stale-english   # a locale still equal to a former English string
 ```
 
 ---
@@ -264,6 +265,7 @@ For languages with non-Latin scripts (Cyrillic, CJK, Thai, Hindi, Bengali, Khmer
 - Split non-Latin languages into **smaller batches** (3-5 langs per agent) to avoid hitting the 32K output token limit
 - Write the translation directly in the native script. Never build it by transliteration or by substituting characters: that yields words that are not words, or words carrying a look-alike letter from another alphabet, which reads correctly and breaks search
 - Verify with `npm run i18n:contamination`. A check that the native script is present (`has_armenian()`, `has_cyrillic()`) passes a string that is half another alphabet. The gate flags letters from a script the locale does not declare, invisible or broken characters, Latin letters inside or between native words, and a middle dot `·` the English source of the key does not have (Catalan, Greek and Korean write it, so for them it is declared). It accepts Latin everywhere, so a string transliterated wholly into Latin passes it: native-script wording still needs a reader of the language
+- Verify with `npm run i18n:stale-english` when an English string changes. The gate fails if a locale still equals a former English value of that key. It does not see a stale translation that was rewritten into the language. The ledger is `scripts/i18n-former-english.json`, rebuilt with `node scripts/i18n-stale-english.mjs --write` in the same commit as the English change. CI checks out with fetch-depth 1, so the gate reads the file instead of walking git history.
 
 ### Delegation and Parallel Workflows
 

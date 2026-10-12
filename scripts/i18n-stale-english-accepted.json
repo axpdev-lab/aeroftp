@@ -1,0 +1,11 @@
+{
+    "_comment": [
+        "Read by scripts/i18n-stale-english.mjs.",
+        "A hit that a human read and judged correct is keyed by locale, key AND the exact value.",
+        "Rewording the string retires the acceptance. An acceptance that no longer matches a hit fails the gate.",
+        "Never bulk-accept. The default answer to a hit is to translate it."
+    ],
+    "accepted": {
+        "it\u001fprotocol.endpointPlaceholder\u001fes. s3.example.com": "Correct Italian for e.g. The previous English was this same string, which was an Italian leak in en.json. The current English is \"e.g. s3.example.com\"."
+    }
+}

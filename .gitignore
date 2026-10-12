@@ -162,6 +162,12 @@ run-clean.sh
 # checks workflow
 !/scripts/i18n-contamination.mjs
 !/scripts/i18n-contamination-accepted.json
+# Exception: former-English gate, its ledger and its reviewed acceptance,
+# run by the fast checks workflow. The ledger is committed because that
+# checkout is fetch-depth 1.
+!/scripts/i18n-stale-english.mjs
+!/scripts/i18n-former-english.json
+!/scripts/i18n-stale-english-accepted.json
 # Exception: single pre-release smoke entrypoint (`npm run smoke`, #408 row 1)
 !/scripts/smoke.mjs
 # Exception: asserts a CI lane actually executed the tests it selects, called by
