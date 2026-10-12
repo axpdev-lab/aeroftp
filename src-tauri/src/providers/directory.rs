@@ -22,7 +22,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use async_trait::async_trait;
 
@@ -33,6 +33,27 @@ use crate::providers::mtp::provider::MtpProvider;
 use crate::providers::types::{ProviderError, ProviderType, RemoteEntry, StorageInfo};
 use crate::providers::StorageProvider;
 use crate::transfer_dag::{Capability, TransferCapabilities};
+
+/// One segment of a virtual path as one entry of the host file system.
+///
+/// A virtual path is split on `/` only, so on Windows a segment can still
+/// carry `\`, a drive (`C:`) or a UNC or rooted prefix, and `Path::push` and
+/// `join` read those as path syntax: under the root, `..\outside.txt` names
+/// the root's sibling, `C:\x` replaces the root, and a leaf that does not
+/// exist yet passes the `contained` check because there is nothing to
+/// canonicalize. A served client could create, delete or move files outside
+/// the folder it was given. A segment is accepted only when the host parses
+/// it as exactly one normal component, equal to the segment itself: on Unix
+/// `a\b` is one legal name and stays one, on Windows it is two and is refused.
+fn host_segment(seg: &str) -> Result<&str, ProviderError> {
+    let mut parts = Path::new(seg).components();
+    match (parts.next(), parts.next()) {
+        (Some(Component::Normal(one)), None) if one == std::ffi::OsStr::new(seg) => Ok(seg),
+        _ => Err(ProviderError::InvalidPath(format!(
+            "{seg:?} is not a single file name on this system"
+        ))),
+    }
+}
 
 /// Cap for `download_to_bytes` materialization on a phone (10 MiB): every
 /// byte crosses USB. Larger objects stream to disk via `download`. A local
@@ -221,7 +242,7 @@ impl DirectoryProvider {
         let root = self.root()?;
         let mut fs = root.to_path_buf();
         for seg in split_segments(virtual_path)? {
-            fs.push(seg);
+            fs.push(host_segment(&seg)?);
         }
         Ok(fs)
     }
@@ -259,7 +280,7 @@ impl DirectoryProvider {
         let norm = normalize_virtual_path(vpath)?;
         let name = leaf_name(&norm)?;
         let parent = parent_path(&norm)?;
-        let entry = self.resolve_existing(&parent)?.join(&name);
+        let entry = self.resolve_existing(&parent)?.join(host_segment(&name)?);
         std::fs::symlink_metadata(&entry).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 ProviderError::NotFound(format!("{vpath}: {e}"))
@@ -283,7 +304,7 @@ impl DirectoryProvider {
         let name = leaf_name(&norm)?;
         let parent = parent_path(&norm)?;
         let parent_fs = self.resolve_existing(&parent)?;
-        let target = parent_fs.join(&name);
+        let target = parent_fs.join(host_segment(&name)?);
         // Refuse if a symlink at the target already points outside.
         if target.exists() || target.symlink_metadata().is_ok() {
             let _ = self.contained(&target)?;
@@ -1357,6 +1378,125 @@ mod tests {
 
         p.disconnect().await.unwrap();
         assert!(!p.is_connected());
+    }
+
+    /// The virtual path splits on `/` only, so what a segment may still hold
+    /// is decided by the host: one plain name is accepted, anything the host
+    /// reads as a separator, a parent, a drive or a UNC prefix is refused.
+    #[test]
+    fn host_segment_accepts_one_host_name_only() {
+        for ok in ["ok.txt", "Internal shared storage", "-dash", "x.y.z"] {
+            assert_eq!(host_segment(ok).unwrap(), ok);
+        }
+        for refused in ["", ".", ".."] {
+            assert!(
+                matches!(host_segment(refused), Err(ProviderError::InvalidPath(_))),
+                "{refused:?} must be refused"
+            );
+        }
+        let backslashed = [
+            r"..\outside.txt",
+            r"a\b",
+            r"\rooted.txt",
+            r"C:\abs.txt",
+            r"C:drive-relative.txt",
+            r"\\server\share\unc.txt",
+        ];
+        for seg in backslashed {
+            let verdict = host_segment(seg);
+            if cfg!(windows) {
+                assert!(
+                    matches!(verdict, Err(ProviderError::InvalidPath(_))),
+                    "{seg:?} is path syntax on Windows, got {verdict:?}"
+                );
+            } else {
+                // One legal (if unusual) file name on Unix.
+                assert_eq!(verdict.unwrap(), seg);
+            }
+        }
+    }
+
+    /// A segment carrying Windows path syntax reached `join` as a leaf: the
+    /// virtual parent of `/..\outside.txt` is `/`, so the parent check passed
+    /// and the join named the root's sibling. Delete removed a file outside
+    /// the folder, and create, mkdir, rename and copy wrote outside it,
+    /// because a target that does not exist yet has nothing to canonicalize.
+    /// Every operation that writes is refused now, and nothing outside moves.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_path_syntax_in_a_segment_cannot_leave_the_root() {
+        let base = tempfile::tempdir().expect("base");
+        let share = base.path().join("share");
+        std::fs::create_dir(&share).unwrap();
+        std::fs::write(share.join("ok.txt"), b"inside").unwrap();
+        let sentinel = base.path().join("outside.txt");
+        std::fs::write(&sentinel, b"sentinel").unwrap();
+        let src = base.path().join("upload-src.txt");
+        std::fs::write(&src, b"payload").unwrap();
+
+        let mut p = DirectoryProvider::local(share.clone());
+        p.connect().await.expect("connect");
+
+        let absolute = format!("/{}", sentinel.display());
+        let unc_like = r"/\\localhost\c$\outside.txt".to_string();
+        for target in [r"/..\outside.txt".to_string(), absolute, unc_like] {
+            let outcome = p.delete(&target).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::InvalidPath(_))),
+                "delete {target:?}: {outcome:?}"
+            );
+            assert_eq!(std::fs::read(&sentinel).unwrap(), b"sentinel");
+        }
+
+        let created = base.path().join("created.txt");
+        let outcome = p
+            .upload(src.to_str().unwrap(), r"/..\created.txt", None)
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        let outcome = p.mkdir(r"/..\made").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        let outcome = p.rename("/ok.txt", r"/..\moved.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        let outcome = p.rename(r"/..\outside.txt", "/stolen.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::InvalidPath(_))),
+            "{outcome:?}"
+        );
+        let outcome = p.server_copy("/ok.txt", r"/..\copied.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+
+        assert!(!created.exists());
+        assert!(!base.path().join("made").exists());
+        assert!(!base.path().join("moved.txt").exists());
+        assert!(!base.path().join("copied.txt").exists());
+        assert!(!share.join("stolen.txt").exists());
+        assert_eq!(std::fs::read(share.join("ok.txt")).unwrap(), b"inside");
+        assert_eq!(std::fs::read(&sentinel).unwrap(), b"sentinel");
+    }
+
+    /// The same names are ordinary on Unix, where `\` is a file-name
+    /// character: the refusal above must not cost a Unix user a legal name.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_backslash_is_part_of_a_name_on_unix() {
+        let base = tempfile::tempdir().expect("base");
+        let share = base.path().join("share");
+        std::fs::create_dir(&share).unwrap();
+        let mut p = DirectoryProvider::local(share.clone());
+        p.connect().await.expect("connect");
+
+        p.mkdir(r"/..\kept").await.expect("one legal name");
+        assert!(share.join(r"..\kept").is_dir());
+        assert!(!base.path().join("kept").exists());
     }
 
     #[tokio::test]
