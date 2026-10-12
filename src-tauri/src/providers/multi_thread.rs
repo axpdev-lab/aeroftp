@@ -372,6 +372,156 @@ pub(crate) fn total_range_bytes(range_bytes: &[Arc<AtomicU64>]) -> u64 {
     range_bytes.iter().map(|b| b.load(Ordering::Relaxed)).sum()
 }
 
+/// The window [`read_in_order`] asks for at a time: what it holds per stream,
+/// and the most one failed attempt reads again.
+pub const IN_ORDER_WINDOW: u64 = 8 * 1024 * 1024;
+
+/// Read `[0, size)` of `remote_path` through `workers` and hand every byte to
+/// `consume` once, in order, with no file in between.
+///
+/// `hashsum` used to download the whole object into the temporary folder and
+/// hash it there: a 25.2 GB file filled a 27 GB tmpfs after 21 minutes and the
+/// command failed with no hash (#658 re-test, 2026-10-10). Here the windows
+/// are consumed in their order and at most one per worker is held at once,
+/// in flight or read and waiting for an earlier one, so the memory is one
+/// window per worker whatever the size of the object. A window that fails
+/// with a recoverable error is read again from its mark on a fresh worker
+/// ([`write_range_resuming`]), as a segmented download's range is.
+///
+/// The workers come back with the outcome, so the caller can read the object
+/// once more through one of them before trusting the bytes, and close them.
+/// After a failure, the workers of the windows still in flight are dropped
+/// with them.
+pub async fn read_in_order<F>(
+    workers: Vec<Box<dyn super::StorageProvider>>,
+    remote_path: &str,
+    size: u64,
+    validator: Option<String>,
+    window: u64,
+    cancel: &CancellationToken,
+    mut consume: F,
+) -> (
+    Result<(), ProviderError>,
+    Vec<Box<dyn super::StorageProvider>>,
+)
+where
+    F: FnMut(&[u8]),
+{
+    let streams = workers.len();
+    if streams == 0 {
+        return (
+            Err(ProviderError::Other(
+                "read_in_order needs at least one worker".to_string(),
+            )),
+            workers,
+        );
+    }
+    let window = window.max(1);
+    let pool = tokio::sync::Mutex::new(std::collections::VecDeque::from(workers));
+    let outcome = {
+        let mut windows = futures_util::stream::iter(0..size.div_ceil(window))
+            .map(|i| {
+                let start = i * window;
+                let end = (start + window).min(size) - 1;
+                read_window_in_memory(&pool, remote_path, start, end, &validator, cancel)
+            })
+            .buffered(streams);
+        let mut outcome = Ok(());
+        while let Some(read) = windows.next().await {
+            match read {
+                Ok(bytes) => consume(&bytes),
+                Err(e) => {
+                    outcome = Err(e);
+                    break;
+                }
+            }
+        }
+        outcome
+    };
+    (outcome, pool.into_inner().into())
+}
+
+/// One window of [`read_in_order`], `[start, end]` inclusive, into memory.
+async fn read_window_in_memory(
+    pool: &tokio::sync::Mutex<std::collections::VecDeque<Box<dyn super::StorageProvider>>>,
+    remote_path: &str,
+    start: u64,
+    end: u64,
+    validator: &Option<String>,
+    cancel: &CancellationToken,
+) -> Result<Vec<u8>, ProviderError> {
+    let buffer = std::sync::Mutex::new(vec![0u8; (end - start + 1) as usize]);
+    let read_from = |from: u64,
+                     end: u64,
+                     _temp: PathBuf,
+                     _bytes: Arc<AtomicU64>,
+                     cancel: CancellationToken,
+                     mark: RangeMark| {
+        let buffer = &buffer;
+        async move {
+            let mut worker = pool.lock().await.pop_front().ok_or_else(|| {
+                ProviderError::Other("read_in_order: no free worker (internal invariant)".into())
+            })?;
+            let mut at = from;
+            let read: Result<(), ProviderError> = async {
+                while at <= end {
+                    if cancel.is_cancelled() {
+                        return Err(ProviderError::Cancelled);
+                    }
+                    let len = end - at + 1;
+                    let data = worker
+                        .read_range(remote_path, at, len)
+                        .await
+                        .map_err(|e| range_read_failed("in-order read", at, e))?;
+                    // Charged here, not in `read_range`, which leaves the
+                    // limiter to its caller; for the bytes that came, so a
+                    // short read is not paid as a full one.
+                    crate::transfer_dag::throttle::charge(
+                        crate::transfer_dag::governor::TransferDirection::Download,
+                        data.len() as u64,
+                    )
+                    .await;
+                    if data.is_empty() {
+                        // The object ended before the size it was read for:
+                        // a shorter file, which no retry makes longer.
+                        return Err(ProviderError::TransferFailed(format!(
+                            "{remote_path} ended at byte {at}, before the {} bytes it was read for",
+                            end + 1
+                        )));
+                    }
+                    let take = data.len().min(len as usize);
+                    let offset = (at - start) as usize;
+                    buffer.lock().unwrap_or_else(|e| e.into_inner())[offset..offset + take]
+                        .copy_from_slice(&data[..take]);
+                    at += take as u64;
+                    mark.advance(at);
+                }
+                Ok(())
+            }
+            .await;
+            let (worker, read) = match read {
+                Ok(()) => (worker, Ok(())),
+                Err(e) => {
+                    let (next, e) = replace_failed_range_worker(worker, validator.clone(), e).await;
+                    (next, Err(e))
+                }
+            };
+            pool.lock().await.push_back(worker);
+            read.map(|()| ConcurrentRangeOutcome::Completed)
+        }
+    };
+    write_range_resuming(
+        &read_from,
+        start,
+        end,
+        Path::new(""),
+        Arc::new(AtomicU64::new(0)),
+        cancel,
+    )
+    .await?;
+    Ok(buffer.into_inner().unwrap_or_else(|e| e.into_inner()))
+}
+
 /// RAII guard: removes the `.aerosegtmp` file on drop unless `commit()` is
 /// called. Guarantees no partial temp survives an error, a fallback, or a
 /// cancellation (the F-1 lesson: every new transfer path is cancellable and

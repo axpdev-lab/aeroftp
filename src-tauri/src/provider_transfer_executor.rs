@@ -3247,6 +3247,61 @@ mod tests {
         }
     }
 
+    /// `read_in_order` (the reader `hashsum` uses instead of a temporary file)
+    /// hands every byte over once and in its order, and a window whose read
+    /// times out is read again from where it stopped, on a fresh worker.
+    #[tokio::test(start_paused = true)]
+    async fn an_in_order_read_resumes_a_stalled_window_and_keeps_the_order() {
+        const MIB: u64 = 1024 * 1024;
+        let stall = StallOnce::at(MIB + 1000);
+        let ranges = ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: Some(stall.clone()),
+        };
+        let mut primary = FlakyDownloadProvider::fail_first(0);
+        primary.ranges = Some(ranges);
+        let workers = vec![
+            primary.clone_for_transfer().unwrap(),
+            primary.clone_for_transfer().unwrap(),
+        ];
+        let mut seen = Vec::new();
+        let (read, workers) = crate::providers::multi_thread::read_in_order(
+            workers,
+            "/large.bin",
+            3 * MIB,
+            None,
+            MIB,
+            &CancellationToken::new(),
+            |bytes| seen.extend_from_slice(bytes),
+        )
+        .await;
+        read.expect("the stalled window is read again and the read completes");
+
+        assert_eq!(workers.len(), 2, "every worker comes back");
+        assert_eq!(seen.len() as u64, 3 * MIB);
+        for (o, byte) in seen.iter().enumerate() {
+            assert_eq!(*byte, ((o as u64) % 251) as u8, "byte mismatch at {o}");
+        }
+        let mut second_window: Vec<u64> = stall
+            .reads
+            .lock()
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|offset| (MIB..2 * MIB).contains(offset))
+            .collect();
+        second_window.sort_unstable();
+        assert_eq!(second_window, vec![MIB, MIB + 1000, MIB + 1000]);
+        // Two workers for the windows, one more for the retry.
+        assert_eq!(stall.clones.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
     #[tokio::test]
     async fn segmented_stop_interrupts_metadata_before_and_after_ranges() {
         for metadata_call in [1, 2] {

@@ -1430,15 +1430,6 @@ enum HashAlgorithm {
     Dropbox,
 }
 
-impl HashAlgorithm {
-    /// True for proprietary hashes that exist only as server-provided
-    /// values: they are not locally computable, so consumers must omit
-    /// or error rather than fall back to download-and-digest.
-    fn is_server_only(self) -> bool {
-        matches!(self, HashAlgorithm::Quickxor | HashAlgorithm::Dropbox)
-    }
-}
-
 #[derive(Copy, Clone, Debug, ValueEnum)]
 enum AgentBootstrapTask {
     Explore,
@@ -2076,8 +2067,11 @@ enum Commands {
     ///
     /// Prefers a server-side digest when the backend supplies the requested
     /// algorithm. If that checksum is missing or fails, md5, sha1, sha256,
-    /// sha512 and blake3 fall back to downloading the file and hashing it
-    /// locally. `--download` skips the server digest and always hashes the
+    /// sha512 and blake3 fall back to transferring the file and hashing it
+    /// locally: as the bytes arrive, with no copy on disk, when the backend
+    /// reads parts of a file (a stalled read resumes where it stopped);
+    /// otherwise downloaded first into the cache folder, once it is known to
+    /// have room. `--download` skips the server digest and always hashes the
     /// transferred bytes. quickxor and dropbox are server-only and have no
     /// local fallback.
     Hashsum {
@@ -48317,6 +48311,22 @@ async fn dedupe_hash_remote_sha256(
         return Ok(format!("{:x}", sha2::Sha256::digest(&data)));
     }
 
+    // The same reader as `hashsum`: windows in order on connections of their
+    // own, a stalled one read again from where it stopped, and the object
+    // read once more before the digest is trusted.
+    if provider
+        .transfer_optimization_hints()
+        .supports_range_download
+    {
+        let mut digest = LocalDigest::Sha256(sha2::Sha256::new());
+        if digest_in_order(provider.as_mut(), path, &mut digest)
+            .await?
+            .is_some()
+        {
+            return Ok(digest.finish());
+        }
+    }
+
     let mut hasher = sha2::Sha256::new();
     let mut offset = 0u64;
     let mut used_ranges = false;
@@ -48325,15 +48335,21 @@ async fn dedupe_hash_remote_sha256(
         match provider.read_range(path, offset, len).await {
             Ok(chunk) => {
                 if chunk.is_empty() {
-                    break;
+                    // A digest of the bytes before the end would be the
+                    // digest of another file.
+                    return Err(ProviderError::TransferFailed(format!(
+                        "{path} ended at byte {offset}, before the {size} bytes it was listed with"
+                    )));
                 }
                 used_ranges = true;
                 hasher.update(&chunk);
                 offset += chunk.len() as u64;
             }
-            Err(_) if !used_ranges => {
-                // Provider does not support ranged reads: fall back to a full
-                // download for this file.
+            // Only a backend without ranged reads falls back to a whole
+            // download. Any other error on the first window, a timeout among
+            // them, used to take this branch too, and for a file over the
+            // 500 MiB in-memory cap that turned a stall into a size error.
+            Err(ProviderError::NotSupported(_)) if !used_ranges => {
                 let data = provider.download_to_bytes(path).await?;
                 return Ok(format!("{:x}", sha2::Sha256::digest(&data)));
             }
@@ -61545,62 +61561,83 @@ fn feed_file(
     Ok(())
 }
 
+/// A running digest for every `hashsum` algorithm computed here, fed from a
+/// file on disk or from bytes as they arrive.
+enum LocalDigest {
+    Md5(md5::Md5),
+    Sha1(sha1::Sha1),
+    Sha256(sha2::Sha256),
+    Sha512(sha2::Sha512),
+    Blake3(Box<blake3::Hasher>),
+}
+
+impl LocalDigest {
+    /// `None` for the proprietary hashes that exist only as server-provided
+    /// values (quickxor/dropbox): they are not computable here, so a caller
+    /// omits them or fails rather than falling back to download-and-digest.
+    fn new(algorithm: HashAlgorithm) -> Option<Self> {
+        Some(match algorithm {
+            HashAlgorithm::Md5 => Self::Md5(<md5::Md5 as md5::Digest>::new()),
+            HashAlgorithm::Sha1 => Self::Sha1(<sha1::Sha1 as sha1::Digest>::new()),
+            HashAlgorithm::Sha256 => Self::Sha256(<sha2::Sha256 as sha2::Digest>::new()),
+            HashAlgorithm::Sha512 => Self::Sha512(<sha2::Sha512 as sha2::Digest>::new()),
+            HashAlgorithm::Blake3 => Self::Blake3(Box::new(blake3::Hasher::new())),
+            HashAlgorithm::Quickxor | HashAlgorithm::Dropbox => return None,
+        })
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        match self {
+            Self::Md5(hasher) => md5::Digest::update(hasher, bytes),
+            Self::Sha1(hasher) => sha1::Digest::update(hasher, bytes),
+            Self::Sha256(hasher) => sha2::Digest::update(hasher, bytes),
+            Self::Sha512(hasher) => sha2::Digest::update(hasher, bytes),
+            Self::Blake3(hasher) => {
+                hasher.update(bytes);
+            }
+        }
+    }
+
+    fn finish(self) -> String {
+        match self {
+            Self::Md5(hasher) => format!("{:x}", md5::Digest::finalize(hasher)),
+            Self::Sha1(hasher) => format!("{:x}", sha1::Digest::finalize(hasher)),
+            Self::Sha256(hasher) => format!("{:x}", sha2::Digest::finalize(hasher)),
+            Self::Sha512(hasher) => format!("{:x}", sha2::Digest::finalize(hasher)),
+            Self::Blake3(hasher) => hasher.finalize().to_hex().to_string(),
+        }
+    }
+}
+
 /// Stream-hash a file from disk in 1 MB chunks. Unlike `hash_file_streaming`
 /// this covers every locally computable `hashsum` algorithm.
 fn hash_file_streaming_algo(
     algorithm: HashAlgorithm,
     path: &Path,
 ) -> Result<String, std::io::Error> {
+    let Some(mut digest) = LocalDigest::new(algorithm) else {
+        unreachable!("server-only hashes return before download")
+    };
     let mut file = std::fs::File::open(path)?;
     let mut buf = vec![0u8; 1024 * 1024];
-    match algorithm {
-        HashAlgorithm::Md5 => {
-            use md5::Digest;
-            let mut hasher = md5::Md5::new();
-            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
-            Ok(format!("{:x}", hasher.finalize()))
-        }
-        HashAlgorithm::Sha1 => {
-            use sha1::Digest;
-            let mut hasher = sha1::Sha1::new();
-            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
-            Ok(format!("{:x}", hasher.finalize()))
-        }
-        HashAlgorithm::Sha256 => {
-            use sha2::Digest;
-            let mut hasher = sha2::Sha256::new();
-            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
-            Ok(format!("{:x}", hasher.finalize()))
-        }
-        HashAlgorithm::Sha512 => {
-            use sha2::Digest;
-            let mut hasher = sha2::Sha512::new();
-            feed_file(&mut file, &mut buf, |chunk| hasher.update(chunk))?;
-            Ok(format!("{:x}", hasher.finalize()))
-        }
-        HashAlgorithm::Blake3 => {
-            let mut hasher = blake3::Hasher::new();
-            feed_file(&mut file, &mut buf, |chunk| {
-                hasher.update(chunk);
-            })?;
-            Ok(hasher.finalize().to_hex().to_string())
-        }
-        HashAlgorithm::Quickxor | HashAlgorithm::Dropbox => {
-            unreachable!("server-only hashes return before download")
-        }
-    }
+    feed_file(&mut file, &mut buf, |chunk| digest.update(chunk))?;
+    Ok(digest.finish())
 }
+
+/// Connections `hashsum` reads a large file's windows with, as many as `pget`
+/// opens by default.
+const HASHSUM_STREAMS: usize = 4;
 
 /// Digest a remote file for `hashsum`.
 ///
 /// Without `download`, a server-side digest for the requested algorithm is
-/// used when the backend supplies one. With `download`, the file is
-/// transferred through `StorageProvider::download` to a temp file and hashed
-/// in chunks, even if the server has a digest. That path has no in-memory
-/// size cap (`download_to_bytes` is capped at 500 MiB).
-/// `sha512`/`blake3` and backends without the requested digest still fall
-/// through to download-and-digest. Proprietary algorithms (quickxor/dropbox)
-/// have no local fallback.
+/// used when the backend supplies one. With `download`, or for `sha512`,
+/// `blake3` and backends without the requested digest, the bytes are
+/// transferred and hashed here. A backend that reads windows of a file hashes
+/// them as they arrive, with no file in between ([`digest_in_order`]); any
+/// other is downloaded first into a folder on disk with room for it, never the
+/// temporary folder, which is often a tmpfs sized from RAM. Proprietary
+/// algorithms (quickxor/dropbox) have no local fallback.
 async fn hashsum_digest(
     provider: &mut dyn StorageProvider,
     path: &str,
@@ -61623,17 +61660,31 @@ async fn hashsum_digest(
         }
     }
 
-    if algorithm.is_server_only() {
+    let Some(mut digest) = LocalDigest::new(algorithm) else {
         return Err(HashsumDigestError::ServerOnly {
             skipped_by_download: download,
         });
+    };
+
+    if provider
+        .transfer_optimization_hints()
+        .supports_range_download
+    {
+        if let Some(size) = digest_in_order(provider, path, &mut digest).await? {
+            return Ok((digest.finish(), size));
+        }
     }
 
     // Streaming download, not `download_to_bytes`: that path is capped at
-    // 500 MiB and holds the whole file in RAM. `NamedTempFile` removes the
-    // scratch file on drop, including after a transfer or hash error, so a
-    // failed download cannot yield a partial digest.
-    let tmp = NamedTempFile::new().map_err(ProviderError::from)?;
+    // 500 MiB and holds the whole file in RAM. The room is checked before the
+    // transfer, and `NamedTempFile` removes the scratch file on drop,
+    // including after a transfer or hash error, so a failed download cannot
+    // yield a partial digest.
+    let planned = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
+    let dir = ftp_client_gui_lib::util::scratch::download_scratch_dir(planned).map_err(|why| {
+        ProviderError::Other(format!("hashsum cannot download {path} to hash it: {why}"))
+    })?;
+    let tmp = NamedTempFile::new_in(&dir).map_err(ProviderError::from)?;
     let tmp_str = tmp.path().to_str().ok_or_else(|| {
         ProviderError::IoError(std::io::Error::other("hashsum temp path is not UTF-8"))
     })?;
@@ -61641,8 +61692,106 @@ async fn hashsum_digest(
     let size = std::fs::metadata(tmp.path())
         .map(|m| m.len())
         .map_err(ProviderError::from)?;
-    let hash = hash_file_streaming_algo(algorithm, tmp.path()).map_err(ProviderError::from)?;
-    Ok((hash, size))
+    let mut file = std::fs::File::open(tmp.path()).map_err(ProviderError::from)?;
+    let mut buf = vec![0u8; 1024 * 1024];
+    feed_file(&mut file, &mut buf, |chunk| digest.update(chunk)).map_err(ProviderError::from)?;
+    Ok((digest.finish(), size))
+}
+
+/// Hash a remote file from windows read in their order, with no file in
+/// between. `Ok(None)` when it cannot be done here (the file cannot be read
+/// before the windows): the caller downloads the file instead.
+///
+/// A larger file than one window is read on up to [`HASHSUM_STREAMS`]
+/// connections of its own, each window pinned to the version the first
+/// reading saw, and a window that fails with a recoverable error is read again
+/// from where it stopped. A file that fits in one window, or a backend that
+/// cannot open connections of its own (Koofr, Cloudinary, ImageKit), is read
+/// in order on the session already open, with no resume: what a download
+/// through that session offered, without the copy on disk.
+async fn digest_in_order(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    digest: &mut LocalDigest,
+) -> Result<Option<u64>, ProviderError> {
+    use ftp_client_gui_lib::providers::multi_thread::{
+        range_source_changed_through, read_in_order, read_range_source_through, IN_ORDER_WINDOW,
+    };
+
+    let Ok(before) = read_range_source_through(provider, path).await else {
+        return Ok(None);
+    };
+    let size = before.size();
+    let mut workers = Vec::new();
+    if size > IN_ORDER_WINDOW {
+        let streams = size.div_ceil(IN_ORDER_WINDOW).min(HASHSUM_STREAMS as u64);
+        for _ in 0..streams {
+            let Ok(mut worker) = provider.clone_for_transfer() else {
+                break;
+            };
+            worker.set_range_validator(before.validator());
+            workers.push(worker);
+        }
+    }
+
+    if workers.is_empty() {
+        // A read may return fewer bytes than asked; only an empty one before
+        // the end means the object is shorter than it was listed.
+        let mut at = 0u64;
+        while at < size {
+            let len = (size - at).min(IN_ORDER_WINDOW);
+            let data = provider.read_range(path, at, len).await?;
+            if data.is_empty() {
+                return Err(ProviderError::TransferFailed(format!(
+                    "{path} ended at byte {at}, before the {size} bytes it was read for"
+                )));
+            }
+            let take = data.len().min(len as usize);
+            digest.update(&data[..take]);
+            at += take as u64;
+        }
+        // Several windows apart, the object may have been replaced between
+        // two of them; one window is a single read.
+        if size > IN_ORDER_WINDOW {
+            if let Some(why) = range_source_changed_through(provider, path, &before).await {
+                return Err(ProviderError::TransferFailed(format!(
+                    "{path} changed while it was hashed: {why}"
+                )));
+            }
+        }
+        return Ok(Some(size));
+    }
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (read, mut workers) = read_in_order(
+        workers,
+        path,
+        size,
+        before.validator(),
+        IN_ORDER_WINDOW,
+        &cancel,
+        |bytes| digest.update(bytes),
+    )
+    .await;
+    // The windows came over separate connections: an object replaced
+    // meanwhile hashes as a mix of two versions, every window the right
+    // length. Read it once more before the digest is trusted.
+    let changed = match (&read, workers.first_mut()) {
+        (Ok(()), Some(worker)) => {
+            range_source_changed_through(worker.as_mut(), path, &before).await
+        }
+        _ => None,
+    };
+    for mut worker in workers {
+        let _ = worker.disconnect().await;
+    }
+    read?;
+    if let Some(why) = changed {
+        return Err(ProviderError::TransferFailed(format!(
+            "{path} changed while it was hashed: {why}"
+        )));
+    }
+    Ok(Some(size))
 }
 
 /// Bind clap's Hashsum fields the same way the command dispatcher does, so a
@@ -61745,6 +61894,13 @@ mod hashsum_digest_tests {
         fail_download: bool,
         download_calls: usize,
         download_to_bytes_calls: usize,
+        /// Reads windows (`read_range`), says so, and clones itself.
+        ranged: bool,
+        /// The first `read_range` of this instance times out.
+        timeout_first_read: bool,
+        /// Reads windows but cannot open a connection of its own.
+        no_clone: bool,
+        reads: usize,
     }
 
     impl FakeHashProvider {
@@ -61759,7 +61915,19 @@ mod hashsum_digest_tests {
                 fail_download: false,
                 download_calls: 0,
                 download_to_bytes_calls: 0,
+                ranged: false,
+                timeout_first_read: false,
+                no_clone: false,
+                reads: 0,
             }
+        }
+
+        /// A backend that reads windows of a file, with `content`.
+        fn ranged(content: Vec<u8>) -> Self {
+            let mut provider = Self::with_lying_md5();
+            provider.content = content;
+            provider.ranged = true;
+            provider
         }
 
         fn over_in_memory_cap() -> Self {
@@ -61886,6 +62054,114 @@ mod hashsum_digest_tests {
             }
             Ok(self.server_hashes.clone())
         }
+        fn transfer_optimization_hints(
+            &self,
+        ) -> ftp_client_gui_lib::providers::TransferOptimizationHints {
+            ftp_client_gui_lib::providers::TransferOptimizationHints {
+                supports_range_download: self.ranged,
+                ..Default::default()
+            }
+        }
+        fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+            if !self.ranged || self.no_clone {
+                return Err(ProviderError::NotSupported("clone".to_string()));
+            }
+            Ok(Box::new(Self::ranged(self.content.clone())))
+        }
+        async fn read_range(
+            &mut self,
+            path: &str,
+            offset: u64,
+            len: u64,
+        ) -> Result<Vec<u8>, ProviderError> {
+            if path != self.path {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            self.reads += 1;
+            if self.timeout_first_read && self.reads == 1 {
+                return Err(ProviderError::Timeout);
+            }
+            let start = (offset as usize).min(self.content.len());
+            let end = (offset.saturating_add(len) as usize).min(self.content.len());
+            Ok(self.content[start..end].to_vec())
+        }
+    }
+
+    fn md5_hex(bytes: &[u8]) -> String {
+        format!("{:x}", <md5::Md5 as md5::Digest>::digest(bytes))
+    }
+
+    /// A backend that reads windows is hashed from them: no download, so no
+    /// file in the temporary folder, which held the whole 25.2 GB object
+    /// before and filled a 27 GB tmpfs (#658 re-test, 2026-10-10).
+    #[tokio::test]
+    async fn a_file_that_fits_one_window_is_hashed_without_a_download() {
+        let mut provider = FakeHashProvider::ranged(CONTENT.to_vec());
+        let (hash, size) = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, true)
+            .await
+            .expect("digest from one window");
+        assert_eq!(hash, CONTENT_MD5);
+        assert_eq!(size, CONTENT.len() as u64);
+        assert_eq!(provider.download_calls, 0);
+        assert_eq!(provider.download_to_bytes_calls, 0);
+    }
+
+    #[tokio::test]
+    async fn a_large_file_is_hashed_from_windows_without_a_download() {
+        use ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW;
+        let content: Vec<u8> = (0..IN_ORDER_WINDOW * 2 + 12_345)
+            .map(|o| (o % 251) as u8)
+            .collect();
+        let mut provider = FakeHashProvider::ranged(content.clone());
+        let (hash, size) = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, true)
+            .await
+            .expect("digest from windows in order");
+        assert_eq!(hash, md5_hex(&content));
+        assert_eq!(size, content.len() as u64);
+        assert_eq!(provider.download_calls, 0);
+        assert_eq!(provider.download_to_bytes_calls, 0);
+        assert_eq!(
+            provider.reads, 0,
+            "the windows go to connections of their own"
+        );
+    }
+
+    /// A backend that reads windows but cannot open connections of its own
+    /// (Koofr, Cloudinary, ImageKit) is read in order on its session, not
+    /// downloaded to disk.
+    #[tokio::test]
+    async fn a_backend_that_cannot_clone_is_hashed_on_its_session() {
+        use ftp_client_gui_lib::providers::multi_thread::IN_ORDER_WINDOW;
+        let content: Vec<u8> = (0..IN_ORDER_WINDOW * 2 + 777)
+            .map(|o| (o % 241) as u8)
+            .collect();
+        let mut provider = FakeHashProvider::ranged(content.clone());
+        provider.no_clone = true;
+        let (hash, size) = hashsum_digest(&mut provider, PATH, HashAlgorithm::Md5, true)
+            .await
+            .expect("digest from the session");
+        assert_eq!(hash, md5_hex(&content));
+        assert_eq!(size, content.len() as u64);
+        assert_eq!(provider.download_calls, 0);
+        assert_eq!(provider.download_to_bytes_calls, 0);
+        assert_eq!(provider.reads, 3, "one read per window, on the session");
+    }
+
+    /// `dedupe` falls back to a whole in-memory download only for a backend
+    /// without ranged reads. A timeout on the first window took that branch
+    /// too, and for a file over the 500 MiB cap became a size error.
+    #[tokio::test]
+    async fn dedupe_keeps_a_first_window_timeout_a_timeout() {
+        let mut provider: Box<dyn StorageProvider> = Box::new({
+            let mut p = FakeHashProvider::with_lying_md5();
+            p.timeout_first_read = true;
+            p.refuse_in_memory = true;
+            p
+        });
+        let error = dedupe_hash_remote_sha256(&mut provider, PATH, 64 * 1024 * 1024)
+            .await
+            .expect_err("the timeout is reported");
+        assert!(matches!(error, ProviderError::Timeout), "{error:?}");
     }
 
     #[tokio::test]
