@@ -146,6 +146,12 @@
   </languages>
 
   <releases>
+    <release version="4.2.3" date="2026-10-13">
+      <description>
+        <p>Checked Writes, Resumable Ranges, and SITE Commands. A repair release built around data that could be lost when something fails half way. Operations that check whether a file exists before writing now write only when the server confirmed it is not there, and stop when the check itself fails. A WebDAV replace keeps the old file until the new one is in place, crypt init writes nothing until the Emergency Kit has been handed over, and a large segmented download that loses a connection resumes the range it was reading instead of starting over. The transfer speed shows the current speed, and progress moves while files are being sent on most cloud providers.</p>
+        <p>FTP and FTPS sessions can send SITE commands from a new Connection menu, the command line and the terminal interface. The command line accepts a local folder wherever it accepts a URL and can serve it over WebDAV, and hashsum no longer copies a file to the temporary folder. The Local and Remote panels can be resized, the appearance can switch between day and night on a schedule, and the Permissions dialog works again on FTP, FTPS and SFTP. AeroAgent reaches 1.7: it can operate the visible app on request with each step approved, runs the community benchmark in the app, and works with Anthropic again. Azure, B2, Nextcloud, ownCloud, Box, MEGA, Proton, Internxt and Filen each get fixes, and translations in many languages are corrected. Translated into all 47 languages.</p>
+      </description>
+    </release>
     <release version="4.2.2" date="2026-10-05">
       <description>
         <p>MCP Servers for AeroAgent, Faster SFTP, and Parallel Selections. AeroAgent reaches 1.6: it can use the tools of MCP servers, local ones in a sandbox on Linux and remote ones over HTTP, with every call approved in its own window, it can hand read-only work to up to two scoped workers, and Amazon Bedrock joins its providers. SFTP is much faster: uploads send whole write requests, downloads read each chunk in one request with Nagle's algorithm turned off, and a segmented download shares one memory budget across its connections. Selecting several files now transfers them in parallel on every protocol, and segmented downloads show real progress and stop when asked.</p>
