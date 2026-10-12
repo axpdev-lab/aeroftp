@@ -12,6 +12,7 @@
 pub mod abort_on_drop;
 pub mod endpoint;
 pub mod provider_guard;
+pub mod scratch;
 pub mod shutdown;
 pub mod size;
 
