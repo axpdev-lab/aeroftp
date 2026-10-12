@@ -115,6 +115,24 @@ jobs:
       - name: i18n foreign-script gate self-test
         run: node --test .github/scripts/test-i18n-contamination.mjs
 
+      # A locale can keep the previous English after en.json moves on. The
+      # value is present, it is not the current English, and it has no function
+      # word the untranslated gate would notice, so it passes every check above.
+      # masterPassword.tooShort stayed "Minimum 8 characters" in 39 locales.
+      # The ledger of former English strings is committed because this job
+      # checks out with fetch-depth 1: a git walk of en.json would see only the
+      # tip commit. Changing English without rebuilding the ledger changes its
+      # hash and fails the gate. A string that is correct even though it equals
+      # an older English is recorded, with the reason, in
+      # scripts/i18n-stale-english-accepted.json. Never bulk-accept.
+      - name: i18n former-English gate
+        run: npm run i18n:stale-english
+
+      # Fixtures pin a former-English hit, a real translation, a reviewed
+      # acceptance, a stale acceptance, and a ledger hash that does not match.
+      - name: i18n former-English gate self-test
+        run: node --test .github/scripts/test-i18n-stale-english.mjs
+
       # Every published "how many providers / presets / protocols" figure is
       # derived from the catalog and the registry into docs/PROVIDER-INVENTORY.json.
       # They used to be prose, which is why three different numbers for the same

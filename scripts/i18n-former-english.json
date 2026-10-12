@@ -1,0 +1,768 @@
+{
+    "_comment": [
+        "Former English strings of each key, rebuilt by `node scripts/i18n-stale-english.mjs --write` on a full clone.",
+        "CI reads this file. It does not walk git history: checks.yml checks out with fetch-depth 1.",
+        "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
+        "A value listed here fails the gate when a locale still equals it and the current English does not."
+    ],
+    "enHash": "29b9ba6d0ee8345742cffe7ef2e1872982de726b8d76fec02067b3d3a113016a",
+    "former": {
+        "about.aiCredits": [
+            "AI: Claude Opus 4.5 + support models"
+        ],
+        "about.features.aiAgent": [
+            "AI Agent"
+        ],
+        "activity.delete_multiple_start": [
+            "Deleting {count} items..."
+        ],
+        "activity.mkdir_error": [
+            "[{location}] Could not create folder"
+        ],
+        "activity.nav_sync_disabled": [
+            "[Sync] Navigation sync disabled"
+        ],
+        "activity.nav_sync_enabled": [
+            "[Sync] Navigation sync enabled: {remote} <-> {local}"
+        ],
+        "activity.navigate_entered": [
+            "I entered the folder: {path}"
+        ],
+        "activity.navigate_opened": [
+            "I opened the folder: {path}"
+        ],
+        "activity.navigate_up_one": [
+            "I went up one level: {path}"
+        ],
+        "activity.navigate_up_to": [
+            "I went up to: {path}"
+        ],
+        "activity.rename_error": [
+            "[{location}] Rename failed"
+        ],
+        "aeroShare.privacy.discovery_both": [
+            "n0 DNS + Mainline DHT (default)"
+        ],
+        "aeroShare.privacy.discovery_both_desc": [
+            "Most reachable: while receiving, your address is published to both the n0 directory and the public DHT."
+        ],
+        "aerocrypt.intro.p2": [
+            "While the overlay is active: your remote session shows contents in clear, every upload is encrypted, every download is decrypted. Look for the <em>AEROCRYPT</em> badge in the path bar."
+        ],
+        "aerocrypt.intro.p3": [
+            "Difference vs AeroVault: AeroVault is a single self-contained <code>.aerovault</code> file (AeroFTP format). AeroCrypt is a layer on top of an existing remote (S3/SFTP/WebDAV/...) using the public rclone crypt format. Unlock with the same password you would use in <code>rclone</code>."
+        ],
+        "aerocrypt.title": [
+            "AeroCrypt · Rclone Crypt overlay"
+        ],
+        "aerocryptNative.defaultSaltLabel": [
+            "Default salt (opt-in, password-only portability; requires high entropy and attestation)"
+        ],
+        "aerocryptNative.intro.p3": [
+            "This is AeroFTP's <strong>native</strong> overlay, on the same audited engine as AeroVault (AES-256-GCM-SIV content, AES-256-SIV names, Argon2id). The overlay's salt is stored in <code>.aeroftp-crypt.json</code> at its root on the remote, so you can reopen it from any device with just the password."
+        ],
+        "aerocryptNative.keyslotsF6Honesty": [
+            "Removing a factor stops it opening the vault from now on. It does NOT re-encrypt your data: anyone who already kept a copy of the old vault header AND the removed credential can still open the data they had access to. To fully revoke access, re-encrypt the vault (rotate the Volume Key)."
+        ],
+        "aerocryptNative.markerMissingRestoredBody": [
+            "The remote marker (.aerocrypt.tsv) was missing and was rebuilt from the local keystore. Do not delete it again unless you switch to headerless — deleting it twice and losing the keystore locks you out."
+        ],
+        "aerocryptNative.noOverlayFound": [
+            "No AeroCrypt overlay found in the current remote folder. Switch to \"Create new\" to make one."
+        ],
+        "aerocryptNative.recoveryKitIntro": [
+            "Optional. This kit holds only public configuration (vault ID, salt, KDF parameters), never secrets. Saving it offline together with your password lets you restore a headerless vault after losing the local keystore (reinstall or new machine). You can reopen and save it again any time.",
+            "Optional. This kit holds only public configuration (vault ID, salt, KDF parameters), never secrets. Saving it offline together with your password lets you restore your vault after losing the local keystore (reinstall or new machine). You can reopen and save it again any time."
+        ],
+        "aerocryptProfile.defaultSaltTierMeaning": [
+            "The two tiers set how strong your password must be, not the size of the salt: there is one salt, 32 bytes, the same for every default-salt vault."
+        ],
+        "aerocryptProfile.enable": [
+            "AeroCrypt Profile (encrypted overlay)"
+        ],
+        "aerocryptProfile.headerToggle": [
+            "Write header to remote (.aeroftp-crypt.json)"
+        ],
+        "aerocryptProfile.hint": [
+            "Encrypt this connection transparently: the dual-panel shows clear names, uploads encrypt, downloads decrypt. Readable only from AeroFTP with this password."
+        ],
+        "aerocryptProfile.overlaysRemotePathHint": [
+            "Remote folder where the overlay is anchored. Leave empty to use the Remote Path. Must be the Remote Path itself or a folder inside it."
+        ],
+        "aerocryptProfile.scopeHint": [
+            "The Remote and Local paths above define the encrypted scope (leave Remote empty to encrypt the whole root)."
+        ],
+        "aerosync.errorCorrectionHint": [
+            "Stores a small .aerorec parity file next to each backed-up file so a bit-rotted remote copy can be repaired on the next pull, without the original."
+        ],
+        "aerosync.speedModeHint": [
+            "Parallel streams + compression preset applied to the run."
+        ],
+        "aerosync.tabSync": [
+            "Sync"
+        ],
+        "aerosync.versionedBackupHint": [
+            "Capture the destination copy under this directory before each overwrite or delete."
+        ],
+        "ai.apiKeyNotConfigured": [
+            "API key not configured for {{provider}}. Open AI Settings to add one."
+        ],
+        "ai.codeContext": [
+            "Regarding this code from `{{file}}`:"
+        ],
+        "ai.executeApproval": [
+            "I want to execute **{{tool}}**. Approve or cancel:"
+        ],
+        "ai.executionComplete": [
+            "Completed {{count}} steps"
+        ],
+        "ai.extremeMode.description": [
+            "Auto-approve ALL tool calls without confirmation dialogs. Increases multi-step limit from 10 to 50. Available in Cyberpunk theme only."
+        ],
+        "ai.maxStepsReached": [
+            "Maximum steps reached ({{max}})"
+        ],
+        "ai.mcpClient.networkAccess": [
+            "Allow network access (all hosts)"
+        ],
+        "ai.multiDiff.applyFiles": [
+            "Apply {{count}} files"
+        ],
+        "ai.multiDiff.filesChanged": [
+            "{{count}} files changed"
+        ],
+        "ai.multiDiff.selected": [
+            "{{selected}} of {{total}} selected"
+        ],
+        "ai.providerNotConfigured": [
+            "Provider not configured for {{provider}}"
+        ],
+        "ai.rag.indexed": [
+            "{{count}} files indexed"
+        ],
+        "ai.rateLimitReached": [
+            "Rate limit reached for {{provider}}. Try again in {{seconds}}s."
+        ],
+        "ai.settings.autoRoutingTip": [
+            "Tip: Leave as \"Auto (Default)\" to use the model selected in the chat header. Configure specific models only when you want different models for different tasks."
+        ],
+        "ai.settings.estimatedTokens": [
+            "~{{count}} tokens"
+        ],
+        "ai.settings.knownModelHint": [
+            "Known model — specs auto-filled"
+        ],
+        "ai.settings.modelsAvailable": [
+            "{{count}} model(s) available"
+        ],
+        "ai.settings.modelsCount": [
+            "Models ({{count}})"
+        ],
+        "ai.settings.modelsCountLabel": [
+            "{{count}} models"
+        ],
+        "ai.settings.modelsDetected": [
+            "{{count}} model(s) detected"
+        ],
+        "ai.settings.pluginBy": [
+            "by {{author}}"
+        ],
+        "ai.settings.pluginTools": [
+            "{{count}} tools"
+        ],
+        "ai.settings.pluginsDesc": [
+            "Extend AeroAgent with custom tools"
+        ],
+        "ai.settings.providersEnabled": [
+            "{{count}} provider(s) enabled"
+        ],
+        "ai.step": [
+            "Step {{current}}/{{max}}"
+        ],
+        "ai.thinkingBlock.thoughtFor": [
+            "Thought for {{seconds}}s"
+        ],
+        "ai.toolApproval.errorPrefix": [
+            "Error: {{error}}"
+        ],
+        "ai.toolApproval.preview": [
+            "Preview: {{preview}}"
+        ],
+        "ai.toolFailed": [
+            "Tool failed: {{error}}"
+        ],
+        "browser.syncPathMismatch": [
+            "Paths are out of sync — navigate to matching folders or disable sync navigation"
+        ],
+        "cloud.error": [
+            "Sync error"
+        ],
+        "cloud.lastSync": [
+            "Last Sync"
+        ],
+        "cloud.paused": [
+            "Sync paused"
+        ],
+        "cloud.syncing": [
+            "Syncing..."
+        ],
+        "connection.aerocloudDesc": [
+            "Turn any FTP server into your personal cloud with automatic sync"
+        ],
+        "connection.connectionNamePlaceholder": [
+            "Connection Name (e.g. My Filen Cloud)"
+        ],
+        "connection.convertToMode": [
+            "Convert to {{mode}}"
+        ],
+        "connection.filenApiKeyHelp": [
+            "Paste the API key from your Filen CLI profile to skip the 2FA code on every reconnect. The account password is still required: it decrypts your files end-to-end."
+        ],
+        "connection.generatePassword": [
+            "Generate password"
+        ],
+        "connection.jottacloudTokenHelp": [
+            "Generate at jottacloud.com → Settings → Security. Token is single-use and expires quickly — paste it immediately after copying"
+        ],
+        "connection.kdriveTokenHelp": [
+            "Generate a token at manager.infomaniak.com → Developer → API Tokens"
+        ],
+        "connection.manualTotalStorageHint": [
+            "Optional. Plan/account cap for backends with no quota API (FTP, S3, WebDAV) or that report only used space (Backblaze B2). The provider's own total always takes precedence."
+        ],
+        "connection.megaModeCmdDesc": [
+            "Uses the existing MEGAcmd bridge. Best compatibility with the current implementation."
+        ],
+        "connection.megaModeNativeDesc": [
+            "Direct integration in AeroFTP. Recommended target path for the new connector."
+        ],
+        "connection.megaNativeNotice": [
+            "Native MEGA path in rollout"
+        ],
+        "connection.megaNativeNoticeDesc": [
+            "Native mode is being integrated incrementally. Use it for validation and switch back to MEGAcmd if a feature is not available yet."
+        ],
+        "connection.mtpHonesty": [
+            "MTP is exclusive: only one app can open the device at a time. On Linux, Connect soft-releases the system file manager mount first. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS.",
+            "MTP is exclusive: only one app can open the device. Close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter). Some operations are limited by the device OS."
+        ],
+        "connection.mtpSelectPlaceholderEmpty": [
+            "No devices yet — click Detect"
+        ],
+        "connection.oauth.redirectUriNoteGoogle": [
+            "Google accepts any loopback port. Copy this as the Authorized Redirect URI in your Google Cloud Console."
+        ],
+        "connection.securityEncryption": [
+            "AES-256-GCM encryption with Argon2id key derivation for local storage"
+        ],
+        "connection.securityKeyring": [
+            "AES-256-GCM encrypted vault — stored locally on your device",
+            "OS Keyring storage (libsecret on Linux, Keychain on macOS, Credential Manager on Windows)"
+        ],
+        "connection.securityNoSend": [
+            "Credentials never leave your device — no cloud sync, no telemetry",
+            "No cloud sync, no telemetry — your data stays on your machine"
+        ],
+        "connection.securityTLS": [
+            "All connections use TLS 1.3 / SSH encryption when available"
+        ],
+        "connection.securityTitle": [
+            "Password Storage",
+            "Your credentials are secure"
+        ],
+        "connection.totpSecret": [
+            "TOTP Secret (optional, saved)"
+        ],
+        "connection.twoFactorCode": [
+            "2FA Code"
+        ],
+        "contextMenu.pcloudTrashTitle": [
+            "pCloud Trash"
+        ],
+        "cryptomator.readOnly": [
+            "Read-only mode — vault creation coming in v2.1"
+        ],
+        "cyberTools.argon2DefaultsHint": [
+            "Defaults: the second recommended option of RFC 9106, for limited memory (64 MiB, 3 iterations, 4 lanes, 16-byte salt). Memory up to 2 GiB."
+        ],
+        "cyberTools.cryptoDecryptFailed": [
+            "Decryption failed — wrong password or corrupted data"
+        ],
+        "cyberTools.hashOutputLengthHint": [
+            "1–1024 · default 32"
+        ],
+        "cyberTools.pwdNotBip39": [
+            "Not a valid BIP-39 mnemonic — do not use as a cryptocurrency wallet seed"
+        ],
+        "devtools.closeDevTools": [
+            "Close DevTools"
+        ],
+        "devtools.editorPanel.emptyState": [
+            "Right-click on a file and choose \"Edit\""
+        ],
+        "devtools.editorPanel.noFileSelected": [
+            "No file selected for editing"
+        ],
+        "devtools.title": [
+            "DevTools"
+        ],
+        "duplicates.title": [
+            "Find Duplicates"
+        ],
+        "filelu.cloneSuccess": [
+            "File cloned — URL copied to clipboard"
+        ],
+        "filelu.remoteUrlUploadDesc": [
+            "Paste a direct link — FileLu will download the file server-side"
+        ],
+        "flatpak.importBody": [
+            "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import them now? Files are only copied and nothing is overwritten, and your vault unlocks here the same way it does now.",
+            "AeroFTP found an existing configuration in your home folder. This Flatpak install uses its own separate storage, so your saved servers and encrypted vault are not visible here yet. Import them now? Files are only copied, nothing is overwritten, and the vault still needs your password to unlock."
+        ],
+        "github.alreadyAuthorized": [
+            "Already authorized — ready to connect"
+        ],
+        "github.appIdPlaceholder": [
+            "App ID (e.g. 3115847)"
+        ],
+        "github.appModeHint": [
+            "Commits will show your GitHub App identity and logo."
+        ],
+        "github.appTokenExpired": [
+            "Token expired — will auto-refresh on connect using .pem"
+        ],
+        "github.appTokenExpiringSoon": [
+            "Token expiring soon — will auto-refresh on connect"
+        ],
+        "github.installationIdPlaceholder": [
+            "Installation ID (e.g. 117087346)"
+        ],
+        "github.pemStoredInVault": [
+            "Your PEM key is now encrypted (AES-256) and stored securely in the vault. For your safety, delete or secure the original .pem file — AeroFTP no longer needs it."
+        ],
+        "github.pemVaultReady": [
+            "PEM key found in vault — ready to connect"
+        ],
+        "introHub.breakdown.noData": [
+            "No protocol data yet — connect at least one server."
+        ],
+        "introHub.group.chipHint": [
+            "Click to filter; right-click to rename or delete"
+        ],
+        "introHub.list.searchPlaceholder": [
+            "Search providers, protocols..."
+        ],
+        "introHub.tab.discover": [
+            "Discover Services"
+        ],
+        "introHub.table.columns.name": [
+            "Name"
+        ],
+        "introHub.table.footerSummary": [
+            "{count} servers · {usage} · {quotaCount} with quota"
+        ],
+        "introHub.viewList": [
+            "List view"
+        ],
+        "lockScreen.securityNote": [
+            "Your data is protected with AES-256-GCM encryption"
+        ],
+        "masterPassword.setupInfo": [
+            "Your credentials are already encrypted. The master password adds an extra layer of protection — you'll need to enter it when the app starts or after inactivity."
+        ],
+        "masterPassword.tooShort": [
+            "Minimum 8 characters"
+        ],
+        "menu.devtools": [
+            "DevTools"
+        ],
+        "menu.mountManager": [
+            "Mount Manager..."
+        ],
+        "menu.toggleAgent": [
+            "Toggle Agent"
+        ],
+        "menu.toggleDevtools": [
+            "Toggle DevTools"
+        ],
+        "menu.toggleEditor": [
+            "Toggle Editor"
+        ],
+        "menu.toggleTerminal": [
+            "Toggle Terminal"
+        ],
+        "mountManager.confirmDelete": [
+            "Delete mount '{{name}}'? This does not affect remote files."
+        ],
+        "mountManager.title": [
+            "Mount Manager"
+        ],
+        "portable.banner.body": [
+            "Every portable installation is fully self-contained: saved servers, AeroVault, AI chats and preferences all live next to AeroFTP.exe. From v3.7.8 onward, two portable folders on the same PC are completely independent — deleting a profile in one folder no longer affects the other."
+        ],
+        "properties.checksumCaveats.b2-unverified": [
+            "Large files and uploads B2 recorded as unverified carry no usable SHA-1."
+        ],
+        "properties.checksumCaveats.dropbox-content-hash": [
+            "Not a plain file digest: a SHA-256 over the SHA-256 of each 4 MiB block. It only compares against another Dropbox content hash."
+        ],
+        "properties.checksumCaveats.s3-etag": [
+            "The ETag is the object MD5 only for single-part objects that are not SSE-KMS encrypted; for the others it is omitted rather than guessed.",
+            "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. A multipart or SSE-KMS ETag is never 32 hex characters, so it is omitted rather than guessed. An SSE-C ETag can be 32 hex characters and is then indistinguishable from a real digest, so treat a reported ETag as advisory for such an object.",
+            "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted; for the others it is omitted rather than guessed. An SSE-C ETag can still look like a digest, so treat one as advisory on such a bucket."
+        ],
+        "properties.checksumCiphertext": [
+            "This file is inside the Overlays Path, so the server stores it encrypted. These digests cover the encrypted bytes and will not match a hash of your local copy: that is what encryption means, not an error. Use \"aeroftp-cli crypt verify\" to check the decrypted content against your local files."
+        ],
+        "properties.checksumNegotiated": [
+            "This list is what this particular server advertised, so a given file may still have none."
+        ],
+        "properties.checksumServerSide": [
+            "Digests come from the server; the file is never downloaded to hash it, so only what this backend already stores is offered."
+        ],
+        "protocol.aerocloudDesc": [
+            "Personal FTP-based cloud",
+            "Personal cloud sync (20 protocols)"
+        ],
+        "protocol.aerocloudTooltip": [
+            "Turn any FTP server into your personal cloud with automatic sync"
+        ],
+        "protocol.blompTooltip": [
+            "Blomp - 40GB free cloud storage powered by OpenStack Swift",
+            "Blomp — 40GB free cloud storage powered by OpenStack Swift"
+        ],
+        "protocol.boxDesc": [
+            "Connect with Box Account"
+        ],
+        "protocol.devicesInfoLine2": [
+            "MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
+            "MTP is exclusive: on Linux, Connect soft-releases the system file manager mount. Transfers are whole-file only (no resume, no drive letter)."
+        ],
+        "protocol.discoverFileLu": [
+            "Cloud storage with FTP, WebDAV, S3 and native API (1 GB free)"
+        ],
+        "protocol.discoverFileLuCloud": [
+            "Multi-protocol cloud storage (1 GB free)"
+        ],
+        "protocol.discoverMegaS4": [
+            "S3-compatible, Pro plan required, 4 regions (EU/CA)"
+        ],
+        "protocol.discoverTabDigital": [
+            "Tab.digital (8 GB free, Nextcloud-based, EU/GDPR, regional subdomains)"
+        ],
+        "protocol.drimeDesc": [
+            "Drime (21 GB free)",
+            "Drime Cloud (20 GB free)",
+            "Drime Cloud (21 GB free)",
+            "Secure Cloud Storage"
+        ],
+        "protocol.drimeTooltip": [
+            "Drime Cloud - 20GB free secure cloud storage with REST API"
+        ],
+        "protocol.dropboxDesc": [
+            "Connect with Dropbox Account"
+        ],
+        "protocol.endpointPlaceholder": [
+            "es. s3.example.com",
+            "s3.example.com"
+        ],
+        "protocol.felicloudDesc": [
+            "FeliCloud (10 GB free, EU/GDPR)"
+        ],
+        "protocol.felicloudTooltip": [
+            "FeliCloud — Nextcloud-based EU cloud storage with 10GB free, GDPR compliant",
+            "Felicloud — Nextcloud-based EU cloud storage with 10GB free, GDPR compliant"
+        ],
+        "protocol.fileluDesc": [
+            "Multi-Protocol Cloud Storage"
+        ],
+        "protocol.fileluTooltip": [
+            "FileLu - 20GB free storage with FTP, FTPS, WebDAV, S3 and native API"
+        ],
+        "protocol.filenDesc": [
+            "E2E Encrypted Cloud"
+        ],
+        "protocol.githubOwnerRepoPlaceholder": [
+            "owner/repo (e.g. axpnet/aeroftp)"
+        ],
+        "protocol.googledriveDesc": [
+            "Connect with Google Account"
+        ],
+        "protocol.infinicloudApiKeyHint": [
+            "Enables auto-discovery and quota. Apply at infini-cloud.net developer page."
+        ],
+        "protocol.insecureCertConfirmFirst": [
+            "Warning: you are about to accept invalid/self-signed certificates. This weakens connection security. Continue?"
+        ],
+        "protocol.internxtDesc": [
+            "Zero-Knowledge Cloud Storage"
+        ],
+        "protocol.jottacloudDesc": [
+            "Norwegian Cloud (5GB free)"
+        ],
+        "protocol.kdriveDesc": [
+            "Swiss Cloud Storage"
+        ],
+        "protocol.megaDesc": [
+            "Secure Cloud Storage"
+        ],
+        "protocol.onedriveDesc": [
+            "Connect with Microsoft Account"
+        ],
+        "protocol.pcloudDesc": [
+            "Connect with pCloud Account",
+            "pCloud (10 GB free)"
+        ],
+        "protocol.pcloudRegionHelp": [
+            "Select the region matching your pCloud account registration."
+        ],
+        "protocol.pcloudTooltip": [
+            "pCloud - 10GB free storage, US/EU regions"
+        ],
+        "protocol.s3Desc": [
+            "AWS S3, MinIO, R2, B2"
+        ],
+        "protocol.s3RoleArn": [
+            "IAM Role ARN (optional)"
+        ],
+        "protocol.s3RoleDurationSeconds": [
+            "Session duration in seconds (optional)"
+        ],
+        "protocol.s3RoleExternalId": [
+            "External ID (optional)"
+        ],
+        "protocol.s3RoleMfaSerial": [
+            "MFA Device Serial (optional)"
+        ],
+        "protocol.s3RoleSessionName": [
+            "Role session name (optional)"
+        ],
+        "protocol.s3SessionToken": [
+            "Session Token (optional)"
+        ],
+        "protocol.s3Tooltip": [
+            "S3-compatible storage - AWS S3, MinIO, Cloudflare R2, Backblaze B2"
+        ],
+        "protocol.swiftTooltip": [
+            "OpenStack Swift — compatible with Blomp, OVH, Rackspace cloud storage"
+        ],
+        "protocol.tabdigitalDesc": [
+            "Tab.digital (8 GB free, Nextcloud-based, EU/GDPR)"
+        ],
+        "protocol.tabdigitalTooltip": [
+            "Tab.digital — Independent EU cloud team since 2018, Nextcloud-as-a-service with 8GB free, GDPR compliant, regional subdomains (fie.nl, fie.de, ...)",
+            "Tab.digital: Independent EU cloud team since 2018, Nextcloud-as-a-service with 8GB free, GDPR compliant, regional subdomains (fie.nl, fie.de, ...)"
+        ],
+        "protocol.webdavDesc": [
+            "Nextcloud, ownCloud, Synology"
+        ],
+        "protocol.zohoworkdriveDesc": [
+            "Team Cloud Storage"
+        ],
+        "providers.shareLink": [
+            "Share Link"
+        ],
+        "providers.versioning": [
+            "Versioning"
+        ],
+        "savedServers.s3Provider": [
+            "{bucket} — {provider}",
+            "{{bucket}} — {{provider}}"
+        ],
+        "savedServers.standardDisplay": [
+            "{{username}}@{{host}}:{{port}}"
+        ],
+        "savedServers.webdavDisplay": [
+            "{{username}}@{{host}}"
+        ],
+        "settings.aerocloudDesc": [
+            "Personal FTP-based cloud sync"
+        ],
+        "settings.aerocloudInfo": [
+            "Turn any FTP/FTPS server into your personal cloud. Configure sync folders, intervals, and conflict resolution.",
+            "Turn any server into your personal cloud. Supports all 20 protocols. Configure sync folders, intervals, and conflict resolution."
+        ],
+        "settings.backupRowFullBackup": [
+            "AeroFTP - Full Backup"
+        ],
+        "settings.backupRowServersOnly": [
+            "AeroFTP - Servers Only"
+        ],
+        "settings.bridgeExportDesc": [
+            "Save profiles for rclone, WinSCP, or FileZilla"
+        ],
+        "settings.bridgeImportDesc": [
+            "Import profiles from rclone, WinSCP, or FileZilla"
+        ],
+        "settings.cloudProviderDesc": [
+            "Configure cloud storage providers. AeroCloud uses your FTP server, OAuth2 providers need API credentials."
+        ],
+        "settings.confirmPassword": [
+            "Confirm password"
+        ],
+        "settings.connectWithPcloud": [
+            "Connect with pCloud Account"
+        ],
+        "settings.downloadSegmentsDesc": [
+            "Split each download into parallel byte ranges. Auto keeps today's single-stream behaviour. Effective on providers that support range requests (SFTP, S3, HTTP) for files large enough to benefit."
+        ],
+        "settings.fontSizeDesc": [
+            "Adjust the interface text size"
+        ],
+        "settings.foursharedDesc": [
+            "OAuth 1.0 — 15 GB free storage"
+        ],
+        "settings.githubOauthDesc": [
+            "Device Flow OAuth — no Client ID needed"
+        ],
+        "settings.includeCredentialsHint": [
+            "Passwords and API keys will be encrypted in the file"
+        ],
+        "settings.nativeRsync.description": [
+            "Use AeroFTP's built-in rsync protocol implementation instead of spawning the system rsync binary. Reduces process overhead; may be less battle-tested."
+        ],
+        "settings.nativeRsync.experimental": [
+            "Experimental: falls back to classic rsync automatically on any error. Host-key mismatches surface as hard errors with no silent fallback."
+        ],
+        "settings.nativeRsync.title": [
+            "Native rsync (experimental)"
+        ],
+        "settings.privacy": [
+            "Privacy & Security"
+        ],
+        "settings.privacyDesc": [
+            "Control your data and privacy settings"
+        ],
+        "settings.privacyRespect": [
+            "AeroFTP respects your privacy. We collect minimal data to improve the application."
+        ],
+        "settings.startMinimizedOnAutostartDesc": [
+            "Hide the main window on autostart launch. AeroFTP keeps running in the system tray — open it from the tray icon when you need it."
+        ],
+        "settings.storageThresholdsDesc": [
+            "When the % column on My Servers turns amber and red. Default is 80% / 95% — over-quota (>100%) is always red, under 5% is grey."
+        ],
+        "settings.themeCyberLabel": [
+            "Cyberpunk"
+        ],
+        "settings.themeRedlavaLabel": [
+            "Red Lava"
+        ],
+        "settings.uiTokensDesc": [
+            "Override the published CSS tokens from docs/UI-TOKENS.md with a ui-tokens.json file in the config folder. Changes apply on reload; invalid entries are skipped and reported in the Activity Log."
+        ],
+        "settings.uiTokensReset": [
+            "Reset to defaults"
+        ],
+        "settings.upToDateAlert": [
+            "Up to date!\n\nRunning AeroFTP v{{version}}"
+        ],
+        "settings.updateAvailableAlert": [
+            "Update Available!\n\nAeroFTP v{{version}} (.{{format}})\n\nDownload: {{url}}"
+        ],
+        "settings.updateCheckFailedAlert": [
+            "Update check failed\n\n{{error}}"
+        ],
+        "settings.yandexDiskDesc": [
+            "OAuth 2.0 — 5 GB free storage"
+        ],
+        "settings.zohoWorkDriveDesc": [
+            "OAuth 2.0 — 5 GB team storage"
+        ],
+        "sidebar.portable_honesty": [
+            "Portable devices use MTP: whole-file copy only, no drive letter, and some operations are limited by the device OS."
+        ],
+        "sidebar.portable_no_storages": [
+            "Session open (no storage list yet; browse polish follows)"
+        ],
+        "speedTest.compareDisclaimer": [
+            "Running this on {count} servers transfers about {total} ({size} per server, upload + download) and uses up to {total} of local temp storage in parallel. Provider request and egress costs may apply."
+        ],
+        "statusBar.devTools": [
+            "DevTools"
+        ],
+        "statusBar.usedScanHint": [
+            "Recursively scan the tree to compute used space. Combined with a manual total it shows used/total/%. Runs only when you trigger it."
+        ],
+        "syncPanel.canaryDryRun": [
+            "Nothing is transferred: this previews what a full sync would do, computed from the sample (similar to rclone --dry-run)."
+        ],
+        "syncPanel.maniacWarningBody": [
+            "No journal. No verification. No retry. Maximum raw speed. If something fails, it's gone. A full verification scan will run after sync completes."
+        ],
+        "syncPanel.speedManiacTooltip": [
+            "8 streams + ALL safety disabled - no journal, no verify, no retry",
+            "8 streams + ALL safety disabled — no journal, no verify, no retry"
+        ],
+        "syncPanel.templateImportPathPairs": [
+            "This template defines {count} usable local/remote path pairs. AeroFTP applies exactly one, so nothing was imported. Edit the template to keep a single pair, then import it again."
+        ],
+        "syncPanel.title": [
+            "Synchronize Files"
+        ],
+        "syncPanel.watcherInotifyWarning": [
+            "High directory count — may exceed inotify limit"
+        ],
+        "syncPresets.nothingToDo": [
+            "Sync presets"
+        ],
+        "toast.disconnectedAllClosed": [
+            "All sessions closed — disconnected from {server}"
+        ],
+        "toast.disconnectedFrom": [
+            "Disconnected from server"
+        ],
+        "toast.disconnectedTabClosed": [
+            "Session closed — disconnected from {server}"
+        ],
+        "toast.downloadFailed": [
+            "Download failed: {error}"
+        ],
+        "toast.uploadFailed": [
+            "Upload failed: {error}"
+        ],
+        "toast.zeroByteWarning": [
+            "0 B file — may indicate a transfer error"
+        ],
+        "toolbar.aerocryptOverlayActive": [
+            "AeroCrypt overlay active: uploads and downloads in this panel are encrypted. Click to detach."
+        ],
+        "toolbar.aerovaultOverlayActive": [
+            "AeroVault container overlay active — click to detach"
+        ],
+        "transfer.circuitBreaker.paused": [
+            "Queue paused — multiple consecutive errors"
+        ],
+        "transfer.crossProfile.subtitle": [
+            "Floating panel: queue, log and progress stay visible while it runs."
+        ],
+        "transfer.crossProfile.transferHint": [
+            "Keep an eye on Queue, Activity Log and Progress below. This panel stays lightweight on purpose."
+        ],
+        "transfer.modeUnavailable": [
+            "Transfer mode presets are currently available for FTP/FTPS only"
+        ],
+        "transfer.restoredHint": [
+            "Restored from a previous session. Reconnect to the same server, then press Retry to re-run."
+        ],
+        "ui.session.transferInProgress": [
+            "Transfer in progress — tab switching disabled"
+        ],
+        "vault.exportParityHint": [
+            "Write a detached .aerovault.rec recovery file from the current data"
+        ],
+        "vault.placementDetachedDesc": [
+            "Sibling .aerovault.rec file"
+        ],
+        "vault.titleFull": [
+            "AeroVault - Military-Grade Encryption"
+        ],
+        "vault.useRepairHint": [
+            "Use Repair ECC to attempt recovery from stored Reed-Solomon parity (if available)."
+        ],
+        "vault.zipPlaintextDesc": [
+            ".aerozip provides high compression, integrity checks, and recovery. It is not encrypted; anyone with the file can read it.",
+            "Not encrypted — no confidentiality. It will not open in a normal zip tool: it needs AeroFTP or the open-source aerovault crate. The format is open, so anyone motivated can recover the contents."
+        ]
+    }
+}

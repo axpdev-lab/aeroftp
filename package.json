@@ -25,6 +25,7 @@
     "i18n:diacritics": "node scripts/i18n-diacritics.mjs --strict",
     "i18n:untranslated": "node scripts/i18n-untranslated.mjs --strict",
     "i18n:contamination": "node scripts/i18n-contamination.mjs --strict",
+    "i18n:stale-english": "node scripts/i18n-stale-english.mjs --strict",
     "gen:cli-catalog": "npx tsx scripts/gen-cli-catalog.ts",
     "gen:providers-table": "npx tsx scripts/gen-providers-table.ts",
     "gen:provider-inventory": "npx tsx scripts/gen-provider-inventory.ts",
