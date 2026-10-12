@@ -62498,17 +62498,27 @@ mod hashsum_digest_tests {
     fn rcat_stages_stdin_on_disk_not_in_the_temporary_folder() {
         let file = rcat_staging_file().expect("staging file");
         let path = file.path();
-        assert!(
-            !path.starts_with(std::env::temp_dir()),
-            "{} must not be in the temporary folder",
-            path.display()
-        );
-        assert!(
-            path.ancestors()
-                .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
-            "{} must live under a scratch folder",
-            path.display()
-        );
+        if dirs::cache_dir().is_some() {
+            assert!(
+                !path.starts_with(std::env::temp_dir()),
+                "{} must not be in the temporary folder",
+                path.display()
+            );
+            assert!(
+                path.ancestors()
+                    .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+                "{} must live under a scratch folder",
+                path.display()
+            );
+        } else {
+            // The documented fallback with no cache folder: scratch is
+            // temp_dir()/aeroftp-scratch.
+            assert!(
+                path.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                "{} must live under the scratch fallback",
+                path.display()
+            );
+        }
     }
 }
 

@@ -240,14 +240,20 @@ fn build_upload_wire(
         .map_err(|e| ProviderError::TransferFailed(format!("stat local: {e}")))?
         .len();
 
-    // Both staging files coexist, each at most plain_len plus a small header.
-    let dir = crate::util::scratch::staging_dir(plain_len.saturating_mul(2))
-        .map_err(ProviderError::TransferFailed)?;
+    let try_zstd = crate::transfer_pool::should_compress(remote_path);
+    // Room for the path the name selects: compressing stages two files that
+    // coexist, each at most plain_len plus a small header; a skipped pass
+    // leaves comp_tmp empty and only the wire file needs plain_len.
+    let dir = crate::util::scratch::staging_dir(if try_zstd {
+        plain_len.saturating_mul(2)
+    } else {
+        plain_len
+    })
+    .map_err(ProviderError::TransferFailed)?;
 
     // Pass 1: stream-compress to a temp, unless the format is known not to shrink.
     let comp_tmp = tempfile::NamedTempFile::new_in(&dir)
         .map_err(|e| ProviderError::TransferFailed(format!("tmp comp: {e}")))?;
-    let try_zstd = crate::transfer_pool::should_compress(remote_path);
     if try_zstd {
         let mut reader = std::fs::File::open(local_path)
             .map_err(|e| ProviderError::TransferFailed(format!("open local: {e}")))?;
@@ -777,17 +783,27 @@ mod tests {
     /// systems a tmpfs sized from RAM, so a large transfer staged there eats
     /// RAM and can fail).
     fn assert_on_disk_scratch(path: &std::path::Path) {
-        assert!(
-            !path.starts_with(std::env::temp_dir()),
-            "{} must not be in the temporary folder",
-            path.display()
-        );
-        assert!(
-            path.ancestors()
-                .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
-            "{} must live under a scratch folder",
-            path.display()
-        );
+        if dirs::cache_dir().is_some() {
+            assert!(
+                !path.starts_with(std::env::temp_dir()),
+                "{} must not be in the temporary folder",
+                path.display()
+            );
+            assert!(
+                path.ancestors()
+                    .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+                "{} must live under a scratch folder",
+                path.display()
+            );
+        } else {
+            // The documented fallback with no cache folder: scratch is
+            // temp_dir()/aeroftp-scratch.
+            assert!(
+                path.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                "{} must live under the scratch fallback",
+                path.display()
+            );
+        }
     }
 
     #[test]

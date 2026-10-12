@@ -46,16 +46,16 @@ fn remote_vault_staging_path(size: u64) -> Result<PathBuf, String> {
 /// Canonical roots an AeroFTP-managed temp vault file may live in: the OS
 /// temporary directory and the on-disk scratch folder `vault_v2_download_remote`
 /// stages into. Both are legitimate origins for the upload-back and cleanup
-/// commands.
+/// commands. Resolved, never created and without a room check: a gate that
+/// validates an existing file must not depend on the free space left.
 fn managed_temp_vault_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     if let Ok(temp) = std::env::temp_dir().canonicalize() {
         roots.push(temp);
     }
-    if let Ok(scratch) = crate::util::scratch::staging_dir(0).and_then(|dir| {
-        dir.canonicalize()
-            .map_err(|e| format!("Failed to resolve scratch directory: {e}"))
-    }) {
+    // A scratch folder that does not exist yet holds no vault file to
+    // validate, so a failed canonicalize simply omits it.
+    if let Ok(scratch) = crate::util::scratch::scratch_dir_path().canonicalize() {
         roots.push(scratch);
     }
     roots
@@ -364,17 +364,27 @@ mod tests {
     #[test]
     fn a_remote_vault_is_staged_on_disk_not_in_the_temporary_folder() {
         let path = remote_vault_staging_path(0).unwrap();
-        assert!(
-            !path.starts_with(std::env::temp_dir()),
-            "{} must not be in the temporary folder",
-            path.display()
-        );
-        assert!(
-            path.ancestors()
-                .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
-            "{} must live under a scratch folder",
-            path.display()
-        );
+        if dirs::cache_dir().is_some() {
+            assert!(
+                !path.starts_with(std::env::temp_dir()),
+                "{} must not be in the temporary folder",
+                path.display()
+            );
+            assert!(
+                path.ancestors()
+                    .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+                "{} must live under a scratch folder",
+                path.display()
+            );
+        } else {
+            // The documented fallback with no cache folder: scratch is
+            // temp_dir()/aeroftp-scratch.
+            assert!(
+                path.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                "{} must live under the scratch fallback",
+                path.display()
+            );
+        }
         assert!(is_managed_temp_vault_filename(
             path.file_name().unwrap().to_str().unwrap()
         ));

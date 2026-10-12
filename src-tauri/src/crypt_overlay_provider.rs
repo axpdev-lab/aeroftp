@@ -1402,8 +1402,18 @@ impl StorageProvider for CryptOverlayProvider {
     ) -> Result<(), ProviderError> {
         let enc = self.map(path, false, AccessKind::Read)?;
         let is_enc = self.target_is_encrypted(path);
-        let dir = crate::util::scratch::staging_dir(self.inner.size(&enc).await.unwrap_or(0))
-            .map_err(ProviderError::TransferFailed)?;
+        // Room check against the requested version's size when the backend
+        // lists versions (a historical object can be larger than the current
+        // one), the current size otherwise, no check when neither is known.
+        let version_size = match self.inner.list_versions(&enc).await {
+            Ok(versions) => versions.iter().find(|v| v.id == version_id).map(|v| v.size),
+            Err(_) => None,
+        };
+        let size = match version_size {
+            Some(size) => size,
+            None => self.inner.size(&enc).await.unwrap_or(0),
+        };
+        let dir = crate::util::scratch::staging_dir(size).map_err(ProviderError::TransferFailed)?;
         let temp_path = dir.join(format!(
             "aeroftp_crypt_overlay_ver_{}_{}.bin",
             chrono::Utc::now().timestamp_millis(),
@@ -6900,17 +6910,27 @@ mod tests {
     /// systems a tmpfs sized from RAM, so a large transfer staged there eats
     /// RAM and can fail).
     fn assert_on_disk_scratch(path: &std::path::Path) {
-        assert!(
-            !path.starts_with(std::env::temp_dir()),
-            "{} must not be in the temporary folder",
-            path.display()
-        );
-        assert!(
-            path.ancestors()
-                .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
-            "{} must live under a scratch folder",
-            path.display()
-        );
+        if dirs::cache_dir().is_some() {
+            assert!(
+                !path.starts_with(std::env::temp_dir()),
+                "{} must not be in the temporary folder",
+                path.display()
+            );
+            assert!(
+                path.ancestors()
+                    .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+                "{} must live under a scratch folder",
+                path.display()
+            );
+        } else {
+            // The documented fallback with no cache folder: scratch is
+            // temp_dir()/aeroftp-scratch.
+            assert!(
+                path.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                "{} must live under the scratch fallback",
+                path.display()
+            );
+        }
     }
 
     #[tokio::test]

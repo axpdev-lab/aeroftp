@@ -18,15 +18,21 @@ pub const SCRATCH_HEADROOM: u64 = 256 * 1024 * 1024;
 /// folder is on disk. The room is checked before the transfer starts, so a
 /// file that cannot fit fails at once and says how much it needs.
 pub fn staging_dir(bytes: u64) -> Result<PathBuf, String> {
-    let dir = match dirs::cache_dir() {
+    scratch_dir_with_room(&scratch_dir_path(), bytes)
+}
+
+/// Where [`staging_dir`] stages, resolved only: not created, no room check.
+/// For callers that need to know where a staged file would be (the vault
+/// confinement roots), not for callers about to write one.
+pub fn scratch_dir_path() -> PathBuf {
+    match dirs::cache_dir() {
         Some(cache) => cache
             .join(crate::portable::aeroftp_data_leaf_for_debug(cfg!(
                 debug_assertions
             )))
             .join("scratch"),
         None => std::env::temp_dir().join("aeroftp-scratch"),
-    };
-    scratch_dir_with_room(&dir, bytes)
+    }
 }
 
 /// [`staging_dir`] on a given folder.
