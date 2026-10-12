@@ -38542,6 +38542,14 @@ async fn cmd_cat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 
     }
 }
 
+/// The on-disk scratch file `rcat` buffers stdin into: stdin has no known
+/// size, so the room check runs with 0 and the headroom alone is reserved.
+/// Never the temporary folder, which is often a RAM-sized tmpfs.
+fn rcat_staging_file() -> Result<tempfile::NamedTempFile, String> {
+    let dir = ftp_client_gui_lib::util::scratch::staging_dir(0)?;
+    tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())
+}
+
 async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i32 {
     if remote.trim().is_empty() {
         print_error(format, "Missing remote path for rcat", 5);
@@ -38555,7 +38563,7 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
 
-    let mut temp = match tempfile::NamedTempFile::new() {
+    let mut temp = match rcat_staging_file() {
         Ok(file) => file,
         Err(e) => {
             print_error(
@@ -61681,7 +61689,7 @@ async fn hashsum_digest(
     // including after a transfer or hash error, so a failed download cannot
     // yield a partial digest.
     let planned = provider.stat(path).await.map(|e| e.size).unwrap_or(0);
-    let dir = ftp_client_gui_lib::util::scratch::download_scratch_dir(planned).map_err(|why| {
+    let dir = ftp_client_gui_lib::util::scratch::staging_dir(planned).map_err(|why| {
         ProviderError::Other(format!("hashsum cannot download {path} to hash it: {why}"))
     })?;
     let tmp = NamedTempFile::new_in(&dir).map_err(ProviderError::from)?;
@@ -62481,6 +62489,26 @@ mod hashsum_digest_tests {
             } => assert!(!skipped_by_download),
             other => panic!("expected ServerOnly without --download, got {other:?}"),
         }
+    }
+
+    /// `rcat` buffers stdin of unknown size to the on-disk scratch folder,
+    /// never the temporary folder (on many Linux systems a tmpfs sized from
+    /// RAM, so a large stdin staged there eats RAM and can fail).
+    #[test]
+    fn rcat_stages_stdin_on_disk_not_in_the_temporary_folder() {
+        let file = rcat_staging_file().expect("staging file");
+        let path = file.path();
+        assert!(
+            !path.starts_with(std::env::temp_dir()),
+            "{} must not be in the temporary folder",
+            path.display()
+        );
+        assert!(
+            path.ancestors()
+                .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+            "{} must live under a scratch folder",
+            path.display()
+        );
     }
 }
 

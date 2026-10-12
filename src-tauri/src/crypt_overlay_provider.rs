@@ -920,8 +920,9 @@ async fn write_plaintext_atomic(output_path: &str, plaintext: &[u8]) -> Result<(
     Ok(())
 }
 
-/// Encrypt `plaintext` and stage it to a unique temp file, returning its path.
-/// The caller is responsible for removing it after the upload.
+/// Encrypt `plaintext` and stage it to a unique file in the on-disk scratch
+/// folder, returning its path. The caller is responsible for removing it
+/// after the upload.
 async fn stage_ciphertext_temp(
     keys: &OverlayKeys,
     plaintext: &[u8],
@@ -929,7 +930,9 @@ async fn stage_ciphertext_temp(
     let ciphertext = keys
         .encrypt_content(plaintext)
         .map_err(|e| CryptOverlayProvider::crypt_err("content encrypt", e))?;
-    let temp_path = std::env::temp_dir().join(format!(
+    let dir = crate::util::scratch::staging_dir(ciphertext.len() as u64)
+        .map_err(ProviderError::TransferFailed)?;
+    let temp_path = dir.join(format!(
         "aeroftp_crypt_overlay_{}_{}.bin",
         chrono::Utc::now().timestamp_millis(),
         uuid::Uuid::new_v4()
@@ -1034,7 +1037,9 @@ impl StorageProvider for CryptOverlayProvider {
         let enc = self.map(remote_path, false, AccessKind::Read)?;
         let is_enc = self.target_is_encrypted(remote_path);
         // Stage (for outside this holds plaintext; for inside: ciphertext).
-        let temp_path = std::env::temp_dir().join(format!(
+        let dir = crate::util::scratch::staging_dir(self.inner.size(&enc).await.unwrap_or(0))
+            .map_err(ProviderError::TransferFailed)?;
+        let temp_path = dir.join(format!(
             "aeroftp_crypt_overlay_dl_{}_{}.bin",
             chrono::Utc::now().timestamp_millis(),
             uuid::Uuid::new_v4()
@@ -1397,7 +1402,9 @@ impl StorageProvider for CryptOverlayProvider {
     ) -> Result<(), ProviderError> {
         let enc = self.map(path, false, AccessKind::Read)?;
         let is_enc = self.target_is_encrypted(path);
-        let temp_path = std::env::temp_dir().join(format!(
+        let dir = crate::util::scratch::staging_dir(self.inner.size(&enc).await.unwrap_or(0))
+            .map_err(ProviderError::TransferFailed)?;
+        let temp_path = dir.join(format!(
             "aeroftp_crypt_overlay_ver_{}_{}.bin",
             chrono::Utc::now().timestamp_millis(),
             uuid::Uuid::new_v4()
@@ -4086,6 +4093,9 @@ mod tests {
         dotfile_probe_error: Option<fn() -> ProviderError>,
         /// Every listing fails with this error.
         listing_error: Option<fn() -> ProviderError>,
+        /// The local path every `download`/`download_version` call staged into,
+        /// in call order.
+        download_targets: Mutex<Vec<String>>,
     }
 
     impl MemProvider {
@@ -4099,6 +4109,7 @@ mod tests {
                 dotfile_download_error: None,
                 dotfile_probe_error: None,
                 listing_error: None,
+                download_targets: Mutex::new(Vec::new()),
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -4122,6 +4133,9 @@ mod tests {
         }
         fn raw_bytes(&self, path: &str) -> Option<Vec<u8>> {
             self.files.lock().unwrap().get(path).cloned()
+        }
+        fn download_targets(&self) -> Vec<String> {
+            self.download_targets.lock().unwrap().clone()
         }
         /// Seed a raw on-wire file (used in scope tests to place plaintext
         /// siblings outside the anchor without going through write-map).
@@ -4246,6 +4260,10 @@ mod tests {
                 .get(&remote)
                 .cloned()
                 .ok_or_else(|| ProviderError::NotFound(remote.to_string()))?;
+            self.download_targets
+                .lock()
+                .unwrap()
+                .push(local.to_string());
             std::fs::write(local, &data).map_err(ProviderError::IoError)?;
             Ok(())
         }
@@ -4353,6 +4371,28 @@ mod tests {
                 .get(&p)
                 .map(|d| d.len() as u64)
                 .ok_or_else(|| ProviderError::NotFound(p.to_string()))
+        }
+        async fn download_version(
+            &mut self,
+            path: &str,
+            version_id: &str,
+            local_path: &str,
+        ) -> Result<(), ProviderError> {
+            let _ = version_id;
+            let remote = self.resolve(path);
+            let data = self
+                .files
+                .lock()
+                .unwrap()
+                .get(&remote)
+                .cloned()
+                .ok_or_else(|| ProviderError::NotFound(remote.to_string()))?;
+            self.download_targets
+                .lock()
+                .unwrap()
+                .push(local_path.to_string());
+            std::fs::write(local_path, &data).map_err(ProviderError::IoError)?;
+            Ok(())
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
             let p = self.resolve(p);
@@ -6851,5 +6891,110 @@ mod tests {
         assert!(text.contains("Nothing was written"), "{text}");
         assert!(!text.contains("`put`"), "{text}");
         assert!(p.uploads.is_empty() && p.files.is_empty(), "{:?}", p.files);
+    }
+
+    // ── Staging location (#658 follow-up: staging leaves the tmpfs) ──────────
+
+    /// The staging gate shared by these tests: the path must live in the
+    /// on-disk scratch folder, never in the temporary folder (on many Linux
+    /// systems a tmpfs sized from RAM, so a large transfer staged there eats
+    /// RAM and can fail).
+    fn assert_on_disk_scratch(path: &std::path::Path) {
+        assert!(
+            !path.starts_with(std::env::temp_dir()),
+            "{} must not be in the temporary folder",
+            path.display()
+        );
+        assert!(
+            path.ancestors()
+                .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+            "{} must live under a scratch folder",
+            path.display()
+        );
+    }
+
+    #[tokio::test]
+    async fn an_upload_stages_its_ciphertext_on_disk_not_in_the_temporary_folder() {
+        for (_label, keys) in both_kinds() {
+            let staged = stage_ciphertext_temp(&keys, b"staged on disk")
+                .await
+                .unwrap();
+            assert_on_disk_scratch(&staged);
+            let _ = tokio::fs::remove_file(&staged).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn a_download_stages_its_ciphertext_on_disk_not_in_the_temporary_folder() {
+        for (_label, keys) in both_kinds() {
+            let mut provider = CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "");
+
+            let root = tempfile::tempdir().unwrap();
+            let src = root.path().join("plain.txt");
+            let payload = b"a download staged on disk";
+            std::fs::write(&src, payload).unwrap();
+            provider
+                .upload(src.to_str().unwrap(), "/notes/plain.txt", None)
+                .await
+                .unwrap();
+
+            let out = root.path().join("out.txt");
+            provider
+                .download("/notes/plain.txt", out.to_str().unwrap(), None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), payload);
+
+            let mem = provider
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let targets = mem.download_targets();
+            assert_eq!(targets.len(), 1, "one staged download: {targets:?}");
+            let staged = std::path::Path::new(&targets[0]);
+            assert_on_disk_scratch(staged);
+            assert!(
+                !staged.exists(),
+                "the staged file is removed after the read"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_version_download_stages_its_ciphertext_on_disk_not_in_the_temporary_folder() {
+        for (_label, keys) in both_kinds() {
+            let mut provider = CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "");
+
+            let root = tempfile::tempdir().unwrap();
+            let src = root.path().join("plain.txt");
+            let payload = b"a version download staged on disk";
+            std::fs::write(&src, payload).unwrap();
+            provider
+                .upload(src.to_str().unwrap(), "/notes/plain.txt", None)
+                .await
+                .unwrap();
+
+            let out = root.path().join("out-v1.txt");
+            provider
+                .download_version("/notes/plain.txt", "v1", out.to_str().unwrap())
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), payload);
+
+            let mem = provider
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let targets = mem.download_targets();
+            assert_eq!(targets.len(), 1, "one staged download: {targets:?}");
+            let staged = std::path::Path::new(&targets[0]);
+            assert_on_disk_scratch(staged);
+            assert!(
+                !staged.exists(),
+                "the staged file is removed after the read"
+            );
+        }
     }
 }
