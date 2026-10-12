@@ -738,6 +738,24 @@ async fn search_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     }))
 }
 
+/// Whether `path` exists, for a guard whose "no" leads to a write: `false`
+/// only when the provider said the path is missing. Any other failure (a
+/// timeout, a denial, a dropped connection) is returned as an error, so a
+/// write never follows a check that did not answer.
+async fn remote_path_exists(
+    backend: &dyn RemoteBackend,
+    path: &str,
+    guard: &str,
+) -> Result<bool, ToolError> {
+    match backend.stat(path).await {
+        Ok(_) => Ok(true),
+        Err(e) if crate::providers::types::message_names_a_missing_path_for(&e, path) => Ok(false),
+        Err(e) => Err(ToolError::Exec(format!(
+            "{guard}: cannot verify whether '{path}' exists ({e}); nothing was written"
+        ))),
+    }
+}
+
 async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let remote_path = get_str(args, "remote_path")?;
@@ -746,7 +764,7 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     let no_clobber = get_bool_opt(args, "no_clobber").unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     reject_restricted_leaf(backend.as_ref(), &remote_path).await?;
-    if no_clobber && backend.stat(&remote_path).await.is_ok() {
+    if no_clobber && remote_path_exists(backend.as_ref(), &remote_path, "no_clobber").await? {
         return Ok(json!({
             "server": server,
             "remote_path": remote_path,
@@ -2555,8 +2573,9 @@ async fn touch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     // First check if the file exists. If yes, this is a no-op: providers
     // generally lack a portable utime API and a re-upload would surprise the
-    // agent (mtime change without explicit intent).
-    if backend.stat(&path).await.is_ok() {
+    // agent (mtime change without explicit intent). A stat that cannot answer
+    // creates nothing: the empty upload would land over the file it missed.
+    if remote_path_exists(backend.as_ref(), &path, "touch").await? {
         return Ok(json!({
             "server": server,
             "path": path,
@@ -4561,6 +4580,82 @@ mod tests {
             format!("{err:?}").contains("Restricted character"),
             "creating a file with a forbidden character must be refused: {err:?}"
         );
+    }
+
+    /// A stat that does not answer (a timeout) is not a missing file: touch
+    /// read it as one and uploaded 0 bytes over the file it could not see.
+    #[tokio::test]
+    async fn touch_creates_nothing_when_the_stat_does_not_answer() {
+        let mut fake = FakeBackend::sample();
+        fake.stat_fails_with = Some("Request timed out".to_string());
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let err = touch(&ctx, &json!({"server": "s", "path": "/root/a.txt"}))
+            .await
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("cannot verify"),
+            "the unanswered stat must be reported: {err:?}"
+        );
+        assert!(
+            fake.remote_files.lock().unwrap().is_empty(),
+            "nothing may be written over a file the stat could not see"
+        );
+    }
+
+    /// `no_clobber` on a stat that does not answer: the upload went ahead
+    /// and overwrote the file the flag exists to protect.
+    #[tokio::test]
+    async fn no_clobber_uploads_nothing_when_the_stat_does_not_answer() {
+        let mut fake = FakeBackend::sample();
+        fake.stat_fails_with = Some("Request timed out".to_string());
+        let fake = Arc::new(fake);
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let err = upload_file(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/root/a.txt",
+                "content": "new",
+                "no_clobber": true,
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:?}").contains("no_clobber"), "{err:?}");
+        assert!(fake.remote_files.lock().unwrap().is_empty());
+    }
+
+    /// The two answers keep their meaning: an existing file is skipped,
+    /// a missing one is created.
+    #[tokio::test]
+    async fn touch_and_no_clobber_still_act_on_a_definite_answer() {
+        let fake = Arc::new(FakeBackend::sample());
+        let ctx = test_ctx(Arc::clone(&fake));
+
+        let out = upload_file(
+            &ctx,
+            &json!({
+                "server": "s",
+                "remote_path": "/root/a.txt",
+                "content": "new",
+                "no_clobber": true,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(out["skipped"], true);
+        let out = touch(&ctx, &json!({"server": "s", "path": "/root/new.txt"}))
+            .await
+            .unwrap();
+        assert_eq!(out["created"], true);
+        assert!(fake
+            .remote_files
+            .lock()
+            .unwrap()
+            .contains_key("/root/new.txt"));
     }
 
     #[tokio::test]

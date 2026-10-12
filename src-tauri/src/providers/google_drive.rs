@@ -490,6 +490,11 @@ impl GoogleDriveProvider {
             .send()
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        // A refusal (429, 403 rate limit, 5xx) carries its status and
+        // Retry-After instead of surfacing as a body that does not parse.
+        if !response.status().is_success() {
+            return Err(drive_error_from_response(response, "Lookup failed").await);
+        }
 
         let list: DriveFileList = response
             .json()
@@ -1871,14 +1876,13 @@ impl StorageProvider for GoogleDriveProvider {
         // dir (a new `aeroftp-bench` per run, never cleaned up) and the callers
         // that rely on the AlreadyExists contract (#368). Make mkdir idempotent:
         // if the folder already exists under this parent, report AlreadyExists.
-        // Best-effort on purpose: only short-circuit on a CONFIRMED hit. A
-        // transient lookup failure (429 / token refresh; find_by_name does not
-        // check the HTTP status and would surface a deserialize error) must not
-        // fail the create, which historically went straight to the POST, so on
-        // any lookup error we fall through and let the create proceed.
+        // Only a lookup that answered lets the create go ahead: a failed one
+        // (timeout, 429, 5xx) cannot rule the folder out, and creating anyway
+        // makes the duplicate this check exists to prevent. The error carries
+        // its status and Retry-After, so the caller's retry policy decides.
         // The name exactly: Drive keeps `photos` beside `Photos` as two
         // folders, so `mkdir /photos` there creates it.
-        if let Ok(Some(existing)) = self.find_by_name(folder_name, &parent_id).await {
+        if let Some(existing) = self.find_by_name(folder_name, &parent_id).await? {
             if is_drive_folder(&existing) {
                 return Err(ProviderError::AlreadyExists(path.to_string()));
             }
@@ -3377,6 +3381,52 @@ mod tests {
         provider.api_origin_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("t".to_string());
         (provider, patches)
+    }
+
+    /// Drive keeps two folders with one name side by side, so mkdir looks the
+    /// name up first. A lookup the server did not answer (here a 503) used to
+    /// fall through to the create, making the duplicate the lookup prevents.
+    /// The error is returned, with its status, and nothing is created.
+    #[tokio::test]
+    async fn mkdir_creates_nothing_when_the_name_lookup_fails() {
+        use std::sync::{Arc, Mutex};
+        let posts: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&posts);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    if req.method() == axum::http::Method::POST {
+                        seen.lock().unwrap().push(req.uri().to_string());
+                        return (axum::http::StatusCode::OK, r#"{"id":"NEW"}"#);
+                    }
+                    (
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                        r#"{"error":{"code":503,"message":"backend error"}}"#,
+                    )
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".to_string());
+
+        let outcome = provider.mkdir("/new").await;
+
+        match outcome {
+            Err(ProviderError::Other(message)) => {
+                assert!(message.contains("503"), "{message}")
+            }
+            other => panic!("the failed lookup must be returned: {other:?}"),
+        }
+        assert!(
+            posts.lock().unwrap().is_empty(),
+            "{:?}",
+            posts.lock().unwrap()
+        );
     }
 
     /// After `/a` moved to `/b`, the cache still mapped `/a` (and `/a/sub`)

@@ -810,6 +810,19 @@ impl OpenDriveProvider {
             .ok_or_else(|| ProviderError::ParseError("Missing FolderId in response".into()))
     }
 
+    /// The folder id when `path` is a folder, `None` when OpenDrive answers it
+    /// is not one (missing, or refused as a folder path), so the caller may
+    /// try it as a file. A lookup that did not answer (timeout, 5xx, denial)
+    /// is returned: read as "not a folder" it ends in a NotFound for a folder
+    /// that exists, and NotFound is what skip guards and sync act on.
+    async fn folder_id_if_folder(&self, path: &str) -> Result<Option<String>, ProviderError> {
+        match self.folder_id_by_path(path).await {
+            Ok(folder_id) => Ok(Some(folder_id)),
+            Err(ProviderError::NotFound(_)) | Err(ProviderError::InvalidPath(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
     async fn file_id_by_path(&self, path: &str) -> Result<FileIdByPathResponse, ProviderError> {
         let normalized = normalize_path(path)?;
         // See `folder_id_by_path`: look the file up by its stored encoded path.
@@ -1444,7 +1457,7 @@ impl OpenDriveProvider {
             return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
         }
 
-        if let Ok(folder_id) = self.folder_id_by_path(&normalized).await {
+        if let Some(folder_id) = self.folder_id_if_folder(&normalized).await? {
             let info = self.folder_info(&folder_id).await?;
             let (parent, _) = split_parent_child(&normalized);
             return Ok(self.folder_to_entry(
@@ -2230,7 +2243,7 @@ impl StorageProvider for OpenDriveProvider {
         let expiry_date = expiry.format("%Y-%m-%d").to_string();
         let expires_at_str = expiry.to_rfc3339();
 
-        if let Ok(folder_id) = self.folder_id_by_path(&resolved).await {
+        if let Some(folder_id) = self.folder_id_if_folder(&resolved).await? {
             let response: ExpiringFolderLinkResponse = self
                 .get_json(&self.endpoint(&format!(
                     "folder/expiringlink.json/{}/{}/0/{}/1",
@@ -2768,6 +2781,46 @@ mod tests {
         provider.connected = true;
         provider.session_id = "sid".to_string();
         (provider, moves)
+    }
+
+    /// `stat` tries the path as a folder, then as a file. A folder lookup
+    /// the server did not answer (503) fell through to the file lookups,
+    /// and those found no file of that name: an existing folder came back
+    /// NotFound, the answer skip guards and sync act on. The lookup error is
+    /// returned instead.
+    #[tokio::test]
+    async fn stat_does_not_turn_a_failed_folder_lookup_into_not_found() {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        let (base, server) = serve(vec![
+            Route::post(
+                "/api/v1/folder/idbypath.json",
+                503,
+                r#"{"error":{"code":503,"message":"busy"}}"#,
+            ),
+            Route::get(
+                "/api/v1/folder/list.json/sid/0",
+                200,
+                r#"{"Folders":[],"Files":[]}"#,
+            ),
+        ])
+        .await;
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: base,
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+
+        let outcome = provider.stat("/docs").await;
+        server.abort();
+
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
     }
 
     /// Upload a 300 KB file of incompressible bytes through the OpenDrive

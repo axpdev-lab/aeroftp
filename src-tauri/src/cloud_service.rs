@@ -799,7 +799,23 @@ impl CloudService {
         // some providers like FileLu create duplicates if mkdir is called on an
         // existing folder). A preview (`ensure_remote == false`) must NOT mutate
         // the target: if the folder is absent it is treated as empty instead.
-        let remote_present = provider.cd(&config.remote_folder).await.is_ok();
+        //
+        // A failed `cd` is not proof the folder is absent (a timeout, a denial),
+        // and the preview below reads "absent" as a complete, empty remote. So a
+        // `cd` error is settled by `exists`, which answers false only for a
+        // NotFound; one that cannot answer either stops the plan.
+        let remote_present = match provider.cd(&config.remote_folder).await {
+            Ok(()) => true,
+            Err(cd_error) => match provider.exists(&config.remote_folder).await {
+                Ok(present) => present,
+                Err(e) => {
+                    return Err(format!(
+                        "Cannot open remote folder {} ({cd_error}) nor check that it exists: {e}",
+                        config.remote_folder
+                    ))
+                }
+            },
+        };
         if !remote_present && ensure_remote {
             // One `mkdir` creates ONE level, so a remote folder whose parents do
             // not exist yet failed here and then failed every upload under it
