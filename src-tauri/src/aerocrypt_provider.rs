@@ -486,7 +486,7 @@ pub async fn probe_overlay_config(
 /// existing overlay. Re-init rotates the salt, which permanently orphans
 /// every file already encrypted here, so without `force` the write goes out
 /// only where the server answered that no config exists.
-async fn write_new_overlay_config(
+pub(crate) async fn write_new_overlay_config(
     provider: &mut dyn crate::providers::StorageProvider,
     root: &str,
     config_json: &str,

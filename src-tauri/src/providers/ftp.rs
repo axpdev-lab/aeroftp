@@ -1361,13 +1361,16 @@ impl FtpProvider {
             // with MLST never reaches this listing, so a dotfile that is
             // there read as missing: a non-recursive delete then listed the
             // path itself, got the file's own row, and refused a plain file
-            // as a directory holding one entry. `LIST -a` shows it. A listing
-            // that fails leaves the answer NotFound, as before.
+            // as a directory holding one entry. `LIST -a` shows it. When
+            // `LIST -a` fails, the bare listing above cannot say the dotfile
+            // is missing, since it never shows dotfiles: the error is passed
+            // on. Read as NotFound, it let `crypt init` write a new config
+            // over an `.aerocrypt.tsv` that was there.
             None if name.starts_with('.') => self
                 .list_inner_opts(&parent, true)
-                .await
-                .ok()
-                .and_then(|entries| entries.into_iter().find(|e| e.name == name)),
+                .await?
+                .into_iter()
+                .find(|e| e.name == name),
             None => None,
         };
         let mut entry = found.ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
@@ -6474,6 +6477,8 @@ mod rename_contract_tests {
         /// RNTO onto an existing file is refused with the reply IIS gives,
         /// instead of renaming over it.
         rnto_refuses_taken: bool,
+        /// `LIST -a` is refused; a bare LIST still answers.
+        list_all_refused: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -6551,6 +6556,9 @@ mod rename_contract_tests {
                     log.lock().unwrap().push(format!("DELE {argument}"));
                     files.lock().unwrap().retain(|f| f != &argument);
                     "250 Deleted\r\n".to_string()
+                }
+                "LIST" if quirks.list_all_refused && argument.starts_with("-a") => {
+                    "550 Permission denied\r\n".to_string()
                 }
                 "LIST" => {
                     let (all, target) = match argument.strip_prefix("-a") {
@@ -6773,6 +6781,31 @@ mod rename_contract_tests {
             matches!(probe, OverlayConfigProbe::Unverified(_)),
             "{probe:?}"
         );
+
+        // No MLST, a bare LIST that hides dotfiles, and `LIST -a` refused:
+        // the config is there and no listing can show it. Read as Absent, a
+        // new config went out over it.
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            list_all_refused: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&[config], quirks).await;
+        let probe = probe_overlay_config(&mut provider, config).await;
+        assert!(
+            matches!(probe, OverlayConfigProbe::Unverified(_)),
+            "{probe:?}"
+        );
+        let refused = crate::aerocrypt_provider::write_new_overlay_config(
+            &mut provider,
+            "/vault",
+            "{}",
+            false,
+        )
+        .await
+        .expect_err("the init must not write over a config it cannot see");
+        assert!(refused.contains("cannot verify"), "{refused}");
     }
 
     /// A path under a folder that is not there is missing, also on a server
