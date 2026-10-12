@@ -98,6 +98,23 @@ jobs:
       - name: i18n raw-English gate
         run: npm run i18n:untranslated
 
+      # Letters from the wrong writing system are invisible to every gate above:
+      # the value is present, translated and correctly accented, it is simply
+      # built partly from another alphabet. Georgian and Japanese inside Khmer,
+      # kanji inside Bulgarian, a Latin i inside a Ukrainian word that looks
+      # identical and breaks search. Each locale declares its scripts in the
+      # detector; any character outside them, any word mixing Latin with the
+      # native letters, and any stray invisible character fails. A string
+      # genuinely correct as written is recorded, with the reason, in
+      # scripts/i18n-contamination-accepted.json. Never bulk-accept.
+      - name: i18n foreign-script gate
+        run: npm run i18n:contamination
+
+      # The corpus exercises only the cases it happens to contain; the fixtures
+      # pin the rest (an emoji ZWJ sequence, a bidi control, a stale acceptance).
+      - name: i18n foreign-script gate self-test
+        run: node --test .github/scripts/test-i18n-contamination.mjs
+
       # Every published "how many providers / presets / protocols" figure is
       # derived from the catalog and the registry into docs/PROVIDER-INVENTORY.json.
       # They used to be prose, which is why three different numbers for the same

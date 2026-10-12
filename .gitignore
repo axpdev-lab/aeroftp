@@ -158,6 +158,10 @@ run-clean.sh
 # workflow (#628 item 13)
 !/scripts/i18n-untranslated.mjs
 !/scripts/i18n-untranslated-accepted.json
+# Exception: foreign-script gate and its reviewed baseline, run by the fast
+# checks workflow
+!/scripts/i18n-contamination.mjs
+!/scripts/i18n-contamination-accepted.json
 # Exception: single pre-release smoke entrypoint (`npm run smoke`, #408 row 1)
 !/scripts/smoke.mjs
 # Exception: asserts a CI lane actually executed the tests it selects, called by

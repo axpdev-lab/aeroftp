@@ -1,0 +1,13 @@
+{
+  "_comment": [
+    "Hits from scripts/i18n-contamination.mjs that a human read and judged correct as written.",
+    "A legitimate hit is rare and has a reason that can be stated: a language or place name written",
+    "in its own script, a quoted sample of another writing system. The default answer to a hit is",
+    "to retranslate the string in the locale's own script, not to record it here.",
+    "An entry is keyed by locale, key AND value (joined by U+001F), so rewording a string retires its",
+    "acceptance. An entry that no longer matches any hit is stale and fails the gate: delete it.",
+    "Shape of an entry: { \"locale\": \"..\", \"key\": \"..\", \"chars\": \"..\", \"reason\": \"..\" }.",
+    "Never bulk-accept. Every line here is read against the language, not against the tool."
+  ],
+  "accepted": {}
+}

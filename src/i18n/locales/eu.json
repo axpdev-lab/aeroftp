@@ -5828,7 +5828,7 @@
             "passwordStored": "Gordeta (utzi hutsik mantentzeko)",
             "immutableWarn": "Zifratze mota eta pasahitza behin ezartzen dira eta ezin dira gero aldatu: dagoeneko zifratutako fitxategiak irakurtezin bihurtuko lirateke.",
             "lockedNote": "Zifratze mota eta kredentzialak blokeatuta daude: geruza honek dagoeneko zifratutako datuak ditu.",
-            "addToExistingWarn": "Lehendik dagoen profil batean gainjartzea gaitzean: urruneko honetan dauden testu lауneko fitxategiak zifratu gabe geratzen dira eta deszifratu ezin den nahaste gisa agertuko dira. Erabili urruneko huts bat.",
+            "addToExistingWarn": "Lehendik dagoen profil batean gainjartzea gaitzean: urruneko honetan dauden testu laueko fitxategiak zifratu gabe geratzen dira eta deszifratu ezin den nahaste gisa agertuko dira. Erabili urruneko huts bat.",
             "scopeHint": "Gainjarrien bideak zehazten du zifratutako esparrua. Urruneko Bideak nabigazioa non hasten den soilik aukeratzen du; Bide Lokalak ez du inoiz zifratzea aldatzen.",
             "overlaysPathLockedNote": "Gainjarrien bidea blokeatuta dago: enkriptatzearen aingura da eta ezin da aldatu gainjarpena lotu ondoren.",
             "remotePathMustReachOverlay": "Urruneko bideak gainjarrien bidea ({path}) edo haren goragoko karpetaren bat izan behar du; bestela, enkriptatutako karpeta saio honetatik kanpo geratzen da.",
