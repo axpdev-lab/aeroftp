@@ -240,10 +240,20 @@ fn build_upload_wire(
         .map_err(|e| ProviderError::TransferFailed(format!("stat local: {e}")))?
         .len();
 
-    // Pass 1: stream-compress to a temp, unless the format is known not to shrink.
-    let comp_tmp = tempfile::NamedTempFile::new()
-        .map_err(|e| ProviderError::TransferFailed(format!("tmp comp: {e}")))?;
     let try_zstd = crate::transfer_pool::should_compress(remote_path);
+    // Room for the path the name selects: compressing stages two files that
+    // coexist, each at most plain_len plus a small header; a skipped pass
+    // leaves comp_tmp empty and only the wire file needs plain_len.
+    let dir = crate::util::scratch::staging_dir(if try_zstd {
+        plain_len.saturating_mul(2)
+    } else {
+        plain_len
+    })
+    .map_err(ProviderError::TransferFailed)?;
+
+    // Pass 1: stream-compress to a temp, unless the format is known not to shrink.
+    let comp_tmp = tempfile::NamedTempFile::new_in(&dir)
+        .map_err(|e| ProviderError::TransferFailed(format!("tmp comp: {e}")))?;
     if try_zstd {
         let mut reader = std::fs::File::open(local_path)
             .map_err(|e| ProviderError::TransferFailed(format!("open local: {e}")))?;
@@ -269,7 +279,7 @@ fn build_upload_wire(
     };
 
     // Build the final wire = header + smaller payload.
-    let wire_tmp = tempfile::NamedTempFile::new()
+    let wire_tmp = tempfile::NamedTempFile::new_in(&dir)
         .map_err(|e| ProviderError::TransferFailed(format!("tmp wire: {e}")))?;
     {
         let mut w = std::io::BufWriter::new(
@@ -360,7 +370,10 @@ impl StorageProvider for CompressOverlayProvider {
     ) -> Result<(), ProviderError> {
         // Pull the wire to a temp, classify the header, then stream to local_path
         // with bounded memory (no whole-file materialization).
-        let tmp = tempfile::NamedTempFile::new()
+        let dir =
+            crate::util::scratch::staging_dir(self.inner.size(remote_path).await.unwrap_or(0))
+                .map_err(ProviderError::TransferFailed)?;
+        let tmp = tempfile::NamedTempFile::new_in(&dir)
             .map_err(|e| ProviderError::TransferFailed(format!("tmp download: {e}")))?;
         let tmp_path = tmp.path().to_path_buf();
         self.inner
@@ -761,5 +774,183 @@ mod tests {
             parse_header_prefix(&header, 4096 + COMPRESS_HEADER_LEN as u64),
             WirePlan::Zstd(4096)
         );
+    }
+
+    // ── Staging location (#658 follow-up: staging leaves the tmpfs) ──────────
+
+    /// The staging gate shared by these tests: the path must live in the
+    /// on-disk scratch folder, never in the temporary folder (on many Linux
+    /// systems a tmpfs sized from RAM, so a large transfer staged there eats
+    /// RAM and can fail).
+    fn assert_on_disk_scratch(path: &std::path::Path) {
+        if dirs::cache_dir().is_some() {
+            assert!(
+                !path.starts_with(std::env::temp_dir()),
+                "{} must not be in the temporary folder",
+                path.display()
+            );
+            assert!(
+                path.ancestors()
+                    .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+                "{} must live under a scratch folder",
+                path.display()
+            );
+        } else {
+            // The documented fallback with no cache folder: scratch is
+            // temp_dir()/aeroftp-scratch.
+            assert!(
+                path.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                "{} must live under the scratch fallback",
+                path.display()
+            );
+        }
+    }
+
+    #[test]
+    fn an_upload_stages_its_wire_on_disk_not_in_the_temporary_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("payload.txt");
+        std::fs::write(&local, b"compress me on disk, not in a tmpfs").unwrap();
+        let wire = build_upload_wire(local.to_str().unwrap(), "/docs/payload.txt", 3).unwrap();
+        assert_on_disk_scratch(wire.path());
+    }
+
+    /// A minimal inner provider whose `download` writes its canned content to
+    /// the path it was handed and records that path.
+    struct RecordingProvider {
+        content: Vec<u8>,
+        download_targets: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl StorageProvider for RecordingProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "recording".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(vec![])
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            local_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.download_targets
+                .lock()
+                .unwrap()
+                .push(local_path.to_string());
+            std::fs::write(local_path, &self.content).map_err(ProviderError::IoError)
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Ok(self.content.clone())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Ok(RemoteEntry {
+                name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                path: path.to_string(),
+                is_dir: false,
+                size: self.content.len() as u64,
+                modified: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata: Default::default(),
+            })
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(self.content.len() as u64)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("recording".into())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_download_stages_its_wire_on_disk_not_in_the_temporary_folder() {
+        let payload = b"decompress me on disk, not in a tmpfs";
+        let mut wire = make_header(MODE_STORED, payload.len() as u64);
+        wire.extend_from_slice(payload);
+        let inner = RecordingProvider {
+            content: wire,
+            download_targets: std::sync::Mutex::new(Vec::new()),
+        };
+        let mut provider = CompressOverlayProvider::new(Box::new(inner), 3);
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("out.txt");
+        provider
+            .download("/docs/payload.txt", local.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&local).unwrap(), payload);
+
+        let inner = provider
+            .inner
+            .as_any_mut()
+            .downcast_mut::<RecordingProvider>()
+            .unwrap();
+        let targets = inner.download_targets.lock().unwrap();
+        assert_eq!(targets.len(), 1, "one staged download: {targets:?}");
+        assert_on_disk_scratch(std::path::Path::new(&targets[0]));
     }
 }

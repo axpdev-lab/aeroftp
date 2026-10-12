@@ -537,7 +537,12 @@ fn stage_local_as_dest(
     local_path: &str,
     dest_name: &str,
 ) -> Result<(PathBuf, PathBuf), ProviderError> {
-    let staging = std::env::temp_dir().join(format!("aeroftp_proton_up_{}", uuid::Uuid::new_v4()));
+    let len = std::fs::metadata(local_path)
+        .map_err(ProviderError::IoError)?
+        .len();
+    let staging = crate::util::scratch::staging_dir(len)
+        .map_err(ProviderError::TransferFailed)?
+        .join(format!("aeroftp_proton_up_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&staging).map_err(ProviderError::IoError)?;
     let staged = staging.join(dest_name);
     match std::fs::hard_link(local_path, &staged) {
@@ -2078,5 +2083,42 @@ mod cli_sequence_tests {
         assert!(set_url.iter().any(|a| a == "--password=-x"), "{set_url:?}");
         assert!(!set_url.iter().any(|a| a == "--password"), "{set_url:?}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The upload staging folder lives in the on-disk scratch folder, never in
+    /// the temporary folder (on many Linux systems a tmpfs sized from RAM, so
+    /// a large upload staged there eats RAM and can fail).
+    #[test]
+    fn an_upload_is_staged_on_disk_not_in_the_temporary_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("payload.bin");
+        std::fs::write(&local, b"proton staging on disk").unwrap();
+
+        let (staging, staged) = stage_local_as_dest(local.to_str().unwrap(), "dest.bin").unwrap();
+        if dirs::cache_dir().is_some() {
+            assert!(
+                !staging.starts_with(std::env::temp_dir()),
+                "{} must not be in the temporary folder",
+                staging.display()
+            );
+            assert!(
+                staging
+                    .ancestors()
+                    .any(|a| a.file_name() == Some(std::ffi::OsStr::new("scratch"))),
+                "{} must live under a scratch folder",
+                staging.display()
+            );
+        } else {
+            // The documented fallback with no cache folder: scratch is
+            // temp_dir()/aeroftp-scratch.
+            assert!(
+                staging.starts_with(std::env::temp_dir().join("aeroftp-scratch")),
+                "{} must live under the scratch fallback",
+                staging.display()
+            );
+        }
+        assert!(staged.starts_with(&staging));
+        assert_eq!(std::fs::read(&staged).unwrap(), b"proton staging on disk");
+        let _ = std::fs::remove_dir_all(&staging);
     }
 }
