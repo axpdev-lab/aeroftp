@@ -488,6 +488,111 @@ impl TransferSessionPool for ExecutorManagedSessionPool {
     }
 }
 
+/// One session slot. Nobody is admitted until two callers are inside
+/// [`TransferSessionPool::acquire`]. The closure runs then, before either
+/// permit is granted, so a test can see that the other gate is still free.
+///
+/// After that, the semaphore is an ordinary capacity-1 session pool.
+#[cfg(test)]
+pub struct TwoPartySessionPool {
+    label: String,
+    arrivals: std::sync::atomic::AtomicUsize,
+    released: std::sync::atomic::AtomicBool,
+    checked: std::sync::atomic::AtomicBool,
+    notify: tokio::sync::Notify,
+    semaphore: Arc<Semaphore>,
+    ids: LeaseIdSource,
+    on_both_waiting: Box<dyn Fn() + Send + Sync>,
+}
+
+#[cfg(test)]
+impl TwoPartySessionPool {
+    pub fn new(
+        label: impl Into<String>,
+        on_both_waiting: impl Fn() + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            label: label.into(),
+            arrivals: std::sync::atomic::AtomicUsize::new(0),
+            released: std::sync::atomic::AtomicBool::new(false),
+            checked: std::sync::atomic::AtomicBool::new(false),
+            notify: tokio::sync::Notify::new(),
+            semaphore: Arc::new(Semaphore::new(1)),
+            ids: LeaseIdSource::new(),
+            on_both_waiting: Box::new(on_both_waiting),
+        }
+    }
+
+    async fn wait_until(&self, ready: impl Fn(&Self) -> bool) {
+        loop {
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if ready(self) {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+#[cfg(test)]
+#[async_trait]
+impl TransferSessionPool for TwoPartySessionPool {
+    async fn acquire(&self) -> Result<TransferSessionLease, SessionPoolError> {
+        self.arrivals
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.notify.notify_waiters();
+        self.wait_until(|pool| pool.arrivals.load(std::sync::atomic::Ordering::SeqCst) >= 2)
+            .await;
+        if self
+            .checked
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .is_ok()
+        {
+            (self.on_both_waiting)();
+            self.released
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            self.notify.notify_waiters();
+        }
+        self.wait_until(|pool| pool.released.load(std::sync::atomic::Ordering::SeqCst))
+            .await;
+        let permit = self
+            .semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|_| SessionPoolError::closed(SessionLeaseKind::HttpClone, &self.label))?;
+        Ok(TransferSessionLease {
+            inner: TransferSessionLeaseInner::Semaphore(SemaphoreSessionLease {
+                info: SessionLeaseInfo::new(
+                    self.ids.next(),
+                    SessionLeaseKind::HttpClone,
+                    &self.label,
+                ),
+                _permit: Some(permit),
+            }),
+        })
+    }
+
+    fn label(&self) -> &str {
+        &self.label
+    }
+
+    fn kind(&self) -> SessionLeaseKind {
+        SessionLeaseKind::HttpClone
+    }
+
+    fn capacity(&self) -> SessionPoolCapacity {
+        SessionPoolCapacity::new(SessionLeaseKind::HttpClone, &self.label, 1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
