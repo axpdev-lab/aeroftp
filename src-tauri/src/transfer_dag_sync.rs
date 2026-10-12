@@ -120,6 +120,43 @@ fn remote_sha256_hex(entry: &RemoteEntry) -> Option<String> {
     }
 }
 
+/// Resolve all local devices before admitting the sync job. A mounted subtree
+/// or a symlinked file can live on a different device from the root. Nested
+/// segmented downloads reuse this lease, so their final and sibling paths must
+/// already be covered. Retain only one path per device/direction, even for a
+/// large plan; the governor acquires that set in its global order.
+fn sync_job_disk_requests(
+    local_root: &str,
+    transfers: &[PlannedTransfer],
+) -> Vec<DiskLeaseRequest> {
+    use crate::transfer_dag::governor::DiskDeviceIdentity;
+    let mut requests = std::collections::BTreeMap::new();
+    let mut add = |request: DiskLeaseRequest| {
+        requests
+            .entry((
+                DiskDeviceIdentity::for_path(&request.path),
+                request.direction,
+            ))
+            .or_insert(request);
+    };
+    add(DiskLeaseRequest::read(local_root));
+    add(DiskLeaseRequest::write(local_root));
+    for transfer in transfers {
+        // Same path construction as perform_upload/perform_download.
+        let path = crate::sync::join_clean(local_root, &transfer.rel);
+        if transfer.op == "upload" {
+            add(DiskLeaseRequest::read(path));
+        } else {
+            for request in crate::providers::multi_thread::download_job_disk_requests(
+                std::path::Path::new(&path),
+            ) {
+                add(request);
+            }
+        }
+    }
+    requests.into_values().collect()
+}
+
 /// One resolved skip in a sync plan.
 struct PlannedSkip {
     rel: String,
@@ -1269,18 +1306,14 @@ pub async fn execute_sync_dag(
 
     if !plan.transfers.is_empty() {
         let endpoint = provider.endpoint_identity();
-        // A tree sync is background work. It may upload and download in one
-        // plan, so it holds one directional lease for each local-root side.
-        // The device registry coalesces both requests when they resolve to the
-        // same physical disk.
+        // Acquire the entire plan's devices before entering any worker. A
+        // nested segmented download may reuse this job without another slot;
+        // it must not silently lose a mounted subtree's disk cap.
         let job_lease = crate::transfer_dag::governor::global()
             .acquire_job(
                 endpoint.clone(),
                 TransferPriority::Background,
-                [
-                    DiskLeaseRequest::read(local_root),
-                    DiskLeaseRequest::write(local_root),
-                ],
+                sync_job_disk_requests(local_root, &plan.transfers),
             )
             .await;
         // DAG-P2-04: the transfer set is no longer materialized as one static
@@ -1498,6 +1531,179 @@ mod tests {
         Capability, NoopDagObserver, OrderedDagObserver, SyncDagAction, SyncDagItem,
     };
     use std::any::Any;
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn sync_job_coalesces_windows_files_and_enforces_one_volume_cap() {
+        use crate::transfer_dag::governor::{GlobalTransferGovernor, GovernorConfig};
+        use crate::transfer_dag::EndpointIdentity;
+        use std::time::Duration;
+
+        let root = tempfile::tempdir().unwrap();
+        let mut transfers = Vec::new();
+        for i in 0..32 {
+            let rel = format!("dir-{i}/payload.bin");
+            let path = root.path().join(&rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+            transfers.push(planned_upload(&rel, DeltaPolicy::Disabled));
+        }
+        let requests = sync_job_disk_requests(root.path().to_str().unwrap(), &transfers);
+        assert_eq!(
+            requests.len(),
+            2,
+            "one volume needs only root read/write requests"
+        );
+        let gov = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: crate::transfer_dag::resources::BUFFER_QUANTUM_BYTES,
+            bandwidth_bps: 0,
+            endpoint_slots: 1,
+            disk_device_slots: 1,
+        });
+        let lease = tokio::time::timeout(
+            Duration::from_secs(2),
+            gov.acquire_job(
+                EndpointIdentity::new("sftp", "windows-sync.test", "alice"),
+                TransferPriority::Background,
+                requests,
+            ),
+        )
+        .await
+        .expect("same-volume requests reacquired a held disk slot");
+        let pending = gov.acquire_job(
+            EndpointIdentity::new("sftp", "independent.test", "bob"),
+            TransferPriority::Foreground,
+            [DiskLeaseRequest::read(
+                root.path().join("dir-31/payload.bin"),
+            )],
+        );
+        tokio::pin!(pending);
+        assert!(
+            futures_util::poll!(&mut pending).is_pending(),
+            "another file on the same volume bypassed the disk cap"
+        );
+        drop(lease);
+        let other = tokio::time::timeout(Duration::from_secs(2), pending)
+            .await
+            .expect("volume cap was not released");
+        assert_eq!(gov.disk_count(), 1);
+        drop(other);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sync_job_waits_for_a_mounted_subtree_and_nested_download_reuses_its_slot() {
+        use crate::transfer_dag::governor::{
+            current_job_share, DiskDeviceIdentity, GlobalTransferGovernor, GovernorConfig,
+        };
+        use crate::transfer_dag::{DiskDirection, EndpointIdentity};
+        use std::time::Duration;
+
+        let root = tempfile::tempdir().unwrap();
+        if !std::path::Path::new("/dev/shm").is_dir() {
+            return;
+        }
+        let mounted = tempfile::tempdir_in("/dev/shm").unwrap();
+        if DiskDeviceIdentity::for_path(root.path()) == DiskDeviceIdentity::for_path(mounted.path())
+        {
+            return;
+        }
+        // A directory link exercises the same metadata.dev() resolution as a
+        // mounted subtree, without requiring mount privileges in CI.
+        std::os::unix::fs::symlink(mounted.path(), root.path().join("mounted")).unwrap();
+        let mut transfer = planned_upload("mounted/big.bin", DeltaPolicy::Disabled);
+        transfer.op = "download";
+        let requests = sync_job_disk_requests(root.path().to_str().unwrap(), &[transfer]);
+        let gov = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: crate::transfer_dag::resources::BUFFER_QUANTUM_BYTES,
+            bandwidth_bps: 0,
+            endpoint_slots: 1,
+            disk_device_slots: 1,
+        });
+        let endpoint = EndpointIdentity::new("sftp", "sync-mount.test", "alice");
+        let other = gov
+            .acquire_job(
+                EndpointIdentity::new("sftp", "independent.test", "bob"),
+                TransferPriority::Foreground,
+                [DiskLeaseRequest::write(mounted.path())],
+            )
+            .await;
+        let pending = gov.acquire_job(endpoint.clone(), TransferPriority::Background, requests);
+        tokio::pin!(pending);
+        assert!(
+            futures_util::poll!(&mut pending).is_pending(),
+            "sync was admitted while the file's disk was occupied"
+        );
+        drop(other);
+        let job = tokio::time::timeout(Duration::from_secs(2), pending)
+            .await
+            .expect("sync did not start after the disk was released");
+        let root_disk = gov.disk_for_path(root.path());
+        let mounted_disk = gov.disk_for_path(mounted.path());
+        assert_eq!(root_disk.available(DiskDirection::Write), 0);
+        assert_eq!(mounted_disk.available(DiskDirection::Write), 0);
+        let file = root.path().join("mounted/big.bin");
+        job.scope(async {
+            let share = current_job_share().unwrap();
+            let child_gov = Arc::clone(&gov);
+            let worker = tokio::spawn(async move {
+                let _joined = share.enter();
+                child_gov
+                    .acquire_job(
+                        endpoint,
+                        TransferPriority::Foreground,
+                        crate::providers::multi_thread::download_job_disk_requests(&file),
+                    )
+                    .await
+            });
+            let nested = tokio::time::timeout(Duration::from_secs(2), worker)
+                .await
+                .expect("nested download reacquired a held slot")
+                .unwrap();
+            drop(nested);
+            assert_eq!(root_disk.available(DiskDirection::Write), 0);
+            assert_eq!(mounted_disk.available(DiskDirection::Write), 0);
+        })
+        .await;
+        assert_eq!(root_disk.available(DiskDirection::Write), 1);
+        assert_eq!(mounted_disk.available(DiskDirection::Write), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_job_covers_upload_devices_and_both_download_paths() {
+        use crate::transfer_dag::governor::DiskDeviceIdentity;
+        use crate::transfer_dag::DiskDirection;
+        let root = tempfile::tempdir().unwrap();
+        if !std::path::Path::new("/dev/shm").is_dir() {
+            return;
+        }
+        let target_dir = tempfile::tempdir_in("/dev/shm").unwrap();
+        if DiskDeviceIdentity::for_path(root.path())
+            == DiskDeviceIdentity::for_path(target_dir.path())
+        {
+            return;
+        }
+        let target = target_dir.path().join("data");
+        std::fs::write(&target, b"x").unwrap();
+        std::os::unix::fs::symlink(&target, root.path().join("data")).unwrap();
+        let mut download = planned_upload("data", DeltaPolicy::Disabled);
+        download.op = "download";
+        let requests = sync_job_disk_requests(
+            root.path().to_str().unwrap(),
+            &[planned_upload("data", DeltaPolicy::Disabled), download],
+        );
+        let keys: std::collections::BTreeSet<_> = requests
+            .iter()
+            .map(|r| (DiskDeviceIdentity::for_path(&r.path), r.direction))
+            .collect();
+        for path in [root.path(), target_dir.path()] {
+            for direction in [DiskDirection::Read, DiskDirection::Write] {
+                assert!(keys.contains(&(DiskDeviceIdentity::for_path(path), direction)));
+            }
+        }
+        assert_eq!(requests.len(), 4, "same-device requests must coalesce");
+    }
 
     // DAG-P2-06 (wire-level): the sync construction point binds learned tuning
     // to its endpoint under the whole-file BatchSyncFile workload key (shared

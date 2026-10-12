@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A sync that crosses a mounted local subfolder respects that disk's transfer cap, including segmented downloads, without taking a second slot already held by the sync.
+- Renaming a Proton upload succeeds through a hardlink even when there is not enough free space for a second copy. The copy fallback still checks available space before writing.
+
 - A segmented download finishes when its own file already holds the only free transfer slot. With several large files at the maximum parallel setting, or with the endpoint or disk slot cap set to one, that download asked for a second slot and waited forever.
 - `aeroftp-cli serve sftp` stores uploaded files. It acknowledged every write and discarded the data, so a client saw a finished upload and no file existed, on every backend; it also left the OpenSSH client hanging at the end of a session.
 - `aeroftp-cli sync <folder> <local> <remote>` with a folder as the first argument no longer drops the third one: it syncs against the folder as a remote instead of copying folder to folder.
@@ -30,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Translations in eleven languages no longer contain letters from other alphabets. 165 strings are corrected in Armenian, Khmer, Georgian, Thai, Bulgarian, Macedonian, Serbian, Ukrainian, Croatian, Basque and Estonian: Georgian and Japanese letters inside Khmer text, Hebrew, Arabic and Cyrillic inside Armenian, a Japanese word inside Bulgarian, Latin letters that look like Cyrillic ones inside Ukrainian and Macedonian words (they display correctly but a text search for the real word misses them), invisible characters inside Estonian words, and Armenian and Khmer help texts that did not make sense. A new CI check fails on any such character from now on.
 
 ### Security
+
+- Updated `quinn-proto` to 0.11.18, fixing three upstream panic/denial-of-service advisories (RUSTSEC-2026-0338, RUSTSEC-2026-0340 and RUSTSEC-2026-0343) and restoring the dependency-audit gate.
 
 - Linux AppImage packaging pins the appimage, GTK and GStreamer linuxdeploy plugins to a dated release or source commit and verifies their SHA-256 before use, along with AppRun and linuxdeploy. A corrupt cache, missing verified helper or external unverified plugin stops packaging.
 
