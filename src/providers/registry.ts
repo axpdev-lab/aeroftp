@@ -623,7 +623,7 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'mega-s4',
         name: 'MEGA S4 Object Storage',
-        description: 'S3-compatible, Pro plan required, 4 regions (EU/CA)',
+        description: 'S3-compatible, Pro plan required, EU, Canada and Asia-Pacific',
         protocol: 's3',
         category: 's3',
         icon: 'Cloud',
@@ -639,24 +639,40 @@ export const PROVIDERS: ProviderConfig[] = [
                 label: 'Region',
                 type: 'select',
                 required: true,
+                // Amsterdam first: it succeeds the previous default (old id
+                // eu-central-1, also Amsterdam). The signing region is this
+                // token, the same one embedded in the host. GoodSync's
+                // Vancouver default is one option, not ours.
+                // Vendor table, 25 September 2026:
+                // https://help.mega.io/megas4/setup-guides/mega-s4-endpoint-urls
                 options: [
-                    { value: 'eu-central-1', label: 'EU Central 1 (Amsterdam)' },
-                    { value: 'eu-central-2', label: 'EU Central 2 (Luxembourg)' },
-                    { value: 'ca-central-1', label: 'CA Central 1 (Montreal)' },
-                    { value: 'ca-west-1', label: 'CA West 1 (Vancouver)' },
+                    { value: 'eu-amsterdam-1', label: 'Amsterdam 1' },
+                    { value: 'eu-amsterdam-2', label: 'Amsterdam 2' },
+                    { value: 'eu-luxembourg-1', label: 'Luxembourg 1' },
+                    { value: 'eu-luxembourg-2', label: 'Luxembourg 2' },
+                    { value: 'eu-paris-1', label: 'Paris 1' },
+                    { value: 'eu-paris-2', label: 'Paris 2' },
+                    { value: 'eu-barcelona-1', label: 'Barcelona 1' },
+                    { value: 'eu-barcelona-2', label: 'Barcelona 2' },
+                    { value: 'ca-montreal-1', label: 'Montreal 1' },
+                    { value: 'ca-montreal-2', label: 'Montreal 2' },
+                    { value: 'ca-vancouver-1', label: 'Vancouver 1' },
+                    { value: 'ca-vancouver-2', label: 'Vancouver 2' },
+                    { value: 'ap-tokyo-1', label: 'Tokyo 1' },
+                    { value: 'ap-tokyo-2', label: 'Tokyo 2' },
                 ],
                 group: 'server',
             },
         ],
         defaults: {
             pathStyle: false,
-            endpointTemplate: 's3.{region}.s4.mega.io',
+            endpointTemplate: 's3.{region}.megas4.com',
         },
         features: {
             shareLink: true,
             sync: true,
         },
-        healthCheckUrl: 'https://s3.eu-central-1.s4.mega.io',
+        healthCheckUrl: 'https://s3.eu-amsterdam-1.megas4.com',
         helpUrl: 'https://help.mega.io/megas4/setup-guides/s3-browser-setup-guide-for-mega-s4',
         signupUrl: 'https://mega.nz/register',
     },
@@ -2371,6 +2387,14 @@ export const getAllProviders = () => providerRegistry.getAll();
 export const getStableProviders = () => providerRegistry.getStable();
 
 /**
+ * Region ids the previous MEGA S4 preset wrote into saved profiles.
+ * They still name a host on `s4.mega.io`. They are not options in the
+ * current select, and they are not valid on `megas4.com`.
+ */
+const MEGA_S4_LEGACY_REGIONS = new Set(['eu-central-1', 'eu-central-2', 'ca-central-1', 'ca-west-1']);
+const MEGA_S4_LEGACY_ENDPOINT_TEMPLATE = 's3.{region}.s4.mega.io';
+
+/**
  * Resolve the S3 endpoint for a provider based on its endpointTemplate.
  * Supports {region} and {accountId} (and any other) template variables.
  * Returns null for providers without a template (e.g. Amazon S3 uses default AWS endpoint).
@@ -2384,7 +2408,14 @@ export const resolveS3Endpoint = (providerId: string | undefined, region?: strin
         return provider.defaults.endpoint;
     }
 
-    const template = provider?.defaults?.endpointTemplate;
+    // A saved legacy region expands to the legacy host. Replacing only the
+    // preset template would build `s3.eu-central-1.megas4.com`, which MEGA
+    // does not publish. The stored endpoint, when present, still wins in
+    // resolveProfileS3Location, so this branch does not rewrite profiles.
+    let template = provider?.defaults?.endpointTemplate;
+    if (providerId === 'mega-s4' && region && MEGA_S4_LEGACY_REGIONS.has(region)) {
+        template = MEGA_S4_LEGACY_ENDPOINT_TEMPLATE;
+    }
     if (!template) return null;
 
     let result = template;
@@ -2439,9 +2470,7 @@ export const presetDefaultS3Region = (providerId?: string): string | undefined =
  * produce (a virtual-hosted `bucket.` host, another provider). Mirrors
  * `s3_region_from_endpoint` in src-tauri/src/profile_loader.rs.
  */
-const regionFromS3Endpoint = (providerId: string | undefined, endpoint: string): string | undefined => {
-    const template = providerId ? getProviderById(providerId)?.defaults?.endpointTemplate : undefined;
-    if (!template) return undefined;
+const regionFromS3Template = (template: string, endpoint: string): string | undefined => {
     const withoutScheme = (v: string) => v.replace(/^https?:\/\//i, '');
     const [prefix, suffix, ...rest] = withoutScheme(template).split('{region}');
     if (suffix === undefined || rest.length || prefix.includes('{') || suffix.includes('{')) return undefined;
@@ -2449,6 +2478,18 @@ const regionFromS3Endpoint = (providerId: string | undefined, endpoint: string):
     if (!host.startsWith(prefix) || !host.endsWith(suffix)) return undefined;
     const region = host.slice(prefix.length, host.length - suffix.length);
     return /^[a-z0-9-]+$/.test(region) ? region : undefined;
+};
+
+const regionFromS3Endpoint = (providerId: string | undefined, endpoint: string): string | undefined => {
+    const template = providerId ? getProviderById(providerId)?.defaults?.endpointTemplate : undefined;
+    if (!template) return undefined;
+    const current = regionFromS3Template(template, endpoint);
+    if (current) return current;
+    // Profiles saved against s4.mega.io have no stored region on some
+    // imports. The current template does not match that host, and mega-s4
+    // has no defaults.region, so a miss here signs us-east-1.
+    if (providerId === 'mega-s4') return regionFromS3Template(MEGA_S4_LEGACY_ENDPOINT_TEMPLATE, endpoint);
+    return undefined;
 };
 
 /**

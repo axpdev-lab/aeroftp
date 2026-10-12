@@ -3128,7 +3128,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 cloud object storage",
             "discoverGoogleCloudStorage": "Google Cloud S3-compatible object storage (5 GB free)",
             "discoverBackblaze": "Affordable cloud storage with S3 compatibility",
-            "discoverMegaS4": "S3-compatible, Pro plan required, 4 regions (EU/CA)",
+            "discoverMegaS4": "S3-compatible, Pro plan required, EU, Canada and Asia-Pacific",
             "discoverCloudflareR2": "Zero-egress S3-compatible storage (10 GB free)",
             "discoverIDriveE2": "S3-compatible hot storage (10 GB free)",
             "discoverFilebase": "Filebase: S3-compatible object storage (5 GB free)",

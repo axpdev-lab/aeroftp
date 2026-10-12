@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Magazyn obiektowy Amazon Web Services S3 w chmurze",
             "discoverGoogleCloudStorage": "Magazyn obiektowy Google Cloud zgodny z S3 (5 GB za darmo)",
             "discoverBackblaze": "Niedrogie przechowywanie w chmurze zgodne z S3",
-            "discoverMegaS4": "Zgodne z S3, wymagany plan Pro, 4 regiony (EU/CA)",
+            "discoverMegaS4": "Zgodne z S3, wymagany plan Pro, EU, Kanada i region Azji i Pacyfiku",
             "discoverCloudflareR2": "Magazyn zgodny z S3 bez opłat za ruch wychodzący (10 GB za darmo)",
             "discoverIDriveE2": "Magazyn hot zgodny z S3 (10 GB za darmo)",
             "discoverWasabi": "Przechowywanie w chmurze bez opłat za ruch wychodzący",

@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 ღრუბლოვანი ობიექტების შენახვა",
             "discoverGoogleCloudStorage": "Google Cloud S3-თავსებადი ობიექტების შენახვა (5 GB უფასო)",
             "discoverBackblaze": "ხელმისაწვდომი ღრუბლოვანი შენახვა S3 თავსებადობით",
-            "discoverMegaS4": "S3-თავსებადი, Pro გეგმა საჭიროა, 4 რეგიონი (EU/CA)",
+            "discoverMegaS4": "S3-თავსებადი, Pro გეგმა საჭიროა, EU, კანადა და აზია-წყნარი ოკეანის რეგიონი",
             "discoverCloudflareR2": "S3-თავსებადი შენახვა გამავალი ტრაფიკის გადასახადის გარეშე (10 GB უფასო)",
             "discoverIDriveE2": "S3-თავსებადი შენახვა (10 GB უფასო)",
             "discoverWasabi": "ღრუბლოვანი შენახვა გამავალი ტრაფიკის გადასახადის გარეშე",

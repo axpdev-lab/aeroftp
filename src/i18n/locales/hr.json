@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 pohrana objekata u oblaku",
             "discoverGoogleCloudStorage": "Google Cloud S3-kompatibilna pohrana objekata (5 GB besplatno)",
             "discoverBackblaze": "Pristupačna pohrana u oblaku s S3 kompatibilnošću",
-            "discoverMegaS4": "S3-kompatibilno, potreban Pro plan, 4 regije (EU/CA)",
+            "discoverMegaS4": "S3-kompatibilno, potreban Pro plan, EU, Kanada i azijsko-pacifička regija",
             "discoverCloudflareR2": "S3-kompatibilna pohrana bez troškova izlaznog prometa (10 GB besplatno)",
             "discoverIDriveE2": "S3-kompatibilna pohrana (10 GB besplatno)",
             "discoverWasabi": "Pohrana u oblaku bez troškova izlaznog prometa",

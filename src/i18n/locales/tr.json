@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 bulut nesne depolama",
             "discoverGoogleCloudStorage": "Google Cloud S3 uyumlu nesne depolama (5 GB ücretsiz)",
             "discoverBackblaze": "S3 uyumlu uygun fiyatli bulut depolama",
-            "discoverMegaS4": "S3 uyumlu, Pro plan gerekli, 4 bölge (EU/CA)",
+            "discoverMegaS4": "S3 uyumlu, Pro plan gerekli, EU, Kanada ve Asya-Pasifik",
             "discoverCloudflareR2": "Çıkış ücretsiz S3 uyumlu depolama (10 GB ücretsiz)",
             "discoverIDriveE2": "S3 uyumlu sıcak depolama (10 GB ücretsiz)",
             "discoverWasabi": "Çıkış ücretsiz sıcak bulut depolama",

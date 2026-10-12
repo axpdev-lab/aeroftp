@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Stocare obiecte în cloud Amazon Web Services S3",
             "discoverGoogleCloudStorage": "Stocare obiecte Google Cloud compatibilă S3 (5 GB gratuit)",
             "discoverBackblaze": "Stocare în cloud accesibilă cu compatibilitate S3",
-            "discoverMegaS4": "Compatibil S3, necesar plan Pro, 4 regiuni (EU/CA)",
+            "discoverMegaS4": "Compatibil S3, necesar plan Pro, EU, Canada și Asia-Pacific",
             "discoverCloudflareR2": "Stocare compatibilă S3 fără taxe de ieșire (10 GB gratuit)",
             "discoverIDriveE2": "Stocare hot compatibilă S3 (10 GB gratuit)",
             "discoverWasabi": "Stocare în cloud fără taxe de ieșire",

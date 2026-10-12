@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Stockage d'objets cloud Amazon Web Services S3",
             "discoverGoogleCloudStorage": "Stockage d'objets compatible S3 Google Cloud (5 GB gratuits)",
             "discoverBackblaze": "Stockage cloud abordable avec compatibilité S3",
-            "discoverMegaS4": "Compatible S3, forfait Pro requis, 4 régions (EU/CA)",
+            "discoverMegaS4": "Compatible S3, forfait Pro requis, EU, Canada et Asie-Pacifique",
             "discoverCloudflareR2": "Stockage compatible S3 sans frais de sortie (10 GB gratuits)",
             "discoverIDriveE2": "Stockage chaud compatible S3 (10 GB gratuits)",
             "discoverWasabi": "Stockage cloud chaud, sans frais de sortie",

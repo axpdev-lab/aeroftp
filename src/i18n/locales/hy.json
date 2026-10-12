@@ -1884,7 +1884,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 ամպային օբյեկտների պահեստավորում",
             "discoverGoogleCloudStorage": "Google Cloud S3-համատեղ օբյեկտների պահեստավորում (5 GB անվճար)",
             "discoverBackblaze": "Մատչելի ամպային պահեստավորում՝ S3 համատեղելիությամբ",
-            "discoverMegaS4": "S3-համատեղ, պահանջվում է Pro պլան, 4 տարածաշրջան (EU/CA)",
+            "discoverMegaS4": "S3-համատեղ, պահանջվում է Pro պլան, EU, Կանադա և Ասիա-Խաղաղօվկիանոսյան տարածաշրջան",
             "discoverCloudflareR2": "S3-համատեղ պահեստավորում առանց ելքի վճարների (10 GB անվճար)",
             "discoverIDriveE2": "S3-համատեղ պահեստավորում (10 GB անվճար)",
             "discoverWasabi": "Ամպային պահեստավորում՝ առանց ելքի վճարների",

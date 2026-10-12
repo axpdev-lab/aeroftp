@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 Cloud-Objektspeicher",
             "discoverGoogleCloudStorage": "Google Cloud S3-kompatibler Objektspeicher (5 GB kostenlos)",
             "discoverBackblaze": "Erschwinglicher Cloud-Speicher mit S3-Kompatibilität",
-            "discoverMegaS4": "S3-kompatibel, Pro-Plan erforderlich, 4 Regionen (EU/CA)",
+            "discoverMegaS4": "S3-kompatibel, Pro-Plan erforderlich, EU, Kanada und Asien-Pazifik",
             "discoverCloudflareR2": "S3-kompatibler Speicher ohne Egress-Kosten (10 GB kostenlos)",
             "discoverIDriveE2": "S3-kompatibler Hot-Speicher (10 GB kostenlos)",
             "discoverWasabi": "Hot-Cloud-Speicher ohne Egress-Gebühren",

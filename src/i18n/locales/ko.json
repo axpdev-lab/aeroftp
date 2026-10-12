@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 클라우드 오브젝트 스토리지",
             "discoverGoogleCloudStorage": "Google Cloud S3 호환 오브젝트 스토리지 (5 GB 무료)",
             "discoverBackblaze": "S3 호환 저렴한 클라우드 스토리지",
-            "discoverMegaS4": "S3 호환, Pro 플랜 필요, 4개 리전 (EU/CA)",
+            "discoverMegaS4": "S3 호환, Pro 플랜 필요, EU, 캐나다 및 아시아-태평양",
             "discoverCloudflareR2": "송신 비용 없는 S3 호환 스토리지 (10 GB 무료)",
             "discoverIDriveE2": "S3 호환 스토리지 (10 GB 무료)",
             "discoverWasabi": "송신 비용 없는 클라우드 스토리지",

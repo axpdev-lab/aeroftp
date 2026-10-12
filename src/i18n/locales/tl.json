@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 cloud object storage",
             "discoverGoogleCloudStorage": "Google Cloud object storage na katugma sa S3 (5 GB libre)",
             "discoverBackblaze": "Abot-kayang cloud storage na katugma sa S3",
-            "discoverMegaS4": "Katugma sa S3, kailangan ang Pro plan, 4 na rehiyon (EU/CA)",
+            "discoverMegaS4": "Katugma sa S3, kailangan ang Pro plan, EU, Canada at Asya-Pasipiko",
             "discoverCloudflareR2": "S3-katugmang storage na walang bayad sa paglabas ng data (10 GB libre)",
             "discoverIDriveE2": "S3-katugmang hot storage (10 GB libre)",
             "discoverWasabi": "Hot cloud storage na walang bayad sa paglabas ng data",

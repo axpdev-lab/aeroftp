@@ -33,7 +33,14 @@ describe('resolveProfileS3Location', () => {
         expect(resolveProfileS3Location('ibm-cos', {}, ''))
             .toEqual({ endpoint: 'https://s3.eu-de.cloud-object-storage.appdomain.cloud', region: 'eu-de', signingRegion: 'eu-de' });
         expect(resolveProfileS3Location('mega-s4', {}, ''))
+            .toEqual({ endpoint: 's3.eu-amsterdam-1.megas4.com', region: 'eu-amsterdam-1', signingRegion: 'eu-amsterdam-1' });
+        // A stored legacy region still expands to the legacy host. The
+        // profile's saved endpoint is not rewritten, and this path is the
+        // one used when only the region was stored.
+        expect(resolveProfileS3Location('mega-s4', { region: 'eu-central-1' }, ''))
             .toEqual({ endpoint: 's3.eu-central-1.s4.mega.io', region: 'eu-central-1', signingRegion: 'eu-central-1' });
+        expect(resolveProfileS3Location('mega-s4', { region: 'eu-amsterdam-2' }, ''))
+            .toEqual({ endpoint: 's3.eu-amsterdam-2.megas4.com', region: 'eu-amsterdam-2', signingRegion: 'eu-amsterdam-2' });
     });
 
     it('does not treat an AWS host as an explicit endpoint', () => {
@@ -71,6 +78,10 @@ describe('signing region read back from an explicit endpoint', () => {
         ['wasabi', 'https://s3.eu-central-2.wasabisys.com', 'eu-central-2'],
         ['wasabi', 's3.wasabisys.com', undefined],
         ['mega-s4', 's3.eu-central-2.s4.mega.io', 'eu-central-2'],
+        ['mega-s4', 's3.eu-central-1.s4.mega.io', 'eu-central-1'],
+        ['mega-s4', 'https://s3.eu-amsterdam-1.megas4.com', 'eu-amsterdam-1'],
+        ['mega-s4', 'https://S3.CA-VANCOUVER-1.megas4.com:443', 'ca-vancouver-1'],
+        ['mega-s4', 'https://bucket.s3.eu-amsterdam-1.megas4.com', undefined],
         ['alibaba-oss', 'https://oss-eu-central-1.aliyuncs.com', 'eu-central-1'],
         ['tencent-cos', 'https://cos.eu-frankfurt.myqcloud.com', 'eu-frankfurt'],
         ['digitalocean-spaces', 'https://fra1.digitaloceanspaces.com', 'fra1'],
@@ -104,11 +115,58 @@ describe('signing region read back from an explicit endpoint', () => {
     });
 });
 
+describe('MEGA S4 preset', () => {
+    it('offers the 14 published endpoints, Amsterdam first, on megas4.com', () => {
+        const preset = getProviderById('mega-s4');
+        expect(preset?.defaults?.endpointTemplate).toBe('s3.{region}.megas4.com');
+        expect(preset?.healthCheckUrl).toBe('https://s3.eu-amsterdam-1.megas4.com');
+        expect(preset?.description).not.toContain('4 regions');
+        const regionField = preset?.fields?.find(field => field.key === 'region');
+        const values = regionField && 'options' in regionField
+            ? regionField.options?.map(option => option.value)
+            : [];
+        expect(values).toEqual([
+            'eu-amsterdam-1',
+            'eu-amsterdam-2',
+            'eu-luxembourg-1',
+            'eu-luxembourg-2',
+            'eu-paris-1',
+            'eu-paris-2',
+            'eu-barcelona-1',
+            'eu-barcelona-2',
+            'ca-montreal-1',
+            'ca-montreal-2',
+            'ca-vancouver-1',
+            'ca-vancouver-2',
+            'ap-tokyo-1',
+            'ap-tokyo-2',
+        ]);
+    });
+
+    it('keeps a saved legacy endpoint and does not sign us-east-1', () => {
+        const location = resolveProfileS3Location(
+            'mega-s4',
+            { endpoint: 's3.eu-central-1.s4.mega.io' },
+            '',
+        );
+        expect(location).toEqual({
+            endpoint: 's3.eu-central-1.s4.mega.io',
+            region: 'eu-central-1',
+            signingRegion: 'eu-central-1',
+        });
+        expect(resolveProfileS3Location(
+            'mega-s4',
+            { endpoint: 's3.eu-central-1.s4.mega.io', region: 'eu-central-2' },
+            '',
+        ).signingRegion).toBe('eu-central-2');
+    });
+});
+
 describe('presetDefaultS3Region', () => {
     it('uses the preset default, else the first region option of a template preset', () => {
         expect(presetDefaultS3Region('ibm-cos')).toBe('eu-de');
         expect(presetDefaultS3Region('wasabi')).toBe('us-east-1');
-        expect(presetDefaultS3Region('mega-s4')).toBe('eu-central-1');
+        expect(presetDefaultS3Region('mega-s4')).toBe('eu-amsterdam-1');
         expect(presetDefaultS3Region('amazon-s3')).toBeUndefined();
         expect(presetDefaultS3Region(undefined)).toBeUndefined();
     });

@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Almacenamiento de objetos en la nube Amazon Web Services S3",
             "discoverGoogleCloudStorage": "Almacenamiento de objetos compatible con S3 de Google Cloud (5 GB gratis)",
             "discoverBackblaze": "Almacenamiento en la nube asequible con compatibilidad S3",
-            "discoverMegaS4": "Compatible con S3, plan Pro requerido, 4 regiones (EU/CA)",
+            "discoverMegaS4": "Compatible con S3, plan Pro requerido, EU, Canadá y Asia-Pacífico",
             "discoverCloudflareR2": "Almacenamiento compatible con S3 sin costos de salida (10 GB gratis)",
             "discoverIDriveE2": "Almacenamiento activo compatible con S3 (10 GB gratis)",
             "discoverWasabi": "Almacenamiento en la nube activo, sin costos de salida",

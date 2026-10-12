@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Storfa gwrthrychau cwmwl Amazon Web Services S3",
             "discoverGoogleCloudStorage": "Storfa gwrthrychau cydnaws ag S3 Google Cloud (5 GB am ddim)",
             "discoverBackblaze": "Storfa cwmwl fforddiadwy gyda chydnawsedd S3",
-            "discoverMegaS4": "Cydnaws ag S3, angen cynllun Pro, 4 rhanbarth (EU/CA)",
+            "discoverMegaS4": "Cydnaws ag S3, angen cynllun Pro, EU, Canada ac Asia a'r Môr Tawel",
             "discoverCloudflareR2": "Storfa gydnaws ag S3 heb gost allbwn (10 GB am ddim)",
             "discoverIDriveE2": "Storfa boeth gydnaws ag S3 (10 GB am ddim)",
             "discoverWasabi": "Storfa cwmwl boeth, dim ffioedd allbwn",

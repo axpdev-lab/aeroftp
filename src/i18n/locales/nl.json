@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 cloudobjectopslag",
             "discoverGoogleCloudStorage": "Google Cloud S3-compatibele objectopslag (5 GB gratis)",
             "discoverBackblaze": "Betaalbare cloudopslag met S3-compatibiliteit",
-            "discoverMegaS4": "S3-compatibel, Pro-abonnement vereist, 4 regio's (EU/CA)",
+            "discoverMegaS4": "S3-compatibel, Pro-abonnement vereist, EU, Canada en Azië-Pacific",
             "discoverCloudflareR2": "S3-compatibele opslag zonder uitgaand verkeerkosten (10 GB gratis)",
             "discoverIDriveE2": "S3-compatibele opslag (10 GB gratis)",
             "discoverWasabi": "Cloudopslag zonder uitgaande verkeerskosten",

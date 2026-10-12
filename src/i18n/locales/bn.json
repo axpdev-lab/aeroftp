@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 ক্লাউড অবজেক্ট স্টোরেজ",
             "discoverGoogleCloudStorage": "Google Cloud S3-সামঞ্জস্যপূর্ণ অবজেক্ট স্টোরেজ (5 GB বিনামূল্যে)",
             "discoverBackblaze": "S3 সামঞ্জস্যসহ সাশ্রয়ী ক্লাউড স্টোরেজ",
-            "discoverMegaS4": "S3-সামঞ্জস্যপূর্ণ, Pro প্ল্যান প্রয়োজন, 4টি অঞ্চল (EU/CA)",
+            "discoverMegaS4": "S3-সামঞ্জস্যপূর্ণ, Pro প্ল্যান প্রয়োজন, EU, কানাডা এবং এশিয়া-প্যাসিফিক",
             "discoverCloudflareR2": "শূন্য-এগ্রেস S3-সামঞ্জস্যপূর্ণ স্টোরেজ (10 GB বিনামূল্যে)",
             "discoverIDriveE2": "S3-সামঞ্জস্যপূর্ণ হট স্টোরেজ (10 GB বিনামূল্যে)",
             "discoverWasabi": "হট ক্লাউড স্টোরেজ, কোনো এগ্রেস ফি নেই",

@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 ការផ្ទុកវត្ថុពពក",
             "discoverGoogleCloudStorage": "Google Cloud ការផ្ទុកវត្ថុឆបគ្នា S3 (5 GB ឥតគិតថ្លៃ)",
             "discoverBackblaze": "ការផ្ទុកពពកតម្លៃសមរម្យជាមួយភាពឆបគ្នា S3",
-            "discoverMegaS4": "ឆបគ្នា S3, ត្រូវការគម្រោង Pro, 4 តំបន់ (EU/CA)",
+            "discoverMegaS4": "ឆបគ្នា S3, ត្រូវការគម្រោង Pro, EU, កាណាដា និងអាស៊ី-ប៉ាស៊ីហ្វិក",
             "discoverCloudflareR2": "ការផ្ទុកឆបគ្នា S3 គ្មានថ្លៃចេញ (10 GB ឥតគិតថ្លៃ)",
             "discoverIDriveE2": "ការផ្ទុកឆបគ្នា S3 (10 GB ឥតគិតថ្លៃ)",
             "discoverWasabi": "ការផ្ទុកពពកគ្មានថ្លៃចេញ",

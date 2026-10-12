@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 storan objek awan",
             "discoverGoogleCloudStorage": "Google Cloud storan objek serasi S3 (5 GB percuma)",
             "discoverBackblaze": "Storan awan mampu milik dengan keserasian S3",
-            "discoverMegaS4": "Serasi S3, pelan Pro diperlukan, 4 rantau (EU/CA)",
+            "discoverMegaS4": "Serasi S3, pelan Pro diperlukan, EU, Kanada dan Asia-Pasifik",
             "discoverCloudflareR2": "Storan serasi S3 tanpa caj keluar (10 GB percuma)",
             "discoverIDriveE2": "Storan serasi S3 (10 GB percuma)",
             "discoverWasabi": "Storan awan tanpa caj keluar",

@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Хмарне об'єктне сховище Amazon Web Services S3",
             "discoverGoogleCloudStorage": "S3-сумісне об'єктне сховище Google Cloud (5 GB безкоштовно)",
             "discoverBackblaze": "Доступне хмарне сховище із сумісністю S3",
-            "discoverMegaS4": "S3-сумісне, потрібен план Pro, 4 регіони (EU/CA)",
+            "discoverMegaS4": "S3-сумісне, потрібен план Pro, EU, Канада та Азійсько-Тихоокеанський регіон",
             "discoverCloudflareR2": "S3-сумісне сховище без плати за вихідний трафік (10 GB безкоштовно)",
             "discoverIDriveE2": "S3-сумісне гаряче сховище (10 GB безкоштовно)",
             "discoverWasabi": "Гаряче хмарне сховище без плати за вихідний трафік",

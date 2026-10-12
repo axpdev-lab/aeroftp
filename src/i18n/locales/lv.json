@@ -1891,7 +1891,7 @@
             "discoverAmazonS3": "Amazon Web Services S3 mākoņa objektu krātuve",
             "discoverGoogleCloudStorage": "Google Cloud S3 saderīga objektu krātuve (5 GB bez maksas)",
             "discoverBackblaze": "Pieejama mākoņkrātuve ar S3 saderību",
-            "discoverMegaS4": "S3 saderīgs, nepieciešams Pro plāns, 4 reģioni (EU/CA)",
+            "discoverMegaS4": "S3 saderīgs, nepieciešams Pro plāns, EU, Kanāda un Āzijas un Klusā okeāna reģions",
             "discoverCloudflareR2": "S3 saderīga krātuve bez izejošās datplūsmas maksas (10 GB bez maksas)",
             "discoverIDriveE2": "S3 saderīga krātuve (10 GB bez maksas)",
             "discoverWasabi": "Mākoņkrātuve bez izejošās datplūsmas maksas",
