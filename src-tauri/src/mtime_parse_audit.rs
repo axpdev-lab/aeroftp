@@ -50,6 +50,11 @@ const ALLOWED: &[(&str, usize, &str)] = &[
     ("providers/sts.rs", 2, "STS credential expiry"),
     ("providers/filen/mod.rs", 1, "producer: Filen metadata time"),
     (
+        "providers/http_retry.rs",
+        1,
+        "HTTP Retry-After deadline, not a file time",
+    ),
+    (
         "providers/twake.rs",
         1,
         "producer: the `updated_at` an upload writes, kept at or after `created_at`",

@@ -44,15 +44,24 @@ fn is_retryable_status(status: u16) -> bool {
 /// Parse Retry-After header value (supports both seconds and HTTP-date)
 pub(crate) fn parse_retry_after(response: &Response) -> Option<Duration> {
     let value = response.headers().get("retry-after")?.to_str().ok()?;
+    parse_retry_after_value(value, std::time::SystemTime::now())
+}
 
-    // Try parsing as seconds first (most common)
+fn parse_retry_after_value(value: &str, now: std::time::SystemTime) -> Option<Duration> {
+    let value = value.trim();
     if let Ok(secs) = value.parse::<u64>() {
-        return Some(Duration::from_secs(secs.min(300))); // Cap at 5 minutes
+        return Some(Duration::from_secs(secs.min(300)));
     }
-
-    // HTTP-date format not parsed (would require httpdate crate).
-    // Numeric seconds covers >95% of real-world Retry-After values.
-    None
+    let date = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    // A date already reached (or a client clock ahead of the server's) asks
+    // for no wait at all: callers then apply their own backoff instead of
+    // retrying at once against a server that has just refused.
+    let remaining = date
+        .signed_duration_since(chrono::DateTime::<chrono::Utc>::from(now))
+        .to_std()
+        .ok()
+        .filter(|remaining| !remaining.is_zero())?;
+    Some(remaining.min(Duration::from_secs(300)))
 }
 
 /// Calculate delay for a given retry attempt with jitter
@@ -223,6 +232,39 @@ mod tests {
     use super::*;
     use crate::transfer_dag::ttfb::test_fixture::{spawn_delayed_http_fixture, FixtureResponse};
     use crate::transfer_dag::ttfb::TtfbRecorder;
+
+    #[test]
+    fn retry_after_parses_seconds_and_http_dates_with_a_finite_cap() {
+        let now = std::time::UNIX_EPOCH + Duration::from_secs(1_445_412_480);
+        assert_eq!(
+            parse_retry_after_value(" 12 ", now),
+            Some(Duration::from_secs(12))
+        );
+        assert_eq!(
+            parse_retry_after_value("999", now),
+            Some(Duration::from_secs(300))
+        );
+        assert_eq!(
+            parse_retry_after_value("Wed, 21 Oct 2015 07:28:10 GMT", now),
+            Some(Duration::from_secs(10))
+        );
+        // A date in the past, or exactly now, is no explicit wait.
+        assert_eq!(
+            parse_retry_after_value("Wed, 21 Oct 2015 07:27:00 GMT", now),
+            None
+        );
+        assert_eq!(
+            parse_retry_after_value("Wed, 21 Oct 2015 07:28:00 GMT", now),
+            None
+        );
+        assert_eq!(
+            parse_retry_after_value("Thu, 22 Oct 2015 07:28:00 GMT", now),
+            Some(Duration::from_secs(300))
+        );
+        for invalid in ["", "-1", "1.5", "later"] {
+            assert_eq!(parse_retry_after_value(invalid, now), None);
+        }
+    }
 
     #[test]
     fn test_is_retryable_status() {

@@ -976,6 +976,10 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.provider_type()
     }
 
+    fn manages_upload_retries(&self) -> bool {
+        self.inner.manages_upload_retries()
+    }
+
     fn mtime_precision(&self) -> Option<std::time::Duration> {
         self.inner.mtime_precision()
     }

@@ -1146,46 +1146,90 @@ impl B2Provider {
             })
     }
 
-    /// Issue a single `b2_upload_part` against an already-acquired part URL.
-    ///
-    /// Internal inherent method; the public, trait-level entry point is
-    /// `<B2Provider as StorageProvider>::upload_part`. The `_internal`
-    /// suffix avoids shadowing the trait method when callers use
-    /// dot-notation on a concrete `B2Provider`.
+    /// Send one upload attempt through the shared TPS/TTFB instrumentation.
+    /// The B2 loop owns retries: replaying the same request in the generic
+    /// wrapper would keep sending to a pod B2 told us to replace.
+    async fn send_upload_attempt(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, reqwest::Error> {
+        let mut request = Some(request);
+        super::http_retry::send_with_retry_replayable(
+            &self.client,
+            || request.take().expect("one upload attempt"),
+            &HttpRetryConfig {
+                max_retries: 0,
+                ..self.retry_config.clone()
+            },
+        )
+        .await
+    }
+
+    /// Retry only this part, with the same file ID, number and bytes. A fresh
+    /// URL/token is acquired per attempt, independently of other worker slots.
     async fn upload_part_internal(
         &self,
-        upload_url: &str,
-        upload_token: &str,
+        file_id: &str,
         part_number: u32,
-        bytes: Vec<u8>,
+        data: Vec<u8>,
     ) -> Result<UploadPartResponse, ProviderError> {
+        let bytes = bytes::Bytes::from(data);
         let sha1 = sha1_hex(&bytes);
         let len = bytes.len() as u64;
-        let resp = self
-            .client
-            .post(upload_url)
-            .header(AUTHORIZATION, upload_token)
-            .header(CONTENT_LENGTH, len)
-            .header(
-                HeaderName::from_static("x-bz-part-number"),
-                part_number.to_string(),
-            )
-            .header(HeaderName::from_static("x-bz-content-sha1"), &sha1)
-            .body(crate::transfer_dag::throttle::owned_body(
-                bytes,
-                crate::transfer_dag::governor::TransferDirection::Upload,
-            ))
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(format!("upload_part: {}", e)))?;
-        let status = resp.status();
-        if !status.is_success() {
-            let text = resp.text().await.unwrap_or_default();
-            return Err(map_b2_status(status, &text, "b2_upload_part"));
+        for attempt in 0..=self.retry_config.max_retries {
+            let upload = self.get_upload_part_url(file_id).await?;
+            let request = self
+                .client
+                .post(&upload.upload_url)
+                .header(AUTHORIZATION, &upload.authorization_token)
+                .header(CONTENT_LENGTH, len)
+                .header(
+                    HeaderName::from_static("x-bz-part-number"),
+                    part_number.to_string(),
+                )
+                .header(HeaderName::from_static("x-bz-content-sha1"), &sha1)
+                .body(crate::transfer_dag::throttle::owned_body_bytes(
+                    bytes.clone(),
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                ));
+            let resp = match self.send_upload_attempt(request).await {
+                Ok(resp) => resp,
+                // Replacing an unacknowledged part number is idempotent. Body
+                // construction/local I/O errors cannot be healed by a retry.
+                Err(error)
+                    if attempt < self.retry_config.max_retries
+                        && !error.is_body()
+                        && !error.is_builder() =>
+                {
+                    tokio::time::sleep(super::http_retry::calculate_delay(
+                        attempt,
+                        &self.retry_config,
+                    ))
+                    .await;
+                    continue;
+                }
+                Err(error) => {
+                    return Err(super::http_send_error(error, |error| {
+                        ProviderError::ConnectionFailed(format!("upload_part: {}", error))
+                    }))
+                }
+            };
+            if let Some(delay) = b2_upload_retry_delay(&resp, attempt, &self.retry_config) {
+                drop(resp);
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+            let status = resp.status();
+            if !status.is_success() {
+                let text = resp.text().await.unwrap_or_default();
+                return Err(map_b2_status(status, &text, "b2_upload_part"));
+            }
+            return resp
+                .json::<UploadPartResponse>()
+                .await
+                .map_http_err(|e| ProviderError::ServerError(format!("upload_part parse: {}", e)));
         }
-        resp.json::<UploadPartResponse>()
-            .await
-            .map_http_err(|e| ProviderError::ServerError(format!("upload_part parse: {}", e)))
+        unreachable!("the last attempt always returns")
     }
 
     async fn finish_large_file(
@@ -1263,14 +1307,8 @@ impl B2Provider {
             let provider = provider.clone();
             let file_id = part_file_id.clone();
             async move {
-                let part_urls = provider.get_upload_part_url(&file_id).await?;
                 let resp = provider
-                    .upload_part_internal(
-                        &part_urls.upload_url,
-                        &part_urls.authorization_token,
-                        part_number,
-                        data,
-                    )
+                    .upload_part_internal(&file_id, part_number, data)
                     .await?;
                 Ok::<String, ProviderError>(resp.content_sha1)
             }
@@ -2787,6 +2825,10 @@ impl StorageProvider for B2Provider {
         super::ProviderType::Backblaze
     }
 
+    fn manages_upload_retries(&self) -> bool {
+        true
+    }
+
     fn display_name(&self) -> String {
         format!("Backblaze B2 ({})", self.config.bucket)
     }
@@ -3114,7 +3156,7 @@ impl StorageProvider for B2Provider {
         // Small path: retry the master-token-bearing get_upload_url call. The
         // upload POST itself uses the upload-URL-specific token returned by
         // get_upload_url, so a fresh URL is acquired on retry.
-        let upload = match self.get_upload_url().await {
+        let mut upload = match self.get_upload_url().await {
             Ok(u) => u,
             Err(e) if is_b2_token_failure(&e) => {
                 if self.maybe_reauth(&e).await {
@@ -3132,29 +3174,64 @@ impl StorageProvider for B2Provider {
         // The body reports the bytes as they go out, paced by the upload
         // governor; 100 percent waits for B2's answer (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(progress, size);
-        let mut req = self
-            .client
-            .post(&upload.upload_url)
-            .header(AUTHORIZATION, &upload.authorization_token)
-            .header(CONTENT_LENGTH, size)
-            .header(
-                HeaderName::from_static("x-bz-file-name"),
-                urlencoding::encode(&key).into_owned(),
-            )
-            .header(CONTENT_TYPE, "b2/x-auto")
-            .header(HeaderName::from_static("x-bz-content-sha1"), &sha1);
-        if let Some(ref millis) = mtime_millis {
-            req = req.header(
-                HeaderName::from_static("x-bz-info-src_last_modified_millis"),
-                millis,
-            );
-        }
+        let bytes = bytes::Bytes::from(bytes);
         progress.start();
-        let resp = req
-            .body(progress.bytes_body(bytes::Bytes::from(bytes)))
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(format!("upload send: {}", e)))?;
+        let mut attempt = 0;
+        let resp = loop {
+            let mut req = self
+                .client
+                .post(&upload.upload_url)
+                .header(AUTHORIZATION, &upload.authorization_token)
+                .header(CONTENT_LENGTH, size)
+                .header(
+                    HeaderName::from_static("x-bz-file-name"),
+                    urlencoding::encode(&key).into_owned(),
+                )
+                .header(CONTENT_TYPE, "b2/x-auto")
+                .header(HeaderName::from_static("x-bz-content-sha1"), &sha1);
+            if let Some(ref millis) = mtime_millis {
+                req = req.header(
+                    HeaderName::from_static("x-bz-info-src_last_modified_millis"),
+                    millis,
+                );
+            }
+            // The refcounted immutable payload is replayed exactly; progress
+            // holds its high-water mark and completes only on acknowledgement.
+            // Do not retry a lost response: b2_upload_file creates a new
+            // version on every POST, including in Object Lock buckets.
+            let delay = match self
+                .send_upload_attempt(req.body(progress.bytes_body(bytes.clone())))
+                .await
+            {
+                // The connection to the pod never opened: no request reached
+                // it, so no version can exist. B2 answers a busy or
+                // unreachable pod with "get a new upload URL", and the
+                // executor no longer retries B2 uploads on its own.
+                Err(error) if error.is_connect() && attempt < self.retry_config.max_retries => {
+                    super::http_retry::calculate_delay(attempt, &self.retry_config)
+                }
+                sent => {
+                    let resp = sent.map_http_err(|e| {
+                        ProviderError::ConnectionFailed(format!("upload send: {}", e))
+                    })?;
+                    match b2_upload_retry_delay(&resp, attempt, &self.retry_config) {
+                        Some(delay) => delay,
+                        None => break resp,
+                    }
+                }
+            };
+            tokio::time::sleep(delay).await;
+            attempt += 1;
+            upload = match self.get_upload_url().await {
+                Err(error) if is_b2_token_failure(&error) => {
+                    if !self.maybe_reauth(&error).await {
+                        return Err(error);
+                    }
+                    self.get_upload_url().await?
+                }
+                result => result?,
+            };
+        };
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
@@ -3780,19 +3857,8 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
-        // B2 hands out single-use upload URLs; the trait runner pays one
-        // round trip per part to fetch a fresh pair. The legacy
-        // `upload_large_file` path amortises this by reusing one URL per
-        // worker slot, but the trait surface is intentionally one call
-        // per part so the shaped-graph runner stays the orchestrator.
-        let part_urls = self.get_upload_part_url(&handle.upload_id).await?;
         let resp = self
-            .upload_part_internal(
-                &part_urls.upload_url,
-                &part_urls.authorization_token,
-                part_number,
-                data,
-            )
+            .upload_part_internal(&handle.upload_id, part_number, data)
             .await?;
         Ok(UploadedPart {
             part_number,
@@ -4165,6 +4231,26 @@ fn uploaded_after(now: Option<i64>, renamed: Option<i64>) -> bool {
 /// after a 2xx; they are `ConnectionFailed` and `ServerError`.
 fn is_b2_token_failure(err: &ProviderError) -> bool {
     matches!(err, ProviderError::AuthenticationFailed(_))
+}
+
+/// Only explicit transient refusals are replayed for a small upload. A
+/// response-body/transport failure after a successful POST is ambiguous and
+/// must not create another version. 507 is a storage-full refusal.
+fn b2_upload_retry_delay(
+    response: &reqwest::Response,
+    attempt: u32,
+    config: &HttpRetryConfig,
+) -> Option<Duration> {
+    let status = response.status().as_u16();
+    if attempt >= config.max_retries
+        || !(matches!(status, 408 | 429) || (500..=599).contains(&status) && status != 507)
+    {
+        return None;
+    }
+    Some(
+        super::http_retry::parse_retry_after(response)
+            .unwrap_or_else(|| super::http_retry::calculate_delay(attempt, config)),
+    )
 }
 
 fn map_b2_status(status: reqwest::StatusCode, body: &str, op: &str) -> ProviderError {
@@ -5100,6 +5186,7 @@ mod tests {
         provider.auth_token = SecretString::new("token".to_string().into());
         provider.bucket_id = "bucket".into();
         provider.connected = true;
+        provider.retry_config.max_retries = 0;
         let file = temp_file(300 * 1024);
         let (callback, updates) = recorder();
         let outcome = provider
@@ -5137,6 +5224,579 @@ mod tests {
         let (outcome, updates, _) = small_upload_against_fixture(500).await;
         assert!(outcome.is_err());
         assert_real_progress(&updates, 300 * 1024, false);
+    }
+
+    #[derive(Clone, Debug)]
+    struct UploadAttempt {
+        path: String,
+        headers: axum::http::HeaderMap,
+        payload: bytes::Bytes,
+        at: std::time::Instant,
+    }
+
+    /// The URL service changes both pod URL and upload token on every call.
+    /// Upload responses follow `statuses`, then succeed. Record the complete
+    /// wire payload, not just its length: a replay of zeroes can have the right
+    /// length and still corrupt a file.
+    async fn upload_retry_fixture(
+        statuses: Vec<u16>,
+        retry_after: &'static str,
+        broken_success: bool,
+    ) -> (
+        B2Provider,
+        std::sync::Arc<std::sync::Mutex<Vec<UploadAttempt>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use std::sync::{Arc, Mutex, OnceLock};
+        let base: Arc<OnceLock<String>> = Arc::default();
+        let seen: Arc<Mutex<Vec<UploadAttempt>>> = Arc::default();
+        let app = axum::Router::new().fallback(axum::routing::any({
+            let base = Arc::clone(&base);
+            let seen = Arc::clone(&seen);
+            move |request: axum::extract::Request| {
+                let base = Arc::clone(&base);
+                let seen = Arc::clone(&seen);
+                let statuses = statuses.clone();
+                async move {
+                    let (head, body) = request.into_parts();
+                    let payload = axum::body::to_bytes(body, 1024 * 1024).await.unwrap();
+                    let path = head.uri.path().to_string();
+                    let mut log = seen.lock().unwrap();
+                    log.push(UploadAttempt {
+                        path: path.clone(), headers: head.headers.clone(), payload: payload.clone(),
+                        at: std::time::Instant::now(),
+                    });
+                    if path.ends_with("b2_get_upload_url") || path.ends_with("b2_get_upload_part_url") {
+                        let number = log.iter().filter(|a| a.path == path).count();
+                        let kind = if path.ends_with("b2_get_upload_part_url") { "part" } else { "file" };
+                        return axum::response::Response::new(axum::body::Body::from(
+                            serde_json::json!({
+                                "uploadUrl": format!("{}/{kind}/{number}", base.get().unwrap()),
+                                "authorizationToken": format!("upload-token-{number}"),
+                            }).to_string(),
+                        ));
+                    }
+                    let ordinal = log.iter().filter(|a| a.path.starts_with("/file/") || a.path.starts_with("/part/")).count() - 1;
+                    let status = statuses.get(ordinal).copied().unwrap_or(200);
+                    let body = if status != 200 {
+                        serde_json::json!({"status": status, "code": "access_denied", "message": "fixture refusal"}).to_string()
+                    } else if broken_success {
+                        "invalid success JSON".to_string()
+                    } else if path.starts_with("/part/") {
+                        serde_json::json!({"fileId": "large-id", "partNumber": head.headers["x-bz-part-number"].to_str().unwrap().parse::<u32>().unwrap(), "contentSha1": sha1_hex(&payload), "contentLength": payload.len()}).to_string()
+                    } else {
+                        serde_json::json!({"fileId": "small-id", "fileName": "f.dat"}).to_string()
+                    };
+                    axum::response::Response::builder().status(status)
+                        .header("retry-after", retry_after)
+                        .body(axum::body::Body::from(body)).unwrap()
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        base.set(address.clone()).unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = empty_provider();
+        provider.api_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        provider.retry_config = HttpRetryConfig {
+            max_retries: 2,
+            base_delay_ms: 1,
+            max_delay_ms: 2,
+            backoff_multiplier: 1.0,
+        };
+        (provider, seen, server)
+    }
+
+    async fn run_retry_upload(
+        provider: &mut B2Provider,
+        part: bool,
+        payload: &[u8],
+    ) -> Result<(), ProviderError> {
+        if part {
+            provider
+                .upload_part(
+                    &MultipartHandle {
+                        upload_id: "large-id".into(),
+                        remote_path: "f.dat".into(),
+                    },
+                    7,
+                    payload.to_vec(),
+                )
+                .await
+                .map(|_| ())
+        } else {
+            let file = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(file.path(), payload).unwrap();
+            provider
+                .upload(file.path().to_str().unwrap(), "/f.dat", None)
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_replays_identical_bytes_on_a_fresh_pod_after_408_or_503() {
+        let payload: Vec<u8> = (0..300_000).map(|n| (n % 251) as u8).collect();
+        for part in [false, true] {
+            for status in [408, 429, 500, 502, 503, 504] {
+                let (mut provider, seen, server) =
+                    upload_retry_fixture(vec![status], "0", false).await;
+                let outcome = run_retry_upload(&mut provider, part, &payload).await;
+                server.abort();
+                assert!(outcome.is_ok(), "part={part} status={status}: {outcome:?}");
+                let log = seen.lock().unwrap();
+                let posts: Vec<_> = log
+                    .iter()
+                    .filter(|a| a.path.starts_with("/file/") || a.path.starts_with("/part/"))
+                    .collect();
+                assert_eq!(posts.len(), 2);
+                for (index, attempt) in posts.iter().enumerate() {
+                    assert!(attempt.path.ends_with(&(index + 1).to_string()));
+                    assert_eq!(attempt.payload.as_ref(), payload);
+                    assert_eq!(attempt.headers["content-length"], payload.len().to_string());
+                    assert_eq!(attempt.headers["x-bz-content-sha1"], sha1_hex(&payload));
+                    assert_eq!(
+                        attempt.headers["authorization"],
+                        format!("upload-token-{}", index + 1)
+                    );
+                    if part {
+                        assert_eq!(attempt.headers["x-bz-part-number"], "7");
+                    }
+                }
+                if part {
+                    for request in log
+                        .iter()
+                        .filter(|a| a.path.ends_with("b2_get_upload_part_url"))
+                    {
+                        assert_eq!(
+                            serde_json::from_slice::<serde_json::Value>(&request.payload).unwrap()
+                                ["fileId"],
+                            "large-id"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_keeps_progress_monotonic_and_completes_only_on_acknowledgement() {
+        use crate::providers::upload_progress::fixture::{
+            assert_real_progress, recorder, temp_file,
+        };
+
+        for (statuses, broken_success, succeeded) in [
+            (vec![503], false, true),
+            (vec![503; 3], false, false),
+            (vec![], true, false),
+        ] {
+            let (mut provider, _, server) =
+                upload_retry_fixture(statuses, "0", broken_success).await;
+            let file = temp_file(300 * 1024);
+            let (callback, updates) = recorder();
+            let outcome = provider
+                .upload(file.path().to_str().unwrap(), "/f.dat", Some(callback))
+                .await;
+            server.abort();
+            assert_eq!(outcome.is_ok(), succeeded, "{outcome:?}");
+            assert_real_progress(&updates.lock().unwrap(), 300 * 1024, succeeded);
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_respects_retry_after_and_stops_at_the_budget() {
+        for part in [false, true] {
+            let (mut provider, seen, server) = upload_retry_fixture(vec![503; 4], "1", false).await;
+            let outcome = run_retry_upload(&mut provider, part, b"content").await;
+            server.abort();
+            assert!(outcome.is_err());
+            let log = seen.lock().unwrap();
+            let posts: Vec<_> = log
+                .iter()
+                .filter(|a| a.path.starts_with("/file/") || a.path.starts_with("/part/"))
+                .collect();
+            assert_eq!(posts.len(), 3, "initial + two retries");
+            assert!(posts
+                .windows(2)
+                .all(|a| a[1].at.duration_since(a[0].at) >= Duration::from_secs(1)));
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_does_not_repost_permanent_errors_or_an_ambiguous_success() {
+        for part in [false, true] {
+            for status in [400, 401, 403, 507, 200] {
+                // 507 is a 5xx in HTTP but not a retryable storage-full error.
+                let (mut provider, seen, server) =
+                    upload_retry_fixture(vec![status], "0", status == 200).await;
+                let outcome = run_retry_upload(&mut provider, part, b"content").await;
+                server.abort();
+                assert!(outcome.is_err(), "part={part} status={status}");
+                assert_eq!(
+                    seen.lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|a| a.path.starts_with("/file/") || a.path.starts_with("/part/"))
+                        .count(),
+                    1
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_can_be_cancelled_during_retry_after() {
+        for part in [false, true] {
+            let (mut provider, seen, server) = upload_retry_fixture(vec![503], "60", false).await;
+            let outcome = tokio::time::timeout(
+                Duration::from_millis(100),
+                run_retry_upload(&mut provider, part, b"content"),
+            )
+            .await;
+            server.abort();
+            assert!(
+                outcome.is_err(),
+                "must still be waiting, then drop promptly"
+            );
+            assert_eq!(
+                seen.lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|a| a.path.starts_with("/file/") || a.path.starts_with("/part/"))
+                    .count(),
+                1
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_does_not_resend_an_acknowledged_part() {
+        let (mut provider, seen, server) = upload_retry_fixture(vec![200, 503], "0", false).await;
+        let handle = MultipartHandle {
+            upload_id: "large-id".into(),
+            remote_path: "f.dat".into(),
+        };
+        provider
+            .upload_part(&handle, 1, b"first".to_vec())
+            .await
+            .unwrap();
+        provider
+            .upload_part(&handle, 2, b"second".to_vec())
+            .await
+            .unwrap();
+        server.abort();
+        let log = seen.lock().unwrap();
+        let parts: Vec<_> = log
+            .iter()
+            .filter(|a| a.path.starts_with("/part/"))
+            .map(|a| a.headers["x-bz-part-number"].to_str().unwrap())
+            .collect();
+        assert_eq!(parts, ["1", "2", "2"]);
+    }
+
+    #[tokio::test]
+    async fn upload_retry_is_not_multiplied_by_the_batch_executor() {
+        use crate::provider_transfer_executor::{
+            ProviderExecutorSessionModel, ProviderUploadExecutor,
+        };
+        use crate::transfer_orchestrator::TransferExecutor;
+        for overlay in ["plain", "compress", "crypt"] {
+            for broken_success in [false, true] {
+                let (provider, seen, server) = upload_retry_fixture(
+                    if broken_success {
+                        vec![]
+                    } else {
+                        vec![503; 20]
+                    },
+                    "0",
+                    broken_success,
+                )
+                .await;
+                let provider: Box<dyn StorageProvider> = match overlay {
+                    "compress" => Box::new(
+                        crate::compress_overlay_provider::CompressOverlayProvider::new(
+                            Box::new(provider),
+                            3,
+                        ),
+                    ),
+                    "crypt" => Box::new(crate::crypt_overlay_provider::CryptOverlayProvider::new(
+                        Box::new(provider),
+                        crate::crypt_overlay_provider::OverlayKeys::AeroCrypt {
+                            master_key: [0; 32],
+                            config: crate::aerocrypt::overlay::OverlayConfig::v3_bootstrap([1; 32]),
+                        },
+                        "",
+                    )),
+                    _ => Box::new(provider),
+                };
+                let file = tempfile::NamedTempFile::new().unwrap();
+                std::fs::write(file.path(), b"content").unwrap();
+                let executor = ProviderUploadExecutor::new(
+                    std::sync::Arc::new(crate::transfer_event_sink::NoopTransferSink),
+                    std::sync::Arc::new(tokio::sync::Mutex::new(Some(provider))),
+                    crate::transfer_settings::ResolvedTransferSettings {
+                        requested_max_concurrent: 1,
+                        max_concurrent: 1,
+                        retry_count: 2,
+                        timeout_seconds: 30,
+                        download_segments:
+                            crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                        sftp_download_preset: None,
+                    },
+                    None,
+                    tokio_util::sync::CancellationToken::new(),
+                    ProviderExecutorSessionModel::LockedSingle {
+                        provider_type: Some(super::super::ProviderType::Backblaze),
+                    },
+                    crate::transfer_dag::TransferCapabilities::default(),
+                );
+                let outcome = executor
+                    .execute(crate::transfer_domain::TransferEntry {
+                        id: "test-upload".into(),
+                        display_name: "f.dat".into(),
+                        remote_path: "/f.dat".into(),
+                        local_path: file.path().to_string_lossy().into_owned(),
+                        size: 7,
+                        modified: None,
+                    })
+                    .await;
+                server.abort();
+                assert!(matches!(
+                    outcome,
+                    crate::transfer_domain::TransferOutcome::Failed(_)
+                ));
+                assert_eq!(executor.take_transfer_attempts("test-upload"), Some(1));
+                assert_eq!(
+                    seen.lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|a| a.path.starts_with("/file/"))
+                        .count(),
+                    if broken_success { 1 } else { 3 }
+                );
+            }
+        }
+    }
+
+    /// Read the full POST and drop the socket before any response. This is
+    /// exactly the ambiguous small-upload case: the pod might have stored it.
+    #[tokio::test]
+    async fn upload_retry_replays_a_part_after_disconnect_but_not_a_small_file() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for part in [false, true] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let posted = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let seen = std::sync::Arc::clone(&posted);
+            let url = base.clone();
+            let server = tokio::spawn(async move {
+                let mut urls = 0;
+                loop {
+                    let (mut socket, _) = listener.accept().await.unwrap();
+                    let mut wire = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    let (head_end, length) = loop {
+                        let n = socket.read(&mut buf).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        wire.extend_from_slice(&buf[..n]);
+                        if let Some(end) = wire.windows(4).position(|s| s == b"\r\n\r\n") {
+                            let head = String::from_utf8_lossy(&wire[..end]).to_lowercase();
+                            let len = head
+                                .lines()
+                                .find_map(|line| {
+                                    line.strip_prefix("content-length:")
+                                        .and_then(|n| n.trim().parse::<usize>().ok())
+                                })
+                                .unwrap_or(0);
+                            break (end + 4, len);
+                        }
+                    };
+                    while wire.len() < head_end + length {
+                        let n = socket.read(&mut buf).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        wire.extend_from_slice(&buf[..n]);
+                    }
+                    let api =
+                        String::from_utf8_lossy(&wire[..head_end]).starts_with("POST /b2api/");
+                    let body = if api {
+                        urls += 1;
+                        serde_json::json!({"uploadUrl": format!("{url}/upload/{urls}"), "authorizationToken": "upload-token"}).to_string()
+                    } else {
+                        let count = {
+                            let mut log = seen.lock().unwrap();
+                            log.push(wire[head_end..head_end + length].to_vec());
+                            log.len()
+                        };
+                        if count == 1 {
+                            drop(socket);
+                            continue;
+                        }
+                        serde_json::json!({"fileId": "large-id", "partNumber": 7, "contentSha1": sha1_hex(b"content"), "contentLength": 7}).to_string()
+                    };
+                    socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+                }
+            });
+            let mut provider = empty_provider();
+            provider.api_url = base;
+            provider.auth_token = SecretString::new("master-token".into());
+            provider.connected = true;
+            provider.retry_config.base_delay_ms = 1;
+            let result = run_retry_upload(&mut provider, part, b"content").await;
+            server.abort();
+            assert_eq!(result.is_ok(), part, "part={part}: {result:?}");
+            let bodies = posted.lock().unwrap();
+            assert_eq!(bodies.len(), if part { 2 } else { 1 });
+            assert!(bodies.iter().all(|b| b == b"content"));
+        }
+    }
+
+    /// A connection refused by the pod sent nothing, so even a small file,
+    /// which is never reposted after a lost response, moves to a fresh pod.
+    /// Exactly one body is stored.
+    #[tokio::test]
+    async fn upload_retry_moves_to_a_fresh_pod_when_the_connection_is_refused() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for part in [false, true] {
+            let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let refused = format!("http://{}", closed.local_addr().unwrap());
+            drop(closed);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let posted = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let urls_served = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let seen = std::sync::Arc::clone(&posted);
+            let served = std::sync::Arc::clone(&urls_served);
+            let url = base.clone();
+            let server = tokio::spawn(async move {
+                loop {
+                    let (mut socket, _) = listener.accept().await.unwrap();
+                    let mut wire = Vec::new();
+                    let mut buf = [0u8; 4096];
+                    let (head_end, length) = loop {
+                        let n = socket.read(&mut buf).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        wire.extend_from_slice(&buf[..n]);
+                        if let Some(end) = wire.windows(4).position(|s| s == b"\r\n\r\n") {
+                            let head = String::from_utf8_lossy(&wire[..end]).to_lowercase();
+                            let len = head
+                                .lines()
+                                .find_map(|line| {
+                                    line.strip_prefix("content-length:")
+                                        .and_then(|n| n.trim().parse::<usize>().ok())
+                                })
+                                .unwrap_or(0);
+                            break (end + 4, len);
+                        }
+                    };
+                    while wire.len() < head_end + length {
+                        let n = socket.read(&mut buf).await.unwrap();
+                        if n == 0 {
+                            return;
+                        }
+                        wire.extend_from_slice(&buf[..n]);
+                    }
+                    let api =
+                        String::from_utf8_lossy(&wire[..head_end]).starts_with("POST /b2api/");
+                    let body = if api {
+                        // The first upload URL names a pod that refuses the
+                        // connection; the next one names this fixture.
+                        let number = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                        let host = if number == 1 { &refused } else { &url };
+                        serde_json::json!({"uploadUrl": format!("{host}/upload/{number}"), "authorizationToken": "upload-token"}).to_string()
+                    } else {
+                        seen.lock()
+                            .unwrap()
+                            .push(wire[head_end..head_end + length].to_vec());
+                        serde_json::json!({"fileId": "large-id", "fileName": "f.dat", "partNumber": 7, "contentSha1": sha1_hex(b"content"), "contentLength": 7}).to_string()
+                    };
+                    socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+                }
+            });
+            let mut provider = empty_provider();
+            provider.api_url = base;
+            provider.auth_token = SecretString::new("master-token".into());
+            provider.connected = true;
+            provider.retry_config.base_delay_ms = 1;
+            let result = run_retry_upload(&mut provider, part, b"content").await;
+            server.abort();
+            assert!(result.is_ok(), "part={part}: {result:?}");
+            assert_eq!(
+                urls_served.load(std::sync::atomic::Ordering::SeqCst),
+                2,
+                "part={part}: a fresh upload URL after the refusal"
+            );
+            let bodies = posted.lock().unwrap();
+            assert_eq!(bodies.len(), 1, "part={part}: one stored body");
+            assert_eq!(bodies[0], b"content");
+        }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_preserves_the_shared_timeout_variant_after_the_last_attempt() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, OnceLock,
+        };
+        for part in [false, true] {
+            let base: Arc<OnceLock<String>> = Arc::default();
+            let posts = Arc::new(AtomicUsize::new(0));
+            let app = axum::Router::new().fallback(axum::routing::any({
+                let base = Arc::clone(&base);
+                let posts = Arc::clone(&posts);
+                move |request: axum::extract::Request| {
+                    let base = Arc::clone(&base);
+                    let posts = Arc::clone(&posts);
+                    async move {
+                        if request.uri().path().starts_with("/b2api/") {
+                            return axum::Json(serde_json::json!({
+                                "uploadUrl": format!("{}/upload", base.get().unwrap()),
+                                "authorizationToken": "upload-token",
+                            }));
+                        }
+                        let _ = axum::body::to_bytes(request.into_body(), 1024)
+                            .await
+                            .unwrap();
+                        posts.fetch_add(1, Ordering::SeqCst);
+                        tokio::time::sleep(Duration::from_secs(60)).await;
+                        axum::Json(serde_json::json!({}))
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = format!("http://{}", listener.local_addr().unwrap());
+            base.set(address.clone()).unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = empty_provider();
+            provider.api_url = address;
+            provider.connected = true;
+            provider.auth_token = SecretString::new("master-token".into());
+            provider.client = reqwest::Client::builder()
+                .timeout(Duration::from_millis(50))
+                .build()
+                .unwrap();
+            provider.retry_config.max_retries = 1;
+            provider.retry_config.base_delay_ms = 1;
+            let outcome = run_retry_upload(&mut provider, part, b"content").await;
+            server.abort();
+            assert!(
+                matches!(outcome, Err(ProviderError::Timeout)),
+                "part={part}: {outcome:?}"
+            );
+            assert_eq!(posts.load(Ordering::SeqCst), if part { 2 } else { 1 });
+        }
     }
 
     #[test]

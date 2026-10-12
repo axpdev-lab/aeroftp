@@ -1515,7 +1515,10 @@ impl ProviderUploadExecutor {
         let file_size = transfer_entry_upload_size(&entry).await;
         self.emit_upload_start(&entry, &file_transfer_id, file_size);
 
-        let retry_policy = self.runtime_settings.retry_policy();
+        let mut retry_policy = self.runtime_settings.retry_policy();
+        if provider.manages_upload_retries() {
+            retry_policy.max_retries = 0;
+        }
         let mut last_error = String::new();
 
         for attempt in 0..=retry_policy.max_retries {
