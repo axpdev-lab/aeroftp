@@ -505,6 +505,8 @@ where
         let multipart_runtimes = Arc::clone(&multipart_runtimes);
         let preflight_failed = Arc::clone(&preflight_failed);
         let file_counters = Arc::clone(&file_counters);
+        // Same process governor both file shapes acquire, session lease first.
+        let governor = crate::transfer_dag::governor::global();
         Arc::new(move |node: TransferNode| -> NodeFuture {
             let sink = Arc::clone(&sink);
             let executor = Arc::clone(&executor);
@@ -517,6 +519,7 @@ where
             let multipart_runtimes = Arc::clone(&multipart_runtimes);
             let preflight_failed = Arc::clone(&preflight_failed);
             let file_counters = Arc::clone(&file_counters);
+            let governor = Arc::clone(&governor);
             Box::pin(async move {
                 match node.kind {
                     TransferNodeKind::AcquireResource => {
@@ -533,6 +536,7 @@ where
                             &cancel,
                             &session_pool,
                             &progress,
+                            &governor,
                         )
                         .await
                     }
@@ -550,6 +554,7 @@ where
                             &executor,
                             &cancel,
                             &session_pool,
+                            &governor,
                             &progress,
                             &sink,
                             progress_observer.as_ref(),
@@ -638,6 +643,36 @@ where
     metrics
 }
 
+/// Session lease, then the governor job.
+///
+/// Whole-file and multipart nodes both come through here, so the two gates
+/// are always taken in one order. `still_wanted` runs while the session lease
+/// is already held and before the governor job: a file that was cancelled in
+/// that window drops the session and takes no endpoint or disk slot.
+async fn acquire_session_then_job(
+    session_pool: &crate::transfer_dag::TransferSessionPoolHandle,
+    governor: &crate::transfer_dag::GlobalTransferGovernor,
+    endpoint: crate::transfer_dag::EndpointIdentity,
+    disk_requests: impl IntoIterator<Item = DiskLeaseRequest>,
+    still_wanted: impl std::future::Future<Output = bool>,
+) -> Result<
+    Option<(
+        crate::transfer_dag::TransferSessionLease,
+        crate::transfer_dag::GovernorJobLease,
+    )>,
+    crate::transfer_dag::SessionPoolError,
+> {
+    let session = session_pool.acquire().await?;
+    if !still_wanted.await {
+        drop(session);
+        return Ok(None);
+    }
+    let job = governor
+        .acquire_job(endpoint, TransferPriority::Background, disk_requests)
+        .await;
+    Ok(Some((session, job)))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_whole_file_node<E>(
     node_id: usize,
@@ -647,6 +682,7 @@ async fn run_whole_file_node<E>(
     executor: &Arc<E>,
     cancel: &AtomicBool,
     session_pool: &crate::transfer_dag::TransferSessionPoolHandle,
+    governor: &crate::transfer_dag::GlobalTransferGovernor,
     progress: &Mutex<BatchProgressSnapshot>,
     sink: &Arc<dyn TransferEventSink>,
     progress_observer: Option<&ProgressObserver>,
@@ -664,36 +700,6 @@ where
         return NodeOutcome::Completed;
     }
 
-    let session_lease = match session_pool.acquire().await {
-        Ok(lease) => lease,
-        Err(error) => {
-            tracing::warn!("Transfer session acquisition failed: {}", error);
-            // Session-pool acquire failure is visible and non-fatal, but never
-            // congestion (Unknown kind → no AIMD decrease).
-            let failure = TransferFailure::new(
-                TransferFailureKind::Unknown,
-                format!("Transfer session acquisition failed: {error}"),
-                true,
-            );
-            // Not counted in `active` yet (that happens once the session and
-            // the job lease are held), so there is nothing to take back.
-            account_outcome(
-                progress,
-                sink,
-                progress_observer,
-                TransferOutcome::Failed(failure.clone()),
-                0,
-                false,
-            )
-            .await;
-            return node_outcome_for_file_result(&TransferOutcome::Failed(failure));
-        }
-    };
-
-    if cancel.load(Ordering::Relaxed) {
-        return NodeOutcome::Completed;
-    }
-
     let endpoint = executor.endpoint_identity().await;
     let disk_request = match direction {
         TransferDirection::Upload => DiskLeaseRequest::read(entry.local_path.clone()),
@@ -702,9 +708,37 @@ where
     // Batches are background work. The endpoint and local-device permits are
     // held only while this file's session is active, preserving file-level
     // parallelism across different endpoints and disks.
-    let _job_lease = crate::transfer_dag::governor::global()
-        .acquire_job(endpoint, TransferPriority::Background, [disk_request])
-        .await;
+    let (session_lease, _job_lease) =
+        match acquire_session_then_job(session_pool, governor, endpoint, [disk_request], async {
+            !cancel.load(Ordering::Relaxed)
+        })
+        .await
+        {
+            Ok(Some(leases)) => leases,
+            Ok(None) => return NodeOutcome::Completed,
+            Err(error) => {
+                tracing::warn!("Transfer session acquisition failed: {}", error);
+                // Session-pool acquire failure is visible and non-fatal, but never
+                // congestion (Unknown kind → no AIMD decrease).
+                let failure = TransferFailure::new(
+                    TransferFailureKind::Unknown,
+                    format!("Transfer session acquisition failed: {error}"),
+                    true,
+                );
+                // Not counted in `active` yet (that happens once the session and
+                // the job lease are held), so there is nothing to take back.
+                account_outcome(
+                    progress,
+                    sink,
+                    progress_observer,
+                    TransferOutcome::Failed(failure.clone()),
+                    0,
+                    false,
+                )
+                .await;
+                return node_outcome_for_file_result(&TransferOutcome::Failed(failure));
+            }
+        };
 
     mark_file_active(&mut *progress.lock().await);
     file_counters
@@ -831,6 +865,11 @@ fn mark_file_active(snapshot: &mut BatchProgressSnapshot) {
 /// Acquire file-lifetime leases before scheduling any chunk nodes. A waiting
 /// second file must not hold the chunk credit the first file needs to finish
 /// and release its session. AcquireResource has no scarce node resources.
+///
+/// The session lease is taken before the governor job, the same order as
+/// [`run_whole_file_node`]. Both leases, and the multipart begin below, still
+/// finish before this function returns, so chunk nodes stay unscheduled until
+/// the file holds its session (#1182).
 async fn acquire_multipart_file<E>(
     runtime: &MultipartFileRuntime,
     entry: &TransferEntry,
@@ -838,6 +877,7 @@ async fn acquire_multipart_file<E>(
     cancel: &AtomicBool,
     session_pool: &TransferSessionPoolHandle,
     progress: &Mutex<BatchProgressSnapshot>,
+    governor: &crate::transfer_dag::GlobalTransferGovernor,
 ) -> NodeOutcome
 where
     E: TransferExecutor + Send + Sync + 'static,
@@ -848,27 +888,12 @@ where
     {
         return NodeOutcome::Completed;
     }
-    // Serialize the one job-level governor acquire with the multipart file
-    // state. Once acquired it remains held until CommitTemp has completed or
-    // aborted the file, so parallel parts cannot each consume a fresh endpoint
-    // slot or evade the local disk-device cap.
-    {
-        let mut lease = runtime.governor_lease.lock().await;
-        if lease.is_none() {
-            let endpoint = executor.endpoint_identity().await;
-            let acquired = crate::transfer_dag::governor::global()
-                .acquire_job(
-                    endpoint,
-                    TransferPriority::Background,
-                    [DiskLeaseRequest::read(entry.local_path.clone())],
-                )
-                .await;
-            *lease = Some(acquired);
-        }
-    }
 
-    // One session lease per multipart file (file/session dimension). Holding the
-    // mutex during acquire serialises siblings so they never race the slot.
+    // One session lease per multipart file. The mutex serialises siblings so
+    // they never race the slot. The session is taken before the governor job,
+    // inside [`acquire_session_then_job`], and both are stored before the
+    // mutex is released. Chunk nodes stay unscheduled until this function
+    // returns (#1182).
     {
         let mut slot = runtime.session_lease.lock().await;
         match &*slot {
@@ -882,14 +907,35 @@ where
                 {
                     return NodeOutcome::Completed;
                 }
-                match session_pool.acquire().await {
-                    Ok(lease) => {
-                        *slot = SessionLeaseSlot::Held(lease);
+                let endpoint = executor.endpoint_identity().await;
+                match acquire_session_then_job(
+                    session_pool,
+                    governor,
+                    endpoint,
+                    [DiskLeaseRequest::read(entry.local_path.clone())],
+                    async {
+                        !multipart_should_stop(
+                            cancel,
+                            executor.is_transfer_cancelled(),
+                            state.is_begun(),
+                        )
+                    },
+                )
+                .await
+                {
+                    Ok(Some((session, job))) => {
+                        *slot = SessionLeaseSlot::Held(session);
                         mark_file_active(&mut *progress.lock().await);
+                        // Held until CommitTemp completes or aborts the file, so
+                        // parallel parts cannot each take a fresh endpoint slot
+                        // or evade the local disk-device cap.
+                        *runtime.governor_lease.lock().await = Some(job);
                     }
+                    Ok(None) => return NodeOutcome::Completed,
                     Err(error) => {
                         tracing::warn!("Multipart session acquisition failed: {}", error);
                         *slot = SessionLeaseSlot::Failed;
+                        drop(slot);
                         *runtime.governor_lease.lock().await = None;
                         state
                             .record_failure(TransferFailure {
@@ -2826,6 +2872,110 @@ mod tests {
         assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 2);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 2);
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 0);
+    }
+
+    /// One session slot and one governor slot. Both files enter the session
+    /// acquire before either is admitted, and the governor slot is still free
+    /// at that point. They then both finish. Chunk scheduling is unchanged:
+    /// multipart begin still runs only after both leases are held.
+    #[tokio::test]
+    async fn whole_file_and_multipart_finish_on_one_session_and_one_governor_slot() {
+        use crate::transfer_dag::session_pool::TwoPartySessionPool;
+        use crate::transfer_dag::{DiskDirection, GlobalTransferGovernor, GovernorConfig};
+
+        let (_dir, path) = write_temp_file(16);
+        let path_str = path.to_str().expect("utf8 temp path").to_string();
+        let governor = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: 0,
+            bandwidth_bps: 0,
+            endpoint_slots: 1,
+            disk_device_slots: 1,
+        });
+        let executor = Arc::new(
+            MockExecutor::new(1)
+                .with_multipart_wire()
+                .with_rendezvous(Arc::new(Barrier::new(1))),
+        );
+        let endpoint = executor.endpoint_identity().await;
+        let endpoint_gov = governor.endpoint(&endpoint);
+        let disk_gov = governor.disk_for_path(&path);
+        let session_pool =
+            TransferSessionPoolHandle::new(TwoPartySessionPool::new("lease-order", {
+                let endpoint_gov = Arc::clone(&endpoint_gov);
+                let disk_gov = Arc::clone(&disk_gov);
+                move || {
+                    assert_eq!(
+                        endpoint_gov.available_ops(),
+                        1,
+                        "endpoint slot taken before both files were waiting on the session"
+                    );
+                    assert_eq!(
+                        disk_gov.available(DiskDirection::Read),
+                        1,
+                        "disk slot taken before both files were waiting on the session"
+                    );
+                }
+            }));
+        let progress = Mutex::new(BatchProgressSnapshot {
+            batch_id: "lease-order".into(),
+            total: 2,
+            ..BatchProgressSnapshot::default()
+        });
+        let sink: Arc<dyn TransferEventSink> = Arc::new(CountingSink::default());
+        let cancel = AtomicBool::new(false);
+        let file_counters = FileMetricCounters::default();
+        let whole = entry_with_local("whole", 16, &path_str);
+        let multi = entry_with_local("multi", 16, &path_str);
+        let nodes = HashMap::from([(0usize, 0usize)]);
+        let entries = vec![whole];
+        let runtime = Arc::new(MultipartFileRuntime {
+            state: MultipartFileState::new(
+                MultipartLayout::from_profile(16, 2, 8, &path_str),
+                HashMap::new(),
+            ),
+            session_lease: Mutex::new(SessionLeaseSlot::Vacant),
+            governor_lease: Mutex::new(None),
+        });
+
+        let whole_outcome = run_whole_file_node(
+            0,
+            TransferDirection::Upload,
+            &nodes,
+            &entries,
+            &executor,
+            &cancel,
+            &session_pool,
+            governor.as_ref(),
+            &progress,
+            &sink,
+            None,
+            &file_counters,
+        );
+        let multi_outcome = async {
+            let outcome = acquire_multipart_file(
+                &runtime,
+                &multi,
+                &executor,
+                &cancel,
+                &session_pool,
+                &progress,
+                governor.as_ref(),
+            )
+            .await;
+            // The file keeps its leases until commit. Release them so the
+            // other file, if it is waiting on the one session slot, can finish.
+            *runtime.session_lease.lock().await = SessionLeaseSlot::Vacant;
+            *runtime.governor_lease.lock().await = None;
+            outcome
+        };
+
+        let (whole_outcome, multi_outcome) = tokio::join!(whole_outcome, multi_outcome);
+        assert_eq!(whole_outcome, NodeOutcome::Completed);
+        assert_eq!(multi_outcome, NodeOutcome::Completed);
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 1);
+        assert!(executor.executed().contains(&"whole".to_string()));
+        assert_eq!(endpoint_gov.available_ops(), 1);
+        assert_eq!(disk_gov.available(DiskDirection::Read), 1);
     }
 
     #[test]
