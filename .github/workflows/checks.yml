@@ -110,6 +110,11 @@ jobs:
       - name: i18n foreign-script gate
         run: npm run i18n:contamination
 
+      # The corpus exercises only the cases it happens to contain; the fixtures
+      # pin the rest (an emoji ZWJ sequence, a bidi control, a stale acceptance).
+      - name: i18n foreign-script gate self-test
+        run: node --test .github/scripts/test-i18n-contamination.mjs
+
       # Every published "how many providers / presets / protocols" figure is
       # derived from the catalog and the registry into docs/PROVIDER-INVENTORY.json.
       # They used to be prose, which is why three different numbers for the same

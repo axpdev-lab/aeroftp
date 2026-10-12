@@ -34,6 +34,8 @@
  *    Thai and Khmer files a glued Latin run was a defect every time it was read.
  *    Japanese, Chinese and Korean glue Latin to native text as a matter of
  *    course (`SSHキー`, `API를`), so for them the rule is off by declaration.
+ *    A one-letter Latin word between two native words is the same defect with
+ *    spaces around it (`папок i перевпорядкувати`) and is reported too.
  *
  *  INVISIBLE: a character that renders as nothing or as a box. U+FFFD is a
  *    decoding failure that shipped. Format characters (zero-width space and
@@ -66,15 +68,19 @@
  *   node scripts/i18n-contamination.mjs --strict   # exit 1 on any hit (what CI runs)
  *   node scripts/i18n-contamination.mjs --all      # ignore the baseline
  *   node scripts/i18n-contamination.mjs --json     # machine-readable
+ *   --locales=<dir> --accepted=<file>              # fixtures, for the self-test
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LOCALES_DIR = join(HERE, '..', 'src', 'i18n', 'locales');
-const ACCEPTED_FILE = join(HERE, 'i18n-contamination-accepted.json');
+// Overridable so .github/scripts/test-i18n-contamination.mjs can run the real
+// gate on fixture locales; CI and `npm run` never pass them.
+const pathArg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const LOCALES_DIR = resolve(pathArg('locales') ?? join(HERE, '..', 'src', 'i18n', 'locales'));
+const ACCEPTED_FILE = resolve(pathArg('accepted') ?? join(HERE, 'i18n-contamination-accepted.json'));
 
 const LATIN_ONLY = { scripts: [] };
 
@@ -85,7 +91,7 @@ const LATIN_ONLY = { scripts: [] };
  */
 const LOCALES = {
     bg: { scripts: ['Cyrillic'] },
-    bn: { scripts: ['Bengali'], format: ['‌', '‍'] },
+    bn: { scripts: ['Bengali'], format: ['\u200C', '\u200D'] },
     ca: LATIN_ONLY,
     cs: LATIN_ONLY,
     cy: LATIN_ONLY,
@@ -99,7 +105,7 @@ const LOCALES = {
     fi: LATIN_ONLY,
     fr: LATIN_ONLY,
     gl: LATIN_ONLY,
-    hi: { scripts: ['Devanagari'], format: ['‌', '‍'] },
+    hi: { scripts: ['Devanagari'], format: ['\u200C', '\u200D'] },
     hr: LATIN_ONLY,
     hu: LATIN_ONLY,
     hy: { scripts: ['Armenian'] },
@@ -108,7 +114,7 @@ const LOCALES = {
     it: LATIN_ONLY,
     ja: { scripts: ['Han', 'Hiragana', 'Katakana'], glued: true },
     ka: { scripts: ['Georgian'] },
-    km: { scripts: ['Khmer'], format: ['​'] },
+    km: { scripts: ['Khmer'], format: ['\u200B'] },
     ko: { scripts: ['Hangul'], glued: true },
     lt: LATIN_ONLY,
     lv: LATIN_ONLY,
@@ -135,7 +141,7 @@ const LOCALES = {
 
 /** Allowed in every locale: a hyphenation hint, invisible unless the line breaks
  *  there. fi and no use it on purpose in the long Security Tools title. */
-const FORMAT_EVERYWHERE = new Set(['­']);
+const FORMAT_EVERYWHERE = new Set(['\u00AD']);
 
 /** Only used to NAME a script in the report; detection never consults it, so a
  *  script missing here is still caught and reported by code point. */
@@ -153,7 +159,7 @@ const scx = (name) => SCX.get(name) ?? scxRe(name);
 /** Shared by every script: punctuation, digits, symbols, emoji, combining marks. */
 const GENERIC = /^[\p{Script_Extensions=Common}\p{Script_Extensions=Inherited}]$/u;
 const LETTER = /^\p{L}$/u;
-const WORD = /[\p{L}\p{M}‌‍]+/gu;
+const WORD = /[\p{L}\p{M}\u200C\u200D]+/gu;
 
 const codePoint = (ch) => `U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}`;
 
@@ -171,13 +177,13 @@ const describe = (ch) => `${JSON.stringify(ch)} ${codePoint(ch)} ${scriptsOf(ch)
 
 /** ZWJ between two pictographs is part of an emoji sequence, not text. */
 const inEmojiSequence = (chars, i) =>
-    chars[i] === '‍'
+    chars[i] === '\u200D'
     && /\p{Extended_Pictographic}/u.test(chars[i - 1] ?? '')
     && /\p{Extended_Pictographic}/u.test(chars[i + 1] ?? '');
 
 /**
- * Every finding in one value, as `{ rule, chars, word }` records. Pure, so the
- * baseline logic below and any future test read the same answer.
+ * Every finding in one value, as `{ rule, chars, word }` records. Pure: the
+ * baseline logic below and the report read nothing else about a string.
  */
 function inspect(value, declaration) {
     const allowed = ['Latin', ...declaration.scripts].map(scx);
@@ -189,7 +195,7 @@ function inspect(value, declaration) {
     const invisible = [];
     chars.forEach((ch, i) => {
         if (ch === '\n') return;
-        if (ch === '�') {
+        if (ch === '\uFFFD') {
             invisible.push(ch);
             return;
         }
@@ -218,6 +224,21 @@ function inspect(value, declaration) {
             const runs = word.match(/\p{Script=Latin}+/gu);
             findings.push({ rule: 'mixed', chars: runs, word });
         }
+
+        // The same defect with spaces around it: a one-letter word is a word on
+        // its own, so `папок i перевпорядкувати`, with a Latin i for the
+        // Ukrainian conjunction і, is not a mixed word. A single Latin letter
+        // between two native words is that, and nothing legitimate looked like
+        // it in the corpus. Tokens split on whitespace and punctuation only, so
+        // `v{version}` stays one token and is not a lone letter.
+        const tokens = value.match(/[^\s.,;:!?()[\]«»"“”„/]+/gu) ?? [];
+        const nativeWord = (token) => /^\p{L}/u.test(token ?? '')
+            && [...token].every((ch) => !LETTER.test(ch) || native.some((re) => re.test(ch)));
+        tokens.forEach((token, i) => {
+            if (!/^\p{Script=Latin}$/u.test(token)) return;
+            if (!nativeWord(tokens[i - 1]) || !nativeWord(tokens[i + 1])) return;
+            findings.push({ rule: 'lone', chars: [token], word: `${tokens[i - 1]} ${token} ${tokens[i + 1]}` });
+        });
     }
     return findings;
 }
@@ -287,6 +308,7 @@ if (asJson) {
     const RULE_LABEL = {
         foreign: 'foreign script',
         mixed: 'mixed-script word',
+        lone: 'lone Latin letter between native words',
         invisible: 'invisible or broken character',
     };
     let current = null;
@@ -299,7 +321,7 @@ if (asJson) {
         console.log(`    ${hit.key}`);
         for (const f of hit.findings) {
             const where = f.word ? ` in ${JSON.stringify(f.word)}` : '';
-            const what = f.rule === 'mixed'
+            const what = f.rule === 'mixed' || f.rule === 'lone'
                 ? f.chars.map((run) => `Latin ${JSON.stringify(run)}`).join(', ')
                 : f.chars.map(describe).join(', ');
             console.log(`      ${RULE_LABEL[f.rule]}${where}: ${what}`);

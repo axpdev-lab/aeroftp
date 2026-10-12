@@ -2426,7 +2426,7 @@
             "newChat": "Uus vestlus",
             "chatHistory": "Vestluste ajalugu",
             "hideHistory": "Peida ajalugu",
-            "operationCancelled": "Toiming tühis​tatud.",
+            "operationCancelled": "Toiming tühistatud.",
             "noModelSelected": "Mudelit pole valitud. Klõpsake ⚙️ pakkuja seadistamiseks.",
             "noProvidersConfigured": "AI pakkujaid pole seadistatud. Klõpsake ⚙️ ühe lisamiseks.",
             "providerNotConfigured": "Pakkuja pole seadistatud: {provider}",
@@ -2437,7 +2437,7 @@
             "errorModelNotFound": "Mudelit ei leitud. Kontrollige mudeli nime AI seadetes.",
             "errorNetwork": "Võrguviga. Kontrollige oma internetiühendust ja pakkuja URL-i.",
             "errorDefault": "Veenduge, et olete seadistanud AI pakkuja seadetes.",
-            "executeApproval": "Soovin käivitada **{tool}**. Kinnitage või tühis​tage:",
+            "executeApproval": "Soovin käivitada **{tool}**. Kinnitage või tühistage:",
             "toolFailed": "Tööriist ebaõnnestus: {error}",
             "toolApproval": {
                 "highRisk": "Kõrge riskiga toiming",

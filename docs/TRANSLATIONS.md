@@ -197,6 +197,11 @@ npm run i18n:sync
 
 # Show translation statistics
 npm run i18n:stats
+
+# Quality gates run by CI on every pull request (each fails on a hit nobody reviewed)
+npm run i18n:diacritics      # accents stripped from a word
+npm run i18n:untranslated    # a string still in English
+npm run i18n:contamination   # letters from another writing system
 ```
 
 ---
@@ -257,8 +262,8 @@ For languages with non-Latin scripts (Cyrillic, CJK, Thai, Hindi, Bengali, Khmer
 - Write **actual Unicode characters** in Python scripts, not `\uXXXX` escape sequences
 - Use `ensure_ascii=False` in `json.dump()` to preserve Unicode in output
 - Split non-Latin languages into **smaller batches** (3-5 langs per agent) to avoid hitting the 32K output token limit
-- For Armenian: use a reverse-transliteration approach or manual Unicode construction
-- Always verify with `has_armenian()` / `has_cyrillic()` checks after conversion
+- Write the translation directly in the native script. Never build it by transliteration or by substituting characters: that yields words that are not words, or words carrying a look-alike letter from another alphabet, which reads correctly and breaks search
+- Verify with `npm run i18n:contamination`. A check that the native script is present (`has_armenian()`, `has_cyrillic()`) passes a string that is half another alphabet; the gate checks that nothing else is there
 
 ### Delegation and Parallel Workflows
 

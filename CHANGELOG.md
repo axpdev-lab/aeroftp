@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The CLI reads My Servers columns and sort from the same application-settings vault key as the GUI, including the Saved % column. The GUI reloads these preferences after vault unlock and when regaining focus.
 - Calculating used storage keeps running totals instead of retaining every file from the recursive walk, reducing peak memory on large trees while preserving progress, limits and incomplete-scan reporting.
 - SFTP listing workers open their first connection before listing, eliminating the false "Not connected to server: reconnecting" warnings at the start of a pooled scan.
+- Translations in eleven languages no longer contain letters from other alphabets. 165 strings are corrected in Armenian, Khmer, Georgian, Thai, Bulgarian, Macedonian, Serbian, Ukrainian, Croatian, Basque and Estonian: Georgian and Japanese letters inside Khmer text, Hebrew, Arabic and Cyrillic inside Armenian, a Japanese word inside Bulgarian, Latin letters that look like Cyrillic ones inside Ukrainian and Macedonian words (they display correctly but a text search for the real word misses them), invisible characters inside Estonian words, and Armenian and Khmer help texts that did not make sense. A new CI check fails on any such character from now on.
 
 ### Security
 
