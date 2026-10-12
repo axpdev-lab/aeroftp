@@ -537,23 +537,40 @@ fn stage_local_as_dest(
     local_path: &str,
     dest_name: &str,
 ) -> Result<(PathBuf, PathBuf), ProviderError> {
+    stage_local_as_dest_in(
+        local_path,
+        dest_name,
+        &crate::util::scratch::scratch_dir_path(),
+    )
+}
+
+fn stage_local_as_dest_in(
+    local_path: &str,
+    dest_name: &str,
+    scratch_root: &Path,
+) -> Result<(PathBuf, PathBuf), ProviderError> {
     let len = std::fs::metadata(local_path)
         .map_err(ProviderError::IoError)?
         .len();
-    let staging = crate::util::scratch::staging_dir(len)
-        .map_err(ProviderError::TransferFailed)?
-        .join(format!("aeroftp_proton_up_{}", uuid::Uuid::new_v4()));
+    let staging = scratch_root.join(format!("aeroftp_proton_up_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&staging).map_err(ProviderError::IoError)?;
     let staged = staging.join(dest_name);
     match std::fs::hard_link(local_path, &staged) {
         Ok(()) => Ok((staging, staged)),
-        Err(_) => match std::fs::copy(local_path, &staged) {
-            Ok(_) => Ok((staging, staged)),
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&staging);
-                Err(ProviderError::IoError(e))
+        Err(_) => {
+            // A link needs no second payload. Only the copy fallback needs
+            // enough free space for the file and the scratch headroom.
+            let copy = crate::util::scratch::scratch_dir_with_room(&staging, len)
+                .map_err(ProviderError::TransferFailed)
+                .and_then(|_| std::fs::copy(local_path, &staged).map_err(ProviderError::IoError));
+            match copy {
+                Ok(_) => Ok((staging, staged)),
+                Err(e) => {
+                    let _ = std::fs::remove_dir_all(&staging);
+                    Err(e)
+                }
             }
-        },
+        }
     }
 }
 
@@ -2083,6 +2100,73 @@ mod cli_sequence_tests {
         assert!(set_url.iter().any(|a| a == "--password=-x"), "{set_url:?}");
         assert!(!set_url.iter().any(|a| a == "--password"), "{set_url:?}");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn renamed_upload_hardlinks_even_when_the_file_exceeds_free_space() {
+        use std::os::unix::fs::MetadataExt;
+        let root = tempfile::tempdir().unwrap();
+        let local = root.path().join("source.bin");
+        let len = crate::filesystem::filesystem_space(root.path())
+            .unwrap()
+            .available
+            .saturating_add(crate::util::scratch::SCRATCH_HEADROOM + 1);
+        let file = std::fs::File::create(&local).unwrap();
+        file.set_len(len).unwrap(); // sparse: no payload-sized disk allocation
+        let scratch = root.path().join("scratch");
+        assert!(crate::util::scratch::scratch_dir_with_room(&scratch, len).is_err());
+        let (staging, staged) =
+            stage_local_as_dest_in(local.to_str().unwrap(), "renamed.bin", &scratch).unwrap();
+        assert_eq!(
+            std::fs::metadata(&staged).unwrap().ino(),
+            file.metadata().unwrap().ino()
+        );
+        assert_eq!(std::fs::metadata(&staged).unwrap().len(), len);
+        std::fs::remove_dir_all(staging).unwrap();
+        assert_eq!(file.metadata().unwrap().nlink(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn renamed_upload_cross_device_copy_checks_room_and_cleans_up_before_copying() {
+        use std::os::unix::fs::MetadataExt;
+        if !Path::new("/dev/shm").is_dir() {
+            return;
+        }
+        let root = tempfile::tempdir().unwrap();
+        let scratch = tempfile::tempdir_in("/dev/shm").unwrap();
+        if std::fs::metadata(root.path()).unwrap().dev()
+            == std::fs::metadata(scratch.path()).unwrap().dev()
+        {
+            return;
+        }
+        let local = root.path().join("source.bin");
+        let len = crate::filesystem::filesystem_space(scratch.path())
+            .unwrap()
+            .available
+            .saturating_add(crate::util::scratch::SCRATCH_HEADROOM + 1);
+        let file = std::fs::File::create(&local).unwrap();
+        file.set_len(len).unwrap();
+        let probe = scratch.path().join("hardlink-probe");
+        assert_eq!(
+            std::fs::hard_link(&local, probe)
+                .unwrap_err()
+                .raw_os_error(),
+            Some(libc::EXDEV)
+        );
+        let error = stage_local_as_dest_in(local.to_str().unwrap(), "renamed.bin", scratch.path())
+            .unwrap_err();
+        assert!(
+            matches!(error, ProviderError::TransferFailed(_)),
+            "{error:?}"
+        );
+        assert_eq!(
+            std::fs::read_dir(scratch.path()).unwrap().count(),
+            0,
+            "failed preflight left staging behind"
+        );
+        assert_eq!(file.metadata().unwrap().len(), len);
     }
 
     /// The upload staging folder lives in the on-disk scratch folder, never in

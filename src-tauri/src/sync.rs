@@ -2967,7 +2967,7 @@ pub(crate) async fn ensure_remote_dir<P: StorageProvider + ?Sized>(provider: &mu
     }
 }
 
-fn join_clean(root: &str, rel: &str) -> String {
+pub(crate) fn join_clean(root: &str, rel: &str) -> String {
     let rel = rel.trim_start_matches('/');
     if root.is_empty() {
         rel.to_string()

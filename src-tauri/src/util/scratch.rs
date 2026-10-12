@@ -23,7 +23,8 @@ pub fn staging_dir(bytes: u64) -> Result<PathBuf, String> {
 
 /// Where [`staging_dir`] stages, resolved only: not created, no room check.
 /// For callers that need to know where a staged file would be (the vault
-/// confinement roots), not for callers about to write one.
+/// confinement roots), or to attempt a metadata-only hardlink. A caller that
+/// falls back to copying must check room before writing the payload.
 pub fn scratch_dir_path() -> PathBuf {
     match dirs::cache_dir() {
         Some(cache) => cache
