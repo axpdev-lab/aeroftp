@@ -4815,6 +4815,33 @@ async fn provider_download_folder_inner(
     })
 }
 
+/// One folder's listing for the folder upload's conflict scan. A folder that
+/// is not there yet holds nothing to keep (empty). Any other failure is
+/// returned: the scan cannot say which of its files the chosen action keeps.
+async fn conflict_scan_listing(
+    provider: &mut dyn StorageProvider,
+    remote_dir: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError> {
+    match provider.list(remote_dir).await {
+        Err(ProviderError::NotFound(_)) => Ok(Vec::new()),
+        other => other,
+    }
+}
+
+/// The listing error of the folder that holds `remote_path`, when the
+/// conflict scan could not list it (keys are folder paths without the
+/// trailing slash, so the root is the empty string).
+fn unverified_parent_error<'a>(
+    remote_path: &str,
+    unverified_dirs: &'a std::collections::HashMap<String, String>,
+) -> Option<&'a String> {
+    let parent = remote_path
+        .rsplit_once('/')
+        .map(|(dir, _)| dir.trim_end_matches('/'))
+        .unwrap_or("");
+    unverified_dirs.get(parent)
+}
+
 async fn provider_upload_folder_inner(
     app: &AppHandle,
     state: &State<'_, ProviderState>,
@@ -5046,11 +5073,18 @@ async fn provider_upload_folder_inner(
     }
 
     let mut files_skipped = 0u32;
+    let mut files_unverified = 0u32;
     if !file_exists_action.is_empty() && file_exists_action != "overwrite" {
         let mut remote_index: std::collections::HashMap<
             String,
             (u64, Option<chrono::DateTime<chrono::Utc>>),
         > = std::collections::HashMap::new();
+        // Folders whose listing failed for a reason other than NotFound: the
+        // index cannot say which of their files the action keeps, so none of
+        // them is uploaded (uploading them would overwrite the files the user
+        // chose to skip).
+        let mut unverified_dirs: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         let mut remote_dirs = Vec::with_capacity(dirs_to_create.len() + 1);
         remote_dirs.push(remote_path.to_string());
         remote_dirs.extend(dirs_to_create.iter().cloned());
@@ -5089,7 +5123,7 @@ async fn provider_upload_folder_inner(
                     ));
                 }
 
-                match provider.list(remote_dir).await {
+                match conflict_scan_listing(provider.as_mut(), remote_dir).await {
                     Ok(entries) => {
                         for entry in entries.into_iter().filter(|entry| !entry.is_dir) {
                             let fallback_path =
@@ -5104,15 +5138,41 @@ async fn provider_upload_folder_inner(
                             }
                         }
                     }
-                    Err(error) => warn!(
-                        "Failed to list provider directory {} before conflict scan: {}",
-                        remote_dir, error
-                    ),
+                    Err(error) => {
+                        warn!(
+                            "Failed to list provider directory {} before conflict scan: {}",
+                            remote_dir, error
+                        );
+                        unverified_dirs.insert(
+                            remote_dir.trim_end_matches('/').to_string(),
+                            error.to_string(),
+                        );
+                    }
                 }
             }
         }
 
         transfer_entries.retain(|entry| {
+            if let Some(error) = unverified_parent_error(&entry.remote_path, &unverified_dirs) {
+                files_unverified += 1;
+                crate::transfer_event_sink::emit_gui_transfer_event(
+                    app,
+                    crate::TransferEvent {
+                        event_type: "file_error".to_string(),
+                        transfer_id: entry.id.clone(),
+                        filename: entry.display_name.clone(),
+                        direction: "upload".to_string(),
+                        message: Some(format!(
+                            "Not uploaded: could not check whether it already exists ({error})"
+                        )),
+                        progress: None,
+                        path: Some(entry.remote_path.clone()),
+                        delta_stats: None,
+                        fallback_reason: None,
+                    },
+                );
+                return false;
+            }
             let Some(&(remote_size, remote_modified)) = remote_index.get(&entry.remote_path) else {
                 return true;
             };
@@ -5227,7 +5287,7 @@ async fn provider_upload_folder_inner(
     .await;
 
     let files_uploaded = batch_result.completed;
-    let files_errored = batch_result.failed;
+    let files_errored = batch_result.failed + files_unverified;
     let event_type = if batch_result.cancelled {
         "cancelled".to_string()
     } else {
@@ -13151,6 +13211,43 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Folder upload with a skip action: a folder whose listing timed out is
+    /// not an empty folder. Read as one, every file in it was uploaded over
+    /// the remote files the action was chosen to keep.
+    #[tokio::test]
+    async fn a_conflict_scan_listing_that_fails_is_not_an_empty_folder() {
+        use crate::providers::probe_fake::ProbeFake;
+        let mut timed_out = ProbeFake::new().with_file("/up/keep.txt", 3);
+        timed_out.list_error = Some(|| ProviderError::Timeout);
+        assert!(matches!(
+            conflict_scan_listing(&mut timed_out, "/up").await,
+            Err(ProviderError::Timeout)
+        ));
+
+        let mut not_there = ProbeFake::new();
+        not_there.list_error = Some(|| ProviderError::NotFound("/up".to_string()));
+        assert!(conflict_scan_listing(&mut not_there, "/up")
+            .await
+            .expect("a folder not created yet holds nothing to keep")
+            .is_empty());
+    }
+
+    /// The files of a folder the scan could not list are held back, the
+    /// root included (its key is the empty string), and only those.
+    #[test]
+    fn files_under_an_unverified_folder_are_held_back() {
+        let unverified: std::collections::HashMap<String, String> = [
+            ("/up/sub".to_string(), "Timeout".to_string()),
+            (String::new(), "Timeout".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        assert!(unverified_parent_error("/up/sub/a.txt", &unverified).is_some());
+        assert!(unverified_parent_error("/top.txt", &unverified).is_some());
+        assert!(unverified_parent_error("/up/b.txt", &unverified).is_none());
+        assert!(unverified_parent_error("/up/sub/deeper/c.txt", &unverified).is_none());
+    }
 
     /// The overlay IPC reads the forms from the saved profile when the caller
     /// states none, refuses an rclone-crypt profile it cannot read instead of

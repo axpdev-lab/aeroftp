@@ -1715,8 +1715,15 @@ impl StorageProvider for FileLuProvider {
         let fld_id = self.resolve_fld_id(&dest_dir).await?;
 
         // Delete existing file with same name to prevent duplicates
-        // (FileLu creates a new file_code on every upload, never overwrites)
-        if let Ok(existing) = self.resolve_path_entry(&norm).await {
+        // (FileLu creates a new file_code on every upload, never overwrites).
+        // A lookup that fails for any reason but NotFound stops the upload:
+        // going on would leave a second file with the same name.
+        let existing = match self.resolve_path_entry(&norm).await {
+            Ok(existing) => Some(existing),
+            Err(ProviderError::NotFound(_)) => None,
+            Err(e) => return Err(e),
+        };
+        if let Some(existing) = existing {
             if !existing.is_dir && !existing.file_code.is_empty() {
                 let del_url = self.api_url_with(
                     "file/remove",
@@ -1875,9 +1882,13 @@ impl StorageProvider for FileLuProvider {
         }
         let norm = self.resolve_path(path);
 
-        // Check if folder already exists: FileLu creates duplicates on every mkdir call
-        if self.resolve_fld_id(&norm).await.is_ok() {
-            return Ok(()); // Already exists, skip creation
+        // Check if folder already exists: FileLu creates duplicates on every mkdir call.
+        // Only an answer about the name lets the create go ahead: a lookup that
+        // failed (timeout, server) would turn the create into a duplicate.
+        match self.resolve_fld_id(&norm).await {
+            Ok(_) => return Ok(()), // Already exists, skip creation
+            Err(ProviderError::NotFound(_)) | Err(ProviderError::InvalidPath(_)) => {}
+            Err(e) => return Err(e),
         }
 
         let (parent_path, folder_name) = match norm.rfind('/') {
@@ -2491,6 +2502,20 @@ mod tests {
         FileLuProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_with_cached_tree_double(tree, refused, false).await
+    }
+
+    /// [`provider_with_cached_tree_refusing`], and with `listings_fail` every
+    /// listing answers a server error, so no lookup outside the cache can
+    /// tell whether a name exists.
+    async fn provider_with_cached_tree_double(
+        tree: &[(&str, &str)],
+        refused: &'static str,
+        listings_fail: bool,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
@@ -2502,7 +2527,9 @@ mod tests {
             }
             let refuse = !refused.is_empty() && uri.path() == refused;
             async move {
-                if listing {
+                if listing && listings_fail {
+                    r#"{"status":403,"msg":"denied"}"#
+                } else if listing {
                     r#"{"status":200,"msg":"OK","result":{"files":[],"folders":[]}}"#
                 } else if refuse {
                     r#"{"status":403,"msg":"denied"}"#
@@ -2540,6 +2567,53 @@ mod tests {
             );
         }
         (provider, calls)
+    }
+
+    /// FileLu makes a second folder on every create, so mkdir looks the name
+    /// up first. A lookup that fails is not "no such folder": creating anyway
+    /// made the duplicate the lookup exists to prevent.
+    #[tokio::test]
+    async fn mkdir_creates_nothing_when_the_lookup_fails() {
+        let (mut provider, calls) =
+            provider_with_cached_tree_double(&[("/a", "5")], "", true).await;
+        let outcome = provider.mkdir("/a/new").await;
+        assert!(
+            !matches!(outcome, Ok(()) | Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("folder/create")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
+    /// FileLu never overwrites, so upload removes a same-name file first. A
+    /// lookup that fails cannot rule one out: uploading anyway left two files
+    /// with one name.
+    #[tokio::test]
+    async fn upload_sends_nothing_when_the_same_name_lookup_fails() {
+        let (mut provider, calls) =
+            provider_with_cached_tree_double(&[("/a", "5")], "", true).await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"x").unwrap();
+        let outcome = provider
+            .upload(&local.path().to_string_lossy(), "/a/f.txt", None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|c| !c.contains("upload/server")),
+            "{:?}",
+            calls.lock().unwrap()
+        );
     }
 
     /// The move keeps the old name, and the rename that followed named the

@@ -119,13 +119,15 @@ pub async fn aerocrypt_provider_read_config(
     let new_path = join_remote_path(&cwd, new_name);
     let legacy_path = join_remote_path(&cwd, legacy_name);
 
-    // Read-both: prefer the new .aerocrypt.tsv, fall back to legacy .aeroftp-crypt.json
-    let config_path = if provider.exists(&new_path).await.unwrap_or(false) {
+    // Read-both: prefer the new .aerocrypt.tsv, fall back to legacy .aeroftp-crypt.json.
+    // `None` tells the GUI to offer "create new", so it is returned only for
+    // a marker the server answered missing; any other error is reported.
+    let config_path = if probe_marker(provider, &new_path).await? {
         new_path
-    } else if provider.exists(&legacy_path).await.unwrap_or(false) {
+    } else if probe_marker(provider, &legacy_path).await? {
         legacy_path
     } else {
-        new_path // for "not found" case below
+        return Ok(None);
     };
 
     log::debug!(
@@ -152,11 +154,24 @@ pub async fn aerocrypt_provider_read_config(
             log::debug!("[aerocrypt][read_config] FOUND config at {:?}", config_path);
             Ok(Some(String::from_utf8_lossy(&bytes).to_string()))
         }
-        Err(_) => {
+        Err(crate::providers::ProviderError::NotFound(_)) => {
             log::debug!("[aerocrypt][read_config] NO config at {:?}", config_path);
             Ok(None)
         }
+        Err(e) => Err(format!("Cannot read AeroCrypt marker: {e}")),
     }
+}
+
+/// Whether a marker is present, `Err` when the server could not say. Only a
+/// confirmed absence may lead to "create new" or to a fallback name.
+async fn probe_marker(
+    provider: &mut dyn crate::providers::StorageProvider,
+    path: &str,
+) -> Result<bool, String> {
+    provider
+        .exists(path)
+        .await
+        .map_err(|e| format!("Cannot probe AeroCrypt marker {path}: {e}"))
 }
 
 async fn read_marker_text(
@@ -225,9 +240,11 @@ pub async fn aerocrypt_provider_marker_status(
     let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
     let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
     let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
+    // "Neither marker" makes the dialog offer a default-salt open, so a probe
+    // that could not answer is an error, never a missing marker.
     Ok(AeroCryptMarkerStatus {
-        has_current_marker: provider.exists(&current_path).await.unwrap_or(false),
-        has_legacy_marker: provider.exists(&legacy_path).await.unwrap_or(false),
+        has_current_marker: probe_marker(provider, &current_path).await?,
+        has_legacy_marker: probe_marker(provider, &legacy_path).await?,
     })
 }
 
@@ -425,31 +442,84 @@ pub async fn aerocrypt_provider_create_remote(
     if root != base_path.trim() {
         let _ = provider.mkdir(&root).await; // idempotent
     }
-    let config_path = join_remote_path(&root, CONFIG_NAME);
-    // C4: never silently clobber an existing overlay. Re-init rotates the
-    // salt, which permanently orphans every file already encrypted here.
-    if !force && provider.size(&config_path).await.is_ok() {
-        return Err(format!(
-            "an AeroCrypt overlay already exists at {root}; refusing to re-initialize \
-             (existing files would become permanently undecryptable). \
-             Pass force=true to overwrite."
-        ));
-    }
-    let staged = tempfile::NamedTempFile::new()
-        .map_err(|e| format!("Failed to stage overlay config: {e}"))?;
-    tokio::fs::write(staged.path(), &config_json)
-        .await
-        .map_err(|e| format!("Failed to stage overlay config: {e}"))?;
-    provider
-        .upload(&staged.path().to_string_lossy(), &config_path, None)
-        .await
-        .map_err(|e| format!("Failed to write overlay config: {e}"))?;
+    write_new_overlay_config(provider.as_mut(), &root, &config_json, force).await?;
 
     Ok(AeroCryptCreatedVault {
         root,
         version: config.version(),
         config_json,
     })
+}
+
+/// What the C4 guard reads where a new overlay config would be written.
+#[derive(Debug)]
+pub enum OverlayConfigProbe {
+    /// The server answered that there is no config.
+    Absent,
+    /// A config is there: initializing would orphan every file it encrypted.
+    Present,
+    /// The probe did not answer (timeout, denial, server error), which says
+    /// nothing about a config being there.
+    Unverified(crate::providers::ProviderError),
+}
+
+/// C4: whether a config exists at `config_path`. Only a NotFound reads as
+/// absent; the app's create and the CLI's `crypt init` both decide on this.
+///
+/// The probe is `stat`, the call every other existence check here makes,
+/// not `size`: FTP's SIZE turns its `550` for a missing file into a
+/// ServerError, so a new vault on FTP or FTPS read as unverified and could
+/// not be created. FTP's `stat` answers NotFound only when the listing of
+/// the parent came back without the name, and an error when it was refused.
+pub async fn probe_overlay_config(
+    provider: &mut dyn crate::providers::StorageProvider,
+    config_path: &str,
+) -> OverlayConfigProbe {
+    match provider.stat(config_path).await {
+        Ok(_) => OverlayConfigProbe::Present,
+        Err(crate::providers::ProviderError::NotFound(_)) => OverlayConfigProbe::Absent,
+        Err(e) => OverlayConfigProbe::Unverified(e),
+    }
+}
+
+/// Upload a new overlay config under `root`. C4: never silently clobber an
+/// existing overlay. Re-init rotates the salt, which permanently orphans
+/// every file already encrypted here, so without `force` the write goes out
+/// only where the server answered that no config exists.
+pub(crate) async fn write_new_overlay_config(
+    provider: &mut dyn crate::providers::StorageProvider,
+    root: &str,
+    config_json: &str,
+    force: bool,
+) -> Result<(), String> {
+    let config_path = join_remote_path(root, CONFIG_NAME);
+    if !force {
+        match probe_overlay_config(provider, &config_path).await {
+            OverlayConfigProbe::Absent => {}
+            OverlayConfigProbe::Present => {
+                return Err(format!(
+                    "an AeroCrypt overlay already exists at {root}; refusing to re-initialize \
+                     (existing files would become permanently undecryptable). \
+                     Pass force=true to overwrite."
+                ));
+            }
+            OverlayConfigProbe::Unverified(e) => {
+                return Err(format!(
+                    "cannot verify that no AeroCrypt overlay exists at {root}: {e}; \
+                     refusing to initialize"
+                ));
+            }
+        }
+    }
+    let staged = tempfile::NamedTempFile::new()
+        .map_err(|e| format!("Failed to stage overlay config: {e}"))?;
+    tokio::fs::write(staged.path(), config_json)
+        .await
+        .map_err(|e| format!("Failed to stage overlay config: {e}"))?;
+    provider
+        .upload(&staged.path().to_string_lossy(), &config_path, None)
+        .await
+        .map_err(|e| format!("Failed to write overlay config: {e}"))
 }
 
 /// What [`aerocrypt_provider_create_remote`] wrote: the folder the new vault
@@ -621,11 +691,14 @@ async fn load_headed_marker(
 ) -> Result<(String, String), String> {
     let current_path = join_remote_path(cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
     let legacy_path = join_remote_path(cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
-    if provider.exists(&current_path).await.unwrap_or(false) {
+    // A probe error is not an absent marker: falling through to the legacy
+    // name would apply the slot change to a stale marker and publish it over
+    // the current one.
+    if probe_marker(provider, &current_path).await? {
         let text = read_marker_text(provider, &current_path).await?;
         return Ok((text, current_path));
     }
-    if provider.exists(&legacy_path).await.unwrap_or(false) {
+    if probe_marker(provider, &legacy_path).await? {
         let text = read_marker_text(provider, &legacy_path).await?;
         return Ok((text, legacy_path));
     }
@@ -1430,6 +1503,45 @@ pub async fn aerocrypt_rotate_slot(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// C4 on a probe that did not answer: the config is there, but its
+    /// probe timed out. Read as "no overlay", the create uploaded a new
+    /// config with a new salt over it, orphaning every encrypted file.
+    #[tokio::test]
+    async fn create_writes_no_config_when_the_probe_does_not_answer() {
+        use crate::providers::probe_fake::ProbeFake;
+        use crate::providers::ProviderError;
+        let config_path = join_remote_path("/Vault", CONFIG_NAME);
+        let mut fake = ProbeFake::new().with_file(&config_path, 512);
+        fake.probe_error = Some(|| ProviderError::Timeout);
+
+        let outcome = write_new_overlay_config(&mut fake, "/Vault", "{}", false).await;
+
+        let error = outcome.expect_err("an unverified probe must refuse the init");
+        assert!(error.contains("cannot verify"), "{error}");
+        assert!(fake.writes.is_empty(), "{:?}", fake.writes);
+        assert_eq!(fake.files.get(&config_path), Some(&512));
+    }
+
+    /// The other two answers keep their meaning: a config that is there is
+    /// refused, a NotFound lets the new config go out.
+    #[tokio::test]
+    async fn create_refuses_a_present_config_and_writes_on_not_found() {
+        use crate::providers::probe_fake::ProbeFake;
+        let config_path = join_remote_path("/Vault", CONFIG_NAME);
+        let mut present = ProbeFake::new().with_file(&config_path, 512);
+        let error = write_new_overlay_config(&mut present, "/Vault", "{}", false)
+            .await
+            .expect_err("an existing overlay is refused");
+        assert!(error.contains("already exists"), "{error}");
+        assert!(present.writes.is_empty(), "{:?}", present.writes);
+
+        let mut absent = ProbeFake::new();
+        write_new_overlay_config(&mut absent, "/Vault", "{}", false)
+            .await
+            .expect("a NotFound lets the init write");
+        assert_eq!(absent.writes, vec![format!("upload {config_path}")]);
+    }
 
     #[test]
     fn file_round_trip_through_codec() {

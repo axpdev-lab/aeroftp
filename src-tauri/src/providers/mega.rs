@@ -1180,8 +1180,12 @@ impl StorageProvider for MegaCmdProvider {
         let output = self
             .run_mega_cmd_with_reauth("mega-ls", &["-l", &parent])
             .await
-            .map_err(|e| {
-                ProviderError::ServerError(format!("stat failed for '{}': {}", abs_path, e))
+            .map_err(|e| match e {
+                // A parent that is not there holds nothing: the path is
+                // missing too, and a check that writes only on a confirmed
+                // absence must be able to read it so.
+                ProviderError::NotFound(_) => ProviderError::NotFound(abs_path.clone()),
+                e => ProviderError::ServerError(format!("stat failed for '{}': {}", abs_path, e)),
             })?;
 
         for line in output.lines() {
@@ -1992,6 +1996,21 @@ mod tests {
             .lines()
             .map(str::to_string)
             .collect()
+    }
+
+    /// A path under a folder that is not there is NotFound. The parent's
+    /// NotFound was rewrapped as a ServerError, so every write behind an
+    /// existence check refused a path in a new folder as unverified.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stat_under_a_missing_folder_is_not_found() {
+        let (mut provider, _log, _dir) = provider_on_stand_in_megacmd();
+        let outcome = provider.stat("/new/file.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(!provider.exists("/new/file.txt").await.expect("exists"));
     }
 
     /// `mega-mv` onto an existing file replaces it, and onto an existing

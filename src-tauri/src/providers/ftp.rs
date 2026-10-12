@@ -1336,7 +1336,26 @@ impl FtpProvider {
             .map(|n| n.to_string_lossy().to_string())
             .ok_or_else(|| ProviderError::InvalidPath(path.to_string()))?;
 
-        let entries = self.list_inner(&parent).await?;
+        let entries = match self.list_inner(&parent).await {
+            Ok(entries) => entries,
+            Err(ProviderError::NotFound(_)) => {
+                return Err(ProviderError::NotFound(path.to_string()))
+            }
+            // vsftpd refuses a CWD into a missing folder and into a forbidden
+            // one with the same `550 Failed to change directory.`, so the
+            // listing error cannot say which. The parent's own stat can: when
+            // it is not there, neither is the path. Anything else keeps the
+            // listing error, which says nothing about the path.
+            Err(error) if parent != "/" => {
+                return match Box::pin(self.stat_inner(&parent)).await {
+                    Err(ProviderError::NotFound(_)) => {
+                        Err(ProviderError::NotFound(path.to_string()))
+                    }
+                    _ => Err(error),
+                };
+            }
+            Err(error) => return Err(error),
+        };
 
         let found = match entries.into_iter().find(|e| e.name == name) {
             Some(entry) => Some(entry),
@@ -1344,13 +1363,16 @@ impl FtpProvider {
             // with MLST never reaches this listing, so a dotfile that is
             // there read as missing: a non-recursive delete then listed the
             // path itself, got the file's own row, and refused a plain file
-            // as a directory holding one entry. `LIST -a` shows it. A listing
-            // that fails leaves the answer NotFound, as before.
+            // as a directory holding one entry. `LIST -a` shows it. When
+            // `LIST -a` fails, the bare listing above cannot say the dotfile
+            // is missing, since it never shows dotfiles: the error is passed
+            // on. Read as NotFound, it let `crypt init` write a new config
+            // over an `.aerocrypt.tsv` that was there.
             None if name.starts_with('.') => self
                 .list_inner_opts(&parent, true)
-                .await
-                .ok()
-                .and_then(|entries| entries.into_iter().find(|e| e.name == name)),
+                .await?
+                .into_iter()
+                .find(|e| e.name == name),
             None => None,
         };
         let mut entry = found.ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
@@ -6482,6 +6504,8 @@ mod rename_contract_tests {
         /// RNTO onto an existing file is refused with the reply IIS gives,
         /// instead of renaming over it.
         rnto_refuses_taken: bool,
+        /// `LIST -a` is refused; a bare LIST still answers.
+        list_all_refused: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -6559,6 +6583,9 @@ mod rename_contract_tests {
                     log.lock().unwrap().push(format!("DELE {argument}"));
                     files.lock().unwrap().retain(|f| f != &argument);
                     "250 Deleted\r\n".to_string()
+                }
+                "LIST" if quirks.list_all_refused && argument.starts_with("-a") => {
+                    "550 Permission denied\r\n".to_string()
                 }
                 "LIST" => {
                     let (all, target) = match argument.strip_prefix("-a") {
@@ -6742,6 +6769,101 @@ mod rename_contract_tests {
         let entry = provider.stat("/a.txt").await.expect("stat");
         assert_eq!(entry.size, 0, "{entry:?}");
         assert!(entry.metadata.contains_key(SIZE_UNREADABLE), "{entry:?}");
+    }
+
+    /// The C4 guard of `crypt init` on a real FTP session. Its probe was
+    /// SIZE, whose `550 No such file` for the missing config came back as a
+    /// ServerError: every new vault on FTP or FTPS was refused as
+    /// unverified. A config that is there is still refused, and a server
+    /// that refuses the listing still says nothing about it.
+    #[tokio::test]
+    async fn the_overlay_config_probe_reads_a_missing_config_as_absent() {
+        use crate::aerocrypt_provider::{probe_overlay_config, OverlayConfigProbe};
+        let config = "/vault/.aerocrypt.tsv";
+
+        let (mut provider, _) =
+            provider_on_server_with(&["/vault/data.bin"], Quirks::default()).await;
+        let probe = probe_overlay_config(&mut provider, config).await;
+        assert!(matches!(probe, OverlayConfigProbe::Absent), "{probe:?}");
+
+        let quirks = Quirks {
+            list_only: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/vault/data.bin"], quirks).await;
+        let probe = probe_overlay_config(&mut provider, config).await;
+        assert!(matches!(probe, OverlayConfigProbe::Absent), "{probe:?}");
+
+        let (mut provider, _) = provider_on_server_with(&[config], Quirks::default()).await;
+        let probe = probe_overlay_config(&mut provider, config).await;
+        assert!(matches!(probe, OverlayConfigProbe::Present), "{probe:?}");
+
+        let quirks = Quirks {
+            listing_denied: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&[config], quirks).await;
+        let probe = probe_overlay_config(&mut provider, config).await;
+        assert!(
+            matches!(probe, OverlayConfigProbe::Unverified(_)),
+            "{probe:?}"
+        );
+
+        // No MLST, a bare LIST that hides dotfiles, and `LIST -a` refused:
+        // the config is there and no listing can show it. Read as Absent, a
+        // new config went out over it.
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            list_all_refused: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&[config], quirks).await;
+        let probe = probe_overlay_config(&mut provider, config).await;
+        assert!(
+            matches!(probe, OverlayConfigProbe::Unverified(_)),
+            "{probe:?}"
+        );
+        let refused = crate::aerocrypt_provider::write_new_overlay_config(
+            &mut provider,
+            "/vault",
+            "{}",
+            false,
+        )
+        .await
+        .expect_err("the init must not write over a config it cannot see");
+        assert!(refused.contains("cannot verify"), "{refused}");
+    }
+
+    /// A path under a folder that is not there is missing, also on a server
+    /// without MLST that refuses the CWD into the missing folder with the
+    /// reply vsftpd gives for a forbidden one. The listing error was passed
+    /// on, so every write behind an existence check refused a path in a new
+    /// folder as unverified.
+    #[tokio::test]
+    async fn stat_under_a_missing_folder_is_not_found() {
+        let quirks = Quirks {
+            list_only: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/vault/data.bin"], quirks).await;
+        let outcome = provider.stat("/new/sub/file.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        assert!(!provider.exists("/new/sub/file.txt").await.expect("exists"));
+
+        let quirks = Quirks {
+            listing_denied: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/vault/data.bin"], quirks).await;
+        let outcome = provider.stat("/vault/other.bin").await;
+        assert!(
+            !matches!(outcome, Err(ProviderError::NotFound(_))),
+            "a refused listing of a folder that is there says nothing: {outcome:?}"
+        );
     }
 
     /// RNTO onto an existing file replaces it on vsftpd, ProFTPD and

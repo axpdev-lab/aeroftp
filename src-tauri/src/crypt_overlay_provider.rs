@@ -2692,9 +2692,17 @@ async fn unlock_overlay_keys_encrypting(
             let headed_intent = with_header || params.with_header;
 
             // Read-both for D5: probe new name first, fall back to legacy.
-            let present_new = provider.exists(&new_path).await.unwrap_or(false);
+            // A probe that cannot answer stops the unlock: taken for "absent"
+            // it would send the vault down the heal / rebuild branches below.
+            let present_new = provider
+                .exists(&new_path)
+                .await
+                .map_err(|e| format!("Cannot probe AeroCrypt marker {new_path}: {e}"))?;
             let present_legacy = if !present_new {
-                provider.exists(&legacy_path).await.unwrap_or(false)
+                provider
+                    .exists(&legacy_path)
+                    .await
+                    .map_err(|e| format!("Cannot probe AeroCrypt marker {legacy_path}: {e}"))?
             } else {
                 false
             };
@@ -2770,21 +2778,29 @@ async fn unlock_overlay_keys_encrypting(
                 // it back would put an older marker over the vault's, so
                 // nothing is written and the copy is named.
                 let list_dir = if scope.is_empty() { "/" } else { scope };
-                let set_aside = if headed_intent {
-                    provider
-                        .list(list_dir)
-                        .await
-                        .ok()
-                        .and_then(|entries| set_aside_marker_notice(&entries, list_dir))
+                // A listing that fails cannot rule a set-aside copy out, so it
+                // writes nothing either.
+                let no_write = if headed_intent {
+                    match provider.list(list_dir).await {
+                        Ok(entries) => set_aside_marker_notice(&entries, list_dir).map(|notice| {
+                            format!(
+                                "{notice} This device opened it from its local keystore and \
+                                 wrote no marker, so other devices cannot open the vault until \
+                                 the copy is renamed back."
+                            )
+                        }),
+                        Err(e) => Some(format!(
+                            "The AeroCrypt marker {AEROCRYPT_CONFIG_NAME} is missing from \
+                             {list_dir}, and listing the folder to check for a set-aside copy \
+                             of it failed ({e}). This device opened the vault from its local \
+                             keystore and wrote no marker; reconnect to restore it."
+                        )),
+                    }
                 } else {
                     None
                 };
-                if let Some(notice) = set_aside {
-                    warning = Some(format!(
-                        "{notice} This device opened it from its local keystore and wrote no \
-                         marker, so other devices cannot open the vault until the copy is \
-                         renamed back."
-                    ));
+                if let Some(notice) = no_write {
+                    warning = Some(notice);
                 } else if headed_intent {
                     match restore_headed_marker_from_config(
                         provider, &new_path, &derived.0, &derived.1,
@@ -4065,6 +4081,11 @@ mod tests {
         /// Downloads of dotfiles fail with this error, as on a remote that stopped
         /// answering or a marker the server will not let us read.
         dotfile_download_error: Option<fn() -> ProviderError>,
+        /// `exists()` of a dotfile fails with this error, as a probe on a
+        /// remote that stopped answering does.
+        dotfile_probe_error: Option<fn() -> ProviderError>,
+        /// Every listing fails with this error.
+        listing_error: Option<fn() -> ProviderError>,
     }
 
     impl MemProvider {
@@ -4076,6 +4097,8 @@ mod tests {
                 hide_dotfiles: false,
                 listing_says_not_found: false,
                 dotfile_download_error: None,
+                dotfile_probe_error: None,
+                listing_error: None,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -4139,6 +4162,9 @@ mod tests {
             true
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            if let Some(error) = self.listing_error {
+                return Err(error());
+            }
             if self.listing_says_not_found {
                 return Err(ProviderError::NotFound(format!(
                     "Failed to list directory: {path}"
@@ -4330,6 +4356,11 @@ mod tests {
         }
         async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
             let p = self.resolve(p);
+            if let Some(error) = self.dotfile_probe_error {
+                if p.rsplit('/').next().is_some_and(|n| n.starts_with('.')) {
+                    return Err(error());
+                }
+            }
             if self.hidden(&p) {
                 return Ok(false);
             }
@@ -6661,6 +6692,104 @@ mod tests {
                 && warning.contains("wrote no marker"),
             "{warning}"
         );
+    }
+
+    /// A headed binding with a keystore copy, for the probe tests below.
+    fn headed_binding_with_keystore_copy(config_json: &str, salt: &[u8]) -> OverlayUnlockParams {
+        use base64::Engine as _;
+        OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/Vault".to_string(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: Some("profile-headed".to_string()),
+            local_config_json: Some(config_json.to_string()),
+            local_config_salt: Some(base64::engine::general_purpose::STANDARD.encode(salt)),
+            with_header: true,
+            use_default_salt: false,
+            password_form: None,
+            salt_form: None,
+        }
+    }
+
+    /// A marker probe that cannot answer (a timeout) is not a missing marker:
+    /// taken for one, the unlock went down the keystore heal and published
+    /// the local copy over the marker the remote still holds, which may carry
+    /// slots added from another device. The unlock stops and the marker is
+    /// left as it was.
+    #[tokio::test]
+    async fn a_marker_probe_that_cannot_answer_stops_the_unlock() {
+        let salt = overlay::random_salt_v3();
+        let master_key =
+            overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "overlay-pass").unwrap();
+        let config_json = overlay::init_config_v3(&salt, &master_key).unwrap();
+        let remote_marker =
+            overlay::rebuild_config_v3(&overlay::parse_config(&config_json).unwrap(), &master_key)
+                .unwrap();
+        let binding = headed_binding_with_keystore_copy(&config_json, &salt);
+        let mut mem = MemProvider::new();
+        mem.seed_raw_file("/Vault/.aerocrypt.tsv", remote_marker.as_bytes());
+        mem.dotfile_probe_error = Some(|| ProviderError::Timeout);
+
+        let outcome = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &binding,
+            "overlay-pass",
+            "",
+            None,
+            false,
+            false,
+        )
+        .await;
+
+        let error = match outcome {
+            Ok(_) => panic!("a probe that did not answer must not unlock through the heal"),
+            Err(e) => e,
+        };
+        assert!(error.contains("Cannot probe AeroCrypt marker"), "{error}");
+        assert_eq!(
+            mem.raw_bytes("/Vault/.aerocrypt.tsv").as_deref(),
+            Some(remote_marker.as_bytes()),
+            "the remote marker is untouched"
+        );
+        assert_eq!(mem.raw_paths().len(), 1, "{:?}", mem.raw_paths());
+    }
+
+    /// The keystore heal looks for a set-aside copy before writing. A
+    /// listing that fails cannot rule one out, so the heal writes nothing
+    /// and says so, as it does beside a copy it saw.
+    #[tokio::test]
+    async fn a_keystore_heal_writes_nothing_when_the_set_aside_scan_fails() {
+        let salt = overlay::random_salt_v3();
+        let master_key =
+            overlay::derive_master_key(&OverlayConfig::v3_bootstrap(salt), "overlay-pass").unwrap();
+        let config_json = overlay::init_config_v3(&salt, &master_key).unwrap();
+        let binding = headed_binding_with_keystore_copy(&config_json, &salt);
+        let mut mem = MemProvider::new();
+        mem.listing_error = Some(|| ProviderError::Timeout);
+
+        let outcome = unlock_overlay_keys_encrypting(
+            &mut mem,
+            &binding,
+            "overlay-pass",
+            "",
+            None,
+            false,
+            false,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("the keystore still opens the vault: {e}"));
+
+        assert_eq!(master_key_of(&outcome), master_key);
+        assert!(!outcome.marker_restored);
+        assert!(
+            mem.raw_paths().is_empty(),
+            "nothing is written: {:?}",
+            mem.raw_paths()
+        );
+        let warning = outcome.warning.unwrap_or_default();
+        assert!(warning.contains("wrote no marker"), "{warning}");
     }
 
     /// The default-salt rebuild is refused while the marker is under a

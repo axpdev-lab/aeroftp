@@ -62,6 +62,8 @@ pub mod opendrive;
 mod path_resolution_guard;
 pub mod pcloud;
 pub mod peer;
+#[cfg(test)]
+pub(crate) mod probe_fake;
 pub mod proton;
 pub mod redirect_policy;
 pub mod retry_after;

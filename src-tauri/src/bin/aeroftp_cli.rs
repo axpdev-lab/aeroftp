@@ -7769,6 +7769,83 @@ async fn skip_if_destination_exists(
     Some(9)
 }
 
+/// Whether `target` exists, for a check whose "no" leads to a write (`touch`
+/// in the CLI and the TUI, `--immutable` on `crypt put` / `rclone-crypt
+/// put`): `Ok(true)` when it exists, `Ok(false)` only for a NotFound, and the
+/// error otherwise, so a `stat` that cannot answer stops the write instead of
+/// letting it land over a file it did not see (the contract
+/// [`skip_if_destination_exists`] keeps for `--immutable`).
+async fn remote_target_exists(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+) -> Result<bool, ProviderError> {
+    match provider.stat(target).await {
+        Ok(_) => Ok(true),
+        Err(ProviderError::NotFound(_)) => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// What the `sync --no-traverse` stat sweep decided for the upload queue.
+struct NoTraverseSweep<'a> {
+    /// Still to upload.
+    survivors: Vec<&'a str>,
+    /// Already there with the same size.
+    skipped_by_stat: u32,
+    /// Already there and kept by `--immutable`.
+    skipped_immutable: u32,
+    /// Refused by `--immutable` (another size, or a stat that did not answer).
+    refusals: Vec<String>,
+}
+
+/// KE-A4: `--no-traverse` stats each upload candidate instead of listing.
+/// One that exists with the local size is dropped. Under `--immutable` the
+/// stat answer is the only thing that knows the file (the listing check that
+/// follows sees an empty `remote_map`), so an existing file is skipped or
+/// refused as the listing path would, and a stat that does not answer is not
+/// written over. Without `--immutable` an existing file of another size is
+/// uploaded anyway, so only there does a stat error leave it queued.
+async fn no_traverse_stat_sweep<'a>(
+    provider: &mut dyn StorageProvider,
+    cli: &Cli,
+    remote: &str,
+    candidates: Vec<&'a str>,
+    local_size: impl Fn(&str) -> u64,
+) -> NoTraverseSweep<'a> {
+    let mut sweep = NoTraverseSweep {
+        survivors: Vec::with_capacity(candidates.len()),
+        skipped_by_stat: 0,
+        skipped_immutable: 0,
+        refusals: Vec::new(),
+    };
+    for path in candidates {
+        let remote_full = if remote.ends_with('/') {
+            format!("{}{}", remote, path)
+        } else {
+            format!("{}/{}", remote, path)
+        };
+        let local_size = local_size(path);
+        match provider.stat(&remote_full).await {
+            Ok(entry) if entry.size == local_size => sweep.skipped_by_stat += 1,
+            Ok(entry) if cli.immutable => {
+                let exact = remote_size_is_exact(&*provider, &entry);
+                match immutable_size_mismatch(cli, &remote_full, &entry, Some(local_size), exact) {
+                    Some(refusal) => sweep.refusals.push(refusal),
+                    None => sweep.skipped_immutable += 1,
+                }
+            }
+            Ok(_) | Err(ProviderError::NotFound(_)) => sweep.survivors.push(path),
+            Err(e) if cli.immutable => sweep.refusals.push(format!(
+                "{}: cannot verify that it does not exist ({}); --immutable does not write over \
+                 what it cannot see",
+                remote_full, e
+            )),
+            Err(_) => sweep.survivors.push(path),
+        }
+    }
+    sweep
+}
+
 fn is_valid_sync_direction(direction: &str) -> bool {
     matches!(direction, "upload" | "download" | "both")
 }
@@ -18526,9 +18603,17 @@ async fn touch_remote_file(
         .map_err(|err| err.to_string())?;
     let provider = session.provider_mut();
     // Never clobber an existing file with an empty one (the local touch uses
-    // create_new for the same guarantee). A successful stat means it exists.
-    if provider.stat(&resolved).await.is_ok() {
-        return Err(format!("'{}' already exists", resolved));
+    // create_new for the same guarantee). A successful stat means it exists,
+    // and only a NotFound means it does not.
+    match remote_target_exists(provider, &resolved).await {
+        Ok(true) => return Err(format!("'{}' already exists", resolved)),
+        Ok(false) => {}
+        Err(err) => {
+            return Err(format!(
+                "touch failed: cannot check whether '{}' exists: {}",
+                resolved, err
+            ))
+        }
     }
     let tmp = std::env::temp_dir().join(format!("aeroftp-touch-{}", tui_temp_token()));
     tokio::fs::write(&tmp, b"")
@@ -50571,13 +50656,10 @@ async fn cmd_sync(
         }
     }
 
-    // KE-A4: --no-traverse per-file stat sweep. With the remote listing
-    // skipped (`remote_entries` empty), the planner above pushed every
-    // local file to `to_upload`. We now stat each candidate; if it exists
-    // with matching size we drop it from the queue. Anything else
-    // (missing, different size, or stat error) stays on the queue and
-    // gets uploaded. We never download here: --no-traverse is upload-only
-    // (enforced at the validation gate above).
+    // KE-A4: --no-traverse per-file stat sweep ([`no_traverse_stat_sweep`]).
+    // With the remote listing skipped (`remote_entries` empty), the planner
+    // above pushed every local file to `to_upload`. We never download here:
+    // --no-traverse is upload-only (enforced at the validation gate above).
     //
     // KE-A2: `--checkers` would parallelise this loop, but the
     // `StorageProvider::stat` signature is `&mut self`, so a single
@@ -50585,37 +50667,26 @@ async fn cmd_sync(
     // (logged in the note below) and will become a real concurrency
     // gate once the provider pool refactor lands (planned for Sprint K2).
     let checkers_cap = effective_checkers(cli);
+    let mut immutable_refusals: Vec<String> = Vec::new();
     if cli.no_traverse && !cli.no_check_dest && !to_upload.is_empty() {
-        let mut survivors: Vec<&str> = Vec::with_capacity(to_upload.len());
-        let mut skipped_by_stat: u32 = 0;
-        for path in to_upload.drain(..) {
-            let remote_full = if remote.ends_with('/') {
-                format!("{}{}", remote, path)
-            } else {
-                format!("{}/{}", remote, path)
-            };
-            let local_size = local_map.get(path).map(|(s, _)| *s).unwrap_or(0);
-            match provider.stat(&remote_full).await {
-                Ok(entry) => {
-                    if entry.size == local_size {
-                        skipped_by_stat += 1;
-                    } else {
-                        survivors.push(path);
-                    }
-                }
-                Err(_) => {
-                    // NotFound (most common with --no-traverse) or any
-                    // stat error: leave the candidate on the queue.
-                    survivors.push(path);
-                }
-            }
-        }
-        to_upload = survivors;
-        skipped += skipped_by_stat;
-        if !quiet && skipped_by_stat > 0 {
+        let candidates: Vec<&str> = std::mem::take(&mut to_upload);
+        let sweep = no_traverse_stat_sweep(provider.as_mut(), cli, remote, candidates, |path| {
+            local_map.get(path).map(|(s, _)| *s).unwrap_or(0)
+        })
+        .await;
+        to_upload = sweep.survivors;
+        immutable_refusals = sweep.refusals;
+        skipped += sweep.skipped_by_stat + sweep.skipped_immutable;
+        if !quiet && sweep.skipped_by_stat > 0 {
             eprintln!(
                 "Note: --no-traverse skipped {} file(s) (--checkers cap = {}) that already exist on remote with matching size",
-                skipped_by_stat, checkers_cap
+                sweep.skipped_by_stat, checkers_cap
+            );
+        }
+        if !quiet && sweep.skipped_immutable > 0 {
+            eprintln!(
+                "Note: --immutable skipped {} file(s) that already exist on remote",
+                sweep.skipped_immutable
             );
         }
     }
@@ -50625,7 +50696,6 @@ async fn cmd_sync(
     // --immutable` refuses it: most often it is the partial a cut upload
     // left, and dropping it in silence reported the run as done. The rest is
     // a skip, and counted as one.
-    let mut immutable_refusals: Vec<String> = Vec::new();
     if cli.immutable {
         let mut removed: u32 = 0;
         let mut kept: Vec<&str> = Vec::with_capacity(to_upload.len());
@@ -57853,18 +57923,38 @@ async fn cmd_crypt_init(
     }
 
     // C4: never silently clobber an existing overlay. Re-init rotates the salt,
-    // which permanently orphans every file already encrypted under it.
-    if !force && provider.size(&config_path).await.is_ok() {
-        print_error(
-            format,
-            &format!(
-                "an AeroCrypt overlay already exists at {} (existing files would become \
-                 permanently undecryptable). Re-run with --force to overwrite.",
-                base_path
-            ),
-            9,
-        );
-        return 9;
+    // which permanently orphans every file already encrypted under it. Only a
+    // confirmed NotFound proves there is no overlay to orphan.
+    if !force {
+        use ftp_client_gui_lib::aerocrypt_provider::{probe_overlay_config, OverlayConfigProbe};
+        match probe_overlay_config(provider.as_mut(), &config_path).await {
+            OverlayConfigProbe::Present => {
+                print_error(
+                    format,
+                    &format!(
+                        "an AeroCrypt overlay already exists at {} (existing files would become \
+                         permanently undecryptable). Re-run with --force to overwrite.",
+                        base_path
+                    ),
+                    9,
+                );
+                return 9;
+            }
+            OverlayConfigProbe::Absent => {}
+            OverlayConfigProbe::Unverified(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!(
+                        "cannot verify that no AeroCrypt overlay exists at {}: {}; refusing to \
+                         initialize",
+                        base_path, e
+                    ),
+                    code,
+                );
+                return code;
+            }
+        }
     }
 
     let keyfile = match write_before_init_config(
@@ -58922,10 +59012,23 @@ async fn cmd_crypt_put(
                     let _ = provider.mkdir(&child_remote).await; // best-effort
                     stack.push((ent.path(), child_remote, child_rel, depth + 1));
                 } else if meta.is_file() {
-                    if cli.immutable && provider.stat(&child_remote).await.is_ok() {
-                        immutable_conflicts += 1;
-                        errors.push(format!("{} already exists (--immutable)", child_rel));
-                        continue;
+                    if cli.immutable {
+                        match remote_target_exists(provider.as_mut(), &child_remote).await {
+                            Ok(false) => {}
+                            Ok(true) => {
+                                immutable_conflicts += 1;
+                                errors.push(format!("{} already exists (--immutable)", child_rel));
+                                continue;
+                            }
+                            Err(e) => {
+                                errors.push(format!(
+                                    "{}: cannot verify that it does not exist ({}); not written \
+                                     (--immutable)",
+                                    child_rel, e
+                                ));
+                                continue;
+                            }
+                        }
                     }
                     let plaintext = match std::fs::read(ent.path()) {
                         Ok(d) => d,
@@ -59036,14 +59139,33 @@ async fn cmd_crypt_put(
     };
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
 
-    if cli.immutable && provider.stat(&remote_file).await.is_ok() {
-        print_error(
-            format,
-            &format!("{} already exists (--immutable)", filename),
-            9,
-        );
-        let _ = provider.disconnect().await;
-        return 9;
+    if cli.immutable {
+        match remote_target_exists(provider.as_mut(), &remote_file).await {
+            Ok(false) => {}
+            Ok(true) => {
+                print_error(
+                    format,
+                    &format!("{} already exists (--immutable)", filename),
+                    9,
+                );
+                let _ = provider.disconnect().await;
+                return 9;
+            }
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!(
+                        "--immutable: cannot verify that {} does not exist ({}); refusing to \
+                         write rather than risk an overwrite",
+                        filename, e
+                    ),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        }
     }
 
     // Write encrypted data to tempfile, upload
@@ -59492,14 +59614,33 @@ async fn cmd_rclone_crypt_put(
     let remote_file = format!("{}/{}", base_path.trim_end_matches('/'), encrypted_name);
     let start = Instant::now();
 
-    if cli.immutable && provider.stat(&remote_file).await.is_ok() {
-        print_error(
-            format,
-            &format!("{} already exists (--immutable)", plain_name),
-            9,
-        );
-        let _ = provider.disconnect().await;
-        return 9;
+    if cli.immutable {
+        match remote_target_exists(provider.as_mut(), &remote_file).await {
+            Ok(false) => {}
+            Ok(true) => {
+                print_error(
+                    format,
+                    &format!("{} already exists (--immutable)", plain_name),
+                    9,
+                );
+                let _ = provider.disconnect().await;
+                return 9;
+            }
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!(
+                        "--immutable: cannot verify that {} does not exist ({}); refusing to \
+                         write rather than risk an overwrite",
+                        plain_name, e
+                    ),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code;
+            }
+        }
     }
 
     let tmp = match NamedTempFile::new() {
@@ -61318,8 +61459,8 @@ async fn cmd_touch(
         return code;
     }
     // Check if file exists
-    match provider.stat(path).await {
-        Ok(_) => {
+    match remote_target_exists(provider.as_mut(), path).await {
+        Ok(true) => {
             // File exists - touch is a no-op for most providers (mtime update not widely supported)
             if matches!(format, OutputFormat::Json) {
                 print_json(&serde_json::json!({"status": "ok", "path": path, "action": "exists"}));
@@ -61329,7 +61470,19 @@ async fn cmd_touch(
             let _ = provider.disconnect().await;
             0
         }
-        Err(_) => {
+        Err(e) => {
+            // Not an answer about the file: creating it could upload 0 bytes
+            // over a file that exists.
+            let code = provider_error_to_exit_code(&e);
+            print_error(
+                format,
+                &format!("Cannot check whether {} exists: {}", path, e),
+                code,
+            );
+            let _ = provider.disconnect().await;
+            code
+        }
+        Ok(false) => {
             // File doesn't exist - create empty file
             let tmp = std::env::temp_dir().join(format!("aeroftp_touch_{}", uuid::Uuid::new_v4()));
             if let Err(e) = std::fs::write(&tmp, b"") {
@@ -76341,6 +76494,188 @@ mod tests {
             assert!(!r.contains("hunter2"), "leaked: {}", r);
             assert!(!r.contains("complex"), "leaked: {}", r);
         }
+    }
+
+    /// A provider whose `stat` answers from `answer`: the existence checks
+    /// below (D8) are tested against each kind of answer, a timeout included.
+    struct StatAnswerProvider {
+        answer: fn(&str) -> Result<RemoteEntry, ProviderError>,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for StatAnswerProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+        fn display_name(&self) -> String {
+            "stat-answer".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Err(ProviderError::NotSupported(format!("list {path}")))
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote: &str,
+            _local: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local: &str,
+            _remote: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            (self.answer)(path)
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            (self.answer)(path).map(|entry| entry.size)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            match (self.answer)(path) {
+                Ok(_) => Ok(true),
+                Err(ProviderError::NotFound(_)) => Ok(false),
+                Err(e) => Err(e),
+            }
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("stat-answer".to_string())
+        }
+    }
+
+    fn a_file_of_10_bytes(path: &str) -> Result<RemoteEntry, ProviderError> {
+        let name = path.rsplit('/').next().unwrap_or(path).to_string();
+        Ok(RemoteEntry::file(name, path.to_string(), 10))
+    }
+
+    fn not_found(path: &str) -> Result<RemoteEntry, ProviderError> {
+        Err(ProviderError::NotFound(path.to_string()))
+    }
+
+    fn timed_out(_path: &str) -> Result<RemoteEntry, ProviderError> {
+        Err(ProviderError::Timeout)
+    }
+
+    /// `touch` (CLI and TUI) and `--immutable` on `crypt put` /
+    /// `rclone-crypt put` decide on this answer. A stat that timed out used
+    /// to read as "missing": touch uploaded 0 bytes over the file, the crypt
+    /// puts wrote over the object `--immutable` protects.
+    #[tokio::test]
+    async fn only_a_not_found_reads_as_a_missing_target() {
+        let mut there = StatAnswerProvider {
+            answer: a_file_of_10_bytes,
+        };
+        assert!(matches!(
+            remote_target_exists(&mut there, "/f").await,
+            Ok(true)
+        ));
+        let mut missing = StatAnswerProvider { answer: not_found };
+        assert!(matches!(
+            remote_target_exists(&mut missing, "/f").await,
+            Ok(false)
+        ));
+        let mut silent = StatAnswerProvider { answer: timed_out };
+        assert!(matches!(
+            remote_target_exists(&mut silent, "/f").await,
+            Err(ProviderError::Timeout)
+        ));
+    }
+
+    /// `sync --no-traverse --immutable`: with no listing, the stat is the
+    /// only look at the remote. A timeout queued the file and the upload
+    /// overwrote it, and so did an existing file of another size, since the
+    /// `remote_map` check after the sweep holds nothing under --no-traverse.
+    #[tokio::test]
+    async fn no_traverse_immutable_writes_over_nothing_it_could_not_see() {
+        let mut cli = test_cli();
+        cli.immutable = true;
+
+        let mut silent = StatAnswerProvider { answer: timed_out };
+        let sweep = no_traverse_stat_sweep(&mut silent, &cli, "/r", vec!["a.txt"], |_| 10).await;
+        assert!(sweep.survivors.is_empty(), "{:?}", sweep.survivors);
+        assert_eq!(sweep.refusals.len(), 1, "{:?}", sweep.refusals);
+        assert!(
+            sweep.refusals[0].contains("cannot verify"),
+            "{:?}",
+            sweep.refusals
+        );
+
+        let mut other_size = StatAnswerProvider {
+            answer: a_file_of_10_bytes,
+        };
+        let sweep =
+            no_traverse_stat_sweep(&mut other_size, &cli, "/r", vec!["a.txt"], |_| 99).await;
+        assert!(sweep.survivors.is_empty(), "{:?}", sweep.survivors);
+        assert_eq!(sweep.refusals.len(), 1, "{:?}", sweep.refusals);
+
+        let mut missing = StatAnswerProvider { answer: not_found };
+        let sweep = no_traverse_stat_sweep(&mut missing, &cli, "/r", vec!["a.txt"], |_| 10).await;
+        assert_eq!(sweep.survivors, vec!["a.txt"]);
+        assert!(sweep.refusals.is_empty());
+    }
+
+    /// Without --immutable the sweep keeps its old reading: an existing
+    /// file of the same size is dropped, anything else stays queued.
+    #[tokio::test]
+    async fn no_traverse_without_immutable_keeps_its_queue_rule() {
+        let cli = test_cli();
+        let mut same = StatAnswerProvider {
+            answer: a_file_of_10_bytes,
+        };
+        let sweep = no_traverse_stat_sweep(&mut same, &cli, "/r", vec!["a.txt"], |_| 10).await;
+        assert!(sweep.survivors.is_empty());
+        assert_eq!(sweep.skipped_by_stat, 1);
+
+        let mut silent = StatAnswerProvider { answer: timed_out };
+        let sweep = no_traverse_stat_sweep(&mut silent, &cli, "/r", vec!["a.txt"], |_| 10).await;
+        assert_eq!(sweep.survivors, vec!["a.txt"]);
+        assert!(sweep.refusals.is_empty());
     }
 
     fn test_cli() -> Cli {
