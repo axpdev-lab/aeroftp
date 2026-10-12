@@ -78,7 +78,7 @@ struct MultipartFileRuntime {
     /// `None` = not yet acquired; acquire is serialised by this mutex.
     session_lease: Mutex<SessionLeaseSlot>,
     /// Process-global endpoint plus local-device lease for the multipart file.
-    /// Held from the first part through terminal commit/abort so individual
+    /// Held from AcquireResource through terminal commit/abort so individual
     /// part nodes cannot bypass the provider-job governor.
     governor_lease: Mutex<Option<crate::transfer_dag::GovernorJobLease>>,
 }
@@ -100,6 +100,10 @@ enum SessionLeaseSlot {
 struct FileMetricCounters {
     bytes: std::sync::atomic::AtomicU64,
     retries: std::sync::atomic::AtomicU32,
+    /// A whole-file node has counted this file in the snapshot's `active` and
+    /// not yet accounted its terminal. Read only when the graph stops on an
+    /// engine fault, which skips the node's own accounting.
+    whole_file_active: AtomicBool,
 }
 
 /// Run a multi-file batch transfer through the graph engine.
@@ -469,6 +473,7 @@ where
             .map(|(idx, node_id)| (*node_id, (idx + 1) as u32))
             .collect();
         let state = MultipartFileState::new(layout, node_to_part);
+        node_to_entry.insert(shaped.acquire, 0);
         node_to_entry.insert(shaped.commit, 0);
         Some(Arc::new(MultipartFileRuntime {
             state,
@@ -514,6 +519,23 @@ where
             let file_counters = Arc::clone(&file_counters);
             Box::pin(async move {
                 match node.kind {
+                    TransferNodeKind::AcquireResource => {
+                        let Some(&index) = node_to_entry.get(&node.id) else {
+                            return NodeOutcome::Completed;
+                        };
+                        let Some(runtime) = multipart_runtimes[index].as_ref() else {
+                            return NodeOutcome::Completed;
+                        };
+                        acquire_multipart_file(
+                            runtime,
+                            &entries[index],
+                            &executor,
+                            &cancel,
+                            &session_pool,
+                            &progress,
+                        )
+                        .await
+                    }
                     TransferNodeKind::DownloadFile | TransferNodeKind::UploadFile => {
                         let direction = match node.kind {
                             TransferNodeKind::DownloadFile => TransferDirection::Download,
@@ -544,10 +566,6 @@ where
                             &preflight_failed,
                             &executor,
                             &cancel,
-                            &session_pool,
-                            &progress,
-                            &sink,
-                            progress_observer.as_ref(),
                         )
                         .await
                     }
@@ -567,7 +585,7 @@ where
                         )
                         .await
                     }
-                    // Structural anchors: discover / acquire / verify / preserve / emit.
+                    // Structural anchors: discover / verify / preserve / emit.
                     _ => NodeOutcome::Completed,
                 }
             })
@@ -587,6 +605,16 @@ where
         Ok(summary) => summary.metrics,
         Err(error) => {
             tracing::warn!("Batch transfer file graph stopped early: {}", error);
+            // An engine fault (a panicked node task, a stuck scheduler) never
+            // reaches the terminal node that would have accounted the file.
+            settle_file_after_graph_fault(
+                &ctx,
+                &entry,
+                multipart_runtimes[0].as_deref(),
+                &file_counters,
+                &error,
+            )
+            .await;
             // The executor's single finalize still ran for a graph that
             // entered the scheduling loop: keep the partial wait/run/slot_peak
             // the file measured instead of dropping them with its bytes.
@@ -647,13 +675,15 @@ where
                 format!("Transfer session acquisition failed: {error}"),
                 true,
             );
+            // Not counted in `active` yet (that happens once the session and
+            // the job lease are held), so there is nothing to take back.
             account_outcome(
                 progress,
                 sink,
                 progress_observer,
                 TransferOutcome::Failed(failure.clone()),
                 0,
-                true,
+                false,
             )
             .await;
             return node_outcome_for_file_result(&TransferOutcome::Failed(failure));
@@ -677,6 +707,9 @@ where
         .await;
 
     mark_file_active(&mut *progress.lock().await);
+    file_counters
+        .whole_file_active
+        .store(true, Ordering::Release);
 
     let outcome = executor
         .execute_with_session(entry.clone(), session_lease)
@@ -699,8 +732,78 @@ where
     // Exactly-once snapshot/event accounting, then the typed node outcome so
     // DAG/AIMD see the file terminal without aborting the batch graph.
     let node_outcome = node_outcome_for_file_result(&outcome);
+    file_counters
+        .whole_file_active
+        .store(false, Ordering::Release);
     account_outcome(progress, sink, progress_observer, outcome, bytes, true).await;
     node_outcome
+}
+
+/// Settle a file whose subgraph stopped on an engine fault (a panicked node
+/// task, a stuck scheduler). Such a stop skips the file's terminal node, so
+/// without this a begun multipart upload stays open on the server, the file
+/// stays in the snapshot's `active` count and the batch result never counts
+/// it. A file its own terminal node already accounted is left alone; a file
+/// that never started stays unaccounted, as a file stopped before its start
+/// does.
+async fn settle_file_after_graph_fault<E>(
+    ctx: &BatchStreamContext<E>,
+    entry: &TransferEntry,
+    multipart: Option<&MultipartFileRuntime>,
+    file_counters: &FileMetricCounters,
+    error: &crate::transfer_dag::executor::DagExecutionError,
+) where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    let fault = TransferFailure::new(
+        TransferFailureKind::Unknown,
+        format!("Transfer stopped by an engine fault: {error}"),
+        false,
+    );
+    let Some(runtime) = multipart else {
+        if file_counters
+            .whole_file_active
+            .swap(false, Ordering::AcqRel)
+        {
+            account_outcome(
+                &ctx.progress,
+                &ctx.sink,
+                ctx.progress_observer.as_ref(),
+                TransferOutcome::Failed(fault),
+                0,
+                true,
+            )
+            .await;
+        }
+        return;
+    };
+
+    let state = &runtime.state;
+    if let Some(handle) = state.take_for_abort().await {
+        ctx.executor.multipart_abort(entry, handle).await;
+    }
+    let lease_was_held = {
+        let mut slot = runtime.session_lease.lock().await;
+        let held = matches!(*slot, SessionLeaseSlot::Held(_));
+        *slot = SessionLeaseSlot::Vacant;
+        held
+    };
+    *runtime.governor_lease.lock().await = None;
+    // Same rule as CommitTemp: a file that holds its session, or that already
+    // recorded a failure, has started and is accounted exactly once.
+    if (lease_was_held || state.has_failure().await) && state.claim_account() {
+        let failure = state.take_first_failure().await.unwrap_or(fault);
+        ctx.executor.multipart_emit_file_error(entry, &failure);
+        account_outcome(
+            &ctx.progress,
+            &ctx.sink,
+            ctx.progress_observer.as_ref(),
+            TransferOutcome::Failed(failure),
+            0,
+            lease_was_held,
+        )
+        .await;
+    }
 }
 
 /// Whether a multipart node must stop (#591).
@@ -725,71 +828,26 @@ fn mark_file_active(snapshot: &mut BatchProgressSnapshot) {
     snapshot.peak_active = snapshot.peak_active.max(snapshot.active);
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn run_multipart_part_node<E>(
-    node_id: usize,
-    node_to_entry: &HashMap<usize, usize>,
-    entries: &[crate::transfer_domain::TransferEntry],
-    multipart_runtimes: &[Option<Arc<MultipartFileRuntime>>],
-    preflight_failed: &std::sync::Mutex<std::collections::HashSet<usize>>,
+/// Acquire file-lifetime leases before scheduling any chunk nodes. A waiting
+/// second file must not hold the chunk credit the first file needs to finish
+/// and release its session. AcquireResource has no scarce node resources.
+async fn acquire_multipart_file<E>(
+    runtime: &MultipartFileRuntime,
+    entry: &TransferEntry,
     executor: &Arc<E>,
     cancel: &AtomicBool,
-    session_pool: &crate::transfer_dag::TransferSessionPoolHandle,
+    session_pool: &TransferSessionPoolHandle,
     progress: &Mutex<BatchProgressSnapshot>,
-    _sink: &Arc<dyn TransferEventSink>,
-    _progress_observer: Option<&ProgressObserver>,
 ) -> NodeOutcome
 where
     E: TransferExecutor + Send + Sync + 'static,
 {
-    let Some(&entry_index) = node_to_entry.get(&node_id) else {
-        return NodeOutcome::Completed;
-    };
-    if preflight_failed
-        .lock()
-        .expect("preflight set")
-        .contains(&entry_index)
+    let state = &runtime.state;
+    if state.has_failure().await
+        || multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun())
     {
         return NodeOutcome::Completed;
     }
-    let Some(runtime) = multipart_runtimes
-        .get(entry_index)
-        .and_then(|r| r.as_ref())
-        .cloned()
-    else {
-        return NodeOutcome::Completed;
-    };
-    let entry = entries[entry_index].clone();
-    let state = Arc::clone(&runtime.state);
-
-    // Already failed: drain as no-op so siblings finish before commit.
-    if state.has_failure().await {
-        return NodeOutcome::Completed;
-    }
-
-    // Pre-cancel before begin/lease: leave the file unaccounted (legacy contract).
-    // After begin, record cancellation so CommitTemp aborts once.
-    let cancelled_now =
-        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
-    if cancelled_now {
-        if state.is_begun() {
-            state.record_failure(cancelled_failure()).await;
-        }
-        return NodeOutcome::Completed;
-    }
-
-    let Some(part_number) = state.part_number_for_node(node_id) else {
-        state
-            .record_failure(TransferFailure {
-                kind: TransferFailureKind::Unknown,
-                message: format!("UploadPart node {node_id} not mapped to a part number"),
-                retryable: false,
-                retry_after_secs: None,
-            })
-            .await;
-        return NodeOutcome::Completed;
-    };
-
     // Serialize the one job-level governor acquire with the multipart file
     // state. Once acquired it remains held until CommitTemp has completed or
     // aborted the file, so parallel parts cannot each consume a fresh endpoint
@@ -859,11 +917,75 @@ where
     }
 
     // Lazy begin once under the begin gate.
-    ensure_multipart_begun(executor, &entry, &state).await;
+    ensure_multipart_begun(executor, entry, state).await;
 
     if state.has_failure().await {
         return NodeOutcome::Completed;
     }
+    NodeOutcome::Completed
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_multipart_part_node<E>(
+    node_id: usize,
+    node_to_entry: &HashMap<usize, usize>,
+    entries: &[crate::transfer_domain::TransferEntry],
+    multipart_runtimes: &[Option<Arc<MultipartFileRuntime>>],
+    preflight_failed: &std::sync::Mutex<std::collections::HashSet<usize>>,
+    executor: &Arc<E>,
+    cancel: &AtomicBool,
+) -> NodeOutcome
+where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    let Some(&entry_index) = node_to_entry.get(&node_id) else {
+        return NodeOutcome::Completed;
+    };
+    if preflight_failed
+        .lock()
+        .expect("preflight set")
+        .contains(&entry_index)
+    {
+        return NodeOutcome::Completed;
+    }
+    let Some(runtime) = multipart_runtimes
+        .get(entry_index)
+        .and_then(|r| r.as_ref())
+        .cloned()
+    else {
+        return NodeOutcome::Completed;
+    };
+    let entry = entries[entry_index].clone();
+    let state = Arc::clone(&runtime.state);
+
+    // Already failed: drain as no-op so siblings finish before commit.
+    if state.has_failure().await {
+        return NodeOutcome::Completed;
+    }
+
+    // Pre-cancel before begin/lease: leave the file unaccounted (legacy contract).
+    // After begin, record cancellation so CommitTemp aborts once.
+    let cancelled_now =
+        multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun());
+    if cancelled_now {
+        if state.is_begun() {
+            state.record_failure(cancelled_failure()).await;
+        }
+        return NodeOutcome::Completed;
+    }
+
+    let Some(part_number) = state.part_number_for_node(node_id) else {
+        state
+            .record_failure(TransferFailure {
+                kind: TransferFailureKind::Unknown,
+                message: format!("UploadPart node {node_id} not mapped to a part number"),
+                retryable: false,
+                retry_after_secs: None,
+            })
+            .await;
+        return NodeOutcome::Completed;
+    };
+
     if multipart_should_stop(cancel, executor.is_transfer_cancelled(), state.is_begun()) {
         if state.is_begun() {
             state.record_failure(cancelled_failure()).await;
@@ -1257,6 +1379,9 @@ mod tests {
         fail_part: StdMutex<Option<(String, u32)>>,
         /// Typed part failure overrides keyed by (file id, part number).
         fail_part_typed: StdMutex<TypedPartFailMap>,
+        /// (file id, part number) whose upload panics inside the node task,
+        /// driving the executor's TaskPanicked engine fault on a multipart file.
+        panic_part: StdMutex<Option<(String, u32)>>,
         fail_complete_for: StdMutex<HashSet<String>>,
         cancelled: AtomicBool,
         /// Scripted per-entry attempt counts for the DAG-P2-07 retry metric.
@@ -1294,6 +1419,7 @@ mod tests {
                 fail_begin_for: StdMutex::new(HashSet::new()),
                 fail_part: StdMutex::new(None),
                 fail_part_typed: StdMutex::new(std::collections::HashMap::new()),
+                panic_part: StdMutex::new(None),
                 fail_complete_for: StdMutex::new(HashSet::new()),
                 cancelled: AtomicBool::new(false),
                 metered_attempts: StdMutex::new(std::collections::HashMap::new()),
@@ -1472,6 +1598,13 @@ mod tests {
         ) -> Result<UploadedPart, TransferFailure> {
             if self.cancelled.load(Ordering::Relaxed) {
                 return Err(cancelled_failure());
+            }
+            let panics = matches!(
+                &*self.panic_part.lock().unwrap(),
+                Some((id, n)) if id == &entry.id && *n == part_number
+            );
+            if panics {
+                panic!("synthetic part panic");
             }
             if let Some((kind, retry_after)) = self
                 .fail_part_typed
@@ -2385,6 +2518,79 @@ mod tests {
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 1);
         assert!(executor.executed().contains(&"ok".to_string()));
+    }
+
+    /// Last batch snapshot a test observer saw.
+    fn last_snapshot_observer() -> (
+        Arc<StdMutex<Option<BatchProgressSnapshot>>>,
+        crate::transfer_orchestrator::ProgressObserver,
+    ) {
+        let last = Arc::new(StdMutex::new(None));
+        let sink = Arc::clone(&last);
+        let observer: crate::transfer_orchestrator::ProgressObserver =
+            Arc::new(move |snapshot| *sink.lock().unwrap() = Some(snapshot));
+        (last, observer)
+    }
+
+    /// An engine fault inside a multipart file (a part task panics) skips
+    /// CommitTemp. The begun upload is still aborted once, the file is counted
+    /// failed once and leaves `active`, and the sibling file completes.
+    #[tokio::test]
+    async fn multipart_engine_fault_aborts_the_upload_and_settles_the_file() {
+        let chunk = 8u64;
+        let file_size = 24u64;
+        let (_dir, path_a) = write_temp_file(file_size as usize);
+        let (_dir2, path_b) = write_temp_file(file_size as usize);
+        let exec = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(4, chunk))
+            .with_multipart_wire();
+        *exec.panic_part.lock().unwrap() = Some(("doomed".to_string(), 2));
+        let executor = Arc::new(exec);
+        let (last, observer) = last_snapshot_observer();
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![
+                    entry_with_local("doomed", file_size, path_a.to_str().unwrap()),
+                    entry_with_local("ok", file_size, path_b.to_str().unwrap()),
+                ],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            Some(observer),
+        )
+        .await;
+        assert_eq!(result.failed, 1, "the faulted file is counted failed");
+        assert_eq!(result.completed, 1);
+        assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 2);
+        assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 1);
+        let last = last.lock().unwrap().clone().expect("a snapshot");
+        assert_eq!(last.active, 0, "no file is left active");
+        assert_eq!(last.failed + last.completed, 2);
+    }
+
+    /// The whole-file sibling: an engine fault inside `execute` leaves the
+    /// file counted failed and out of `active`, not dropped from the totals.
+    #[tokio::test]
+    async fn whole_file_engine_fault_settles_the_file() {
+        let mut executor = MockExecutor::new(2);
+        executor.panic.insert("doomed".to_string());
+        let executor = Arc::new(executor);
+        let (last, observer) = last_snapshot_observer();
+        let result = execute_batch_dag(
+            Arc::new(CountingSink::default()) as Arc<dyn TransferEventSink>,
+            batch(vec![entry("doomed", 100), entry("ok", 200)], 2),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            Some(observer),
+        )
+        .await;
+        assert_eq!(result.failed, 1, "the faulted file is counted failed");
+        assert_eq!(result.completed, 1);
+        let last = last.lock().unwrap().clone().expect("a snapshot");
+        assert_eq!(last.active, 0, "no file is left active");
     }
 
     #[tokio::test]

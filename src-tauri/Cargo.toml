@@ -68,6 +68,8 @@ serde = { version = "1.0", features = ["derive"] }
 toml = "1.1"
 log = "0.4"
 bytes = "1"
+# Replay classification downcasts reqwest body errors on every platform.
+hyper = "1"
 # The `Body` trait, already in the tree through hyper and reqwest: an owned
 # upload body is handed to reqwest as window-sized frames with its exact
 # length (see `transfer_dag::throttle::WindowedBytes`).
