@@ -578,9 +578,9 @@ impl EndpointGovernor {
     }
 }
 
-/// Canonical local physical-device identity. Unix uses the kernel device id;
-/// other platforms use the nearest existing path anchor, which is conservative
-/// (it can merge devices but never assumes independent paths share no limit).
+/// Canonical local device identity. Unix uses the kernel device id; Windows
+/// uses the volume GUID (or the share root when GUID lookup is unsupported).
+/// Other platforms retain their nearest-existing-path fallback.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct DiskDeviceIdentity(String);
 
@@ -594,9 +594,59 @@ impl DiskDeviceIdentity {
                 return Self(format!("unix-dev:{}", metadata.dev()));
             }
         }
-        let label = std::fs::canonicalize(&anchor).unwrap_or(anchor);
-        Self(format!("path:{}", label.to_string_lossy()))
+        #[cfg(windows)]
+        {
+            // Never key an unresolved Windows request by its file name: that
+            // would grow the registry with the number of files in a sync.
+            Self(
+                windows_volume_identity(&anchor).unwrap_or_else(|| "windows-volume:unknown".into()),
+            )
+        }
+        #[cfg(not(windows))]
+        {
+            let label = std::fs::canonicalize(&anchor).unwrap_or(anchor);
+            Self(format!("path:{}", label.to_string_lossy()))
+        }
     }
+}
+
+/// Resolve through junctions/mounted folders and drive-letter aliases to one
+/// volume GUID. Remote shares do not support GUID lookup; their volume root
+/// still coalesces every file on the share. If neither lookup succeeds, the
+/// caller shares a single unknown-device bucket rather than one per file.
+#[cfg(windows)]
+fn windows_volume_identity(anchor: &Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{
+        GetVolumeNameForVolumeMountPointW, GetVolumePathNameW,
+    };
+
+    // Canonicalization also makes relative paths absolute before passing them
+    // to the Win32 API (an unqualified relative path would select the boot
+    // volume) and resolves file symlinks to their target volume.
+    let path = std::fs::canonicalize(anchor).ok()?;
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // A volume root cannot be longer than the full path plus a trailing slash.
+    let mut root = vec![0u16; wide.len() + 1];
+    // SAFETY: input is NUL-terminated; both output slices are writable and
+    // their lengths are passed by the windows binding. Buffers outlive calls.
+    unsafe { GetVolumePathNameW(PCWSTR(wide.as_ptr()), &mut root) }.ok()?;
+    let mut guid = [0u16; 50];
+    let label =
+        if unsafe { GetVolumeNameForVolumeMountPointW(PCWSTR(root.as_ptr()), &mut guid) }.is_ok() {
+            &guid[..]
+        } else {
+            &root[..]
+        };
+    let end = label.iter().position(|ch| *ch == 0)?;
+    if end == 0 {
+        return None;
+    }
+    Some(format!(
+        "windows-volume:{}",
+        String::from_utf16_lossy(&label[..end]).to_lowercase()
+    ))
 }
 
 fn nearest_existing_path(path: &Path) -> PathBuf {
@@ -1455,6 +1505,34 @@ mod tests {
             .expect("same endpoint waiter did not release after job lease drop")
             .expect("same endpoint task panicked");
         drop(same_lease);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_files_and_uncreated_children_share_one_volume_governor() {
+        let root = tempfile::tempdir().unwrap();
+        let expected = DiskDeviceIdentity::for_path(root.path());
+        // Do not let a failed API lookup make this test pass on the fallback.
+        assert!(
+            expected.0.starts_with("windows-volume:\\\\?\\volume{"),
+            "{expected:?}"
+        );
+        let gov = GlobalTransferGovernor::new(test_config(BUFFER_QUANTUM_BYTES, 0, 1));
+        for i in 0..16 {
+            let dir = root.path().join(format!("dir-{i}"));
+            std::fs::create_dir(&dir).unwrap();
+            let file = dir.join("payload.bin");
+            std::fs::write(&file, b"x").unwrap();
+            for path in [file, dir.join("missing/nested/payload.bin")] {
+                assert_eq!(DiskDeviceIdentity::for_path(&path), expected);
+                assert_eq!(gov.disk_for_path(path).identity(), &expected);
+            }
+        }
+        assert_eq!(
+            gov.disk_count(),
+            1,
+            "one volume must register only one governor"
+        );
     }
 
     #[tokio::test]

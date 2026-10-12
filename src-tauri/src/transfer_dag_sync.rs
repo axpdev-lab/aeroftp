@@ -1532,6 +1532,64 @@ mod tests {
     };
     use std::any::Any;
 
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn sync_job_coalesces_windows_files_and_enforces_one_volume_cap() {
+        use crate::transfer_dag::governor::{GlobalTransferGovernor, GovernorConfig};
+        use crate::transfer_dag::EndpointIdentity;
+        use std::time::Duration;
+
+        let root = tempfile::tempdir().unwrap();
+        let mut transfers = Vec::new();
+        for i in 0..32 {
+            let rel = format!("dir-{i}/payload.bin");
+            let path = root.path().join(&rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+            transfers.push(planned_upload(&rel, DeltaPolicy::Disabled));
+        }
+        let requests = sync_job_disk_requests(root.path().to_str().unwrap(), &transfers);
+        assert_eq!(
+            requests.len(),
+            2,
+            "one volume needs only root read/write requests"
+        );
+        let gov = GlobalTransferGovernor::new(GovernorConfig {
+            buffer_bytes: crate::transfer_dag::resources::BUFFER_QUANTUM_BYTES,
+            bandwidth_bps: 0,
+            endpoint_slots: 1,
+            disk_device_slots: 1,
+        });
+        let lease = tokio::time::timeout(
+            Duration::from_secs(2),
+            gov.acquire_job(
+                EndpointIdentity::new("sftp", "windows-sync.test", "alice"),
+                TransferPriority::Background,
+                requests,
+            ),
+        )
+        .await
+        .expect("same-volume requests reacquired a held disk slot");
+        let pending = gov.acquire_job(
+            EndpointIdentity::new("sftp", "independent.test", "bob"),
+            TransferPriority::Foreground,
+            [DiskLeaseRequest::read(
+                root.path().join("dir-31/payload.bin"),
+            )],
+        );
+        tokio::pin!(pending);
+        assert!(
+            futures_util::poll!(&mut pending).is_pending(),
+            "another file on the same volume bypassed the disk cap"
+        );
+        drop(lease);
+        let other = tokio::time::timeout(Duration::from_secs(2), pending)
+            .await
+            .expect("volume cap was not released");
+        assert_eq!(gov.disk_count(), 1);
+        drop(other);
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn sync_job_waits_for_a_mounted_subtree_and_nested_download_reuses_its_slot() {
