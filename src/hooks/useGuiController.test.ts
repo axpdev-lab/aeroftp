@@ -70,7 +70,7 @@ it('claims backend requests before executing and replies only with the structure
     expect(handlers.refresh).toHaveBeenCalledExactlyOnceWith('local');
     const reply = bridge.invoke.mock.calls.find(([name]) => name === 'gui_intent_result')![1];
     expect(reply.id).toBe('backend-id'); expect(reply.payload).toMatchObject({ ok: true, error: null, snapshot: { schema_version: 1 } });
-    expect(host.querySelector('[role="status"]')).not.toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).not.toBeNull();
 });
 
 it('never acts when a request expired, its claim was refused, or a modal is open', async () => {
@@ -157,9 +157,9 @@ it('preserves Stop through the trusted pointer capture and reaches the original 
     const stop = host.querySelector('[data-gui-controller-stop]')!;
     const capture = listen.mock.calls.filter(([name]) => name === 'pointerdown').slice(-1)[0][1] as EventListener;
     await act(async () => capture({ isTrusted: true, target: stop } as unknown as Event));
-    expect(host.querySelector('[role="status"]')).not.toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).not.toBeNull();
     await act(async () => (stop as HTMLButtonElement).click());
-    expect(handlers.stop).toHaveBeenCalledOnce(); expect(host.querySelector('[role="status"]')).toBeNull();
+    expect(handlers.stop).toHaveBeenCalledOnce(); expect(host.querySelector('[data-gui-controller-badge]')).toBeNull();
 });
 it('ignores its own connection metadata but still interrupts an account/profile edit', async () => {
     let began = false; let resolve!: () => void;
@@ -171,7 +171,7 @@ it('ignores its own connection metadata but still interrupts an account/profile 
     await act(async () => { pending = window.__aeroftpController!.run({ name: 'connect', args: { profile_id: 'fixture' }, pace: 'fast' }); });
     await until(() => began);
     await act(async () => window.dispatchEvent(new CustomEvent(PROFILES_CHANGED_EVENT, { detail: { connectionMetadata: true } })));
-    expect(host.querySelector('[role="status"]')).not.toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).not.toBeNull();
     await act(async () => window.dispatchEvent(new Event(PROFILES_CHANGED_EVENT)));
     await expect(pending).resolves.toMatchObject({ error: 'lease_interrupted' });
     await act(async () => resolve());
@@ -182,9 +182,9 @@ it('human trusted input wins; synthetic programmatic events cannot masquerade as
     const capture = listen.mock.calls.filter(([name]) => name === 'pointerdown').slice(-1)[0][1] as EventListener;
     await runCommittedRefresh();
     await act(async () => capture({ isTrusted: false, target: host } as unknown as Event));
-    expect(host.querySelector('[role="status"]')).not.toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).not.toBeNull();
     await act(async () => capture({ isTrusted: true, target: host } as unknown as Event));
-    expect(host.querySelector('[role="status"]')).toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).toBeNull();
 });
 
 it('uses the latest committed state and removes the dev global and listeners on unmount', async () => {
@@ -267,9 +267,9 @@ it('uses backend-claimed actor, not event metadata, and only releases that actor
     await until(() => bridge.invoke.mock.calls.some(([name]) => name === 'gui_intent_result'));
     expect(host.textContent).toContain('Codex'); expect(host.textContent).not.toContain('Spoofed');
     await act(async () => bridge.callbacks.get('gui-actor-ended')!({ payload: { actor_id: 'foreign' } }));
-    expect(host.querySelector('[role="status"]')).not.toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).not.toBeNull();
     await act(async () => bridge.callbacks.get('gui-actor-ended')!({ payload: { actor_id: 'gui-dev-first' } }));
-    expect(host.querySelector('[role="status"]')).toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).toBeNull();
     expect(audit).toHaveBeenCalledWith('refresh', true, 'Codex');
 });
 
@@ -295,5 +295,5 @@ it('does not run a request whose dev actor ended while its claim was in flight',
     await act(async () => claim({ remaining_ms: 2000, actor: { id: 'gui-dev-ended', kind: 'dev', label: 'Codex' } }));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 100)); });
     expect(handlers.disconnect).not.toHaveBeenCalled();
-    expect(host.querySelector('[role="status"]')).toBeNull();
+    expect(host.querySelector('[data-gui-controller-badge]')).toBeNull();
 });

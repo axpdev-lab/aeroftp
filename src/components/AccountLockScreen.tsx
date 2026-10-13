@@ -11,6 +11,7 @@ import { WindowControls } from './WindowControls';
 import { LOCK_SCREEN_PATTERNS } from './LockScreen';
 import {
     getUnlockStatus,
+    getUserStorageStats,
     initUserPartitions,
     listUsers,
     readDefaultAccountId,
@@ -80,6 +81,7 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
     }, []);
 
     const [users, setUsers] = React.useState<DisplayUser[]>(cachedUsers);
+    const [profileCounts, setProfileCounts] = React.useState<Map<number, number>>(() => new Map());
     const [status, setStatus] = React.useState<UserUnlockStatus | null>(null);
     const [pendingUser, setPendingUser] = React.useState<DisplayUser | null>(null);
     const [passphrase, setPassphrase] = React.useState('');
@@ -104,6 +106,12 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
             setUsers(display);
             setStatus(st);
             writeUsersListCache(list);
+            // Counts live in the shared partition index, so they are readable
+            // before the account is unlocked. A failure leaves the line off
+            // rather than showing a zero that is not a real count.
+            void getUserStorageStats()
+                .then((stats) => setProfileCounts(new Map(stats.map((row) => [row.userId, row.profileCount]))))
+                .catch(() => {});
             return { list, status: st };
         } catch (err) {
             setError(mapUserPartitionError(err, t));
@@ -332,6 +340,11 @@ export const AccountLockScreen: React.FC<AccountLockScreenProps> = ({ onContinue
                                                 </>
                                             )}
                                         </div>
+                                        {profileCounts.has(user.id) && (
+                                            <div className="text-[10px] opacity-60">
+                                                {t('manageUsers.profilesCount').replace('{count}', String(profileCounts.get(user.id) ?? 0))}
+                                            </div>
+                                        )}
                                         {lastUnlockedLabel && (
                                             <div className="mt-0.5 text-[10px] opacity-50">{lastUnlockedLabel}</div>
                                         )}

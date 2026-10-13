@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Kailangan ng token ang mga saklaw na drive at user_info. Sa drive lamang ay nakakakonekta ito at nakakapaglista ng mga file, ngunit tinatanggihan ang \"Kunin\", dahil binabasa nito ang profile ng iyong account para hanapin ang Drive ID.",
             "protonCliTitle": "Gumagamit ng opisyal na Proton Drive CLI",
             "protonCliBody": "I-install ang Proton Drive CLI mula sa proton.me/download/drive/cli, pagkatapos ay patakbuhin ang proton-drive auth login sa terminal at tapusin sa browser. Hindi kailanman nakikita ng AeroFTP ang iyong password; nananatili ang session sa secret store ng OS.",
-            "protonUnofficial": "Isa itong third-party na app na hindi opisyal na sinusuportahan ng Proton.",
             "protonConnectHint": "Ginagamit ng \"Kumonekta\" ang CLI na naka-sign in na sa makinang ito. Isang Proton account bawat user ng OS.",
             "twakeInstance": "Address ng Twake",
             "twakeInstanceHelp": "Ang sarili mong address, halimbawa yourname.twake.app. Puwede mo ring i-paste ang anumang address ng pahina ng Twake mula sa iyong browser.",

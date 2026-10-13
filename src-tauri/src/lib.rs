@@ -17989,6 +17989,8 @@ mod crypto_provider_guard {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(not(target_os = "linux"))]
+    use tauri::menu::IconMenuItem;
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
     // Pin the rustls CryptoProvider for this (GUI) process before any TLS
@@ -18896,36 +18898,129 @@ pub fn run() {
             });
             // ============ System Tray Icon ============
             // Create tray menu.
-            // "Open Cloud Folder" is only meaningful when AeroCloud is configured:
-            // when it is not, the local folder is just the unrealised default
-            // (~/AeroCloud) and opening a non-existent path is pointless, so the
-            // entry starts disabled and reflects the saved AeroCloud state. Read
-            // here in setup() on the GTK main thread (a later off-thread mutation
+            // Sync Now, Pause Sync and Open Cloud Folder are only meaningful
+            // when AeroCloud is configured. When it is not, the local folder is
+            // just the unrealised default (~/AeroCloud), so those three entries
+            // start disabled and reflect the saved AeroCloud state. Read here
+            // in setup() on the GTK main thread (a later off-thread mutation
             // would risk the GLib-heap class of crash).
             let cloud_enabled = cloud_config::load_cloud_config().enabled;
-            let tray_sync_now =
-                MenuItem::with_id(app, "tray_sync_now", "Sync Now", true, None::<&str>)?;
-            let tray_pause =
-                MenuItem::with_id(app, "tray_pause", "Pause Sync", true, None::<&str>)?;
-            let tray_open_folder = MenuItem::with_id(
-                app,
-                "tray_open_folder",
-                "Open Cloud Folder",
-                cloud_enabled,
-                None::<&str>,
-            )?;
-            let tray_check_update = MenuItem::with_id(
-                app,
-                "tray_check_update",
-                "Check for Updates",
-                true,
-                None::<&str>,
-            )?;
-            let tray_separator = PredefinedMenuItem::separator(app)?;
-            let tray_show =
-                MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?;
-            let tray_quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
+            // Linux draws this menu through ayatana / dbusmenu. The items stay
+            // plain MenuItems so the label is a real GtkLabel. The hook then
+            // swaps each tray row for a GtkImageMenuItem whose image is a
+            // theme icon name. A pixbuf (`icon-data`) makes GNOME Shell fail
+            // the image load and paint the row blank. macOS and Windows keep
+            // IconMenuItem.
+            #[cfg(target_os = "linux")]
+            let (
+                tray_sync_now,
+                tray_pause,
+                tray_open_folder,
+                tray_check_update,
+                tray_show,
+                tray_quit,
+            ) = {
+                (
+                    MenuItem::with_id(
+                        app,
+                        "tray_sync_now",
+                        "Sync Now",
+                        cloud_enabled,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(
+                        app,
+                        "tray_pause",
+                        "Pause Sync",
+                        cloud_enabled,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(
+                        app,
+                        "tray_open_folder",
+                        "Open Cloud Folder",
+                        cloud_enabled,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(
+                        app,
+                        "tray_check_update",
+                        "Check for Updates",
+                        true,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?,
+                    MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?,
+                )
+            };
+            #[cfg(not(target_os = "linux"))]
+            let (
+                tray_sync_now,
+                tray_pause,
+                tray_open_folder,
+                tray_check_update,
+                tray_show,
+                tray_quit,
+            ) = {
+                (
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_sync_now",
+                        "Sync Now",
+                        cloud_enabled,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Sync)),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_pause",
+                        "Pause Sync",
+                        cloud_enabled,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Pause)),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_open_folder",
+                        "Open Cloud Folder",
+                        cloud_enabled,
+                        Some(tray_badge::tray_menu_icon(
+                            tray_badge::TrayMenuGlyph::Folder,
+                        )),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_check_update",
+                        "Check for Updates",
+                        true,
+                        Some(tray_badge::tray_menu_icon(
+                            tray_badge::TrayMenuGlyph::Update,
+                        )),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_show",
+                        "Show AeroFTP",
+                        true,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Show)),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_quit",
+                        "Quit",
+                        true,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Quit)),
+                        None::<&str>,
+                    )?,
+                )
+            };
 
+            let tray_separator = PredefinedMenuItem::separator(app)?;
+            #[cfg(target_os = "linux")]
+            tray_badge::install_linux_tray_menu_icons();
             let tray_menu = Menu::with_items(
                 app,
                 &[

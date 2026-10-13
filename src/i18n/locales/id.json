@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Token memerlukan cakupan drive dan user_info. Dengan drive saja token dapat terhubung dan menampilkan berkas, tetapi \"Ambil\" ditolak, karena membaca profil akun Anda untuk menemukan Drive ID.",
             "protonCliTitle": "Menggunakan CLI resmi Proton Drive",
             "protonCliBody": "Pasang Proton Drive CLI dari proton.me/download/drive/cli, lalu jalankan proton-drive auth login di terminal dan selesaikan di peramban. AeroFTP tidak pernah melihat kata sandi Anda; sesi tetap di penyimpanan rahasia OS.",
-            "protonUnofficial": "Ini aplikasi pihak ketiga yang tidak didukung secara resmi oleh Proton.",
             "protonConnectHint": "\"Hubungkan\" memakai CLI yang sudah masuk di mesin ini. Satu akun Proton per pengguna OS.",
             "twakeInstance": "Alamat Twake",
             "twakeInstanceHelp": "Alamat Anda sendiri, misalnya yourname.twake.app. Anda juga bisa menempelkan alamat halaman Twake mana pun dari browser Anda.",

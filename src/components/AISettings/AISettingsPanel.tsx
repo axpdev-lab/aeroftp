@@ -278,6 +278,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     }, []);
     const [editingProvider, setEditingProvider] = useState<AIProvider | null>(null);
     const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+    // null means every model group is open. The first toggle freezes the set
+    // so a later provider does not pop back open on its own.
+    const [expandedModelProviders, setExpandedModelProviders] = useState<Set<string> | null>(null);
     const [testingProvider, setTestingProvider] = useState<string | null>(null);
     const [testResults, setTestResults] = useState<Record<string, { status: 'success' | 'error'; message?: string } | null>>({});
     const [detectingModels, setDetectingModels] = useState<string | null>(null);
@@ -846,6 +849,17 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
         }
     }, [isOpen, settingsLoaded, settings.providers, settings.models]);
 
+    const modelGroupOpen = (id: string) => expandedModelProviders === null || expandedModelProviders.has(id);
+    const toggleModelGroup = (id: string) => {
+        setExpandedModelProviders(prev => {
+            const base = prev ?? new Set(settings.providers.map(provider => provider.id));
+            const next = new Set(base);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -855,7 +869,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
 
             <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-lg shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
                 {/* Header (drag handle: move the modal like the other draggable modals) */}
-                <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-6 py-4 border-b border-gray-700 cursor-grab active:cursor-grabbing select-none">
+                <div {...modalDrag.dragHandleProps} className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-gray-700 cursor-grab active:cursor-grabbing select-none">
                     <div className="flex items-center gap-3">
                         <Cpu className="text-purple-400" size={24} />
                         <h2 className="text-xl font-semibold">{t('ai.settings.title')}</h2>
@@ -865,8 +879,11 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     </button>
                 </div>
 
-                {/* Tabs */}
-                <div className="flex overflow-x-auto border-b border-gray-700">
+                {/* Tabs. Chip style, same language as the IntroHub tab strip.
+                    The old underline sat inside the bar's own border and the
+                    selected fill used a gray utility the theme sheet remaps,
+                    so the active tab read as a broken slab. */}
+                <div className="ai-settings-tabs" role="tablist">
                     {[
                         {
                             id: 'providers',
@@ -904,7 +921,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             icon: <Layers size={14} />,
                         },
                     ].map((tab) => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id as typeof activeTab)} className={`flex shrink-0 items-center gap-2 px-6 py-3 text-sm font-medium transition-colors ${activeTab === tab.id ? 'text-purple-400 border-b-2 border-purple-400 bg-gray-800/50' : 'text-gray-400 hover:text-white hover:bg-gray-800/30'}`}>
+                        <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id as typeof activeTab)} className="ai-settings-tab">
                             {tab.icon}
                             {tab.label}
                         </button>
@@ -912,7 +929,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="min-h-0 flex-1 overflow-y-auto p-6">
                     {activeTab === 'providers' && (
                         <div className="space-y-4">
                             {/* Add Provider: Marketplace Button */}
@@ -1188,7 +1205,14 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                         const providerModels = getProviderModels(provider.id);
                                         return (
                                             <div key={provider.id} className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
-                                                <div className="px-4 py-3 bg-gray-800/50 flex items-center gap-2 border-b border-gray-700">
+                                                <button
+                                                    type="button"
+                                                    data-model-group={provider.id}
+                                                    aria-expanded={modelGroupOpen(provider.id)}
+                                                    onClick={() => toggleModelGroup(provider.id)}
+                                                    className="ai-model-group-header"
+                                                >
+                                                    {modelGroupOpen(provider.id) ? <ChevronDown size={16} className="shrink-0 text-gray-400" /> : <ChevronRight size={16} className="shrink-0 text-gray-400" />}
                                                     {getProviderIcon(provider.type)}
                                                     <span className="font-medium">{provider.name}</span>
                                                     <span className="text-xs text-gray-500">
@@ -1198,9 +1222,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         })}
                                                         )
                                                     </span>
-                                                </div>
+                                                </button>
 
-                                                <div className="p-3 space-y-2">
+                                                {modelGroupOpen(provider.id) && <div className="p-3 space-y-2 border-t border-gray-700">
                                                     {providerModels.map((model) => (
                                                         <div key={model.id} className="flex items-center gap-3 p-2 bg-gray-900/50 rounded-lg">
                                                             {/* Enable/Disable Toggle */}
@@ -1345,7 +1369,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                                                         <Plus size={14} />
                                                         {t('ai.settings.addCustomModel')}
                                                     </button>
-                                                </div>
+                                                </div>}
                                             </div>
                                         );
                                     })}

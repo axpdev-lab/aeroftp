@@ -5,6 +5,8 @@
 // Generates tray icons with colored dot badges + overlay icons for AeroCloud sync state
 
 use image::Rgba;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicU8, Ordering};
 use tauri::image::Image;
 use tauri::AppHandle;
@@ -346,6 +348,341 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
     }
 }
 
+/// Marks on the tray menu. Light monochrome, same family as the white tray
+/// glyph, so they read on a dark panel menu the way the MEGA tray icons do:
+/// a small mark beside each entry.
+///
+/// On Linux the tray row stays a plain item until
+/// `install_linux_tray_menu_icons` turns it into a `GtkImageMenuItem`.
+/// The image is a theme icon name. A pixbuf published as `icon-data` makes
+/// GNOME Shell's menu loader fail, and the row then paints with no label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TrayMenuGlyph {
+    Sync,
+    Pause,
+    Folder,
+    Update,
+    Show,
+    Quit,
+}
+
+/// A 16×16 menu icon for `glyph`.
+///
+/// Linux attaches a theme icon name instead. This bitmap is the Windows
+/// and macOS menu image.
+#[cfg(not(target_os = "linux"))]
+pub fn tray_menu_icon(glyph: TrayMenuGlyph) -> Image<'static> {
+    let mut rgba = image::RgbaImage::from_pixel(16, 16, Rgba([0, 0, 0, 0]));
+    draw_tray_menu_glyph(&mut rgba, glyph);
+    let (w, h) = rgba.dimensions();
+    Image::new_owned(rgba.into_raw(), w, h)
+}
+
+#[cfg(any(not(target_os = "linux"), test))]
+fn menu_ink() -> Rgba<u8> {
+    Rgba([232, 234, 237, 255])
+}
+
+#[cfg(any(not(target_os = "linux"), test))]
+fn draw_tray_menu_glyph(rgba: &mut image::RgbaImage, glyph: TrayMenuGlyph) {
+    let ink = menu_ink();
+    let stroke = 1.05;
+    match glyph {
+        TrayMenuGlyph::Pause => {
+            draw_thick_line(rgba, 5.5, 3.5, 5.5, 12.5, stroke, ink);
+            draw_thick_line(rgba, 10.5, 3.5, 10.5, 12.5, stroke, ink);
+        }
+        TrayMenuGlyph::Folder => {
+            draw_thick_line(rgba, 3.0, 6.0, 3.0, 4.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 4.0, 7.0, 4.0, stroke, ink);
+            draw_thick_line(rgba, 7.0, 4.0, 8.0, 6.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 6.0, 13.0, 6.0, stroke, ink);
+            draw_thick_line(rgba, 13.0, 6.0, 13.0, 13.0, stroke, ink);
+            draw_thick_line(rgba, 13.0, 13.0, 3.0, 13.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 13.0, 3.0, 6.0, stroke, ink);
+        }
+        TrayMenuGlyph::Show => {
+            draw_thick_line(rgba, 3.0, 3.0, 13.0, 3.0, stroke, ink);
+            draw_thick_line(rgba, 13.0, 3.0, 13.0, 10.0, stroke, ink);
+            draw_thick_line(rgba, 13.0, 10.0, 3.0, 10.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 10.0, 3.0, 3.0, stroke, ink);
+            draw_thick_line(rgba, 8.0, 10.0, 8.0, 13.0, stroke, ink);
+            draw_thick_line(rgba, 5.0, 13.0, 11.0, 13.0, stroke, ink);
+        }
+        TrayMenuGlyph::Quit => {
+            draw_thick_line(rgba, 3.0, 3.0, 3.0, 13.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 3.0, 7.0, 3.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 13.0, 7.0, 13.0, stroke, ink);
+            draw_thick_line(rgba, 6.0, 8.0, 13.0, 8.0, stroke, ink);
+            draw_thick_line(rgba, 13.0, 8.0, 10.0, 5.0, stroke, ink);
+            draw_thick_line(rgba, 13.0, 8.0, 10.0, 11.0, stroke, ink);
+        }
+        TrayMenuGlyph::Update => {
+            draw_thick_line(rgba, 8.0, 2.0, 8.0, 9.0, stroke, ink);
+            draw_thick_line(rgba, 8.0, 9.0, 5.0, 6.0, stroke, ink);
+            draw_thick_line(rgba, 8.0, 9.0, 11.0, 6.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 12.0, 13.0, 12.0, stroke, ink);
+            draw_thick_line(rgba, 3.0, 12.0, 3.0, 14.0, stroke, ink);
+            draw_thick_line(rgba, 13.0, 12.0, 13.0, 14.0, stroke, ink);
+        }
+        TrayMenuGlyph::Sync => {
+            let (cx, cy, arc_r) = (8.0, 8.0, 4.6);
+            let steps = 12u32;
+            for &(start_deg, end_deg) in &[(300.0_f32, 430.0), (120.0, 250.0)] {
+                for i in 0..steps {
+                    let f0 = i as f32 / steps as f32;
+                    let f1 = (i + 1) as f32 / steps as f32;
+                    let a0 = (start_deg + (end_deg - start_deg) * f0).to_radians();
+                    let a1 = (start_deg + (end_deg - start_deg) * f1).to_radians();
+                    draw_thick_line(
+                        rgba,
+                        cx + arc_r * a0.cos(),
+                        cy + arc_r * a0.sin(),
+                        cx + arc_r * a1.cos(),
+                        cy + arc_r * a1.sin(),
+                        0.9,
+                        ink,
+                    );
+                }
+                let end = end_deg.to_radians();
+                let tip_x = cx + arc_r * end.cos();
+                let tip_y = cy + arc_r * end.sin();
+                let (tang_x, tang_y) = (-end.sin(), end.cos());
+                let (out_x, out_y) = (end.cos(), end.sin());
+                let len = 2.4;
+                draw_thick_line(
+                    rgba,
+                    tip_x,
+                    tip_y,
+                    tip_x - tang_x * len + out_x * 1.4,
+                    tip_y - tang_y * len + out_y * 1.4,
+                    0.9,
+                    ink,
+                );
+                draw_thick_line(
+                    rgba,
+                    tip_x,
+                    tip_y,
+                    tip_x - tang_x * len - out_x * 1.4,
+                    tip_y - tang_y * len - out_y * 1.4,
+                    0.9,
+                    ink,
+                );
+            }
+        }
+    }
+}
+
+/// Which tray mark belongs on `label`.
+///
+/// `Check for Updates` and `Quit` also exist on other menus. They take an
+/// icon only inside the tray popup, which already contains `Sync Now` or
+/// `Show AeroFTP` by the time those two rows are inserted.
+#[cfg(any(target_os = "linux", test))]
+fn tray_menu_glyph_for_label(
+    label: &str,
+    menu_contains_sync_now: bool,
+    menu_contains_show: bool,
+) -> Option<TrayMenuGlyph> {
+    let in_tray_popup = menu_contains_sync_now || menu_contains_show;
+    match label {
+        "Sync Now" => Some(TrayMenuGlyph::Sync),
+        "Pause Sync" => Some(TrayMenuGlyph::Pause),
+        "Open Cloud Folder" => Some(TrayMenuGlyph::Folder),
+        "Show AeroFTP" => Some(TrayMenuGlyph::Show),
+        "Check for Updates" if in_tray_popup => Some(TrayMenuGlyph::Update),
+        "Quit" if in_tray_popup => Some(TrayMenuGlyph::Quit),
+        _ => None,
+    }
+}
+
+/// Install the Linux tray-icon swap before the tray menu is built.
+///
+/// Ayatana parses the `GtkMenu` once, inside `app_indicator_set_menu`.
+/// `libdbusmenu` exports an icon only from a `GtkImageMenuItem`, and a
+/// pixbuf becomes `icon-data`. GNOME Shell 50 then fails that image
+/// (`GdkPixbuf.PixbufError`) and the row draws blank. A theme `icon-name`
+/// is the path the shell paints, on the right of the label, without
+/// decoding a bitmap. The replacement still emits `activate` on the
+/// original item, which forwards `tray_sync_now` and the other ids.
+#[cfg(target_os = "linux")]
+pub fn install_linux_tray_menu_icons() {
+    use std::sync::Once;
+
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| unsafe {
+        let signal_id = gtk::glib::gobject_ffi::g_signal_lookup(
+            b"insert\0".as_ptr() as *const libc::c_char,
+            gtk::ffi::gtk_menu_shell_get_type(),
+        );
+        if signal_id == 0 {
+            warn!("GtkMenuShell::insert unavailable; tray menu stays without icons");
+            return;
+        }
+        gtk::glib::gobject_ffi::g_signal_add_emission_hook(
+            signal_id,
+            0,
+            Some(on_menu_shell_insert),
+            std::ptr::null_mut(),
+            None,
+        );
+        info!("Linux tray menu icon hook installed");
+    });
+}
+
+#[cfg(target_os = "linux")]
+unsafe extern "C" fn on_menu_shell_insert(
+    _hint: *mut gtk::glib::gobject_ffi::GSignalInvocationHint,
+    n_values: libc::c_uint,
+    values: *const gtk::glib::gobject_ffi::GValue,
+    _data: gtk::glib::ffi::gpointer,
+) -> gtk::glib::ffi::gboolean {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        promote_inserted_tray_item(values, n_values);
+    }));
+    gtk::glib::ffi::GTRUE
+}
+
+#[cfg(target_os = "linux")]
+fn promote_inserted_tray_item(
+    values: *const gtk::glib::gobject_ffi::GValue,
+    n_values: libc::c_uint,
+) {
+    if n_values < 3 || values.is_null() {
+        return;
+    }
+    // `insert` of the replacement row re-enters this hook. The flag skips
+    // that nested emission; the image-item check below is the second guard.
+    static BUSY: AtomicBool = AtomicBool::new(false);
+    if BUSY.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _clear = ClearBusy(&BUSY);
+
+    use gtk::glib::translate::FromGlibPtrNone;
+    use gtk::prelude::*;
+
+    unsafe {
+        let shell_ptr = gtk::glib::gobject_ffi::g_value_get_object(values);
+        let child_ptr = gtk::glib::gobject_ffi::g_value_get_object(values.add(1));
+        if shell_ptr.is_null() || child_ptr.is_null() {
+            return;
+        }
+        if gtk::glib::gobject_ffi::g_type_check_instance_is_a(
+            child_ptr as *mut _,
+            gtk::ffi::gtk_image_menu_item_get_type(),
+        ) != gtk::glib::ffi::GFALSE
+        {
+            return;
+        }
+        let shell = gtk::Widget::from_glib_none(shell_ptr as *mut gtk::ffi::GtkWidget);
+        let Ok(menu) = shell.downcast::<gtk::Menu>() else {
+            return;
+        };
+        let child = gtk::Widget::from_glib_none(child_ptr as *mut gtk::ffi::GtkWidget);
+        let Ok(item) = child.downcast::<gtk::MenuItem>() else {
+            return;
+        };
+        let Some(label) = menu_item_label(&item) else {
+            return;
+        };
+        let Some(glyph) = tray_menu_glyph_for_label(
+            &label,
+            menu_contains_label(&menu, "Sync Now"),
+            menu_contains_label(&menu, "Show AeroFTP"),
+        ) else {
+            return;
+        };
+        let Some(position) = menu
+            .children()
+            .iter()
+            .position(|candidate| candidate == item.upcast_ref::<gtk::Widget>())
+        else {
+            return;
+        };
+
+        let c_label = match std::ffi::CString::new(label.clone()) {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        let raw = gtk::ffi::gtk_image_menu_item_new_with_label(c_label.as_ptr());
+        if raw.is_null() {
+            return;
+        }
+        // Theme icon name, not a pixbuf. `icon-data` is what the shell
+        // rejects, and a rejected image leaves the whole row blank.
+        let image =
+            gtk::Image::from_icon_name(Some(tray_menu_icon_name(glyph)), gtk::IconSize::Menu);
+        gtk::ffi::gtk_image_menu_item_set_image(
+            raw as *mut gtk::ffi::GtkImageMenuItem,
+            image.upcast_ref::<gtk::Widget>().as_ptr() as *mut _,
+        );
+        gtk::ffi::gtk_image_menu_item_set_always_show_image(
+            raw as *mut gtk::ffi::GtkImageMenuItem,
+            gtk::glib::ffi::GTRUE,
+        );
+        // from_glib_none sinks the floating image-menu item. A failed
+        // downcast drops that reference and frees it.
+        let Ok(new_item) = gtk::Widget::from_glib_none(raw).downcast::<gtk::MenuItem>() else {
+            return;
+        };
+        new_item.set_sensitive(item.is_sensitive());
+        let source = item.clone();
+        new_item.connect_activate(move |_| {
+            source.emit_activate();
+        });
+        menu.insert(&new_item, position as i32);
+        menu.remove(&item);
+        new_item.show_all();
+        info!("tray menu icon attached: {label}");
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn menu_item_label(item: &gtk::MenuItem) -> Option<String> {
+    use gtk::prelude::*;
+    item.child()?
+        .downcast::<gtk::Label>()
+        .ok()
+        .map(|label| label.text().to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn menu_contains_label(menu: &gtk::Menu, expected: &str) -> bool {
+    use gtk::prelude::*;
+    menu.children().iter().any(|child| {
+        child
+            .clone()
+            .downcast::<gtk::MenuItem>()
+            .ok()
+            .and_then(|item| menu_item_label(&item))
+            .is_some_and(|text| text == expected)
+    })
+}
+
+/// Freedesktop name the shell already has. Symbolic, so it follows the menu color.
+#[cfg(target_os = "linux")]
+fn tray_menu_icon_name(glyph: TrayMenuGlyph) -> &'static str {
+    match glyph {
+        TrayMenuGlyph::Sync => "view-refresh-symbolic",
+        TrayMenuGlyph::Pause => "media-playback-pause-symbolic",
+        TrayMenuGlyph::Folder => "folder-symbolic",
+        TrayMenuGlyph::Update => "software-update-available-symbolic",
+        TrayMenuGlyph::Show => "window-restore-symbolic",
+        TrayMenuGlyph::Quit => "system-shutdown-symbolic",
+    }
+}
+
+#[cfg(target_os = "linux")]
+struct ClearBusy(&'static AtomicBool);
+
+#[cfg(target_os = "linux")]
+impl Drop for ClearBusy {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::TrayBadgeState;
@@ -395,6 +732,62 @@ mod tests {
                 "tray_badge::update_tray_badge(&app, tray_badge::TrayBadgeState::Default);"
             ),
             "resume_aerocloud leaves the tray on the Paused badge"
+        );
+    }
+
+    #[test]
+    fn tray_menu_glyphs_paint_a_visible_mark() {
+        for glyph in [
+            super::TrayMenuGlyph::Sync,
+            super::TrayMenuGlyph::Pause,
+            super::TrayMenuGlyph::Folder,
+            super::TrayMenuGlyph::Update,
+            super::TrayMenuGlyph::Show,
+            super::TrayMenuGlyph::Quit,
+        ] {
+            let mut rgba = image::RgbaImage::from_pixel(16, 16, image::Rgba([0, 0, 0, 0]));
+            super::draw_tray_menu_glyph(&mut rgba, glyph);
+            let painted = rgba.pixels().filter(|px| px[3] > 0).count();
+            assert!(painted >= 8, "tray glyph painted only {painted} pixels");
+        }
+    }
+
+    /// `Check for Updates` and `Quit` live in the application menu too.
+    /// Icons attach only when the popup is the tray menu.
+    #[test]
+    fn tray_menu_icons_attach_only_to_the_tray_popup() {
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Sync Now", false, false),
+            Some(super::TrayMenuGlyph::Sync)
+        );
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Pause Sync", false, false),
+            Some(super::TrayMenuGlyph::Pause)
+        );
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Open Cloud Folder", false, false),
+            Some(super::TrayMenuGlyph::Folder)
+        );
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Show AeroFTP", false, false),
+            Some(super::TrayMenuGlyph::Show)
+        );
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Check for Updates", false, false),
+            None
+        );
+        assert_eq!(super::tray_menu_glyph_for_label("Quit", false, false), None);
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Check for Updates", true, false),
+            Some(super::TrayMenuGlyph::Update)
+        );
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Quit", false, true),
+            Some(super::TrayMenuGlyph::Quit)
+        );
+        assert_eq!(
+            super::tray_menu_glyph_for_label("Quit AeroFTP", true, true),
+            None
         );
     }
 
