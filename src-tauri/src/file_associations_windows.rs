@@ -111,8 +111,8 @@ fn wide(s: &str) -> Vec<u16> {
 fn feature_state(product: &str, feature: &str) -> Result<bool, String> {
     let product = wide(product);
     let feature = wide(feature);
-    // INSTALLSTATE_LOCAL=3, INSTALLSTATE_ABSENT=2. Unknown indicates an older
-    // installer without these features; never silently claim that can be changed.
+    // INSTALLSTATE_LOCAL=3, INSTALLSTATE_ABSENT=2. Reject unknown states: an
+    // older MSI or an unpublished level-0 feature cannot safely be maintained.
     match unsafe {MsiQueryFeatureStateW(product.as_ptr(),feature.as_ptr())} {
         3=>Ok(true),2=>Ok(false),state=>Err(format!("This MSI does not expose selectable file associations (state {state}). Install the current MSI first.")),
     }
@@ -394,7 +394,15 @@ pub fn apply(choices: Choices) -> Result<WindowsIntegrationStatus, String> {
         // Another Windows user may not have this package's HKCU InstallDir.
         // Bind maintenance to the running installation's verified location.
         cmd.args(["/i", &product, "/qb", "REBOOT=ReallySuppress"]);
-        cmd.arg(format!("INSTALLDIR={}", install_dir.display()));
+        // msiexec parses PROPERTY="value", unlike the usual CRT parser which
+        // Command::arg targets. Quote the value, not the whole assignment.
+        // This path comes from current_exe, not caller input; quotes cannot occur
+        // in Windows filenames. Do not use display() and lose non-Unicode units.
+        use std::os::windows::process::CommandExt;
+        let mut directory_property = std::ffi::OsString::from("INSTALLDIR=\"");
+        directory_property.push(install_dir.as_os_str());
+        directory_property.push("\"");
+        cmd.raw_arg(directory_property);
         if !add.is_empty() {
             cmd.arg(format!("ADDLOCAL={}", add.join(",")));
         }

@@ -282,6 +282,7 @@ pub struct FileAssociationStatus {
     pub requires_os_confirmation: bool,
     pub items: Vec<FileAssociationItemStatus>,
     pub windows_integration: Option<WindowsIntegrationStatus>,
+    pub windows_integration_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -332,21 +333,24 @@ fn file_associations_status_inner() -> Result<FileAssociationStatus, String> {
         items.push(st);
     }
 
+    #[cfg(windows)]
+    let (windows_integration, windows_integration_error) = match windows_integration::status() {
+        Ok(status) => (Some(status), None),
+        Err(error) => {
+            log::warn!("Windows integration status unavailable: {error}");
+            (None, Some(error))
+        }
+    };
+    #[cfg(not(windows))]
+    let (windows_integration, windows_integration_error) = (None, None);
+
     Ok(FileAssociationStatus {
         platform,
         can_apply_directly: can_apply,
         requires_os_confirmation: requires_confirm,
         items,
-        windows_integration: {
-            #[cfg(windows)]
-            {
-                Some(windows_integration::status()?)
-            }
-            #[cfg(not(windows))]
-            {
-                None
-            }
-        },
+        windows_integration,
+        windows_integration_error,
     })
 }
 

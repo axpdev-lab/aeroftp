@@ -6,6 +6,10 @@
 <?define Win64 = "no" ?>
 <?endif?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"><Fragment>
+<DirectoryRef Id="INSTALLDIR"><Component Id="AeroFTPApplicationRegistration" Guid="A66C02E5-985D-4CF1-8C15-6D699B59A883" Win64="$(var.Win64)">
+<RegistryValue Root="HKLM" Key="Software\Classes\Applications\AeroFTP.exe\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-document.ico,0" KeyPath="yes" />
+<RegistryValue Root="HKLM" Key="Software\Classes\Applications\AeroFTP.exe\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+</Component></DirectoryRef>
 <DirectoryRef Id="INSTALLDIR"><Component Id="AeroFTPOwnedAssociationsRegistry" Guid="449987CB-52DA-4B46-82D7-F9EB2B7038D1" Win64="$(var.Win64)">
 <RegistryValue Root="HKLM" Key="Software\AeroFTP\Settings" Name="OwnedFormats" Type="integer" Value="1" KeyPath="yes" />
 <RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.AeroVault"  Type="string" Value="AeroVault Encrypted Container" />
@@ -95,7 +99,7 @@
 <RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-script\shell\open"  Type="string" Value="Open with AeroFTP" />
 <RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-script\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
 </Component></DirectoryRef>
-<Feature Id="AeroFTPOwnedAssociations" Title="AeroFTP file formats" Level="1" AllowAdvertise="no" Absent="allow"><ComponentRef Id="AeroFTPOwnedAssociationsRegistry" /><Condition Level="0">AEROFTP_NOASSOC = "1"</Condition></Feature>
+<Feature Id="AeroFTPOwnedAssociations" Title="AeroFTP file formats" Level="1" AllowAdvertise="no" Absent="allow"><ComponentRef Id="AeroFTPOwnedAssociationsRegistry" /><ComponentRef Id="AeroFTPApplicationRegistration" /><Condition Level="2">AEROFTP_NOASSOC = "1"</Condition></Feature>
 <DirectoryRef Id="INSTALLDIR"><Component Id="AeroFTPArchiveAssociationsRegistry" Guid="1974D4FC-4A3E-4AAC-8816-3D56CAD68B42" Win64="$(var.Win64)">
 <RegistryValue Root="HKLM" Key="Software\AeroFTP\Settings" Name="ArchiveFormats" Type="integer" Value="1" KeyPath="yes" />
 <RegistryValue Root="HKLM" Key="Software\Classes\SystemFileAssociations\.zip\shell\AeroFTPExtractHere"  Type="string" Value="Extract Here with AeroFTP" />
@@ -179,5 +183,5 @@
 <RegistryValue Root="HKLM" Key="Software\AeroFTP\Capabilities" Name="ApplicationIcon" Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-archive.ico,0" />
 <RegistryValue Root="HKLM" Key="Software\RegisteredApplications" Name="AeroFTP" Type="string" Value="Software\AeroFTP\Capabilities" />
 </Component></DirectoryRef>
-<Feature Id="AeroFTPArchiveAssociations" Title="Archive formats and Explorer menus" Level="1" AllowAdvertise="no" Absent="allow"><ComponentRef Id="AeroFTPArchiveAssociationsRegistry" /><Condition Level="0">AEROFTP_NOASSOC = "1"</Condition></Feature>
+<Feature Id="AeroFTPArchiveAssociations" Title="Archive formats and Explorer menus" Level="1" AllowAdvertise="no" Absent="allow"><ComponentRef Id="AeroFTPArchiveAssociationsRegistry" /><ComponentRef Id="AeroFTPApplicationRegistration" /><Condition Level="2">AEROFTP_NOASSOC = "1"</Condition></Feature>
 </Fragment></Wix>

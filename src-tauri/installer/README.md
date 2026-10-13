@@ -32,14 +32,31 @@ so a subsequent reinstall respects the opt-out.
 The feature-tree page exposes `AeroFTPOwnedAssociations` and
 `AeroFTPArchiveAssociations`. Silent initial opt-out is
 `msiexec /i AeroFTP.msi AEROFTP_NOASSOC=1 /qn`; `ADDLOCAL` and `REMOVE` can select
-individual groups. Major upgrades migrate the installed feature states.
+individual groups. Opt-out raises the feature level above the default install
+level without disabling publication (level 0 would yield UNKNOWN and prevent
+Settings maintenance). A single common application component is referenced by
+both features; its icon/open command stay until both groups are removed.
+Major upgrades migrate the installed feature states.
 
 Settings uses Windows Installer maintenance for these two features, with normal
 Windows elevation and cancellation. It verifies the resulting feature states
-before reporting success. Registry components remain MSI-owned. A bounded
+before reporting success. An explicit installed path takes precedence over a
+saved per-user path, and its value is quoted for Windows Installer's parser.
+Integration read errors keep the per-format status rows and Default apps action
+available, with the diagnostic shown in Settings. Registry components remain MSI-owned. A bounded
 pre-Tauri helper cleans the invoking user's own Explorer history on full
 uninstall; it never removes protected `UserChoice`. Portable builds offer no
 installer-integration mutation.
+
+The Windows packaging CI runs `scripts/test-windows-msi-associations.ps1` against
+the built MSI on its disposable hosted runner. It requires fresh NOASSOC feature
+states of ABSENT (2), cycles all independent choices, checks the entire catalog
+including shared icon/open command, verifies mandatory binaries and a path with
+spaces, then uninstalls the exact product. A same-hive foreign registry fixture
+must survive. Logs are uploaded even when the check fails. Local execution
+requires elevation and `-AllowMachineChanges`, and refuses an existing AeroFTP
+installation. This command-line regression supplements the native Settings and
+Explorer acceptance tests; it does not certify GUI cancellation or upgrades.
 
 ## Upstream template maintenance
 

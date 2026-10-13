@@ -11,7 +11,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('../../i18n', () => ({ useTranslation: () => translate }));
 let host: HTMLDivElement;
 let root: Root;
-let state: { platform: string; items: unknown[]; windowsIntegration: { ownedFormats: boolean; archiveFormats: boolean; canChange: boolean; managedBy: string } | null };
+let state: { platform: string; items: unknown[]; windowsIntegrationError?: string; windowsIntegration: { ownedFormats: boolean; archiveFormats: boolean; canChange: boolean; managedBy: string } | null };
 const toggles = () => Array.from(host.querySelectorAll<HTMLInputElement>('input[type=checkbox]'));
 beforeEach(() => {
   (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -65,6 +65,18 @@ describe('Windows association choices', () => {
     state.windowsIntegration!.managedBy = 'msi';
     await act(async () => root.render(createElement(FileAssociationsPanel)));
     expect(host.textContent).toContain('settings.fileAssociationIntegrationAdmin');
+  });
+  it('keeps format rows and Default apps available when integration status fails', async () => {
+    state.windowsIntegration = null;
+    state.windowsIntegrationError = 'This MSI does not expose selectable file associations (state -1).';
+    state.items = [{ key: 'profile', label: 'Server profile', extensions: ['aeroftp'], isDefault: false, isAvailable: true, action: 'os_confirmation' }];
+    await act(async () => root.render(createElement(FileAssociationsPanel)));
+    expect(toggles()).toHaveLength(0);
+    expect(host.textContent).toContain(state.windowsIntegrationError);
+    expect(host.textContent).toContain('Server profile');
+    const openSettings = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('settings.fileAssociationOpenSettings'))!;
+    await act(async () => openSettings.click());
+    expect(invoke).toHaveBeenCalledWith('file_associations_open_settings');
   });
   it('does not expose Windows registration controls on Linux', async () => {
     state.platform = 'linux'; state.windowsIntegration = null;

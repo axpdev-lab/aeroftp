@@ -41,6 +41,7 @@ interface FileAssociationStatus {
   requiresOsConfirmation: boolean;
   items: FileAssociationItem[];
   windowsIntegration?: WindowsIntegration | null;
+  windowsIntegrationError?: string | null;
 }
 
 interface ApplyResult {
@@ -248,6 +249,8 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
     );
   };
 
+  const displayedError = error || status?.windowsIntegrationError;
+
   return (
     <div className={compact ? 'space-y-3' : 'space-y-4'}>
       <div className="flex items-center justify-between">
@@ -278,13 +281,13 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
         </div>
       </div>
 
-      {error && (
+      {displayedError && (
         <div className="flex items-start gap-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 p-2 rounded">
           <AlertCircle size={14} className="mt-0.5" />
-          <span>{error}</span>
+          <span>{displayedError}</span>
         </div>
       )}
-      {note && !error && (
+      {note && !displayedError && (
         <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 p-2 rounded">
           {note}
         </div>
