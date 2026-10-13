@@ -19,6 +19,15 @@ it('refuses synthetic speed and Pause input outside DEV while keeping Stop avail
         }, preferences: DEFAULT_GUI_PRESENTATION, onSpeed, onPause, onStop })));
         const controls = host.querySelectorAll<HTMLButtonElement>('button[data-gui-controller-control]');
         await act(async () => { for (const button of controls) button.click(); });
+        const badge = host.querySelector('[data-gui-controller-badge]');
+        expect(badge?.className).not.toContain('fixed');
+        expect(badge?.className).toContain('border-t');
+        expect(badge?.getAttribute('role')).toBe('region');
+        const agent = host.querySelector('[data-gui-controller-agent]');
+        expect(agent?.className).toContain('bg-amber-400');
+        const stop = host.querySelector('[data-gui-controller-stop]');
+        expect(stop?.previousElementSibling?.className).toContain('w-px');
+        expect(stop?.previousElementSibling?.previousElementSibling?.tagName).toBe('BUTTON');
         expect(onSpeed).not.toHaveBeenCalled(); expect(onPause).not.toHaveBeenCalled();
         expect(host.querySelector('input')?.dataset.agent).toBe('deny');
         await act(async () => host.querySelector<HTMLButtonElement>('[data-gui-controller-stop]')!.click());

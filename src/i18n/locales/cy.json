@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Mae angen y cwmpasau drive a user_info ar y tocyn. Gyda drive yn unig mae'n cysylltu ac yn rhestru ffeiliau, ond mae \"Nôl\" yn cael ei wrthod, am ei fod yn darllen proffil eich cyfrif i ddod o hyd i'r Drive ID.",
             "protonCliTitle": "Yn defnyddio CLI swyddogol Proton Drive",
             "protonCliBody": "Gosodwch CLI Proton Drive o proton.me/download/drive/cli, yna rhedwch proton-drive auth login mewn terfynell a gorffen yn y porwr. Nid yw AeroFTP byth yn gweld eich cyfrinair; mae'r sesiwn yn aros yn storfa gyfrinachau'r OS.",
-            "protonUnofficial": "Mae hwn yn gymhwysiad trydydd parti nad yw Proton yn ei gefnogi'n swyddogol.",
             "protonConnectHint": "Mae \"Cysylltu\" yn defnyddio'r CLI sydd eisoes wedi mewngofnodi ar y peiriant hwn. Un cyfrif Proton fesul defnyddiwr OS.",
             "twakeInstance": "Cyfeiriad Twake",
             "twakeInstanceHelp": "Eich cyfeiriad eich hun, er enghraifft yourname.twake.app. Gallwch hefyd ludo unrhyw gyfeiriad tudalen Twake o'ch porwr.",

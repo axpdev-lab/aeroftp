@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Token treba opsege drive i user_info. Samo s drive povezuje se i prikazuje datoteke, ali „Dohvati“ se odbija, jer čita profil vašeg računa da bi pronašao Drive ID.",
             "protonCliTitle": "Koristi službeni Proton Drive CLI",
             "protonCliBody": "Instalirajte Proton Drive CLI s proton.me/download/drive/cli, zatim u terminalu pokrenite proton-drive auth login i dovršite u pregledniku. AeroFTP nikad ne vidi vašu lozinku; sesija ostaje u spremištu tajni operacijskog sustava.",
-            "protonUnofficial": "Ovo je aplikacija treće strane koju Proton službeno ne podržava.",
             "protonConnectHint": "\"Poveži se\" koristi CLI koji je na ovom računalu već prijavljen. Jedan Proton račun po korisniku operacijskog sustava.",
             "twakeInstance": "Twake adresa",
             "twakeInstanceHelp": "Vaša vlastita adresa, na primjer yourname.twake.app. Također možete zalijepiti bilo koju adresu Twake stranice iz preglednika.",

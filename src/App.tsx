@@ -16322,7 +16322,6 @@ const App: React.FC = () => {
   return (
     <>
       {lockNow.error && !isAppLocked && accountLockState !== 'needed' && <LockNowError error={lockNow.error} onClose={lockNow.dismissError} />}
-      <GuiControllerBanner lease={guiController.lease} preferences={settings.guiPresentation} onSpeed={guiController.setSpeed} onPause={guiController.setPaused} onStop={() => { void guiController.stop(); }} />
       {/* Lock Screen - shown when app is locked with master password */}
       {isAppLocked && (masterPasswordSet || autoKeyringTotpRequired) && (
         <LockScreen
@@ -20024,6 +20023,8 @@ const App: React.FC = () => {
             }
           }}
         />
+
+        <GuiControllerBanner lease={guiController.lease} preferences={settings.guiPresentation} onSpeed={guiController.setSpeed} onPause={guiController.setPaused} onStop={() => { void guiController.stop(); }} />
 
         {showStatusBar && (
           <StatusBar

@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Токенът трябва да има обхватите drive и user_info. Само с drive той се свързва и показва файловете, но „Извличане“ се отхвърля, защото чете профила на акаунта ви, за да намери Drive ID.",
             "protonCliTitle": "Използва официалния Proton Drive CLI",
             "protonCliBody": "Инсталирайте Proton Drive CLI от proton.me/download/drive/cli, след това изпълнете proton-drive auth login в терминал и завършете в браузъра. AeroFTP никога не вижда паролата ви; сесията остава в хранилището за тайни на ОС.",
-            "protonUnofficial": "Това е приложение на трета страна, което не се поддържа официално от Proton.",
             "protonConnectHint": "\"Свързване\" използва CLI, вече вписан на тази машина. Един Proton акаунт на потребител на ОС.",
             "twakeInstance": "Адрес на Twake",
             "twakeInstanceHelp": "Вашият собствен адрес, например yourname.twake.app. Можете също да поставите всеки адрес на страница на Twake от браузъра си.",

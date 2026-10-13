@@ -5104,7 +5104,6 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 <p>{t('connection.protonCliBody')}</p>
                                                 <p className="mt-2">{t('connection.protonConnectHint')}</p>
                                             </CollapsibleSetupBox>
-                                            <p className="text-xs text-gray-500 dark:text-gray-400">{t('connection.protonUnofficial')}</p>
                                         </div>
                                         {/* RIGHT COLUMN */}
                                         {renderRightColumn({
@@ -6511,7 +6510,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         {/* Provider independence disclaimer: outside the cardMaxW container */}
         {(() => {
             const disclaimerProvider = selectedProvider ?? (protocol ? getProviderById(protocol) : null);
-            const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion' };
+            const nameMap: Record<string, string> = { googledrive: 'Google Drive', dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box', pcloud: 'pCloud Drive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk', filen: 'Filen', internxt: 'Internxt', kdrive: 'kDrive', jottacloud: 'Jottacloud', drime: 'Drime', koofr: 'Koofr', opendrive: 'OpenDrive', github: 'GitHub', gitlab: 'GitLab', pixelunion: 'PixelUnion', proton: 'Proton Drive' };
             const providerName = disclaimerProvider?.name
                 || nameMap[connectionParams.providerId || ''] || nameMap[protocol || ''];
             if (!providerName || (disclaimerProvider?.isGeneric && !connectionParams.providerId)) return null;

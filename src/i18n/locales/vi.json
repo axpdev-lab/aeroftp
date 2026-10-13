@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Token cần các phạm vi drive và user_info. Chỉ với drive, token vẫn kết nối và liệt kê tệp, nhưng \"Lấy\" bị từ chối, vì nó đọc hồ sơ tài khoản của bạn để tìm Drive ID.",
             "protonCliTitle": "Sử dụng CLI chính thức của Proton Drive",
             "protonCliBody": "Cài Proton Drive CLI từ proton.me/download/drive/cli, rồi chạy proton-drive auth login trong terminal và hoàn tất trên trình duyệt. AeroFTP không bao giờ thấy mật khẩu của bạn; phiên nằm trong kho bí mật của OS.",
-            "protonUnofficial": "Đây là ứng dụng bên thứ ba không được Proton hỗ trợ chính thức.",
             "protonConnectHint": "\"Kết nối\" dùng CLI đã đăng nhập trên máy này. Một tài khoản Proton cho mỗi người dùng OS.",
             "twakeInstance": "Địa chỉ Twake",
             "twakeInstanceHelp": "Địa chỉ riêng của bạn, ví dụ yourname.twake.app. Bạn cũng có thể dán bất kỳ địa chỉ trang Twake nào từ trình duyệt của mình.",

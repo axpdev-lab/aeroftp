@@ -119,6 +119,19 @@ it('unmount cancels a pending key debounce without a late credential write', asy
     expect(backend.key).toBe('FIXTURE-OLD');
 });
 
+it('model groups on the Models tab collapse the way provider cards do', async () => {
+    await until(() => host.textContent!.includes('Public Fixture'));
+    await act(async () => button('ai.settings.models').click());
+    const header = host.querySelector<HTMLButtonElement>('[data-model-group="p"]')!;
+    expect(header.getAttribute('aria-expanded')).toBe('true');
+    expect(host.textContent).toContain('ai.settings.addCustomModel');
+    await act(async () => header.click());
+    expect(header.getAttribute('aria-expanded')).toBe('false');
+    expect(host.textContent).not.toContain('ai.settings.addCustomModel');
+    await act(async () => header.click());
+    expect(host.textContent).toContain('ai.settings.addCustomModel');
+});
+
 it('a failed public preference delta survives an external update and retries on a later edit', async () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
