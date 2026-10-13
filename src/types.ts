@@ -15,6 +15,8 @@ export interface RemoteFile {
 export interface FileListResponse {
   files: RemoteFile[];
   current_path: string;
+  /** Display-only names keyed by canonical paths, supplied by an unlocked overlay. */
+  breadcrumb_labels?: Record<string, string>;
 }
 
 // Supported storage provider types
