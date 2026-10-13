@@ -351,14 +351,14 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
 #[cfg(target_os = "linux")]
 thread_local! {
     static TRAY_CLOUD_ITEMS: std::cell::RefCell<Option<[tauri::menu::MenuItem<tauri::Wry>; 3]>> =
-        std::cell::RefCell::new(None);
+        const { std::cell::RefCell::new(None) };
 }
 
 #[cfg(not(target_os = "linux"))]
 thread_local! {
     static TRAY_CLOUD_ITEMS: std::cell::RefCell<
         Option<[tauri::menu::IconMenuItem<tauri::Wry>; 3]>,
-    > = std::cell::RefCell::new(None);
+    > = const { std::cell::RefCell::new(None) };
 }
 
 /// Keep the three AeroCloud rows so a later enable or disable can update them.
@@ -576,7 +576,7 @@ pub fn install_linux_tray_menu_icons() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| unsafe {
         let signal_id = gtk::glib::gobject_ffi::g_signal_lookup(
-            b"insert\0".as_ptr() as *const libc::c_char,
+            c"insert".as_ptr(),
             gtk::ffi::gtk_menu_shell_get_type(),
         );
         if signal_id == 0 {
@@ -713,7 +713,7 @@ fn is_tray_cloud_action(label: &str) -> bool {
 #[cfg(target_os = "linux")]
 thread_local! {
     static PROMOTED_CLOUD_ITEMS: std::cell::RefCell<Vec<gtk::MenuItem>> =
-        std::cell::RefCell::new(Vec::new());
+        const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// The visible row is the image item the hook inserted. `libdbusmenu` watches
