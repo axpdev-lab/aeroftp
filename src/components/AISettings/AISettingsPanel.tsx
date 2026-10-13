@@ -921,7 +921,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             icon: <Layers size={14} />,
                         },
                     ].map((tab) => (
-                        <button key={tab.id} type="button" role="tab" aria-selected={activeTab === tab.id} onClick={() => setActiveTab(tab.id as typeof activeTab)} className="ai-settings-tab">
+                        <button key={tab.id} id={`ai-settings-tab-${tab.id}`} type="button" role="tab" aria-selected={activeTab === tab.id} aria-controls="ai-settings-tabpanel" onClick={() => setActiveTab(tab.id as typeof activeTab)} className="ai-settings-tab">
                             {tab.icon}
                             {tab.label}
                         </button>
@@ -929,7 +929,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                 </div>
 
                 {/* Content */}
-                <div className="min-h-0 flex-1 overflow-y-auto p-6">
+                <div id="ai-settings-tabpanel" role="tabpanel" aria-labelledby={`ai-settings-tab-${activeTab}`} className="min-h-0 flex-1 overflow-y-auto p-6">
                     {activeTab === 'providers' && (
                         <div className="space-y-4">
                             {/* Add Provider: Marketplace Button */}
