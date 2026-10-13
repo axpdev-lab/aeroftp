@@ -388,7 +388,12 @@ pub fn apply(choices: Choices) -> Result<WindowsIntegrationStatus, String> {
                 remove.push(feature);
             }
         }
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let install_dir = exe.parent().ok_or("Executable has no parent folder")?;
         let mut cmd = crate::hidden_command("msiexec.exe");
+        // Another Windows user may not have this package's HKCU InstallDir.
+        // Bind maintenance to the running installation's verified location.
+        cmd.arg(format!("INSTALLDIR={}", install_dir.display()));
         cmd.args(["/i", &product, "/qb", "REBOOT=ReallySuppress"]);
         if !add.is_empty() {
             cmd.arg(format!("ADDLOCAL={}", add.join(",")));

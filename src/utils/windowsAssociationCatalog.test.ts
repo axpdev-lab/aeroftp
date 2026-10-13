@@ -36,6 +36,8 @@ describe('Windows installer / Settings registration contract', () => {
     const mandatory = read('src-tauri/installer/main.wxs').split('Id="MainProgram"')[1].split('<Feature Id="ShortcutsFeature"')[0];
     expect(mandatory).toContain('<ComponentRef Id="Path"/>');
     expect(mandatory).toContain('<ComponentRef Id="{{ bin.id }}"/>');
+    expect(read('src-tauri/installer/main.wxs')).toContain('Property="ARPINSTALLLOCATION" Value="[INSTALLDIR]"');
+    expect(read('src-tauri/src/file_associations_windows.rs')).toContain('format!("INSTALLDIR={}", install_dir.display())');
   });
   it('gives both installers real choices rather than retaining automatic default registrations', () => {
     const config = JSON.parse(read('src-tauri/tauri.conf.json'));

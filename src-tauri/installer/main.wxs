@@ -47,7 +47,9 @@
         <!-- Registry components are managed by MSI; Explorer history belongs to
              the invoking user and is cleaned before the executable is removed. -->
         <CustomAction Id="AeroFTPCleanupShellHistory" FileKey="Path" ExeCommand="--aeroftp-cleanup-shell-history" Return="ignore" />
+        <CustomAction Id="AeroFTPSetInstallLocation" Property="ARPINSTALLLOCATION" Value="[INSTALLDIR]" />
         <InstallExecuteSequence>
+            <Custom Action="AeroFTPSetInstallLocation" After="CostFinalize">1</Custom>
             <Custom Action="AeroFTPCleanupShellHistory" Before="RemoveFiles">REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
             <RemoveShortcuts>Installed AND NOT UPGRADINGPRODUCTCODE</RemoveShortcuts>
         </InstallExecuteSequence>
