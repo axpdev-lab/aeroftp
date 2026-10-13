@@ -43,7 +43,7 @@ installer-integration mutation.
 ## Upstream template maintenance
 
 The custom templates start from Tauri CLI 2.11.2, under Tauri's Apache-2.0/MIT
-licenses:
+licenses (the upstream MIT notice is preserved in `TEMPLATE-LICENSE-MIT.txt`):
 
 - https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.11.2/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi
 - https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.11.2/crates/tauri-bundler/src/bundle/windows/msi/main.wxs
