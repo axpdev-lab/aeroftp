@@ -18,7 +18,7 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom, ChevronLeft, ChevronRight, Undo2, Redo2, Save } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom, ChevronLeft, ChevronRight, Undo2, Redo2, Save, CheckCircle2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ViewerBaseProps, ImageMetadata, EditState, INITIAL_EDIT_STATE, CropRect } from '../types';
@@ -37,6 +37,7 @@ interface ImageViewerProps extends ViewerBaseProps {
     className?: string;
     /** Reports unsaved AeroImage edits so the host can guard accidental close. */
     onDirtyChange?: (dirty: boolean) => void;
+    onImageSaved?: (result: ImageResult) => void;
     /** Gallery paging (#128): toolbar prev/next buttons that mirror the modal's
      *  hover arrows and the ← → keys. Disabled when there is nothing to page. */
     onNext?: () => void;
@@ -116,6 +117,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     onError,
     className = '',
     onDirtyChange,
+    onImageSaved,
     onNext,
     onPrevious,
     hasNext,
@@ -160,6 +162,13 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     // Fixed proportions for the selection (width / height); null: free.
     const [cropAspect, setCropAspect] = useState<number | null>(null);
     const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+    const [savedNotice, setSavedNotice] = useState<ImageResult | null>(null);
+    useEffect(() => {
+        if (!savedNotice) return;
+        const timer = window.setTimeout(() => setSavedNotice(null), 1500);
+        return () => window.clearTimeout(timer);
+    }, [savedNotice]);
+    useEffect(() => { setSavedNotice(null); }, [file.path]);
 
     // Image source URL
     const imageSrc = file.blobUrl || file.content as string || '';
@@ -610,9 +619,11 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
 
     const handleSaveResult = useCallback(async (result: ImageResult) => {
         setSaveDialogOpen(false);
+        setSavedNotice(result);
         window.dispatchEvent(new CustomEvent('file-changed', {
             detail: { path: result.path },
         }));
+        onImageSaved?.(result);
         if (result.path !== file.path) {
             // Saved as a copy: these edits are on disk, in the copy.
             setSavedEdit(history.present);
@@ -633,7 +644,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         } catch (err) {
             onError?.(String(err));
         }
-    }, [file.path, fileExt, history.present, resetEdits, onError]);
+    }, [file.path, fileExt, history.present, resetEdits, onError, onImageSaved]);
 
     // Editor keys: Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z, Ctrl+S. Caught before the
     // rest of the app, which has its own Ctrl+S.
@@ -967,6 +978,16 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                             onApply={applyCropDraft}
                             onCancel={cancelCrop}
                         />
+                    )}
+
+                    {savedNotice && (
+                        <div role="status" aria-live="polite" data-image-save-notice
+                            className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                            <div className="max-w-[90%] flex items-center gap-2 rounded-lg border border-green-500/50 bg-[var(--color-bg-secondary)] px-5 py-3 text-sm font-medium text-[var(--color-text-primary)] shadow-xl">
+                                <CheckCircle2 size={20} className="text-green-500 shrink-0" />
+                                {t('preview.image.edit.saveSaved')}
+                            </div>
+                        </div>
                     )}
 
                     {/* Pan indicator when zoomed (hidden during crop/edit) */}

@@ -17403,6 +17403,7 @@ const App: React.FC = () => {
           isOpen={universalPreviewOpen}
           file={universalPreviewFile}
           onClose={closeUniversalPreview}
+          onImageSaved={(result) => { void refreshLocalPanelForPath(parentDir(result.path)); }}
           onNext={previewNext}
           onPrevious={previewPrevious}
           hasNext={hasPreviewNext}
