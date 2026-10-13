@@ -32,6 +32,11 @@ describe('Windows installer / Settings registration contract', () => {
       expect(identities.has(identity)).toBe(false); identities.add(identity);
     }
   });
+  it('keeps the application and CLI binaries in the mandatory MSI feature', () => {
+    const mandatory = read('src-tauri/installer/main.wxs').split('Id="MainProgram"')[1].split('<Feature Id="ShortcutsFeature"')[0];
+    expect(mandatory).toContain('<ComponentRef Id="Path"/>');
+    expect(mandatory).toContain('<ComponentRef Id="{{ bin.id }}"/>');
+  });
   it('gives both installers real choices rather than retaining automatic default registrations', () => {
     const config = JSON.parse(read('src-tauri/tauri.conf.json'));
     expect(config.bundle.windows.nsis.template).toBe('installer/installer.nsi');

@@ -214,6 +214,11 @@
                 Absent="disallow">
 
             <ComponentRef Id="RegistryEntries"/>
+            <!-- Feature-tree choices must never remove the required executables. -->
+            <ComponentRef Id="Path"/>
+            {{#each binaries as |bin| ~}}
+            <ComponentRef Id="{{ bin.id }}"/>
+            {{/each~}}
 
             {{#each resource_file_ids as |resource_file_id| ~}}
                 <ComponentRef Id="{{ resource_file_id }}"/>
@@ -236,6 +241,7 @@
 
             <Feature
                 Id="Environment"
+                Display="hidden"
                 Title="PATH Environment Variable"
                 Description="!(loc.PathEnvVarFeature)"
                 Level="1"
