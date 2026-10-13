@@ -214,7 +214,7 @@ export const storeSavedServerProfiles = async (
 
 export const mergeSavedServerProfile = async (
     profileId: string,
-    updater: (profile: ServerProfile) => ServerProfile,
+    updater: (profile: ServerProfile) => ServerProfile | Promise<ServerProfile>,
     connectionMetadata = false,
 ): Promise<ServerProfile[]> => {
     let result: ServerProfile[] = [];
@@ -229,11 +229,17 @@ export const mergeSavedServerProfile = async (
         }
         const profiles = read.profiles;
         let found = false;
-        const next = profiles.map(profile => {
-            if (profile.id !== profileId) return profile;
+        const next: ServerProfile[] = [];
+        for (const profile of profiles) {
+            if (profile.id !== profileId) {
+                next.push(profile);
+                continue;
+            }
             found = true;
-            return updater(profile);
-        });
+            // The updater may read this profile and await work before returning.
+            // The write queue holds the turn until that promise settles.
+            next.push(await updater(profile));
+        }
         result = found ? next : profiles;
         if (found) await storeSavedServerProfiles(result, connectionMetadata, read.userId);
     };

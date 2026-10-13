@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Relace byla znovu navázána.",
             "sessionNotReconnected": "Relaci se nepodařilo znovu navázat.",
             "sessionReset": "Server poslal více než jednu odpověď, proto byla relace znovu navázána, aby další příkaz četl svou vlastní odpověď.",
-            "sessionStateNote": "Tento příkaz mění, jak server zachází pouze s tímto spojením: přenosy používají vlastní spojení a seznam souborů může vypadat jinak."
+            "sessionStateNote": "Tento příkaz mění, jak server zachází pouze s tímto spojením: přenosy používají vlastní spojení a seznam souborů může vypadat jinak.",
+            "templatesLabel": "Šablona",
+            "templateNone": "Zadat příkaz",
+            "templateQuickConnect": "Šablony se uchovávají u uloženého serveru. Toto připojení přesto může odeslat příkaz zadaný níže.",
+            "importGlftpd": "Přidat příkazy glFTPd",
+            "importDone": "Přidáno {added}. Už uložené: {skipped}.",
+            "saveLine": "Uložit řádek",
+            "saveName": "Název šablony",
+            "saveConfirm": "Uložit",
+            "removeTemplate": "Odebrat",
+            "runTemplate": "Spustit",
+            "duplicateName": "Šablona s názvem {name} už na tomto serveru je.",
+            "templateStored": "Uložená šablona ukládá příkaz s místy k doplnění, nikdy heslo."
         }
     }
 }

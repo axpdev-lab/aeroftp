@@ -1,0 +1,28 @@
+{
+  "catalog": "glftpd",
+  "version": 1,
+  "templates": [
+    { "name": "User", "line": "USER {user}" },
+    { "name": "Users", "line": "USERS" },
+    { "name": "Who", "line": "WHO" },
+    { "name": "Flags", "line": "FLAGS {user}" },
+    { "name": "Seen", "line": "SEEN {user}" },
+    { "name": "Help", "line": "HELP {command}" },
+    { "name": "Version", "line": "VERS" },
+    { "name": "Status", "line": "STAT" },
+    { "name": "Change ratio", "line": "CHANGE {user} ratio {ratio:number}" },
+    { "name": "Change flags", "line": "CHANGE {user} flags {flags}" },
+    { "name": "Change max downloads", "line": "CHANGE {user} max_sim_down {n:number}" },
+    { "name": "Change logins", "line": "CHANGE {user} num_logins {logins:number} {per_ip:number}" },
+    { "name": "Change download speed", "line": "CHANGE {user} max_dlspeed {kbps:number}" },
+    { "name": "Add user", "line": "ADDUSER {user} {pw:secret}" },
+    { "name": "Add user with IP", "line": "ADDUSER {user} {pw:secret} {ident}" },
+    { "name": "Add IP", "line": "ADDIP {user} {ident}" },
+    { "name": "Delete IP", "line": "DELIP {user} {entry}" },
+    { "name": "Change password", "line": "CHPASS {user} {pw:secret}" },
+    { "name": "Change primary group", "line": "CHPGRP {user} {group}" },
+    { "name": "Delete user", "line": "DELUSER {user}" },
+    { "name": "Re-add user", "line": "READD {user}" },
+    { "name": "Rename user", "line": "RENUSER {user} {new_user}" }
+  ]
+}

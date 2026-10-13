@@ -39,7 +39,9 @@ pub mod session;
 pub mod theme;
 pub mod worker;
 
-pub use app::{TuiContext, TuiGroup, TuiIntent, TuiProfile, TuiProfileAction, TuiUser};
+pub use app::{
+    TuiContext, TuiGroup, TuiIntent, TuiProfile, TuiProfileAction, TuiSiteTemplate, TuiUser,
+};
 
 pub type CliTuiTerminal = Terminal<CrosstermBackend<io::Stdout>>;
 
@@ -1708,6 +1710,7 @@ mod render_tests {
                 score: 98,
                 latency_ms: Some(41),
             }),
+            site_templates: Vec::new(),
         };
         TuiContext {
             users: vec![TuiUser {

@@ -6255,7 +6255,19 @@
             "sessionReconnected": "Setan var endurreist.",
             "sessionNotReconnected": "Ekki tókst að endurreisa setuna.",
             "sessionReset": "Þjónninn sendi fleiri en eitt svar, þannig að setan var endurreist svo að næsta skipun lesi sitt eigið svar.",
-            "sessionStateNote": "Þessi skipun breytir aðeins því hvernig þjónninn meðhöndlar þessa tengingu: flutningar nota eigin tengingar og skráalistinn getur litið öðruvísi út."
+            "sessionStateNote": "Þessi skipun breytir aðeins því hvernig þjónninn meðhöndlar þessa tengingu: flutningar nota eigin tengingar og skráalistinn getur litið öðruvísi út.",
+            "templatesLabel": "Sniðmát",
+            "templateNone": "Skrifaðu skipun",
+            "templateQuickConnect": "Sniðmát eru geymd á vistuðum netþjóni. Þessi tenging getur samt sent skipun sem er skrifuð hér fyrir neðan.",
+            "importGlftpd": "Bæta við glFTPd-skipunum",
+            "importDone": "Bætt við {added}. Þegar vistað: {skipped}.",
+            "saveLine": "Vista línu",
+            "saveName": "Heiti sniðmáts",
+            "saveConfirm": "Vista",
+            "removeTemplate": "Fjarlægja",
+            "runTemplate": "Keyra",
+            "duplicateName": "Sniðmát að nafni {name} er þegar á þessum netþjóni.",
+            "templateStored": "Vistað sniðmát geymir skipunina með eyðum til útfyllingar, aldrei lykilorð."
         }
     }
 }

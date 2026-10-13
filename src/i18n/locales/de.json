@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Die Sitzung wurde wiederhergestellt.",
             "sessionNotReconnected": "Die Sitzung konnte nicht wiederhergestellt werden.",
             "sessionReset": "Der Server hat mehr als eine Antwort gesendet, daher wurde die Sitzung wiederhergestellt, damit der nächste Befehl seine eigene Antwort liest.",
-            "sessionStateNote": "Dieser Befehl ändert nur, wie der Server diese Verbindung behandelt: Übertragungen verwenden eigene Verbindungen, und die Dateiliste kann anders aussehen."
+            "sessionStateNote": "Dieser Befehl ändert nur, wie der Server diese Verbindung behandelt: Übertragungen verwenden eigene Verbindungen, und die Dateiliste kann anders aussehen.",
+            "templatesLabel": "Vorlage",
+            "templateNone": "Befehl eingeben",
+            "templateQuickConnect": "Vorlagen werden bei einem gespeicherten Server aufbewahrt. Diese Verbindung kann trotzdem einen unten eingegebenen Befehl senden.",
+            "importGlftpd": "glFTPd-Befehle hinzufügen",
+            "importDone": "Hinzugefügt: {added}. Bereits gespeichert: {skipped}.",
+            "saveLine": "Zeile speichern",
+            "saveName": "Vorlagenname",
+            "saveConfirm": "Speichern",
+            "removeTemplate": "Entfernen",
+            "runTemplate": "Ausführen",
+            "duplicateName": "Eine Vorlage namens {name} ist auf diesem Server bereits vorhanden.",
+            "templateStored": "Eine gespeicherte Vorlage bewahrt den Befehl mit Platzhaltern auf, niemals ein Passwort."
         }
     }
 }

@@ -58,11 +58,13 @@ export function siteSessionOpen(sessionId: string): boolean {
  * Record one exchange for `sessionId`, or nothing when that session was
  * closed meanwhile (`null`): its memory stays gone.
  */
-export function recordSiteExchange(sessionId: string, typed: string, echo: string, report: SiteCommandReport): SiteTranscriptEntry[] | null {
+export function recordSiteExchange(sessionId: string, typed: string, echo: string, report: SiteCommandReport, remember = true): SiteTranscriptEntry[] | null {
     if (closed.has(sessionId)) return null;
     const session = memoryOf(sessionId);
     session.transcript = [...session.transcript, { id: nextId++, echo, report }].slice(-MAX_TRANSCRIPT);
-    if (!carriesSecret(typed)) {
+    // `remember` is false when the backend filled a secret hole the five known
+    // verbs do not cover. The typed line is then not a safe thing to recall.
+    if (remember && !carriesSecret(typed)) {
         session.history = [...session.history.filter(line => line !== typed), typed].slice(-MAX_HISTORY);
     }
     return session.transcript;

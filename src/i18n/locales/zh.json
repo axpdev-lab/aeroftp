@@ -6236,7 +6236,19 @@
             "sessionReconnected": "会话已重新建立。",
             "sessionNotReconnected": "无法重新建立会话。",
             "sessionReset": "服务器发送了多个回复，因此已重新建立会话，以便下一条命令读取它自己的回复。",
-            "sessionStateNote": "此命令仅改变服务器对此连接的处理方式：传输使用各自独立的连接，文件列表可能会显示不同。"
+            "sessionStateNote": "此命令仅改变服务器对此连接的处理方式：传输使用各自独立的连接，文件列表可能会显示不同。",
+            "templatesLabel": "模板",
+            "templateNone": "输入命令",
+            "templateQuickConnect": "模板保存在已保存的服务器上。此连接仍可发送下方输入的命令。",
+            "importGlftpd": "添加 glFTPd 命令",
+            "importDone": "已添加 {added}。已保存：{skipped}。",
+            "saveLine": "保存行",
+            "saveName": "模板名称",
+            "saveConfirm": "保存",
+            "removeTemplate": "移除",
+            "runTemplate": "运行",
+            "duplicateName": "此服务器上已有名为 {name} 的模板。",
+            "templateStored": "已保存的模板只保存带填空的命令，绝不保存密码。"
         }
     }
 }

@@ -6236,7 +6236,19 @@
             "sessionReconnected": "De sessie is hersteld.",
             "sessionNotReconnected": "De sessie kon niet worden hersteld.",
             "sessionReset": "De server stuurde meer dan één antwoord, daarom is de sessie hersteld zodat de volgende opdracht zijn eigen antwoord leest.",
-            "sessionStateNote": "Deze opdracht wijzigt alleen hoe de server deze verbinding behandelt: overdrachten gebruiken hun eigen verbindingen en de bestandslijst kan er anders uitzien."
+            "sessionStateNote": "Deze opdracht wijzigt alleen hoe de server deze verbinding behandelt: overdrachten gebruiken hun eigen verbindingen en de bestandslijst kan er anders uitzien.",
+            "templatesLabel": "Sjabloon",
+            "templateNone": "Opdracht typen",
+            "templateQuickConnect": "Sjablonen worden bewaard bij een opgeslagen server. Deze verbinding kan nog steeds een hieronder getypte opdracht versturen.",
+            "importGlftpd": "glFTPd-opdrachten toevoegen",
+            "importDone": "Toegevoegd: {added}. Al opgeslagen: {skipped}.",
+            "saveLine": "Regel opslaan",
+            "saveName": "Sjabloonnaam",
+            "saveConfirm": "Opslaan",
+            "removeTemplate": "Verwijderen",
+            "runTemplate": "Uitvoeren",
+            "duplicateName": "Een sjabloon met de naam {name} staat al op deze server.",
+            "templateStored": "Een opgeslagen sjabloon bewaart de opdracht met invulvelden, nooit een wachtwoord."
         }
     }
 }

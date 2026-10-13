@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Kikao kimeanzishwa upya.",
             "sessionNotReconnected": "Kikao hakikuweza kuanzishwa upya.",
             "sessionReset": "Seva ilituma jibu zaidi ya moja, kwa hivyo kikao kimeanzishwa upya ili amri inayofuata isome jibu lake yenyewe.",
-            "sessionStateNote": "Amri hii hubadilisha tu jinsi seva inavyoshughulikia muunganisho huu: uhamishaji hutumia miunganisho yake yenyewe, na orodha ya faili inaweza kuonekana tofauti."
+            "sessionStateNote": "Amri hii hubadilisha tu jinsi seva inavyoshughulikia muunganisho huu: uhamishaji hutumia miunganisho yake yenyewe, na orodha ya faili inaweza kuonekana tofauti.",
+            "templatesLabel": "Kiolezo",
+            "templateNone": "Andika amri",
+            "templateQuickConnect": "Violezo huhifadhiwa kwenye seva iliyohifadhiwa. Muunganisho huu bado unaweza kutuma amri iliyoandikwa hapa chini.",
+            "importGlftpd": "Ongeza amri za glFTPd",
+            "importDone": "Imeongezwa {added}. Tayari imehifadhiwa: {skipped}.",
+            "saveLine": "Hifadhi mstari",
+            "saveName": "Jina la kiolezo",
+            "saveConfirm": "Hifadhi",
+            "removeTemplate": "Ondoa",
+            "runTemplate": "Endesha",
+            "duplicateName": "Kiolezo chenye jina {name} tayari kipo kwenye seva hii.",
+            "templateStored": "Kiolezo kilichohifadhiwa huhifadhi amri yenye nafasi za kujaza, kamwe si nenosiri."
         }
     }
 }

@@ -6236,7 +6236,19 @@
             "sessionReconnected": "A munkamenet újra létrejött.",
             "sessionNotReconnected": "A munkamenetet nem sikerült újra létrehozni.",
             "sessionReset": "A szerver egynél több választ küldött, ezért a munkamenet újra létrejött, hogy a következő parancs a sajátját olvassa.",
-            "sessionStateNote": "Ez a parancs csak azt módosítja, hogyan kezeli a szerver ezt a kapcsolatot: az átvitelek saját kapcsolatot használnak, és a fájllista másképp nézhet ki."
+            "sessionStateNote": "Ez a parancs csak azt módosítja, hogyan kezeli a szerver ezt a kapcsolatot: az átvitelek saját kapcsolatot használnak, és a fájllista másképp nézhet ki.",
+            "templatesLabel": "Sablon",
+            "templateNone": "Parancs beírása",
+            "templateQuickConnect": "A sablonok mentett szerveren maradnak. Ez a kapcsolat így is elküldheti az alább beírt parancsot.",
+            "importGlftpd": "glFTPd parancsok hozzáadása",
+            "importDone": "Hozzáadva: {added}. Már mentve: {skipped}.",
+            "saveLine": "Sor mentése",
+            "saveName": "Sablon neve",
+            "saveConfirm": "Mentés",
+            "removeTemplate": "Eltávolítás",
+            "runTemplate": "Futtatás",
+            "duplicateName": "Ezen a szerveren már van {name} nevű sablon.",
+            "templateStored": "A mentett sablon a parancsot kitöltendő helyekkel tárolja, jelszót soha."
         }
     }
 }

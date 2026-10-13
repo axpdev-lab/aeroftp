@@ -6236,7 +6236,19 @@
             "sessionReconnected": "A sessão foi restabelecida.",
             "sessionNotReconnected": "Não foi possível restabelecer a sessão.",
             "sessionReset": "O servidor enviou mais de uma resposta, então a sessão foi restabelecida para que o próximo comando leia a sua própria.",
-            "sessionStateNote": "Este comando altera apenas como o servidor trata esta conexão: as transferências usam suas próprias conexões e a lista de arquivos pode parecer diferente."
+            "sessionStateNote": "Este comando altera apenas como o servidor trata esta conexão: as transferências usam suas próprias conexões e a lista de arquivos pode parecer diferente.",
+            "templatesLabel": "Modelo",
+            "templateNone": "Digitar um comando",
+            "templateQuickConnect": "Os modelos ficam em um servidor salvo. Esta conexão ainda pode enviar um comando escrito abaixo.",
+            "importGlftpd": "Adicionar comandos glFTPd",
+            "importDone": "Adicionados {added}. Já salvos: {skipped}.",
+            "saveLine": "Salvar linha",
+            "saveName": "Nome do modelo",
+            "saveConfirm": "Salvar",
+            "removeTemplate": "Remover",
+            "runTemplate": "Executar",
+            "duplicateName": "Já existe um modelo chamado {name} neste servidor.",
+            "templateStored": "Um modelo salvo guarda o comando com espaços para preencher, nunca uma palavra-passe."
         }
     }
 }

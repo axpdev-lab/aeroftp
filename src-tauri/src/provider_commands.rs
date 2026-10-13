@@ -6255,6 +6255,162 @@ pub async fn provider_site_session(
     })
 }
 
+/// One placeholder of a SITE template, for the dialog's form.
+#[derive(serde::Serialize)]
+pub struct SiteSlotDto {
+    pub name: String,
+    pub kind: String,
+}
+
+/// A template the dialog may store on the profile. No filled-in values.
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SiteTemplateDto {
+    pub id: String,
+    pub name: String,
+    pub line: String,
+}
+
+/// What the dialog sends, and the echo it may show. `line` holds the filled
+/// command, secrets included, and is not for display.
+#[derive(serde::Serialize)]
+pub struct SiteRenderDto {
+    pub line: String,
+    pub echo: String,
+    pub carries_secret: bool,
+}
+
+#[derive(serde::Deserialize)]
+pub struct SiteSlotInput {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct SiteImportDto {
+    pub templates: Vec<SiteTemplateDto>,
+    pub added: Vec<String>,
+    pub skipped: Vec<String>,
+}
+
+fn template_dto(template: &crate::providers::ftp_site_template::SiteTemplate) -> SiteTemplateDto {
+    SiteTemplateDto {
+        id: template.id().to_string(),
+        name: template.name().to_string(),
+        line: template.line().to_string(),
+    }
+}
+
+fn templates_from_dtos(
+    templates: &[SiteTemplateDto],
+) -> Result<Vec<crate::providers::ftp_site_template::SiteTemplate>, String> {
+    use crate::providers::ftp_site_template::{SiteTemplate, TemplateError};
+    let mut out = Vec::with_capacity(templates.len());
+    for template in templates {
+        match SiteTemplate::from_stored(&template.id, &template.name, &template.line) {
+            Ok(template) => out.push(template),
+            Err(TemplateError::BadId) => {
+                return Err("a template id is not one this program issued".to_string());
+            }
+            Err(err) => return Err(err.to_string()),
+        }
+    }
+    Ok(out)
+}
+
+/// The placeholders of a template line. Refuses a line that could not be saved.
+#[tauri::command]
+pub async fn site_template_slots(
+    webview: tauri::Webview,
+    line: String,
+) -> Result<Vec<SiteSlotDto>, String> {
+    use crate::providers::ftp_site_template::SiteTemplate;
+    crate::only_main_window(webview.label(), "site_template_slots")?;
+    let template = SiteTemplate::create("preview", &line).map_err(|err| err.to_string())?;
+    Ok(template
+        .slots()
+        .iter()
+        .map(|slot| SiteSlotDto {
+            name: slot.name().to_string(),
+            kind: slot.kind().label().to_string(),
+        })
+        .collect())
+}
+
+/// Check a template and give it an id. The dialog stores the result; this
+/// command does not write the profile.
+#[tauri::command]
+pub async fn site_template_prepare(
+    webview: tauri::Webview,
+    name: String,
+    line: String,
+) -> Result<SiteTemplateDto, String> {
+    use crate::providers::ftp_site_template::SiteTemplate;
+    crate::only_main_window(webview.label(), "site_template_prepare")?;
+    SiteTemplate::create(&name, &line)
+        .map(|template| template_dto(&template))
+        .map_err(|err| err.to_string())
+}
+
+/// The built-in glFTPd command set from discussion #1109, with new ids.
+#[tauri::command]
+pub async fn site_template_catalog(
+    webview: tauri::Webview,
+) -> Result<Vec<SiteTemplateDto>, String> {
+    use crate::providers::ftp_site_template::{glftpd_catalog, parse_catalog};
+    crate::only_main_window(webview.label(), "site_template_catalog")?;
+    let templates = parse_catalog(glftpd_catalog()).map_err(|err| err.to_string())?;
+    Ok(templates.iter().map(template_dto).collect())
+}
+
+/// Fill a template. The returned `line` is what `provider_site_command` sends.
+#[tauri::command]
+pub async fn site_template_render(
+    webview: tauri::Webview,
+    line: String,
+    values: Vec<SiteSlotInput>,
+) -> Result<SiteRenderDto, String> {
+    use crate::providers::ftp_site_template::{render, SiteTemplate};
+    crate::only_main_window(webview.label(), "site_template_render")?;
+    let template = SiteTemplate::create("preview", &line).map_err(|err| err.to_string())?;
+    let values = values
+        .into_iter()
+        .map(|slot| (slot.name, slot.value))
+        .collect();
+    let rendered = render(&template, &values).map_err(|err| err.to_string())?;
+    Ok(SiteRenderDto {
+        line: rendered.line().to_string(),
+        echo: rendered.echo.clone(),
+        carries_secret: rendered.carries_secret,
+    })
+}
+
+/// Merge a catalog onto the templates the dialog already has. Same names are
+/// left as the profile saved them. This command does not write the profile.
+#[tauri::command]
+pub async fn site_template_import(
+    webview: tauri::Webview,
+    existing: Vec<SiteTemplateDto>,
+    source: String,
+) -> Result<SiteImportDto, String> {
+    use crate::providers::ftp_site_template::{builtin_catalog, merge_import, parse_catalog};
+    crate::only_main_window(webview.label(), "site_template_import")?;
+    let existing = templates_from_dtos(&existing)?;
+    let text = if source.trim_start().starts_with('{') {
+        source
+    } else {
+        builtin_catalog(&source)
+            .map_err(|err| err.to_string())?
+            .to_string()
+    };
+    let incoming = parse_catalog(&text).map_err(|err| err.to_string())?;
+    let (merged, report) = merge_import(&existing, &incoming).map_err(|err| err.to_string())?;
+    Ok(SiteImportDto {
+        templates: merged.iter().map(template_dto).collect(),
+        added: report.added,
+        skipped: report.skipped,
+    })
+}
+
 /// Keep connection alive (NOOP equivalent)
 #[tauri::command]
 pub async fn provider_keep_alive(state: State<'_, ProviderState>) -> Result<(), String> {

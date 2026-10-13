@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Seja je bila znova vzpostavljena.",
             "sessionNotReconnected": "Seje ni bilo mogoče znova vzpostaviti.",
             "sessionReset": "Strežnik je poslal več kot en odgovor, zato je bila seja znova vzpostavljena, da bo naslednji ukaz prebral svoj odgovor.",
-            "sessionStateNote": "Ta ukaz spremeni le to, kako strežnik obravnava to povezavo: prenosi uporabljajo lastne povezave, seznam datotek pa je lahko videti drugače."
+            "sessionStateNote": "Ta ukaz spremeni le to, kako strežnik obravnava to povezavo: prenosi uporabljajo lastne povezave, seznam datotek pa je lahko videti drugače.",
+            "templatesLabel": "Predloga",
+            "templateNone": "Vnesi ukaz",
+            "templateQuickConnect": "Predloge ostanejo na shranjenem strežniku. Ta povezava lahko še vedno pošlje spodaj vnesen ukaz.",
+            "importGlftpd": "Dodaj ukaze glFTPd",
+            "importDone": "Dodano {added}. Že shranjeno: {skipped}.",
+            "saveLine": "Shrani vrstico",
+            "saveName": "Ime predloge",
+            "saveConfirm": "Shrani",
+            "removeTemplate": "Odstrani",
+            "runTemplate": "Zaženi",
+            "duplicateName": "Predloga z imenom {name} je na tem strežniku že shranjena.",
+            "templateStored": "Shranjena predloga shrani ukaz z mesti za vnos, nikoli gesla."
         }
     }
 }

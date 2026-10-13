@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Phiên đã được thiết lập lại.",
             "sessionNotReconnected": "Không thể thiết lập lại phiên.",
             "sessionReset": "Máy chủ đã gửi nhiều hơn một phản hồi, nên phiên đã được thiết lập lại để lệnh tiếp theo đọc phản hồi của chính nó.",
-            "sessionStateNote": "Lệnh này chỉ thay đổi cách máy chủ xử lý kết nối này: các lượt truyền dùng kết nối riêng, và danh sách tệp có thể trông khác."
+            "sessionStateNote": "Lệnh này chỉ thay đổi cách máy chủ xử lý kết nối này: các lượt truyền dùng kết nối riêng, và danh sách tệp có thể trông khác.",
+            "templatesLabel": "Mẫu",
+            "templateNone": "Nhập lệnh",
+            "templateQuickConnect": "Mẫu được giữ trên máy chủ đã lưu. Kết nối này vẫn có thể gửi lệnh nhập ở bên dưới.",
+            "importGlftpd": "Thêm lệnh glFTPd",
+            "importDone": "Đã thêm {added}. Đã lưu sẵn: {skipped}.",
+            "saveLine": "Lưu dòng",
+            "saveName": "Tên mẫu",
+            "saveConfirm": "Lưu",
+            "removeTemplate": "Xóa",
+            "runTemplate": "Chạy",
+            "duplicateName": "Đã có mẫu tên {name} trên máy chủ này.",
+            "templateStored": "Mẫu đã lưu giữ lệnh kèm chỗ để điền, không bao giờ giữ mật khẩu."
         }
     }
 }

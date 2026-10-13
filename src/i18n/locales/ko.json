@@ -6236,7 +6236,19 @@
             "sessionReconnected": "세션이 다시 연결되었습니다.",
             "sessionNotReconnected": "세션을 다시 연결하지 못했습니다.",
             "sessionReset": "서버가 둘 이상의 응답을 보냈으므로, 다음 명령이 자신의 응답을 읽을 수 있도록 세션을 다시 연결했습니다.",
-            "sessionStateNote": "이 명령은 서버가 이 연결만 처리하는 방식을 변경합니다. 전송은 자체 연결을 사용하며, 파일 목록이 다르게 보일 수 있습니다."
+            "sessionStateNote": "이 명령은 서버가 이 연결만 처리하는 방식을 변경합니다. 전송은 자체 연결을 사용하며, 파일 목록이 다르게 보일 수 있습니다.",
+            "templatesLabel": "템플릿",
+            "templateNone": "명령 입력",
+            "templateQuickConnect": "템플릿은 저장된 서버에 보관됩니다. 이 연결에서도 아래에 입력한 명령을 보낼 수 있습니다.",
+            "importGlftpd": "glFTPd 명령 추가",
+            "importDone": "{added}개 추가됨. 이미 저장됨: {skipped}.",
+            "saveLine": "줄 저장",
+            "saveName": "템플릿 이름",
+            "saveConfirm": "저장",
+            "removeTemplate": "제거",
+            "runTemplate": "실행",
+            "duplicateName": "{name} 이름의 템플릿이 이 서버에 이미 있습니다.",
+            "templateStored": "저장된 템플릿은 값을 채울 칸이 있는 명령을 저장하며, 비밀번호는 저장하지 않습니다."
         }
     }
 }

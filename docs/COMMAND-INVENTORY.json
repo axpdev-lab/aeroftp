@@ -160,9 +160,9 @@
       }
     ]
   },
-  "app_version": "4.2.2",
+  "app_version": "4.2.3",
   "cli": {
-    "count": 96,
+    "count": 97,
     "subcommands": [
       {
         "about": "Show detailed server info, account, and storage quota",
@@ -485,6 +485,10 @@
         "name": "site"
       },
       {
+        "about": "List, import, export, add and remove SITE templates saved on a profile",
+        "name": "site-template"
+      },
+      {
         "about": "Show total size and object count under a path (recursive scan). A scan cancelled with Ctrl-C still prints the figure it reached and exits 4 (partial), so a script can tell it from a complete measurement",
         "name": "size"
       },
@@ -552,7 +556,7 @@
   },
   "counts": {
     "agent_tools": 39,
-    "cli_subcommands": 96,
+    "cli_subcommands": 97,
     "mcp_by_namespace": {
       "aeroftp_": 38,
       "other": 1,
@@ -562,7 +566,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 39,
     "mcp_tools_total": 77,
-    "tauri_commands": 777
+    "tauri_commands": 782
   },
   "mcp": {
     "count": 77,
@@ -955,7 +959,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 452,
+    "name_matched_count": 457,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1752,6 +1756,11 @@
       "provider_keep_alive",
       "provider_site_command",
       "provider_site_session",
+      "site_template_slots",
+      "site_template_prepare",
+      "site_template_catalog",
+      "site_template_render",
+      "site_template_import",
       "oauth2_connect",
       "oauth2_full_auth",
       "twake_sign_in",
@@ -2067,6 +2076,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 777
+    "count": 782
   }
 }

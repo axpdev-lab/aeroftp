@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sesi telah dipulihkan.",
             "sessionNotReconnected": "Sesi tidak dapat dipulihkan.",
             "sessionReset": "Pelayan menghantar lebih daripada satu balasan, jadi sesi dipulihkan supaya arahan seterusnya membaca balasannya sendiri.",
-            "sessionStateNote": "Arahan ini hanya mengubah cara pelayan melayan sambungan ini: pemindahan menggunakan sambungannya sendiri, dan senarai fail mungkin kelihatan berbeza."
+            "sessionStateNote": "Arahan ini hanya mengubah cara pelayan melayan sambungan ini: pemindahan menggunakan sambungannya sendiri, dan senarai fail mungkin kelihatan berbeza.",
+            "templatesLabel": "Templat",
+            "templateNone": "Taip arahan",
+            "templateQuickConnect": "Templat disimpan bersama pelayan tersimpan. Sambungan ini masih boleh menghantar arahan yang ditaip di bawah.",
+            "importGlftpd": "Tambah arahan glFTPd",
+            "importDone": "Ditambah {added}. Sudah disimpan: {skipped}.",
+            "saveLine": "Simpan baris",
+            "saveName": "Nama templat",
+            "saveConfirm": "Simpan",
+            "removeTemplate": "Buang",
+            "runTemplate": "Jalankan",
+            "duplicateName": "Templat bernama {name} sudah ada pada pelayan ini.",
+            "templateStored": "Templat yang disimpan berisi arahan dengan ruang untuk diisi, bukan kata laluan."
         }
     }
 }

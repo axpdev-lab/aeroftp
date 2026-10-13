@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Oturum yeniden kuruldu.",
             "sessionNotReconnected": "Oturum yeniden kurulamadı.",
             "sessionReset": "Sunucu birden fazla yanıt gönderdi, bu yüzden sonraki komutun kendi yanıtını okuması için oturum yeniden kuruldu.",
-            "sessionStateNote": "Bu komut yalnızca sunucunun bu bağlantıya nasıl davrandığını değiştirir: aktarımlar kendi bağlantılarını kullanır ve dosya listesi farklı görünebilir."
+            "sessionStateNote": "Bu komut yalnızca sunucunun bu bağlantıya nasıl davrandığını değiştirir: aktarımlar kendi bağlantılarını kullanır ve dosya listesi farklı görünebilir.",
+            "templatesLabel": "Şablon",
+            "templateNone": "Bir komut yazın",
+            "templateQuickConnect": "Şablonlar kayıtlı bir sunucuda durur. Bu bağlantı yine de aşağıya yazılan bir komutu gönderebilir.",
+            "importGlftpd": "glFTPd komutları ekle",
+            "importDone": "Eklendi: {added}. Zaten kayıtlı: {skipped}.",
+            "saveLine": "Satırı kaydet",
+            "saveName": "Şablon adı",
+            "saveConfirm": "Kaydet",
+            "removeTemplate": "Kaldır",
+            "runTemplate": "Çalıştır",
+            "duplicateName": "{name} adlı bir şablon bu sunucuda zaten var.",
+            "templateStored": "Kayıtlı bir şablon komutu doldurulacak boşluklarla saklar, parolayı asla saklamaz."
         }
     }
 }

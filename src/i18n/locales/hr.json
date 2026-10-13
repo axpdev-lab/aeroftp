@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sesija je ponovno uspostavljena.",
             "sessionNotReconnected": "Sesiju nije bilo moguće ponovno uspostaviti.",
             "sessionReset": "Poslužitelj je poslao više od jednog odgovora, pa je sesija ponovno uspostavljena kako bi sljedeća naredba pročitala svoj odgovor.",
-            "sessionStateNote": "Ova naredba mijenja način na koji poslužitelj postupa samo s ovom vezom: prijenosi koriste vlastite veze, a popis datoteka može izgledati drukčije."
+            "sessionStateNote": "Ova naredba mijenja način na koji poslužitelj postupa samo s ovom vezom: prijenosi koriste vlastite veze, a popis datoteka može izgledati drukčije.",
+            "templatesLabel": "Predložak",
+            "templateNone": "Upiši naredbu",
+            "templateQuickConnect": "Predlošci se čuvaju na spremljenom poslužitelju. Ova veza i dalje može poslati naredbu upisanu ispod.",
+            "importGlftpd": "Dodaj glFTPd naredbe",
+            "importDone": "Dodano {added}. Već spremljeno: {skipped}.",
+            "saveLine": "Spremi redak",
+            "saveName": "Naziv predloška",
+            "saveConfirm": "Spremi",
+            "removeTemplate": "Ukloni",
+            "runTemplate": "Pokreni",
+            "duplicateName": "Predložak naziva {name} već je na ovom poslužitelju.",
+            "templateStored": "Spremljeni predložak sprema naredbu s mjestima za unos, nikad lozinku."
         }
     }
 }

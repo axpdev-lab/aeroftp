@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Seanss taastati.",
             "sessionNotReconnected": "Seanssi ei õnnestunud taastada.",
             "sessionReset": "Server saatis rohkem kui ühe vastuse, seega seanss taastati, et järgmine käsk loeks oma vastust.",
-            "sessionStateNote": "See käsk muudab ainult seda, kuidas server seda ühendust kohtleb: ülekanded kasutavad oma ühendusi ja faililoend võib välja näha teistsugune."
+            "sessionStateNote": "See käsk muudab ainult seda, kuidas server seda ühendust kohtleb: ülekanded kasutavad oma ühendusi ja faililoend võib välja näha teistsugune.",
+            "templatesLabel": "Mall",
+            "templateNone": "Sisesta käsk",
+            "templateQuickConnect": "Mallid hoitakse salvestatud serveris. See ühendus saab siiski saata allpool sisestatud käsu.",
+            "importGlftpd": "Lisa glFTPd käsud",
+            "importDone": "Lisatud {added}. Juba salvestatud: {skipped}.",
+            "saveLine": "Salvesta rida",
+            "saveName": "Malli nimi",
+            "saveConfirm": "Salvesta",
+            "removeTemplate": "Eemalda",
+            "runTemplate": "Käivita",
+            "duplicateName": "Mall nimega {name} on sellel serveril juba olemas.",
+            "templateStored": "Salvestatud mall hoiab käsku koos täidetavate kohtadega, mitte kunagi parooli."
         }
     }
 }

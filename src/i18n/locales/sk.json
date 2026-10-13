@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Relácia bola obnovená.",
             "sessionNotReconnected": "Reláciu sa nepodarilo obnoviť.",
             "sessionReset": "Server poslal viac ako jednu odpoveď, preto bola relácia obnovená, aby ďalší príkaz čítal svoju vlastnú odpoveď.",
-            "sessionStateNote": "Tento príkaz mení len to, ako server zaobchádza s týmto spojením: prenosy používajú vlastné spojenia a zoznam súborov môže vyzerať inak."
+            "sessionStateNote": "Tento príkaz mení len to, ako server zaobchádza s týmto spojením: prenosy používajú vlastné spojenia a zoznam súborov môže vyzerať inak.",
+            "templatesLabel": "Šablóna",
+            "templateNone": "Zadať príkaz",
+            "templateQuickConnect": "Šablóny sa uchovávajú na uloženom serveri. Toto pripojenie môže napriek tomu odoslať príkaz zadaný nižšie.",
+            "importGlftpd": "Pridať príkazy glFTPd",
+            "importDone": "Pridané {added}. Už uložené: {skipped}.",
+            "saveLine": "Uložiť riadok",
+            "saveName": "Názov šablóny",
+            "saveConfirm": "Uložiť",
+            "removeTemplate": "Odstrániť",
+            "runTemplate": "Spustiť",
+            "duplicateName": "Šablóna s názvom {name} už je na tomto serveri.",
+            "templateStored": "Uložená šablóna ukladá príkaz s miestami na doplnenie, nikdy heslo."
         }
     }
 }

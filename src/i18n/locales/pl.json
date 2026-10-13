@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sesja została przywrócona.",
             "sessionNotReconnected": "Nie udało się przywrócić sesji.",
             "sessionReset": "Serwer wysłał więcej niż jedną odpowiedź, dlatego sesję przywrócono, aby kolejne polecenie odczytało własną odpowiedź.",
-            "sessionStateNote": "To polecenie zmienia tylko sposób, w jaki serwer traktuje to połączenie: transfery używają własnych połączeń, a lista plików może wyglądać inaczej."
+            "sessionStateNote": "To polecenie zmienia tylko sposób, w jaki serwer traktuje to połączenie: transfery używają własnych połączeń, a lista plików może wyglądać inaczej.",
+            "templatesLabel": "Szablon",
+            "templateNone": "Wpisz polecenie",
+            "templateQuickConnect": "Szablony są trzymane na zapisanym serwerze. To połączenie może nadal wysłać polecenie wpisane poniżej.",
+            "importGlftpd": "Dodaj polecenia glFTPd",
+            "importDone": "Dodano {added}. Już zapisane: {skipped}.",
+            "saveLine": "Zapisz wiersz",
+            "saveName": "Nazwa szablonu",
+            "saveConfirm": "Zapisz",
+            "removeTemplate": "Usuń",
+            "runTemplate": "Uruchom",
+            "duplicateName": "Szablon o nazwie {name} jest już na tym serwerze.",
+            "templateStored": "Zapisany szablon przechowuje polecenie z polami do uzupełnienia, nigdy hasła."
         }
     }
 }

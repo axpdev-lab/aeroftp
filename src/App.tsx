@@ -17165,6 +17165,7 @@ const App: React.FC = () => {
             isOpen={showSiteCommand && canSendSiteCommand}
             sessionId={activeSessionId}
             sessionLabel={siteSessionLabel}
+            profileId={activeSiteSession?.savedServerId ?? activeSiteSession?.connectionParams?.savedServerId ?? null}
             onClose={(changedFiles) => {
               setShowSiteCommand(false);
               if (changedFiles) loadRemoteFiles(undefined, true);
