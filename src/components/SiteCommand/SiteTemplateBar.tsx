@@ -94,9 +94,14 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
         return <p className="px-5 pt-2 text-[11px] text-gray-500 dark:text-gray-400">{t('siteCommand.templateQuickConnect')}</p>;
     }
 
-    const persist = async (next: SiteTemplate[]) => {
-        await mergeSavedServerProfile(profileId, profile => ({ ...profile, siteTemplates: next }));
-        setRevision(revision + 1);
+    const changeTemplates = async (
+        change: (current: SiteTemplate[]) => SiteTemplate[] | Promise<SiteTemplate[]>,
+    ) => {
+        await mergeSavedServerProfile(profileId, async profile => {
+            const current = profile.siteTemplates ?? [];
+            return { ...profile, siteTemplates: await change(current) };
+        });
+        setRevision(value => value + 1);
     };
 
     const run = async () => {
@@ -129,9 +134,15 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
                 version: 1,
                 templates: catalog.map(template => ({ name: template.name, line: template.line })),
             });
-            const imported = await invoke<SiteImport>('site_template_import', { existing: templates, source });
-            await persist(imported.templates);
-            setNotice(t('siteCommand.importDone', { added: imported.added.length, skipped: imported.skipped.length }));
+            let added = 0;
+            let skipped = 0;
+            await changeTemplates(async existing => {
+                const imported = await invoke<SiteImport>('site_template_import', { existing, source });
+                added = imported.added.length;
+                skipped = imported.skipped.length;
+                return imported.templates;
+            });
+            setNotice(t('siteCommand.importDone', { added, skipped }));
         } catch (err) {
             setError(errorText(err));
         }
@@ -140,14 +151,15 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
     const save = async () => {
         const name = saveName.trim();
         if (!name || !draft.trim()) return;
-        if (templates.some(template => template.name.toLowerCase() === name.toLowerCase())) {
-            setError(t('siteCommand.duplicateName', { name }));
-            return;
-        }
         setError('');
         try {
             const prepared = await invoke<SiteTemplate>('site_template_prepare', { name, line: draft });
-            await persist([...templates, prepared]);
+            await changeTemplates(current => {
+                if (current.some(template => template.name.toLowerCase() === name.toLowerCase())) {
+                    throw new Error(t('siteCommand.duplicateName', { name }));
+                }
+                return [...current, prepared];
+            });
             setSaveName('');
             setSaving(false);
             setSelectedId(prepared.id);
@@ -160,7 +172,8 @@ export const SiteTemplateBar: React.FC<SiteTemplateBarProps> = ({ profileId, dra
         if (!selected) return;
         setError('');
         try {
-            await persist(templates.filter(template => template.id !== selected.id));
+            const removedId = selected.id;
+            await changeTemplates(current => current.filter(template => template.id !== removedId));
             setSelectedId('');
         } catch (err) {
             setError(errorText(err));

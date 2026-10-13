@@ -343,4 +343,26 @@ describe('account-bound profile writes', () => {
             expectedUserId: 4,
         });
     });
+
+    it('awaits an updater before writing the merged profile', async () => {
+        let release: (profile: ServerProfile) => void = () => {};
+        const gate = new Promise<ServerProfile>(resolve => {
+            release = resolve;
+        });
+        mockInvoke
+            .mockResolvedValueOnce({ userId: 4, profiles: [sampleProfile()] })
+            .mockResolvedValueOnce(undefined);
+
+        const pending = mergeSavedServerProfile('srv_1', () => gate);
+        await vi.waitFor(() => {
+            expect(mockInvoke).toHaveBeenCalledTimes(1);
+        });
+        release(sampleProfile({ name: 'queued' }));
+        await pending;
+
+        expect(mockInvoke).toHaveBeenLastCalledWith('user_partitions_save_active_server_profiles', {
+            profiles: [sampleProfile({ name: 'queued' })],
+            expectedUserId: 4,
+        });
+    });
 });

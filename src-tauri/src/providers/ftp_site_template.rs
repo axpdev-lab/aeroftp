@@ -228,6 +228,10 @@ pub enum TemplateError {
     ValueControl {
         name: String,
     },
+    /// A space would split the SITE argument and shift whatever follows it.
+    ValueWhitespace {
+        name: String,
+    },
     RenderedTooLong,
     /// The profile field is present and is not a template list.
     BadProfileField,
@@ -284,6 +288,9 @@ impl fmt::Display for TemplateError {
             Self::BadNumber { name } => write!(f, "{{{name}}} must be digits"),
             Self::ValueControl { name } => {
                 write!(f, "{{{name}}} contains a control character")
+            }
+            Self::ValueWhitespace { name } => {
+                write!(f, "{{{name}}} contains whitespace")
             }
             Self::RenderedTooLong => write!(
                 f,
@@ -703,6 +710,13 @@ fn check_value(slot: &Slot, value: &str) -> Result<(), TemplateError> {
             name: slot.name.clone(),
         });
     }
+    // Whitespace is not only a control character: a space would split the
+    // argument and move a later secret into the wrong position.
+    if value.chars().any(char::is_whitespace) {
+        return Err(TemplateError::ValueWhitespace {
+            name: slot.name.clone(),
+        });
+    }
     if value.chars().any(char::is_control) {
         return Err(TemplateError::ValueControl {
             name: slot.name.clone(),
@@ -753,6 +767,23 @@ mod tests {
             !format!("{rendered:?}").contains("hunter2"),
             "debug printed the password: {rendered:?}"
         );
+    }
+
+    #[test]
+    fn a_slot_value_with_whitespace_cannot_shift_a_later_argument() {
+        let template =
+            SiteTemplate::create("Change password", "CHPASS {user} {pw:secret}").unwrap();
+        assert!(matches!(
+            render(
+                &template,
+                &values(&[("user", "alice hunter2"), ("pw", "secret")])
+            ),
+            Err(TemplateError::ValueWhitespace { .. })
+        ));
+        assert!(matches!(
+            render(&template, &values(&[("user", "alice"), ("pw", "one two")])),
+            Err(TemplateError::ValueWhitespace { .. })
+        ));
     }
 
     #[test]
@@ -817,7 +848,7 @@ mod tests {
         assert!(!exported.contains("hunter2"));
         assert!(!exported.contains("\"id\""));
         let custom = SiteTemplate::create("Who", "WHO -hidden").unwrap();
-        let (merged, report) = merge_import(&[custom.clone()], &incoming).unwrap();
+        let (merged, report) = merge_import(std::slice::from_ref(&custom), &incoming).unwrap();
         assert_eq!(report.skipped, vec!["Who".to_string()]);
         assert_eq!(merged[0].line(), "WHO -hidden");
         assert_eq!(merged.len(), incoming.len());
@@ -835,7 +866,7 @@ mod tests {
     fn a_profile_round_trip_drops_nothing_and_rejects_an_extra_field() {
         let template = SiteTemplate::create("User", "USER {user}").unwrap();
         let mut profile = json!({"id": "srv_1", "name": "Lab", "protocol": "ftps"});
-        write_profile_templates(&mut profile, &[template.clone()]);
+        write_profile_templates(&mut profile, std::slice::from_ref(&template));
         let read = read_profile_templates(&profile).unwrap();
         assert_eq!(read[0].line(), "USER {user}");
         assert_eq!(profile["name"], "Lab");
