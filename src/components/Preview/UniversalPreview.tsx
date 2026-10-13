@@ -33,6 +33,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     isOpen,
     file,
     onClose,
+    onImageSaved,
     onDownload,
     onEdit,
     onNext,
@@ -119,7 +120,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     const renderViewer = () => {
         switch (category) {
             case 'image':
-                return <ImageViewer file={file} onError={handleViewerError} onDirtyChange={setPreviewDirty}
+                return <ImageViewer file={file} onError={handleViewerError} onDirtyChange={setPreviewDirty} onImageSaved={onImageSaved}
                     onNext={onNext} onPrevious={onPrevious} hasNext={hasNext} hasPrevious={hasPrevious} />;
 
             case 'audio':

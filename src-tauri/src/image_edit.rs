@@ -11,7 +11,8 @@ use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{DynamicImage, GenericImageView};
 use serde::{Deserialize, Serialize};
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
+use std::path::Path;
 
 use crate::filesystem::validate_path;
 
@@ -122,42 +123,15 @@ pub async fn process_image(
             .to_lowercase();
 
         let format_name = ext.clone();
+        let output_format = image::ImageFormat::from_extension(&ext)
+            .ok_or_else(|| format!("Unsupported output image format: {ext}"))?;
 
-        // Atomic write: write to temp file then rename to prevent data loss
-        let output_path_obj = std::path::Path::new(&output);
-        let parent_dir = output_path_obj
-            .parent()
-            .unwrap_or(std::path::Path::new("."));
-        let temp_path = parent_dir.join(format!(".aeroftp-img-{}.tmp", std::process::id()));
-
-        // Save with appropriate format to temp file
-        match ext.as_str() {
-            "jpg" | "jpeg" => {
-                // JPEG: no alpha channel: convert to RGB8
-                let rgb = img.to_rgb8();
-                let file = std::fs::File::create(&temp_path)
-                    .map_err(|e| format!("Failed to create output file: {e}"))?;
-                let writer = BufWriter::new(file);
-                let encoder = JpegEncoder::new_with_quality(writer, quality);
-                rgb.write_with_encoder(encoder).map_err(|e| {
-                    let _ = std::fs::remove_file(&temp_path);
-                    format!("Failed to encode JPEG: {e}")
-                })?;
-            }
-            _ => {
-                // All other formats: auto-detect from extension
-                img.save(&temp_path).map_err(|e| {
-                    let _ = std::fs::remove_file(&temp_path);
-                    format!("Failed to save image: {e}")
-                })?;
-            }
-        }
-
-        // Rename temp file to final destination (atomic on same filesystem)
-        std::fs::rename(&temp_path, &output).map_err(|e| {
-            let _ = std::fs::remove_file(&temp_path);
-            format!("Failed to finalize output file: {e}")
-        })?;
+        // Each save owns an exclusive staging file in the destination directory.
+        // Persist only after encoding and flushing; failure drops just this file.
+        let staged = stage_image(&img, Path::new(&output), output_format, quality)?;
+        staged
+            .persist(&output)
+            .map_err(|e| format!("Failed to finalize output file: {e}"))?;
 
         // Get output file size
         let output_meta =
@@ -175,6 +149,40 @@ pub async fn process_image(
     .map_err(|e| format!("Processing thread failed: {e}"))??;
 
     Ok(result)
+}
+
+/// Encode and flush an image into an exclusively created, per-save staging file.
+/// The caller publishes it atomically; dropping it cleans up an abandoned save.
+fn stage_image(
+    img: &DynamicImage,
+    output: &Path,
+    format: image::ImageFormat,
+    quality: u8,
+) -> Result<tempfile::NamedTempFile, String> {
+    let parent = output.parent().unwrap_or(Path::new("."));
+    let mut staged = tempfile::Builder::new()
+        .prefix(".aeroftp-img-")
+        .suffix(".tmp")
+        .tempfile_in(parent)
+        .map_err(|e| format!("Failed to create output file: {e}"))?;
+    {
+        // Both encoders use the owned file handle; reopening a staging path can
+        // truncate another save's file or follow a substituted path.
+        let mut writer = BufWriter::new(staged.as_file_mut());
+        if format == image::ImageFormat::Jpeg {
+            let rgb = img.to_rgb8();
+            let encoder = JpegEncoder::new_with_quality(&mut writer, quality);
+            rgb.write_with_encoder(encoder)
+                .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
+        } else {
+            img.write_to(&mut writer, format)
+                .map_err(|e| format!("Failed to save image: {e}"))?;
+        }
+        writer
+            .flush()
+            .map_err(|e| format!("Failed to flush output file: {e}"))?;
+    }
+    Ok(staged)
 }
 
 /// Apply a single operation to a DynamicImage, returning the modified image.
@@ -291,6 +299,174 @@ fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImag
 mod tests {
     use super::*;
     use image::ImageEncoder;
+
+    #[test]
+    fn overlapping_stages_keep_their_own_images_and_leave_existing_files_untouched() {
+        let dir = tempfile::tempdir().expect("test directory");
+        let existing = dir
+            .path()
+            .join(format!(".aeroftp-img-{}.tmp", std::process::id()));
+        std::fs::write(&existing, b"existing file").expect("existing staging name");
+        let mut pending = Vec::new();
+        for (ext, format, width, color) in [
+            ("jpg", image::ImageFormat::Jpeg, 8, [220, 30, 10, 255]),
+            ("png", image::ImageFormat::Png, 12, [10, 220, 30, 100]),
+            ("webp", image::ImageFormat::WebP, 16, [30, 10, 220, 200]),
+        ] {
+            let img = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+                width,
+                6,
+                image::Rgba(color),
+            ));
+            let output = dir.path().join(format!("output.{ext}"));
+            let staged = stage_image(&img, &output, format, 85).expect("stage image");
+            let bytes = std::fs::read(staged.path()).expect("staged bytes");
+            pending.push((staged, output, format, width, color, bytes));
+        }
+        for (index, (staged, _, _, _, _, bytes)) in pending.iter().enumerate() {
+            assert_eq!(
+                &std::fs::read(staged.path()).expect("stage survives other saves"),
+                bytes
+            );
+            assert!(pending
+                .iter()
+                .skip(index + 1)
+                .all(|other| other.0.path() != staged.path()));
+        }
+        // Finish in the opposite order to creation, after every stage exists.
+        for (staged, output, format, width, color, bytes) in pending.into_iter().rev() {
+            staged.persist(&output).expect("publish this save");
+            assert_eq!(std::fs::read(&output).expect("published bytes"), bytes);
+            let saved = image::open(&output).expect("decode saved image");
+            assert_eq!(saved.dimensions(), (width, 6));
+            if format != image::ImageFormat::Jpeg {
+                assert_eq!(saved.get_pixel(0, 0), image::Rgba(color));
+            }
+        }
+        assert_eq!(
+            std::fs::read(&existing).expect("existing file survives"),
+            b"existing file"
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).expect("outputs").count(), 4);
+    }
+
+    #[tokio::test]
+    async fn failed_publication_cleans_up_only_its_staging_file() {
+        let dir = tempfile::tempdir().expect("test directory");
+        let input = dir.path().join("original.png");
+        DynamicImage::new_rgb8(8, 6).save(&input).expect("fixture");
+        let original_bytes = std::fs::read(&input).expect("original bytes");
+        let output = dir.path().join("destination.png");
+        std::fs::create_dir(&output).expect("block publication with a directory");
+        let marker = output.join("keep.txt");
+        std::fs::write(&marker, b"keep").expect("destination contents");
+        let other_stage = stage_image(
+            &DynamicImage::new_rgb8(2, 3),
+            &input,
+            image::ImageFormat::Png,
+            90,
+        )
+        .expect("another pending save");
+        let other_bytes = std::fs::read(other_stage.path()).expect("other stage bytes");
+        let err = process_image(
+            input.to_string_lossy().into_owned(),
+            output.to_string_lossy().into_owned(),
+            Vec::new(),
+            None,
+        )
+        .await
+        .expect_err("cannot replace a directory with an image");
+        assert!(err.contains("Failed to finalize output file"), "{err}");
+        assert_eq!(
+            std::fs::read(&input).expect("original survives"),
+            original_bytes
+        );
+        assert_eq!(
+            std::fs::read(&marker).expect("destination survives"),
+            b"keep"
+        );
+        assert_eq!(
+            std::fs::read(other_stage.path()).expect("other stage survives"),
+            other_bytes
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .expect("only owned stage remains")
+                .count(),
+            3
+        );
+        drop(other_stage);
+        assert_eq!(
+            std::fs::read_dir(dir.path())
+                .expect("abandoned stage removed")
+                .count(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn saves_a_crop_as_a_copy_and_over_the_original_in_every_output_format() {
+        let dir = tempfile::tempdir().expect("test directory");
+        let original = DynamicImage::ImageRgba8(image::RgbaImage::from_fn(8, 6, |x, y| {
+            image::Rgba([(x * 30) as u8, (y * 40) as u8, 80, 255])
+        }));
+        for (ext, format) in [
+            ("png", image::ImageFormat::Png),
+            ("jpg", image::ImageFormat::Jpeg),
+            ("jpeg", image::ImageFormat::Jpeg),
+            ("webp", image::ImageFormat::WebP),
+            ("bmp", image::ImageFormat::Bmp),
+            ("tiff", image::ImageFormat::Tiff),
+            ("gif", image::ImageFormat::Gif),
+        ] {
+            let input = dir.path().join(format!("original.{ext}"));
+            // JPEG cannot encode an alpha channel, as in the production path.
+            original
+                .to_rgb8()
+                .save_with_format(&input, format)
+                .expect("fixture");
+            let original_bytes = std::fs::read(&input).expect("original bytes");
+            for replace in [false, true] {
+                let output = if replace {
+                    input.clone()
+                } else {
+                    dir.path().join(format!("copy.{ext}"))
+                };
+                let result = process_image(
+                    input.to_string_lossy().into_owned(),
+                    output.to_string_lossy().into_owned(),
+                    vec![ImageOperation::Crop {
+                        x: 2,
+                        y: 1,
+                        width: 4,
+                        height: 3,
+                    }],
+                    Some(85),
+                )
+                .await
+                .unwrap_or_else(|err| panic!("{ext}, replace={replace}: {err}"));
+                assert_eq!(result.path, output.to_string_lossy());
+                assert_eq!((result.width, result.height), (4, 3));
+                assert_eq!(result.format, ext);
+                let bytes = std::fs::read(&output).expect("saved bytes");
+                assert_eq!(result.size, bytes.len() as u64);
+                assert_eq!(image::guess_format(&bytes).expect("encoded format"), format);
+                assert_eq!(
+                    image::open(&output)
+                        .expect("decode saved crop")
+                        .dimensions(),
+                    (4, 3)
+                );
+                if !replace {
+                    assert_eq!(
+                        std::fs::read(&input).expect("original survives"),
+                        original_bytes
+                    );
+                }
+            }
+        }
+        assert_eq!(std::fs::read_dir(dir.path()).expect("outputs").count(), 14);
+    }
 
     /// A 4x2 JPEG whose EXIF says "turn 90 degrees clockwise to view".
     fn sideways_jpeg() -> Vec<u8> {
