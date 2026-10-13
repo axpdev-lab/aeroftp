@@ -348,6 +348,70 @@ pub fn update_tray_badge(app: &AppHandle, state: TrayBadgeState) {
     }
 }
 
+#[cfg(target_os = "linux")]
+thread_local! {
+    static TRAY_CLOUD_ITEMS: std::cell::RefCell<Option<[tauri::menu::MenuItem<tauri::Wry>; 3]>> =
+        std::cell::RefCell::new(None);
+}
+
+#[cfg(not(target_os = "linux"))]
+thread_local! {
+    static TRAY_CLOUD_ITEMS: std::cell::RefCell<
+        Option<[tauri::menu::IconMenuItem<tauri::Wry>; 3]>,
+    > = std::cell::RefCell::new(None);
+}
+
+/// Keep the three AeroCloud rows so a later enable or disable can update them.
+/// Called from setup on the GTK main thread. The items are not `Send`.
+#[cfg(target_os = "linux")]
+pub fn remember_tray_cloud_items(
+    sync: tauri::menu::MenuItem<tauri::Wry>,
+    pause: tauri::menu::MenuItem<tauri::Wry>,
+    folder: tauri::menu::MenuItem<tauri::Wry>,
+) {
+    TRAY_CLOUD_ITEMS.with(|slot| *slot.borrow_mut() = Some([sync, pause, folder]));
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn remember_tray_cloud_items(
+    sync: tauri::menu::IconMenuItem<tauri::Wry>,
+    pause: tauri::menu::IconMenuItem<tauri::Wry>,
+    folder: tauri::menu::IconMenuItem<tauri::Wry>,
+) {
+    TRAY_CLOUD_ITEMS.with(|slot| *slot.borrow_mut() = Some([sync, pause, folder]));
+}
+
+fn apply_stored_cloud_items(enabled: bool) {
+    TRAY_CLOUD_ITEMS.with(|slot| {
+        let stored = slot.borrow();
+        let Some(items) = stored.as_ref() else {
+            return;
+        };
+        for item in items {
+            if let Err(err) = item.set_enabled(enabled) {
+                warn!("Failed to update a tray AeroCloud row: {err}");
+            }
+        }
+    });
+}
+
+/// Enable or disable Sync Now, Pause Sync and Open Cloud Folder.
+///
+/// AeroCloud on or off is what these rows follow. The tray badge already
+/// moves, on the GTK main thread, while a sync runs. These rows use that
+/// same marshal and update the live items. The menu is not rebuilt.
+pub fn set_tray_cloud_actions_enabled(app: &AppHandle, enabled: bool) {
+    let marshal = app.run_on_main_thread(move || {
+        #[cfg(target_os = "linux")]
+        set_promoted_cloud_items_sensitive(enabled);
+        apply_stored_cloud_items(enabled);
+        info!("Tray AeroCloud rows enabled={enabled}");
+    });
+    if let Err(e) = marshal {
+        error!("Failed to marshal tray menu update onto main thread: {e}");
+    }
+}
+
 /// Marks on the tray menu. Light monochrome, same family as the white tray
 /// glyph, so they read on a dark panel menu the way the MEGA tray icons do:
 /// a small mark beside each entry.
@@ -627,6 +691,7 @@ fn promote_inserted_tray_item(
             return;
         };
         new_item.set_sensitive(item.is_sensitive());
+        remember_promoted_cloud_item(&label, &new_item);
         let source = item.clone();
         new_item.connect_activate(move |_| {
             source.emit_activate();
@@ -636,6 +701,40 @@ fn promote_inserted_tray_item(
         new_item.show_all();
         info!("tray menu icon attached: {label}");
     }
+}
+
+/// Sync Now, Pause Sync and Open Cloud Folder follow AeroCloud. The other
+/// tray rows stay available when it is off.
+#[cfg(any(target_os = "linux", test))]
+fn is_tray_cloud_action(label: &str) -> bool {
+    matches!(label, "Sync Now" | "Pause Sync" | "Open Cloud Folder")
+}
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    static PROMOTED_CLOUD_ITEMS: std::cell::RefCell<Vec<gtk::MenuItem>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
+/// The visible row is the image item the hook inserted. `libdbusmenu` watches
+/// that widget's `sensitive` property and publishes it as the menu `enabled`
+/// flag, the same way a badge repaint publishes a new icon.
+#[cfg(target_os = "linux")]
+fn remember_promoted_cloud_item(label: &str, item: &gtk::MenuItem) {
+    if !is_tray_cloud_action(label) {
+        return;
+    }
+    PROMOTED_CLOUD_ITEMS.with(|slots| slots.borrow_mut().push(item.clone()));
+}
+
+#[cfg(target_os = "linux")]
+fn set_promoted_cloud_items_sensitive(enabled: bool) {
+    use gtk::prelude::*;
+    PROMOTED_CLOUD_ITEMS.with(|slots| {
+        for item in slots.borrow().iter() {
+            item.set_sensitive(enabled);
+        }
+    });
 }
 
 #[cfg(target_os = "linux")]
@@ -789,6 +888,34 @@ mod tests {
             super::tray_menu_glyph_for_label("Quit AeroFTP", true, true),
             None
         );
+    }
+
+    /// Turning AeroCloud on or off repaints these three rows. The badge path
+    /// already moves for a running sync; Quit and the window rows stay put.
+    #[test]
+    fn tray_menu_cloud_rows_follow_aerocloud() {
+        assert!(super::is_tray_cloud_action("Sync Now"));
+        assert!(super::is_tray_cloud_action("Pause Sync"));
+        assert!(super::is_tray_cloud_action("Open Cloud Folder"));
+        assert!(!super::is_tray_cloud_action("Check for Updates"));
+        assert!(!super::is_tray_cloud_action("Show AeroFTP"));
+        assert!(!super::is_tray_cloud_action("Quit"));
+
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+        for signature in [
+            "async fn save_cloud_config_cmd(",
+            "async fn setup_aerocloud(",
+            "async fn disable_aerocloud(",
+        ] {
+            let body = match function_text(src, signature) {
+                Some(body) => body,
+                None => panic!("{signature} is missing a column-0 closing brace"),
+            };
+            assert!(
+                body.contains("tray_badge::set_tray_cloud_actions_enabled("),
+                "{signature} leaves the tray rows at their startup state"
+            );
+        }
     }
 
     #[test]

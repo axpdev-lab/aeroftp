@@ -14820,10 +14820,13 @@ fn get_cloud_config_blocking() -> CloudConfig {
 }
 
 #[tauri::command]
-async fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
+async fn save_cloud_config_cmd(app: AppHandle, config: CloudConfig) -> Result<(), String> {
+    let enabled = config.enabled;
     tokio::task::spawn_blocking(move || save_cloud_config_cmd_blocking(config))
         .await
-        .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))
+        .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, enabled);
+    Ok(())
 }
 
 /// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
@@ -15269,6 +15272,7 @@ async fn list_remote_folders_tree(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn setup_aerocloud(
+    app: AppHandle,
     cloud_name: String,
     local_folder: String,
     remote_folder: String,
@@ -15305,6 +15309,7 @@ async fn setup_aerocloud(
 
     // Save configuration
     cloud_config::save_cloud_config(&config)?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, true);
 
     info!(
         "AeroCloud setup complete: protocol={}, local={}, remote={}",
@@ -15415,6 +15420,7 @@ async fn disable_aerocloud(app: AppHandle) -> Result<(), String> {
     }
 
     cloud_config::save_cloud_config(&CloudConfig::default())?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, false);
 
     let _ = app.emit(
         "cloud-sync-status",
@@ -18901,9 +18907,8 @@ pub fn run() {
             // Sync Now, Pause Sync and Open Cloud Folder are only meaningful
             // when AeroCloud is configured. When it is not, the local folder is
             // just the unrealised default (~/AeroCloud), so those three entries
-            // start disabled and reflect the saved AeroCloud state. Read here
-            // in setup() on the GTK main thread (a later off-thread mutation
-            // would risk the GLib-heap class of crash).
+            // start disabled. A later enable or disable updates the live items
+            // on the GTK main thread, the same marshal as the tray badge.
             let cloud_enabled = cloud_config::load_cloud_config().enabled;
             // Linux draws this menu through ayatana / dbusmenu. The items stay
             // plain MenuItems so the label is a real GtkLabel. The hook then
@@ -19017,6 +19022,11 @@ pub fn run() {
                     )?,
                 )
             };
+            tray_badge::remember_tray_cloud_items(
+                tray_sync_now.clone(),
+                tray_pause.clone(),
+                tray_open_folder.clone(),
+            );
 
             let tray_separator = PredefinedMenuItem::separator(app)?;
             #[cfg(target_os = "linux")]
