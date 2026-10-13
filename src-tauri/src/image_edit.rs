@@ -122,6 +122,8 @@ pub async fn process_image(
             .to_lowercase();
 
         let format_name = ext.clone();
+        let output_format = image::ImageFormat::from_extension(&ext)
+            .ok_or_else(|| format!("Unsupported output image format: {ext}"))?;
 
         // Atomic write: write to temp file then rename to prevent data loss
         let output_path_obj = std::path::Path::new(&output);
@@ -145,11 +147,13 @@ pub async fn process_image(
                 })?;
             }
             _ => {
-                // All other formats: auto-detect from extension
-                img.save(&temp_path).map_err(|e| {
-                    let _ = std::fs::remove_file(&temp_path);
-                    format!("Failed to save image: {e}")
-                })?;
+                // The temporary file ends in .tmp, so use the final path's
+                // format explicitly rather than guessing from the staging path.
+                img.save_with_format(&temp_path, output_format)
+                    .map_err(|e| {
+                        let _ = std::fs::remove_file(&temp_path);
+                        format!("Failed to save image: {e}")
+                    })?;
             }
         }
 
@@ -291,6 +295,70 @@ fn apply_operation(img: DynamicImage, op: &ImageOperation) -> Result<DynamicImag
 mod tests {
     use super::*;
     use image::ImageEncoder;
+
+    #[tokio::test]
+    async fn saves_a_crop_as_a_copy_and_over_the_original_in_every_output_format() {
+        let dir = tempfile::tempdir().expect("test directory");
+        let original = DynamicImage::ImageRgba8(image::RgbaImage::from_fn(8, 6, |x, y| {
+            image::Rgba([(x * 30) as u8, (y * 40) as u8, 80, 255])
+        }));
+        for (ext, format) in [
+            ("png", image::ImageFormat::Png),
+            ("jpg", image::ImageFormat::Jpeg),
+            ("jpeg", image::ImageFormat::Jpeg),
+            ("webp", image::ImageFormat::WebP),
+            ("bmp", image::ImageFormat::Bmp),
+            ("tiff", image::ImageFormat::Tiff),
+            ("gif", image::ImageFormat::Gif),
+        ] {
+            let input = dir.path().join(format!("original.{ext}"));
+            // JPEG cannot encode an alpha channel, as in the production path.
+            original
+                .to_rgb8()
+                .save_with_format(&input, format)
+                .expect("fixture");
+            let original_bytes = std::fs::read(&input).expect("original bytes");
+            for replace in [false, true] {
+                let output = if replace {
+                    input.clone()
+                } else {
+                    dir.path().join(format!("copy.{ext}"))
+                };
+                let result = process_image(
+                    input.to_string_lossy().into_owned(),
+                    output.to_string_lossy().into_owned(),
+                    vec![ImageOperation::Crop {
+                        x: 2,
+                        y: 1,
+                        width: 4,
+                        height: 3,
+                    }],
+                    Some(85),
+                )
+                .await
+                .unwrap_or_else(|err| panic!("{ext}, replace={replace}: {err}"));
+                assert_eq!(result.path, output.to_string_lossy());
+                assert_eq!((result.width, result.height), (4, 3));
+                assert_eq!(result.format, ext);
+                let bytes = std::fs::read(&output).expect("saved bytes");
+                assert_eq!(result.size, bytes.len() as u64);
+                assert_eq!(image::guess_format(&bytes).expect("encoded format"), format);
+                assert_eq!(
+                    image::open(&output)
+                        .expect("decode saved crop")
+                        .dimensions(),
+                    (4, 3)
+                );
+                if !replace {
+                    assert_eq!(
+                        std::fs::read(&input).expect("original survives"),
+                        original_bytes
+                    );
+                }
+            }
+        }
+        assert_eq!(std::fs::read_dir(dir.path()).expect("outputs").count(), 14);
+    }
 
     /// A 4x2 JPEG whose EXIF says "turn 90 degrees clockwise to view".
     fn sideways_jpeg() -> Vec<u8> {
