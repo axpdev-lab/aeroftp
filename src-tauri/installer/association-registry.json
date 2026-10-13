@@ -3,27 +3,45 @@
     {
       "extension": "aerovault",
       "progid": "AeroFTP.AeroVault",
-      "mime": "application/x-aerovault"
+      "mime": "application/x-aerovault",
+      "aliases": [
+        "aerovault"
+      ]
     },
     {
       "extension": "aeroftp",
       "progid": "AeroFTP.Profile",
-      "mime": "application/x-aeroftp"
+      "mime": "application/x-aeroftp",
+      "aliases": [
+        "aeroftp",
+        "AeroFTP.aeroftp"
+      ]
     },
     {
       "extension": "aeroftp-keystore",
       "progid": "AeroFTP.Keystore",
-      "mime": "application/x-aeroftp-keystore"
+      "mime": "application/x-aeroftp-keystore",
+      "aliases": [
+        "aeroftp-keystore",
+        "AeroFTP.aeroftp-keystore"
+      ]
     },
     {
       "extension": "aerozip",
       "progid": "AeroFTP.AeroZip",
-      "mime": "application/x-aerozip"
+      "mime": "application/x-aerozip",
+      "aliases": [
+        "aerozip"
+      ]
     },
     {
       "extension": "aeroftp-script",
       "progid": "AeroFTP.Script",
-      "mime": "application/x-aeroftp-script"
+      "mime": "application/x-aeroftp-script",
+      "aliases": [
+        "aeroftp-script",
+        "AeroFTP.aeroftp-script"
+      ]
     }
   ],
   "archives": [
@@ -778,6 +796,270 @@
     {
       "group": "common",
       "key": "Software\\Classes\\Applications\\AeroFTP.exe\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault",
+      "name": "",
+      "value": "AeroVault Encrypted Container"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aerovault.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerovault\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp",
+      "name": "",
+      "value": "AeroFTP Server Profile"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp",
+      "name": "",
+      "value": "AeroFTP Server Profile"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-keystore",
+      "name": "",
+      "value": "AeroFTP Keystore Backup"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-keystore\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-keystore.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-keystore\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-keystore\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-keystore",
+      "name": "",
+      "value": "AeroFTP Keystore Backup"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-keystore\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-keystore.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-keystore\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-keystore\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip",
+      "name": "",
+      "value": "AeroVault Zip Archive"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aerozip.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aerozip\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-script",
+      "name": "",
+      "value": "AeroFTP Batch Script"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-script\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-script.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-script\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\aeroftp-script\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-script",
+      "name": "",
+      "value": "AeroFTP Batch Script"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-script\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-script.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-script\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.aeroftp-script\\shell\\open\\command",
       "name": "",
       "value": "\"@EXE@\" \"%1\""
     }

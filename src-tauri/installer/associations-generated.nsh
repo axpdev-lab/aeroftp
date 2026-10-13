@@ -126,6 +126,138 @@
     ClearErrors
     WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".aeroftp-script" ""
     IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault" "" "AeroVault Encrypted Container"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerovault.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\AeroFTPExtractHere" "" "Extract Here with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\AeroFTPExtractHere" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\AeroFTPExtractHere\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-here $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\AeroFTPExtractToFolder" "" "Extract to Folder with AeroFTP..."
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\AeroFTPExtractToFolder" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerovault\shell\AeroFTPExtractToFolder\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-to $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp" "" "AeroFTP Server Profile"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp" "" "AeroFTP Server Profile"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-keystore" "" "AeroFTP Keystore Backup"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-keystore\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-keystore\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-keystore" "" "AeroFTP Keystore Backup"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-keystore\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-keystore\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip" "" "AeroVault Zip Archive"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerozip.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\AeroFTPExtractHere" "" "Extract Here with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\AeroFTPExtractHere" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\AeroFTPExtractHere\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-here $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\AeroFTPExtractToFolder" "" "Extract to Folder with AeroFTP..."
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\AeroFTPExtractToFolder" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aerozip\shell\AeroFTPExtractToFolder\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-to $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-script" "" "AeroFTP Batch Script"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-script\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-script.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-script\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\aeroftp-script\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-script" "" "AeroFTP Batch Script"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-script\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-script.ico,0"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-script\shell\open" "" "Open with AeroFTP"
+    IfErrors _aeroftp_registration_failed 0
+    ClearErrors
+    WriteRegStr HKCU "Software\Classes\AeroFTP.aeroftp-script\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    IfErrors _aeroftp_registration_failed 0
 !macroend
 !macro AeroFTPUnregister_owned
     !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.AeroVault" "" "AeroVault Encrypted Container"
@@ -170,6 +302,50 @@
     !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.Script\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
     !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\.aeroftp-script\OpenWithProgids" "AeroFTP.Script" ""
     !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".aeroftp-script" ""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault" "" "AeroVault Encrypted Container"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerovault.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\AeroFTPExtractHere" "" "Extract Here with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\AeroFTPExtractHere" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\AeroFTPExtractHere\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-here $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\AeroFTPExtractToFolder" "" "Extract to Folder with AeroFTP..."
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\AeroFTPExtractToFolder" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerovault\shell\AeroFTPExtractToFolder\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-to $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp" "" "AeroFTP Server Profile"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp" "" "AeroFTP Server Profile"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-keystore" "" "AeroFTP Keystore Backup"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-keystore\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-keystore\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-keystore" "" "AeroFTP Keystore Backup"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-keystore\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-keystore\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip" "" "AeroVault Zip Archive"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerozip.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\AeroFTPExtractHere" "" "Extract Here with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\AeroFTPExtractHere" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\AeroFTPExtractHere\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-here $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\AeroFTPExtractToFolder" "" "Extract to Folder with AeroFTP..."
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\AeroFTPExtractToFolder" "Icon" "$\"$INSTDIR\AeroFTP.exe$\",0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aerozip\shell\AeroFTPExtractToFolder\command" "" "$\"$INSTDIR\AeroFTP.exe$\" --extract-to $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-script" "" "AeroFTP Batch Script"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-script\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-script.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-script\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\aeroftp-script\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-script" "" "AeroFTP Batch Script"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-script\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-script.ico,0"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-script\shell\open" "" "Open with AeroFTP"
+    !insertmacro AeroFTPDeleteMatchingValue "Software\Classes\AeroFTP.aeroftp-script\shell\open\command" "" "$\"$INSTDIR\AeroFTP.exe$\" $\"%1$\""
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault\shell\open\command"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault\shell\AeroFTPExtractHere\command"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault\shell\AeroFTPExtractToFolder\command"
@@ -179,6 +355,18 @@
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroZip\shell\AeroFTPExtractHere\command"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroZip\shell\AeroFTPExtractToFolder\command"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.Script\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\shell\AeroFTPExtractHere\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\shell\AeroFTPExtractToFolder\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-keystore\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-keystore\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\shell\AeroFTPExtractHere\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\shell\AeroFTPExtractToFolder\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-script\shell\open\command"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-script\shell\open\command"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault\shell\open"
     DeleteRegKey /ifempty HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault\shell\AeroFTPExtractHere"
@@ -189,6 +377,18 @@
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroZip\shell\AeroFTPExtractHere"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroZip\shell\AeroFTPExtractToFolder"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.Script\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\shell\AeroFTPExtractHere"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\shell\AeroFTPExtractToFolder"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-keystore\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-keystore\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\shell\AeroFTPExtractHere"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\shell\AeroFTPExtractToFolder"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-script\shell\open"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-script\shell\open"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault\DefaultIcon"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault\shell"
     DeleteRegKey /ifempty HKCU "Software\Classes\.aerovault\OpenWithProgids"
@@ -205,6 +405,22 @@
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.Script\DefaultIcon"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.Script\shell"
     DeleteRegKey /ifempty HKCU "Software\Classes\.aeroftp-script\OpenWithProgids"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault\shell"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp\shell"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp\shell"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-keystore\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-keystore\shell"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-keystore\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-keystore\shell"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip\shell"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-script\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-script\shell"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-script\DefaultIcon"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-script\shell"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.AeroVault"
     DeleteRegKey /ifempty HKCU "Software\Classes\.aerovault"
     DeleteRegKey /ifempty HKCU "Software\Classes\Applications"
@@ -216,6 +432,14 @@
     DeleteRegKey /ifempty HKCU "Software\Classes\.aerozip"
     DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.Script"
     DeleteRegKey /ifempty HKCU "Software\Classes\.aeroftp-script"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerovault"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-keystore"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-keystore"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aerozip"
+    DeleteRegKey /ifempty HKCU "Software\Classes\aeroftp-script"
+    DeleteRegKey /ifempty HKCU "Software\Classes\AeroFTP.aeroftp-script"
 !macroend
 !macro AeroFTPRegister_archives
     ClearErrors

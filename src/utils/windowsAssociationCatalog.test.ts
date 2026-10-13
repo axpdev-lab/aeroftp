@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(path, 'utf8');
 const catalog = JSON.parse(read('src-tauri/installer/association-registry.json')) as {
-  owned: { extension: string; progid: string }[];
+  owned: { extension: string; progid: string; aliases: string[] }[];
   archives: string[];
   values: { group: string; key: string; name: string; value: string }[];
 };
@@ -30,6 +30,16 @@ describe('Windows installer / Settings registration contract', () => {
       expect(item.name !== '' || !/^Software\\Classes\\\.[^\\]+$/.test(item.key)).toBe(true);
       const identity = `${item.key.toLowerCase()}\0${item.name.toLowerCase()}`;
       expect(identities.has(identity)).toBe(false); identities.add(identity);
+    }
+  });
+  it('retains every old NSIS and MSI ProgID so existing default choices keep opening', () => {
+    for (const item of catalog.owned) {
+      const ids = [item.progid, ...item.aliases].map(id => id.toLowerCase());
+      expect(ids).toContain(item.extension.toLowerCase());
+      expect(ids).toContain(`aeroftp.${item.extension}`.toLowerCase());
+      for (const id of ids) {
+        expect(catalog.values.some(value => value.group === 'owned' && value.key.toLowerCase() === `software\\classes\\${id}\\shell\\open\\command` && value.value === '"@EXE@" "%1"')).toBe(true);
+      }
     }
   });
   it('keeps the application and CLI binaries in the mandatory MSI feature', () => {

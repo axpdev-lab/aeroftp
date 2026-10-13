@@ -621,6 +621,18 @@ mod tests {
             r"C:\Apps\AeroFTP\AeroFTP.exe",
         )
         .unwrap();
+        // Old NSIS and MSI UserChoice names must still resolve after upgrade.
+        for progid in ["aeroftp", "AeroFTP.aeroftp", "AeroFTP.Profile"] {
+            assert_eq!(
+                r.get(
+                    &format!(r"Software\Classes\{progid}\shell\open\command"),
+                    ""
+                )
+                .unwrap()
+                .as_deref(),
+                Some(r#""C:\Apps\AeroFTP\AeroFTP.exe" "%1""#)
+            );
+        }
         apply_nsis(
             r,
             Choices {

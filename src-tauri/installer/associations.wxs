@@ -50,6 +50,50 @@
 <RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.Script\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
 <RegistryValue Root="HKLM" Key="Software\Classes\.aeroftp-script\OpenWithProgids" Name="AeroFTP.Script" Type="string" Value="" />
 <RegistryValue Root="HKLM" Key="Software\Classes\Applications\AeroFTP.exe\SupportedTypes" Name=".aeroftp-script" Type="string" Value="" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault"  Type="string" Value="AeroVault Encrypted Container" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aerovault.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\AeroFTPExtractHere"  Type="string" Value="Extract Here with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\AeroFTPExtractHere" Name="Icon" Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot;,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\AeroFTPExtractHere\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\AeroFTPExtractToFolder"  Type="string" Value="Extract to Folder with AeroFTP..." />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\AeroFTPExtractToFolder" Name="Icon" Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot;,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerovault\shell\AeroFTPExtractToFolder\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp"  Type="string" Value="AeroFTP Server Profile" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp"  Type="string" Value="AeroFTP Server Profile" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-keystore"  Type="string" Value="AeroFTP Keystore Backup" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-keystore\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-keystore.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-keystore\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-keystore\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-keystore"  Type="string" Value="AeroFTP Keystore Backup" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-keystore\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-keystore.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-keystore\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-keystore\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip"  Type="string" Value="AeroVault Zip Archive" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aerozip.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\AeroFTPExtractHere"  Type="string" Value="Extract Here with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\AeroFTPExtractHere" Name="Icon" Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot;,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\AeroFTPExtractHere\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-here &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\AeroFTPExtractToFolder"  Type="string" Value="Extract to Folder with AeroFTP..." />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\AeroFTPExtractToFolder" Name="Icon" Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot;,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aerozip\shell\AeroFTPExtractToFolder\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; --extract-to &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-script"  Type="string" Value="AeroFTP Batch Script" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-script\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-script.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-script\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\aeroftp-script\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-script"  Type="string" Value="AeroFTP Batch Script" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-script\DefaultIcon"  Type="string" Value="[INSTALLDIR]icons\mimetypes\aeroftp-script.ico,0" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-script\shell\open"  Type="string" Value="Open with AeroFTP" />
+<RegistryValue Root="HKLM" Key="Software\Classes\AeroFTP.aeroftp-script\shell\open\command"  Type="string" Value="&quot;[INSTALLDIR]aeroftp.exe&quot; &quot;%1&quot;" />
 </Component></DirectoryRef>
 <Feature Id="AeroFTPOwnedAssociations" Title="AeroFTP file formats" Level="1" AllowAdvertise="no" Absent="allow"><ComponentRef Id="AeroFTPOwnedAssociationsRegistry" /><Condition Level="0">AEROFTP_NOASSOC = "1"</Condition></Feature>
 <DirectoryRef Id="INSTALLDIR"><Component Id="AeroFTPArchiveAssociationsRegistry" Guid="1974D4FC-4A3E-4AAC-8816-3D56CAD68B42" Win64="$(var.Win64)">

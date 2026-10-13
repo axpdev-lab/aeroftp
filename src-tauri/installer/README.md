@@ -2,7 +2,8 @@
 
 Issue #454 is implemented through two independent choices: AeroFTP's five file
 formats, and the eight general archive formats plus Explorer extract menus.
-Registration is additive. Neither installer nor Settings writes `UserChoice` or
+Historical NSIS/MSI ProgID aliases remain registered while enabled so an existing
+Windows default choice still resolves after an upgrade. Registration is additive. Neither installer nor Settings writes `UserChoice` or
 replaces a foreign extension default. Windows Default apps remains the route to
 choose a default handler.
 
