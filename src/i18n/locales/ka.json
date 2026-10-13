@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "დღის თემა",
             "scheduleNightTheme": "ღამის თემა",
             "scheduleInvalidTime": "აირჩიეთ ორი განსხვავებული სწორი დრო. ბოლო სწორი განრიგი აქტიური რჩება.",
-            "scheduleRestoreMode": "გარეგნობის წინა რეჟიმის აღდგენა"
+            "scheduleRestoreMode": "გარეგნობის წინა რეჟიმის აღდგენა",
+            "fileAssociationIntegrationTitle": "Windows-თან ინტეგრაცია",
+            "fileAssociationRegisterOwned": "AeroFTP-ის ფაილის ფორმატების რეგისტრაცია",
+            "fileAssociationRegisterArchives": "არქივის ფორმატებისა და ფაილების მკვლევრის მენიუების რეგისტრაცია",
+            "fileAssociationIntegrationDesc": "ცვლილებები ძალაში დაუყოვნებლივ შედის და განახლებების დროსაც ნარჩუნდება. Windows ნაგულისხმევ აპებს ცალკე მართავს.",
+            "fileAssociationIntegrationPortable": "Windows-თან ინტეგრაციის შესაცვლელად დააყენეთ AeroFTP.",
+            "fileAssociationIntegrationAdmin": "ამ პარამეტრების შესაცვლელად Windows-მა შეიძლება ადმინისტრატორის ნებართვა მოითხოვოს."
         },
         "devtools": {
             "title": "AeroTools",

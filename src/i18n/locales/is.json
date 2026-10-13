@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Dagþema",
             "scheduleNightTheme": "Næturþema",
             "scheduleInvalidTime": "Veldu tvo mismunandi gilda tíma. Síðasta gilda tímaáætlunin helst virk.",
-            "scheduleRestoreMode": "Endurheimta fyrri útlitsstillingu"
+            "scheduleRestoreMode": "Endurheimta fyrri útlitsstillingu",
+            "fileAssociationIntegrationTitle": "Samþætting við Windows",
+            "fileAssociationRegisterOwned": "Skrá skráarsnið AeroFTP",
+            "fileAssociationRegisterArchives": "Skrá safnskráarsnið og valmyndir í Skráarkönnuði",
+            "fileAssociationIntegrationDesc": "Breytingarnar taka strax gildi og haldast við uppfærslur. Windows stjórnar sjálfgefnum forritum sérstaklega.",
+            "fileAssociationIntegrationPortable": "Settu upp AeroFTP til að breyta samþættingu við Windows.",
+            "fileAssociationIntegrationAdmin": "Windows gæti beðið um heimild stjórnanda til að breyta þessum valkostum."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2914,7 +2920,7 @@
             "errorToolUse": "Þetta líkan styður ekki notkun verkfæra. Slökktu á \"Verkfærum\" fyrir þetta líkan í AI Settings → Models, eða skiptu yfir í líkan sem styður function calling.",
             "agentMode": {
                 "title": "Umbodshamur",
-                "description": "Stjornar hegdun verkfaerasamthykkis, skrefatakmork og sjalfraedisstig.",
+                "description": "Stýrir samþykkisferli verkfæra, skrefamörkum og sjálfræðisstigi.",
                 "safe": "Öruggur",
                 "safeDesc": "Aðeins örugg verkfæri keyra sjálfvirkt. Engin lotuminni. Hámark 5 skref.",
                 "normal": "Venjulegur",

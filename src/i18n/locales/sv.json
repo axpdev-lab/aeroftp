@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Dagtema",
             "scheduleNightTheme": "Nattema",
             "scheduleInvalidTime": "Välj två olika giltiga tider. Det senaste giltiga schemat förblir aktivt.",
-            "scheduleRestoreMode": "Återställ föregående utseendeläge"
+            "scheduleRestoreMode": "Återställ föregående utseendeläge",
+            "fileAssociationIntegrationTitle": "Integrering med Windows",
+            "fileAssociationRegisterOwned": "Registrera AeroFTP-filformat",
+            "fileAssociationRegisterArchives": "Registrera arkivformat och menyer i Utforskaren",
+            "fileAssociationIntegrationDesc": "Ändringarna börjar gälla direkt och behålls vid uppdateringar. Windows hanterar dina standardappar separat.",
+            "fileAssociationIntegrationPortable": "Installera AeroFTP för att ändra integreringen med Windows.",
+            "fileAssociationIntegrationAdmin": "Windows kan begära administratörsbehörighet för att ändra dessa alternativ."
         },
         "devtools": {
             "title": "AeroTools",

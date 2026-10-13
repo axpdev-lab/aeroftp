@@ -1634,7 +1634,13 @@
             "scheduleDayTheme": "Tema diurno",
             "scheduleNightTheme": "Tema notturno",
             "scheduleInvalidTime": "Scegli due orari validi e diversi. L’ultima programmazione valida resta attiva.",
-            "scheduleRestoreMode": "Ripristina la modalità aspetto precedente"
+            "scheduleRestoreMode": "Ripristina la modalità aspetto precedente",
+            "fileAssociationIntegrationTitle": "Integrazione con Windows",
+            "fileAssociationRegisterOwned": "Registra i formati di file AeroFTP",
+            "fileAssociationRegisterArchives": "Registra i formati di archivio e i menu di Esplora file",
+            "fileAssociationIntegrationDesc": "Le modifiche hanno effetto immediato e vengono mantenute durante gli aggiornamenti. Windows gestisce separatamente le app predefinite.",
+            "fileAssociationIntegrationPortable": "Installa AeroFTP per modificare l’integrazione con Windows.",
+            "fileAssociationIntegrationAdmin": "Windows potrebbe richiedere i privilegi di amministratore per modificare queste opzioni."
         },
         "appearance": {
             "patternCross": "Croce",

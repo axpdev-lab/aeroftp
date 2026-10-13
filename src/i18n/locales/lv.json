@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Dienas tēma",
             "scheduleNightTheme": "Nakts tēma",
             "scheduleInvalidTime": "Izvēlieties divus atšķirīgus derīgus laikus. Pēdējais derīgais grafiks paliek aktīvs.",
-            "scheduleRestoreMode": "Atjaunot iepriekšējo izskata režīmu"
+            "scheduleRestoreMode": "Atjaunot iepriekšējo izskata režīmu",
+            "fileAssociationIntegrationTitle": "Integrācija ar Windows",
+            "fileAssociationRegisterOwned": "Reģistrēt AeroFTP failu formātus",
+            "fileAssociationRegisterArchives": "Reģistrēt arhīvu formātus un failu pārlūka izvēlnes",
+            "fileAssociationIntegrationDesc": "Izmaiņas stājas spēkā uzreiz un tiek saglabātas atjaunināšanas laikā. Windows pārvalda noklusējuma lietotnes atsevišķi.",
+            "fileAssociationIntegrationPortable": "Instalējiet AeroFTP, lai mainītu integrāciju ar Windows.",
+            "fileAssociationIntegrationAdmin": "Windows var pieprasīt administratora atļauju, lai mainītu šīs opcijas."
         },
         "devtools": {
             "title": "AeroTools",

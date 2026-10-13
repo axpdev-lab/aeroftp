@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "昼のテーマ",
             "scheduleNightTheme": "夜のテーマ",
             "scheduleInvalidTime": "異なる有効な時刻を2つ選択してください。最後の有効なスケジュールは引き続き有効です。",
-            "scheduleRestoreMode": "前の外観モードを復元"
+            "scheduleRestoreMode": "前の外観モードを復元",
+            "fileAssociationIntegrationTitle": "Windows との統合",
+            "fileAssociationRegisterOwned": "AeroFTP のファイル形式を登録",
+            "fileAssociationRegisterArchives": "アーカイブ形式とエクスプローラーのメニューを登録",
+            "fileAssociationIntegrationDesc": "変更はすぐに適用され、更新時にも保持されます。既定のアプリは Windows が個別に管理します。",
+            "fileAssociationIntegrationPortable": "Windows との統合を変更するには、AeroFTP をインストールしてください。",
+            "fileAssociationIntegrationAdmin": "これらのオプションを変更する際に、Windows が管理者の許可を求める場合があります。"
         },
         "devtools": {
             "title": "AeroTools",

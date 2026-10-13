@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Eguneko gaia",
             "scheduleNightTheme": "Gaueko gaia",
             "scheduleInvalidTime": "Aukeratu baliozko bi ordu desberdin. Baliozko azken ordutegiak aktibo jarraituko du.",
-            "scheduleRestoreMode": "Berrezarri aurreko itxura modua"
+            "scheduleRestoreMode": "Berrezarri aurreko itxura modua",
+            "fileAssociationIntegrationTitle": "Windows integrazioa",
+            "fileAssociationRegisterOwned": "Erregistratu AeroFTP fitxategi-formatuak",
+            "fileAssociationRegisterArchives": "Erregistratu artxibo-formatuak eta Fitxategi-esploratzailearen menuak",
+            "fileAssociationIntegrationDesc": "Aldaketak berehala aplikatzen dira eta eguneraketetan mantentzen dira. Windows-ek bereizita kudeatzen ditu zure aplikazio lehenetsiak.",
+            "fileAssociationIntegrationPortable": "Instalatu AeroFTP Windows integrazioa aldatzeko.",
+            "fileAssociationIntegrationAdmin": "Windows-ek administratzaile-baimena eska dezake aukera hauek aldatzeko."
         },
         "devtools": {
             "title": "AeroTools",

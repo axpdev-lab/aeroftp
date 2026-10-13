@@ -1,0 +1,6 @@
+{
+  "tauriCliVersion": "2.11.2",
+  "sourceRef": "tauri-cli-v2.11.2",
+  "nsisSha256": "ee84148e405adc4d736a46456dd8345a644751bd1f28a335dd7fd833a32d7c3e",
+  "wixSha256": "e371a01628a06730828f9bd24111feacb8bec53c250ccec4b46df756fe0a0198"
+}

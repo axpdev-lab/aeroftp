@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Tema siang",
             "scheduleNightTheme": "Tema malam",
             "scheduleInvalidTime": "Pilih dua waktu sah yang berbeza. Jadual sah terakhir kekal aktif.",
-            "scheduleRestoreMode": "Pulihkan mod penampilan sebelumnya"
+            "scheduleRestoreMode": "Pulihkan mod penampilan sebelumnya",
+            "fileAssociationIntegrationTitle": "Penyepaduan Windows",
+            "fileAssociationRegisterOwned": "Daftarkan format fail AeroFTP",
+            "fileAssociationRegisterArchives": "Daftarkan format arkib dan menu Penjelajah Fail",
+            "fileAssociationIntegrationDesc": "Perubahan berkuat kuasa serta-merta dan dikekalkan semasa kemas kini. Windows mengurus aplikasi lalai anda secara berasingan.",
+            "fileAssociationIntegrationPortable": "Pasang AeroFTP untuk mengubah penyepaduan Windows.",
+            "fileAssociationIntegrationAdmin": "Windows mungkin meminta kebenaran pentadbir untuk mengubah pilihan ini."
         },
         "devtools": {
             "title": "AeroTools",

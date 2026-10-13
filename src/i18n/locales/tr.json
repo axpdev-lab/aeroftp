@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Gündüz teması",
             "scheduleNightTheme": "Gece teması",
             "scheduleInvalidTime": "Birbirinden farklı iki geçerli saat seçin. Son geçerli zamanlama etkin kalır.",
-            "scheduleRestoreMode": "Önceki görünüm modunu geri yükle"
+            "scheduleRestoreMode": "Önceki görünüm modunu geri yükle",
+            "fileAssociationIntegrationTitle": "Windows bütünleşmesi",
+            "fileAssociationRegisterOwned": "AeroFTP dosya biçimlerini kaydet",
+            "fileAssociationRegisterArchives": "Arşiv biçimlerini ve Dosya Gezgini menülerini kaydet",
+            "fileAssociationIntegrationDesc": "Değişiklikler hemen uygulanır ve güncellemeler sırasında korunur. Windows, varsayılan uygulamalarınızı ayrı olarak yönetir.",
+            "fileAssociationIntegrationPortable": "Windows bütünleşmesini değiştirmek için AeroFTP uygulamasını yükleyin.",
+            "fileAssociationIntegrationAdmin": "Windows, bu seçenekleri değiştirmek için yönetici izni isteyebilir."
         },
         "devtools": {
             "title": "AeroTools",

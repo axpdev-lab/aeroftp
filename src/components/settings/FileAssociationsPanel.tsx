@@ -10,7 +10,7 @@
  * - Windows: opens Default apps; never writes protected UserChoice.
  * - macOS: best-effort (no live Mac validation on this host).
  *
- * Source of truth = OS. No persisted checkbox state.
+ * Defaults come from the OS; Windows registration choices come from the installer.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -28,11 +28,19 @@ interface FileAssociationItem {
   action: string; // 'direct' | 'os_confirmation' | 'best_effort' | 'unsupported'
 }
 
+interface WindowsIntegration {
+  ownedFormats: boolean;
+  archiveFormats: boolean;
+  managedBy: 'nsis' | 'msi' | 'portable';
+  canChange: boolean;
+}
+
 interface FileAssociationStatus {
   platform: string;
   canApplyDirectly: boolean;
   requiresOsConfirmation: boolean;
   items: FileAssociationItem[];
+  windowsIntegration?: WindowsIntegration | null;
 }
 
 interface ApplyResult {
@@ -52,6 +60,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [applyingKey, setApplyingKey] = useState<string | null>(null);
+  const [savingIntegration, setSavingIntegration] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -103,6 +112,29 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
       setError(String(e?.message || e || 'Failed to open OS settings'));
     }
   }, [t]);
+
+  const updateIntegration = useCallback(async (field: 'ownedFormats' | 'archiveFormats', enabled: boolean) => {
+    const current = status?.windowsIntegration;
+    if (!current?.canChange || savingIntegration) return;
+    setSavingIntegration(true);
+    setError(null);
+    setNote(null);
+    try {
+      const next = { ...current, [field]: enabled };
+      const applied = await invoke<WindowsIntegration>('file_associations_set_integration', {
+        ownedFormats: next.ownedFormats,
+        archiveFormats: next.archiveFormats,
+      });
+      setStatus(previous => previous ? { ...previous, windowsIntegration: applied } : previous);
+      await loadStatus(true);
+    } catch (e: unknown) {
+      // Refresh any partially applied OS state before displaying the failure.
+      await loadStatus(true);
+      setError(String(e instanceof Error ? e.message : e));
+    } finally {
+      setSavingIntegration(false);
+    }
+  }, [status?.windowsIntegration, savingIntegration, loadStatus]);
 
   if (loading && !status) {
     return (
@@ -161,11 +193,12 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
         return <span className="text-xs text-gray-400">-</span>;
       }
       const busy = applyingKey === item.key;
+      const disabled = busy || savingIntegration;
       if (isLinux && item.action === 'direct') {
         return (
           <button
             onClick={() => makeDefault(item.key)}
-            disabled={busy}
+            disabled={disabled}
             className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60"
           >
             {busy ? '…' : (t('settings.fileAssociationMakeDefault') || 'Make default')}
@@ -176,7 +209,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
       return (
         <button
           onClick={() => makeDefault(item.key)}
-          disabled={busy}
+          disabled={disabled}
           className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 flex items-center gap-1"
           title={isWindows ? t('settings.fileAssociationWindowsConfirm') : undefined}
         >
@@ -235,7 +268,7 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
           )}
           <button
             onClick={refresh}
-            disabled={refreshing}
+            disabled={refreshing || savingIntegration}
             className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
             title={t('settings.fileAssociationRefresh') || 'Refresh'}
             aria-label={t('settings.fileAssociationRefresh') || 'Refresh'}
@@ -255,6 +288,26 @@ export const FileAssociationsPanel: React.FC<FileAssociationsPanelProps> = ({ co
         <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 p-2 rounded">
           {note}
         </div>
+      )}
+
+      {isWindows && status?.windowsIntegration && (
+        <fieldset disabled={savingIntegration || refreshing || applyingKey !== null || !status.windowsIntegration.canChange}
+          className="space-y-2 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+          <legend className="px-1 text-sm font-semibold text-gray-700 dark:text-gray-200">{t('settings.fileAssociationIntegrationTitle')}</legend>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <input type="checkbox" checked={status.windowsIntegration.ownedFormats}
+              onChange={event => void updateIntegration('ownedFormats', event.target.checked)} />
+            {t('settings.fileAssociationRegisterOwned')}
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+            <input type="checkbox" checked={status.windowsIntegration.archiveFormats}
+              onChange={event => void updateIntegration('archiveFormats', event.target.checked)} />
+            {t('settings.fileAssociationRegisterArchives')}
+          </label>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.fileAssociationIntegrationDesc')}</p>
+          {!status.windowsIntegration.canChange && <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.fileAssociationIntegrationPortable')}</p>}
+          {status.windowsIntegration.managedBy === 'msi' && <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.fileAssociationIntegrationAdmin')}</p>}
+        </fieldset>
       )}
 
       {/* AeroFTP formats */}

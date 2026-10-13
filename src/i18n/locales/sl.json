@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Dnevna tema",
             "scheduleNightTheme": "Nočna tema",
             "scheduleInvalidTime": "Izberite dva različna veljavna časa. Zadnji veljavni urnik ostane aktiven.",
-            "scheduleRestoreMode": "Obnovi prejšnji način videza"
+            "scheduleRestoreMode": "Obnovi prejšnji način videza",
+            "fileAssociationIntegrationTitle": "Integracija s sistemom Windows",
+            "fileAssociationRegisterOwned": "Registriraj oblike datotek AeroFTP",
+            "fileAssociationRegisterArchives": "Registriraj oblike arhivov in menije Raziskovalca",
+            "fileAssociationIntegrationDesc": "Spremembe začnejo veljati takoj in se ohranijo med posodobitvami. Windows privzete aplikacije upravlja ločeno.",
+            "fileAssociationIntegrationPortable": "Namestite AeroFTP, da spremenite integracijo s sistemom Windows.",
+            "fileAssociationIntegrationAdmin": "Windows lahko za spremembo teh možnosti zahteva skrbniško dovoljenje."
         },
         "devtools": {
             "title": "AeroTools",

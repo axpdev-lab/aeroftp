@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Дневная тема",
             "scheduleNightTheme": "Ночная тема",
             "scheduleInvalidTime": "Выберите два разных корректных времени. Последнее корректное расписание останется активным.",
-            "scheduleRestoreMode": "Восстановить предыдущий режим оформления"
+            "scheduleRestoreMode": "Восстановить предыдущий режим оформления",
+            "fileAssociationIntegrationTitle": "Интеграция с Windows",
+            "fileAssociationRegisterOwned": "Зарегистрировать форматы файлов AeroFTP",
+            "fileAssociationRegisterArchives": "Зарегистрировать форматы архивов и меню Проводника",
+            "fileAssociationIntegrationDesc": "Изменения вступают в силу сразу и сохраняются при обновлениях. Windows управляет приложениями по умолчанию отдельно.",
+            "fileAssociationIntegrationPortable": "Установите AeroFTP, чтобы изменить интеграцию с Windows.",
+            "fileAssociationIntegrationAdmin": "Windows может запросить права администратора для изменения этих параметров."
         },
         "devtools": {
             "title": "AeroTools",

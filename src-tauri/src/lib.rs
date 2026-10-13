@@ -17989,6 +17989,10 @@ mod crypto_provider_guard {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    if file_associations::handle_uninstall_history_arg() {
+        return;
+    }
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
     // Pin the rustls CryptoProvider for this (GUI) process before any TLS
@@ -19309,6 +19313,7 @@ pub fn run() {
             resolve_unique_extract_dir,
             // File associations panel (Deliverable G #3)
             file_associations::file_associations_status,
+            file_associations::file_associations_set_integration,
             file_associations::file_associations_set_default,
             file_associations::file_associations_open_settings,
             ftp_read_file_base64,

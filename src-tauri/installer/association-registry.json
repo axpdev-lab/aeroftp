@@ -1,0 +1,785 @@
+{
+  "owned": [
+    {
+      "extension": "aerovault",
+      "progid": "AeroFTP.AeroVault",
+      "mime": "application/x-aerovault"
+    },
+    {
+      "extension": "aeroftp",
+      "progid": "AeroFTP.Profile",
+      "mime": "application/x-aeroftp"
+    },
+    {
+      "extension": "aeroftp-keystore",
+      "progid": "AeroFTP.Keystore",
+      "mime": "application/x-aeroftp-keystore"
+    },
+    {
+      "extension": "aerozip",
+      "progid": "AeroFTP.AeroZip",
+      "mime": "application/x-aerozip"
+    },
+    {
+      "extension": "aeroftp-script",
+      "progid": "AeroFTP.Script",
+      "mime": "application/x-aeroftp-script"
+    }
+  ],
+  "archives": [
+    "zip",
+    "7z",
+    "rar",
+    "tar",
+    "tgz",
+    "gz",
+    "xz",
+    "bz2"
+  ],
+  "values": [
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault",
+      "name": "",
+      "value": "AeroVault Encrypted Container"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aerovault.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\.aerovault\\OpenWithProgids",
+      "name": "AeroFTP.AeroVault",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".aerovault",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroVault\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Profile",
+      "name": "",
+      "value": "AeroFTP Server Profile"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Profile\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Profile\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Profile\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\.aeroftp\\OpenWithProgids",
+      "name": "AeroFTP.Profile",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".aeroftp",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Keystore",
+      "name": "",
+      "value": "AeroFTP Keystore Backup"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Keystore\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-keystore.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Keystore\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Keystore\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\.aeroftp-keystore\\OpenWithProgids",
+      "name": "AeroFTP.Keystore",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".aeroftp-keystore",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip",
+      "name": "",
+      "value": "AeroVault Zip Archive"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aerozip.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\.aerozip\\OpenWithProgids",
+      "name": "AeroFTP.AeroZip",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".aerozip",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.AeroZip\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Script",
+      "name": "",
+      "value": "AeroFTP Batch Script"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Script\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-script.ico,0"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Script\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\AeroFTP.Script\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\.aeroftp-script\\OpenWithProgids",
+      "name": "AeroFTP.Script",
+      "value": ""
+    },
+    {
+      "group": "owned",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".aeroftp-script",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.zip\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.zip\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.zip\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.zip\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.zip\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.zip\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.zip\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".zip",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".zip",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.7z\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.7z\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.7z\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.7z\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.7z\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.7z\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.7z\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".7z",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".7z",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.rar\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.rar\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.rar\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.rar\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.rar\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.rar\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.rar\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".rar",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".rar",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tar\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tar\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tar\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tar\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tar\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tar\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.tar\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".tar",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".tar",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tgz\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tgz\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tgz\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tgz\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tgz\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.tgz\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.tgz\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".tgz",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".tgz",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.gz\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.gz\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.gz\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.gz\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.gz\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.gz\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.gz\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".gz",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".gz",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.xz\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.xz\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.xz\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.xz\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.xz\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.xz\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.xz\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".xz",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".xz",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.bz2\\shell\\AeroFTPExtractHere",
+      "name": "",
+      "value": "Extract Here with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.bz2\\shell\\AeroFTPExtractHere",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.bz2\\shell\\AeroFTPExtractHere\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-here \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.bz2\\shell\\AeroFTPExtractToFolder",
+      "name": "",
+      "value": "Extract to Folder with AeroFTP..."
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.bz2\\shell\\AeroFTPExtractToFolder",
+      "name": "Icon",
+      "value": "\"@EXE@\",0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\SystemFileAssociations\\.bz2\\shell\\AeroFTPExtractToFolder\\command",
+      "name": "",
+      "value": "\"@EXE@\" --extract-to \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\.bz2\\OpenWithProgids",
+      "name": "AeroFTP.Archive",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\SupportedTypes",
+      "name": ".bz2",
+      "value": ""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities\\FileAssociations",
+      "name": ".bz2",
+      "value": "AeroFTP.Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\AeroFTP.Archive",
+      "name": "",
+      "value": "Compressed Archive"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\AeroFTP.Archive\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-archive.ico,0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\AeroFTP.Archive\\shell\\open",
+      "name": "",
+      "value": "Open with AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\Classes\\AeroFTP.Archive\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities",
+      "name": "ApplicationName",
+      "value": "AeroFTP"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities",
+      "name": "ApplicationDescription",
+      "value": "AeroFTP archive browser and extractor"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\AeroFTP\\Capabilities",
+      "name": "ApplicationIcon",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-archive.ico,0"
+    },
+    {
+      "group": "archives",
+      "key": "Software\\RegisteredApplications",
+      "name": "AeroFTP",
+      "value": "Software\\AeroFTP\\Capabilities"
+    },
+    {
+      "group": "common",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\DefaultIcon",
+      "name": "",
+      "value": "@DIR@\\icons\\mimetypes\\aeroftp-document.ico,0"
+    },
+    {
+      "group": "common",
+      "key": "Software\\Classes\\Applications\\AeroFTP.exe\\shell\\open\\command",
+      "name": "",
+      "value": "\"@EXE@\" \"%1\""
+    }
+  ]
+}

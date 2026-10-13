@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Tema siang",
             "scheduleNightTheme": "Tema malam",
             "scheduleInvalidTime": "Pilih dua waktu valid yang berbeda. Jadwal valid terakhir tetap aktif.",
-            "scheduleRestoreMode": "Pulihkan mode tampilan sebelumnya"
+            "scheduleRestoreMode": "Pulihkan mode tampilan sebelumnya",
+            "fileAssociationIntegrationTitle": "Integrasi Windows",
+            "fileAssociationRegisterOwned": "Daftarkan format berkas AeroFTP",
+            "fileAssociationRegisterArchives": "Daftarkan format arsip dan menu Penjelajah Berkas",
+            "fileAssociationIntegrationDesc": "Perubahan langsung berlaku dan tetap tersimpan selama pembaruan. Windows mengelola aplikasi bawaan Anda secara terpisah.",
+            "fileAssociationIntegrationPortable": "Instal AeroFTP untuk mengubah integrasi Windows.",
+            "fileAssociationIntegrationAdmin": "Windows mungkin meminta izin administrator untuk mengubah opsi ini."
         },
         "devtools": {
             "title": "AeroTools",

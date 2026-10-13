@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "日间主题",
             "scheduleNightTheme": "夜间主题",
             "scheduleInvalidTime": "请选择两个不同的有效时间。上一次有效的定时设置将继续生效。",
-            "scheduleRestoreMode": "恢复之前的外观模式"
+            "scheduleRestoreMode": "恢复之前的外观模式",
+            "fileAssociationIntegrationTitle": "Windows 集成",
+            "fileAssociationRegisterOwned": "注册 AeroFTP 文件格式",
+            "fileAssociationRegisterArchives": "注册压缩文件格式和资源管理器菜单",
+            "fileAssociationIntegrationDesc": "更改立即生效，并在更新时保留。Windows 会单独管理默认应用。",
+            "fileAssociationIntegrationPortable": "请安装 AeroFTP 以更改 Windows 集成。",
+            "fileAssociationIntegrationAdmin": "更改这些选项时，Windows 可能会请求管理员权限。"
         },
         "devtools": {
             "title": "AeroTools",

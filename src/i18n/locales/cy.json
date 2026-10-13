@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Thema dydd",
             "scheduleNightTheme": "Thema nos",
             "scheduleInvalidTime": "Dewiswch ddau amser dilys gwahanol. Bydd yr amserlen ddilys ddiwethaf yn parhau’n weithredol.",
-            "scheduleRestoreMode": "Adfer y modd ymddangosiad blaenorol"
+            "scheduleRestoreMode": "Adfer y modd ymddangosiad blaenorol",
+            "fileAssociationIntegrationTitle": "Integreiddio â Windows",
+            "fileAssociationRegisterOwned": "Cofrestru fformatau ffeil AeroFTP",
+            "fileAssociationRegisterArchives": "Cofrestru fformatau archif a dewislenni’r Archwiliwr Ffeiliau",
+            "fileAssociationIntegrationDesc": "Daw’r newidiadau i rym nawr a chânt eu cadw yn ystod diweddariadau. Mae Windows yn rheoli eich apiau diofyn ar wahân.",
+            "fileAssociationIntegrationPortable": "Gosodwch AeroFTP i newid yr integreiddio â Windows.",
+            "fileAssociationIntegrationAdmin": "Gall Windows ofyn am ganiatâd gweinyddwr i newid yr opsiynau hyn."
         },
         "devtools": {
             "title": "AeroTools",

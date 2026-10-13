@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "दिन की थीम",
             "scheduleNightTheme": "रात की थीम",
             "scheduleInvalidTime": "दो अलग-अलग मान्य समय चुनें। पिछली मान्य समय-सारणी सक्रिय रहेगी।",
-            "scheduleRestoreMode": "पिछला दिखावट मोड बहाल करें"
+            "scheduleRestoreMode": "पिछला दिखावट मोड बहाल करें",
+            "fileAssociationIntegrationTitle": "Windows एकीकरण",
+            "fileAssociationRegisterOwned": "AeroFTP फ़ाइल फ़ॉर्मैट पंजीकृत करें",
+            "fileAssociationRegisterArchives": "आर्काइव फ़ॉर्मैट और फ़ाइल एक्सप्लोरर मेनू पंजीकृत करें",
+            "fileAssociationIntegrationDesc": "बदलाव अभी लागू होंगे और अपडेट के दौरान भी बने रहेंगे। Windows आपके डिफ़ॉल्ट ऐप अलग से प्रबंधित करता है।",
+            "fileAssociationIntegrationPortable": "Windows एकीकरण बदलने के लिए AeroFTP इंस्टॉल करें।",
+            "fileAssociationIntegrationAdmin": "इन विकल्पों को बदलने के लिए Windows व्यवस्थापक की अनुमति माँग सकता है।"
         },
         "devtools": {
             "title": "AeroTools",

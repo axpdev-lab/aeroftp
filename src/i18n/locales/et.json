@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Päevane teema",
             "scheduleNightTheme": "Öine teema",
             "scheduleInvalidTime": "Vali kaks erinevat kehtivat kellaaega. Viimane kehtiv ajakava jääb aktiivseks.",
-            "scheduleRestoreMode": "Taasta eelmine välimuse režiim"
+            "scheduleRestoreMode": "Taasta eelmine välimuse režiim",
+            "fileAssociationIntegrationTitle": "Windowsiga integreerimine",
+            "fileAssociationRegisterOwned": "Registreeri AeroFTP failivormingud",
+            "fileAssociationRegisterArchives": "Registreeri arhiivivormingud ja File Exploreri menüüd",
+            "fileAssociationIntegrationDesc": "Muudatused jõustuvad kohe ja säilivad uuendamisel. Windows haldab sinu vaikerakendusi eraldi.",
+            "fileAssociationIntegrationPortable": "Windowsiga integreerimise muutmiseks paigalda AeroFTP.",
+            "fileAssociationIntegrationAdmin": "Windows võib nende valikute muutmiseks küsida administraatori luba."
         },
         "devtools": {
             "title": "AeroTools",

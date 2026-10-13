@@ -1208,7 +1208,13 @@
             "scheduleDayTheme": "Dagthema",
             "scheduleNightTheme": "Nachtthema",
             "scheduleInvalidTime": "Kies twee verschillende geldige tijden. Het laatste geldige schema blijft actief.",
-            "scheduleRestoreMode": "Vorige weergavemodus herstellen"
+            "scheduleRestoreMode": "Vorige weergavemodus herstellen",
+            "fileAssociationIntegrationTitle": "Windows-integratie",
+            "fileAssociationRegisterOwned": "AeroFTP-bestandsindelingen registreren",
+            "fileAssociationRegisterArchives": "Archiefindelingen en Verkenner-menu’s registreren",
+            "fileAssociationIntegrationDesc": "Wijzigingen worden direct toegepast en blijven behouden bij updates. Windows beheert je standaardapps afzonderlijk.",
+            "fileAssociationIntegrationPortable": "Installeer AeroFTP om de Windows-integratie te wijzigen.",
+            "fileAssociationIntegrationAdmin": "Windows kan om beheerdersrechten vragen om deze opties te wijzigen."
         },
         "devtools": {
             "title": "AeroTools",
