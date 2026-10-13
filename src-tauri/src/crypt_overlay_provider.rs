@@ -510,6 +510,30 @@ pub struct CryptOverlayProvider {
 }
 
 impl CryptOverlayProvider {
+    /// Display-only labels for encrypted components of the anchor (#1077).
+    /// `pwd`, entry paths and scope checks keep the server's anchor verbatim.
+    /// Children already carry plaintext names, so never decode those again.
+    fn breadcrumb_labels(&self, current_path: &str) -> std::collections::BTreeMap<String, String> {
+        let mut labels = std::collections::BTreeMap::new();
+        if self.scope.is_empty()
+            || (current_path != self.scope
+                && !current_path.starts_with(&format!("{}/", self.scope)))
+        {
+            return labels;
+        }
+        let mut path = String::new();
+        for component in self.scope.split('/').filter(|part| !part.is_empty()) {
+            path.push('/');
+            path.push_str(component);
+            if let Some(label) = self.keys.decode_name(component, true) {
+                if label != component {
+                    labels.insert(path.clone(), label);
+                }
+            }
+        }
+        labels
+    }
+
     /// `list`, with the number of rows inside the encrypted subtree and how
     /// many of those decrypted. Rows whose name does not decrypt are dropped
     /// (a foreign or corrupt file); when none decrypts, the key is probably
@@ -1654,6 +1678,18 @@ pub async fn wrap_provider_with_overlay_if_bound(
 /// time after the CLI/MCP provider resolver has already wrapped the transport.
 pub fn is_crypt_overlay_provider(provider: &mut dyn StorageProvider) -> bool {
     provider.as_any_mut().is::<CryptOverlayProvider>()
+}
+
+/// Optional presentation metadata from the live overlay, never routing paths.
+pub(crate) fn overlay_breadcrumb_labels(
+    provider: &mut dyn StorageProvider,
+    current_path: &str,
+) -> std::collections::BTreeMap<String, String> {
+    provider
+        .as_any_mut()
+        .downcast_mut::<CryptOverlayProvider>()
+        .map(|overlay| overlay.breadcrumb_labels(current_path))
+        .unwrap_or_default()
 }
 
 /// Peel a live provider box down to the concrete transport, past any crypt
@@ -3658,6 +3694,11 @@ mod tests {
             provider.mkdir(&format!("{scope}/sub1")).await.unwrap();
             provider.cd(&scope).await.unwrap();
             assert_eq!(
+                overlay_breadcrumb_labels(&mut provider, &scope).get(&scope),
+                Some(&"cartella-cifrata".to_string()),
+                "{label}: label is decrypted independently of pwd"
+            );
+            assert_eq!(
                 provider.pwd().await.unwrap(),
                 scope,
                 "{label}: pwd is the Overlays Path"
@@ -3677,11 +3718,72 @@ mod tests {
             // Opening the child by the path the listing gave lands on the
             // stored folder, not on a decrypted name the server does not have.
             provider.cd(&sub.path).await.unwrap();
+            let labels = overlay_breadcrumb_labels(&mut provider, &sub.path);
+            assert_eq!(
+                labels.get(&scope).map(String::as_str),
+                Some("cartella-cifrata")
+            );
+            assert!(
+                !labels.contains_key(&sub.path),
+                "{label}: child is already plaintext"
+            );
             assert_eq!(
                 provider.pwd().await.unwrap(),
                 sub.path,
                 "{label}: pwd inside the child"
             );
+        }
+    }
+
+    #[test]
+    fn breadcrumb_labels_stay_in_scope_and_preserve_canonical_paths() {
+        let mut kinds = both_kinds();
+        kinds.push((
+            "rclone-obfuscate",
+            rclone_keys(FilenameEncryption::Obfuscate, true, ".bin"),
+        ));
+        for (label, keys) in kinds {
+            let first = keys.encode_name("Archivio è", true).unwrap();
+            let second = keys.encode_name("Documenti", true).unwrap();
+            let parent = format!("/top/{first}");
+            let scope = format!("{parent}/{second}");
+            let mut provider =
+                CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, &scope);
+            let path = format!("{scope}/{second}");
+            let labels = overlay_breadcrumb_labels(&mut provider, &path);
+            assert_eq!(labels.len(), 2, "{label}");
+            assert_eq!(labels.get(&parent).map(String::as_str), Some("Archivio è"));
+            assert_eq!(labels.get(&scope).map(String::as_str), Some("Documenti"));
+            assert!(
+                !labels.contains_key(&path),
+                "{label}: do not decode a plaintext child twice"
+            );
+            for outside in ["/".to_string(), parent, format!("{scope}-sibling")] {
+                assert!(
+                    overlay_breadcrumb_labels(&mut provider, &outside).is_empty(),
+                    "{label}: outside {outside}"
+                );
+            }
+        }
+        let mut raw = MemProvider::new();
+        assert!(overlay_breadcrumb_labels(&mut raw, "/top/plain").is_empty());
+    }
+
+    #[test]
+    fn breadcrumb_labels_leave_cleartext_directory_modes_and_whole_remote_alone() {
+        for keys in [
+            rclone_keys(FilenameEncryption::Off, true, ".bin"),
+            rclone_keys(FilenameEncryption::Standard, false, ".bin"),
+            rclone_keys(FilenameEncryption::Obfuscate, false, ".bin"),
+        ] {
+            let mut provider =
+                CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "/top/vault.bin");
+            assert!(overlay_breadcrumb_labels(&mut provider, "/top/vault.bin/sub").is_empty());
+        }
+        for (_, keys) in both_kinds() {
+            let cipher = keys.encode_name("Archivio", true).unwrap();
+            let mut provider = CryptOverlayProvider::new(Box::new(MemProvider::new()), keys, "/");
+            assert!(overlay_breadcrumb_labels(&mut provider, &format!("/{cipher}")).is_empty());
         }
     }
 

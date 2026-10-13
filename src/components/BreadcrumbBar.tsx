@@ -15,6 +15,8 @@ interface SubDirectory {
 interface BreadcrumbBarProps {
   panel?: GuiPanelId;
   currentPath: string;
+  /** Presentation only: canonical paths still drive clicks, menus and editing. */
+  segmentLabels?: Readonly<Record<string, string>>;
   onNavigate: (path: string) => void;
   isCoherent?: boolean;
   /** When set, segments at or above this path are visually locked (sync navigation boundary) */
@@ -88,6 +90,7 @@ function splitPath(path: string): PathSegment[] {
 export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
   panel,
   currentPath,
+  segmentLabels,
   onNavigate,
   isCoherent = true,
   minPath,
@@ -405,7 +408,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                       disabled={locked}
                     >
                       <Folder size={14} className={`flex-shrink-0 ${locked ? 'text-gray-600' : 'text-amber-400'}`} />
-                      <span className="truncate">{seg.segment}</span>
+                      <span className="truncate">{segmentLabels?.[seg.fullPath] ?? seg.segment}</span>
                     </button>;
                   })}
                 </div>
@@ -477,7 +480,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                             }`}
                           >
                             <Folder size={14} className={`flex-shrink-0 ${isCurrent ? 'text-blue-400' : 'text-amber-400'}`} />
-                            <span className="truncate">{dir.name}</span>
+                            <span className="truncate">{segmentLabels?.[dir.path] ?? dir.name}</span>
                           </button>
                         );
                       })
@@ -503,7 +506,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                   disabled={locked}
                   {...(isLast ? { 'aria-current': 'page' as const } : {})}
                 >
-                  {seg.segment}
+                  {segmentLabels?.[seg.fullPath] ?? seg.segment}
                 </button>;
               })()}
             </React.Fragment>
@@ -552,7 +555,7 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
                         className="flex items-center gap-2 px-3 py-1.5 text-sm w-full text-left text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                       >
                         <Folder size={14} className="flex-shrink-0 text-amber-400" />
-                        <span className="truncate">{dir.name}</span>
+                        <span className="truncate">{segmentLabels?.[dir.path] ?? dir.name}</span>
                       </button>
                     ))
                   )}

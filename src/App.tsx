@@ -908,6 +908,9 @@ const App: React.FC = () => {
   } = localPanel2;
   const [currentRemotePath, setCurrentRemotePath] = useState('/');
   const [currentRemoteDisplayPath, setCurrentRemoteDisplayPath] = useState('/');
+  // Bind labels to the exact committed listing. Cached tabs, locks and plain
+  // listings must never reuse another listing's decrypted anchor labels.
+  const [remoteBreadcrumb, setRemoteBreadcrumb] = useState<Pick<FileListResponse, 'files' | 'current_path' | 'breadcrumb_labels'> | null>(null);
   const [connectionParams, setConnectionParams] = useState<ConnectionParams>({ server: '', username: '', password: '' });
   const [quickConnectDirs, setQuickConnectDirs] = useState({ remoteDir: '', localDir: '' });
   const [loading, setLoading] = useState(false);
@@ -5698,6 +5701,7 @@ const App: React.FC = () => {
 
   const applyRemoteFileList = (response: FileListResponse & { display_current_path?: string }) => {
     setRemoteFiles(response.files);
+    setRemoteBreadcrumb(response);
     setCurrentRemotePath(response.current_path);
     setCurrentRemoteDisplayPath(response.display_current_path || response.current_path);
     setSelectedRemoteFiles(new Set());
@@ -8747,6 +8751,7 @@ const App: React.FC = () => {
 
       // Refresh remote files with real data
       setRemoteFiles(response.files);
+      setRemoteBreadcrumb(response);
       setCurrentRemotePath(response.current_path);
       setCurrentRemoteDisplayPath((response as FileListResponse & { display_current_path?: string }).display_current_path || response.current_path);
       setSelectedRemoteFiles(new Set());
@@ -18689,6 +18694,9 @@ const App: React.FC = () => {
                       <BreadcrumbBar
                         panel="remote"
                         currentPath={(rcloneCryptVaultId || aeroCryptVaultId || overlayBadgeDecrypting) ? currentRemoteDisplayPath : currentRemotePath}
+                        segmentLabels={overlayVaultLit && overlayInScope && !overlayBadgeDecrypting
+                          && remoteBreadcrumb?.files === remoteFiles && remoteBreadcrumb.current_path === currentRemoteDisplayPath
+                          ? remoteBreadcrumb.breadcrumb_labels : undefined}
                         onNavigate={(path) => changeRemoteDirectory(path, undefined, !!(rcloneCryptVaultId || aeroCryptVaultId))}
                         isCoherent={!isSyncPathMismatch}
                         minPath={isSyncNavigation && syncBasePaths ? syncBasePaths.remote : undefined}

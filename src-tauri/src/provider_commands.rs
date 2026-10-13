@@ -1556,6 +1556,9 @@ pub async fn provider_discover_targets(
 pub struct ProviderListResponse {
     pub files: Vec<RemoteEntry>,
     pub current_path: String,
+    /// Labels keyed by canonical breadcrumb paths. Never use these for I/O.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub breadcrumb_labels: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -2403,6 +2406,10 @@ async fn provider_list_files_inner(
 
     Ok(ProviderListResponse {
         files,
+        breadcrumb_labels: crate::crypt_overlay_provider::overlay_breadcrumb_labels(
+            provider.as_mut(),
+            &current_path,
+        ),
         current_path,
     })
 }
@@ -2484,6 +2491,10 @@ async fn provider_change_dir_inner(
 
     Ok(ProviderListResponse {
         files,
+        breadcrumb_labels: crate::crypt_overlay_provider::overlay_breadcrumb_labels(
+            provider.as_mut(),
+            &current_path,
+        ),
         current_path,
     })
 }
