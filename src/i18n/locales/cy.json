@@ -6255,7 +6255,19 @@
             "sessionReconnected": "Ail-sefydlwyd y sesiwn.",
             "sessionNotReconnected": "Nid oedd modd ail-sefydlu'r sesiwn.",
             "sessionReset": "Anfonodd y gweinydd fwy nag un ateb, felly ail-sefydlwyd y sesiwn fel bod y gorchymyn nesaf yn darllen ei ateb ei hun.",
-            "sessionStateNote": "Mae'r gorchymyn hwn yn newid sut mae'r gweinydd yn trin y cysylltiad hwn yn unig: mae trosglwyddiadau'n defnyddio eu cysylltiadau eu hunain, ac efallai y bydd y rhestr ffeiliau'n edrych yn wahanol."
+            "sessionStateNote": "Mae'r gorchymyn hwn yn newid sut mae'r gweinydd yn trin y cysylltiad hwn yn unig: mae trosglwyddiadau'n defnyddio eu cysylltiadau eu hunain, ac efallai y bydd y rhestr ffeiliau'n edrych yn wahanol.",
+            "templatesLabel": "Templed",
+            "templateNone": "Teipiwch orchymyn",
+            "templateQuickConnect": "Mae templedi'n cael eu cadw ar weinydd cadwedig. Gall y cysylltiad hwn anfon gorchymyn a deipiwyd isod o hyd.",
+            "importGlftpd": "Ychwanegu gorchmynion glFTPd",
+            "importDone": "Ychwanegwyd {added}. Wedi'u cadw eisoes: {skipped}.",
+            "saveLine": "Cadw'r llinell",
+            "saveName": "Enw'r templed",
+            "saveConfirm": "Cadw",
+            "removeTemplate": "Tynnu",
+            "runTemplate": "Rhedeg",
+            "duplicateName": "Mae templed o'r enw {name} eisoes ar y gweinydd hwn.",
+            "templateStored": "Mae templed cadwedig yn cadw'r gorchymyn gyda bylchau i'w llenwi, byth gyfrinair."
         }
     }
 }

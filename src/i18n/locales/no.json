@@ -6255,7 +6255,19 @@
             "sessionReconnected": "Økten ble gjenopprettet.",
             "sessionNotReconnected": "Økten kunne ikke gjenopprettes.",
             "sessionReset": "Serveren sendte mer enn ett svar, så økten ble gjenopprettet slik at neste kommando leser sitt eget svar.",
-            "sessionStateNote": "Denne kommandoen endrer bare hvordan serveren behandler denne tilkoblingen: overføringer bruker egne tilkoblinger, og fillisten kan se annerledes ut."
+            "sessionStateNote": "Denne kommandoen endrer bare hvordan serveren behandler denne tilkoblingen: overføringer bruker egne tilkoblinger, og fillisten kan se annerledes ut.",
+            "templatesLabel": "Mal",
+            "templateNone": "Skriv en kommando",
+            "templateQuickConnect": "Maler lagres på en lagret server. Denne tilkoblingen kan likevel sende en kommando som skrives nedenfor.",
+            "importGlftpd": "Legg til glFTPd-kommandoer",
+            "importDone": "Lagt til {added}. Allerede lagret: {skipped}.",
+            "saveLine": "Lagre linje",
+            "saveName": "Malnavn",
+            "saveConfirm": "Lagre",
+            "removeTemplate": "Fjern",
+            "runTemplate": "Kjør",
+            "duplicateName": "En mal med navnet {name} finnes allerede på denne serveren.",
+            "templateStored": "En lagret mal lagrer kommandoen med felt som fylles ut, aldri et passord."
         }
     }
 }

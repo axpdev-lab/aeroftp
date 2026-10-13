@@ -9,6 +9,7 @@ import { Checkbox } from '../ui/Checkbox';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { copyText } from '../../utils/clipboard';
 import { SiteReplyView } from './SiteReplyView';
+import { SiteTemplateBar } from './SiteTemplateBar';
 import { SITE_REPLY_TIMEOUT_SECS, maskedEcho, mayChangeFiles, replyText, type SiteCommandReport } from './siteCommand';
 import { clearSiteTranscript, recordSiteExchange, siteHistory, siteTranscript, type SiteTranscriptEntry } from './siteSessionMemory';
 
@@ -18,6 +19,8 @@ interface SiteCommandDialogProps {
     sessionId: string;
     /** Server shown under the title (host, never credentials). */
     sessionLabel: string;
+    /** Saved profile that owns SITE templates. Null on Quick Connect. */
+    profileId: string | null;
     /** `changedFiles` is true when a command that may change files got through. */
     onClose: (changedFiles: boolean) => void;
     /** One activity-log entry per exchange: the report names the verb only. */
@@ -52,7 +55,7 @@ interface SiteSessionStatus {
     encrypted: boolean | null;
 }
 
-export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, sessionId, sessionLabel, onClose, onActivity, onFilesChanged }) => {
+export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, sessionId, sessionLabel, profileId, onClose, onActivity, onFilesChanged }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [line, setLine] = useState('');
@@ -118,20 +121,21 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
         }).catch(() => { /* nothing was copied: no confirmation shown */ });
     }, []);
 
-    const send = useCallback(async () => {
-        const typed = line.trim();
-        if (!typed || sending) return;
+    const deliver = useCallback(async (typed: string, echo: string, remember: boolean) => {
+        const args = typed.trim();
+        if (!args || sending) return;
+        const clearDraft = args === line.trim();
         const sentFrom = opening.current;
         setSending(true);
         let report: SiteCommandReport;
         try {
-            report = await invoke<SiteCommandReport>('provider_site_command', { args: typed, timeoutSecs: SITE_REPLY_TIMEOUT_SECS });
+            report = await invoke<SiteCommandReport>('provider_site_command', { args, timeoutSecs: SITE_REPLY_TIMEOUT_SECS });
         } catch {
             report = noSession();
         }
         // The session the command went to keeps its record even if the dialog
         // moved on; a session closed meanwhile gets nothing back.
-        const recorded = recordSiteExchange(sessionId, typed, maskedEcho(typed), report);
+        const recorded = recordSiteExchange(sessionId, args, echo, report, remember);
         if (recorded === null) return;
         callbacks.current.onActivity(report);
         const now = opening.current;
@@ -143,7 +147,7 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
         }
         setTranscript(recorded);
         if (mayChangeFiles(report)) changedFiles.current = true;
-        if (!(report.outcome === 'not_sent' && report.reason && INPUT_REASONS.has(report.reason))) setLine('');
+        if (clearDraft && !(report.outcome === 'not_sent' && report.reason && INPUT_REASONS.has(report.reason))) setLine('');
         setHistoryIndex(null);
         setSending(false);
         inputRef.current?.focus();
@@ -152,7 +156,7 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
     const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            void send();
+            void deliver(line.trim(), maskedEcho(line.trim()), true);
         } else if (e.key === 'Escape') {
             e.preventDefault();
             close();
@@ -190,8 +194,7 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="site-command-title"
-                className="rounded-lg shadow-2xl w-full max-w-3xl mx-4 border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh] animate-scale-in"
-                style={{ backgroundColor: 'var(--color-bg-secondary)' }}
+                className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl mx-4 border border-gray-200 dark:border-gray-700 flex flex-col max-h-[85vh] animate-scale-in"
             >
                 <div {...modalDrag.dragHandleProps} className="flex justify-between items-start px-5 pt-4 pb-3 cursor-grab active:cursor-grabbing">
                     <div className="min-w-0">
@@ -225,7 +228,7 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                     </button>
                 </div>
 
-                <div className="flex-1 min-h-[12rem] overflow-y-auto mx-5 px-3 rounded-md border border-gray-200 dark:border-gray-700" style={{ backgroundColor: 'var(--color-bg-primary)' }} aria-live="polite">
+                <div className="flex-1 min-h-[12rem] overflow-y-auto mx-5 px-3 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900" aria-live="polite">
                     {transcript.length === 0 ? (
                         <p className="py-6 text-center text-xs text-gray-500 dark:text-gray-400">{t('siteCommand.empty')}</p>
                     ) : transcript.map(entry => (
@@ -233,6 +236,13 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                     ))}
                     <div ref={endRef} />
                 </div>
+
+                <SiteTemplateBar
+                    profileId={profileId}
+                    draft={line}
+                    disabled={sending}
+                    onRun={(args, echo, remember) => void deliver(args, echo, remember)}
+                />
 
                 <div className="flex items-center gap-2 px-5 pt-3">
                     <span className="font-mono text-sm font-semibold text-gray-500 dark:text-gray-400">SITE</span>
@@ -248,11 +258,10 @@ export const SiteCommandDialog: React.FC<SiteCommandDialogProps> = ({ isOpen, se
                         autoCorrect="off"
                         autoCapitalize="off"
                         spellCheck={false}
-                        className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                        style={{ backgroundColor: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }}
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                     />
                     <button
-                        onClick={() => void send()}
+                        onClick={() => void deliver(line.trim(), maskedEcho(line.trim()), true)}
                         disabled={sending || line.trim() === ''}
                         className="px-4 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-1.5"
                     >

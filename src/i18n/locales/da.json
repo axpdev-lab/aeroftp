@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sessionen blev genoprettet.",
             "sessionNotReconnected": "Sessionen kunne ikke genoprettes.",
             "sessionReset": "Serveren sendte mere end ét svar, så sessionen blev genoprettet, så den næste kommando læser sit eget svar.",
-            "sessionStateNote": "Denne kommando ændrer kun, hvordan serveren behandler denne forbindelse: overførsler bruger deres egne forbindelser, og fillisten kan se anderledes ud."
+            "sessionStateNote": "Denne kommando ændrer kun, hvordan serveren behandler denne forbindelse: overførsler bruger deres egne forbindelser, og fillisten kan se anderledes ud.",
+            "templatesLabel": "Skabelon",
+            "templateNone": "Skriv en kommando",
+            "templateQuickConnect": "Skabeloner gemmes på en gemt server. Denne forbindelse kan stadig sende en kommando, der skrives nedenfor.",
+            "importGlftpd": "Tilføj glFTPd-kommandoer",
+            "importDone": "Tilføjet {added}. Allerede gemt: {skipped}.",
+            "saveLine": "Gem linje",
+            "saveName": "Skabelonnavn",
+            "saveConfirm": "Gem",
+            "removeTemplate": "Fjern",
+            "runTemplate": "Kør",
+            "duplicateName": "En skabelon med navnet {name} findes allerede på denne server.",
+            "templateStored": "En gemt skabelon gemmer kommandoen med felter til udfyldning, aldrig en adgangskode."
         }
     }
 }

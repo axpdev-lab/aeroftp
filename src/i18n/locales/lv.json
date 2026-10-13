@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sesija tika atjaunota.",
             "sessionNotReconnected": "Sesiju nevarēja atjaunot.",
             "sessionReset": "Serveris nosūtīja vairāk nekā vienu atbildi, tāpēc sesija tika atjaunota, lai nākamā komanda nolasītu savu atbildi.",
-            "sessionStateNote": "Šī komanda maina tikai to, kā serveris izturas pret šo savienojumu: pārsūtīšanas izmanto savus savienojumus, un failu saraksts var izskatīties citādi."
+            "sessionStateNote": "Šī komanda maina tikai to, kā serveris izturas pret šo savienojumu: pārsūtīšanas izmanto savus savienojumus, un failu saraksts var izskatīties citādi.",
+            "templatesLabel": "Veidne",
+            "templateNone": "Ierakstīt komandu",
+            "templateQuickConnect": "Veidnes glabājas saglabātā serverī. Šis savienojums joprojām var nosūtīt zemāk ierakstītu komandu.",
+            "importGlftpd": "Pievienot glFTPd komandas",
+            "importDone": "Pievienoti {added}. Jau saglabāti: {skipped}.",
+            "saveLine": "Saglabāt rindu",
+            "saveName": "Veidnes nosaukums",
+            "saveConfirm": "Saglabāt",
+            "removeTemplate": "Noņemt",
+            "runTemplate": "Palaist",
+            "duplicateName": "Veidne ar nosaukumu {name} šajā serverī jau ir.",
+            "templateStored": "Saglabāta veidne glabā komandu ar aizpildāmām vietām, nekad paroli."
         }
     }
 }

@@ -172,6 +172,11 @@ mod only_main_window_tests {
             "ai_delegate_local",
             "ai_cancel_delegation",
             "provider_site_command",
+            "site_template_slots",
+            "site_template_prepare",
+            "site_template_catalog",
+            "site_template_render",
+            "site_template_import",
         ] {
             assert!(super::only_main_window("main", command).is_ok());
             for label in ["extract", "extract-2", "splashscreen", ""] {
@@ -19745,6 +19750,11 @@ pub fn run() {
             provider_commands::provider_keep_alive,
             provider_commands::provider_site_command,
             provider_commands::provider_site_session,
+            provider_commands::site_template_slots,
+            provider_commands::site_template_prepare,
+            provider_commands::site_template_catalog,
+            provider_commands::site_template_render,
+            provider_commands::site_template_import,
             // OAuth2 cloud provider commands
             provider_commands::oauth2_connect,
             provider_commands::oauth2_full_auth,

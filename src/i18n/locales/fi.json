@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Istunto muodostettiin uudelleen.",
             "sessionNotReconnected": "Istuntoa ei voitu muodostaa uudelleen.",
             "sessionReset": "Palvelin lähetti useamman kuin yhden vastauksen, joten istunto muodostettiin uudelleen, jotta seuraava komento lukee oman vastauksensa.",
-            "sessionStateNote": "Tämä komento muuttaa vain sitä, miten palvelin käsittelee tätä yhteyttä: siirrot käyttävät omia yhteyksiään, ja tiedostoluettelo voi näyttää erilaiselta."
+            "sessionStateNote": "Tämä komento muuttaa vain sitä, miten palvelin käsittelee tätä yhteyttä: siirrot käyttävät omia yhteyksiään, ja tiedostoluettelo voi näyttää erilaiselta.",
+            "templatesLabel": "Malli",
+            "templateNone": "Kirjoita komento",
+            "templateQuickConnect": "Mallit säilyvät tallennetulla palvelimella. Tämä yhteys voi silti lähettää alle kirjoitetun komennon.",
+            "importGlftpd": "Lisää glFTPd-komennot",
+            "importDone": "Lisätty {added}. Jo tallennettu: {skipped}.",
+            "saveLine": "Tallenna rivi",
+            "saveName": "Mallin nimi",
+            "saveConfirm": "Tallenna",
+            "removeTemplate": "Poista",
+            "runTemplate": "Suorita",
+            "duplicateName": "Malli nimeltä {name} on jo tällä palvelimella.",
+            "templateStored": "Tallennettu malli tallentaa komennon paikkamerkkeineen, ei koskaan salasanaa."
         }
     }
 }

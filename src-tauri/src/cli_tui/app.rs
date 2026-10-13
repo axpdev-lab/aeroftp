@@ -95,6 +95,15 @@ pub struct TuiProfile {
     pub endpoint: Option<String>,
     /// Latest reachability probe result (`H`), `None` until probed.
     pub health: Option<TuiHealth>,
+    /// SITE templates saved on this profile. The lines still have holes.
+    pub site_templates: Vec<TuiSiteTemplate>,
+}
+
+/// A SITE template the palette can run. No filled-in values are stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TuiSiteTemplate {
+    pub name: String,
+    pub line: String,
 }
 
 /// Outcome of a reachability probe, mirrored from `server_health::HealthCheckResult`.
@@ -208,6 +217,19 @@ impl AppState {
     pub fn selected_profile(&self) -> Option<&TuiProfile> {
         self.selected_user()
             .and_then(|user| user.profiles.get(self.selected_profile))
+    }
+
+    /// The profile the live session was opened with, not the row highlighted now.
+    fn session_profile(&self) -> Option<&TuiProfile> {
+        let identity = self.session.identity.as_ref()?;
+        self.context.users.iter().find_map(|user| {
+            if user.name != identity.user_name {
+                return None;
+            }
+            user.profiles
+                .iter()
+                .find(|profile| profile.selector == identity.profile_selector)
+        })
     }
 
     pub fn selected_action(&self) -> &'static TuiActionItem {
@@ -2289,6 +2311,30 @@ impl AppState {
                 );
                 vec![WorkerCommand::Site { args }]
             }
+            PaletteCommand::SiteTemplate { name, sets } => {
+                match self
+                    .session_profile()
+                    .map(|profile| render_tui_site_template(profile, &name, &sets))
+                {
+                    Some(Ok((args, echo))) => {
+                        self.overlay = TuiOverlay::None;
+                        self.begin_mutation(TuiWorkerOperation::Site, format!("Sending {echo}."));
+                        vec![WorkerCommand::Site { args }]
+                    }
+                    Some(Err(message)) => {
+                        if let TuiOverlay::Palette(state) = &mut self.overlay {
+                            state.last_result = message;
+                        }
+                        Vec::new()
+                    }
+                    None => {
+                        if let TuiOverlay::Palette(state) = &mut self.overlay {
+                            state.last_result = "site: no active profile".to_string();
+                        }
+                        Vec::new()
+                    }
+                }
+            }
             PaletteCommand::Get { remote, local } => {
                 let name = remote_basename(&remote);
                 let base = if !self.context.download_base.is_empty() {
@@ -2514,6 +2560,7 @@ impl AppState {
             port,
             endpoint: None,
             health: None,
+            site_templates: Vec::new(),
         };
         self.apply_profile_upsert(&user_name, optimistic);
 
@@ -3550,6 +3597,12 @@ enum PaletteCommand {
     /// The rest of the line is kept as typed (quotes and spacing are the
     /// server's syntax), validated here so a bad line never reaches the worker.
     Site(ftp_client_gui_lib::providers::ftp_site::SiteArgs),
+    /// `site @<template> name=value`: run a template saved on the connected profile.
+    /// A template with a secret placeholder is refused here.
+    SiteTemplate {
+        name: String,
+        sets: Vec<(String, String)>,
+    },
 }
 
 /// Split a palette line shell-style, honouring double quotes so a single
@@ -3715,6 +3768,10 @@ fn parse_site_palette_line(line: &str) -> Option<PaletteCommand> {
     if !line[..verb_end].eq_ignore_ascii_case("site") {
         return None;
     }
+    let rest = line[verb_end..].trim_start();
+    if rest.starts_with('@') {
+        return Some(parse_site_template_call(rest));
+    }
     Some(match SiteArgs::parse(&line[verb_end..]) {
         Ok(args) => PaletteCommand::Site(args),
         Err(SiteInputError::Empty) => {
@@ -3730,11 +3787,93 @@ fn parse_site_palette_line(line: &str) -> Option<PaletteCommand> {
     })
 }
 
+/// `site @name key=value`. Values are split on whitespace, so a value that
+/// itself contains a space is a CLI or dialog command, not a palette one.
+fn parse_site_template_call(rest: &str) -> PaletteCommand {
+    let without = rest
+        .trim_start()
+        .strip_prefix('@')
+        .unwrap_or("")
+        .trim_start();
+    if without.is_empty() {
+        return PaletteCommand::Error("usage: site @<template> [name=value ...]".to_string());
+    }
+    let (name, tail) = match without.split_once(char::is_whitespace) {
+        Some((name, tail)) => (name, tail.trim()),
+        None => (without, ""),
+    };
+    if name.is_empty() || name.contains('=') {
+        return PaletteCommand::Error("usage: site @<template> [name=value ...]".to_string());
+    }
+    let mut sets = Vec::new();
+    if !tail.is_empty() {
+        for token in tail.split_whitespace() {
+            let Some((key, value)) = token.split_once('=') else {
+                return PaletteCommand::Error(format!("site: {token} must be name=value"));
+            };
+            if key.is_empty() {
+                return PaletteCommand::Error("site: a placeholder name is missing".to_string());
+            }
+            sets.push((key.to_string(), value.to_string()));
+        }
+    }
+    PaletteCommand::SiteTemplate {
+        name: name.to_string(),
+        sets,
+    }
+}
+
+/// Fill a saved template. A secret placeholder is refused: this UI has no
+/// prompt that hides what is typed.
+fn render_tui_site_template(
+    profile: &TuiProfile,
+    name: &str,
+    sets: &[(String, String)],
+) -> Result<(ftp_client_gui_lib::providers::ftp_site::SiteArgs, String), String> {
+    use ftp_client_gui_lib::providers::ftp_site::SiteArgs;
+    use ftp_client_gui_lib::providers::ftp_site_template::{
+        find_template, render, SiteTemplate, SlotKind,
+    };
+    let mut stored = Vec::with_capacity(profile.site_templates.len());
+    for template in &profile.site_templates {
+        stored.push(
+            SiteTemplate::create(&template.name, &template.line).map_err(|err| err.to_string())?,
+        );
+    }
+    let template = find_template(&stored, name).map_err(|err| err.to_string())?;
+    if let Some(slot) = template
+        .slots()
+        .iter()
+        .find(|slot| slot.kind() == SlotKind::Secret)
+    {
+        return Err(format!(
+            "template {:?} asks for a secret ({{{}}}). The terminal cannot ask without echo: use the SITE dialog, or aeroftp-cli site --profile {:?} --template {:?} --secret {}",
+            template.name(),
+            slot.name(),
+            profile.name,
+            template.name(),
+            slot.name()
+        ));
+    }
+    let mut values = std::collections::BTreeMap::new();
+    for (key, value) in sets {
+        if values.insert(key.clone(), value.clone()).is_some() {
+            return Err(format!("{key} is given more than once"));
+        }
+    }
+    let rendered = render(template, &values).map_err(|err| err.to_string())?;
+    let echo = rendered.echo.clone();
+    match SiteArgs::parse(rendered.line()) {
+        Ok(args) => Ok((args, echo)),
+        Err(_) => Err(format!("{echo} could not be sent")),
+    }
+}
+
 /// The one-line cheatsheet of every palette verb. Single source of truth for
 /// the `help`/`?` echo and the empty-buffer placeholder hint (rendered in
 /// `mod.rs`). The middot separator matches the header style; no em-dashes.
 pub(crate) fn palette_cheatsheet() -> &'static str {
-    "ls [path] · cd <path> · stat <path> · mkdir <path> · get <remote> [local] · put <local> [remote] · mv <src> <dst> · rm <path> · rm! <path> · site <command>"
+    "ls [path] · cd <path> · stat <path> · mkdir <path> · get <remote> [local] · put <local> [remote] · mv <src> <dst> · rm <path> · rm! <path> · site <command> · site @<template> [name=value]"
 }
 
 /// Compact byte size for the status line (the Shape B fullscreen view has no
@@ -5199,6 +5338,51 @@ mod tests {
             parse_palette_command("sitemap", "/srv"),
             PaletteCommand::Error(hint) if hint.starts_with("unknown 'sitemap'")
         ));
+        match parse_palette_command("site @change-ratio user=alice ratio=3", "/srv") {
+            PaletteCommand::SiteTemplate { name, sets } => {
+                assert_eq!(name, "change-ratio");
+                assert_eq!(
+                    sets,
+                    vec![
+                        ("user".to_string(), "alice".to_string()),
+                        ("ratio".to_string(), "3".to_string())
+                    ]
+                );
+            }
+            other => panic!("expected a template, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn palette_site_template_refuses_a_secret_and_runs_a_plain_one() {
+        let plain = TuiProfile {
+            name: "lab".to_string(),
+            site_templates: vec![TuiSiteTemplate {
+                name: "who".to_string(),
+                line: "WHO".to_string(),
+            }],
+            ..Default::default()
+        };
+        let (args, echo) = render_tui_site_template(&plain, "who", &[]).expect("who");
+        assert_eq!(args.label(), "SITE WHO");
+        assert_eq!(echo, "SITE WHO");
+
+        let secret = TuiProfile {
+            name: "lab".to_string(),
+            site_templates: vec![TuiSiteTemplate {
+                name: "chpass".to_string(),
+                line: "CHPASS {user} {pw:secret}".to_string(),
+            }],
+            ..Default::default()
+        };
+        let err = render_tui_site_template(
+            &secret,
+            "chpass",
+            &[("user".to_string(), "alice".to_string())],
+        )
+        .expect_err("secret");
+        assert!(err.contains("secret"), "{err}");
+        assert!(!err.contains("hunter"));
     }
 
     #[test]

@@ -1722,6 +1722,41 @@ enum TrashCommands {
     },
 }
 
+/// `aeroftp-cli site-template`: the SITE templates saved on `--profile`.
+#[derive(Subcommand, Clone)]
+enum SiteTemplateCmd {
+    /// List the templates saved on --profile
+    List,
+    /// Add templates from a built-in catalog, or from a JSON file.
+    /// A name already on the profile, ignoring ASCII case, is left as saved.
+    Import {
+        /// Catalog file. Omit to import a built-in catalog.
+        #[arg(long, value_name = "PATH")]
+        file: Option<String>,
+        /// Built-in catalog when --file is omitted (glftpd)
+        #[arg(long, value_name = "NAME")]
+        catalog: Option<String>,
+    },
+    /// Print the profile's templates as a catalog, or write them to a file
+    Export {
+        /// Write the catalog here instead of printing it
+        #[arg(short, long, value_name = "PATH")]
+        output: Option<String>,
+    },
+    /// Save a SITE line. A password position must be a {name:secret} placeholder
+    Add {
+        /// Template name
+        name: String,
+        /// The SITE command, with or without the word SITE
+        line: String,
+    },
+    /// Remove one template (exact name, or a unique part of it)
+    Remove {
+        /// Template name
+        name: String,
+    },
+}
+
 #[derive(Subcommand, Clone)]
 enum Commands {
     /// Test connection to a remote server
@@ -2380,6 +2415,18 @@ enum Commands {
         /// With --file, also stop at the first 4xx or 5xx reply
         #[arg(long, requires = "file")]
         fail_fast: bool,
+        /// Run a template saved on --profile instead of a typed command
+        #[arg(long, value_name = "NAME", conflicts_with = "file")]
+        template: Option<String>,
+        /// Fill a text or number placeholder (repeatable). A secret placeholder is refused here
+        #[arg(long = "set", value_name = "NAME=VALUE")]
+        sets: Vec<String>,
+    },
+    /// List, import, export, add and remove SITE templates saved on a profile
+    #[command(name = "site-template")]
+    SiteTemplate {
+        #[command(subcommand)]
+        action: SiteTemplateCmd,
     },
     /// Show detailed server info, account, and storage quota
     About {
@@ -17928,7 +17975,7 @@ fn build_tui_context(
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
-                    cli_tui::TuiProfile {
+                    Ok(cli_tui::TuiProfile {
                         selector: (idx + 1).to_string(),
                         id: id.to_string(),
                         name: profile
@@ -17975,9 +18022,23 @@ fn build_tui_context(
                             .filter(|s| !s.is_empty())
                             .map(|s| s.to_string()),
                         health: None,
-                    }
+                        site_templates: ftp_client_gui_lib::providers::ftp_site_template::read_profile_templates(profile)
+                            .map_err(|err| {
+                                let name = profile
+                                    .get("name")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or(id);
+                                format!("profile {name}: {err}")
+                            })?
+                            .into_iter()
+                            .map(|template| cli_tui::TuiSiteTemplate {
+                                name: template.name().to_string(),
+                                line: template.line().to_string(),
+                            })
+                            .collect(),
+                    })
                 })
-                .collect();
+                .collect::<Result<Vec<_>, String>>()?;
             let profile_count = stats_by_user
                 .get(&user.id)
                 .copied()
@@ -44332,6 +44393,12 @@ Exit codes:
      could not be read after sending: outcome unknown, not sent again
   5  invalid command (empty, control character, longer than 1024 bytes)
   7  the connection is not FTP or FTPS
+
+--template NAME runs a template saved on --profile (see site-template).
+Text and number placeholders are filled with --set NAME=VALUE, or asked for
+when this is a terminal. A {name:secret} placeholder is refused by --set:
+it is asked for without echo, or read from AEROFTP_SITE_SECRET_<NAME>.
+The filled command is printed to stderr with secrets masked, then sent once.
 ";
 
 /// The options of `aeroftp-cli site` besides the command itself.
@@ -44341,37 +44408,16 @@ struct SiteCliOptions<'a> {
     file: Option<&'a str>,
     strip_codes: bool,
     fail_fast: bool,
+    template: Option<&'a str>,
+    sets: &'a [String],
 }
 
 /// `{NAME}` replaced by the value of the `--secret NAME` with that name, in
 /// one pass, so a value that happens to contain `{other}` stays as typed.
 /// Braces that do not name a secret are left alone: they may belong to the
-/// server's own syntax.
+/// server's own syntax. A filled template is not passed through here again.
 fn substitute_site_secrets(line: &str, secrets: &[(String, String)]) -> String {
-    let mut out = String::with_capacity(line.len());
-    let mut rest = line;
-    while let Some(open) = rest.find('{') {
-        out.push_str(&rest[..open]);
-        let after = &rest[open + 1..];
-        let named = after.find('}').and_then(|close| {
-            secrets
-                .iter()
-                .find(|(name, _)| *name == after[..close])
-                .map(|(_, value)| (close, value))
-        });
-        match named {
-            Some((close, value)) => {
-                out.push_str(value);
-                rest = &after[close + 1..];
-            }
-            None => {
-                out.push('{');
-                rest = after;
-            }
-        }
-    }
-    out.push_str(rest);
-    out
+    ftp_client_gui_lib::providers::ftp_site_template::substitute_named_secrets(line, secrets)
 }
 
 fn is_valid_site_secret_name(name: &str) -> bool {
@@ -44523,6 +44569,545 @@ fn site_worker_event(
     }
 }
 
+/// A template line after its holes are filled. Dropped copies of the line are
+/// wiped: it can hold a password.
+struct PreparedSiteLine {
+    line: String,
+    carries_secret: bool,
+}
+
+impl Drop for PreparedSiteLine {
+    fn drop(&mut self) {
+        self.line.zeroize();
+    }
+}
+
+/// The templates of one FTP/FTPS profile, plus what a later save needs.
+struct FtpProfileTemplates {
+    store: ftp_client_gui_lib::credential_store::CredentialStore,
+    user_id: i64,
+    profile_id: String,
+    templates: Vec<ftp_client_gui_lib::providers::ftp_site_template::SiteTemplate>,
+}
+
+fn explain_profile_error(err: String) -> String {
+    match err.as_str() {
+        "USER_LOCKED" => "the account is locked".to_string(),
+        "NO_ACTIVE_USER" => "no active account".to_string(),
+        _ => err,
+    }
+}
+
+/// The `--profile` row, when it is FTP or FTPS and its template list is readable.
+fn load_ftp_profile_templates(cli: &Cli, format: OutputFormat) -> Result<FtpProfileTemplates, i32> {
+    use ftp_client_gui_lib::providers::ftp_site_template;
+
+    let Some(query) = cli.profile.as_deref().filter(|query| !query.is_empty()) else {
+        print_error(
+            format,
+            "SITE templates are saved on a profile: pass --profile",
+            5,
+        );
+        return Err(5);
+    };
+    let store = match open_vault(cli) {
+        Ok(store) => store,
+        Err(err) => {
+            print_error(format, &explain_profile_error(err), 1);
+            return Err(1);
+        }
+    };
+    let profiles = match load_active_user_profiles(cli, &store) {
+        Ok(profiles) => profiles,
+        Err(err) => {
+            print_error(format, &explain_profile_error(err), 1);
+            return Err(1);
+        }
+    };
+    let profile = match match_profile_by_query(&profiles, query) {
+        ProfileMatch::One(profile) => profile,
+        ProfileMatch::Ambiguous(names) => {
+            print_error(
+                format,
+                &format!(
+                    "Ambiguous profile '{query}'. Matches: {}. Use exact name or index number.",
+                    names.join(", ")
+                ),
+                5,
+            );
+            return Err(5);
+        }
+        ProfileMatch::None => {
+            print_error(
+                format,
+                &format!("Profile not found: '{query}'. Run 'aeroftp-cli profiles' to list."),
+                5,
+            );
+            return Err(5);
+        }
+    };
+    let protocol = profile
+        .get("protocol")
+        .and_then(|value| value.as_str())
+        .unwrap_or("ftp");
+    if !protocol.eq_ignore_ascii_case("ftp") && !protocol.eq_ignore_ascii_case("ftps") {
+        print_error(
+            format,
+            &format!("SITE templates need an FTP or FTPS profile, and this one is {protocol}"),
+            7,
+        );
+        return Err(7);
+    }
+    let profile_id = profile
+        .get("id")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+    if profile_id.is_empty() {
+        print_error(format, "the matched profile has no id", 5);
+        return Err(5);
+    }
+    let templates = match ftp_site_template::read_profile_templates(profile) {
+        Ok(templates) => templates,
+        Err(err) => {
+            print_error(format, &err.to_string(), 5);
+            return Err(5);
+        }
+    };
+    let user_id = match ensure_active_user_unlocked(cli, &store) {
+        Ok(Some(user)) => user.id,
+        Ok(None) => {
+            print_error(format, "no active account", 1);
+            return Err(1);
+        }
+        Err(err) => {
+            print_error(format, &explain_profile_error(err), 1);
+            return Err(1);
+        }
+    };
+    Ok(FtpProfileTemplates {
+        store,
+        user_id,
+        profile_id,
+        templates,
+    })
+}
+
+/// Replace `siteTemplates` on the profile and leave every other field as it is.
+fn store_profile_templates(
+    loaded: &FtpProfileTemplates,
+    templates: &[ftp_client_gui_lib::providers::ftp_site_template::SiteTemplate],
+) -> Result<(), String> {
+    use ftp_client_gui_lib::providers::ftp_site_template::write_profile_templates;
+    use ftp_client_gui_lib::user_partitions;
+
+    let profile_id = loaded.profile_id.clone();
+    let next = templates.to_vec();
+    let (stored, written) = user_partitions::cli_update_server_profiles_for_user(
+        &loaded.store,
+        loaded.user_id,
+        |profiles| {
+            let Some(profile) = profiles.iter_mut().find(|profile| {
+                profile.get("id").and_then(|value| value.as_str()) == Some(profile_id.as_str())
+            }) else {
+                return false;
+            };
+            write_profile_templates(profile, &next);
+            true
+        },
+    )?;
+    if !written {
+        return Err("the profile was removed before the templates could be saved".to_string());
+    }
+    mirror_profiles_to_legacy_blob_if_active(&loaded.store, loaded.user_id, &stored);
+    Ok(())
+}
+
+fn parse_site_sets(sets: &[String]) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let mut out = std::collections::BTreeMap::new();
+    for set in sets {
+        let Some((name, value)) = set.split_once('=') else {
+            return Err(format!("--set {set:?} must be NAME=VALUE"));
+        };
+        if !is_valid_site_secret_name(name) {
+            return Err(format!(
+                "--set {name:?}: a name is a letter followed by letters, digits or _ (at most 32)"
+            ));
+        }
+        if out.insert(name.to_string(), value.to_string()).is_some() {
+            return Err(format!("--set {name} is given more than once"));
+        }
+    }
+    Ok(out)
+}
+
+/// A text or number placeholder, echoed as typed. A secret never comes through here.
+fn read_site_slot_value(name: &str) -> Result<String, String> {
+    if !std::io::stdin().is_terminal() {
+        return Err(format!(
+            "missing value for {{{name}}}: pass --set {name}=VALUE (this is not a terminal)"
+        ));
+    }
+    eprint!("{name}: ");
+    let _ = std::io::Write::flush(&mut std::io::stderr());
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .map_err(|err| format!("cannot read {{{name}}}: {err}"))?;
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+    Ok(line)
+}
+
+/// Slot values of one template run. Drop wipes them, including on an early return.
+struct SecretValues(std::collections::BTreeMap<String, String>);
+
+impl Drop for SecretValues {
+    fn drop(&mut self) {
+        for value in self.0.values_mut() {
+            value.zeroize();
+        }
+    }
+}
+
+/// Fill `--template` before connecting. The echo (secrets masked) goes to stderr.
+fn prepare_site_template(
+    name: &str,
+    opts: &SiteCliOptions<'_>,
+    cli: &Cli,
+    format: OutputFormat,
+) -> Result<PreparedSiteLine, i32> {
+    use ftp_client_gui_lib::providers::ftp_site_template::{self, SlotKind};
+
+    let loaded = load_ftp_profile_templates(cli, format)?;
+    let template = match ftp_site_template::find_template(&loaded.templates, name) {
+        Ok(template) => template.clone(),
+        Err(err) => {
+            print_error(format, &err.to_string(), 5);
+            return Err(5);
+        }
+    };
+    let mut sets = match parse_site_sets(opts.sets) {
+        Ok(sets) => sets,
+        Err(err) => {
+            print_error(format, &err, 5);
+            return Err(5);
+        }
+    };
+    let mut named_secrets: Vec<&str> = Vec::new();
+    for secret_name in opts.secrets {
+        if !is_valid_site_secret_name(secret_name) {
+            print_error(
+                format,
+                &format!("--secret {secret_name:?}: a name is a letter followed by letters, digits or _ (at most 32)"),
+                5,
+            );
+            return Err(5);
+        }
+        if named_secrets.contains(&secret_name.as_str()) {
+            print_error(
+                format,
+                &format!("--secret {secret_name} is given more than once"),
+                5,
+            );
+            return Err(5);
+        }
+        named_secrets.push(secret_name.as_str());
+    }
+
+    let mut values = SecretValues(std::collections::BTreeMap::new());
+    for slot in template.slots() {
+        match slot.kind() {
+            SlotKind::Secret => {
+                if sets.contains_key(slot.name()) {
+                    print_error(
+                        format,
+                        &format!(
+                            "--set cannot fill {{{}}}: it is a secret. Use --secret {}",
+                            slot.name(),
+                            slot.name()
+                        ),
+                        5,
+                    );
+                    return Err(5);
+                }
+                named_secrets.retain(|listed| *listed != slot.name());
+                match read_site_secret(slot.name()) {
+                    Ok(value) => {
+                        values.0.insert(slot.name().to_string(), value);
+                    }
+                    Err(err) => {
+                        print_error(format, &err, 5);
+                        return Err(5);
+                    }
+                }
+            }
+            SlotKind::Text | SlotKind::Number => {
+                if named_secrets.iter().any(|listed| *listed == slot.name()) {
+                    print_error(
+                        format,
+                        &format!(
+                            "--secret {} is a {} placeholder: use --set {}=VALUE",
+                            slot.name(),
+                            slot.kind().label(),
+                            slot.name()
+                        ),
+                        5,
+                    );
+                    return Err(5);
+                }
+                let value = if let Some(value) = sets.remove(slot.name()) {
+                    value
+                } else {
+                    match read_site_slot_value(slot.name()) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            print_error(format, &err, 5);
+                            return Err(5);
+                        }
+                    }
+                };
+                values.0.insert(slot.name().to_string(), value);
+            }
+        }
+    }
+    if let Some(extra) = sets.keys().next() {
+        print_error(
+            format,
+            &format!("{{{extra}}} is not a placeholder of this template"),
+            5,
+        );
+        return Err(5);
+    }
+    if let Some(extra) = named_secrets.first() {
+        print_error(
+            format,
+            &format!("--secret {extra} is not a placeholder of this template"),
+            5,
+        );
+        return Err(5);
+    }
+
+    let rendered = match ftp_site_template::render(&template, &values.0) {
+        Ok(rendered) => rendered,
+        Err(err) => {
+            print_error(format, &err.to_string(), 5);
+            return Err(5);
+        }
+    };
+    eprintln!("> {}", rendered.echo);
+    Ok(PreparedSiteLine {
+        line: rendered.line().to_string(),
+        carries_secret: rendered.carries_secret,
+    })
+}
+
+fn template_json(
+    template: &ftp_client_gui_lib::providers::ftp_site_template::SiteTemplate,
+) -> serde_json::Value {
+    serde_json::json!({
+        "name": template.name(),
+        "line": template.line(),
+        "slots": template.slots().iter().map(|slot| serde_json::json!({
+            "name": slot.name(),
+            "kind": slot.kind().label(),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+fn read_template_catalog(path: &str) -> Result<String, String> {
+    const MAX_CATALOG_BYTES: u64 = 256 * 1024;
+    let meta = std::fs::metadata(path).map_err(|err| format!("cannot read {path}: {err}"))?;
+    if meta.len() > MAX_CATALOG_BYTES {
+        return Err(format!("{path} is larger than 256 KiB"));
+    }
+    std::fs::read_to_string(path).map_err(|err| format!("cannot read {path}: {err}"))
+}
+
+/// `aeroftp-cli site-template`: list, import, export, add and remove.
+fn cmd_site_templates(action: &SiteTemplateCmd, cli: &Cli, format: OutputFormat) -> i32 {
+    use ftp_client_gui_lib::providers::ftp_site_template::{self, SiteTemplate};
+
+    let mut loaded = match load_ftp_profile_templates(cli, format) {
+        Ok(loaded) => loaded,
+        Err(code) => return code,
+    };
+    let fail = |format: OutputFormat, err: String| {
+        print_error(format, &err, 5);
+        5
+    };
+    match action {
+        SiteTemplateCmd::List => match format {
+            OutputFormat::Json => {
+                print_json(&serde_json::json!({
+                    "status": "ok",
+                    "templates": loaded.templates.iter().map(template_json).collect::<Vec<_>>(),
+                }));
+                0
+            }
+            OutputFormat::Text => {
+                if loaded.templates.is_empty() {
+                    eprintln!("this profile has no SITE templates");
+                    eprintln!(
+                        "add the glFTPd set with: aeroftp-cli --profile <name> site-template import"
+                    );
+                }
+                for template in &loaded.templates {
+                    println!("{}\t{}", template.name(), template.line());
+                }
+                0
+            }
+        },
+        SiteTemplateCmd::Import { file, catalog } => {
+            if file.is_some() && catalog.is_some() {
+                return fail(
+                    format,
+                    "give either --file or --catalog, not both".to_string(),
+                );
+            }
+            let text = if let Some(path) = file.as_deref() {
+                match read_template_catalog(path) {
+                    Ok(text) => text,
+                    Err(err) => return fail(format, err),
+                }
+            } else {
+                match ftp_site_template::builtin_catalog(catalog.as_deref().unwrap_or("glftpd")) {
+                    Ok(text) => text.to_string(),
+                    Err(err) => return fail(format, err.to_string()),
+                }
+            };
+            let incoming = match ftp_site_template::parse_catalog(&text) {
+                Ok(incoming) => incoming,
+                Err(err) => return fail(format, err.to_string()),
+            };
+            let (merged, report) =
+                match ftp_site_template::merge_import(&loaded.templates, &incoming) {
+                    Ok(merged) => merged,
+                    Err(err) => return fail(format, err.to_string()),
+                };
+            if let Err(err) = store_profile_templates(&loaded, &merged) {
+                print_error(format, &err, 1);
+                return 1;
+            }
+            match format {
+                OutputFormat::Json => print_json(&serde_json::json!({
+                    "status": "ok",
+                    "added": report.added,
+                    "skipped": report.skipped,
+                })),
+                OutputFormat::Text => {
+                    eprintln!("added: {}", report.added.len());
+                    for name in &report.added {
+                        eprintln!("  {name}");
+                    }
+                    if !report.skipped.is_empty() {
+                        eprintln!("already on the profile: {}", report.skipped.join(", "));
+                    }
+                }
+            }
+            0
+        }
+        SiteTemplateCmd::Export { output } => {
+            let document = ftp_site_template::export_catalog(&loaded.templates);
+            let text = serde_json::to_string_pretty(&document).unwrap_or_else(|_| "{}".to_string());
+            if let Some(path) = output.as_deref() {
+                if let Err(err) = std::fs::write(path, text.as_bytes()) {
+                    return fail(format, format!("cannot write {path}: {err}"));
+                }
+                eprintln!("wrote {} templates to {path}", loaded.templates.len());
+            } else {
+                println!("{text}");
+            }
+            0
+        }
+        SiteTemplateCmd::Add { name, line } => {
+            let created = match SiteTemplate::create(name, line) {
+                Ok(created) => created,
+                Err(err) => return fail(format, err.to_string()),
+            };
+            if loaded.templates.len() >= ftp_site_template::MAX_TEMPLATES {
+                return fail(
+                    format,
+                    ftp_site_template::TemplateError::TooManyTemplates.to_string(),
+                );
+            }
+            if let Some(existing) = loaded
+                .templates
+                .iter()
+                .find(|template| template.name().eq_ignore_ascii_case(created.name()))
+            {
+                return fail(
+                    format,
+                    ftp_site_template::TemplateError::DuplicateName {
+                        name: existing.name().to_string(),
+                    }
+                    .to_string(),
+                );
+            }
+            loaded.templates.push(created);
+            let saved_name = loaded
+                .templates
+                .last()
+                .map(|template| template.name().to_string());
+            let saved_line = loaded
+                .templates
+                .last()
+                .map(|template| template.line().to_string());
+            let stored = loaded.templates.clone();
+            if let Err(err) = store_profile_templates(&loaded, &stored) {
+                print_error(format, &err, 1);
+                return 1;
+            }
+            match format {
+                OutputFormat::Json => print_json(&serde_json::json!({
+                    "status": "ok",
+                    "name": saved_name,
+                    "line": saved_line,
+                })),
+                OutputFormat::Text => {
+                    if let Some(saved_name) = saved_name {
+                        eprintln!("saved template {saved_name}");
+                    }
+                }
+            }
+            0
+        }
+        SiteTemplateCmd::Remove { name } => {
+            let found = match ftp_site_template::find_template(&loaded.templates, name) {
+                Ok(found) => found.id().to_string(),
+                Err(err) => return fail(format, err.to_string()),
+            };
+            let removed = loaded
+                .templates
+                .iter()
+                .find(|template| template.id() == found)
+                .map(|template| template.name().to_string());
+            loaded.templates.retain(|template| template.id() != found);
+            let stored = loaded.templates.clone();
+            if let Err(err) = store_profile_templates(&loaded, &stored) {
+                print_error(format, &err, 1);
+                return 1;
+            }
+            match format {
+                OutputFormat::Json => print_json(&serde_json::json!({
+                    "status": "ok",
+                    "removed": removed,
+                })),
+                OutputFormat::Text => {
+                    if let Some(removed) = removed {
+                        eprintln!("removed template {removed}");
+                    }
+                }
+            }
+            0
+        }
+    }
+}
+
 /// `aeroftp-cli site`: send SITE commands through an FTP/FTPS session and
 /// print the replies. One connection for the whole run; a batch stops at the
 /// first command whose outcome is unknown or that could not be sent.
@@ -44535,17 +45120,52 @@ async fn cmd_site(
 ) -> i32 {
     use ftp_client_gui_lib::providers::ftp_site::{self, SiteOptions, SiteOutcome};
 
-    let batch = opts.file.is_some();
-    let lines: Vec<(usize, String)> = match opts.file {
-        Some(path) => match read_site_batch(path) {
-            Ok(lines) => lines,
-            Err(msg) => {
-                print_error(format, &msg, 5);
-                return 5;
-            }
-        },
-        None => vec![(1, words.join(" "))],
+    if opts.template.is_some() && opts.file.is_some() {
+        print_error(format, "give either --template or --file, not both", 5);
+        return 5;
+    }
+    if opts.template.is_some() && words.iter().any(|word| !word.trim().is_empty()) {
+        print_error(
+            format,
+            "give either a SITE command or --template, not both",
+            5,
+        );
+        return 5;
+    }
+    if opts.template.is_none() && !opts.sets.is_empty() {
+        print_error(format, "--set fills a placeholder of --template", 5);
+        return 5;
+    }
+
+    let prepared = if let Some(name) = opts.template {
+        match prepare_site_template(name, &opts, cli, format) {
+            Ok(prepared) => Some(prepared),
+            Err(code) => return code,
+        }
+    } else {
+        None
     };
+    let from_template = prepared.is_some();
+    let template_secret = prepared
+        .as_ref()
+        .is_some_and(|prepared| prepared.carries_secret);
+
+    let batch = opts.file.is_some();
+    let mut lines: Vec<(usize, String)> = if let Some(prepared) = &prepared {
+        vec![(1, prepared.line.clone())]
+    } else {
+        match opts.file {
+            Some(path) => match read_site_batch(path) {
+                Ok(lines) => lines,
+                Err(msg) => {
+                    print_error(format, &msg, 5);
+                    return 5;
+                }
+            },
+            None => vec![(1, words.join(" "))],
+        }
+    };
+    drop(prepared);
     if lines.iter().all(|(_, line)| line.trim().is_empty()) {
         print_error(
             format,
@@ -44556,41 +45176,59 @@ async fn cmd_site(
     }
 
     let mut secrets: Vec<(String, String)> = Vec::new();
-    for name in opts.secrets {
-        if !is_valid_site_secret_name(name) {
-            print_error(
-                format,
-                &format!("--secret {name:?}: a name is a letter followed by letters, digits or _ (at most 32)"),
-                5,
-            );
-            return 5;
-        }
-        let placeholder = format!("{{{name}}}");
-        if !lines.iter().any(|(_, line)| line.contains(&placeholder)) {
-            print_error(
-                format,
-                &format!("--secret {name} is not used: put {placeholder} where the value goes"),
-                5,
-            );
-            return 5;
-        }
-        match read_site_secret(name) {
-            Ok(value) => secrets.push((name.clone(), value)),
-            Err(msg) => {
-                print_error(format, &msg, 5);
+    if !from_template {
+        for name in opts.secrets {
+            if !is_valid_site_secret_name(name) {
+                print_error(
+                    format,
+                    &format!("--secret {name:?}: a name is a letter followed by letters, digits or _ (at most 32)"),
+                    5,
+                );
                 return 5;
+            }
+            let placeholder = format!("{{{name}}}");
+            if !lines.iter().any(|(_, line)| line.contains(&placeholder)) {
+                print_error(
+                    format,
+                    &format!("--secret {name} is not used: put {placeholder} where the value goes"),
+                    5,
+                );
+                return 5;
+            }
+            match read_site_secret(name) {
+                Ok(value) => secrets.push((name.clone(), value)),
+                Err(msg) => {
+                    print_error(format, &msg, 5);
+                    return 5;
+                }
             }
         }
     }
 
     // Every line is substituted and validated before connecting: a batch
     // that would stop at a bad line must not have sent the lines before it.
+    // A template is already filled; scanning it again would expand a password
+    // that happens to contain {name}.
     let mut commands = Vec::with_capacity(lines.len());
-    for (line_no, line) in &lines {
-        match ftp_site::SiteArgs::parse(&substitute_site_secrets(line, &secrets)) {
-            Ok(args) => commands.push((*line_no, args)),
+    for (line_no, line) in &mut lines {
+        let mut filled = if from_template {
+            std::mem::take(line)
+        } else {
+            substitute_site_secrets(line, &secrets)
+        };
+        let parsed = ftp_site::SiteArgs::parse(&filled);
+        match parsed {
+            Ok(args) => {
+                if from_template {
+                    filled.zeroize();
+                }
+                commands.push((*line_no, args));
+            }
             Err(err) => {
-                let run = ftp_site::SiteRun::not_sent(line, ftp_site::NotSentReason::Input(err));
+                let run = ftp_site::SiteRun::not_sent(&filled, ftp_site::NotSentReason::Input(err));
+                if from_template {
+                    filled.zeroize();
+                }
                 let message = site_failure_message(&run, "FTP");
                 let message = if batch {
                     format!("line {line_no}: {message}; nothing was sent")
@@ -44608,7 +45246,7 @@ async fn cmd_site(
         Err(code) => return code,
     };
     let provider_type = provider.provider_type();
-    if !secrets.is_empty() && provider_type == ProviderType::Ftp {
+    if (template_secret || !secrets.is_empty()) && provider_type == ProviderType::Ftp {
         eprintln!(
             "Warning: this FTP connection is not encrypted; the --secret values cross the network in clear text."
         );
@@ -71207,6 +71845,8 @@ async fn main() {
             file,
             strip_codes,
             fail_fast,
+            template,
+            sets,
         } => {
             // With --profile the first positional is the SITE verb, not a URL.
             let mut words = command.clone();
@@ -71216,7 +71856,14 @@ async fn main() {
             } else {
                 url
             };
-            if file.is_some() && !words.is_empty() {
+            if template.is_some() && words.iter().any(|word| !word.is_empty()) {
+                print_error(
+                    format,
+                    "give either a SITE command or --template, not both",
+                    5,
+                );
+                5
+            } else if file.is_some() && !words.is_empty() {
                 print_error(format, "give either a SITE command or --file, not both", 5);
                 5
             } else {
@@ -71229,6 +71876,8 @@ async fn main() {
                         file: file.as_deref(),
                         strip_codes: *strip_codes,
                         fail_fast: *fail_fast,
+                        template: template.as_deref(),
+                        sets,
                     },
                     &cli,
                     format,
@@ -71236,6 +71885,7 @@ async fn main() {
                 .await
             }
         }
+        Commands::SiteTemplate { action } => cmd_site_templates(action, &cli, format),
         Commands::About { url } => {
             let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 "_"
@@ -76565,6 +77215,78 @@ mod tests {
                     }
                     _ => panic!("expected the site subcommand"),
                 }
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn site_template_commands_parse() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                let cli = Cli::try_parse_from([
+                    "aeroftp-cli",
+                    "--profile",
+                    "lab",
+                    "site",
+                    "--template",
+                    "change-ratio",
+                    "--set",
+                    "user=alice",
+                    "--set",
+                    "ratio=3",
+                    "--secret",
+                    "pw",
+                ])
+                .expect("site --template parses");
+                match cli.command {
+                    Commands::Site {
+                        template,
+                        sets,
+                        secrets,
+                        command,
+                        ..
+                    } => {
+                        assert_eq!(template.as_deref(), Some("change-ratio"));
+                        assert_eq!(sets, vec!["user=alice".to_string(), "ratio=3".to_string()]);
+                        assert_eq!(secrets, vec!["pw".to_string()]);
+                        assert!(command.is_empty());
+                    }
+                    _ => panic!("expected site"),
+                }
+                let cli = Cli::try_parse_from([
+                    "aeroftp-cli",
+                    "--profile",
+                    "lab",
+                    "site-template",
+                    "add",
+                    "who",
+                    "WHO",
+                ])
+                .expect("site-template add parses");
+                match cli.command {
+                    Commands::SiteTemplate {
+                        action: SiteTemplateCmd::Add { name, line },
+                    } => {
+                        assert_eq!(name, "who");
+                        assert_eq!(line, "WHO");
+                    }
+                    _ => panic!("expected site-template add"),
+                }
+                assert!(
+                    Cli::try_parse_from([
+                        "aeroftp-cli",
+                        "site",
+                        "--template",
+                        "who",
+                        "--file",
+                        "batch.txt",
+                    ])
+                    .is_err(),
+                    "--template conflicts with --file"
+                );
             })
             .unwrap()
             .join()

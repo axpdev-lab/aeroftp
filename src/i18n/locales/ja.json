@@ -6236,7 +6236,19 @@
             "sessionReconnected": "セッションを再確立しました。",
             "sessionNotReconnected": "セッションを再確立できませんでした。",
             "sessionReset": "サーバーが複数の応答を返したため、次のコマンドが自身の応答を読み取れるようセッションを再確立しました。",
-            "sessionStateNote": "このコマンドが変更するのは、サーバーがこの接続を扱う方法のみです。転送は独自の接続を使用し、ファイル一覧の表示が変わる場合があります。"
+            "sessionStateNote": "このコマンドが変更するのは、サーバーがこの接続を扱う方法のみです。転送は独自の接続を使用し、ファイル一覧の表示が変わる場合があります。",
+            "templatesLabel": "テンプレート",
+            "templateNone": "コマンドを入力",
+            "templateQuickConnect": "テンプレートは保存済みサーバーに残ります。この接続でも、下に入力したコマンドは送信できます。",
+            "importGlftpd": "glFTPd コマンドを追加",
+            "importDone": "{added} 件を追加しました。保存済み: {skipped}。",
+            "saveLine": "行を保存",
+            "saveName": "テンプレート名",
+            "saveConfirm": "保存",
+            "removeTemplate": "削除",
+            "runTemplate": "実行",
+            "duplicateName": "{name} という名前のテンプレートは、このサーバーに既にあります。",
+            "templateStored": "保存したテンプレートは、あとから埋める欄付きのコマンドを保存し、パスワードは保存しません。"
         }
     }
 }

@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Seansas buvo atkurtas.",
             "sessionNotReconnected": "Seanso atkurti nepavyko.",
             "sessionReset": "Serveris atsiuntė daugiau nei vieną atsakymą, todėl seansas buvo atkurtas, kad kita komanda perskaitytų savo atsakymą.",
-            "sessionStateNote": "Ši komanda keičia tik tai, kaip serveris elgiasi su šiuo ryšiu: perdavimai naudoja savo ryšius, o failų sąrašas gali atrodyti kitaip."
+            "sessionStateNote": "Ši komanda keičia tik tai, kaip serveris elgiasi su šiuo ryšiu: perdavimai naudoja savo ryšius, o failų sąrašas gali atrodyti kitaip.",
+            "templatesLabel": "Šablonas",
+            "templateNone": "Įvesti komandą",
+            "templateQuickConnect": "Šablonai laikomi išsaugotame serveryje. Šis ryšys vis tiek gali išsiųsti žemiau įvestą komandą.",
+            "importGlftpd": "Pridėti glFTPd komandas",
+            "importDone": "Pridėta {added}. Jau išsaugota: {skipped}.",
+            "saveLine": "Išsaugoti eilutę",
+            "saveName": "Šablono pavadinimas",
+            "saveConfirm": "Išsaugoti",
+            "removeTemplate": "Pašalinti",
+            "runTemplate": "Vykdyti",
+            "duplicateName": "Šablonas pavadinimu {name} jau yra šiame serveryje.",
+            "templateStored": "Išsaugotas šablonas saugo komandą su pildomomis vietomis, niekada slaptažodžio."
         }
     }
 }

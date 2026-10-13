@@ -6255,7 +6255,19 @@
             "sessionReconnected": "La sessió s'ha restablert.",
             "sessionNotReconnected": "No s'ha pogut restablir la sessió.",
             "sessionReset": "El servidor ha enviat més d'una resposta, així que la sessió s'ha restablert perquè l'ordre següent llegeixi la seva.",
-            "sessionStateNote": "Aquesta ordre canvia com tracta el servidor només aquesta connexió: les transferències utilitzen les seves pròpies connexions, i la llista de fitxers pot semblar diferent."
+            "sessionStateNote": "Aquesta ordre canvia com tracta el servidor només aquesta connexió: les transferències utilitzen les seves pròpies connexions, i la llista de fitxers pot semblar diferent.",
+            "templatesLabel": "Plantilla",
+            "templateNone": "Escriure una ordre",
+            "templateQuickConnect": "Les plantilles es guarden en un servidor desat. Aquesta connexió encara pot enviar una ordre escrita a sota.",
+            "importGlftpd": "Afegeix ordres glFTPd",
+            "importDone": "Afegits {added}. Ja desats: {skipped}.",
+            "saveLine": "Desar la línia",
+            "saveName": "Nom de la plantilla",
+            "saveConfirm": "Desar",
+            "removeTemplate": "Eliminar",
+            "runTemplate": "Executar",
+            "duplicateName": "Ja hi ha una plantilla amb el nom {name} en aquest servidor.",
+            "templateStored": "Una plantilla desada conserva l'ordre amb espais per omplir, mai una contrasenya."
         }
     }
 }

@@ -6255,7 +6255,19 @@
             "sessionReconnected": "Naibalik ang session.",
             "sessionNotReconnected": "Hindi naibalik ang session.",
             "sessionReset": "Nagpadala ang server ng higit sa isang tugon, kaya naibalik ang session upang mabasa ng susunod na command ang sarili nitong tugon.",
-            "sessionStateNote": "Binabago lang ng command na ito kung paano tinatrato ng server ang koneksyong ito: gumagamit ang mga paglilipat ng sarili nilang koneksyon, at maaaring iba ang hitsura ng listahan ng file."
+            "sessionStateNote": "Binabago lang ng command na ito kung paano tinatrato ng server ang koneksyong ito: gumagamit ang mga paglilipat ng sarili nilang koneksyon, at maaaring iba ang hitsura ng listahan ng file.",
+            "templatesLabel": "Suleras",
+            "templateNone": "Magsulat ng utos",
+            "templateQuickConnect": "Ang mga suleras ay nasa serbidor na nakaimbak. Ang koneksyong ito ay maaari pa ring magpadala ng utos na nakasulat sa ibaba.",
+            "importGlftpd": "Magdagdag ng mga utos ng glFTPd",
+            "importDone": "Nadagdag {added}. Nakaimbak na: {skipped}.",
+            "saveLine": "I-imbak ang linya",
+            "saveName": "Pangalan ng suleras",
+            "saveConfirm": "I-imbak",
+            "removeTemplate": "Alisin",
+            "runTemplate": "Patakbuhin",
+            "duplicateName": "May suleras na nangangalang {name} na sa serbidor na ito.",
+            "templateStored": "Ang suleras na nakaimbak ay nagtatago ng utos na may mga puwang na pupunan, hindi kailanman ng kontrasenyas."
         }
     }
 }

@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sesi telah dipulihkan.",
             "sessionNotReconnected": "Sesi tidak dapat dipulihkan.",
             "sessionReset": "Server mengirim lebih dari satu balasan, sehingga sesi dipulihkan agar perintah berikutnya membaca balasannya sendiri.",
-            "sessionStateNote": "Perintah ini hanya mengubah cara server memperlakukan koneksi ini: transfer menggunakan koneksinya sendiri, dan daftar file mungkin terlihat berbeda."
+            "sessionStateNote": "Perintah ini hanya mengubah cara server memperlakukan koneksi ini: transfer menggunakan koneksinya sendiri, dan daftar file mungkin terlihat berbeda.",
+            "templatesLabel": "Templat",
+            "templateNone": "Ketik perintah",
+            "templateQuickConnect": "Templat disimpan bersama server tersimpan. Koneksi ini tetap dapat mengirim perintah yang diketik di bawah.",
+            "importGlftpd": "Tambah perintah glFTPd",
+            "importDone": "Ditambahkan {added}. Sudah tersimpan: {skipped}.",
+            "saveLine": "Simpan baris",
+            "saveName": "Nama templat",
+            "saveConfirm": "Simpan",
+            "removeTemplate": "Hapus",
+            "runTemplate": "Jalankan",
+            "duplicateName": "Templat bernama {name} sudah ada di server ini.",
+            "templateStored": "Templat yang disimpan berisi perintah dengan isian, bukan kata sandi."
         }
     }
 }

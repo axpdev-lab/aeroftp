@@ -832,15 +832,24 @@ aeroftp-cli site --profile "glftpd" --file admin.txt --fail-fast
 
 # Machine-readable reply
 aeroftp-cli site --profile "glftpd" --json STAT
+
+# A saved template: text holes with --set, a secret asked without echo
+aeroftp-cli site --profile "glftpd" --template "change password" --set user=alice --secret pw
+
+# Keep the line on the profile. {pw:secret} is a hole, not a password
+aeroftp-cli site-template --profile "glftpd" add "change password" "CHPASS {user} {pw:secret}"
+aeroftp-cli site-template --profile "glftpd" import
+aeroftp-cli site-template --profile "glftpd" list
 ```
 
-Sends a `SITE` command through an FTP or FTPS connection and prints the reply exactly as the server sent it: every line of a multi-line reply, with its code (`--strip-codes` removes the `NNN-` prefixes). Servers such as glFTPd run their whole account administration through `SITE` (`USER`, `USERS`, `WHO`, `CHANGE`, `ADDUSER`, `CHPASS`, `DELUSER`...). In the TUI the same command is `:site <command>`, and its reply opens in the pager.
+Sends a `SITE` command through an FTP or FTPS connection and prints the reply exactly as the server sent it: every line of a multi-line reply, with its code (`--strip-codes` removes the `NNN-` prefixes). Servers such as glFTPd run their whole account administration through `SITE` (`USER`, `USERS`, `WHO`, `CHANGE`, `ADDUSER`, `CHPASS`, `DELUSER`...). In the TUI the same command is `:site <command>`, and its reply opens in the pager. A saved template is `:site @name key=value`.
 
 - **Options go before the command.** Everything from the command's first word on is sent to the server as typed.
 - **A reply code does not say whether the command worked.** glFTPd answers `200` to some refusals (`200 You do not have access to this command.`), so read the text. The exit code follows the code: `0` for 1xx-3xx, `10` for 4xx-5xx.
 - **A command is sent once.** If the reply does not arrive within `--timeout` (default 60 s, up to 900) the outcome is unknown and the exit code is `8`; if the connection is lost or the reply cannot be read after sending, it is `1`. In both cases the server may or may not have applied the command, and it is not sent again.
 - **Secrets.** `--secret NAME` asks for the value without echo (or reads `AEROFTP_SITE_SECRET_<NAME>`) and puts it where `{NAME}` appears. Arguments typed on the command line stay in your shell history and are visible to other local users while the command runs. Neither the arguments nor the replies are written to any log, and `--json` names the command by its verb only (`"command": "SITE CHPASS"`). On plain FTP everything, passwords included, crosses the network unencrypted.
 - **Batches** (`--file`) run on one connection; blank lines and `#` comments are skipped; the run stops at the first command that could not be sent or whose outcome is unknown, and with `--fail-fast` also at the first 4xx/5xx reply.
+- **Templates.** `site-template` keeps named SITE lines on a saved profile (`list`, `add`, `remove`, `export`, `import`). `import` with no file loads the built-in glFTPd catalog; `--file` reads a catalog you wrote; a name already saved, ignoring ASCII case, is left as it is. A password position is a `{name:secret}` hole: the saved line never holds a password. `site --template NAME` fills text and number holes with `--set NAME=VALUE` (or asks on a terminal) and asks for each secret without echo, or reads `AEROFTP_SITE_SECRET_<NAME>`. `--set` refuses a secret hole. The filled line is printed to stderr with secrets masked, then sent once. `--template` cannot be combined with `--file`. In the TUI the same template is `:site @name key=value`. A template that asks for a secret is refused there, because that prompt cannot hide what is typed: use the SITE dialog, or `site --template` with `--secret`.
 
 ### dedupe - Find Duplicate Files
 

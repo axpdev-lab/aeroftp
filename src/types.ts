@@ -661,6 +661,11 @@ export interface ServerProfile {
    * username/password are unused.
    */
   deviceFingerprint?: DeviceFingerprint;
+  /**
+   * SITE command templates for an FTP/FTPS profile. Each line keeps its
+   * holes (`{name}`, `{name:secret}`). A password is never stored here.
+   */
+  siteTemplates?: { id: string; name: string; line: string }[];
   // Last known storage quota cached after a successful connection. Used by the
   // detailed My Servers card layout to render a usage bar without requiring
   // a fresh authentication round-trip on every render. `totalSource` records

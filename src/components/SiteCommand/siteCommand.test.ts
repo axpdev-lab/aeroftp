@@ -74,6 +74,10 @@ describe('SITE session memory', () => {
         expect(siteTranscript('s-history').map(entry => entry.echo)).toEqual(['SITE WHO', 'SITE CHPASS alice ••••••', 'SITE WHO']);
         expect(JSON.stringify(siteTranscript('s-history'))).not.toContain('hunter2');
         expect(setItem).not.toHaveBeenCalled();
+        recordSiteExchange('s-secret-hole', 'CUSTOM alice hunter2', 'SITE CUSTOM alice ••••••', report({ command: 'SITE CUSTOM' }), false);
+        expect(siteHistory('s-secret-hole')).toEqual([]);
+        expect(siteTranscript('s-secret-hole')[0].echo).toBe('SITE CUSTOM alice ••••••');
+        expect(JSON.stringify(siteTranscript('s-secret-hole'))).not.toContain('hunter2');
     });
 
     it('does not bring a closed session back when a reply completes late', () => {

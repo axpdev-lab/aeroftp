@@ -6255,7 +6255,19 @@
             "sessionReconnected": "Saioa berrezarri da.",
             "sessionNotReconnected": "Ezin izan da saioa berrezarri.",
             "sessionReset": "Zerbitzariak erantzun bat baino gehiago bidali ditu, beraz saioa berrezarri da, hurrengo komandoak bere erantzuna irakur dezan.",
-            "sessionStateNote": "Komando honek zerbitzariak konexio hau bakarrik nola tratatzen duen aldatzen du: transferentziek beren konexioak erabiltzen dituzte, eta fitxategi-zerrenda desberdin ager daiteke."
+            "sessionStateNote": "Komando honek zerbitzariak konexio hau bakarrik nola tratatzen duen aldatzen du: transferentziek beren konexioak erabiltzen dituzte, eta fitxategi-zerrenda desberdin ager daiteke.",
+            "templatesLabel": "Txantiloia",
+            "templateNone": "Idatzi komando bat",
+            "templateQuickConnect": "Txantiloiak gordetako zerbitzari batean gordetzen dira. Konexio honek behean idatzitako komandoa bidal dezake hala ere.",
+            "importGlftpd": "Gehitu glFTPd komandoak",
+            "importDone": "Gehituta {added}. Lehendik gordeta: {skipped}.",
+            "saveLine": "Gorde lerroa",
+            "saveName": "Txantiloiaren izena",
+            "saveConfirm": "Gorde",
+            "removeTemplate": "Kendu",
+            "runTemplate": "Exekutatu",
+            "duplicateName": "{name} izeneko txantiloi bat badago dagoeneko zerbitzari honetan.",
+            "templateStored": "Gordetako txantiloiak komandoa hutsuneekin gordetzen du, inoiz ez pasahitza."
         }
     }
 }

@@ -170,6 +170,11 @@ impl SiteArgs {
         format!("SITE {}", self.line)
     }
 
+    /// The arguments after the word `SITE`, as they will be sent.
+    pub(crate) fn arguments(&self) -> &str {
+        &self.line
+    }
+
     /// `SITE <VERB>`, or `SITE` when the first word does not look like a
     /// verb. This keeps a password with symbols, or longer than 16
     /// characters, out of labels when it is pasted alone; a short

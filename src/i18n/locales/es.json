@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Se restableció la sesión.",
             "sessionNotReconnected": "No se pudo restablecer la sesión.",
             "sessionReset": "El servidor envió más de una respuesta, así que se restableció la sesión para que el siguiente comando lea la suya.",
-            "sessionStateNote": "Este comando cambia cómo trata el servidor solo esta conexión: las transferencias usan sus propias conexiones y la lista de archivos puede verse distinta."
+            "sessionStateNote": "Este comando cambia cómo trata el servidor solo esta conexión: las transferencias usan sus propias conexiones y la lista de archivos puede verse distinta.",
+            "templatesLabel": "Plantilla",
+            "templateNone": "Escribir un comando",
+            "templateQuickConnect": "Las plantillas se guardan en un servidor guardado. Esta conexión aún puede enviar un comando escrito debajo.",
+            "importGlftpd": "Añadir comandos glFTPd",
+            "importDone": "Añadidos {added}. Ya guardados: {skipped}.",
+            "saveLine": "Guardar línea",
+            "saveName": "Nombre de la plantilla",
+            "saveConfirm": "Guardar",
+            "removeTemplate": "Quitar",
+            "runTemplate": "Ejecutar",
+            "duplicateName": "Ya hay una plantilla llamada {name} en este servidor.",
+            "templateStored": "Una plantilla guardada conserva el comando con huecos para rellenar, nunca una contraseña."
         }
     }
 }

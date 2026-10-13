@@ -42,6 +42,7 @@ pub const CLI_SUBCOMMANDS: &[&str] = &[
     "rmdirs",
     "about",
     "site",
+    "site-template",
     "speed",
     "speed-compare",
     "benchmark",

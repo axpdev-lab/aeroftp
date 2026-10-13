@@ -37,6 +37,7 @@ pub mod fourshared;
 pub mod ftp;
 pub mod ftp_listing;
 pub mod ftp_site;
+pub mod ftp_site_template;
 pub mod github;
 pub mod gitlab;
 pub mod google_drive;

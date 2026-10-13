@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sesiunea a fost restabilită.",
             "sessionNotReconnected": "Sesiunea nu a putut fi restabilită.",
             "sessionReset": "Serverul a trimis mai mult de un răspuns, așa că sesiunea a fost restabilită pentru ca următoarea comandă să citească propriul răspuns.",
-            "sessionStateNote": "Această comandă schimbă doar modul în care serverul tratează această conexiune: transferurile folosesc propriile conexiuni, iar lista de fișiere poate arăta diferit."
+            "sessionStateNote": "Această comandă schimbă doar modul în care serverul tratează această conexiune: transferurile folosesc propriile conexiuni, iar lista de fișiere poate arăta diferit.",
+            "templatesLabel": "Șablon",
+            "templateNone": "Scrie o comandă",
+            "templateQuickConnect": "Șabloanele sunt păstrate pe un server salvat. Această conexiune poate totuși trimite o comandă scrisă mai jos.",
+            "importGlftpd": "Adaugă comenzi glFTPd",
+            "importDone": "Adăugate {added}. Deja salvate: {skipped}.",
+            "saveLine": "Salvează linia",
+            "saveName": "Nume șablon",
+            "saveConfirm": "Salvează",
+            "removeTemplate": "Elimină",
+            "runTemplate": "Rulează",
+            "duplicateName": "Un șablon numit {name} există deja pe acest server.",
+            "templateStored": "Un șablon salvat păstrează comanda cu locuri de completat, niciodată o parolă."
         }
     }
 }

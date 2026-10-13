@@ -6236,7 +6236,19 @@
             "sessionReconnected": "Sessionen återupprättades.",
             "sessionNotReconnected": "Sessionen kunde inte återupprättas.",
             "sessionReset": "Servern skickade mer än ett svar, så sessionen återupprättades för att nästa kommando ska läsa sitt eget svar.",
-            "sessionStateNote": "Det här kommandot ändrar bara hur servern behandlar den här anslutningen: överföringar använder egna anslutningar, och fillistan kan se annorlunda ut."
+            "sessionStateNote": "Det här kommandot ändrar bara hur servern behandlar den här anslutningen: överföringar använder egna anslutningar, och fillistan kan se annorlunda ut.",
+            "templatesLabel": "Mall",
+            "templateNone": "Skriv ett kommando",
+            "templateQuickConnect": "Mallar sparas på en sparad server. Den här anslutningen kan ändå skicka ett kommando som skrivs nedan.",
+            "importGlftpd": "Lägg till glFTPd-kommandon",
+            "importDone": "Tillagda {added}. Redan sparade: {skipped}.",
+            "saveLine": "Spara rad",
+            "saveName": "Mallnamn",
+            "saveConfirm": "Spara",
+            "removeTemplate": "Ta bort",
+            "runTemplate": "Kör",
+            "duplicateName": "En mall med namnet {name} finns redan på den här servern.",
+            "templateStored": "En sparad mall sparar kommandot med platshållare, aldrig ett lösenord."
         }
     }
 }
