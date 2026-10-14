@@ -146,8 +146,8 @@ use super::checksum_matrix;
 use super::ftp_site;
 use super::multi_thread::{
     parallel_refused, range_source_changed_through, read_range_source_through,
-    run_concurrent_range_download, settle_range_attempt, source_changed, ConcurrentRangeConfig,
-    ConcurrentRangeOutcome, RangeMark, SegmentedRun, SegmentedTemp,
+    report_download_fallback, run_concurrent_range_download, settle_range_attempt, source_changed,
+    ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeMark, SegmentedRun, SegmentedTemp,
 };
 use super::{
     ChecksumCapability, FtpConfig, FtpTlsMode, ProviderError, ProviderTransferExecutorKind,
@@ -332,11 +332,17 @@ impl FtpProvider {
                 Ok(()) => reading,
                 Err(why) => {
                     tracing::warn!("{}", parallel_refused("FTP intra-file", &resolved, &why));
+                    report_download_fallback(
+                        "FTP: the source size no longer matches the parallel plan",
+                    );
                     return Ok(false);
                 }
             },
             Err(why) => {
                 tracing::warn!("{}", parallel_refused("FTP intra-file", &resolved, &why));
+                report_download_fallback(
+                    "FTP: source metadata could not be read before the parallel transfer",
+                );
                 return Ok(false);
             }
         };
@@ -349,6 +355,9 @@ impl FtpProvider {
         if let Some(what) = range_source_changed_through(self, &resolved, &before).await {
             temp.discard();
             tracing::warn!("{}", source_changed("FTP intra-file", &resolved, &what));
+            report_download_fallback(
+                "FTP: the source changed or could not be verified after the parallel transfer",
+            );
             return Ok(false);
         }
         match temp.publish(Path::new(local_path)).await {
@@ -359,7 +368,6 @@ impl FtpProvider {
             Err(e) => Err(ProviderError::IoError(e)),
         }
     }
-
     /// PD-FTP-1: split one large file into N gap-free windows, each
     /// downloaded over its **own** independent FTP connection (REST+RETR,
     /// the exact connection model of the FTP session pool and PD-SFTP-2),
@@ -1725,7 +1733,12 @@ impl StorageProvider for FtpProvider {
                 Ok(size) => size as u64,
                 Err(err) => match Self::classify_missing_path("downloading", remote_path, &err) {
                     Some(missing) => return Err(missing),
-                    None => 0,
+                    None => {
+                        if self.multi_thread_streams >= 2 {
+                            report_download_fallback("FTP: SIZE was unavailable");
+                        }
+                        0
+                    }
                 },
             }
         };
@@ -6741,6 +6754,23 @@ mod rename_contract_tests {
             .await
             .expect("connect to the scripted server");
         (provider, log)
+    }
+
+    #[tokio::test]
+    async fn a_refused_ftp_parallel_plan_reports_a_safe_terminal_notice() {
+        let (mut provider, _) = provider_on_scripted_server().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("private-target");
+        let _ = super::super::take_warnings();
+        assert!(!provider
+            .parallel_download_if_unchanged("/a.txt", out.to_str().unwrap(), 4, None,)
+            .await
+            .unwrap());
+        assert_eq!(super::super::take_warnings(), vec![
+            "parallel download unavailable: FTP: the source size no longer matches the parallel plan; using a single stream"
+        ]);
+        assert!(!out.exists());
+        provider.disconnect().await.unwrap();
     }
 
     /// `stat` on a server whose MLST sends no `size` fact asks SIZE, as it

@@ -1874,7 +1874,7 @@ pub(crate) enum HttpRangeAttempt {
 /// free of URLs, headers and raw provider errors: signed download URLs can
 /// contain credentials. The CLI renders provider warnings on stderr without
 /// requiring a tracing subscriber, including in JSON mode.
-pub(crate) fn report_download_fallback(reason: &str) {
+pub fn report_download_fallback(reason: &str) {
     super::report_warning(format!(
         "parallel download unavailable: {reason}; using a single stream"
     ));

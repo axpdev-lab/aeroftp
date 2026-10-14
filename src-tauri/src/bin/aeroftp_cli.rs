@@ -34437,9 +34437,9 @@ async fn pget_segmented_download(
 ) -> i32 {
     use ftp_client_gui_lib::providers::multi_thread::{
         open_after_transfer, range_read_failed, range_source_changed_through,
-        read_range_source_through, replace_failed_range_worker, run_concurrent_range_download,
-        settle_range_attempt, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeMark,
-        SegmentedRun,
+        read_range_source_through, replace_failed_range_worker, report_download_fallback,
+        run_concurrent_range_download, settle_range_attempt, ConcurrentRangeConfig,
+        ConcurrentRangeOutcome, RangeMark, SegmentedRun,
     };
 
     let actual_segments = pget_effective_segments(file_size, segments);
@@ -34481,35 +34481,33 @@ async fn pget_segmented_download(
         let mut checker = match create_and_connect(url, cli, format).await {
             Ok((provider, _)) => provider,
             Err(_) => {
-                if !quiet {
-                    eprintln!("pget: no connection to read {remote_path} with; single download");
-                }
+                report_download_fallback("pget: the source-check connection could not be opened");
                 return None;
             }
         };
         let before = match read_range_source_through(checker.as_mut(), remote_path).await {
             Ok(reading) => match reading.matches_planned_size(file_size) {
                 Ok(()) => reading,
-                Err(why) => {
+                Err(_why) => {
                     let _ = checker.disconnect().await;
-                    if !quiet {
-                        eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
-                    }
+                    report_download_fallback(
+                        "pget: the source size no longer matches the parallel plan",
+                    );
                     return None;
                 }
             },
-            Err(why) => {
+            Err(_why) => {
                 let _ = checker.disconnect().await;
-                if !quiet {
-                    eprintln!("pget: refusing to read {remote_path} in parallel: {why}");
-                }
+                report_download_fallback(
+                    "pget: source metadata could not be read before the parallel transfer",
+                );
                 return None;
             }
         };
         let _ = checker.disconnect().await;
 
         let mut conns: Vec<Box<dyn StorageProvider>> = Vec::with_capacity(actual_segments);
-        for i in 0..actual_segments {
+        for _ in 0..actual_segments {
             match create_and_connect(url, cli, format).await {
                 Ok((mut p, _)) => {
                     // Pin every window to the version the first reading saw, as
@@ -34522,13 +34520,9 @@ async fn pget_segmented_download(
                     for mut c in conns {
                         let _ = c.disconnect().await;
                     }
-                    if !quiet {
-                        eprintln!(
-                            "pget: connection {} of {} failed; falling back to single download",
-                            i + 1,
-                            actual_segments
-                        );
-                    }
+                    report_download_fallback(
+                        "pget: an independent range connection could not be opened",
+                    );
                     return None;
                 }
             }
@@ -34758,11 +34752,11 @@ async fn pget_segmented_download(
                 temp.discard();
                 return interrupted_exit(None, format, "the download did not finish").await;
             };
-            if let Some(what) = changed {
+            if changed.is_some() {
                 temp.discard();
-                if !quiet {
-                    eprintln!("pget: {remote_path} was not published ({what}); single download");
-                }
+                report_download_fallback(
+                    "pget: the source changed or could not be verified after the parallel transfer",
+                );
                 return pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled)
                     .await;
             }
@@ -34808,6 +34802,7 @@ async fn pget_segmented_download(
         Ok(SegmentedRun::ServerIgnoredRange) => {
             // `read_range` cannot produce this (no HTTP-200 semantics); the
             // engine already dropped the temp. Defensive honest fallback.
+            report_download_fallback("pget: the server ignored Range");
             pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
         }
         Err(_) if cancelled.load(Ordering::Relaxed) => {
@@ -34818,12 +34813,11 @@ async fn pget_segmented_download(
         Err(e) => {
             // The engine's RAII guard already removed the temp. Honest
             // single-stream fallback rather than overclaim parallelism.
-            if !quiet {
-                eprintln!(
-                    "pget: segmented download failed ({}); falling back to single download",
-                    e
-                );
-            }
+            report_download_fallback(if matches!(e, ProviderError::ParallelRefused(_)) {
+                "pget: a ranged response or its version check was refused"
+            } else {
+                "pget: a segmented range transfer failed"
+            });
             pget_fallback_single(url, remote_path, local_path, cli, format, &cancelled).await
         }
     }
@@ -34840,7 +34834,7 @@ async fn pget_fallback_single(
 ) -> i32 {
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     if !quiet {
-        eprintln!("pget: using single download (only 1 effective segment)");
+        eprintln!("pget: downloading on a single stream");
     }
 
     const NOT_FINISHED: &str = "the download did not finish";
@@ -83215,6 +83209,8 @@ mod tests {
         /// Serves range reads (so `get --segments` takes the segmented engine)
         /// and reports this size; `0` means 1 000 000 bytes.
         ranged_size: u64,
+        /// Complete the ordinary download for parallel-fallback regression tests.
+        finish_download: bool,
     }
 
     impl StallingProvider {
@@ -83308,6 +83304,11 @@ mod tests {
             }
             if self.refuse {
                 return Err(ProviderError::NotFound("/f.bin".to_string()));
+            }
+            if self.finish_download {
+                std::fs::write(local_path, vec![7u8; self.file_size() as usize])
+                    .map_err(ProviderError::IoError)?;
+                return Ok(());
             }
             if self.temp_then_wait {
                 let _temp =
@@ -83444,6 +83445,43 @@ mod tests {
                 .join()
                 .expect("the command thread panicked")
         })
+    }
+
+    #[test]
+    fn pget_refusal_keeps_a_notice_in_json_and_quiet_text() {
+        for format in [OutputFormat::Json, OutputFormat::Text] {
+            let provider = StallingProvider {
+                finish_download: true,
+                ..Default::default()
+            };
+            let downloads = Arc::clone(&provider.downloads);
+            let warnings = ftp_client_gui_lib::providers::CallWarnings::default();
+            let captured = warnings.clone();
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.bin");
+            let target = out.to_string_lossy().into_owned();
+            let code = against_stalling(provider, |cancelled| async move {
+                let cli = quiet_cli();
+                captured
+                    .scope(pget_segmented_download(
+                        "memory://",
+                        "/f.bin",
+                        &target,
+                        4,
+                        8 * 1024 * 1024,
+                        &cli,
+                        format,
+                        cancelled,
+                    ))
+                    .await
+            });
+            assert_eq!(code, 0);
+            assert_eq!(downloads.load(Ordering::Relaxed), 1);
+            assert_eq!(std::fs::read(out).unwrap(), vec![7u8; 1_000_000]);
+            assert_eq!(warnings.take(), vec![
+                "parallel download unavailable: pget: the source size no longer matches the parallel plan; using a single stream"
+            ]);
+        }
     }
 
     /// Ctrl-C set the cancel flag and printed "press again to force quit",

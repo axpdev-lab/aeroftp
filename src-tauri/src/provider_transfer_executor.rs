@@ -332,9 +332,37 @@ pub enum SegmentedDownloadError {
     Cancelled,
     #[error("{0}")]
     Failed(String),
+    #[error("{message}")]
+    Unavailable {
+        message: String,
+        reason: &'static str,
+    },
 }
 
 impl SegmentedDownloadError {
+    fn unavailable(message: String, reason: &'static str) -> Self {
+        Self::Unavailable { message, reason }
+    }
+
+    /// Safe terminal diagnostics, separate from errors containing paths,
+    /// provider response bodies or credentials. Cancellation is never a fallback.
+    pub fn fallback_reason(&self) -> Option<&'static str> {
+        match self {
+            Self::Cancelled => None,
+            Self::Unavailable { reason, .. } => Some(reason),
+            Self::Failed(_) => Some("the segmented download failed"),
+        }
+    }
+
+    /// Call only when the caller actually selects its fallback download.
+    pub fn report_fallback(&self) {
+        if let Some(reason) = self.fallback_reason() {
+            crate::providers::report_warning(format!(
+                "segmented download unavailable: {reason}; using the provider download path"
+            ));
+        }
+    }
+
     /// Identify user cancellation without interpreting provider text or paths.
     pub fn is_cancelled(&self) -> bool {
         matches!(self, Self::Cancelled)
@@ -397,19 +425,17 @@ pub async fn run_provider_segmented_download(
         Ok(reading) => match reading.matches_planned_size(file_size) {
             Ok(()) => reading,
             Err(why) => {
-                return Err(SegmentedDownloadError::Failed(parallel_refused(
-                    "segmented download",
-                    remote_path,
-                    &why,
-                )))
+                return Err(SegmentedDownloadError::unavailable(
+                    parallel_refused("segmented download", remote_path, &why),
+                    "the source size no longer matches the segmented plan",
+                ))
             }
         },
         Err(why) => {
-            return Err(SegmentedDownloadError::Failed(parallel_refused(
-                "segmented download",
-                remote_path,
-                &why,
-            )))
+            return Err(SegmentedDownloadError::unavailable(
+                parallel_refused("segmented download", remote_path, &why),
+                "source metadata could not be read before the segmented transfer",
+            ))
         }
     };
 
@@ -429,12 +455,15 @@ pub async fn run_provider_segmented_download(
                 for mut w in workers {
                     let _ = w.disconnect().await;
                 }
-                return Err(SegmentedDownloadError::Failed(format!(
-                    "segmented download: clone {} of {} failed: {}",
-                    i + 1,
-                    segments,
-                    e
-                )));
+                return Err(SegmentedDownloadError::unavailable(
+                    format!(
+                        "segmented download: clone {} of {} failed: {}",
+                        i + 1,
+                        segments,
+                        e
+                    ),
+                    "an independent range connection could not be created",
+                ));
             }
         }
     }
@@ -583,28 +612,35 @@ pub async fn run_provider_segmented_download(
             match changed {
                 Some(what) => {
                     temp.discard();
-                    Err(SegmentedDownloadError::Failed(source_changed(
-                        "segmented download",
-                        remote_path,
-                        &what,
-                    )))
+                    Err(SegmentedDownloadError::unavailable(
+                        source_changed("segmented download", remote_path, &what),
+                        "the source changed or could not be verified after the segmented transfer",
+                    ))
                 }
                 None => match temp.publish(Path::new(local_path)).await {
                     Ok(()) => Ok(()),
-                    Err(e) => Err(SegmentedDownloadError::Failed(format!(
-                        "segmented download: finalize failed: {}",
-                        e
-                    ))),
+                    Err(e) => Err(SegmentedDownloadError::unavailable(
+                        format!("segmented download: finalize failed: {}", e),
+                        "the segmented temporary could not be published",
+                    )),
                 },
             }
         }
-        Ok(SegmentedRun::ServerIgnoredRange) => Err(SegmentedDownloadError::Failed(
+        Ok(SegmentedRun::ServerIgnoredRange) => Err(SegmentedDownloadError::unavailable(
             "segmented download: server ignored Range; falling back to single-stream".to_string(),
+            "the server ignored Range",
         )),
-        Err(e) => Err(SegmentedDownloadError::Failed(format!(
-            "segmented download: {}",
-            e
-        ))),
+        Err(e) => {
+            let reason = if matches!(e, ProviderError::ParallelRefused(_)) {
+                "a ranged response or its version check was refused"
+            } else {
+                "a segmented range transfer failed"
+            };
+            Err(SegmentedDownloadError::unavailable(
+                format!("segmented download: {}", e),
+                reason,
+            ))
+        }
     }
 }
 
@@ -1385,7 +1421,16 @@ impl ProviderDownloadExecutor {
                 self.cancel_token.clone(),
             )
             .await
-            .map_err(|e| e.to_string()),
+            .map_err(|e| {
+                if !self.cancel_token.is_cancelled() {
+                    if let Some(reason) = e.fallback_reason() {
+                        crate::providers::report_warning(format!(
+                            "segmented download unavailable: {reason}; subsequent attempts use the provider download path"
+                        ));
+                    }
+                }
+                e.to_string()
+            }),
         )
     }
 
@@ -2115,6 +2160,22 @@ fn resumes_from_the_temporary(attempt: u32, supports_resume: bool, inplace: bool
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn segmented_notices_exclude_error_details_and_cancellation() {
+        use super::SegmentedDownloadError;
+        let _ = crate::providers::take_warnings();
+        let error = SegmentedDownloadError::unavailable(
+            "https://host/private?token=secret: refusing to read it in parallel".into(),
+            "an independent range connection could not be created",
+        );
+        error.report_fallback();
+        assert_eq!(crate::providers::take_warnings(), vec![
+            "segmented download unavailable: an independent range connection could not be created; using the provider download path"
+        ]);
+        SegmentedDownloadError::Cancelled.report_fallback();
+        assert!(crate::providers::take_warnings().is_empty());
+    }
+
     #[test]
     fn a_retry_in_place_does_not_resume_from_a_temporary() {
         assert!(super::resumes_from_the_temporary(1, true, false));

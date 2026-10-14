@@ -31,10 +31,10 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio_util::sync::CancellationToken;
 
 use super::multi_thread::{
-    aerotmp_path_for, parallel_refused, run_concurrent_range_download, settle_range_attempt,
-    share_progress, source_changed, ConcurrentRangeConfig, ConcurrentRangeOutcome, RangeMark,
-    RangeSourceFingerprint, SegmentedRun, SegmentedTemp, AFTER_TRANSFER_READ_RETRY,
-    FAILED_RANGE_DISCONNECT,
+    aerotmp_path_for, parallel_refused, report_download_fallback, run_concurrent_range_download,
+    settle_range_attempt, share_progress, source_changed, ConcurrentRangeConfig,
+    ConcurrentRangeOutcome, RangeMark, RangeSourceFingerprint, SegmentedRun, SegmentedTemp,
+    AFTER_TRANSFER_READ_RETRY, FAILED_RANGE_DISCONNECT,
 };
 
 /// Apply the native transport's production metadata policy in one testable
@@ -1273,11 +1273,17 @@ impl SftpProvider {
                 Ok(()) => reading,
                 Err(why) => {
                     tracing::warn!("{}", parallel_refused("SFTP intra-file", remote_path, &why));
+                    report_download_fallback(
+                        "SFTP: the source size no longer matches the parallel plan",
+                    );
                     return Ok(false);
                 }
             },
             Err(why) => {
                 tracing::warn!("{}", parallel_refused("SFTP intra-file", remote_path, &why));
+                report_download_fallback(
+                    "SFTP: source metadata could not be read before the parallel transfer",
+                );
                 return Ok(false);
             }
         };
@@ -1310,6 +1316,9 @@ impl SftpProvider {
         if let Some(what) = changed {
             temp.discard();
             tracing::warn!("{}", source_changed("SFTP intra-file", remote_path, &what));
+            report_download_fallback(
+                "SFTP: the source changed or could not be verified after the parallel transfer",
+            );
             return Ok(false);
         }
         match temp.publish(Path::new(local_path)).await {
@@ -1320,7 +1329,6 @@ impl SftpProvider {
             Err(e) => Err(ProviderError::IoError(e)),
         }
     }
-
     /// PD-SFTP-2 intra-file download: split a large file into N gap-free
     /// windows, each streamed over its **own independent SSH connection**
     /// (the exact connection model of the file-level pool: spec re-dial with
@@ -2662,6 +2670,9 @@ impl StorageProvider for SftpProvider {
                             // transfer was planned for: the serial path below
                             // reads on one handle.
                             tracing::warn!("{}; downloading on a single handle", e);
+                            report_download_fallback(
+                                "SFTP: concurrent reads could not verify one source version",
+                            );
                             source_is_moving = true;
                         }
                         Err(e) => return Err(e),
@@ -2723,6 +2734,9 @@ impl StorageProvider for SftpProvider {
                     // serial path below reads on one handle.
                     Err(e @ ProviderError::ParallelRefused(_)) => {
                         tracing::warn!("{}; downloading on a single handle", e);
+                        report_download_fallback(
+                            "SFTP: concurrent reads could not verify one source version",
+                        );
                         source_is_moving = true;
                     }
                     Err(e) => return Err(e),
@@ -6771,6 +6785,29 @@ mod tests {
         let mut provider = provider_without_a_session();
         provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
         provider
+    }
+
+    #[tokio::test]
+    async fn a_refused_sftp_parallel_plan_reports_a_safe_terminal_notice() {
+        let provider =
+            provider_on_a_server_that_goes_away(GoAwayAt::Write(usize::MAX), vec![7u8; 3]).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("private-target");
+        let _ = super::super::take_warnings();
+        assert!(!provider
+            .parallel_download_if_unchanged(
+                "/private-source",
+                "/private-source",
+                out.to_str().unwrap(),
+                4,
+                None,
+            )
+            .await
+            .unwrap());
+        assert_eq!(super::super::take_warnings(), vec![
+            "parallel download unavailable: SFTP: the source size no longer matches the parallel plan; using a single stream"
+        ]);
+        assert!(!out.exists());
     }
 
     /// A provider for a test to give an SFTP session over an in-memory

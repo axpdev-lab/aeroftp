@@ -2108,7 +2108,7 @@ impl B2Provider {
     ) -> Result<bool, ProviderError> {
         use super::multi_thread::{
             parallel_refused, range_source_changed_through, read_range_source_through,
-            source_changed,
+            report_download_fallback, source_changed,
         };
         use std::path::Path;
 
@@ -2117,11 +2117,17 @@ impl B2Provider {
                 Ok(()) => reading,
                 Err(why) => {
                     tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                    report_download_fallback(
+                        "B2: the source size no longer matches the parallel plan",
+                    );
                     return Ok(false);
                 }
             },
             Err(why) => {
                 tracing::warn!("{}", parallel_refused("b2 multi-thread", remote_path, &why));
+                report_download_fallback(
+                    "B2: source metadata could not be read before the parallel transfer",
+                );
                 return Ok(false);
             }
         };
@@ -2136,6 +2142,7 @@ impl B2Provider {
             // file, and one stream does not depend on the server's ranges.
             Err(e @ ProviderError::ParallelRefused(_)) => {
                 tracing::warn!("{}; downloading on a single stream", e);
+                report_download_fallback("B2: a ranged response or its version check was refused");
                 return Ok(false);
             }
             Err(e) => return Err(e),
@@ -2145,6 +2152,9 @@ impl B2Provider {
         if let Some(what) = range_source_changed_through(self, remote_path, &before).await {
             temp.discard();
             tracing::warn!("{}", source_changed("b2 multi-thread", remote_path, &what));
+            report_download_fallback(
+                "B2: the source changed or could not be verified after the parallel transfer",
+            );
             return Ok(false);
         }
         match temp.publish(Path::new(local_path)).await {
@@ -2155,7 +2165,6 @@ impl B2Provider {
             ))),
         }
     }
-
     /// In-memory download (range-capped). Same pattern as `do_download`.
     async fn do_download_to_bytes(&self, key: &str) -> Result<Vec<u8>, ProviderError> {
         let url = format!(
@@ -3061,7 +3070,12 @@ impl StorageProvider for B2Provider {
                         }
                     }
                 }
-                _ => progress,
+                Err(_) => {
+                    super::multi_thread::report_download_fallback(
+                        "B2: the source size probe failed",
+                    );
+                    progress
+                }
             }
         } else {
             progress
@@ -7075,6 +7089,7 @@ mod tests {
         let sink = Arc::clone(&reported);
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
+        let _ = super::super::take_warnings();
         provider
             .download(
                 "/big.bin",
@@ -7085,6 +7100,9 @@ mod tests {
             )
             .await
             .expect("a refused window must finish on a single stream");
+        assert_eq!(super::super::take_warnings(), vec![
+            "parallel download unavailable: B2: a ranged response or its version check was refused; using a single stream"
+        ]);
         assert_eq!(std::fs::read(&out).expect("published"), vec![7u8; SIZE]);
         assert_eq!(
             reported.load(Ordering::SeqCst),
