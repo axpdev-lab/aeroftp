@@ -18,7 +18,10 @@ pub const SCRATCH_HEADROOM: u64 = 256 * 1024 * 1024;
 /// folder is on disk. The room is checked before the transfer starts, so a
 /// file that cannot fit fails at once and says how much it needs.
 pub fn staging_dir(bytes: u64) -> Result<PathBuf, String> {
-    scratch_dir_with_room(&scratch_dir_path(), bytes)
+    let dir = scratch_dir_with_room(&scratch_dir_path(), bytes)?;
+    protect_scratch_process(&dir)
+        .map_err(|e| format!("{} could not be protected from cleanup: {e}", dir.display()))?;
+    Ok(dir)
 }
 
 /// Where [`staging_dir`] stages, resolved only: not created, no room check.
@@ -61,6 +64,49 @@ pub fn scratch_dir_with_room(dir: &Path, bytes: u64) -> Result<PathBuf, String> 
 pub const STALE_STAGING_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 const DOWNLOAD_PART_SUFFIXES: [&str; 3] = [".aerotmp", ".aeroardtmp", ".aerosegtmp"];
+
+fn open_process_lock(root: &Path) -> std::io::Result<std::fs::File> {
+    let path = root.join("aeroftp_staging_live.lock");
+    match std::fs::symlink_metadata(&path) {
+        Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
+            return Err(std::io::Error::other(
+                "scratch process lock is not a regular file",
+            ));
+        }
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+}
+
+/// Keep unleased staging (compress, CLI, remote vault, Proton) safe even when
+/// it is older than the age gate. Shared handles live until process exit;
+/// a sweep may collect unleased entries only while it owns the exclusive
+/// process lock. Conservatively keep them for the whole staging process's
+/// lifetime, including a vault handed back to the GUI between commands.
+pub(crate) fn protect_scratch_process(root: &Path) -> std::io::Result<()> {
+    use std::collections::{hash_map::Entry, HashMap};
+    use std::sync::{LazyLock, Mutex};
+    static LEASES: LazyLock<Mutex<HashMap<PathBuf, std::fs::File>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+    let mut leases = LEASES
+        .lock()
+        .map_err(|_| std::io::Error::other("scratch process lease registry is poisoned"))?;
+    if let Entry::Vacant(entry) = leases.entry(root.to_path_buf()) {
+        let file = open_process_lock(root)?;
+        // Startup sweeps are short and never wait for a staging process. A
+        // new stager waits for an already-running sweep before making files.
+        file.lock_shared()?;
+        entry.insert(file);
+    }
+    Ok(())
+}
 
 fn staging_payload_name(name: &str) -> &str {
     DOWNLOAD_PART_SUFFIXES
@@ -178,6 +224,22 @@ fn sweep_staging_entries(
     older_than: std::time::Duration,
 ) -> SweepStats {
     let mut stats = SweepStats::default();
+    // The control file is permanent: unlinking it would let a new process
+    // lock a different inode while another still holds the old one.
+    let process_lock = match open_process_lock(root) {
+        Ok(file) => match file.try_lock() {
+            Ok(()) => Some(file),
+            Err(std::fs::TryLockError::WouldBlock) => None,
+            Err(std::fs::TryLockError::Error(_)) => {
+                stats.errors += 1;
+                None
+            }
+        },
+        Err(_) => {
+            stats.errors += 1;
+            None
+        }
+    };
     let now = std::time::SystemTime::now();
     for entry in entries {
         let entry = match entry {
@@ -268,6 +330,10 @@ fn sweep_staging_entries(
                 continue;
             }
         };
+        if held_lock.is_none() && process_lock.is_none() {
+            stats.kept_active += 1;
+            continue;
+        }
         // Never remove an orphan sidecar before its payload: otherwise another
         // sweep could mistake a still-leased payload for a legacy entry.
         if is_lock {
@@ -302,6 +368,13 @@ fn sweep_staging_entries(
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => stats.errors += 1,
+        }
+    }
+    // Unlock explicitly so a concurrent fork cannot retain the sweep's
+    // exclusive lock after this pass has finished.
+    if let Some(file) = process_lock {
+        if file.unlock().is_err() {
+            stats.errors += 1;
         }
     }
     stats
@@ -472,7 +545,7 @@ mod tests {
             return; // root bypasses directory permissions
         }
         let root = tempfile::tempdir().unwrap();
-        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0)).unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o0)).unwrap();
         let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
         std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(stats.errors, 1);
@@ -597,8 +670,22 @@ mod tests {
             return;
         };
         let root = PathBuf::from(root);
-        let path = root.join("aeroftp_crypt_overlay_1_live.bin");
-        if std::env::var("AEROFTP_SCRATCH_TEST_MODE").unwrap() == "crash" {
+        let mode = std::env::var("AEROFTP_SCRATCH_TEST_MODE").unwrap();
+        let path = root.join(if mode.starts_with("unleased") {
+            ".tmpOld"
+        } else {
+            "aeroftp_crypt_overlay_1_live.bin"
+        });
+        if mode == "unleased-crash" {
+            protect_scratch_process(&root).unwrap();
+            std::fs::write(&path, b"partial").unwrap();
+            backdate(
+                &path,
+                STALE_STAGING_AGE + std::time::Duration::from_secs(60),
+            );
+            std::process::exit(0);
+        }
+        if mode == "crash" {
             let _lease = StagingLease::new(&path).unwrap();
             std::fs::write(&path, b"ciphertext").unwrap();
             backdate(
@@ -613,6 +700,32 @@ mod tests {
         assert_eq!(stats.removed, 0);
         assert_eq!(stats.kept_active, 1);
         assert!(path.exists());
+    }
+
+    #[test]
+    fn unleased_staging_survives_a_live_process_even_beyond_the_age_gate() {
+        let root = tempfile::tempdir().unwrap();
+        let live = open_process_lock(root.path()).unwrap();
+        live.lock_shared().unwrap();
+        let path = root.path().join(".tmpOld");
+        std::fs::write(&path, b"partial").unwrap();
+        backdate(
+            &path,
+            STALE_STAGING_AGE + std::time::Duration::from_secs(60),
+        );
+        sweep_child(root.path(), "unleased-sweep");
+        drop(live);
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 1);
+        assert!(!path.exists());
+
+        // Registration in the actual staging API also releases on process exit.
+        sweep_child(root.path(), "unleased-crash");
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 1);
+        assert!(!path.exists());
     }
 
     #[test]
