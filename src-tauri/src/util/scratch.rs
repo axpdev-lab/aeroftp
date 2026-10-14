@@ -714,6 +714,7 @@ mod tests {
             STALE_STAGING_AGE + std::time::Duration::from_secs(60),
         );
         sweep_child(root.path(), "unleased-sweep");
+        live.unlock().unwrap();
         drop(live);
         let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
         assert_eq!(stats.errors, 0);
