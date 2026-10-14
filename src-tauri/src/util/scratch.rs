@@ -60,7 +60,19 @@ pub fn scratch_dir_with_room(dir: &Path, bytes: u64) -> Result<PathBuf, String> 
 /// liveness: crypt uploads retain the source mtime and hold a staging lease.
 pub const STALE_STAGING_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
+const DOWNLOAD_PART_SUFFIXES: [&str; 3] = [".aerotmp", ".aeroardtmp", ".aerosegtmp"];
+
+fn staging_payload_name(name: &str) -> &str {
+    DOWNLOAD_PART_SUFFIXES
+        .iter()
+        .find_map(|suffix| name.strip_suffix(suffix))
+        .unwrap_or(name)
+}
+
 fn staging_lock_path(path: &Path) -> PathBuf {
+    if let Some(name) = path.file_name().and_then(|name| name.to_str()) {
+        return path.with_file_name(format!("{}.lock", staging_payload_name(name)));
+    }
     let mut name = path.as_os_str().to_owned();
     name.push(".lock");
     PathBuf::from(name)
@@ -97,6 +109,11 @@ impl Drop for StagingLease {
         // Also covers a cancelled future. Remove the payload before releasing
         // its lease; normal callers may already have removed it asynchronously.
         let _ = std::fs::remove_file(&self.path);
+        for suffix in DOWNLOAD_PART_SUFFIXES {
+            let mut part = self.path.as_os_str().to_owned();
+            part.push(suffix);
+            let _ = std::fs::remove_file(Path::new(&part));
+        }
         let _ = std::fs::remove_file(&self.lock_path);
     }
 }
@@ -108,8 +125,10 @@ impl Drop for StagingLease {
 /// folders (`aeroftp_proton_up_*`) and `tempfile` leftovers (`.tmp*`) from
 /// the compress overlay, `rcat` and `hashsum`. Everything in the scratch
 /// folder is app-created, but the gate keeps the sweep from touching a file
-/// it cannot name.
+/// it cannot name. Atomic-download partials of these paths use the same gate
+/// and the same payload lease.
 pub fn is_staging_entry(name: &str) -> bool {
+    let name = staging_payload_name(name);
     (name.starts_with("aeroftp_crypt_overlay_") && name.ends_with(".bin"))
         || (name.starts_with("aerovault_remote_") && name.ends_with(".aerovault"))
         || name.starts_with("aeroftp_proton_up_")
@@ -181,6 +200,7 @@ fn sweep_staging_entries(
         // transfer writes, so leave it.
         let meta = match entry.metadata() {
             Ok(meta) => meta,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(_) => {
                 stats.errors += 1;
                 continue;
@@ -341,6 +361,9 @@ mod tests {
             "aeroftp_crypt_overlay_dl_1760000000000_550e8400.bin",
             "aeroftp_crypt_overlay_ver_1760000000000_550e8400.bin",
             "aerovault_remote_550e8400.aerovault",
+            "aeroftp_crypt_overlay_dl_1760000000000_550e8400.bin.aerotmp",
+            "aeroftp_crypt_overlay_dl_1760000000000_550e8400.bin.aeroardtmp",
+            "aerovault_remote_550e8400.aerovault.aerosegtmp",
             "aeroftp_proton_up_550e8400",
             ".tmpA1b2C3",
         ] {
@@ -353,6 +376,8 @@ mod tests {
             "aeroftp_proton_upload_550e8400",
             "tmpA1b2C3",
             "aeroftp-scratch",
+            "notes.txt.aerotmp",
+            "aeroftp_crypt_overlay_dl_1760000000000_550e8400.bin.aerotmp.bak",
         ] {
             assert!(!is_staging_entry(name), "{name}");
         }
@@ -494,6 +519,57 @@ mod tests {
         drop(lease);
         assert!(!path.exists());
         assert!(!staging_lock_path(&path).exists());
+    }
+
+    #[test]
+    fn download_partials_share_the_payload_lease_and_are_collected_after_a_crash() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("aeroftp_crypt_overlay_dl_1_live.bin");
+        let lease = StagingLease::new(&path).unwrap();
+        let parts: Vec<_> = DOWNLOAD_PART_SUFFIXES
+            .iter()
+            .map(|suffix| {
+                root.path()
+                    .join(format!("aeroftp_crypt_overlay_dl_1_live.bin{suffix}"))
+            })
+            .collect();
+        for part in &parts {
+            std::fs::write(part, b"partial").unwrap();
+            backdate(part, STALE_STAGING_AGE + std::time::Duration::from_secs(60));
+        }
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 0);
+        assert_eq!(stats.kept_active, 3);
+        assert!(parts.iter().all(|part| part.exists()));
+        drop(lease);
+        assert!(parts.iter().all(|part| !part.exists()));
+
+        // A killed process can leave only the partial, with no final payload.
+        for part in &parts {
+            std::fs::write(part, b"partial").unwrap();
+            backdate(part, STALE_STAGING_AGE + std::time::Duration::from_secs(60));
+        }
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 3);
+        assert!(parts.iter().all(|part| !part.exists()));
+    }
+
+    #[test]
+    fn an_unreadable_lease_keeps_the_payload_and_reports_an_error() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("aeroftp_crypt_overlay_1_unknown.bin");
+        std::fs::write(&path, b"keep").unwrap();
+        backdate(
+            &path,
+            STALE_STAGING_AGE + std::time::Duration::from_secs(60),
+        );
+        std::fs::create_dir(staging_lock_path(&path)).unwrap();
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 1);
+        assert_eq!(stats.removed, 0);
+        assert!(path.exists());
     }
 
     fn sweep_child(root: &Path, mode: &str) {
