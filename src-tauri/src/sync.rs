@@ -2815,6 +2815,7 @@ async fn sync_download_transfer(
             {
                 Ok(()) => return Ok(()),
                 Err(e) => {
+                    e.report_fallback();
                     tracing::warn!(
                         "sync.download: segmented range path failed, falling back to single-stream (remote={}, error={})",
                         remote_path,

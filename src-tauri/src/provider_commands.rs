@@ -3491,6 +3491,7 @@ pub async fn provider_download_file(
                     );
                     return Err(message);
                 }
+                e.report_fallback();
                 warn!(
                     "Segmented download failed, falling back to provider download: {}",
                     e
