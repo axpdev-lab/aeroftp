@@ -249,6 +249,7 @@ async fn download_source_to_temp(
                         return Err(ProviderError::TransferFailed(err.to_string()));
                     }
                     Err(err) => {
+                        err.report_fallback();
                         tracing::warn!(
                             "cross-profile: segmented source download failed, falling back to single-stream (remote={}, error={})",
                             source_path,

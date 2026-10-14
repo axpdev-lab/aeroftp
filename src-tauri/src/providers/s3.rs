@@ -11566,6 +11566,11 @@ mod tests {
                 .contains("changed while it was being downloaded"),
             "{err}"
         );
+        let _ = super::super::take_warnings();
+        err.report_fallback();
+        assert_eq!(super::super::take_warnings(), vec![
+            "parallel download unavailable: the source changed or could not be verified after the segmented transfer; using a single stream"
+        ]);
         assert!(!out.exists(), "no file may be committed");
     }
 
@@ -11688,6 +11693,11 @@ mod tests {
             err.to_string().contains("ignored the range"),
             "the refusal must name what happened: {err}"
         );
+        let _ = super::super::take_warnings();
+        err.report_fallback();
+        assert_eq!(super::super::take_warnings(), vec![
+            "parallel download unavailable: a ranged response or its version check was refused; using a single stream"
+        ]);
         assert!(!out.exists(), "no file may be committed");
     }
 
@@ -11720,6 +11730,11 @@ mod tests {
                 .contains("planned for 8388608 bytes and the object now has 6291456"),
             "{err}"
         );
+        let _ = super::super::take_warnings();
+        err.report_fallback();
+        assert_eq!(super::super::take_warnings(), vec![
+            "parallel download unavailable: the source size no longer matches the segmented plan; using a single stream"
+        ]);
         assert!(!out.exists(), "no file may be committed");
     }
 
