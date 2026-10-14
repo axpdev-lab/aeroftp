@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Token vajab õigusi drive ja user_info. Ainult drive õigusega see ühendub ja kuvab faile, kuid \"Too\" lükatakse tagasi, sest see loeb teie konto profiili, et leida Drive ID.",
             "protonCliTitle": "Kasutab ametlikku Proton Drive CLI",
             "protonCliBody": "Installige Proton Drive CLI aadressilt proton.me/download/drive/cli, käivitage terminalis proton-drive auth login ja lõpetage brauseris. AeroFTP ei näe kunagi teie parooli; seanss jääb operatsioonisüsteemi saladuste salve.",
-            "protonUnofficial": "See on kolmanda osapoole rakendus, mida Proton ametlikult ei toeta.",
             "protonConnectHint": "\"Ühenda\" kasutab sellel masinal juba sisse logitud CLI-d. Üks Proton konto operatsioonisüsteemi kasutaja kohta.",
             "twakeInstance": "Twake aadress",
             "twakeInstanceHelp": "Teie enda aadress, näiteks yourname.twake.app. Samuti võite kleepida mis tahes Twake lehe aadressi oma brauserist.",

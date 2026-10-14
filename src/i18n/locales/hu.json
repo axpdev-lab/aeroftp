@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "A tokenhez a drive és a user_info hatókör kell. Csak a drive hatókörrel csatlakozik és listázza a fájlokat, de a „Lekérés” elutasításra kerül, mert a Drive ID megtalálásához a fiókprofilodat olvassa.",
             "protonCliTitle": "A hivatalos Proton Drive CLI-t használja",
             "protonCliBody": "Telepítse a Proton Drive CLI-t a proton.me/download/drive/cli címről, majd a terminálban futtassa a proton-drive auth login parancsot, és fejezze be a böngészőben. Az AeroFTP soha nem látja a jelszavát; a munkamenet az OS titkos tárában marad.",
-            "protonUnofficial": "Ez egy harmadik féltől származó alkalmazás, amelyet a Proton hivatalosan nem támogat.",
             "protonConnectHint": "A \"Csatlakozás\" az ezen a gépen már bejelentkezett CLI-t használja. Operációsrendszer-felhasználónként egy Proton-fiók.",
             "twakeInstance": "Twake cím",
             "twakeInstanceHelp": "A saját címed, például yourname.twake.app. Bármely Twake oldal címét is beillesztheted a böngésződből.",

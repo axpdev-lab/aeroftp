@@ -1436,7 +1436,6 @@
             "internxtEncryptionDesc": "All files are encrypted end-to-end with AES-256-CTR. Internxt cannot access your data. EU-based, GDPR compliant.",
             "protonCliTitle": "Uses the official Proton Drive CLI",
             "protonCliBody": "Install the Proton Drive CLI from proton.me/download/drive/cli, then run proton-drive auth login in a terminal and finish in the browser. AeroFTP never sees your password; the session stays in the OS secret store.",
-            "protonUnofficial": "This is a third-party application not officially supported by Proton.",
             "protonConnectHint": "\"Connect\" uses the CLI already signed in on this machine. One Proton account per OS user.",
             "kdriveToken": "API Token",
             "kdriveDriveId": "Drive ID",

@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Թոքենին անհրաժեշտ են drive և user_info շրջանակները։ Միայն drive-ով այն միանում և ցուցադրում է ֆայլերը, բայց «Ստանալ»-ը մերժվում է, քանի որ Drive ID-ն գտնելու համար կարդում է ձեր հաշվի պրոֆիլը։",
             "protonCliTitle": "Օգտագործում է պաշտոնական Proton Drive CLI",
             "protonCliBody": "Տեղադրեք Proton Drive CLI-ը proton.me/download/drive/cli-ից, ապա տերմինալում գործարկեք proton-drive auth login և ավարտեք դիտարկիչում։ AeroFTP-ը երբեք չի տեսնում ձեր գաղտնաբառը. նիստը մնում է OS-ի գաղտնիքների պահոցում։",
-            "protonUnofficial": "Սա երրորդ կողմի հավելված է, որը Proton-ը պաշտոնապես չի աջակցում։",
             "protonConnectHint": "\"Միանալ\" կոճակը օգտագործում է այս մեքենայում արդեն մուտք գործած CLI-ը։ Մեկ Proton հաշիվ OS օգտատիրոջ համար։",
             "twakeInstance": "Twake հասցե",
             "twakeInstanceHelp": "Ձեր սեփական հասցեն, օրինակ՝ yourname.twake.app: Կարող եք նաև տեղադրել Twake-ի ցանկացած էջի հասցե ձեր դիտարկիչից:",

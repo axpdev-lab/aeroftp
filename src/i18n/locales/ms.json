@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Token memerlukan skop drive dan user_info. Dengan drive sahaja ia boleh menyambung dan menyenaraikan fail, tetapi \"Dapatkan\" ditolak, kerana ia membaca profil akaun anda untuk mencari Drive ID.",
             "protonCliTitle": "Menggunakan CLI rasmi Proton Drive",
             "protonCliBody": "Pasang Proton Drive CLI dari proton.me/download/drive/cli, kemudian jalankan proton-drive auth login dalam terminal dan selesaikan dalam pelayar. AeroFTP tidak pernah melihat kata laluan anda; sesi kekal dalam stor rahsia OS.",
-            "protonUnofficial": "Ini ialah aplikasi pihak ketiga yang tidak disokong secara rasmi oleh Proton.",
             "protonConnectHint": "\"Sambung\" menggunakan CLI yang sudah log masuk pada mesin ini. Satu akaun Proton setiap pengguna OS.",
             "twakeInstance": "Alamat Twake",
             "twakeInstanceHelp": "Alamat anda sendiri, contohnya yourname.twake.app. Anda juga boleh tampal mana-mana alamat halaman Twake dari pelayar anda.",

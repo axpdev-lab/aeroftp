@@ -162,6 +162,16 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       const { activityLog: al, checkForUpdate: cfu, t: tr } = callbacksRef.current;
       logger.debug('Tray menu action:', action);
 
+      if (action === 'cloud_sync_now' || action === 'cloud_pause') {
+        // Same rule as Open Cloud Folder: the tray rows start disabled when
+        // AeroCloud is off. This refuses a click left over from a menu built
+        // before the config changed.
+        const config = await invoke<{ enabled: boolean }>('get_cloud_config').catch(() => null);
+        if (!config?.enabled) {
+          return;
+        }
+      }
+
       if (action === 'cloud_sync_now') {
         try {
           al.log('INFO', tr('cloud.manualSyncStarted'), 'success');

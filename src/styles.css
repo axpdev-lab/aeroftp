@@ -1933,6 +1933,7 @@ html.redhorse::-webkit-scrollbar-thumb:hover {
    gradient below so the weave does not read as repeated chrome. */
 html.redhorse .panel-header,
 html.redhorse .aero-tabstrip,
+html.redhorse [data-gui-controller-badge],
 html.redhorse [role="status"][aria-label="Status bar"] {
   background-color: var(--rl-chrome-dim) !important;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8'%3E%3Cpath fill='rgba(255,255,255,0.026)' d='M0 0h4v4H0zm4 4h4v4H4z'/%3E%3Cpath fill='rgba(0,0,0,0.09)' d='M4 0h4v4H4zM0 4h4v4H0z'/%3E%3C/svg%3E") !important;
@@ -1972,7 +1973,12 @@ html.redhorse [role="status"][aria-label="Status bar"],
 html.redhorse [role="status"][aria-label="Status bar"] .dark\:text-gray-400,
 html.redhorse [role="status"][aria-label="Status bar"] .dark\:text-gray-300,
 html.redhorse [role="status"][aria-label="Status bar"] .text-gray-500,
-html.redhorse [role="status"][aria-label="Status bar"] .text-gray-600 {
+html.redhorse [role="status"][aria-label="Status bar"] .text-gray-600,
+html.redhorse [data-gui-controller-badge],
+html.redhorse [data-gui-controller-badge] .dark\:text-gray-200,
+html.redhorse [data-gui-controller-badge] .dark\:text-gray-400,
+html.redhorse [data-gui-controller-badge] .text-gray-600,
+html.redhorse [data-gui-controller-badge] .text-gray-700 {
   color: #ffffff !important;
 }
 

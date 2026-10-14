@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Lykillinn þarf bæði umfangið drive og umfangið user_info. Með aðeins drive tengist hann og sýnir skrár, en „Sækja“ er hafnað, því hún les reikningssnið þitt til að finna Drive ID.",
             "protonCliTitle": "Notar opinbera Proton Drive CLI",
             "protonCliBody": "Settu upp Proton Drive CLI frá proton.me/download/drive/cli, keyrðu svo proton-drive auth login í skjáhermi og ljúktu í vafranum. AeroFTP sér aldrei lykilorðið þitt; lotan er áfram í leyndarmálageymslu stýrikerfisins.",
-            "protonUnofficial": "Þetta er forrit frá þriðja aðila sem Proton styður ekki opinberlega.",
             "protonConnectHint": "\"Tengjast\" notar CLI sem er þegar innskráð á þessari vél. Einn Proton-reikningur á hvern stýrikerfisnotanda.",
             "twakeInstance": "Twake vistfang",
             "twakeInstanceHelp": "Þitt eigið vistfang, til dæmis yourname.twake.app. Þú getur líka límt inn hvaða Twake síðuvistfang sem er úr vafranum þínum.",

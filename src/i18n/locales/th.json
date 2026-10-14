@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "โทเค็นต้องมีขอบเขต drive และ user_info หากมีเฉพาะ drive จะเชื่อมต่อและแสดงรายการไฟล์ได้ แต่ \"ดึงข้อมูล\" จะถูกปฏิเสธ เพราะต้องอ่านโปรไฟล์บัญชีของคุณเพื่อค้นหา Drive ID",
             "protonCliTitle": "ใช้ Proton Drive CLI ทางการ",
             "protonCliBody": "ติดตั้ง Proton Drive CLI จาก proton.me/download/drive/cli จากนั้นรัน proton-drive auth login ในเทอร์มินัลแล้วทำให้เสร็จในเบราว์เซอร์ AeroFTP ไม่เคยเห็นรหัสผ่านของคุณ เซสชันอยู่ในที่เก็บความลับของ OS",
-            "protonUnofficial": "นี่เป็นแอปของบุคคลที่สามที่ Proton ไม่รองรับอย่างเป็นทางการ",
             "protonConnectHint": "\"เชื่อมต่อ\" ใช้ CLI ที่ลงชื่อเข้าแล้วบนเครื่องนี้ บัญชี Proton หนึ่งบัญชีต่อผู้ใช้ OS",
             "twakeInstance": "ที่อยู่ Twake",
             "twakeInstanceHelp": "ที่อยู่ของคุณเอง เช่น yourname.twake.app คุณสามารถวางที่อยู่หน้า Twake ใดก็ได้จากเบราว์เซอร์ของคุณ",

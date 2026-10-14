@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Tokenam nepieciešami drive un user_info tvērumi. Tikai ar drive tas pieslēdzas un parāda failus, bet \"Iegūt\" tiek noraidīts, jo Drive ID atrašanai tas nolasa jūsu konta profilu.",
             "protonCliTitle": "Izmanto oficiālo Proton Drive CLI",
             "protonCliBody": "Instalējiet Proton Drive CLI no proton.me/download/drive/cli, pēc tam terminālī palaidiet proton-drive auth login un pabeidziet pārlūkā. AeroFTP nekad neredz jūsu paroli; sesija paliek OS noslēpumu krātuvē.",
-            "protonUnofficial": "Šī ir trešās puses lietotne, ko Proton oficiāli neatbalsta.",
             "protonConnectHint": "\"Savienot\" izmanto šajā datorā jau pierakstīto CLI. Viens Proton konts uz OS lietotāju.",
             "twakeInstance": "Twake adrese",
             "twakeInstanceHelp": "Jūsu pašu adrese, piemēram, yourname.twake.app. Varat arī ielīmēt jebkuru Twake lapas adresi no pārlūkprogrammas.",

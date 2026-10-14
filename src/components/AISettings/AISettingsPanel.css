@@ -499,3 +499,144 @@ html.cyber .ai-settings-panel .ring-red-500\/30 {
 html.cyber .ai-settings-panel .scrollbar-thin {
   scrollbar-color: rgba(16, 185, 129, 0.3) var(--cyber-bg-dark);
 }
+
+/* Tab chips. Kept off the gray/purple utilities: those are remapped per
+   theme and were fighting the bar's own bottom border. Compact mode's
+   global `button` padding is more specific than a utility, so the chip
+   sets its own size here. The strip must not shrink: the panel is a flex
+   column and a tall Models list would otherwise crush the chips into a
+   thin capsule (overflow-x: auto also clips the vertical axis). */
+.ai-settings-panel .ai-settings-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 3rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #374151;
+}
+
+.ai-settings-panel .ai-settings-tab {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  box-sizing: border-box;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #9ca3af;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+}
+
+.ai-settings-panel .ai-settings-tab:hover {
+  background: rgba(55, 65, 81, 0.55);
+  color: #e5e7eb;
+}
+
+.ai-settings-panel .ai-settings-tab:active {
+  transform: none;
+}
+
+.ai-settings-panel .ai-settings-tab[aria-selected="true"] {
+  border-color: rgba(192, 132, 252, 0.45);
+  background: rgba(147, 51, 234, 0.14);
+  color: #c084fc;
+}
+
+.compact-mode .ai-settings-panel .ai-settings-tab {
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  font-size: 0.875rem;
+}
+
+:root:not(.dark) .ai-settings-panel .ai-settings-tabs {
+  border-bottom-color: #e5e7eb;
+}
+
+:root:not(.dark) .ai-settings-panel .ai-settings-tab {
+  color: #6b7280;
+}
+
+:root:not(.dark) .ai-settings-panel .ai-settings-tab:hover {
+  background: #f3f4f6;
+  color: #1f2937;
+}
+
+:root:not(.dark) .ai-settings-panel .ai-settings-tab[aria-selected="true"] {
+  border-color: rgba(124, 58, 237, 0.35);
+  background: rgba(124, 58, 237, 0.08);
+  color: #7c3aed;
+}
+
+html.tokyo .ai-settings-panel .ai-settings-tabs {
+  border-bottom-color: var(--tokyo-fg-gutter);
+}
+
+html.tokyo .ai-settings-panel .ai-settings-tab {
+  color: var(--tokyo-comment);
+}
+
+html.tokyo .ai-settings-panel .ai-settings-tab:hover {
+  background: rgba(41, 46, 66, 0.7);
+  color: var(--tokyo-fg);
+}
+
+html.tokyo .ai-settings-panel .ai-settings-tab[aria-selected="true"] {
+  border-color: rgba(187, 154, 247, 0.45);
+  background: rgba(187, 154, 247, 0.12);
+  color: var(--tokyo-purple);
+}
+
+html.cyber .ai-settings-panel .ai-settings-tabs {
+  border-bottom-color: var(--cyber-border);
+}
+
+html.cyber .ai-settings-panel .ai-settings-tab {
+  color: var(--cyber-fg-muted);
+}
+
+html.cyber .ai-settings-panel .ai-settings-tab:hover {
+  background: rgba(17, 27, 39, 0.8);
+  color: var(--cyber-fg);
+}
+
+html.cyber .ai-settings-panel .ai-settings-tab[aria-selected="true"] {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--cyber-cyan);
+}
+
+.ai-settings-panel .ai-model-group-header {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  text-align: left;
+}
+
+.ai-settings-panel .ai-model-group-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ai-settings-panel .ai-model-group-header:active {
+  transform: none;
+}
+
+:root:not(.dark) .ai-settings-panel .ai-model-group-header:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.compact-mode .ai-settings-panel .ai-model-group-header {
+  padding: 0.75rem 1rem;
+  font-size: inherit;
+}

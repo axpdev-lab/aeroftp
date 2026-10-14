@@ -1582,8 +1582,7 @@ impl AppState {
     }
 }
 
-// ============ Request/Response Structs ============
-
+// ============ Request/Response Structs =====
 #[derive(Serialize, Deserialize)]
 pub struct ConnectionParams {
     server: String,
@@ -1666,8 +1665,7 @@ pub struct FileListResponse {
     current_path: String,
 }
 
-// ============ Transfer Progress Events ============
-
+// ============ Transfer Progress Events =====
 #[derive(Clone, Serialize)]
 pub struct TransferProgress {
     pub transfer_id: String,
@@ -1771,8 +1769,7 @@ pub(crate) fn make_delta_progress_sink(
     })
 }
 
-// ============ Local File Info ============
-
+// ============ Local File Info =====
 #[derive(Serialize)]
 pub struct LocalFileInfo {
     pub name: String,
@@ -1782,8 +1779,7 @@ pub struct LocalFileInfo {
     pub modified: Option<String>,
 }
 
-// ============ Updater Structs ============
-
+// ============ Updater Structs =====
 #[derive(Deserialize)]
 struct GitHubRelease {
     tag_name: String,
@@ -1853,8 +1849,7 @@ const SIGSTORE_OIDC_ISSUER: &str = "https://token.actions.githubusercontent.com"
 const SIGSTORE_WORKFLOW_IDENTITY_PREFIX: &str =
     "https://github.com/axpdev-lab/aeroftp/.github/workflows/build.yml@refs/tags/";
 
-// ============ Updater Command ============
-
+// ============ Updater Command =====
 /// Directory where self-extracting auto-update artifacts (portable .zip,
 /// .AppImage) are staged before being applied. Kept out of the user-visible
 /// `~/Downloads/` so we don't pollute it with archive boxes that have no
@@ -3307,8 +3302,7 @@ async fn install_windows_update(
     }
 }
 
-// ============ FTP Commands ============
-
+// ============ FTP Commands =====
 // IPC panic safety net: the real work runs in `connect_ftp_inner`, wrapped by
 // `panic_safe::catch` so a panic on the connect/login path (a rustls provider
 // panic, a suppaftp bug, ...) becomes an `Err` the UI renders instead of a
@@ -3445,8 +3439,7 @@ async fn change_directory(
     })
 }
 
-// ============ Transfer Commands with Progress ============
-
+// ============ Transfer Commands with Progress =====
 #[tauri::command]
 async fn download_file(
     app: AppHandle,
@@ -5522,8 +5515,7 @@ async fn reset_cancel_flag(
     Ok(())
 }
 
-// ============ Bandwidth Throttling ============
-
+// ============ Bandwidth Throttling =====
 /// Set global transfer speed limits (KB/s, 0 = unlimited)
 #[tauri::command]
 async fn set_speed_limit(
@@ -5546,10 +5538,8 @@ async fn set_speed_limit(
     Ok(())
 }
 
-// ============ Environment Detection ============
-
-// ============ Debug & Dependencies Commands ============
-
+// ============ Environment Detection =====
+// ============ Debug & Dependencies Commands =====
 #[derive(Clone, serde::Serialize, Default)]
 struct SystemInfo {
     app_version: String,
@@ -5659,8 +5649,7 @@ fn get_system_info_blocking() -> SystemInfo {
     }
 }
 
-// ============ UI Token Overrides ============
-//
+// ============ UI Token Overrides =====//
 // `ui-tokens.json` lives in the AeroFTP data root, which on Linux is
 // `~/.config/aeroftp`. The frontend cannot read it through the fs plugin: the
 // Tauri scope sets `require_literal_leading_dot = true` on unix (see
@@ -5732,8 +5721,7 @@ async fn ensure_ui_tokens_file() -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
-// ============ Local File System Commands ============
-
+// ============ Local File System Commands =====
 #[tauri::command]
 async fn get_local_files(
     path: String,
@@ -6157,8 +6145,7 @@ mod safe_picker_start_dir_tests {
     }
 }
 
-// ============ File Operations Commands ============
-
+// ============ File Operations Commands =====
 /// Delete a remote file or folder with detailed event emission for each deleted item.
 /// For folders, recursively scans and emits events for each file deleted.
 #[tauri::command]
@@ -10416,8 +10403,7 @@ async fn ftp_read_file_base64(
     Ok(STANDARD.encode(data))
 }
 
-// ============ DevTools Commands ============
-
+// ============ DevTools Commands =====
 #[tauri::command]
 async fn read_local_file(path: String, max_size_mb: Option<u32>) -> Result<String, String> {
     validate_path(&path)?;
@@ -10548,8 +10534,7 @@ async fn preview_remote_file(
     Ok(content)
 }
 
-// ============ Favicon Detection ============
-
+// ============ Favicon Detection =====
 /// Parse manifest.json/site.webmanifest to find the best icon path
 fn parse_manifest_icons(json_bytes: &[u8]) -> Option<String> {
     let value: serde_json::Value = serde_json::from_slice(json_bytes).ok()?;
@@ -10994,8 +10979,7 @@ async fn save_remote_file(
     Ok(())
 }
 
-// ============ Splash Screen ============
-
+// ============ Splash Screen =====
 /// Global flag: set to true once app_ready has run, so the safety timeout
 /// does not re-show the main window after the user has already closed it.
 static APP_READY_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -11652,8 +11636,7 @@ fn rebuild_menu_on_main(
     Ok(())
 }
 
-// ============ Sync Commands ============
-
+// ============ Sync Commands =====
 use cloud_config::{CloudConfig, CloudSyncStatus};
 use sync::{
     classify_sync_error, classify_with_summary, delete_sync_journal, load_sync_index,
@@ -12710,8 +12693,7 @@ fn save_sync_index_cmd_blocking(index: SyncIndex) -> Result<(), String> {
     save_sync_index(&index)
 }
 
-// ============ Sync Journal Commands (Phase 2: Reliability) ============
-
+// ============ Sync Journal Commands (Phase 2: Reliability) =====
 #[tauri::command]
 async fn load_sync_journal_cmd(
     local_path: String,
@@ -12796,8 +12778,7 @@ fn clear_all_journals_cmd_blocking() -> Result<u32, String> {
     sync::clear_all_journals()
 }
 
-// ============ Transfer Queue Journal (TQ-7a: persistence + restart detection) ============
-
+// ============ Transfer Queue Journal (TQ-7a: persistence + restart detection) =====
 #[tauri::command]
 async fn save_transfer_queue_journal_cmd(
     entries: Vec<transfer_queue_journal::TransferQueueJournalEntry>,
@@ -13248,10 +13229,8 @@ async fn sftp_probe_delta_eligibility(
     })
 }
 
-// =============================
-// Multi-Path Sync Commands (#52)
-// =============================
-
+// ======================// Multi-Path Sync Commands (#52)
+// ======================
 #[tauri::command]
 async fn get_multi_path_config() -> sync::MultiPathConfig {
     tokio::task::spawn_blocking(get_multi_path_config_blocking)
@@ -13309,10 +13288,8 @@ fn remove_path_pair_blocking(pair_id: String) -> Result<sync::MultiPathConfig, S
     })
 }
 
-// =============================
-// Sync Template Commands (#153)
-// =============================
-
+// ======================// Sync Template Commands (#153)
+// ======================
 #[tauri::command]
 async fn export_sync_template_cmd(
     name: String,
@@ -13451,10 +13428,8 @@ fn import_sync_script_cmd_blocking(script_content: String) -> Result<sync::SyncS
     sync::import_sync_script(&script_content)
 }
 
-// =============================
-// AeroSync canonical script export/import (issue #133)
-// =============================
-
+// ======================// AeroSync canonical script export/import (issue #133)
+// ======================
 #[derive(serde::Deserialize)]
 struct AerosyncExportScriptArgs {
     profile_id: String,
@@ -13643,10 +13618,8 @@ fn aerosync_import_script_cmd_blocking(
     })
 }
 
-// =============================
-// Rollback Commands (#154)
-// =============================
-
+// ======================// Rollback Commands (#154)
+// ======================
 #[tauri::command]
 async fn create_sync_snapshot_cmd(
     local_path: String,
@@ -13920,18 +13893,12 @@ async fn restore_sync_snapshot_cmd(
     Ok(result)
 }
 
-// =============================
-// Rename Detection
-// =============================
-
-// =============================
-// Delta Sync Commands (#155)
-// =============================
-
-// =============================
-// Canary Sync Commands
-// =============================
-
+// ======================// Rename Detection
+// ======================
+// ======================// Delta Sync Commands (#155)
+// ======================
+// ======================// Canary Sync Commands
+// ======================
 /// Run a canary (sample-based) dry-run sync analysis.
 /// Scans local files, selects a percentage-based sample, and projects
 /// what a full sync would do without actually transferring anything.
@@ -14060,10 +14027,8 @@ async fn sync_canary_run(
     })
 }
 
-// =============================
-// Signed Audit Log Commands
-// =============================
-
+// ======================// Signed Audit Log Commands
+// ======================
 /// Generate or retrieve a process-side journal signing key (A5-06 fix).
 /// The key is stored in the app config directory, NOT in localStorage.
 /// This prevents XSS from accessing the signing secret.
@@ -14531,8 +14496,7 @@ fn classify_transfer_error(raw_error: String, file_path: Option<String>) -> Sync
     classify_sync_error(&raw_error, file_path.as_deref())
 }
 
-// ============ AI Commands ============
-
+// ============ AI Commands =====
 /// Active non-streaming ai_chat requests, keyed by a caller-supplied id.
 /// `ai_cancel_chat(id)` flips the token and the running `call_ai` future
 /// drops: the underlying reqwest HTTP request is cancelled by drop.
@@ -14802,8 +14766,7 @@ async fn ai_list_models(
     }
 }
 
-// ============ AeroCloud Commands ============
-
+// ============ AeroCloud Commands =====
 #[tauri::command]
 async fn get_cloud_config() -> CloudConfig {
     tokio::task::spawn_blocking(get_cloud_config_blocking)
@@ -14820,10 +14783,13 @@ fn get_cloud_config_blocking() -> CloudConfig {
 }
 
 #[tauri::command]
-async fn save_cloud_config_cmd(config: CloudConfig) -> Result<(), String> {
+async fn save_cloud_config_cmd(app: AppHandle, config: CloudConfig) -> Result<(), String> {
+    let enabled = config.enabled;
     tokio::task::spawn_blocking(move || save_cloud_config_cmd_blocking(config))
         .await
-        .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))
+        .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, enabled);
+    Ok(())
 }
 
 /// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
@@ -15269,6 +15235,7 @@ async fn list_remote_folders_tree(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn setup_aerocloud(
+    app: AppHandle,
     cloud_name: String,
     local_folder: String,
     remote_folder: String,
@@ -15305,6 +15272,7 @@ async fn setup_aerocloud(
 
     // Save configuration
     cloud_config::save_cloud_config(&config)?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, true);
 
     info!(
         "AeroCloud setup complete: protocol={}, local={}, remote={}",
@@ -15415,6 +15383,7 @@ async fn disable_aerocloud(app: AppHandle) -> Result<(), String> {
     }
 
     cloud_config::save_cloud_config(&CloudConfig::default())?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, false);
 
     let _ = app.emit(
         "cloud-sync-status",
@@ -15660,8 +15629,7 @@ async fn trigger_cloud_sync(
     // _guard drops here on both arms -> store(false). No early return after acquire
     // without clearing.
 }
-// ============ Background Sync & Tray Commands ============
-
+// ============ Background Sync & Tray Commands =====
 use std::time::Duration;
 
 /// Prevents concurrent syncs (manual + watcher firing at the same time).
@@ -16303,8 +16271,7 @@ async fn save_server_credentials(
     Ok(())
 }
 
-// ============ Universal Credential Vault Commands ============
-
+// ============ Universal Credential Vault Commands =====
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct VaultCategories {
@@ -16791,8 +16758,7 @@ async fn app_master_password_check_timeout(
     Ok(state.check_timeout())
 }
 
-// ============ Profile Export/Import ============
-
+// ============ Profile Export/Import =====
 /// Map a saved-server protocol identifier to the `OAuthProvider` slug used
 /// in the vault key (`oauth_<slug>_<profile_id>`). Returns `None` for
 /// protocols that do not use OAuth2 storage. Issue #214.
@@ -17428,8 +17394,7 @@ pub async fn import_server_profiles_core_filtered(
     Ok(result)
 }
 
-// ============ Full Keystore Export/Import ============
-
+// ============ Full Keystore Export/Import =====
 #[tauri::command]
 async fn export_keystore(
     app: tauri::AppHandle,
@@ -17590,8 +17555,7 @@ async fn read_keystore_metadata(
         .map_err(|e| e.to_string())
 }
 
-// ============ Public wrappers for AI tool access ============
-// Cannot make #[tauri::command] functions pub (Tauri 2 macro conflict),
+// ============ Public wrappers for AI tool access =====// Cannot make #[tauri::command] functions pub (Tauri 2 macro conflict),
 // so we expose thin wrappers that ai_tools.rs can call via crate::
 
 pub async fn compress_files_core(
@@ -17725,8 +17689,7 @@ pub async fn is_rar_encrypted_core(archive_path: String) -> Result<bool, String>
     is_rar_encrypted(archive_path).await
 }
 
-// ============ Mount Manager Commands (T-MOUNT-MANAGER) ============
-
+// ============ Mount Manager Commands (T-MOUNT-MANAGER) =====
 #[tauri::command]
 async fn mount_list() -> Result<serde_json::Value, String> {
     let registry = mount_manager::load_registry();
@@ -17859,8 +17822,7 @@ async fn mount_open_quick(id: String) -> Result<(), String> {
     mount_manager::open_in_explorer(&id).await
 }
 
-// ============ App Entry Point ============
-
+// ============ App Entry Point =====
 /// Install the process-wide rustls `CryptoProvider` for THIS binary.
 ///
 /// Both `aws-lc-rs` and `ring` are pulled into the dependency tree (via
@@ -17993,6 +17955,8 @@ pub fn run() {
     if file_associations::handle_uninstall_history_arg() {
         return;
     }
+    #[cfg(not(target_os = "linux"))]
+    use tauri::menu::IconMenuItem;
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
     // Pin the rustls CryptoProvider for this (GUI) process before any TLS
@@ -18898,38 +18862,134 @@ pub fn run() {
                 warn!("Splash screen safety timeout reached, force-closing");
                 finish_startup(app_handle, false, "safety timeout").await;
             });
-            // ============ System Tray Icon ============
-            // Create tray menu.
-            // "Open Cloud Folder" is only meaningful when AeroCloud is configured:
-            // when it is not, the local folder is just the unrealised default
-            // (~/AeroCloud) and opening a non-existent path is pointless, so the
-            // entry starts disabled and reflects the saved AeroCloud state. Read
-            // here in setup() on the GTK main thread (a later off-thread mutation
-            // would risk the GLib-heap class of crash).
+            // ============ System Tray Icon =====            // Create tray menu.
+            // Sync Now, Pause Sync and Open Cloud Folder are only meaningful
+            // when AeroCloud is configured. When it is not, the local folder is
+            // just the unrealised default (~/AeroCloud), so those three entries
+            // start disabled. A later enable or disable updates the live items
+            // on the GTK main thread, the same marshal as the tray badge.
             let cloud_enabled = cloud_config::load_cloud_config().enabled;
-            let tray_sync_now =
-                MenuItem::with_id(app, "tray_sync_now", "Sync Now", true, None::<&str>)?;
-            let tray_pause =
-                MenuItem::with_id(app, "tray_pause", "Pause Sync", true, None::<&str>)?;
-            let tray_open_folder = MenuItem::with_id(
-                app,
-                "tray_open_folder",
-                "Open Cloud Folder",
-                cloud_enabled,
-                None::<&str>,
-            )?;
-            let tray_check_update = MenuItem::with_id(
-                app,
-                "tray_check_update",
-                "Check for Updates",
-                true,
-                None::<&str>,
-            )?;
-            let tray_separator = PredefinedMenuItem::separator(app)?;
-            let tray_show =
-                MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?;
-            let tray_quit = MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?;
+            // Linux draws this menu through ayatana / dbusmenu. The items stay
+            // plain MenuItems so the label is a real GtkLabel. The hook then
+            // swaps each tray row for a GtkImageMenuItem whose image is a
+            // theme icon name. A pixbuf (`icon-data`) makes GNOME Shell fail
+            // the image load and paint the row blank. macOS and Windows keep
+            // IconMenuItem.
+            #[cfg(target_os = "linux")]
+            let (
+                tray_sync_now,
+                tray_pause,
+                tray_open_folder,
+                tray_check_update,
+                tray_show,
+                tray_quit,
+            ) = {
+                (
+                    MenuItem::with_id(
+                        app,
+                        "tray_sync_now",
+                        "Sync Now",
+                        cloud_enabled,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(
+                        app,
+                        "tray_pause",
+                        "Pause Sync",
+                        cloud_enabled,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(
+                        app,
+                        "tray_open_folder",
+                        "Open Cloud Folder",
+                        cloud_enabled,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(
+                        app,
+                        "tray_check_update",
+                        "Check for Updates",
+                        true,
+                        None::<&str>,
+                    )?,
+                    MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?,
+                    MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?,
+                )
+            };
+            #[cfg(not(target_os = "linux"))]
+            let (
+                tray_sync_now,
+                tray_pause,
+                tray_open_folder,
+                tray_check_update,
+                tray_show,
+                tray_quit,
+            ) = {
+                (
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_sync_now",
+                        "Sync Now",
+                        cloud_enabled,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Sync)),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_pause",
+                        "Pause Sync",
+                        cloud_enabled,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Pause)),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_open_folder",
+                        "Open Cloud Folder",
+                        cloud_enabled,
+                        Some(tray_badge::tray_menu_icon(
+                            tray_badge::TrayMenuGlyph::Folder,
+                        )),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_check_update",
+                        "Check for Updates",
+                        true,
+                        Some(tray_badge::tray_menu_icon(
+                            tray_badge::TrayMenuGlyph::Update,
+                        )),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_show",
+                        "Show AeroFTP",
+                        true,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Show)),
+                        None::<&str>,
+                    )?,
+                    IconMenuItem::with_id(
+                        app,
+                        "tray_quit",
+                        "Quit",
+                        true,
+                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Quit)),
+                        None::<&str>,
+                    )?,
+                )
+            };
+            tray_badge::remember_tray_cloud_items(
+                tray_sync_now.clone(),
+                tray_pause.clone(),
+                tray_open_folder.clone(),
+            );
 
+            let tray_separator = PredefinedMenuItem::separator(app)?;
+            #[cfg(target_os = "linux")]
+            tray_badge::install_linux_tray_menu_icons();
             let tray_menu = Menu::with_items(
                 app,
                 &[

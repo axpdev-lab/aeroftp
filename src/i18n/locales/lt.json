@@ -312,7 +312,6 @@
             "kdriveTokenScopes": "Žetonui reikia drive ir user_info aprėpčių. Vien su drive jis prisijungia ir rodo failus, bet „Gauti“ atmetamas, nes Drive ID surasti jis skaito jūsų paskyros profilį.",
             "protonCliTitle": "Naudoja oficialią Proton Drive CLI",
             "protonCliBody": "Įdiekite Proton Drive CLI iš proton.me/download/drive/cli, tada terminale paleiskite proton-drive auth login ir užbaikite naršyklėje. AeroFTP niekada nemato jūsų slaptažodžio; seansas lieka OS paslapčių saugykloje.",
-            "protonUnofficial": "Tai trečiosios šalies programa, kurios Proton oficialiai nepalaiko.",
             "protonConnectHint": "\"Prisijungti\" naudoja šioje mašinoje jau prisijungusią CLI. Viena Proton paskyra vienam OS naudotojui.",
             "twakeInstance": "Twake adresas",
             "twakeInstanceHelp": "Jūsų paties adresas, pavyzdžiui, yourname.twake.app. Taip pat galite įklijuoti bet kokį Twake puslapio adresą iš naršyklės.",

@@ -32,32 +32,42 @@ export function GuiControllerBanner({ lease, onStop, onSpeed, onPause, preferenc
             {control?.phase === 'press' && <span className="absolute -left-4 -top-4 h-10 w-10 rounded-full border-2 border-amber-500 animate-ping motion-reduce:animate-none" />}
             <MousePointer2 size={26} fill="currentColor" stroke="white" />
         </div>}
-        <div data-gui-controller-badge role="status" aria-live="polite" className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[9998] flex max-w-[95vw] flex-wrap items-center gap-3 rounded-xl border border-amber-400 bg-amber-50 px-4 py-3 text-amber-950 shadow-xl dark:bg-gray-900 dark:text-amber-200">
-            <Bot size={20} aria-hidden="true" />
-            <div>
-                <p className="text-sm font-medium">{t('guiController.banner', { agent: lease.owner.label })}</p>
-                {lease.intent && <p className="text-xs">{t(actionKey)}</p>}
-                {control?.paused && <p className="text-xs font-semibold">{t('guiController.paused')}</p>}
-                {lease.intent && point.fallback && <p className="text-xs">{t('guiController.fallback')}</p>}
+        <div data-gui-controller-badge role="region" aria-live="polite" aria-label={t('guiController.preferences')}
+            className="flex h-9 shrink-0 items-center gap-2 border-t border-gray-200 bg-gray-100 px-3 text-xs text-gray-600 select-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+                <span data-gui-controller-agent className="inline-flex shrink-0 items-center gap-1.5 rounded bg-amber-400 px-2 py-0.5 font-medium text-amber-950">
+                    <Bot size={14} aria-hidden="true" className="shrink-0" />
+                    {t('guiController.banner', { agent: lease.owner.label })}
+                </span>
+                {lease.intent && <span className="shrink-0">{t(actionKey)}</span>}
+                {control?.paused && <span className="shrink-0 font-semibold">{t('guiController.paused')}</span>}
+                {lease.intent && point.fallback && <span className="shrink-0">{t('guiController.fallback')}</span>}
+                {control && <>
+                    <div className="h-4 w-px shrink-0 bg-gray-300 dark:bg-gray-600" />
+                    <label className="flex shrink-0 items-center gap-2">
+                        {t('guiController.speed')}
+                        <input data-agent="deny" data-gui-controller-control type="range" min={MIN_GUI_SPEED} max={MAX_GUI_SPEED} step={1}
+                            className="w-24" aria-label={t('guiController.speed')} value={control.speed_percent}
+                            onChange={event => { if (trusted(event)) onSpeed(Number(event.target.value)); }} />
+                        <span className="tabular-nums">{control.speed_percent}%</span>
+                    </label>
+                    <div className="h-4 w-px shrink-0 bg-gray-300 dark:bg-gray-600" />
+                    <span className="shrink-0">{t(`guiController.speedSource.${control.speed_source}`)}:</span>
+                    <div className="flex shrink-0 items-center gap-1">{preferences.presets.map((speed, i) => <button key={i} type="button" data-agent="deny" data-gui-controller-control
+                        aria-label={`${t('guiController.preset', { index: i + 1 })}: ${speed}%`}
+                        onClick={event => { if (trusted(event)) onSpeed(speed); }}
+                        className={`rounded px-1.5 py-0.5 ${speed === control.speed_percent ? 'bg-gray-200 dark:bg-gray-700' : 'hover:bg-gray-200 dark:hover:bg-gray-700'}`}>{speed}%</button>)}</div>
+                </>}
             </div>
             {control && <>
-                <div className="text-xs">
-                    <label className="flex items-center gap-2">{t('guiController.speed')} {control.speed_percent}%
-                        <input data-agent="deny" data-gui-controller-control type="range" min={MIN_GUI_SPEED} max={MAX_GUI_SPEED} step={1}
-                            aria-label={t('guiController.speed')} value={control.speed_percent}
-                            onChange={event => { if (trusted(event)) onSpeed(Number(event.target.value)); }} />
-                    </label>
-                    <p>{t(`guiController.speedSource.${control.speed_source}`)}</p>
-                    <div className="flex gap-2">{preferences.presets.map((speed, i) => <button key={i} type="button" data-agent="deny" data-gui-controller-control
-                        aria-label={`${t('guiController.preset', { index: i + 1 })}: ${speed}%`}
-                        onClick={event => { if (trusted(event)) onSpeed(speed); }} className="rounded border px-1">{speed}%</button>)}</div>
-                </div>
-                <button data-agent="deny" data-gui-controller-control type="button" onClick={event => { if (trusted(event)) onPause(!control.paused); }} className="flex items-center gap-1 rounded-lg border px-3 py-2 text-sm">
-                    {control.paused ? <Play size={14} /> : <Pause size={14} />}{t(control.paused ? 'guiController.resume' : 'guiController.pause')}
+                <button data-agent="deny" data-gui-controller-control type="button" onClick={event => { if (trusted(event)) onPause(!control.paused); }}
+                    className="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 hover:bg-gray-200 dark:hover:bg-gray-700">
+                    {control.paused ? <Play size={12} /> : <Pause size={12} />}{t(control.paused ? 'guiController.resume' : 'guiController.pause')}
                 </button>
+                <div className="h-4 w-px shrink-0 bg-gray-300 dark:bg-gray-600" />
             </>}
-            <button data-gui-controller-stop type="button" onClick={onStop} className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm text-white hover:bg-red-700">
-                <Square size={14} aria-hidden="true" />{t('guiController.actions.stop')}
+            <button data-gui-controller-stop type="button" onClick={onStop} className="flex shrink-0 items-center gap-1 rounded bg-red-600 px-2 py-0.5 text-white hover:bg-red-700">
+                <Square size={12} aria-hidden="true" />{t('guiController.actions.stop')}
             </button>
         </div>
     </>;
