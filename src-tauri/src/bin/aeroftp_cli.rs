@@ -7436,7 +7436,7 @@ fn print_json<T: Serialize>(value: &T) {
 }
 
 /// A warning the library reported during a command (a set-aside leftover
-/// of a replace), as the line `format` shows on stderr: plain text, or with
+/// or a parallel-download fallback), as the line `format` shows on stderr: plain text, or with
 /// `--json` a JSON object, since stderr carries JSON there.
 fn warning_line(format: OutputFormat, warning: &str) -> String {
     match format {

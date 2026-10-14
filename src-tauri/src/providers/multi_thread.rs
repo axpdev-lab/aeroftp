@@ -1870,6 +1870,16 @@ pub(crate) enum HttpRangeAttempt {
     Failed(ProviderError),
 }
 
+/// User-visible explanation of an opportunistic range refusal. Keep reasons
+/// free of URLs, headers and raw provider errors: signed download URLs can
+/// contain credentials. The CLI renders provider warnings on stderr without
+/// requiring a tracing subscriber, including in JSON mode.
+pub(crate) fn report_download_fallback(reason: &str) {
+    super::report_warning(format!(
+        "parallel download unavailable: {reason}; using a single stream"
+    ));
+}
+
 /// Strict 206 probe + concurrent Range download for a stateless-HTTP
 /// provider, with an honest single-stream fallback.
 ///
@@ -1917,17 +1927,24 @@ pub(crate) async fn try_http_concurrent_range_download(
     };
     let probe_req = match probe_builder.build() {
         Ok(r) => r,
-        Err(_) => return HttpRangeAttempt::Fallback(on_progress),
+        Err(_) => {
+            report_download_fallback("the Range probe could not be built");
+            return HttpRangeAttempt::Fallback(on_progress);
+        }
     };
     let probe = match send_with_retry(&req.client, probe_req, &retry_cfg).await {
         Ok(r) => r,
         // An opportunistic probe must never be the error source: let the
         // provider's canonical path connect and report.
-        Err(_) => return HttpRangeAttempt::Fallback(on_progress),
+        Err(_) => {
+            report_download_fallback("the Range probe failed");
+            return HttpRangeAttempt::Fallback(on_progress);
+        }
     };
 
     let status = probe.status();
     if status == reqwest::StatusCode::OK {
+        report_download_fallback("the server ignored Range (HTTP 200)");
         tracing::warn!(
             "[multi-thread] range_ignored: server answered 200 OK to a Range probe for {}; single-stream fallback",
             req.url
@@ -1936,6 +1953,10 @@ pub(crate) async fn try_http_concurrent_range_download(
     }
     if status != reqwest::StatusCode::PARTIAL_CONTENT {
         // 416/4xx/5xx: defer to the canonical single-stream path.
+        report_download_fallback(&format!(
+            "the server refused the Range probe (HTTP {})",
+            status.as_u16()
+        ));
         return HttpRangeAttempt::Fallback(on_progress);
     }
 
@@ -1945,6 +1966,7 @@ pub(crate) async fn try_http_concurrent_range_download(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
     if !content_range_matches(content_range.as_deref(), 0, 0) {
+        report_download_fallback("the Range probe returned an incoherent Content-Range");
         tracing::warn!(
             "[multi-thread] 206 with incoherent Content-Range {:?} on probe for {}; single-stream fallback",
             content_range,
@@ -1983,7 +2005,10 @@ pub(crate) async fn try_http_concurrent_range_download(
     {
         Some(t) if t > 0 => t,
         // Unknown length: not safe to plan a concurrent split.
-        _ => return HttpRangeAttempt::Fallback(on_progress),
+        _ => {
+            report_download_fallback("the Range probe did not provide a known object size");
+            return HttpRangeAttempt::Fallback(on_progress);
+        }
     };
     // R21: same planner as the batch and pget paths: explicit cutoff, 16
     // clamp, every window at least 1 MiB, fewer than 2 windows falls back.
@@ -2069,6 +2094,9 @@ pub(crate) async fn try_http_concurrent_range_download(
                     .await
             {
                 temp.discard();
+                report_download_fallback(
+                    "the object version could not be confirmed after reading the ranges",
+                );
                 tracing::warn!(
                     "[multi-thread] {}; single-stream fallback",
                     source_changed("http range", &req.url, &what)
@@ -2083,6 +2111,7 @@ pub(crate) async fn try_http_concurrent_range_download(
         Ok(SegmentedRun::ServerIgnoredRange) => {
             // Server honoured the probe then ignored a real Range: rare
             // inconsistency. The helper already removed the temp.
+            report_download_fallback("the server ignored Range after accepting the probe");
             tracing::warn!(
                 "[multi-thread] range_ignored mid-flight after a good probe for {}; single-stream fallback",
                 req.url
@@ -2094,6 +2123,7 @@ pub(crate) async fn try_http_concurrent_range_download(
             // failed download: one stream reads one consistent view, which is
             // exactly what the windows could not promise. The engine already
             // removed the staged file and preserved the typed refusal.
+            report_download_fallback("the server refused a range or its version check");
             tracing::warn!("[multi-thread] {}; single-stream fallback", e);
             HttpRangeAttempt::Fallback(fallback_progress)
         }
@@ -4561,6 +4591,65 @@ mod tests {
         assert!(!size_hint_rules_out_ranges(None, cutoff));
     }
 
+    /// Probe refusals return the progress callback and a safe user-visible reason.
+    #[tokio::test]
+    async fn range_probe_fallback_reports_a_safe_reason_and_preserves_progress() {
+        for (status, content_range, expected) in [
+            (200, None, "ignored Range (HTTP 200)"),
+            (416, None, "refused the Range probe (HTTP 416)"),
+            (206, Some("bytes 1-1/2097152"), "incoherent Content-Range"),
+            (206, Some("bytes 0-0/*"), "known object size"),
+        ] {
+            let app = axum::Router::new().fallback(axum::routing::any(move || async move {
+                let mut response = axum::response::Response::builder().status(status);
+                if let Some(range) = content_range {
+                    response = response.header("content-range", range);
+                }
+                response.body(axum::body::Body::from("x")).unwrap()
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("out.bin");
+            let warnings = super::super::CallWarnings::default();
+            let reported = Arc::new(AtomicU64::new(0));
+            let sink = reported.clone();
+            let attempt = warnings
+                .scope(try_http_concurrent_range_download(
+                    HttpRangeRequest {
+                        client: reqwest::Client::new(),
+                        url: format!("http://{addr}/private-name?token=secret-token"),
+                        headers: Vec::new(),
+                        local_path: out.to_string_lossy().into_owned(),
+                        provider_type: super::super::ProviderType::WebDav,
+                        streams: 2,
+                        max_streams: 2,
+                        cutoff: 1,
+                        known_size: Some(2 * 1024 * 1024),
+                    },
+                    Some(Box::new(move |done, _| {
+                        sink.store(done, Ordering::SeqCst);
+                    })),
+                ))
+                .await;
+            server.abort();
+            let HttpRangeAttempt::Fallback(Some(progress)) = attempt else {
+                panic!("probe must return the fallback callback");
+            };
+            progress(7, 10);
+            assert_eq!(reported.load(Ordering::SeqCst), 7);
+            let messages = warnings.take();
+            assert_eq!(messages.len(), 1);
+            assert!(messages[0].contains(expected), "{:?}", messages);
+            assert!(messages[0].contains("using a single stream"));
+            assert!(!messages[0].contains("secret-token"));
+            assert!(!messages[0].contains("private-name"));
+            assert!(!out.exists());
+            assert!(!segmented_temp_path_for(&out).exists());
+        }
+    }
+
     /// The Range probe is one round trip per file. A caller that already
     /// knows the size is below the cutoff must get the single-stream fallback
     /// without the helper touching the server; an unknown size still probes.
@@ -4598,9 +4687,17 @@ mod tests {
             known_size,
         };
 
-        let attempt =
-            try_http_concurrent_range_download(request(Some(4096)), Some(Box::new(|_, _| {})))
-                .await;
+        let warnings = super::super::CallWarnings::default();
+        let attempt = warnings
+            .scope(try_http_concurrent_range_download(
+                request(Some(4096)),
+                Some(Box::new(|_, _| {})),
+            ))
+            .await;
+        assert!(
+            warnings.take().is_empty(),
+            "planned single-stream use is not a refusal"
+        );
         assert!(
             matches!(attempt, HttpRangeAttempt::Fallback(Some(_))),
             "a known small size falls back with the progress callback returned"
