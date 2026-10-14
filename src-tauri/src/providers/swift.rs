@@ -1313,7 +1313,14 @@ impl StorageProvider for SwiftProvider {
 
     /// List objects with virtual directory simulation.
     /// GET {storage_url}/{container}?prefix={path}/&delimiter=/&format=json&limit=10000
-    /// Paginates via marker parameter.
+    ///
+    /// Pages follow `marker` until one comes back empty. A page shorter than
+    /// `limit=10000` is not the last one: a server whose listing cap is lower
+    /// (Ceph RGW answers at most 1000 by default) answers short pages all the
+    /// way through, and stopping on the first one hid the rest of the folder.
+    /// Swift lists names in byte order, so a page must end past the marker
+    /// already sent; one that does not is an error instead of a loop. An
+    /// empty page may be a 204 with no body.
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let prefix = Self::normalize_path(path);
         let prefix_query = if prefix.is_empty() {
@@ -1336,16 +1343,22 @@ impl StorageProvider for SwiftProvider {
             }
 
             let resp = self.swift_request(Method::GET, &url, None, &[]).await?;
-            if !resp.status().is_success() {
+            let status = resp.status();
+            if !status.is_success() {
                 return Err(ProviderError::ServerError(format!(
-                    "List failed: HTTP {}",
-                    resp.status()
+                    "List failed: HTTP {status}"
                 )));
             }
-
-            let entries: Vec<ObjectEntry> = resp.json().await.map_http_err(|e| {
-                ProviderError::ServerError(format!("List JSON parse failed: {e}"))
-            })?;
+            // An empty listing may be a 204 with no body instead of `[]`.
+            let body = resp
+                .bytes()
+                .await
+                .map_http_err(|e| ProviderError::ServerError(format!("List failed: {e}")))?;
+            if status == StatusCode::NO_CONTENT || body.iter().all(u8::is_ascii_whitespace) {
+                break;
+            }
+            let entries: Vec<ObjectEntry> = serde_json::from_slice(&body)
+                .map_err(|e| ProviderError::ServerError(format!("List JSON parse failed: {e}")))?;
 
             if entries.is_empty() {
                 break;
@@ -1356,8 +1369,24 @@ impl StorageProvider for SwiftProvider {
                 .and_then(|e| e.name.as_ref().or(e.subdir.as_ref()))
                 .cloned()
                 .unwrap_or_default();
+            // Byte order: a page must end past the marker already sent. One
+            // that does not (a listing that ignores `marker`, or one that
+            // goes back) stops here instead of looping.
+            if last_name.as_str() <= marker.as_str() {
+                return Err(ProviderError::ServerError(
+                    "Swift listing did not advance past its page".into(),
+                ));
+            }
 
             for entry in &entries {
+                let key = entry
+                    .name
+                    .as_deref()
+                    .or(entry.subdir.as_deref())
+                    .unwrap_or("");
+                if key <= marker.as_str() {
+                    continue;
+                }
                 if let Some(ref subdir) = entry.subdir {
                     // Virtual directory pseudo-entry
                     let dir_name = subdir
@@ -1408,9 +1437,6 @@ impl StorageProvider for SwiftProvider {
                 }
             }
 
-            if entries.len() < 10000 {
-                break;
-            }
             marker = last_name;
         }
 
@@ -2580,6 +2606,191 @@ mod tests {
         assert!(
             matches!((first_post, second_get), (Some(post), Some(get)) if post < get),
             "the first page must be deleted before the second is listed: {methods:?}"
+        );
+    }
+
+    /// A delimited container listing used to stop when a page came back
+    /// shorter than `limit=10000`. A server whose cap is lower (Ceph RGW
+    /// answers at most 1000) then hid everything after the first page. The
+    /// listing now follows `marker` until a page is empty, a 204 with no
+    /// body counts as empty, and a name repeated from the marker already
+    /// sent is not shown twice.
+    #[tokio::test]
+    async fn list_follows_a_short_page_until_the_listing_is_empty() {
+        const CAP: usize = 3;
+        // Byte order, the order Swift returns. `notes/c/` is a pseudo-directory.
+        let rows: Vec<(&str, bool)> = vec![
+            ("notes/a.txt", false),
+            ("notes/b.txt", false),
+            ("notes/c/", true),
+            ("notes/d.txt", false),
+            ("notes/e.txt", false),
+            ("notes/f.txt", false),
+        ];
+        let log: StorageLog = Default::default();
+        let seen = std::sync::Arc::clone(&log);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                let rows = rows.clone();
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    seen.lock().unwrap().push((
+                        method.clone(),
+                        path,
+                        Some(query.clone()),
+                        String::new(),
+                    ));
+                    let marker = query
+                        .split('&')
+                        .find_map(|pair| pair.strip_prefix("marker="))
+                        .map(|m| urlencoding::decode(m).unwrap().into_owned())
+                        .unwrap_or_default();
+                    let mut page: Vec<(&str, bool)> = rows
+                        .iter()
+                        .copied()
+                        .filter(|(name, _)| *name > marker.as_str())
+                        .take(CAP)
+                        .collect();
+                    if page.is_empty() {
+                        return axum::response::Response::builder()
+                            .status(204)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    // Hand the marker back at the front of the next page. It
+                    // must not be listed a second time.
+                    if let Some(boundary) = rows
+                        .iter()
+                        .copied()
+                        .find(|(name, _)| !marker.is_empty() && *name == marker)
+                    {
+                        page.insert(0, boundary);
+                    }
+                    let body = page
+                        .iter()
+                        .map(|(name, directory)| {
+                            if *directory {
+                                format!(r#"{{"subdir":"{name}"}}"#)
+                            } else if *name == "notes/a.txt" {
+                                r#"{"name":"notes/a.txt","bytes":4,"content_type":"text/plain","hash":"abc","last_modified":"2026-01-02T03:04:05.000000"}"#.to_string()
+                            } else {
+                                format!(r#"{{"name":"{name}","bytes":1}}"#)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(format!("[{body}]")))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        let entries = p.list("/notes").await.expect("every page");
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["a.txt", "b.txt", "c", "d.txt", "e.txt", "f.txt"],
+            "a short page is not the end of the folder"
+        );
+        let folder = entries.iter().find(|entry| entry.name == "c").unwrap();
+        assert!(folder.is_dir, "{folder:?}");
+        assert_eq!(folder.path, "/notes/c");
+        let file = entries.iter().find(|entry| entry.name == "a.txt").unwrap();
+        assert_eq!(file.path, "/notes/a.txt");
+        assert_eq!(file.size, 4);
+        assert_eq!(file.mime_type.as_deref(), Some("text/plain"));
+        assert_eq!(file.metadata.get("etag").map(String::as_str), Some("abc"));
+        assert_eq!(file.modified.as_deref(), Some("2026-01-02T03:04:05.000000"));
+        let queries: Vec<String> = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|row| row.0 == "GET")
+            .map(|row| row.2.clone().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            queries.len(),
+            3,
+            "two short pages, then the empty 204: {queries:?}"
+        );
+        assert!(
+            queries.iter().all(|query| query.contains("delimiter=/")
+                && query.contains("prefix=notes%2F")
+                && query.contains("limit=10000")),
+            "{queries:?}"
+        );
+        assert!(
+            queries[1].contains("marker=notes%2Fc%2F"),
+            "the second page starts after the pseudo-directory: {}",
+            queries[1]
+        );
+        assert!(
+            queries[2].contains("marker=notes%2Ff.txt"),
+            "{}",
+            queries[2]
+        );
+    }
+
+    /// A listing that ignores `marker` and answers the same page again must
+    /// stop with an error. Treating that page as new would loop.
+    #[tokio::test]
+    async fn list_stops_when_a_page_does_not_advance_past_its_marker() {
+        let gets = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = std::sync::Arc::clone(&gets);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |_req: axum::extract::Request| {
+                let seen = std::sync::Arc::clone(&seen);
+                async move {
+                    let n = seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    // A guard for a loop in the client: the assertion below
+                    // expects the error, not a hang.
+                    let body = if n > 4 {
+                        "[]".to_string()
+                    } else {
+                        r#"[{"name":"notes/a.txt","bytes":1},{"name":"notes/b.txt","bytes":1}]"#
+                            .to_string()
+                    };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = cleartext_opted_in_provider();
+        p.auth = Some(SwiftAuth {
+            token: SecretString::from("t".to_string()),
+            storage_url: format!("http://{addr}/v1/AUTH_a"),
+            obtained_at: Instant::now(),
+        });
+        p.container = "c".to_string();
+        let outcome = p.list("/notes").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref message)) if message.contains("did not advance")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            gets.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "the repeated page is refused on the next read"
         );
     }
 
