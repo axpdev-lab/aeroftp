@@ -961,9 +961,12 @@ async fn stage_ciphertext_temp(
         chrono::Utc::now().timestamp_millis(),
         uuid::Uuid::new_v4()
     ));
-    tokio::fs::write(&temp_path, &ciphertext)
-        .await
-        .map_err(ProviderError::IoError)?;
+    if let Err(e) = tokio::fs::write(&temp_path, &ciphertext).await {
+        // A write that fails part way (the disk filled between the room check
+        // and here) leaves partial ciphertext: remove it before reporting.
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        return Err(ProviderError::IoError(e));
+    }
     Ok(temp_path)
 }
 
@@ -1073,9 +1076,13 @@ impl StorageProvider for CryptOverlayProvider {
             let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(e);
         }
-        let staged = tokio::fs::read(&temp_path)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let staged = match tokio::fs::read(&temp_path).await {
+            Ok(staged) => staged,
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                return Err(ProviderError::IoError(e));
+            }
+        };
         let _ = tokio::fs::remove_file(&temp_path).await;
         let content = if is_enc {
             self.keys
@@ -1452,9 +1459,13 @@ impl StorageProvider for CryptOverlayProvider {
             let _ = tokio::fs::remove_file(&temp_path).await;
             return Err(e);
         }
-        let staged = tokio::fs::read(&temp_path)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let staged = match tokio::fs::read(&temp_path).await {
+            Ok(staged) => staged,
+            Err(e) => {
+                let _ = tokio::fs::remove_file(&temp_path).await;
+                return Err(ProviderError::IoError(e));
+            }
+        };
         let _ = tokio::fs::remove_file(&temp_path).await;
         let content = if is_enc {
             self.keys

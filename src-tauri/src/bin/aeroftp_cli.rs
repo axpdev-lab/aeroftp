@@ -70790,6 +70790,12 @@ async fn main() {
     // and one test guards it. See `ftp_client_gui_lib::install_crypto_provider`.
     let _ = ftp_client_gui_lib::install_crypto_provider();
 
+    // Same scratch leftover sweep as the GUI startup: the CLI stages rcat,
+    // hashsum and overlay files in the same folder, and a killed run used to
+    // leave them until removed by hand. One folder listing of our own cache
+    // dir; only entries older than STALE_STAGING_AGE go.
+    ftp_client_gui_lib::util::scratch::sweep_staging_on_startup();
+
     // Show the banner only when it's actually useful: bare invocation or
     // top-level --help. Subcommand help (e.g. `aeroftp-cli get --help`)
     // skips it so the banner doesn't dominate every screen during
