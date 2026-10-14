@@ -6231,9 +6231,11 @@ const App: React.FC = () => {
     // landing dir; the Overlays Path is the encrypted island inside it. Landing
     // on the Remote Path may put the cwd OUTSIDE the scope (plaintext view + the
     // EF-02 'Overlays Path' button), which is the intended behavior.
-    //   - Only for a NON-EMPTY scope AND a known Remote Path: a whole-remote
-    //     overlay (scope === '') has no plaintext Remote Path, and a missing
-    //     Remote Path falls back to the legacy re-anchor-into-scope behavior.
+    //   - Only for a NON-EMPTY scope: a whole-remote overlay (scope === '') has
+    //     no plaintext Remote Path and keeps the legacy re-anchor. An empty or
+    //     missing Remote Path means the on-wire root (#1211): it is passed
+    //     through as the landing and smartReanchorOverlay maps it to '/', so
+    //     the connect no longer drops the user into the Overlays Path.
     // rclone-crypt needs the explicit move (its unlock does not touch the cwd);
     // aerocrypt's read_config cd'd into the scope, so the initial-landing branch
     // in smartReanchorOverlay moves it out to the Remote Path.
@@ -6241,15 +6243,15 @@ const App: React.FC = () => {
     const reloadScope = activeSess?.cryptOverlay?.remoteScope || null;
     const scopeNonEmpty = normCryptScope(reloadScope) !== '';
     const remotePath = activeSess?.serverInitialPath?.trim() || '';
-    const initialLandingOpts = (scopeNonEmpty && remotePath)
+    const initialLandingOpts = scopeNonEmpty
       ? { initialLandingPath: remotePath }
       : undefined;
     void (async () => {
       try {
         // #390 smart re-anchor is preserved for the toggle path (activateProvider
         // CryptOverlay); here we pass the initial-connect landing so the connect
-        // opens on the Remote Path without bouncing into the scope. Empty scope /
-        // missing Remote Path fall through to the legacy re-anchor.
+        // opens on the Remote Path without bouncing into the scope. Only an empty
+        // scope (whole-remote overlay) falls through to the legacy re-anchor.
         await smartReanchorOverlay(reloadScope, initialLandingOpts);
         let reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
         if (!reloaded && !cancelled) {
