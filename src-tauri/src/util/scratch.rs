@@ -56,11 +56,50 @@ pub fn scratch_dir_with_room(dir: &Path, bytes: u64) -> Result<PathBuf, String> 
     Ok(dir.to_path_buf())
 }
 
-/// How old a staging entry must be before the startup sweep removes it. A
-/// younger file can still belong to a transfer running in another process
-/// (the CLI and the GUI share the folder), so only a crash or kill artifact
-/// is old enough to collect.
+/// Minimum age for collecting staging leftovers. Age alone cannot establish
+/// liveness: crypt uploads retain the source mtime and hold a staging lease.
 pub const STALE_STAGING_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+fn staging_lock_path(path: &Path) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(".lock");
+    PathBuf::from(name)
+}
+
+/// Claim a unique staging path BEFORE creating its payload. The separate
+/// sidecar avoids mandatory payload locks on Windows/SMB: providers may open,
+/// write, rename and read the payload while this handle protects it from the
+/// sweep. The OS releases the lock even when the process is killed.
+pub(crate) struct StagingLease {
+    path: PathBuf,
+    lock_path: PathBuf,
+    _lock: std::fs::File,
+}
+
+impl StagingLease {
+    pub(crate) fn new(path: &Path) -> std::io::Result<Self> {
+        let lock_path = staging_lock_path(path);
+        let lock = std::fs::File::create_new(&lock_path)?;
+        if let Err(e) = lock.try_lock() {
+            let _ = std::fs::remove_file(&lock_path);
+            return Err(e.into());
+        }
+        Ok(Self {
+            path: path.to_path_buf(),
+            lock_path,
+            _lock: lock,
+        })
+    }
+}
+
+impl Drop for StagingLease {
+    fn drop(&mut self) {
+        // Also covers a cancelled future. Remove the payload before releasing
+        // its lease; normal callers may already have removed it asynchronously.
+        let _ = std::fs::remove_file(&self.path);
+        let _ = std::fs::remove_file(&self.lock_path);
+    }
+}
 
 /// True when `name` is an AeroFTP staging shape the sweep may collect:
 /// crypt-overlay ciphertext (`aeroftp_crypt_overlay_*.bin`, the upload name
@@ -86,7 +125,9 @@ pub struct SweepStats {
     pub bytes: u64,
     /// Known staging shapes left in place because they are too young.
     pub kept_fresh: u64,
-    /// Entries whose removal or metadata read failed.
+    /// Staging entries protected by a live process's lease.
+    pub kept_active: u64,
+    /// Directory/entry reads, lock probes, metadata reads or removals that failed.
     pub errors: u64,
 }
 
@@ -102,13 +143,37 @@ pub fn sweep_stale_staging(root: &Path, older_than: std::time::Duration) -> Swee
     let mut stats = SweepStats::default();
     let entries = match std::fs::read_dir(root) {
         Ok(entries) => entries,
-        Err(_) => return stats,
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                stats.errors += 1;
+            }
+            return stats;
+        }
     };
+    sweep_staging_entries(root, entries, older_than)
+}
+
+fn sweep_staging_entries(
+    root: &Path,
+    entries: impl IntoIterator<Item = std::io::Result<std::fs::DirEntry>>,
+    older_than: std::time::Duration,
+) -> SweepStats {
+    let mut stats = SweepStats::default();
     let now = std::time::SystemTime::now();
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => {
+                stats.errors += 1;
+                continue;
+            }
+        };
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
-        if !is_staging_entry(name) {
+        // A killed process may leave both a payload and its sidecar, or only
+        // the sidecar if it died before creating/after removing the payload.
+        let is_lock = name.strip_suffix(".lock").is_some_and(is_staging_entry);
+        if !is_staging_entry(name) && !is_lock {
             continue;
         }
         // DirEntry::metadata does not follow symlinks: a link planted in the
@@ -121,16 +186,81 @@ pub fn sweep_stale_staging(root: &Path, older_than: std::time::Duration) -> Swee
                 continue;
             }
         };
-        let stale = meta
-            .modified()
+        if meta.file_type().is_symlink() || !(meta.is_file() || meta.is_dir()) {
+            continue;
+        }
+        let mtime = match meta.modified() {
+            Ok(mtime) => mtime,
+            Err(_) => {
+                stats.errors += 1;
+                continue;
+            }
+        };
+        let stale = now
+            .duration_since(mtime)
             .ok()
-            .and_then(|mtime| now.duration_since(mtime).ok())
             .is_some_and(|age| age > older_than);
         if !stale {
             stats.kept_fresh += 1;
             continue;
         }
         let path = entry.path();
+        let lock_path = if is_lock {
+            path.clone()
+        } else {
+            staging_lock_path(&path)
+        };
+        // Missing sidecars are legacy/unleased entries. All other failures
+        // keep the entry: inability to probe must never mean "not active".
+        let held_lock = match std::fs::symlink_metadata(&lock_path) {
+            Ok(meta) if !meta.is_file() || meta.file_type().is_symlink() => {
+                stats.errors += 1;
+                continue;
+            }
+            Ok(_) => {
+                let lock = match std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&lock_path)
+                {
+                    Ok(lock) => lock,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(_) => {
+                        stats.errors += 1;
+                        continue;
+                    }
+                };
+                match lock.try_lock() {
+                    Ok(()) => Some(lock),
+                    Err(std::fs::TryLockError::WouldBlock) => {
+                        stats.kept_active += 1;
+                        continue;
+                    }
+                    Err(std::fs::TryLockError::Error(_)) => {
+                        stats.errors += 1;
+                        continue;
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(_) => {
+                stats.errors += 1;
+                continue;
+            }
+        };
+        // Never remove an orphan sidecar before its payload: otherwise another
+        // sweep could mistake a still-leased payload for a legacy entry.
+        if is_lock {
+            let payload = root.join(name.strip_suffix(".lock").unwrap());
+            match std::fs::symlink_metadata(payload) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Ok(_) => continue,
+                Err(_) => {
+                    stats.errors += 1;
+                    continue;
+                }
+            }
+        }
         let gone = if meta.is_dir() {
             std::fs::remove_dir_all(&path)
         } else {
@@ -142,7 +272,15 @@ pub fn sweep_stale_staging(root: &Path, older_than: std::time::Duration) -> Swee
                 if meta.is_file() {
                     stats.bytes += meta.len();
                 }
+                if !is_lock && held_lock.is_some() {
+                    if let Err(e) = std::fs::remove_file(&lock_path) {
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            stats.errors += 1;
+                        }
+                    }
+                }
             }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(_) => stats.errors += 1,
         }
     }
@@ -156,7 +294,7 @@ pub fn sweep_staging_on_startup() {
     let stats = sweep_stale_staging(&scratch_dir_path(), STALE_STAGING_AGE);
     if stats.removed > 0 || stats.errors > 0 {
         log::info!(
-            "Scratch sweep: removed {} stale staging {} ({}), {} kept fresh, {} errors",
+            "Scratch sweep: removed {} stale staging {} ({}), {} kept fresh, {} kept active, {} errors",
             stats.removed,
             if stats.removed == 1 {
                 "entry"
@@ -165,6 +303,7 @@ pub fn sweep_staging_on_startup() {
             },
             super::size::format_size(stats.bytes),
             stats.kept_fresh,
+            stats.kept_active,
             stats.errors,
         );
     }
@@ -267,13 +406,176 @@ mod tests {
         let link = root.path().join("aeroftp_crypt_overlay_1_link.bin");
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        // Whether the link itself is old enough to go is a clock-granularity
-        // accident; what is pinned here is that collecting it never touches
-        // the target outside the folder.
-        let stats = sweep_stale_staging(root.path(), std::time::Duration::ZERO);
+        let old = filetime::FileTime::from_system_time(
+            std::time::SystemTime::now() - STALE_STAGING_AGE - std::time::Duration::from_secs(60),
+        );
+        filetime::set_symlink_file_times(&link, old, old).unwrap();
+        let dir_link = root.path().join("aeroftp_proton_up_link");
+        std::os::unix::fs::symlink(outside.path(), &dir_link).unwrap();
+        filetime::set_symlink_file_times(&dir_link, old, old).unwrap();
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
 
         assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 0);
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(std::fs::symlink_metadata(&dir_link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
         assert!(target.exists(), "the target outside the folder survives");
+    }
+
+    #[test]
+    fn a_directory_read_failure_is_reported() {
+        let root = tempfile::NamedTempFile::new().unwrap();
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(
+            stats.errors, 1,
+            "a non-directory is not a missing directory"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_permission_failure_is_reported() {
+        use std::os::unix::fs::PermissionsExt;
+        // SAFETY: geteuid takes no pointers and has no preconditions.
+        if unsafe { libc::geteuid() } == 0 {
+            return; // root bypasses directory permissions
+        }
+        let root = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0)).unwrap();
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        std::fs::set_permissions(root.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(stats.errors, 1);
+    }
+
+    #[test]
+    fn an_iterator_error_is_reported_and_does_not_stop_the_sweep() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join(".tmpOld");
+        std::fs::write(&path, b"old").unwrap();
+        backdate(
+            &path,
+            STALE_STAGING_AGE + std::time::Duration::from_secs(60),
+        );
+        let entry = std::fs::read_dir(root.path()).unwrap().next().unwrap();
+        let stats = sweep_staging_entries(
+            root.path(),
+            [
+                Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+                entry,
+            ],
+            STALE_STAGING_AGE,
+        );
+        assert_eq!(stats.errors, 1);
+        assert_eq!(stats.removed, 1);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_lease_keeps_old_ciphertext_and_cleans_up_when_dropped() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("aeroftp_crypt_overlay_1_live.bin");
+        let lease = StagingLease::new(&path).unwrap();
+        std::fs::write(&path, b"ciphertext").unwrap();
+        backdate(
+            &path,
+            STALE_STAGING_AGE + std::time::Duration::from_secs(60),
+        );
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 0);
+        assert_eq!(stats.kept_active, 1);
+        assert_eq!(std::fs::read(&path).unwrap(), b"ciphertext");
+        drop(lease);
+        assert!(!path.exists());
+        assert!(!staging_lock_path(&path).exists());
+    }
+
+    fn sweep_child(root: &Path, mode: &str) {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "util::scratch::tests::staging_lease_child",
+                "--nocapture",
+            ])
+            .env("AEROFTP_SCRATCH_TEST_ROOT", root)
+            .env("AEROFTP_SCRATCH_TEST_MODE", mode)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn staging_lease_child() {
+        let Some(root) = std::env::var_os("AEROFTP_SCRATCH_TEST_ROOT") else {
+            return;
+        };
+        let root = PathBuf::from(root);
+        let path = root.join("aeroftp_crypt_overlay_1_live.bin");
+        if std::env::var("AEROFTP_SCRATCH_TEST_MODE").unwrap() == "crash" {
+            let _lease = StagingLease::new(&path).unwrap();
+            std::fs::write(&path, b"ciphertext").unwrap();
+            backdate(
+                &path,
+                STALE_STAGING_AGE + std::time::Duration::from_secs(60),
+            );
+            // Process exit deliberately skips Drop, like a killed transfer.
+            std::process::exit(0);
+        }
+        let stats = sweep_stale_staging(&root, STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 0);
+        assert_eq!(stats.kept_active, 1);
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn another_process_keeps_live_staging_but_collects_a_crashed_owner() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("aeroftp_crypt_overlay_1_live.bin");
+        let lease = StagingLease::new(&path).unwrap();
+        std::fs::write(&path, b"ciphertext").unwrap();
+        backdate(
+            &path,
+            STALE_STAGING_AGE + std::time::Duration::from_secs(60),
+        );
+        sweep_child(root.path(), "sweep");
+        drop(lease);
+
+        sweep_child(root.path(), "crash");
+        assert!(path.exists());
+        assert!(staging_lock_path(&path).exists());
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 1);
+        assert!(!path.exists());
+        assert!(!staging_lock_path(&path).exists());
+    }
+
+    #[test]
+    fn stale_orphan_sidecars_are_collected_but_unknown_locks_survive() {
+        let root = tempfile::tempdir().unwrap();
+        let orphan = root.path().join("aeroftp_crypt_overlay_1_orphan.bin.lock");
+        let unknown = root.path().join("notes.txt.lock");
+        for path in [&orphan, &unknown] {
+            std::fs::write(path, b"").unwrap();
+            backdate(path, STALE_STAGING_AGE + std::time::Duration::from_secs(60));
+        }
+        let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
+        assert_eq!(stats.errors, 0);
+        assert_eq!(stats.removed, 1);
+        assert!(!orphan.exists());
+        assert!(unknown.exists());
     }
 
     #[test]

@@ -945,12 +945,12 @@ async fn write_plaintext_atomic(output_path: &str, plaintext: &[u8]) -> Result<(
 }
 
 /// Encrypt `plaintext` and stage it to a unique file in the on-disk scratch
-/// folder, returning its path. The caller is responsible for removing it
-/// after the upload.
+/// folder, returning its path and lease. Keep the lease through upload/retry:
+/// it protects the file even after the source mtime is copied onto it.
 async fn stage_ciphertext_temp(
     keys: &OverlayKeys,
     plaintext: &[u8],
-) -> Result<std::path::PathBuf, ProviderError> {
+) -> Result<(std::path::PathBuf, crate::util::scratch::StagingLease), ProviderError> {
     let ciphertext = keys
         .encrypt_content(plaintext)
         .map_err(|e| CryptOverlayProvider::crypt_err("content encrypt", e))?;
@@ -961,13 +961,15 @@ async fn stage_ciphertext_temp(
         chrono::Utc::now().timestamp_millis(),
         uuid::Uuid::new_v4()
     ));
+    let lease =
+        crate::util::scratch::StagingLease::new(&temp_path).map_err(ProviderError::IoError)?;
     if let Err(e) = tokio::fs::write(&temp_path, &ciphertext).await {
         // A write that fails part way (the disk filled between the room check
         // and here) leaves partial ciphertext: remove it before reporting.
         let _ = tokio::fs::remove_file(&temp_path).await;
         return Err(ProviderError::IoError(e));
     }
-    Ok(temp_path)
+    Ok((temp_path, lease))
 }
 
 /// Best-effort creation of the encrypted parent directory chain for `enc_path`,
@@ -1071,6 +1073,8 @@ impl StorageProvider for CryptOverlayProvider {
             chrono::Utc::now().timestamp_millis(),
             uuid::Uuid::new_v4()
         ));
+        let _lease =
+            crate::util::scratch::StagingLease::new(&temp_path).map_err(ProviderError::IoError)?;
         let temp_str = temp_path.to_string_lossy().to_string();
         if let Err(e) = self.inner.download(&enc, &temp_str, on_progress).await {
             let _ = tokio::fs::remove_file(&temp_path).await;
@@ -1116,7 +1120,7 @@ impl StorageProvider for CryptOverlayProvider {
         let plaintext = tokio::fs::read(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let temp_path = stage_ciphertext_temp(&self.keys, &plaintext).await?;
+        let (temp_path, _lease) = stage_ciphertext_temp(&self.keys, &plaintext).await?;
         // Propagate the SOURCE file's mtime onto the ciphertext temp. The inner
         // provider's upload stamps the remote object from the file it uploads
         // (SFTP `set_metadata`, FTP `MFMT`), which here is the temp, not the
@@ -1450,6 +1454,8 @@ impl StorageProvider for CryptOverlayProvider {
             chrono::Utc::now().timestamp_millis(),
             uuid::Uuid::new_v4()
         ));
+        let _lease =
+            crate::util::scratch::StagingLease::new(&temp_path).map_err(ProviderError::IoError)?;
         let temp_str = temp_path.to_string_lossy().to_string();
         if let Err(e) = self
             .inner
@@ -4219,6 +4225,8 @@ mod tests {
         /// The local path every `download`/`download_version` call staged into,
         /// in call order.
         download_targets: Mutex<Vec<String>>,
+        /// Inspect staging immediately before the inner provider opens it.
+        before_upload_read: Option<fn(&str)>,
     }
 
     impl MemProvider {
@@ -4233,6 +4241,7 @@ mod tests {
                 dotfile_probe_error: None,
                 listing_error: None,
                 download_targets: Mutex::new(Vec::new()),
+                before_upload_read: None,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -4415,6 +4424,9 @@ mod tests {
             _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
             let remote = self.resolve(remote);
+            if let Some(probe) = self.before_upload_read {
+                probe(local);
+            }
             let data = std::fs::read(local).map_err(ProviderError::IoError)?;
             self.files.lock().unwrap().insert(remote, data);
             Ok(())
@@ -7049,11 +7061,50 @@ mod tests {
     #[tokio::test]
     async fn an_upload_stages_its_ciphertext_on_disk_not_in_the_temporary_folder() {
         for (_label, keys) in both_kinds() {
-            let staged = stage_ciphertext_temp(&keys, b"staged on disk")
+            let (staged, _lease) = stage_ciphertext_temp(&keys, b"staged on disk")
                 .await
                 .unwrap();
             assert_on_disk_scratch(&staged);
             let _ = tokio::fs::remove_file(&staged).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn an_old_upload_retains_source_mtime_and_its_lease_until_the_inner_read() {
+        fn probe(local: &str) {
+            assert_eq!(
+                std::fs::metadata(local).unwrap().modified().unwrap(),
+                std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_600_000_000),
+            );
+            let lock = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(format!("{local}.lock"))
+                .unwrap();
+            assert!(matches!(
+                lock.try_lock(),
+                Err(std::fs::TryLockError::WouldBlock)
+            ));
+        }
+        for (_label, keys) in both_kinds() {
+            let mut inner = MemProvider::new();
+            inner.before_upload_read = Some(probe);
+            let mut provider = CryptOverlayProvider::new(Box::new(inner), keys, "");
+            let source = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(source.path(), b"an old source").unwrap();
+            filetime::set_file_mtime(
+                source.path(),
+                filetime::FileTime::from_unix_time(1_600_000_000, 0),
+            )
+            .unwrap();
+            provider
+                .upload(source.path().to_str().unwrap(), "/old.txt", None)
+                .await
+                .unwrap();
+            assert_eq!(
+                provider.download_to_bytes("/old.txt").await.unwrap(),
+                b"an old source"
+            );
         }
     }
 

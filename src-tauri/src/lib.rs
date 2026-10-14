@@ -18263,9 +18263,9 @@ pub fn run() {
             // the on-disk scratch folder: since #1199 the crypt and compress
             // overlays, the remote vault and Proton stage there instead of
             // the temporary folder, which a tmpfs cleared at reboot. Only
-            // entries older than STALE_STAGING_AGE go, so a transfer running
-            // in another process keeps its files. One folder listing, off
-            // the startup path.
+            // entries older than STALE_STAGING_AGE go, and crypt staging leases
+            // protect active transfers even with a preserved old source mtime.
+            // One folder listing, off the startup path.
             std::thread::spawn(crate::util::scratch::sweep_staging_on_startup);
 
             // Serve the frontend on the fixed loopback origin. `ui_server`
