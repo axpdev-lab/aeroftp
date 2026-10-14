@@ -5026,6 +5026,9 @@ impl StorageProvider for S3Provider {
                                         // reporting through the half of the
                                         // progress callback that stayed here.
                                         warn!("S3: {}; downloading on a single stream", e);
+                                        super::multi_thread::report_download_fallback(
+                                            "S3 could not read ranges from one confirmed object version",
+                                        );
                                         // A copy with the parallel path off, rather
                                         // than a size hint that lies about the
                                         // object: the clone shares the HTTP client
@@ -5048,6 +5051,9 @@ impl StorageProvider for S3Provider {
                             "S3 multi-thread download disabled: no strong ETag on the HEAD of {}, so ranges cannot be pinned to one version",
                             key
                         );
+                            super::multi_thread::report_download_fallback(
+                                "S3 did not provide a strong ETag to pin the ranges",
+                            );
                         }
                     }
                     if !accepts_ranges {
@@ -5055,10 +5061,19 @@ impl StorageProvider for S3Provider {
                             "S3 multi-thread download disabled: server advertised Accept-Ranges: none for {}",
                             key
                         );
+                        if self.planned_download_segments(size) >= 2 {
+                            super::multi_thread::report_download_fallback(
+                                "S3 advertised Accept-Ranges: none",
+                            );
+                        }
                     }
                     on_progress
                 }
                 Ok(other) => {
+                    super::multi_thread::report_download_fallback(&format!(
+                        "the S3 HEAD probe was refused (HTTP {})",
+                        other.status().as_u16()
+                    ));
                     debug!(
                         "S3 multi-thread HEAD probe returned {} for {}, falling back to single-stream",
                         other.status(),
@@ -5067,6 +5082,7 @@ impl StorageProvider for S3Provider {
                     on_progress
                 }
                 Err(e) => {
+                    super::multi_thread::report_download_fallback("the S3 HEAD probe failed");
                     debug!(
                         "S3 multi-thread HEAD probe failed for {}: {}, falling back to single-stream",
                         key, e
@@ -11335,10 +11351,14 @@ mod tests {
         provider.set_multi_thread_download(4, 1024 * 1024);
         let dir = tempfile::tempdir().expect("tempdir");
         let out = dir.path().join("big.bin");
-        provider
-            .download("/big.bin", out.to_str().unwrap(), None)
+        let warnings = super::super::CallWarnings::default();
+        warnings
+            .scope(provider.download("/big.bin", out.to_str().unwrap(), None))
             .await
             .expect("download");
+        let messages = warnings.take();
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("strong ETag"));
         assert_eq!(std::fs::metadata(&out).expect("stat").len(), SIZE as u64);
         assert_eq!(
             gets.load(Ordering::SeqCst),
@@ -11362,16 +11382,22 @@ mod tests {
         let out = dir.path().join("big.bin");
         let reported = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let sink = std::sync::Arc::clone(&reported);
-        provider
-            .download(
+        let warnings = super::super::CallWarnings::default();
+        warnings
+            .scope(provider.download(
                 "/big.bin",
                 out.to_str().unwrap(),
                 Some(Box::new(move |done, _total| {
                     sink.store(done, std::sync::atomic::Ordering::SeqCst);
                 })),
-            )
+            ))
             .await
             .expect("the refusal falls back to a single stream, which succeeds");
+        let messages = warnings.take();
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("one confirmed object version"));
+        assert!(!messages[0].contains("big.bin"));
+        assert_eq!(std::fs::read(&out).unwrap(), vec![7u8; SIZE]);
         assert_eq!(
             std::fs::metadata(&out)
                 .expect("the file is published")
