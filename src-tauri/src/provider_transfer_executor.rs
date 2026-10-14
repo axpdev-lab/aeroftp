@@ -357,7 +357,9 @@ impl SegmentedDownloadError {
     /// Call only when the caller actually selects its fallback download.
     pub fn report_fallback(&self) {
         if let Some(reason) = self.fallback_reason() {
-            crate::providers::multi_thread::report_download_fallback(reason);
+            crate::providers::report_warning(format!(
+                "segmented download unavailable: {reason}; using the provider download path"
+            ));
         }
     }
 
@@ -1423,7 +1425,7 @@ impl ProviderDownloadExecutor {
                 if !self.cancel_token.is_cancelled() {
                     if let Some(reason) = e.fallback_reason() {
                         crate::providers::report_warning(format!(
-                            "parallel download unavailable: {reason}; subsequent attempts use a single stream"
+                            "segmented download unavailable: {reason}; subsequent attempts use the provider download path"
                         ));
                     }
                 }
@@ -2168,7 +2170,7 @@ mod tests {
         );
         error.report_fallback();
         assert_eq!(crate::providers::take_warnings(), vec![
-            "parallel download unavailable: an independent range connection could not be created; using a single stream"
+            "segmented download unavailable: an independent range connection could not be created; using the provider download path"
         ]);
         SegmentedDownloadError::Cancelled.report_fallback();
         assert!(crate::providers::take_warnings().is_empty());
