@@ -340,6 +340,23 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Native MSI opt-out and maintenance regression
+        if: matrix.target == 'windows'
+        shell: pwsh
+        run: |
+          $packages = @(Get-ChildItem src-tauri/target/release/bundle/msi/*.msi)
+          if ($packages.Count -ne 1) { throw "Expected one MSI, found $($packages.Count)" }
+          ./scripts/test-windows-msi-associations.ps1 -MsiPath $packages[0].FullName
+
+      - name: Upload MSI association regression evidence
+        if: always() && matrix.target == 'windows'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: msi-association-evidence-${{ github.sha }}
+          path: msi-association-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
       # macOS Intel: cross-compile to the real x86_64-apple-darwin triple on
       # the arm64 runner. cargo builds AND tauri bundles every bin natively
       # under target/x86_64-apple-darwin/release (no universal pseudo-target,

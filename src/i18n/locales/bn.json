@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "দিনের থিম",
             "scheduleNightTheme": "রাতের থিম",
             "scheduleInvalidTime": "দুটি ভিন্ন বৈধ সময় বেছে নিন। সর্বশেষ বৈধ সময়সূচি সক্রিয় থাকবে।",
-            "scheduleRestoreMode": "আগের চেহারার মোড পুনরুদ্ধার করুন"
+            "scheduleRestoreMode": "আগের চেহারার মোড পুনরুদ্ধার করুন",
+            "fileAssociationIntegrationTitle": "Windows-এর সঙ্গে সমন্বয়",
+            "fileAssociationRegisterOwned": "AeroFTP ফাইল ফরম্যাট নিবন্ধন করুন",
+            "fileAssociationRegisterArchives": "আর্কাইভ ফরম্যাট ও ফাইল এক্সপ্লোরারের মেনু নিবন্ধন করুন",
+            "fileAssociationIntegrationDesc": "পরিবর্তনগুলো এখনই কার্যকর হবে এবং আপডেটের পরও থাকবে। Windows আপনার ডিফল্ট অ্যাপগুলো আলাদাভাবে পরিচালনা করে।",
+            "fileAssociationIntegrationPortable": "Windows-এর সঙ্গে সমন্বয় পরিবর্তন করতে AeroFTP ইনস্টল করুন।",
+            "fileAssociationIntegrationAdmin": "এই বিকল্পগুলো পরিবর্তন করতে Windows প্রশাসকের অনুমতি চাইতে পারে।"
         },
         "devtools": {
             "title": "AeroTools",

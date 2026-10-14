@@ -54,113 +54,8 @@ Var AeroFTPHadDesktopShortcut
 ; Runtime bootstrap, the desktop-shortcut respect logic — was inert in
 ; every shipped Windows installer. See bug report
 ; docs/dev/aeroftp-windows-path-hook-bug-report-2026-04-25.md.
-; ── Deliverable G: "Extract here / Extract to folder" context-menu verbs ──
-; These two helper macros write (and delete) the AeroFTP extract verbs under a
-; given HKCU class base key. They are ADDITIVE verbs (owner decision c): they
-; never write a default `shell\open`, so double-click behaviour of the general
-; archive formats (.zip/.7z/.tar*/.rar) is left untouched and whatever app the
-; user already has stays their default extractor. For those general formats the
-; caller points BASEKEY at `Software\Classes\SystemFileAssociations\.<ext>`,
-; which layers the verb on top of the system ProgID regardless of who owns it;
-; for our own aero* ProgIDs the caller points BASEKEY at the ProgID directly so
-; the verbs sit next to their existing "Open with AeroFTP" entry.
-;
-; The command launches the cross-platform GUI extract intent already shipped on
-; main: `AeroFTP.exe --extract-here "%1"` / `--extract-to "%1"`. The dedicated
-; extract window (extract.html, a tiny bundle) computes the never-clobber stem
-; subfolder (resolve_unique_extract_dir), prompts for a password on encrypted
-; archives and vaults, and shows the native destination picker for "to folder".
-; We target the GUI binary directly (not the dispatcher) because on Windows the
-; product binary keeps the name AeroFTP.exe and parses --extract-here/-to from
-; its own argv; a cold launch opens ONLY the extract window and exits.
-!macro AeroFTPWriteExtractVerbs BASEKEY
-    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractHere" "" "Extract Here with AeroFTP"
-    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractHere" "Icon" '"$INSTDIR\AeroFTP.exe",0'
-    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractHere\command" "" '"$INSTDIR\AeroFTP.exe" --extract-here "%1"'
-    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder" "" "Extract to Folder with AeroFTP..."
-    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder" "Icon" '"$INSTDIR\AeroFTP.exe",0'
-    WriteRegStr HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder\command" "" '"$INSTDIR\AeroFTP.exe" --extract-to "%1"'
-!macroend
-
-!macro AeroFTPDeleteExtractVerbs BASEKEY
-    DeleteRegKey HKCU "${BASEKEY}\shell\AeroFTPExtractHere"
-    DeleteRegKey HKCU "${BASEKEY}\shell\AeroFTPExtractToFolder"
-    ; Drop the containers we had to create to hold the two verbs, but only when
-    ; nothing else lives in them (issue #454: an uninstall used to leave an empty
-    ; `SystemFileAssociations\.<ext>\shell` behind for all 8 archive formats).
-    ; /ifempty is what keeps this safe on the shared SystemFileAssociations keys:
-    ; if Windows or another archiver added its own verb, the key stays.
-    DeleteRegKey /ifempty HKCU "${BASEKEY}\shell"
-    DeleteRegKey /ifempty HKCU "${BASEKEY}"
-!macroend
-
-; ── Deliverable G: Windows available-opener registration ──
-; Shared ProgID "AeroFTP.Archive" + OpenWithProgids + Capabilities + RegisteredApplications
-; + SupportedTypes so AeroFTP appears (with archive icon) in Open-with / Default apps
-; for general compressed formats. Never takes default handler; double-click stays
-; with whatever the user had. The "open" command launches the main GUI (user browses
-; inside via ArchiveBrowser); "Extract here/to" remain separate additive verbs.
-!macro AeroFTPWriteArchiveOpener
-    ; Wholly-owned ProgID (friendly name + icon + open verb)
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive" "" "Compressed Archive"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-archive.ico,0"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Archive\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
-
-    ; SupportedTypes under Applications (helps discovery in some surfaces)
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".zip" ""
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".7z" ""
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".rar" ""
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".tar" ""
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".tgz" ""
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".gz" ""
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".xz" ""
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\SupportedTypes" ".bz2" ""
-
-    ; Capabilities (the surface Default Apps enumerates)
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities" "ApplicationName" "AeroFTP"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities" "ApplicationDescription" "AeroFTP archive browser and extractor"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities" "ApplicationIcon" "$INSTDIR\icons\mimetypes\aeroftp-archive.ico,0"
-
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".zip" "AeroFTP.Archive"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".7z" "AeroFTP.Archive"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".rar" "AeroFTP.Archive"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".tar" "AeroFTP.Archive"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".tgz" "AeroFTP.Archive"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".gz" "AeroFTP.Archive"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".xz" "AeroFTP.Archive"
-    WriteRegStr HKCU "Software\AeroFTP\Capabilities\FileAssociations" ".bz2" "AeroFTP.Archive"
-
-    ; Makes "AeroFTP" appear in the list of apps that can be chosen for these file types
-    WriteRegStr HKCU "Software\RegisteredApplications" "AeroFTP" "Software\AeroFTP\Capabilities"
-!macroend
-
-!macro AeroFTPWriteArchiveOpenWith EXT
-    ; OpenWithProgids value (name = ProgID, data empty) lets Explorer list AeroFTP
-    ; under "Open with" for that extension, without setting it as default.
-    WriteRegStr HKCU "${EXT}\OpenWithProgids" "AeroFTP.Archive" ""
-!macroend
-
-!macro AeroFTPDeleteArchiveOpener
-    ; Delete wholly-owned keys we created. Do not touch .ext owner keys themselves.
-    DeleteRegKey HKCU "Software\Classes\AeroFTP.Archive"
-    DeleteRegKey HKCU "Software\AeroFTP\Capabilities"
-    DeleteRegValue HKCU "Software\RegisteredApplications" "AeroFTP"
-    ; Applications\AeroFTP.exe (which holds SupportedTypes + DefaultIcon) is
-    ; deleted wholesale by the existing generic cleanup below.
-!macroend
-
-!macro AeroFTPDeleteArchiveOpenWith EXT
-    ; Only remove our value; other apps may have written their own ProgIDs here.
-    DeleteRegValue HKCU "${EXT}\OpenWithProgids" "AeroFTP.Archive"
-    ; And drop the containers when ours was the only entry (issue #454). On a
-    ; stock machine the real .zip/.7z/... owner lives in HKLM, so the HKCU key
-    ; here is one we created purely to hang OpenWithProgids off; without these
-    ; two lines an uninstall left 8 empty `.<ext>\OpenWithProgids` keys behind.
-    ; /ifempty leaves the key alone the moment another app has a value in it.
-    DeleteRegKey /ifempty HKCU "${EXT}\OpenWithProgids"
-    DeleteRegKey /ifempty HKCU "${EXT}"
-!macroend
+!include "${__FILEDIR__}\association-choices.nsh"
+!include "${__FILEDIR__}\associations-generated.nsh"
 
 !macro NSIS_HOOK_PREINSTALL
     StrCpy $AeroFTPWasInstalled "no"
@@ -274,112 +169,8 @@ Var AeroFTPHadDesktopShortcut
             DetailPrint "VC++ Runtime download failed ($0) — install manually from https://aka.ms/vs/17/release/vc_redist.x64.exe"
     _vcredist_done:
 
-    ; Register file associations under HKCU because Tauri's NSIS installer
-    ; runs per-user by default (no admin elevation). HKLM writes from a
-    ; non-elevated installer are silently dropped by Windows registry
-    ; virtualisation, which is why the doc-style MIME icons we ship were
-    ; never honoured: Tauri's auto-section already wrote AppIcon to
-    ; HKCU\Software\Classes\<ProgID>\DefaultIcon, our HKLM overwrite
-    ; never reached anywhere visible to Explorer, and HKCU's value won
-    ; the HKEY_CLASSES_ROOT merge. Issue: see APPENDIX-SPRING.
-
-    ; .aerovault
-    WriteRegStr HKCU "Software\Classes\.aerovault" "" "AeroFTP.AeroVault"
-    WriteRegStr HKCU "Software\Classes\.aerovault" "Content Type" "application/x-aerovault"
-    WriteRegStr HKCU "Software\Classes\.aerovault" "PerceivedType" "document"
-
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault" "" "AeroVault Encrypted Container"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerovault.ico,0"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroVault\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
-
-    ; .aeroftp (server profile export)
-    WriteRegStr HKCU "Software\Classes\.aeroftp" "" "AeroFTP.Profile"
-    WriteRegStr HKCU "Software\Classes\.aeroftp" "Content Type" "application/x-aeroftp"
-    WriteRegStr HKCU "Software\Classes\.aeroftp" "PerceivedType" "document"
-
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile" "" "AeroFTP Server Profile"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp.ico,0"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Profile\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
-
-    ; .aeroftp-keystore (encrypted keystore backup)
-    WriteRegStr HKCU "Software\Classes\.aeroftp-keystore" "" "AeroFTP.Keystore"
-    WriteRegStr HKCU "Software\Classes\.aeroftp-keystore" "Content Type" "application/x-aeroftp-keystore"
-    WriteRegStr HKCU "Software\Classes\.aeroftp-keystore" "PerceivedType" "document"
-
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore" "" "AeroFTP Keystore Backup"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-keystore.ico,0"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Keystore\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
-
-    ; .aerozip (plaintext recoverable archive)
-    WriteRegStr HKCU "Software\Classes\.aerozip" "" "AeroFTP.AeroZip"
-    WriteRegStr HKCU "Software\Classes\.aerozip" "Content Type" "application/x-aerozip"
-    WriteRegStr HKCU "Software\Classes\.aerozip" "PerceivedType" "document"
-
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip" "" "AeroVault Zip Archive"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aerozip.ico,0"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.AeroZip\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
-
-    ; .aeroftp-script (portable batch script for `aeroftp-cli batch`)
-    WriteRegStr HKCU "Software\Classes\.aeroftp-script" "" "AeroFTP.Script"
-    WriteRegStr HKCU "Software\Classes\.aeroftp-script" "Content Type" "application/x-aeroftp-script"
-    WriteRegStr HKCU "Software\Classes\.aeroftp-script" "PerceivedType" "document"
-
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Script" "" "AeroFTP Batch Script"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Script\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-script.ico,0"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Script\shell\open" "" "Open with AeroFTP"
-    WriteRegStr HKCU "Software\Classes\AeroFTP.Script\shell\open\command" "" '"$INSTDIR\AeroFTP.exe" "%1"'
-
-    ; MIME database entries (HKCU\Software\Classes\MIME mirrors HKLM in
-    ; the merged HKCR view, so Explorer picks them up the same way).
-    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerovault" "Extension" ".aerovault"
-    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp" "Extension" ".aeroftp"
-    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore" "Extension" ".aeroftp-keystore"
-    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerozip" "Extension" ".aerozip"
-    WriteRegStr HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script" "Extension" ".aeroftp-script"
-
-    ; --- Generic fallback icon for any file opened with AeroFTP ---
-    ; Applications\<exe>\DefaultIcon is the icon Explorer uses for a file that is
-    ; opened-with AeroFTP but whose type has no specific ProgID icon (e.g. a .txt the
-    ; user pointed at AeroFTP via "Open with"). Show the tidy no-badge document icon
-    ; instead of the heavy full app icon. Mirrored in the WiX fragment
-    ; (installer/associations.wxs) so the MSI and NSIS installers stay in lockstep.
-    WriteRegStr HKCU "Software\Classes\Applications\AeroFTP.exe\DefaultIcon" "" "$INSTDIR\icons\mimetypes\aeroftp-document.ico,0"
-
-    ; --- "Extract here / Extract to folder" context-menu verbs (Deliverable G) ---
-    ; Additive verbs only (owner decision c): never a default shell\open for the
-    ; general archive formats, so their double-click Open handler is untouched.
-    ; General formats attach via SystemFileAssociations\.<ext> (works regardless
-    ; of which app owns the .zip/.7z/... ProgID). The double-extension tarballs
-    ; .tar.gz / .tar.xz / .tar.bz2 register under their LAST component (.gz/.xz/
-    ; .bz2) because that is the only handle Explorer keys associations on. Our
-    ; own aero* archive ProgIDs get the verbs alongside their Open entry.
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.zip"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.7z"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.rar"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.tar"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.tgz"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.gz"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.xz"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\SystemFileAssociations\.bz2"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\AeroFTP.AeroVault"
-    !insertmacro AeroFTPWriteExtractVerbs "Software\Classes\AeroFTP.AeroZip"
-
-    ; --- Archive available-opener registration (Deliverable G Windows #3) ---
-    ; ProgID + OpenWithProgids + Capabilities + SupportedTypes. Uses the dedicated
-    ; archive mimetype icon. Does not touch defaults or existing extract verbs.
-    !insertmacro AeroFTPWriteArchiveOpener
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.zip"
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.7z"
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.rar"
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.tar"
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.tgz"
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.gz"
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.xz"
-    !insertmacro AeroFTPWriteArchiveOpenWith "Software\Classes\.bz2"
+    ; Apply the same persisted choices on normal, silent and updater installs.
+    !insertmacro AeroFTPApplyAssociationChoices
 
     ; Flush Explorer's icon cache so the doc-style MIME icons are
     ; rendered immediately after install (otherwise users would have
@@ -395,6 +186,7 @@ Var AeroFTPHadDesktopShortcut
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+    !define AEROFTP_HISTORY_UNINSTALL
     ; --- Remove install dir from user PATH (HKCU) ---
     ; Mirror of the install-side EnVar::AddValue. EnVar::DeleteValue
     ; removes every occurrence of "$INSTDIR" from HKCU\Environment\Path,
@@ -421,78 +213,17 @@ Var AeroFTPHadDesktopShortcut
     DetailPrint "EnVar::DeleteValue Path $LOCALAPPDATA\AeroFTP\bin -> code $0"
     System::Call 'USER32::SendMessageTimeoutW(i 0xffff, i 0x001A, i 0, w "Environment", i 0, i 5000, *i .r3)'
 
-    ; Remove file associations and class registrations for all 5 AeroFTP
-    ; MIME types. Mirror of the install-side HKCU writes (per-user
-    ; install scope). HKLM keys are also dropped on the off chance an
-    ; older AeroFTP build registered there before the HKCU migration.
-    DeleteRegKey HKCU "Software\Classes\.aerovault"
-    DeleteRegKey HKCU "Software\Classes\AeroFTP.AeroVault"
-    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerovault"
-    DeleteRegKey HKCU "Software\Classes\.aeroftp"
-    DeleteRegKey HKCU "Software\Classes\AeroFTP.Profile"
-    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp"
-    DeleteRegKey HKCU "Software\Classes\.aeroftp-keystore"
-    DeleteRegKey HKCU "Software\Classes\AeroFTP.Keystore"
-    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore"
-    DeleteRegKey HKCU "Software\Classes\.aerozip"
-    DeleteRegKey HKCU "Software\Classes\AeroFTP.AeroZip"
-    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aerozip"
-    DeleteRegKey HKCU "Software\Classes\.aeroftp-script"
-    DeleteRegKey HKCU "Software\Classes\AeroFTP.Script"
-    DeleteRegKey HKCU "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script"
-    ; Generic fallback icon (mirror of the POSTINSTALL Applications\AeroFTP.exe write).
-    DeleteRegKey HKCU "Software\Classes\Applications\AeroFTP.exe"
-    ; Legacy HKLM cleanup (pre-HKCU migration installs).
-    DeleteRegKey HKLM "Software\Classes\.aerovault"
-    DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroVault"
-    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerovault"
-    DeleteRegKey HKLM "Software\Classes\.aeroftp"
-    DeleteRegKey HKLM "Software\Classes\AeroFTP.Profile"
-    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp"
-    DeleteRegKey HKLM "Software\Classes\.aeroftp-keystore"
-    DeleteRegKey HKLM "Software\Classes\AeroFTP.Keystore"
-    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-keystore"
-    DeleteRegKey HKLM "Software\Classes\.aerozip"
-    DeleteRegKey HKLM "Software\Classes\AeroFTP.AeroZip"
-    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aerozip"
-    DeleteRegKey HKLM "Software\Classes\.aeroftp-script"
-    DeleteRegKey HKLM "Software\Classes\AeroFTP.Script"
-    DeleteRegKey HKLM "Software\Classes\MIME\Database\Content Type\application/x-aeroftp-script"
-
-    ; Remove the "Extract here / Extract to folder" verbs (Deliverable G).
-    ; Mirror of the POSTINSTALL block: drop only our two verb subkeys, never the
-    ; parent SystemFileAssociations\.<ext> key (Windows and other apps share it).
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.zip"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.7z"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.rar"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.tar"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.tgz"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.gz"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.xz"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\SystemFileAssociations\.bz2"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\AeroFTP.AeroVault"
-    !insertmacro AeroFTPDeleteExtractVerbs "Software\Classes\AeroFTP.AeroZip"
-
-    ; Remove archive opener registration (Deliverable G). Only owned data.
-    ; OpenWithProgids values are removed value-by-value; wholly-owned keys are
-    ; deleted. The Applications\AeroFTP.exe wholesale delete below covers SupportedTypes.
-    !insertmacro AeroFTPDeleteArchiveOpener
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.zip"
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.7z"
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.rar"
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.tar"
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.tgz"
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.gz"
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.xz"
-    !insertmacro AeroFTPDeleteArchiveOpenWith "Software\Classes\.bz2"
-
-    ; Also clean HKLM copies in case of legacy or per-machine registrations
-    DeleteRegKey HKLM "Software\Classes\AeroFTP.Archive"
-    DeleteRegKey HKLM "Software\AeroFTP\Capabilities"
-    DeleteRegValue HKLM "Software\RegisteredApplications" "AeroFTP"
-
-    ; SHCNE_ASSOCCHANGED (0x08000000) — notify Explorer to refresh file associations and icons
-    System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
+    ; Upgrades preserve the user's integration state until the new installer
+    ; applies the persisted choices. Full uninstall removes only our values.
+    StrCmp $UpdateMode "1" _aeroftp_keep_associations 0
+        !insertmacro AeroFTPRemoveLegacyAssociations
+        !insertmacro AeroFTPUnregister_owned
+        !insertmacro AeroFTPUnregister_archives
+        !insertmacro AeroFTPUnregister_common
+        !insertmacro AeroFTPRemoveArchiveHistory
+        System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
+    _aeroftp_keep_associations:
+    !undef AEROFTP_HISTORY_UNINSTALL
 
     ; Selective user data cleanup moved to NSIS_HOOK_POSTUNINSTALL so the
     ; hook can observe whether Tauri's optional "Remove application data"
@@ -500,85 +231,8 @@ Var AeroFTPHadDesktopShortcut
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
-    ; --- Association residue sweep (issue #454) ---
-    ;
-    ; This has to live in POSTUNINSTALL, not beside the association deletes in
-    ; PREUNINSTALL, because of the order Tauri's bundled installer.nsi uses:
-    ;
-    ;   Section Uninstall
-    ;     NSIS_HOOK_PREUNINSTALL     <- our association deletes run here
-    ;     ...delete installed files...
-    ;     APP_UNASSOCIATE x5         <- Tauri's own association cleanup
-    ;     ...delete the uninstall key...
-    ;     NSIS_HOOK_POSTUNINSTALL    <- this block
-    ;
-    ; APP_UNASSOCIATE (FileAssociation.nsh, shipped by the bundler) is:
-    ;     ReadRegStr  $R0 SHELL_CONTEXT "Software\Classes\.<ext>" "<progid>_backup"
-    ;     WriteRegStr     SHELL_CONTEXT "Software\Classes\.<ext>" "" "$R0"
-    ;     DeleteRegKey    SHELL_CONTEXT "Software\Classes\<progid>"
-    ;
-    ; By the time it runs, PREUNINSTALL has already deleted the whole
-    ; `Software\Classes\.<ext>` key, `_backup` value included. The ReadRegStr
-    ; therefore yields an empty string and the WriteRegStr RECREATES the
-    ; extension key carrying nothing but an empty default value. Those five
-    ; resurrected shells are the HKCR junk reported in issue #454 (.aeroftp,
-    ; .aeroftp-keystore, .aeroftp-script and their two siblings surviving a full
-    ; uninstall). Deleting them harder in PREUNINSTALL cannot help; only a pass
-    ; that runs after APP_UNASSOCIATE can.
-    ;
-    ; The bare lowercase ProgIDs Tauri derives from the extension names
-    ; (aerovault, aeroftp, aeroftp-keystore, aerozip, aeroftp-script; note NOT
-    ; `AeroFTP.<ext>`, that spelling belongs to the WiX/MSI path) are removed
-    ; correctly by APP_UNASSOCIATE itself. They are re-deleted below only as belt
-    ; and braces, for machines carrying leftovers from a build that predates this.
-    ;
-    ; The Explorer FileExts entries are written by Explorer rather than by us and
-    ; were never cleaned by anyone. They go too: they hold our ProgIDs plus an
-    ; OpenWithList pointing at the binary this uninstaller just deleted.
-    ;
-    ; Skipped in update mode: an in-app or WinGet upgrade runs this uninstaller
-    ; with /UPDATE and reinstalls right afterwards. FileExts is where Explorer
-    ; keeps the user's UserChoice default, so wiping it on every upgrade would
-    ; silently reset a choice the user made by hand. This is the same guard the
-    ; Tauri template puts on its own Run-key and application-data blocks.
-    StrCmp $UpdateMode "1" _aeroftp_post_assoc_done 0
-        DeleteRegKey HKCU "Software\Classes\.aerovault"
-        DeleteRegKey HKCU "Software\Classes\.aeroftp"
-        DeleteRegKey HKCU "Software\Classes\.aeroftp-keystore"
-        DeleteRegKey HKCU "Software\Classes\.aerozip"
-        DeleteRegKey HKCU "Software\Classes\.aeroftp-script"
-
-        DeleteRegKey HKCU "Software\Classes\aerovault"
-        DeleteRegKey HKCU "Software\Classes\aeroftp"
-        DeleteRegKey HKCU "Software\Classes\aeroftp-keystore"
-        DeleteRegKey HKCU "Software\Classes\aerozip"
-        DeleteRegKey HKCU "Software\Classes\aeroftp-script"
-
-        ; The advertised ProgIDs the WiX/MSI path registers instead. A no-op on an
-        ; NSIS-only machine; tidies up after a user who tried the .msi first and
-        ; then switched to the .exe installer.
-        DeleteRegKey HKCU "Software\Classes\AeroFTP.aerovault"
-        DeleteRegKey HKCU "Software\Classes\AeroFTP.aeroftp"
-        DeleteRegKey HKCU "Software\Classes\AeroFTP.aeroftp-keystore"
-        DeleteRegKey HKCU "Software\Classes\AeroFTP.aerozip"
-        DeleteRegKey HKCU "Software\Classes\AeroFTP.aeroftp-script"
-
-        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aerovault"
-        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aeroftp"
-        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aeroftp-keystore"
-        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aerozip"
-        DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.aeroftp-script"
-
-        ; Our Capabilities subkey is already gone (PREUNINSTALL). Tauri keeps its
-        ; own `Software\AeroFTP\AeroFTP` (install location + installer language)
-        ; unless the user ticks "Remove application data", so this only fires on
-        ; that branch, retiring the shared parent instead of leaving it empty.
-        DeleteRegKey /ifempty HKCU "Software\AeroFTP"
-
-        ; SHCNE_ASSOCCHANGED again. PREUNINSTALL already fired one, but the keys
-        ; above only disappear now and Explorer caches the extension list.
-        System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
-    _aeroftp_post_assoc_done:
+    ; The custom template has no APP_UNASSOCIATE calls to recreate empty
+    ; extension keys. Association cleanup is now owned by PREUNINSTALL above.
 
     ; --- Coherent user-data cleanup, choice-aware ---
     ;

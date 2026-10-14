@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Tema diürn",
             "scheduleNightTheme": "Tema nocturn",
             "scheduleInvalidTime": "Tria dues hores vàlides diferents. L’última programació vàlida continua activa.",
-            "scheduleRestoreMode": "Restaura el mode d’aparença anterior"
+            "scheduleRestoreMode": "Restaura el mode d’aparença anterior",
+            "fileAssociationIntegrationTitle": "Integració amb Windows",
+            "fileAssociationRegisterOwned": "Registra els formats de fitxer d’AeroFTP",
+            "fileAssociationRegisterArchives": "Registra els formats d’arxiu comprimit i els menús de l’Explorador",
+            "fileAssociationIntegrationDesc": "Els canvis s’apliquen ara i es conserven durant les actualitzacions. Windows gestiona les aplicacions predeterminades per separat.",
+            "fileAssociationIntegrationPortable": "Instal·la AeroFTP per canviar la integració amb Windows.",
+            "fileAssociationIntegrationAdmin": "Windows pot demanar permisos d’administrador per canviar aquestes opcions."
         },
         "devtools": {
             "title": "AeroTools",

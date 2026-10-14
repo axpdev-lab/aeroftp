@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Dagtema",
             "scheduleNightTheme": "Nattema",
             "scheduleInvalidTime": "Velg to forskjellige gyldige klokkeslett. Den siste gyldige tidsplanen forblir aktiv.",
-            "scheduleRestoreMode": "Gjenopprett forrige utseendemodus"
+            "scheduleRestoreMode": "Gjenopprett forrige utseendemodus",
+            "fileAssociationIntegrationTitle": "Integrasjon med Windows",
+            "fileAssociationRegisterOwned": "Registrer AeroFTP-filformater",
+            "fileAssociationRegisterArchives": "Registrer arkivformater og menyer i Filutforsker",
+            "fileAssociationIntegrationDesc": "Endringene trer i kraft nå og beholdes ved oppdateringer. Windows administrerer standardappene dine separat.",
+            "fileAssociationIntegrationPortable": "Installer AeroFTP for å endre integrasjonen med Windows.",
+            "fileAssociationIntegrationAdmin": "Windows kan be om administratortillatelse for å endre disse alternativene."
         },
         "devtools": {
             "title": "AeroTools",

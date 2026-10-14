@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Chủ đề ban ngày",
             "scheduleNightTheme": "Chủ đề ban đêm",
             "scheduleInvalidTime": "Chọn hai thời điểm hợp lệ khác nhau. Lịch trình hợp lệ gần nhất vẫn hoạt động.",
-            "scheduleRestoreMode": "Khôi phục chế độ giao diện trước đó"
+            "scheduleRestoreMode": "Khôi phục chế độ giao diện trước đó",
+            "fileAssociationIntegrationTitle": "Tích hợp Windows",
+            "fileAssociationRegisterOwned": "Đăng ký các định dạng tệp AeroFTP",
+            "fileAssociationRegisterArchives": "Đăng ký các định dạng tệp nén và trình đơn của Trình khám phá tệp",
+            "fileAssociationIntegrationDesc": "Các thay đổi có hiệu lực ngay và được giữ lại khi cập nhật. Windows quản lý riêng các ứng dụng mặc định của bạn.",
+            "fileAssociationIntegrationPortable": "Cài đặt AeroFTP để thay đổi tích hợp Windows.",
+            "fileAssociationIntegrationAdmin": "Windows có thể yêu cầu quyền quản trị viên để thay đổi các tùy chọn này."
         },
         "devtools": {
             "title": "AeroTools",

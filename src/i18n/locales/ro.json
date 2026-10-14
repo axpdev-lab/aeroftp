@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Temă de zi",
             "scheduleNightTheme": "Temă de noapte",
             "scheduleInvalidTime": "Alegeți două ore valide diferite. Ultima programare validă rămâne activă.",
-            "scheduleRestoreMode": "Restabilește modul de aspect anterior"
+            "scheduleRestoreMode": "Restabilește modul de aspect anterior",
+            "fileAssociationIntegrationTitle": "Integrare cu Windows",
+            "fileAssociationRegisterOwned": "Înregistrează formatele de fișiere AeroFTP",
+            "fileAssociationRegisterArchives": "Înregistrează formatele de arhive și meniurile Exploratorului",
+            "fileAssociationIntegrationDesc": "Modificările se aplică imediat și se păstrează la actualizări. Windows gestionează separat aplicațiile implicite.",
+            "fileAssociationIntegrationPortable": "Instalează AeroFTP pentru a modifica integrarea cu Windows.",
+            "fileAssociationIntegrationAdmin": "Windows poate solicita permisiunea administratorului pentru modificarea acestor opțiuni."
         },
         "devtools": {
             "title": "AeroTools",

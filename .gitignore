@@ -110,6 +110,7 @@ run-clean.sh
 # can re-include specific tracked scripts; git cannot re-include a file when its
 # parent directory is excluded outright.
 /scripts/*
+!/scripts/generate-windows-associations.mjs
 # Exception: CI-required scripts
 !/scripts/apply-i18n-batch.py
 !/scripts/aerorsync-emit-guard-tests.sh
@@ -196,3 +197,7 @@ bun.lock
 !/scripts/lib/gui-inspector.mjs
 !/scripts/lib/gui-dev-runtime.mjs
 !/scripts/gui-controller-dev.test.mjs
+
+# Native MSI association regression, run against packaged MSI on Windows CI.
+!/scripts/test-windows-msi-associations.ps1
+/msi-association-evidence/

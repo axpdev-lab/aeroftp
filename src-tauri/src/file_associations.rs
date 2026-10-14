@@ -18,6 +18,63 @@ use std::process::Command;
 
 use crate::hidden_command;
 
+#[cfg_attr(not(windows), allow(dead_code))]
+#[path = "file_associations_policy.rs"]
+mod association_policy;
+#[cfg(windows)]
+#[path = "file_associations_windows.rs"]
+mod windows_integration;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowsIntegrationStatus {
+    pub owned_formats: bool,
+    pub archive_formats: bool,
+    pub managed_by: String,
+    pub can_change: bool,
+}
+
+#[tauri::command]
+pub async fn file_associations_set_integration(
+    owned_formats: bool,
+    archive_formats: bool,
+) -> Result<WindowsIntegrationStatus, String> {
+    #[cfg(windows)]
+    {
+        tauri::async_runtime::spawn_blocking(move || {
+            windows_integration::apply(association_policy::Choices {
+                owned_formats,
+                archive_formats,
+            })
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (owned_formats, archive_formats);
+        Err("Windows integration is only available on Windows".into())
+    }
+}
+
+#[cfg(windows)]
+pub fn handle_uninstall_history_arg() -> bool {
+    let args: Vec<_> = std::env::args_os().collect();
+    if args.len() != 2 || args[1] != "--aeroftp-cleanup-shell-history" {
+        return false;
+    }
+    match windows_integration::cleanup_history(association_policy::Choices {
+        owned_formats: false,
+        archive_formats: false,
+    }) {
+        Ok(()) => true,
+        Err(error) => {
+            eprintln!("Windows association history cleanup failed: {error}");
+            std::process::exit(1);
+        }
+    }
+}
+
 /// Typed catalog entry for one association "key" (format family).
 #[derive(Clone, Debug)]
 pub struct AssocCatalogEntry {
@@ -224,6 +281,8 @@ pub struct FileAssociationStatus {
     /// True when the platform requires the user to confirm in an OS dialog.
     pub requires_os_confirmation: bool,
     pub items: Vec<FileAssociationItemStatus>,
+    pub windows_integration: Option<WindowsIntegrationStatus>,
+    pub windows_integration_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +313,12 @@ pub struct FileAssociationApplyResult {
 /// Return a compact status snapshot for the UI.
 #[tauri::command]
 pub async fn file_associations_status() -> Result<FileAssociationStatus, String> {
+    tauri::async_runtime::spawn_blocking(file_associations_status_inner)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn file_associations_status_inner() -> Result<FileAssociationStatus, String> {
     let platform = std::env::consts::OS.to_string();
     let (can_apply, requires_confirm) = match platform.as_str() {
         "linux" => (true, false),
@@ -268,11 +333,24 @@ pub async fn file_associations_status() -> Result<FileAssociationStatus, String>
         items.push(st);
     }
 
+    #[cfg(windows)]
+    let (windows_integration, windows_integration_error) = match windows_integration::status() {
+        Ok(status) => (Some(status), None),
+        Err(error) => {
+            log::warn!("Windows integration status unavailable: {error}");
+            (None, Some(error))
+        }
+    };
+    #[cfg(not(windows))]
+    let (windows_integration, windows_integration_error) = (None, None);
+
     Ok(FileAssociationStatus {
         platform,
         can_apply_directly: can_apply,
         requires_os_confirmation: requires_confirm,
         items,
+        windows_integration,
+        windows_integration_error,
     })
 }
 
@@ -450,13 +528,22 @@ fn windows_item_status(entry: &AssocCatalogEntry) -> FileAssociationItemStatus {
     // is_available: the fact that the installer wrote OpenWithProgids + Capabilities means
     // AeroFTP appears in the OS list. We conservatively return true here; the UI shows
     // "Available" when not default.
-    let is_available = true;
+    let is_available = {
+        #[cfg(windows)]
+        {
+            windows_integration::available(entry.windows_progids)
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
+    };
 
     FileAssociationItemStatus {
         key: entry.key.to_string(),
         label: entry.label.to_string(),
         extensions: entry.extensions.iter().map(|s| s.to_string()).collect(),
-        is_default,
+        is_default: is_default && is_available,
         is_available,
         current_handler,
         action: "os_confirmation".to_string(),

@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Nappali téma",
             "scheduleNightTheme": "Éjszakai téma",
             "scheduleInvalidTime": "Válasszon két különböző érvényes időpontot. Az utolsó érvényes ütemezés aktív marad.",
-            "scheduleRestoreMode": "Előző megjelenítési mód visszaállítása"
+            "scheduleRestoreMode": "Előző megjelenítési mód visszaállítása",
+            "fileAssociationIntegrationTitle": "Windows-integráció",
+            "fileAssociationRegisterOwned": "AeroFTP-fájlformátumok regisztrálása",
+            "fileAssociationRegisterArchives": "Archívumformátumok és Fájlkezelő-menük regisztrálása",
+            "fileAssociationIntegrationDesc": "A módosítások azonnal érvénybe lépnek, és a frissítések során is megmaradnak. A Windows külön kezeli az alapértelmezett alkalmazásokat.",
+            "fileAssociationIntegrationPortable": "A Windows-integráció módosításához telepítse az AeroFTP-t.",
+            "fileAssociationIntegrationAdmin": "A Windows rendszergazdai engedélyt kérhet ezen beállítások módosításához."
         },
         "devtools": {
             "title": "AeroTools",

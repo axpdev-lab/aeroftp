@@ -3848,7 +3848,13 @@
             "scheduleDayTheme": "Day theme",
             "scheduleNightTheme": "Night theme",
             "scheduleInvalidTime": "Choose two different valid times. The last valid schedule stays active.",
-            "scheduleRestoreMode": "Restore previous appearance mode"
+            "scheduleRestoreMode": "Restore previous appearance mode",
+            "fileAssociationIntegrationTitle": "Windows integration",
+            "fileAssociationRegisterOwned": "Register AeroFTP file formats",
+            "fileAssociationRegisterArchives": "Register archive formats and Explorer menus",
+            "fileAssociationIntegrationDesc": "Changes take effect now and are kept during updates. Windows manages your default apps separately.",
+            "fileAssociationIntegrationPortable": "Install AeroFTP to change Windows integration.",
+            "fileAssociationIntegrationAdmin": "Windows may request administrator permission to change these options."
         },
         "sharing": {
             "add": "Add",

@@ -221,12 +221,14 @@
         },
         "windows": {
             "wix": {
+                "template": "installer/main.wxs",
                 "bannerPath": "installer/banner.bmp",
                 "dialogImagePath": "installer/dialog.bmp",
                 "fragmentPaths": ["installer/associations.wxs"],
-                "componentGroupRefs": ["AeroFTPShellIntegration"]
+                "featureRefs": ["AeroFTPOwnedAssociations", "AeroFTPArchiveAssociations"]
             },
             "nsis": {
+                "template": "installer/installer.nsi",
                 "installerIcon": "icons/icon.ico",
                 "headerImage": "installer/header.bmp",
                 "sidebarImage": "installer/sidebar.bmp",

@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Ցերեկային թեմա",
             "scheduleNightTheme": "Գիշերային թեմա",
             "scheduleInvalidTime": "Ընտրեք երկու տարբեր վավեր ժամեր։ Վերջին վավեր ժամանակացույցը մնում է ակտիվ։",
-            "scheduleRestoreMode": "Վերականգնել տեսքի նախորդ ռեժիմը"
+            "scheduleRestoreMode": "Վերականգնել տեսքի նախորդ ռեժիմը",
+            "fileAssociationIntegrationTitle": "Windows-ի ինտեգրում",
+            "fileAssociationRegisterOwned": "Գրանցել AeroFTP-ի ֆայլերի ձևաչափերը",
+            "fileAssociationRegisterArchives": "Գրանցել արխիվների ձևաչափերն ու Ֆայլերի դիտարկիչի ընտրացանկերը",
+            "fileAssociationIntegrationDesc": "Փոփոխություններն ուժի մեջ են մտնում անմիջապես և պահպանվում են թարմացումների ժամանակ։ Windows-ն առանձին է կառավարում ձեր լռելյայն հավելվածները։",
+            "fileAssociationIntegrationPortable": "Տեղադրեք AeroFTP-ը՝ Windows-ի ինտեգրումը փոխելու համար։",
+            "fileAssociationIntegrationAdmin": "Windows-ը կարող է ադմինիստրատորի թույլտվություն պահանջել՝ այս ընտրանքները փոխելու համար։"
         },
         "devtools": {
             "title": "AeroTools",

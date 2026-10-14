@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Päiväteema",
             "scheduleNightTheme": "Yöteema",
             "scheduleInvalidTime": "Valitse kaksi eri kelvollista kellonaikaa. Viimeisin kelvollinen ajastus pysyy aktiivisena.",
-            "scheduleRestoreMode": "Palauta edellinen ulkoasutila"
+            "scheduleRestoreMode": "Palauta edellinen ulkoasutila",
+            "fileAssociationIntegrationTitle": "Windows-integraatio",
+            "fileAssociationRegisterOwned": "Rekisteröi AeroFTP-tiedostomuodot",
+            "fileAssociationRegisterArchives": "Rekisteröi arkistomuodot ja Resurssienhallinnan valikot",
+            "fileAssociationIntegrationDesc": "Muutokset tulevat voimaan heti ja säilyvät päivityksissä. Windows hallitsee oletussovelluksia erikseen.",
+            "fileAssociationIntegrationPortable": "Asenna AeroFTP muuttaaksesi Windows-integraatiota.",
+            "fileAssociationIntegrationAdmin": "Windows saattaa pyytää järjestelmänvalvojan oikeuksia näiden asetusten muuttamiseen."
         },
         "devtools": {
             "title": "AeroTools",

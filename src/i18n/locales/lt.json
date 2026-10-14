@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Dienos tema",
             "scheduleNightTheme": "Nakties tema",
             "scheduleInvalidTime": "Pasirinkite du skirtingus galiojančius laikus. Paskutinis galiojantis tvarkaraštis lieka aktyvus.",
-            "scheduleRestoreMode": "Atkurti ankstesnį išvaizdos režimą"
+            "scheduleRestoreMode": "Atkurti ankstesnį išvaizdos režimą",
+            "fileAssociationIntegrationTitle": "Integracija su Windows",
+            "fileAssociationRegisterOwned": "Registruoti AeroFTP failų formatus",
+            "fileAssociationRegisterArchives": "Registruoti archyvų formatus ir failų naršyklės meniu",
+            "fileAssociationIntegrationDesc": "Pakeitimai įsigalioja iš karto ir išlieka atnaujinant. Windows atskirai tvarko numatytąsias programas.",
+            "fileAssociationIntegrationPortable": "Įdiekite AeroFTP, kad galėtumėte pakeisti integraciją su Windows.",
+            "fileAssociationIntegrationAdmin": "Windows gali paprašyti administratoriaus leidimo pakeisti šias parinktis."
         },
         "devtools": {
             "title": "AeroTools",

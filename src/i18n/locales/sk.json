@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Denná téma",
             "scheduleNightTheme": "Nočná téma",
             "scheduleInvalidTime": "Vyberte dva rôzne platné časy. Posledný platný plán zostane aktívny.",
-            "scheduleRestoreMode": "Obnoviť predchádzajúci režim vzhľadu"
+            "scheduleRestoreMode": "Obnoviť predchádzajúci režim vzhľadu",
+            "fileAssociationIntegrationTitle": "Integrácia s Windows",
+            "fileAssociationRegisterOwned": "Zaregistrovať formáty súborov AeroFTP",
+            "fileAssociationRegisterArchives": "Zaregistrovať formáty archívov a ponuky Prieskumníka",
+            "fileAssociationIntegrationDesc": "Zmeny sa prejavia ihneď a zachovajú sa pri aktualizáciách. Windows spravuje predvolené aplikácie samostatne.",
+            "fileAssociationIntegrationPortable": "Nainštalujte AeroFTP, aby ste mohli zmeniť integráciu s Windows.",
+            "fileAssociationIntegrationAdmin": "Windows môže na zmenu týchto možností vyžadovať oprávnenie správcu."
         },
         "devtools": {
             "title": "AeroTools",

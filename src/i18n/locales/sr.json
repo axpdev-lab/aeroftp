@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Дневна тема",
             "scheduleNightTheme": "Ноћна тема",
             "scheduleInvalidTime": "Изаберите два различита важећа времена. Последњи важећи распоред остаје активан.",
-            "scheduleRestoreMode": "Врати претходни режим изгледа"
+            "scheduleRestoreMode": "Врати претходни режим изгледа",
+            "fileAssociationIntegrationTitle": "Интеграција са системом Windows",
+            "fileAssociationRegisterOwned": "Региструј формате датотека AeroFTP",
+            "fileAssociationRegisterArchives": "Региструј формате архива и меније Истраживача датотека",
+            "fileAssociationIntegrationDesc": "Промене ступају на снагу одмах и задржавају се током ажурирања. Windows засебно управља подразумеваним апликацијама.",
+            "fileAssociationIntegrationPortable": "Инсталирајте AeroFTP да бисте променили интеграцију са системом Windows.",
+            "fileAssociationIntegrationAdmin": "Windows може затражити администраторску дозволу за промену ових опција."
         },
         "devtools": {
             "title": "AeroTools",

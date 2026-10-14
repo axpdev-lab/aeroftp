@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Mandhari ya mchana",
             "scheduleNightTheme": "Mandhari ya usiku",
             "scheduleInvalidTime": "Chagua nyakati mbili tofauti zilizo halali. Ratiba ya mwisho iliyo halali itaendelea kutumika.",
-            "scheduleRestoreMode": "Rejesha hali ya mwonekano ya awali"
+            "scheduleRestoreMode": "Rejesha hali ya mwonekano ya awali",
+            "fileAssociationIntegrationTitle": "Ujumuishaji na Windows",
+            "fileAssociationRegisterOwned": "Sajili miundo ya faili za AeroFTP",
+            "fileAssociationRegisterArchives": "Sajili miundo ya kumbukumbu na menyu za Kichunguzi cha Faili",
+            "fileAssociationIntegrationDesc": "Mabadiliko yanatumika sasa na huhifadhiwa wakati wa masasisho. Windows hudhibiti programu zako chaguomsingi kando.",
+            "fileAssociationIntegrationPortable": "Sakinisha AeroFTP ili kubadilisha ujumuishaji na Windows.",
+            "fileAssociationIntegrationAdmin": "Windows inaweza kuomba ruhusa ya msimamizi ili kubadilisha chaguo hizi."
         },
         "devtools": {
             "title": "AeroTools",

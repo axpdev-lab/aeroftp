@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "Tema sa araw",
             "scheduleNightTheme": "Tema sa gabi",
             "scheduleInvalidTime": "Pumili ng dalawang magkaibang wastong oras. Mananatiling aktibo ang huling wastong iskedyul.",
-            "scheduleRestoreMode": "Ibalik ang dating mode ng hitsura"
+            "scheduleRestoreMode": "Ibalik ang dating mode ng hitsura",
+            "fileAssociationIntegrationTitle": "Pagsasama sa Windows",
+            "fileAssociationRegisterOwned": "Irehistro ang mga format ng file ng AeroFTP",
+            "fileAssociationRegisterArchives": "Irehistro ang mga format ng archive at mga menu ng File Explorer",
+            "fileAssociationIntegrationDesc": "Agad na magkakabisa ang mga pagbabago at mananatili sa mga pag-update. Hiwalay na pinamamahalaan ng Windows ang iyong mga default na app.",
+            "fileAssociationIntegrationPortable": "I-install ang AeroFTP upang baguhin ang pagsasama sa Windows.",
+            "fileAssociationIntegrationAdmin": "Maaaring humingi ang Windows ng pahintulot ng administrador upang baguhin ang mga opsyong ito."
         },
         "devtools": {
             "title": "AeroTools",

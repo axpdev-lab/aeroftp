@@ -1207,7 +1207,13 @@
             "scheduleDayTheme": "រូបរាងពេលថ្ងៃ",
             "scheduleNightTheme": "រូបរាងពេលយប់",
             "scheduleInvalidTime": "ជ្រើសរើសម៉ោងត្រឹមត្រូវពីរដែលខុសគ្នា។ កាលវិភាគត្រឹមត្រូវចុងក្រោយនៅតែដំណើរការ។",
-            "scheduleRestoreMode": "ស្ដាររបៀបរូបរាងមុន"
+            "scheduleRestoreMode": "ស្ដាររបៀបរូបរាងមុន",
+            "fileAssociationIntegrationTitle": "ការរួមបញ្ចូលជាមួយ Windows",
+            "fileAssociationRegisterOwned": "ចុះបញ្ជីទម្រង់ឯកសារ AeroFTP",
+            "fileAssociationRegisterArchives": "ចុះបញ្ជីទម្រង់ឯកសារបណ្ណសារ និងម៉ឺនុយកម្មវិធីរុករកឯកសារ",
+            "fileAssociationIntegrationDesc": "ការផ្លាស់ប្តូរមានប្រសិទ្ធភាពភ្លាមៗ ហើយត្រូវបានរក្សាទុកពេលធ្វើបច្ចុប្បន្នភាព។ Windows គ្រប់គ្រងកម្មវិធីលំនាំដើមរបស់អ្នកដោយឡែក។",
+            "fileAssociationIntegrationPortable": "ដំឡើង AeroFTP ដើម្បីផ្លាស់ប្តូរការរួមបញ្ចូលជាមួយ Windows។",
+            "fileAssociationIntegrationAdmin": "Windows អាចស្នើសុំសិទ្ធិអ្នកគ្រប់គ្រង ដើម្បីផ្លាស់ប្តូរជម្រើសទាំងនេះ។"
         },
         "devtools": {
             "title": "AeroTools",
