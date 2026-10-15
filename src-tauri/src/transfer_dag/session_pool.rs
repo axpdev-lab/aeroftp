@@ -192,20 +192,12 @@ impl TransferSessionPoolHandle {
     /// `clone_for_transfer()` workers from a retained connection spec. This
     /// handle only bounds how many run at once. Labelled `Ftp` (reusing the
     /// PD-Core-2 lease kind), never `HttpClone`, so capacity and metrics
-    /// tell the truth about the transport. Distinct from
-    /// [`Self::executor_managed_ftp`], the legacy GUI `FtpSessionPool`
-    /// adapter (no duplicate pool: a `SemaphoreSessionPool` is just the
-    /// concurrency gate, not a second stateful pool).
+    /// tell the truth about the transport. Distinct from [`Self::ftp`],
+    /// which adapts the GUI's stateful `FtpSessionPool` itself (no duplicate
+    /// pool on either side: a `SemaphoreSessionPool` is just the concurrency
+    /// gate, not a second stateful pool).
     pub fn ftp_connection(label: impl Into<String>, capacity: usize) -> Self {
         Self::new(SemaphoreSessionPool::with_capacity(
-            SessionLeaseKind::Ftp,
-            label,
-            capacity,
-        ))
-    }
-
-    pub fn executor_managed_ftp(label: impl Into<String>, capacity: usize) -> Self {
-        Self::new(ExecutorManagedSessionPool::new(
             SessionLeaseKind::Ftp,
             label,
             capacity,
@@ -250,7 +242,6 @@ pub struct TransferSessionLease {
 enum TransferSessionLeaseInner {
     Semaphore(SemaphoreSessionLease),
     Ftp(FtpPoolSessionLease),
-    ExecutorManaged(SessionLeaseInfo),
 }
 
 impl TransferSessionLease {
@@ -258,7 +249,6 @@ impl TransferSessionLease {
         match &self.inner {
             TransferSessionLeaseInner::Semaphore(lease) => &lease.info,
             TransferSessionLeaseInner::Ftp(lease) => &lease.info,
-            TransferSessionLeaseInner::ExecutorManaged(info) => info,
         }
     }
 
@@ -409,6 +399,13 @@ impl FtpPoolSessionLease {
         &self.info
     }
 
+    /// Hand the wrapped pool lease to the FTP executor, which runs its retry
+    /// loop against it directly and finishes with [`FtpSessionLease::release`].
+    /// `None` only when the lease was already released.
+    pub fn into_inner(mut self) -> Option<FtpSessionLease> {
+        self.lease.take()
+    }
+
     pub fn manager(&self) -> Option<Arc<tokio::sync::Mutex<crate::ftp::FtpManager>>> {
         self.lease.as_ref().and_then(FtpSessionLease::manager)
     }
@@ -442,49 +439,6 @@ impl FtpPoolSessionLease {
             }),
             None => Ok(()),
         }
-    }
-}
-
-pub struct ExecutorManagedSessionPool {
-    kind: SessionLeaseKind,
-    label: String,
-    capacity: usize,
-    ids: LeaseIdSource,
-}
-
-impl ExecutorManagedSessionPool {
-    fn new(kind: SessionLeaseKind, label: impl Into<String>, capacity: usize) -> Self {
-        Self {
-            kind,
-            label: label.into(),
-            capacity: capacity.max(1),
-            ids: LeaseIdSource::new(),
-        }
-    }
-}
-
-#[async_trait]
-impl TransferSessionPool for ExecutorManagedSessionPool {
-    async fn acquire(&self) -> Result<TransferSessionLease, SessionPoolError> {
-        Ok(TransferSessionLease {
-            inner: TransferSessionLeaseInner::ExecutorManaged(SessionLeaseInfo::new(
-                self.ids.next(),
-                self.kind,
-                &self.label,
-            )),
-        })
-    }
-
-    fn label(&self) -> &str {
-        &self.label
-    }
-
-    fn kind(&self) -> SessionLeaseKind {
-        self.kind
-    }
-
-    fn capacity(&self) -> SessionPoolCapacity {
-        SessionPoolCapacity::new(self.kind, &self.label, self.capacity)
     }
 }
 
@@ -639,13 +593,34 @@ mod tests {
         assert_eq!(lease.info().label, "axpbuntu-remote");
     }
 
+    /// The FTP adapter reports the pool's real capacity and `acquire` really
+    /// gates on it: a pool that can never hand out a session fails with its
+    /// acquire timeout instead of returning instantly.
     #[tokio::test]
-    async fn executor_managed_ftp_lease_preserves_capacity_without_double_acquire() {
-        let pool = TransferSessionPoolHandle::executor_managed_ftp("ftp-batch", 3);
-        let lease = pool.acquire().await.unwrap();
+    async fn ftp_adapter_reports_pool_capacity_and_gates_acquire() {
+        let pool = Arc::new(FtpSessionPool::empty_for_test(50));
+        let handle = TransferSessionPoolHandle::ftp("ftp-batch", Arc::clone(&pool));
 
-        assert_eq!(pool.capacity().kind, SessionLeaseKind::Ftp);
-        assert_eq!(pool.capacity().max_leases, 3);
-        assert_eq!(lease.kind(), SessionLeaseKind::Ftp);
+        assert_eq!(handle.capacity().kind, SessionLeaseKind::Ftp);
+        assert_eq!(
+            handle.capacity().max_leases,
+            pool.total_sessions().max(1),
+            "capacity mirrors the pool's session count"
+        );
+
+        let started = std::time::Instant::now();
+        let error = handle
+            .acquire()
+            .await
+            .err()
+            .expect("an empty pool cannot hand out a lease");
+        assert!(
+            matches!(error, SessionPoolError::Timeout { .. }),
+            "an exhausted pool fails with its acquire timeout: {error}"
+        );
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(50),
+            "acquire must wait for a real session, not return a descriptive token"
+        );
     }
 }
