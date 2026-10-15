@@ -734,6 +734,57 @@ async fn acquire_session_then_job(
     Ok(Some((session, job)))
 }
 
+/// The executor never runs when checkout fails, so the per-file pair is emitted here.
+fn emit_checkout_failure(
+    sink: &dyn TransferEventSink,
+    entry: &TransferEntry,
+    direction: TransferDirection,
+    failure: &TransferFailure,
+) {
+    let direction = match direction {
+        TransferDirection::Upload => "upload",
+        TransferDirection::Download => "download",
+    };
+    let verb = if direction == "download" {
+        "Downloading"
+    } else {
+        "Uploading"
+    };
+    sink.emit_transfer_event(crate::TransferEvent {
+        event_type: "file_start".to_string(),
+        transfer_id: entry.id.clone(),
+        filename: entry.display_name.clone(),
+        direction: direction.to_string(),
+        message: Some(format!("{verb}: {}", entry.remote_path)),
+        progress: Some(crate::TransferProgress {
+            transfer_id: entry.id.clone(),
+            filename: entry.display_name.clone(),
+            transferred: 0,
+            total: entry.size,
+            percentage: 0,
+            speed_bps: 0,
+            eta_seconds: 0,
+            direction: direction.to_string(),
+            total_files: None,
+            path: None,
+        }),
+        path: Some(entry.remote_path.clone()),
+        delta_stats: None,
+        fallback_reason: None,
+    });
+    sink.emit_transfer_event(crate::TransferEvent {
+        event_type: "file_error".to_string(),
+        transfer_id: entry.id.clone(),
+        filename: entry.display_name.clone(),
+        direction: direction.to_string(),
+        message: Some(failure.message.clone()),
+        progress: None,
+        path: Some(entry.remote_path.clone()),
+        delta_stats: None,
+        fallback_reason: None,
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_whole_file_node<E>(
     node_id: usize,
@@ -790,6 +841,7 @@ where
                     format!("Transfer session acquisition failed: {error}"),
                     true,
                 );
+                emit_checkout_failure(sink.as_ref(), &entry, direction, &failure);
                 // Not counted in `active` yet (that happens once the session and
                 // the job lease are held), so there is nothing to take back.
                 account_outcome(
@@ -1856,6 +1908,41 @@ mod tests {
             size,
             modified: None,
         }
+    }
+
+    #[test]
+    fn checkout_failure_emits_file_start_then_file_error() {
+        struct Recording(std::sync::Mutex<Vec<TransferEvent>>);
+        impl TransferEventSink for Recording {
+            fn emit_transfer_event(&self, event: TransferEvent) {
+                self.0.lock().expect("events").push(event);
+            }
+        }
+
+        let sink = Recording(std::sync::Mutex::new(Vec::new()));
+        let failure = TransferFailure::new(
+            TransferFailureKind::Unknown,
+            "Transfer session acquisition failed: timed out",
+            true,
+        );
+        super::emit_checkout_failure(
+            &sink,
+            &entry("report.csv", 12),
+            super::TransferDirection::Download,
+            &failure,
+        );
+        let events = sink.0.lock().expect("events").clone();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event_type, "file_start");
+        assert_eq!(events[0].transfer_id, "report.csv");
+        assert_eq!(events[0].direction, "download");
+        assert_eq!(events[0].path.as_deref(), Some("/remote/report.csv"));
+        assert!(events[0].progress.is_some());
+        assert_eq!(events[1].event_type, "file_error");
+        assert_eq!(
+            events[1].message.as_deref(),
+            Some("Transfer session acquisition failed: timed out")
+        );
     }
 
     fn entry_with_local(id: &str, size: u64, local_path: &str) -> TransferEntry {

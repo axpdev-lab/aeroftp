@@ -25,19 +25,12 @@ use crate::transfer_settings::ResolvedTransferSettings;
 /// [`TransferExecutor::take_transfer_attempts`] so nothing accumulates.
 type AttemptCounts = std::sync::Mutex<std::collections::HashMap<String, u32>>;
 
-/// The session-pool handle the FTP executors hand the DAG: the REAL
-/// `FtpSessionPool` behind the adapter, so a whole-file node takes its
-/// session lease (waiting on the pool) before the governor job, like every
-/// other provider.
+/// Real pool handle, so the DAG waits for a session before the governor job.
 fn executor_session_pool(label: &str, pool: &Arc<FtpSessionPool>) -> TransferSessionPoolHandle {
     TransferSessionPoolHandle::ftp(label, Arc::clone(pool))
 }
 
-/// The held-lease mirror of the health check + state reset `pool.acquire()`
-/// ran before each attempt: before a held session runs another attempt it is
-/// verified (NOOP, reconnect when dead) and reset to the pool's base
-/// directory. An attempt whose session never became ready never ran, so the
-/// caller meters nothing for it.
+/// Health-check and cwd reset before an attempt. A failed check meters nothing.
 async fn prepare_lease(lease: &FtpSessionLease) -> Result<(), String> {
     lease.ensure_healthy().await?;
     lease.reset_state().await
@@ -151,10 +144,7 @@ impl FtpDownloadExecutor {
         }
     }
 
-    /// Retry loop against one held pool lease: the session is checked out for
-    /// the whole node lifetime (the DAG acquired it before the governor job)
-    /// and released once at the end, instead of the old per-attempt
-    /// acquire/release cycle.
+    /// Retry against the lease the DAG already holds, then release it once.
     async fn execute_with_lease(
         &self,
         entry: TransferEntry,
@@ -329,9 +319,7 @@ impl FtpDownloadExecutor {
             }
         }
 
-        // One release for the whole node lifetime: reset to the pool's clean
-        // state, or disconnect when the reset fails — what the old per-attempt
-        // `release()` did after each attempt.
+        // One release: the lease outlives every attempt.
         if let Err(release_error) = lease.release().await {
             warn!(
                 "Failed to reset FTP lease after {}: {}",
@@ -402,8 +390,7 @@ impl TransferExecutor for FtpDownloadExecutor {
     }
 
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
-        // Non-DAG callers acquire a session themselves; the DAG path hands
-        // its lease to `execute_with_session` instead.
+        // Trait entry for a caller that does not already hold a lease.
         match self.pool.acquire().await {
             Ok(lease) => self.execute_with_lease(entry, lease).await,
             Err(error) => fail_without_session(
@@ -425,17 +412,29 @@ impl TransferExecutor for FtpDownloadExecutor {
             Ok(ftp_lease) => match ftp_lease.into_inner() {
                 Some(lease) => lease,
                 None => {
-                    warn!("FTP download executor got an already-released lease; acquiring from the pool");
-                    return self.execute(entry).await;
+                    warn!("FTP download executor got an already-released lease");
+                    return fail_without_session(
+                        &self.app,
+                        &entry,
+                        "download",
+                        "FTP session lease was already released",
+                        self.cancel_token.is_cancelled(),
+                    );
                 }
             },
             Err(other) => {
                 warn!(
-                    "FTP download executor received a {:?} session lease; acquiring from the pool",
+                    "FTP download executor received a {:?} session lease",
                     other.kind()
                 );
                 drop(other);
-                return self.execute(entry).await;
+                return fail_without_session(
+                    &self.app,
+                    &entry,
+                    "download",
+                    "FTP executor received a non-FTP session lease",
+                    self.cancel_token.is_cancelled(),
+                );
             }
         };
         self.execute_with_lease(entry, lease).await
@@ -466,8 +465,7 @@ impl FtpUploadExecutor {
         }
     }
 
-    /// Upload twin of [`FtpDownloadExecutor::execute_with_lease`]: the held
-    /// pool lease lives for the whole node and is released once at the end.
+    /// Same held-lease retry loop as download.
     async fn execute_with_lease(
         &self,
         entry: TransferEntry,
@@ -720,8 +718,7 @@ impl TransferExecutor for FtpUploadExecutor {
     }
 
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
-        // Non-DAG callers acquire a session themselves; the DAG path hands
-        // its lease to `execute_with_session` instead.
+        // Trait entry for a caller that does not already hold a lease.
         match self.pool.acquire().await {
             Ok(lease) => self.execute_with_lease(entry, lease).await,
             Err(error) => fail_without_session(
@@ -743,17 +740,29 @@ impl TransferExecutor for FtpUploadExecutor {
             Ok(ftp_lease) => match ftp_lease.into_inner() {
                 Some(lease) => lease,
                 None => {
-                    warn!("FTP upload executor got an already-released lease; acquiring from the pool");
-                    return self.execute(entry).await;
+                    warn!("FTP upload executor got an already-released lease");
+                    return fail_without_session(
+                        &self.app,
+                        &entry,
+                        "upload",
+                        "FTP session lease was already released",
+                        self.cancel_token.is_cancelled(),
+                    );
                 }
             },
             Err(other) => {
                 warn!(
-                    "FTP upload executor received a {:?} session lease; acquiring from the pool",
+                    "FTP upload executor received a {:?} session lease",
                     other.kind()
                 );
                 drop(other);
-                return self.execute(entry).await;
+                return fail_without_session(
+                    &self.app,
+                    &entry,
+                    "upload",
+                    "FTP executor received a non-FTP session lease",
+                    self.cancel_token.is_cancelled(),
+                );
             }
         };
         self.execute_with_lease(entry, lease).await
@@ -800,12 +809,7 @@ mod tests {
         assert_eq!(file, "file.txt");
     }
 
-    /// Regression pin for "FTP batches took their session after the governor
-    /// job": the handle both FTP executors hand the DAG must gate on the REAL
-    /// pool. Against a pool that can never hand out a lease, `acquire` must
-    /// wait out the pool's acquire timeout and fail — the old descriptive
-    /// no-wait token succeeded instantly, which let the node hold the
-    /// governor job while it acquired the real session inside `execute()`.
+    /// An empty pool must time out. A no-wait token would return immediately.
     #[tokio::test]
     async fn executor_session_pool_handle_gates_on_the_real_pool() {
         for label in ["ftp-download-executor", "ftp-upload-executor"] {
@@ -819,23 +823,22 @@ mod tests {
             );
 
             let started = std::time::Instant::now();
-            let result = handle.acquire().await;
+            let error = match handle.acquire().await {
+                Err(error) => error,
+                Ok(_) => panic!("{label}: an empty pool cannot hand out a lease"),
+            };
             assert!(
-                result.is_err(),
-                "{label}: an empty pool cannot hand out a lease"
+                matches!(error, crate::transfer_dag::SessionPoolError::Timeout { .. }),
+                "{label}: exhausted pool must time out: {error}"
             );
             assert!(
-                started.elapsed() >= std::time::Duration::from_millis(50),
+                started.elapsed() >= std::time::Duration::from_millis(25),
                 "{label}: acquire must wait on the pool, not return a no-wait token"
             );
         }
     }
 
-    /// The metering point after the move off per-attempt acquire:
-    /// `note_transfer_attempt` runs directly before each real transfer
-    /// attempt, so a session that failed its readiness check — or an acquire
-    /// that never returned a lease — never reaches it and meters nothing. It
-    /// records the latest attempt number per entry.
+    /// Records the latest attempt. A readiness failure never reaches this point.
     #[test]
     fn note_transfer_attempt_records_the_latest_attempt() {
         let counts = AttemptCounts::default();

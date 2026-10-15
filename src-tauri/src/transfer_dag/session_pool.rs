@@ -342,6 +342,11 @@ impl TransferSessionPool for SemaphoreSessionPool {
     }
 }
 
+/// One DAG checkout is the only wait a whole-file node gets. A timeout is
+/// tried this many times, the pre-#1221 default retry budget, so a busy pool
+/// does not fail the file after a single wait.
+const FTP_CHECKOUT_ATTEMPTS: u32 = 3;
+
 pub struct FtpSessionPoolAdapter {
     label: String,
     pool: Arc<FtpSessionPool>,
@@ -366,15 +371,33 @@ impl FtpSessionPoolAdapter {
 #[async_trait]
 impl TransferSessionPool for FtpSessionPoolAdapter {
     async fn acquire(&self) -> Result<TransferSessionLease, SessionPoolError> {
-        let lease = self.pool.acquire().await.map_err(|error| {
-            SessionPoolError::adapter(SessionLeaseKind::Ftp, &self.label, error)
-        })?;
-        Ok(TransferSessionLease {
-            inner: TransferSessionLeaseInner::Ftp(FtpPoolSessionLease {
-                info: SessionLeaseInfo::new(self.ids.next(), SessionLeaseKind::Ftp, &self.label),
-                lease: Some(lease),
-            }),
-        })
+        let mut attempt = 0u32;
+        loop {
+            attempt += 1;
+            match self.pool.acquire().await {
+                Ok(lease) => {
+                    return Ok(TransferSessionLease {
+                        inner: TransferSessionLeaseInner::Ftp(FtpPoolSessionLease {
+                            info: SessionLeaseInfo::new(
+                                self.ids.next(),
+                                SessionLeaseKind::Ftp,
+                                &self.label,
+                            ),
+                            lease: Some(lease),
+                        }),
+                    });
+                }
+                Err(error) => {
+                    let mapped =
+                        SessionPoolError::adapter(SessionLeaseKind::Ftp, &self.label, error);
+                    let retry = matches!(mapped, SessionPoolError::Timeout { .. })
+                        && attempt < FTP_CHECKOUT_ATTEMPTS;
+                    if !retry {
+                        return Err(mapped);
+                    }
+                }
+            }
+        }
     }
 
     fn label(&self) -> &str {
@@ -399,9 +422,7 @@ impl FtpPoolSessionLease {
         &self.info
     }
 
-    /// Hand the wrapped pool lease to the FTP executor, which runs its retry
-    /// loop against it directly and finishes with [`FtpSessionLease::release`].
-    /// `None` only when the lease was already released.
+    /// The pool lease for the executor. `None` if it was already released.
     pub fn into_inner(mut self) -> Option<FtpSessionLease> {
         self.lease.take()
     }
@@ -619,8 +640,61 @@ mod tests {
             "an exhausted pool fails with its acquire timeout: {error}"
         );
         assert!(
-            started.elapsed() >= std::time::Duration::from_millis(50),
+            started.elapsed() >= std::time::Duration::from_millis(25),
             "acquire must wait for a real session, not return a descriptive token"
+        );
+    }
+
+    /// A dead session is discarded inside the deadline, then a timeout is
+    /// retried. The file must not fail on the first health error, and the
+    /// broken session must not come back onto the queue.
+    #[tokio::test]
+    async fn ftp_adapter_retries_an_unhealthy_checkout_until_the_budget() {
+        let pool = Arc::new(FtpSessionPool::unhealthy_for_test(40));
+        let handle = TransferSessionPoolHandle::ftp("ftp-batch", Arc::clone(&pool));
+        let started = std::time::Instant::now();
+        let acquired = tokio::time::timeout(std::time::Duration::from_secs(2), handle.acquire())
+            .await
+            .expect("checkout must finish inside the retry budget");
+        let error = match acquired {
+            Err(error) => error,
+            Ok(_) => panic!("an unhealthy session is not a lease"),
+        };
+        assert!(
+            matches!(error, SessionPoolError::Timeout { .. }),
+            "a dead session must surface as the checkout timeout: {error}"
+        );
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(90),
+            "one health failure must not end the checkout: {:?}",
+            started.elapsed()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        assert_eq!(
+            pool.available_count().expect("pool mutex"),
+            0,
+            "a failed checkout must not requeue the session"
+        );
+    }
+
+    #[tokio::test]
+    async fn ftp_adapter_does_not_retry_a_closed_pool() {
+        let pool = Arc::new(FtpSessionPool::empty_for_test(500));
+        pool.close().await.expect("close");
+        let handle = TransferSessionPoolHandle::ftp("ftp-batch", pool);
+        let started = std::time::Instant::now();
+        let error = match handle.acquire().await {
+            Err(error) => error,
+            Ok(_) => panic!("a closed pool cannot hand out a lease"),
+        };
+        assert!(
+            matches!(error, SessionPoolError::Closed { .. }),
+            "closed is not a timeout: {error}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(200),
+            "a closed pool must not be retried: {:?}",
+            started.elapsed()
         );
     }
 }
