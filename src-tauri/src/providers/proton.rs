@@ -708,6 +708,12 @@ fn extract_email(stdout: &str) -> Option<String> {
 fn extract_url(stdout: &str) -> Option<String> {
     let trimmed = stdout.trim();
     if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        // Official CLI 0.9.0 returns the link alongside its access policy.
+        if let Some(url) = value.pointer("/urlAccess/url").and_then(Value::as_str) {
+            if url.starts_with("https://") {
+                return Some(url.to_string());
+            }
+        }
         for key in ["url", "link", "publicUrl", "public_url"] {
             if let Some(s) = value.get(key).and_then(|v| v.as_str()) {
                 if s.starts_with("http") {
@@ -1317,11 +1323,10 @@ impl StorageProvider for ProtonCliProvider {
         args.push("-j".into());
         let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
         let stdout = self.run_cli(&arg_refs, META_TIMEOUT_SECS).await?;
+        // The response also contains customPassword and link secrets. Never
+        // embed it in diagnostics when a future CLI changes its schema.
         let url = extract_url(&stdout).ok_or_else(|| {
-            ProviderError::ParseError(format!(
-                "Could not parse Proton share URL from: {}",
-                stdout.trim()
-            ))
+            ProviderError::ParseError("Could not parse Proton share URL from CLI response".into())
         })?;
         Ok(ShareLinkResult {
             url,
@@ -2101,6 +2106,51 @@ mod cli_sequence_tests {
             .expect("sharing set-url ran");
         assert!(set_url.iter().any(|a| a == "--password=-x"), "{set_url:?}");
         assert!(!set_url.iter().any(|a| a == "--password"), "{set_url:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn share_link_accepts_cli_090_access_policy_response() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("share-response.json"),
+            r#"{"members":[],"urlAccess":{"url":"https://drive.proton.me/urls/SHIM#key","customPassword":"-private"},"editorsCanShare":false}"#,
+        )
+        .unwrap();
+        let link = provider(&shim)
+            .create_share_link(
+                "/my-files/a.txt",
+                ShareLinkOptions {
+                    password: Some("-private".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(link.url, "https://drive.proton.me/urls/SHIM#key");
+        assert_eq!(link.password.as_deref(), Some("-private"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn unrecognized_share_response_does_not_disclose_its_payload() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(
+            dir.join("share-response.json"),
+            r#"{"futureAccess":{"customPassword":"private-sentinel","secret":"link-secret"}}"#,
+        )
+        .unwrap();
+        let error = provider(&shim)
+            .create_share_link("/my-files/a.txt", ShareLinkOptions::default())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Could not parse Proton share URL"));
+        assert!(!error.contains("private-sentinel"));
+        assert!(!error.contains("link-secret"));
+        assert!(!error.contains("futureAccess"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
