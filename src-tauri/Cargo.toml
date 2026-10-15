@@ -518,6 +518,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 # is still needed and files a chore issue the week it is not. Run it by hand any
 # time -- exit 1 means still needed, exit 0 means this section can go.
 [patch.crates-io]
+# 0.5.8 wrapper plus owned redirection metadata. Native UnRAR stays unchanged.
+# See vendor/unrar/AEROFTP-PATCH.md for provenance and the removal condition.
+unrar = { path = "vendor/unrar" }
 n0-mainline = { git = "https://github.com/axpdev-lab/n0-mainline", rev = "25ee35e827f642635a1028606f0bbd4e9c530ae0" }
 # suppaftp: the v12.1.0 release commit plus ONE method,
 # `ControlSocket::buffered_reply_bytes()`, on the tokio control guard, so the

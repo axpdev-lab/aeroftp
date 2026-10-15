@@ -78,6 +78,8 @@ mod mcp_client_sandbox;
 mod mcp_client_schema;
 mod mcp_client_transport;
 mod openai_responses;
+#[cfg(test)]
+mod rar5_hardlink_tests;
 #[cfg(target_os = "linux")]
 mod ui_server;
 
@@ -9805,9 +9807,7 @@ async fn extract_rar(
     // formats. Moving what is in the folder, rather than the entry names,
     // keeps the names UnRAR writes (it corrects a name the platform does not
     // allow). Moving at the end rather than entry by entry keeps an earlier
-    // entry where UnRAR looks for it when a later one is a RAR 5 file
-    // reference or hard link to it (its extraction folder, on Windows and
-    // macOS).
+    // entry available when a later RAR 5 hardlink or file reference needs it.
     let staging = tempfile::Builder::new()
         .prefix(".aeroftp-extract-")
         .tempdir_in(&final_output)
@@ -9823,8 +9823,19 @@ async fn extract_rar(
 /// The entry loop of `extract_rar`: extracts every safe, non-link file entry
 /// under `base`.
 fn extract_rar_entries(
+    archive: unrar::OpenArchive<unrar::Process, unrar::CursorBeforeHeader>,
+    base: &std::path::Path,
+) -> Result<(), String> {
+    extract_rar_entries_until(archive, base, None)
+}
+
+/// Extract a validated RAR prefix, keeping link targets inside this private
+/// staging root. The browser uses a prefix only when the chosen entry is a
+/// reference to an earlier member; ordinary entries keep their direct path.
+pub(crate) fn extract_rar_entries_until(
     mut archive: unrar::OpenArchive<unrar::Process, unrar::CursorBeforeHeader>,
     base: &std::path::Path,
+    stop_after: Option<&str>,
 ) -> Result<(), String> {
     while let Some(header) = archive
         .read_header()
@@ -9840,22 +9851,27 @@ fn extract_rar_entries(
             continue;
         }
 
-        // Defense in depth: the `unrar` crate does not expose a symlink target
-        // before extraction, so we cannot validate it the way `tar_unpack` does.
-        // Skip symlink entries entirely (Unix host attributes carry S_IFLNK in the
-        // low mode bits) rather than trusting the bundled UnRAR library's own
-        // traversal guard as the only barrier. zip/7z likewise never materialize
-        // symlinks, so this keeps RAR consistent. (CLAUDE-AV-B1-06)
+        // Skip symbolic links, junctions and unknown redirections on every
+        // platform, including Windows entries whose attributes have no S_IFLNK.
         const S_IFMT: u32 = 0o170000;
         const S_IFLNK: u32 = 0o120000;
-        if header.entry().file_attr & S_IFMT == S_IFLNK {
+        let redirection = header.entry().redirection_type;
+        if header.entry().file_attr & S_IFMT == S_IFLNK || !matches!(redirection, 0 | 4 | 5) {
             archive = header
                 .skip()
                 .map_err(|e| format!("Failed to skip RAR symlink entry: {}", e))?;
             continue;
         }
 
-        archive = if header.entry().is_file() {
+        archive = if matches!(redirection, 4 | 5) {
+            let filename = header.entry().filename.clone();
+            let target = header.entry().redirection_target.clone();
+            let next = header
+                .skip()
+                .map_err(|e| format!("Failed to skip RAR entry: {}", e))?;
+            materialize_rar_reference(&filename, redirection, target.as_deref(), base)?;
+            next
+        } else if header.entry().is_file() {
             header
                 .extract_with_base(base)
                 .map_err(|e| format!("Failed to extract RAR entry: {}", e))?
@@ -9864,6 +9880,67 @@ fn extract_rar_entries(
                 .skip()
                 .map_err(|e| format!("Failed to skip RAR entry: {}", e))?
         };
+        if stop_after == Some(entry_name.as_str()) {
+            return Ok(());
+        }
+    }
+    match stop_after {
+        Some(name) => Err(format!("Entry '{}' not found in archive", name)),
+        None => Ok(()),
+    }
+}
+
+/// Do not let native UnRAR resolve a reference against the process CWD. A
+/// target must already be a regular file under the extraction's private root.
+fn materialize_rar_reference(
+    filename: &Path,
+    redirection: u32,
+    target: Option<&Path>,
+    base: &Path,
+) -> Result<(), String> {
+    let target = target.ok_or_else(|| "RAR reference has no target".to_string())?;
+    if !is_safe_archive_entry(&target.to_string_lossy()) {
+        return Err("Unsafe RAR reference target rejected".to_string());
+    }
+    let source = base.join(target);
+    let metadata = std::fs::symlink_metadata(&source)
+        .map_err(|e| format!("Failed to read RAR reference target: {}", e))?;
+    let canonical_base = base
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve RAR staging folder: {}", e))?;
+    let canonical_source = source
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve RAR reference target: {}", e))?;
+    if !metadata.is_file() || !canonical_source.starts_with(&canonical_base) {
+        return Err("Unsafe RAR reference target rejected".to_string());
+    }
+    let destination = base.join(filename);
+    if source == destination {
+        return Err("RAR reference points to itself".to_string());
+    }
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create RAR reference directory: {}", e))?;
+    }
+    if redirection == 4 {
+        // Replace the staged name, never its contents: truncating it could
+        // modify the source through an existing hardlink.
+        match std::fs::remove_file(&destination) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("Failed to replace RAR reference: {}", e)),
+        }
+        std::fs::hard_link(&canonical_source, &destination)
+            .map_err(|e| format!("Failed to create RAR hardlink: {}", e))?;
+    } else {
+        // A failed copy must leave no partial entry for move_staged_tree to
+        // publish when the archive loop returns its error.
+        write_entry_atomically(&destination, |writer| {
+            let mut reader = std::fs::File::open(&canonical_source)?;
+            writer.set_permissions(metadata.permissions())?;
+            std::io::copy(&mut reader, writer)
+        })
+        .map_err(|e| format!("Failed to copy RAR reference: {}", e))?;
     }
     Ok(())
 }

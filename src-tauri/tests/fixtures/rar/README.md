@@ -1,6 +1,6 @@
 # RAR fixtures
 
-Both archives are copied unchanged from the test data of the `unrar` crate
+The first two archives are copied unchanged from the test data of the `unrar` crate
 0.5.8 (`data/`, <https://github.com/muja/unrar.rs>), which AeroFTP already
 depends on, licensed MIT OR Apache-2.0; the crate's own tests (`tests/crypted.rs`,
 `tests/multipart.rs`) document them. Writing RAR takes the proprietary `rar`
@@ -34,3 +34,21 @@ fails on the missing volume, and the members extracted before it must still
 land in place.
 
 sha256: `b64e082db122fac3616b8309afaaff78f939424767fbf0f097fa178ac9365548`
+
+## RAR5 hardlink and Unicode fixtures
+
+`test_read_format_rar5_hardlink.rar` (122 bytes) and
+`test_read_format_rar5_unicode.rar` (269 bytes) are decoded unchanged from the
+uuencoded fixtures in [libarchive's test suite](https://github.com/libarchive/libarchive/tree/b10312a52e5e4d1baf047b563e501b4fb184adde/libarchive/test).
+See `LICENSE-libarchive` for the accompanying BSD license notice.
+
+The first holds `file.txt` (`1234\n`) and `hardlink.txt` referencing it.
+The second holds `👋🌎.txt`, a hardlink and a symbolic link to it. Tests refuse
+the symbolic link and verify that both regular names share an inode on Unix.
+The missing-target test removes only the first member of the ASCII fixture
+in memory, retaining the original CRC-protected hardlink header.
+
+SHA-256:
+
+- hardlink: `2a0494afad63dcf7a5522afd593bde0cb42f53744888397febf112c00853f3d0`
+- Unicode: `062c77fb1d47efbd5a468609a9c283ecb0b4cae43b0f6778935c41a975cedee9`

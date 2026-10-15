@@ -656,6 +656,12 @@ pub(crate) async fn extract_rar_entry_impl(
     {
         let entry_path = header.entry().filename.to_string_lossy().to_string();
         if entry_path == entry_name {
+            let redirection = header.entry().redirection_type;
+            const S_IFMT: u32 = 0o170000;
+            const S_IFLNK: u32 = 0o120000;
+            if !matches!(redirection, 0 | 4 | 5) || header.entry().file_attr & S_IFMT == S_IFLNK {
+                return Err("Unsafe RAR link entry rejected".to_string());
+            }
             // RAR extracts in a single opaque call (no byte hook), so show an honest
             // indeterminate bar rather than a faked percentage (HANDOFF section 3.6).
             let total = header.entry().unpacked_size;
@@ -679,9 +685,29 @@ pub(crate) async fn extract_rar_entry_impl(
                     .file_name()
                     .unwrap_or_else(|| std::ffi::OsStr::new("entry")),
             );
-            header
-                .extract_to(&staged)
-                .map_err(|e| format!("Failed to extract entry: {}", e))?;
+            if matches!(redirection, 4 | 5) {
+                // References need earlier archive members. Reopen and extract
+                // only the prefix through this member in the private staging
+                // root; never look in the CWD or the user's output directory.
+                drop(header);
+                let archive = if let Some(ref pwd) = secret_password {
+                    unrar::Archive::with_password(&archive_path, pwd.expose_secret().as_bytes())
+                } else {
+                    unrar::Archive::new(&archive_path)
+                }
+                .open_for_processing()
+                .map_err(|e| format!("Failed to open RAR archive: {}", e))?;
+                crate::extract_rar_entries_until(archive, staging.path(), Some(&entry_name))?;
+                let reference = staging.path().join(&entry_name);
+                if reference != staged {
+                    std::fs::rename(reference, &staged)
+                        .map_err(|e| format!("Failed to stage RAR reference: {}", e))?;
+                }
+            } else {
+                header
+                    .extract_to(&staged)
+                    .map_err(|e| format!("Failed to extract entry: {}", e))?;
+            }
             std::fs::rename(&staged, &output_path)
                 .map_err(|e| format!("Failed to finalize extracted file: {}", e))?;
             progress.finish();
