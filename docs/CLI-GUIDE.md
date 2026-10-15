@@ -199,6 +199,7 @@ aeroftp-cli sync /mnt/archive ./photos /2026 --direction upload
 ```
 
 - The folder is the root of a path jail: `..` stops at it, and a symbolic link that resolves outside it is refused, for reads and for writes. A served client can never reach a file outside the folder.
+- On Windows, names containing `:` are refused: `file.txt:stream` and `file.txt::$DATA` address NTFS file streams. Local folder URLs and served shares expose file entries. On Unix, a colon remains an ordinary filename character.
 - A listing shows a symbolic link only when it points to a file inside the folder (with that file's size and date). A link to a folder, a link that leaves the folder and a link that points nowhere are left out, and the command prints a warning naming them.
 - A file uploaded into the folder keeps the modification time of its source, so the next `sync` does not read the copy as newer.
 - A path that names a file opens its folder, with the file as the path, the same as a URL whose path names a remote file.

@@ -45,7 +45,15 @@ use crate::transfer_dag::{Capability, TransferCapabilities};
 /// the folder it was given. A segment is accepted only when the host parses
 /// it as exactly one normal component, equal to the segment itself: on Unix
 /// `a\b` is one legal name and stays one, on Windows it is two and is refused.
+/// Windows also treats `name:stream` as a stream of `name`, even though Rust
+/// parses it as a normal component. The provider exposes file entries, so it
+/// refuses stream syntax before reading or modifying the host filesystem.
 fn host_segment(seg: &str) -> Result<&str, ProviderError> {
+    if cfg!(windows) && seg.contains(':') {
+        return Err(ProviderError::InvalidPath(
+            "file names cannot address Windows file streams".to_string(),
+        ));
+    }
     let mut parts = Path::new(seg).components();
     match (parts.next(), parts.next()) {
         (Some(Component::Normal(one)), None) if one == std::ffi::OsStr::new(seg) => Ok(seg),
@@ -1414,6 +1422,168 @@ mod tests {
                 assert_eq!(verdict.unwrap(), seg);
             }
         }
+    }
+
+    /// Colons address NTFS streams on Windows and are literal name characters
+    /// on Unix. An explicit $DATA suffix must not bypass the same policy.
+    #[test]
+    fn host_segment_preserves_literal_colons_only_off_windows() {
+        for seg in [
+            "file.txt:secret",
+            "file.txt:secret:$DATA",
+            "file.txt::$DATA",
+            ":secret",
+        ] {
+            let result = host_segment(seg);
+            if cfg!(windows) {
+                assert!(
+                    matches!(result, Err(ProviderError::InvalidPath(_))),
+                    "{seg:?}: {result:?}"
+                );
+            } else {
+                assert_eq!(result.unwrap(), seg);
+            }
+        }
+    }
+
+    /// A real NTFS alternate stream stays private to the host. The shared
+    /// folder may address the base file, but no operation may name its stream.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn windows_file_streams_are_refused_before_reading_or_mutating() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("share");
+        std::fs::create_dir(&root).unwrap();
+        let file = root.join("file.txt");
+        let stream = root.join("file.txt:secret");
+        std::fs::write(&file, b"ordinary file").unwrap();
+        std::fs::write(&stream, b"private stream")
+            .expect("Windows native test requires an NTFS temp volume");
+        let source = dir.path().join("source.txt");
+        std::fs::write(&source, b"replacement").unwrap();
+        let output = dir.path().join("download.txt");
+        let mut provider = DirectoryProvider::local(root.clone());
+        provider.connect().await.unwrap();
+
+        assert_eq!(
+            provider.download_to_bytes("/file.txt").await.unwrap(),
+            b"ordinary file"
+        );
+        for name in [
+            "/file.txt:secret",
+            "/file.txt:secret:$DATA",
+            "/file.txt::$DATA",
+        ] {
+            assert!(matches!(
+                provider.stat(name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.size(name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.exists(name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.download_to_bytes(name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.read_range(name, 0, 8).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider
+                    .download(name, output.to_str().unwrap(), None)
+                    .await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.upload(source.to_str().unwrap(), name, None).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.delete(name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.rename(name, "/moved.txt").await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.rename("/file.txt", name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.replace(name, "/moved.txt").await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.replace("/file.txt", name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.server_copy(name, "/copied.txt").await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.server_copy("/file.txt", name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert!(matches!(
+                provider.checksum(name).await,
+                Err(ProviderError::InvalidPath(_))
+            ));
+            assert_eq!(std::fs::read(&file).unwrap(), b"ordinary file");
+            assert_eq!(std::fs::read(&stream).unwrap(), b"private stream");
+        }
+        assert!(!output.exists());
+        assert!(!root.join("moved.txt").exists());
+        assert!(!root.join("copied.txt").exists());
+        let fresh = "/file.txt:new-stream";
+        assert!(matches!(
+            provider.upload(source.to_str().unwrap(), fresh, None).await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert!(!root.join("file.txt:new-stream").exists());
+        let entries = provider.list("/").await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "file.txt");
+    }
+
+    /// On Unix a colon names an actual file; the Windows stream policy must
+    /// preserve its listing, reads and ordinary file mutation behavior.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn unix_colon_names_remain_ordinary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("file.txt:secret"), b"literal name").unwrap();
+        let mut provider = DirectoryProvider::local(dir.path().to_path_buf());
+        provider.connect().await.unwrap();
+        assert_eq!(
+            provider
+                .download_to_bytes("/file.txt:secret")
+                .await
+                .unwrap(),
+            b"literal name"
+        );
+        provider
+            .rename("/file.txt:secret", "/renamed:stream")
+            .await
+            .unwrap();
+        assert_eq!(provider.list("/").await.unwrap()[0].name, "renamed:stream");
+        provider
+            .server_copy("/renamed:stream", "/copy:stream")
+            .await
+            .unwrap();
+        assert_eq!(
+            provider.download_to_bytes("/copy:stream").await.unwrap(),
+            b"literal name"
+        );
+        provider.delete("/renamed:stream").await.unwrap();
+        assert!(!provider.exists("/renamed:stream").await.unwrap());
     }
 
     /// A segment carrying Windows path syntax reached `join` as a leaf: the
