@@ -17,6 +17,7 @@ import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
+import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
 import * as React from 'react';
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
@@ -1535,6 +1536,8 @@ const App: React.FC = () => {
   // Quick Look
   const [quickLookOpen, setQuickLookOpen] = useState(false);
   const [quickLookIndex, setQuickLookIndex] = useState(0);
+  // The local panel Space was pressed in: quickLookIndex points into its list.
+  const [quickLookPanelId, setQuickLookPanelId] = useState<QuickLookPanelId>('local');
 
   // Trash view
   const [isTrashView, setIsTrashView] = useState(false);
@@ -2859,17 +2862,11 @@ const App: React.FC = () => {
           return;
         }
         const panel = getActiveLocalState();
-        const selectedLocal = [...panel.selection];
-        if (selectedLocal.length === 1) {
-          const localName = selectedLocal[0];
-          const localFile = panel.sortedFiles.find(f => f.name === localName);
-          if (localFile && !localFile.is_dir) {
-            const idx = panel.sortedFiles.findIndex(f => f.name === localName);
-            if (idx !== -1) {
-              setQuickLookIndex(idx);
-              setQuickLookOpen(true);
-            }
-          }
+        const idx = quickLookStartIndex(panel.sortedFiles, panel.selection);
+        if (idx !== null) {
+          setQuickLookPanelId(panel.id);
+          setQuickLookIndex(idx);
+          setQuickLookOpen(true);
         }
       } else {
         const selectedRemoteName = Array.from(selectedRemoteFiles)[0];
@@ -4659,6 +4656,14 @@ const App: React.FC = () => {
   const statusBarLocalFileCount = isDualLocalAeroFileMode && activeLocalPanelId === 'local2'
     ? localFiles2.length
     : localFiles.length;
+  // Quick Look renders and navigates in the panel that opened it, not panel 1.
+  // Not via getActiveLocalState: its loaders are declared further down, so
+  // calling it here during render would hit them before initialisation.
+  const quickLookTarget = quickLookOpen
+    ? quickLookView(quickLookPanelId === 'local2'
+      ? { sortedFiles: sortedLocalFiles2, currentPath: currentLocalPath2, setSelection: setSelectedLocalFiles2 }
+      : { sortedFiles: sortedLocalFiles, currentPath: currentLocalPath, setSelection: setSelectedLocalFiles }, quickLookIndex)
+    : null;
 
   // AeroTools terminal cwd binding (Z.3.10): a new local PTY tab spawns
   // in the focused panel's path; an active remote panel with a running
@@ -16999,16 +17004,16 @@ const App: React.FC = () => {
               : undefined}
           />
         )}
-        {quickLookOpen && sortedLocalFiles[quickLookIndex] && (
+        {quickLookTarget && (
           <QuickLookOverlay
-            file={sortedLocalFiles[quickLookIndex]}
-            allFiles={sortedLocalFiles}
+            file={quickLookTarget.file}
+            allFiles={quickLookTarget.allFiles}
             currentIndex={quickLookIndex}
-            currentPath={currentLocalPath}
+            currentPath={quickLookTarget.currentPath}
             onClose={() => setQuickLookOpen(false)}
             onNavigate={(idx) => {
               setQuickLookIndex(idx);
-              setSelectedLocalFiles(new Set([sortedLocalFiles[idx].name]));
+              quickLookTarget.select(idx);
             }}
             t={t}
           />
