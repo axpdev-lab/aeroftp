@@ -8162,7 +8162,7 @@ fn store_fourshared_tokens(
 
 /// Load 4shared tokens from credential vault: this profile's key first, then
 /// the legacy singleton, through the same resolver the export and the CLI use.
-fn load_fourshared_tokens(profile_id: &str) -> Result<(String, String), String> {
+pub(crate) fn load_fourshared_tokens(profile_id: &str) -> Result<(String, String), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
         if let Some(data) =
             crate::bridge_commands::resolve_profile_oauth_token(&store, "fourshared", profile_id)

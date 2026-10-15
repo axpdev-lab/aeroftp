@@ -17419,6 +17419,7 @@ const App: React.FC = () => {
         <CloudPanel
           isOpen={showCloudPanel}
           onClose={() => setShowCloudPanel(false)}
+          onOpenServers={() => setShowConnectionScreen(true)}
         />
         {showVaultPanel && <VaultPanel onClose={() => setShowVaultPanel(false)} initialMode={showVaultPanel.mode} initialContainerKind={showVaultPanel.containerKind} initialPath={showVaultPanel.path} initialFiles={showVaultPanel.files} initialFolderPath={showVaultPanel.folderPath} initialOutputDir={showVaultPanel.outputDir} isConnected={isConnected} iconProvider={iconProvider} onOverlaySessionChange={handleAeroVaultOverlaySessionChange} onVaultCreated={(dir) => {
           // Refresh whichever local panel is showing the folder the new vault was

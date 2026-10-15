@@ -5,13 +5,13 @@ import * as React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowRightLeft, ArrowUpRight, Play, RefreshCw, X } from 'lucide-react';
+import { ArrowLeftRight, ArrowRight, ArrowRightLeft, Play, RefreshCw, X } from 'lucide-react';
 import { ServerProfile, TransferEvent } from '../../types';
 import { useTranslation } from '../../i18n';
 import { loadSavedServerProfiles } from '../../utils/serverProfileStore';
 import { formatBytes } from '../../utils/formatters';
-import { PROVIDER_LOGOS } from '../ProviderLogos';
 import { Checkbox } from '../ui/Checkbox';
+import { ProfileRail } from '../common/ProfileRail';
 import { TransferActionBar } from './TransferActionBar';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
@@ -61,122 +61,6 @@ interface CrossProfilePanelProps {
     /** Optional destination path to seed the destination input. */
     initialDestPath?: string;
 }
-
-interface ProfileRailProps {
-    title: string;
-    profiles: ServerProfile[];
-    selected: ServerProfile | null;
-    onSelect: (profile: ServerProfile) => void;
-    emptyMessage: string;
-    /** Selection role for this rail. Drives the arrow icon shown on the selected card. */
-    role: 'source' | 'destination';
-}
-
-const ProfileIcon: React.FC<{ profile: ServerProfile }> = ({ profile }) => {
-    const logoKey = profile.providerId || profile.protocol || '';
-    const LogoComponent = PROVIDER_LOGOS[logoKey];
-    const hasLogo = !!LogoComponent;
-    const hasCustomIcon = !!profile.customIconUrl;
-    const hasFavicon = !!profile.faviconUrl;
-    const hasIcon = hasCustomIcon || hasFavicon;
-
-    return (
-        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
-            hasIcon || hasLogo
-                ? 'bg-[#FFFFF0] dark:bg-gray-600 border border-gray-200 dark:border-gray-500'
-                : `bg-gradient-to-br ${PROTOCOL_COLORS[profile.protocol || 'ftp'] || PROTOCOL_COLORS.ftp} text-white`
-        }`}>
-            {hasCustomIcon ? (
-                <img src={profile.customIconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            ) : hasFavicon ? (
-                <img src={profile.faviconUrl} alt="" className="w-6 h-6 rounded object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            ) : hasLogo ? (
-                <LogoComponent size={20} />
-            ) : (
-                <span className="font-bold">{(profile.name || profile.host || '?').charAt(0).toUpperCase()}</span>
-            )}
-        </span>
-    );
-};
-
-const ProfileRail: React.FC<ProfileRailProps> = ({ title, profiles, selected, onSelect, emptyMessage, role }) => {
-    // Match the indicator colors used in MyServersPanel/ServerCard:
-    // indigo for source (outgoing arrow ↗), emerald for destination (incoming arrow ↙).
-    const isSource = role === 'source';
-    const selectedRing = isSource
-        ? 'bg-indigo-50 ring-1 ring-indigo-500 dark:bg-indigo-900/30 dark:ring-indigo-400'
-        : 'bg-emerald-50 ring-1 ring-emerald-500 dark:bg-emerald-900/30 dark:ring-emerald-400';
-    const badgeClass = isSource
-        ? 'bg-indigo-500 text-white ring-1 ring-indigo-400/60'
-        : 'bg-emerald-500 text-white ring-1 ring-emerald-400/60';
-    const Arrow = isSource ? ArrowUpRight : ArrowDownLeft;
-    // Promote the selected profile to the top of the rail so it is always
-    // visible without scrolling, both when the modal opens with an
-    // auto-prefilled selection and after a manual click in the rail itself.
-    const orderedProfiles = useMemo(() => {
-        if (!selected) return profiles;
-        const idx = profiles.findIndex(p => p.id === selected.id);
-        if (idx <= 0) return profiles;
-        return [profiles[idx], ...profiles.slice(0, idx), ...profiles.slice(idx + 1)];
-    }, [profiles, selected]);
-    return (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-gray-700">
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    {title}
-                </span>
-                {selected && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
-                        {selected.name}
-                    </span>
-                )}
-            </div>
-            <div className="max-h-60 overflow-y-auto p-2 space-y-1">
-                {orderedProfiles.map((profile) => {
-                    const isSelected = selected?.id === profile.id;
-                    return (
-                        <button
-                            key={profile.id}
-                            type="button"
-                            onClick={() => onSelect(profile)}
-                            className={`relative w-full rounded-lg px-2 py-2 text-left transition flex items-center gap-3 ${
-                                isSelected ? selectedRing : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                            }`}
-                        >
-                            <ProfileIcon profile={profile} />
-                            {isSelected && (
-                                <span
-                                    className={`absolute -top-1.5 -left-1.5 flex items-center justify-center w-5 h-5 rounded-full shadow ${badgeClass}`}
-                                    aria-hidden="true"
-                                >
-                                    <Arrow size={12} strokeWidth={2.5} />
-                                </span>
-                            )}
-                            <div className="min-w-0 flex-1">
-                                <div className="font-medium flex items-center gap-2">
-                                    <span className="truncate text-sm text-gray-900 dark:text-white">{profile.name}</span>
-                                    <span className="text-xs px-1.5 py-0.5 rounded font-medium uppercase bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300">
-                                        {profile.protocol || 'ftp'}
-                                    </span>
-                                </div>
-                                {profile.initialPath?.trim() && (
-                                    <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                        {profile.initialPath.trim()}
-                                    </div>
-                                )}
-                            </div>
-                        </button>
-                    );
-                })}
-                {profiles.length === 0 && (
-                    <div className="rounded-lg border border-dashed border-gray-300 px-3 py-4 text-center text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
-                        {emptyMessage}
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
 
 const TransferBarsSpinner: React.FC<{ className?: string }> = ({ className = 'h-6 w-6' }) => (
     <svg
@@ -779,37 +663,4 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
             )}
         </div>
     );
-};
-
-// Protocol gradient colors: same as SavedServers
-const PROTOCOL_COLORS: Record<string, string> = {
-    ftp: 'from-blue-500 to-cyan-400',
-    ftps: 'from-green-500 to-emerald-400',
-    sftp: 'from-purple-500 to-violet-400',
-    webdav: 'from-orange-500 to-amber-400',
-    s3: 'from-amber-500 to-yellow-400',
-    aerocloud: 'from-sky-400 to-blue-500',
-    googledrive: 'from-red-500 to-red-400',
-    dropbox: 'from-blue-600 to-blue-400',
-    onedrive: 'from-sky-500 to-sky-400',
-    mega: 'from-red-600 to-red-500',
-    box: 'from-blue-500 to-blue-600',
-    pcloud: 'from-green-500 to-teal-400',
-    azure: 'from-blue-600 to-indigo-500',
-    filen: 'from-emerald-500 to-green-400',
-    internxt: 'from-blue-500 to-blue-400',
-    kdrive: 'from-blue-500 to-sky-400',
-    drime: 'from-green-500 to-emerald-400',
-    filelu: 'from-sky-500 to-cyan-400',
-    koofr: 'from-green-500 to-emerald-400',
-    opendrive: 'from-cyan-500 to-sky-400',
-    yandexdisk: 'from-yellow-500 to-amber-400',
-    fourshared: 'from-blue-500 to-cyan-400',
-    zohoworkdrive: 'from-yellow-500 to-orange-400',
-    github: 'from-gray-700 to-gray-500',
-    googlephotos: 'from-amber-500 to-amber-400',
-    immich: 'from-indigo-500 to-purple-400',
-    twake: 'from-sky-500 to-indigo-400',
-    imagekit: 'from-blue-500 to-cyan-400',
-    uploadcare: 'from-emerald-500 to-green-400',
 };

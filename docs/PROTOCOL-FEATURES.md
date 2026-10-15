@@ -339,6 +339,48 @@ The sync engine never uses these digests: `supports_checksum()` stays false for 
 
 ---
 
+## AeroCloud Sync Compatibility
+
+AeroCloud syncs a local folder with a folder of a **saved server profile**: the setup picks a profile, and every connection detail (credentials, OAuth app and tokens, bucket, region, endpoint, container, key file, TLS mode) comes from that profile. The remote base is the folder of the profile's crypt overlay when one is bound, otherwise the profile's starting folder, otherwise the server root; the AeroCloud folder is created inside it.
+
+The setup offers a protocol only after its profile connect path has been checked live (connect, crypt overlay, list of the base). Last check: 2026-10-15.
+
+| Protocol | Offered in setup | Live check | Sync maturity | Notes |
+|----------|------------------|------------|---------------|-------|
+| **FTP** | Yes | Passed | Beta | Reliable timestamps need MFMT on the server; the profile's TLS mode is honoured |
+| **FTPS** | Yes | Passed | Beta | Same MFMT requirement |
+| **SFTP** | Yes | Passed | Stable | Key file and passphrase from the profile |
+| **WebDAV** | Yes | Passed | Stable | |
+| **S3** (and S3-compatible presets) | Yes | Passed | Stable | Bucket, region and endpoint from the profile or its preset |
+| **Azure Blob** | Yes | Passed | Stable | Container from the profile |
+| **Backblaze B2** (native API) | Yes | Passed | Stable | Bucket from the profile |
+| **MEGA** | Yes | Passed | Beta | Native client by default; MEGAcmd mode needs the daemon running |
+| **Filen** | Yes | Passed | Beta | End-to-end encryption makes sync slower |
+| **Internxt** | Yes | Passed | Beta | End-to-end encryption makes sync slower |
+| **kDrive** | Yes | Passed | Stable | Drive ID from the profile |
+| **Koofr** | Yes | Passed | Stable | |
+| **OpenDrive** | Yes | Passed | Stable | |
+| **FileLu** | Yes | Passed | Beta | Changes detected by hash |
+| **ImageKit** | Yes | Passed | Beta | Media-focused service |
+| **Uploadcare** | Yes | Passed | Beta | Media-focused service |
+| **Cloudinary** | Yes | Passed | Beta | Cloud name from the profile |
+| **Yandex Disk** | Yes | Passed | Beta | OAuth tokens of the profile, or a typed token |
+| **Dropbox** | Yes | Passed | Stable | OAuth app and per-profile tokens |
+| **OneDrive** | Yes | Passed | Stable | OAuth app and per-profile tokens |
+| **Box** | Yes | Passed | Beta | Stricter API rate limits |
+| **pCloud** | Yes | Passed | Beta | Region detected at authorization |
+| **Zoho WorkDrive** | Yes | Passed | Beta | Region from the profile |
+| **Google Drive** | Not yet | Pending | Stable | Same path as Dropbox and OneDrive; waits for a check with a valid token |
+| **Jottacloud** | Not yet | Pending | Stable | Waits for a check with a valid login token |
+| **4shared** | Not yet | Pending | Alpha | Waits for a check with a valid token |
+| **Proton Drive** | Not yet | Not checked | | No profile checked yet |
+| **Twake Drive** | Not yet | Not checked | | No profile checked yet |
+| **GitHub, GitLab, Swift, Immich, Drime, Google Photos, MTP** | No | | | Not supported by AeroCloud |
+
+**Crypt overlays**: rclone-crypt profiles passed the live check. Native AeroCrypt profiles need a check in the running app: a test build derives AeroCrypt keys with reduced Argon2 parameters, so the automated check cannot open a real vault.
+
+---
+
 ## Privacy and Visibility Controls
 
 This section explains what "privacy" means in practice for each provider that exposes per-item visibility controls, and what AeroFTP's `Set as Private` / `Set as Public` actions actually do at the API level. See also the **Privacy Toggle** row in the Advanced Operations matrix.

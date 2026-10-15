@@ -15246,11 +15246,9 @@ async fn list_remote_folders_tree(
     }
 
     let max_d = max_depth.unwrap_or(3).min(5);
+    // `create_cloud_provider` returns the provider connected and standing in
+    // the profile root; connecting again would reset it to the account root.
     let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
-    provider
-        .connect()
-        .await
-        .map_err(|e| format!("Connect failed: {}", e))?;
 
     // Crypt-overlay chokepoint (fail-closed). A crypt-bound AeroCloud profile
     // must show DECRYPTED folder names in the selective-sync tree (and match
@@ -15258,7 +15256,7 @@ async fn list_remote_folders_tree(
     // wrap the tree would list ciphertext directory names and exclusions would
     // never match. Mirrors the background-sync chokepoint.
     if let Some(store) = credential_store::CredentialStore::from_cache() {
-        provider = crypt_overlay_provider::wrap_connected_provider_for_profile_named(
+        provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
             provider,
             &config.server_profile,
             &store,
@@ -16318,36 +16316,6 @@ async fn stop_background_sync(app: AppHandle) -> Result<String, String> {
 #[tauri::command]
 fn is_background_sync_running() -> bool {
     BACKGROUND_SYNC_RUNNING.load(Ordering::SeqCst)
-}
-
-/// Save server credentials for background sync use
-#[tauri::command]
-async fn save_server_credentials(
-    profile_name: String,
-    server: String,
-    username: String,
-    password: String,
-) -> Result<(), String> {
-    let store = credential_store::CredentialStore::from_cache()
-        .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-
-    let value = serde_json::json!({
-        "server": server,
-        "username": username,
-        "password": password,
-    });
-
-    // MUV-3: dual-write the per-profile credential blob (vault + active user's
-    // partition).
-    user_partitions::store_active_credential_dual(
-        &store,
-        &format!("server_{}", profile_name),
-        &value.to_string(),
-    )
-    .map_err(|e| format!("Failed to save credentials: {}", e))?;
-
-    info!("Saved credentials for profile: {}", profile_name);
-    Ok(())
 }
 
 // ============ Universal Credential Vault Commands =====
@@ -19556,7 +19524,6 @@ pub fn run() {
             start_background_sync,
             stop_background_sync,
             is_background_sync_running,
-            save_server_credentials,
             // Universal Credential Vault
             init_credential_store,
             unlock_auto_keyring_credential_store,

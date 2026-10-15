@@ -337,7 +337,9 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
         return Err("No server profile selected".to_string());
     }
 
-    // OAuth2/cloud providers require connection_params with credentials
+    // OAuth2 providers need an OAuth app: the saved profile's (resolved from the
+    // vault at connect time), or the one a config written by the old setup
+    // wizard carries in connection_params.
     let oauth_providers = [
         "googledrive",
         "dropbox",
@@ -346,7 +348,8 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
         "pcloud",
         "zohoworkdrive",
     ];
-    if oauth_providers.contains(&config.protocol_type.as_str()) {
+    if oauth_providers.contains(&config.protocol_type.as_str()) && config.server_profile.is_empty()
+    {
         let params = config.connection_params.as_object();
         if params.is_none()
             || params.is_some_and(|p| {
@@ -356,7 +359,10 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
                     .is_empty()
             })
         {
-            return Err("OAuth2 provider requires client_id in connection_params".to_string());
+            return Err(
+                "OAuth2 provider requires a server profile or client_id in connection_params"
+                    .to_string(),
+            );
         }
     }
 
@@ -441,6 +447,19 @@ mod tests {
             ..Default::default()
         };
         assert!(validate_config(&config_oauth_valid).is_ok());
+
+        // A saved OAuth profile carries its app: no params needed.
+        let config_oauth_profile = CloudConfig {
+            protocol_type: "zohoworkdrive".to_string(),
+            server_profile: "MyZoho".to_string(),
+            remote_folder: "/cloud/".to_string(),
+            connection_params: serde_json::Value::Null,
+            ..Default::default()
+        };
+        assert!(
+            validate_config(&config_oauth_profile).is_ok(),
+            "an OAuth profile must be accepted without inline client credentials"
+        );
     }
 
     #[test]

@@ -8,6 +8,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::providers::ProviderType;
 use std::collections::HashMap;
 
 pub const S3_PROVIDER_ID_META_KEY: &str = "_aeroftp_s3_provider_id";
@@ -188,6 +189,76 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
         .filter(|s| !s.is_empty())
     {
         extra.insert("profile_id".to_string(), id.to_string());
+    }
+}
+
+/// The provider options of a saved profile and the host to connect to, for a
+/// surface that connects a profile without a form: the profile's own options
+/// (bucket, region, endpoint, container, key path, profile id, ...) plus the
+/// per-protocol defaults a profile leaves implicit. Azure stores its container
+/// as `bucket`; an S3 preset may store only a bucket and its provider id, the
+/// endpoint and region coming from the preset (and the host from the endpoint
+/// when the profile has none); MEGA defaults to the native client.
+///
+/// The MCP pool and AeroCloud both build their connection here, so a profile
+/// reaches the provider the same way through either.
+pub fn profile_connection_extra(
+    profile: &serde_json::Value,
+    provider_type: ProviderType,
+    host: &str,
+) -> (HashMap<String, String>, String) {
+    let mut extra = HashMap::new();
+    apply_profile_options(&mut extra, profile);
+
+    if provider_type == ProviderType::Azure && !extra.contains_key("container") {
+        if let Some(bucket) = extra.remove("bucket") {
+            extra.insert("container".to_string(), bucket);
+        }
+    }
+
+    let mut resolved_host = host.to_string();
+    if provider_type == ProviderType::S3 {
+        let provider_id = profile.get("providerId").and_then(|v| v.as_str());
+        if let Some(endpoint) = apply_s3_profile_defaults(&mut extra, provider_id, host) {
+            if resolved_host.trim().is_empty() {
+                resolved_host = endpoint;
+            }
+        }
+    }
+
+    if provider_type == ProviderType::Mega && !extra.contains_key("mega_mode") {
+        extra.insert("mega_mode".to_string(), "native".to_string());
+    }
+
+    if provider_type == ProviderType::Cloudinary {
+        apply_cloudinary_profile_defaults(&mut extra, profile, &mut resolved_host);
+    }
+
+    (extra, resolved_host)
+}
+
+/// Cloudinary keeps the cloud name in the profile's `bucket` option, or in the
+/// host when the user keyed it into the server entry; the API host is fixed.
+pub fn apply_cloudinary_profile_defaults(
+    extra: &mut HashMap<String, String>,
+    profile: &serde_json::Value,
+    host: &mut String,
+) {
+    let stored_cloud_name = profile
+        .get("options")
+        .and_then(|o| o.as_object())
+        .and_then(|o| o.get("bucket"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    if let Some(name) = stored_cloud_name {
+        extra.insert("cloud_name".to_string(), name);
+    } else if !host.trim().is_empty() && host != "api.cloudinary.com" {
+        extra.insert("cloud_name".to_string(), host.trim().to_string());
+    }
+    if host.trim().is_empty() {
+        *host = "api.cloudinary.com".to_string();
     }
 }
 

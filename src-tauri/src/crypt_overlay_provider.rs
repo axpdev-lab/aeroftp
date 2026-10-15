@@ -2349,6 +2349,9 @@ pub async fn wrap_connected_provider_for_profile(
 /// returns `inner` byte-identical. An unreadable profile set propagates its
 /// `Err` (fail-closed), consistent with the credential read that gates the
 /// same sync.
+///
+/// The overlay is anchored by [`aerocloud_overlay_profile`], where the app
+/// anchors it when it opens the profile.
 pub async fn wrap_connected_provider_for_profile_named(
     inner: Box<dyn StorageProvider>,
     profile_name: &str,
@@ -2358,7 +2361,38 @@ pub async fn wrap_connected_provider_for_profile_named(
     let Some(profile) = select_profile_by_name(&profiles, profile_name) else {
         return Ok(inner);
     };
-    wrap_connected_provider_for_profile(inner, profile, store).await
+    wrap_connected_provider_for_profile(inner, &aerocloud_overlay_profile(profile), store).await
+}
+
+/// The profile as AeroCloud wraps it: a binding without a folder of its own
+/// is anchored at the profile's starting folder, which is how the app reads
+/// it when it opens the profile (`binding.remoteScope || profile.initialPath`
+/// in App.tsx). AeroCloud syncs a plaintext-absolute folder below that base,
+/// so an empty anchor (the whole remote) would encrypt the starting folder's
+/// own name too and miss the vault the app wrote there.
+pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_json::Value {
+    let mut profile = profile.clone();
+    let start = profile
+        .get("initialPath")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .unwrap_or("")
+        .to_string();
+    if let Some(binding) = profile
+        .get_mut("aeroCryptOverlay")
+        .and_then(|v| v.as_object_mut())
+    {
+        let unscoped = binding
+            .get("remoteScope")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty();
+        if unscoped && !start.is_empty() && start != "/" {
+            binding.insert("remoteScope".to_string(), serde_json::Value::String(start));
+        }
+    }
+    profile
 }
 
 /// AeroCrypt overlay builder for the AeroCloud stack.
@@ -6271,6 +6305,39 @@ mod tests {
         assert!(select_profile_by_name(&profiles, "PROD").is_none());
         assert!(select_profile_by_name(&profiles, "absent").is_none());
         assert!(select_profile_by_name(&[], "prod").is_none());
+    }
+
+    #[test]
+    fn aerocloud_overlay_anchors_an_unscoped_binding_at_the_start_folder() {
+        let unscoped = serde_json::json!({
+            "initialPath": "/AeroCryptTest",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "" }
+        });
+        assert_eq!(
+            aerocloud_overlay_profile(&unscoped)["aeroCryptOverlay"]["remoteScope"],
+            "/AeroCryptTest",
+            "an unscoped binding must anchor where the app anchors it"
+        );
+
+        let scoped = serde_json::json!({
+            "initialPath": "/data",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "/data/enc" }
+        });
+        assert_eq!(
+            aerocloud_overlay_profile(&scoped)["aeroCryptOverlay"]["remoteScope"],
+            "/data/enc"
+        );
+
+        let at_root = serde_json::json!({
+            "initialPath": "/",
+            "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt" }
+        });
+        assert!(aerocloud_overlay_profile(&at_root)["aeroCryptOverlay"]
+            .get("remoteScope")
+            .is_none());
+
+        let plain = serde_json::json!({ "initialPath": "/data" });
+        assert_eq!(aerocloud_overlay_profile(&plain), plain);
     }
 
     #[test]

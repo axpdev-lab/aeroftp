@@ -29290,24 +29290,9 @@ fn profile_value_to_provider_config(
     }
 
     if provider_type == ProviderType::Cloudinary {
-        // cloud_name comes either from the profile's `bucket` field or from
-        // the host (when users key it into the server entry).
-        let stored_cloud_name = profile
-            .get("options")
-            .and_then(|o| o.as_object())
-            .and_then(|o| o.get("bucket"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-        if let Some(name) = stored_cloud_name {
-            extra.insert("cloud_name".to_string(), name);
-        } else if !host.trim().is_empty() && host != "api.cloudinary.com" {
-            extra.insert("cloud_name".to_string(), host.trim().to_string());
-        }
-        if host.trim().is_empty() {
-            host = "api.cloudinary.com".to_string();
-        }
+        ftp_client_gui_lib::profile_loader::apply_cloudinary_profile_defaults(
+            &mut extra, profile, &mut host,
+        );
     }
 
     // Include providerId (preset id) when present so the banner makes it
