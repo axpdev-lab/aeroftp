@@ -82,6 +82,11 @@ struct IkFile {
     name: String,
     #[serde(default, deserialize_with = "null_to_default")]
     file_path: String,
+    /// A folder carries `folderPath` (and `folderId`), never `filePath`.
+    /// `list_raw` folds it into `file_path`, so the rest of the provider
+    /// reads one field.
+    #[serde(default, deserialize_with = "null_to_default")]
+    folder_path: String,
     #[serde(default)]
     url: Option<String>,
     #[serde(default)]
@@ -332,9 +337,15 @@ impl ImageKitProvider {
             return Err(self.parse_error(resp).await);
         }
 
-        resp.json::<Vec<IkFile>>()
+        let mut items = resp
+            .json::<Vec<IkFile>>()
             .await
-            .map_http_err(|e| ProviderError::ParseError(e.to_string()))
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let dir = normalize_path(path);
+        for item in &mut items {
+            item.file_path = listed_entry_path(item, &dir)?;
+        }
+        Ok(items)
     }
 
     async fn find_entry(&self, path: &str) -> Result<IkFile, ProviderError> {
@@ -344,6 +355,7 @@ impl ImageKitProvider {
                 file_id: String::new(),
                 name: "/".to_string(),
                 file_path: "/".to_string(),
+                folder_path: String::new(),
                 url: None,
                 thumbnail_url: None,
                 entry_type: "folder".to_string(),
@@ -1538,6 +1550,40 @@ fn refuse_rewritten_folder_name(name: &str) -> Result<(), ProviderError> {
     )))
 }
 
+/// Where a listed entry lives. A file names itself with `filePath`, a folder
+/// with `folderPath`; an entry with neither goes under the listed folder by
+/// its name. Reading `filePath` alone gave every folder an empty path, which
+/// normalizes to `/`: a recursive delete then walked the account root,
+/// deleting its files, and never ended. A listing holds the listed folder's
+/// own children, so a path that is not one of them is refused here, where
+/// every walk of this provider (delete, find, the shared walker through
+/// `list`) takes its next folder from.
+fn listed_entry_path(item: &IkFile, dir: &str) -> Result<String, ProviderError> {
+    let dir = normalize_path(dir);
+    let reported = if item.file_path.is_empty() {
+        &item.folder_path
+    } else {
+        &item.file_path
+    };
+    let path = if reported.is_empty() {
+        let name = item.name.as_str();
+        if name.is_empty() || name == "." || name == ".." || name.contains('/') {
+            return Err(ProviderError::ParseError(format!(
+                "ImageKit listed an entry under {dir} with no path and no usable name"
+            )));
+        }
+        normalize_path(&format!("{}/{name}", dir.trim_end_matches('/')))
+    } else {
+        normalize_path(reported)
+    };
+    if path == dir || parent_path(&path) != dir {
+        return Err(ProviderError::ParseError(format!(
+            "ImageKit listed {path} under {dir}, which is not one of its children"
+        )));
+    }
+    Ok(path)
+}
+
 fn basename(path: &str) -> &str {
     path.trim_end_matches('/')
         .rsplit('/')
@@ -1614,7 +1660,7 @@ mod tests {
                     let listing_src = req.uri().query().unwrap_or("").contains("path=%2Fsrc&");
                     let body = match (req.method().as_str(), req.uri().path()) {
                         ("GET", "/files") if listing_src => serde_json::json!([{
-                            "fileId": "", "name": "photos", "filePath": "/src/photos", "type": "folder",
+                            "folderId": "F", "name": "photos", "folderPath": "/src/photos", "type": "folder",
                         }]),
                         ("GET", "/files") => serde_json::json!([]),
                         ("POST", "/bulkJobs/moveFolder") => serde_json::json!({ "jobId": "J" }),
@@ -1664,7 +1710,7 @@ mod tests {
                     .unwrap_or_default();
                     let reply = match (method.as_str(), path.as_str()) {
                         ("GET", "/files") if listing_src => serde_json::json!([{
-                            "fileId": "", "name": "photos", "filePath": "/src/photos", "type": "folder",
+                            "folderId": "F", "name": "photos", "folderPath": "/src/photos", "type": "folder",
                         }]),
                         ("GET", "/files") => serde_json::json!([]),
                         ("POST", job) if job.starts_with("/bulkJobs/") => {
@@ -1847,11 +1893,19 @@ mod tests {
                                 .filter(|p| parent_path(p) == normalize_path(&folder))
                                 .map(|p| {
                                     let name = basename(p);
-                                    let kind = if name.contains('.') { "file" } else { "folder" };
-                                    serde_json::json!({
-                                        "fileId": format!("id-{name}"), "name": name,
-                                        "filePath": p, "type": kind,
-                                    })
+                                    // The API's shapes: a folder has `folderPath`
+                                    // and `folderId`, no `filePath`.
+                                    if name.contains('.') {
+                                        serde_json::json!({
+                                            "fileId": format!("id-{name}"), "name": name,
+                                            "filePath": p, "type": "file",
+                                        })
+                                    } else {
+                                        serde_json::json!({
+                                            "folderId": format!("id-{name}"), "name": name,
+                                            "folderPath": p, "type": "folder",
+                                        })
+                                    }
                                 })
                                 .collect();
                             json(200, serde_json::json!(items))
@@ -2084,5 +2138,109 @@ mod tests {
 
         let via_legacy = p.server_copy("/src/file.png", "/dst/file.png").await;
         assert!(matches!(via_legacy, Err(ProviderError::NotConnected)));
+    }
+
+    /// The API names a folder with `folderPath`: a recursive delete of a
+    /// folder holding a subfolder walked `/` instead of the subfolder, deleted
+    /// the files at the account root and never ended (live, 2026-10-15).
+    #[tokio::test]
+    async fn a_recursive_delete_stays_inside_its_folder_and_ends() {
+        let (mut provider, calls) = provider_on_tree(
+            &[
+                "/keep.png",
+                "/tree",
+                "/tree/a.png",
+                "/tree/sub",
+                "/tree/sub/b.png",
+            ],
+            &[],
+        )
+        .await;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.rmdir_recursive("/tree"),
+        )
+        .await
+        .expect("the walk ends")
+        .expect("recursive delete");
+        let calls = calls.lock().unwrap().clone();
+        assert!(calls.iter().all(|c| !c.contains("keep.png")), "{calls:?}");
+        assert_eq!(
+            calls,
+            [
+                "DELETE /files/id-a.png ",
+                "DELETE /files/id-b.png ",
+                r#"DELETE /folder/ {"folderPath":"/tree/sub/"}"#,
+                r#"DELETE /folder/ {"folderPath":"/tree/"}"#,
+            ]
+        );
+    }
+
+    /// The same path reaches every reader: a listed folder, its `stat` and a
+    /// `find` that descends through it.
+    #[tokio::test]
+    async fn a_listed_folder_carries_its_own_path() {
+        let (mut provider, _) =
+            provider_on_tree(&["/tree", "/tree/sub", "/tree/sub/b.png"], &[]).await;
+        let listed = provider.list("/tree").await.expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(
+            (listed[0].path.as_str(), listed[0].is_dir),
+            ("/tree/sub", true)
+        );
+        let stat = provider.stat("/tree/sub").await.expect("stat");
+        assert_eq!(stat.path, "/tree/sub");
+        let found = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.find("/tree", "*.png"),
+        )
+        .await
+        .expect("the walk ends")
+        .expect("find");
+        let paths: Vec<_> = found.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["/tree/sub/b.png"]);
+    }
+
+    fn listed(json: serde_json::Value) -> IkFile {
+        serde_json::from_value(json).unwrap()
+    }
+
+    #[test]
+    fn a_listed_entry_path_comes_from_the_listing() {
+        let folder = listed(serde_json::json!({
+            "type": "folder", "name": "sub", "folderPath": "/tree/sub/", "folderId": "F",
+        }));
+        assert_eq!(listed_entry_path(&folder, "/tree").unwrap(), "/tree/sub");
+        let file = listed(serde_json::json!({
+            "type": "file", "name": "a.png", "filePath": "/tree/a.png", "fileId": "A",
+        }));
+        assert_eq!(listed_entry_path(&file, "/tree/").unwrap(), "/tree/a.png");
+        let bare = listed(serde_json::json!({ "type": "folder", "name": "sub", "filePath": null }));
+        assert_eq!(listed_entry_path(&bare, "/").unwrap(), "/sub");
+    }
+
+    /// A path that is not a child of the listed folder is refused, whatever
+    /// field carries it, and so is an entry with no path and no usable name:
+    /// walking either would leave the folder the walk was given.
+    #[test]
+    fn a_listed_entry_outside_the_listed_folder_is_refused() {
+        for json in [
+            serde_json::json!({ "type": "folder", "name": "x", "folderPath": "/" }),
+            serde_json::json!({ "type": "folder", "name": "x", "folderPath": "/tree" }),
+            serde_json::json!({ "type": "folder", "name": "x", "folderPath": "/other/x" }),
+            serde_json::json!({ "type": "file", "name": "a.png", "filePath": "/tree/sub/a.png" }),
+            serde_json::json!({ "type": "folder", "name": ".." }),
+            serde_json::json!({ "type": "folder", "name": "" }),
+            serde_json::json!({ "type": "folder", "name": "a/b" }),
+        ] {
+            let item = listed(json.clone());
+            assert!(
+                matches!(
+                    listed_entry_path(&item, "/tree"),
+                    Err(ProviderError::ParseError(_))
+                ),
+                "{json}"
+            );
+        }
     }
 }
