@@ -1398,7 +1398,8 @@
                 "media": "Serbisyong nakatuon sa media: pinakamainam para sa mga larawan at video",
                 "cloudinary": "Limitado sa 25 credit kada buwan ang libreng tier",
                 "fourshared": "Mag-authorize muli nang mano-mano kung binawi ang token"
-            }
+            },
+            "profilesLoadFailed": "Hindi nabasa ang iyong mga naka-save na server: {error}"
         },
         "statusBar": {
             "connected": "Nakakonekta",

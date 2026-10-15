@@ -1398,7 +1398,8 @@
                 "media": "Perkhidmatan berfokus media: terbaik untuk aset imej dan video",
                 "cloudinary": "Peringkat percuma terhad kepada 25 kredit sebulan",
                 "fourshared": "Beri kebenaran semula secara manual jika token dibatalkan"
-            }
+            },
+            "profilesLoadFailed": "Pelayan yang disimpan tidak dapat dibaca: {error}"
         },
         "statusBar": {
             "connected": "Disambung",

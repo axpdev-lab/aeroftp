@@ -1398,7 +1398,8 @@
                 "media": "Serviciu axat pe media: ideal pentru imagini și videoclipuri",
                 "cloudinary": "Nivelul gratuit este limitat la 25 de credite pe lună",
                 "fourshared": "Reautorizați manual dacă token-ul este revocat"
-            }
+            },
+            "profilesLoadFailed": "Serverele salvate nu au putut fi citite: {error}"
         },
         "statusBar": {
             "connected": "Conectat",

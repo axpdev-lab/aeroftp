@@ -1283,7 +1283,8 @@
                 "media": "Media-focused service: best for image and video assets",
                 "cloudinary": "Free tier limited to 25 credits per month",
                 "fourshared": "Re-authorize manually if the token is revoked"
-            }
+            },
+            "profilesLoadFailed": "Your saved servers could not be read: {error}"
         },
         "common": {
             "about": "About",

@@ -17,7 +17,7 @@ import { ServerProfile, getServerCryptOverlay } from '../types';
 import { useTranslation } from '../i18n';
 import { pickFile } from '../utils/pickPath';
 import { normCryptScope } from '../utils/cryptScope';
-import { loadSavedServerProfiles } from '../utils/serverProfileStore';
+import { loadSavedServerProfilesStrict } from '../utils/serverProfileStore';
 import { Checkbox } from './ui/Checkbox';
 import { ProfileIcon, ProfileRail } from './common/ProfileRail';
 import { AeroCloudMaturityBadge, isAeroCloudProtocol, useAeroCloudCaveat } from './AeroCloudProtocols';
@@ -33,8 +33,9 @@ const PRIMARY_BUTTON_CLASS = 'px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-
  * `{username}` template some WebDAV presets keep in that path resolved.
  */
 export function profileRoot(profile: ServerProfile): string {
+    // Every occurrence, as the backend resolves it (`replaceAll` needs ES2021).
     const base = (profile.initialPath || '')
-        .replace('{username}', profile.username || '')
+        .split('{username}').join(profile.username || '')
         .trim()
         .replace(/\/+$/, '');
     if (!base) return '';
@@ -87,10 +88,21 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
     const [syncUnit, setSyncUnit] = useState<'hours' | 'minutes'>('hours');
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+
+    // The strict read: a profile store it could not reach is an error to show,
+    // not an empty list that would tell the user to save a server they have.
+    const loadProfiles = () => {
+        setProfiles(null);
+        setLoadError(null);
+        loadSavedServerProfilesStrict()
+            .then(setProfiles)
+            .catch((e) => setLoadError(String(e)));
+    };
 
     useEffect(() => {
         invoke<string>('get_default_cloud_folder').then(setLocalFolder).catch(() => setLocalFolder(''));
-        loadSavedServerProfiles().then(setProfiles).catch(() => setProfiles([]));
+        loadProfiles();
     }, []);
 
     const compatible = useMemo(() => (profiles ?? []).filter(p => isAeroCloudProtocol(p.protocol)), [profiles]);
@@ -115,6 +127,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                 localFolder,
                 remoteFolder: aeroCloudRemoteFolder(profile, subfolder),
                 serverProfile: profile.name,
+                serverProfileId: profile.id,
                 syncOnChange,
                 syncIntervalSecs: syncUnit === 'hours' ? syncInterval * 3600 : syncInterval * 60,
                 protocolType: profile.protocol,
@@ -128,6 +141,21 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
             setSaving(false);
         }
     };
+
+    if (loadError) {
+        return (
+            <div className="flex flex-col items-center text-center px-6 py-8">
+                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 text-red-500 mb-4">
+                    <AlertCircle size={28} />
+                </span>
+                <p className="text-sm text-gray-600 dark:text-gray-300 max-w-md break-words">{t('cloud.profilesLoadFailed', { error: loadError })}</p>
+                <div className="flex gap-3 mt-6">
+                    <button onClick={onCancel} className={SECONDARY_BUTTON_CLASS}>{t('common.close')}</button>
+                    <button onClick={loadProfiles} className={PRIMARY_BUTTON_CLASS}>{t('common.retry')}</button>
+                </div>
+            </div>
+        );
+    }
 
     if (profiles === null) {
         return (

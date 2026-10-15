@@ -1398,7 +1398,8 @@
                 "media": "Usługa nastawiona na multimedia: najlepsza dla obrazów i wideo",
                 "cloudinary": "Darmowy poziom jest ograniczony do 25 kredytów miesięcznie",
                 "fourshared": "Jeśli token zostanie unieważniony, autoryzuj ponownie ręcznie"
-            }
+            },
+            "profilesLoadFailed": "Nie udało się odczytać zapisanych serwerów: {error}"
         },
         "statusBar": {
             "connected": "Połączono",

@@ -1398,7 +1398,8 @@
                 "media": "Médiaközpontú szolgáltatás: legjobb kép- és videóanyagokhoz",
                 "cloudinary": "Az ingyenes csomag havi 25 kreditre korlátozott",
                 "fourshared": "Ha a tokent visszavonják, engedélyezze újra manuálisan"
-            }
+            },
+            "profilesLoadFailed": "A mentett szervereket nem sikerült beolvasni: {error}"
         },
         "statusBar": {
             "connected": "Csatlakozva",

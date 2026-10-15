@@ -37,6 +37,7 @@ export interface CloudConfig {
     local_folder: string;
     remote_folder: string;
     server_profile: string;
+    server_profile_id?: string | null;
     sync_interval_secs: number;
     sync_on_change: boolean;
     sync_on_startup: boolean;

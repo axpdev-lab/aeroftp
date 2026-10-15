@@ -1398,7 +1398,8 @@
                 "media": "专注于媒体的服务：最适合图片和视频资源",
                 "cloudinary": "免费套餐每月限 25 个积分",
                 "fourshared": "如果令牌被撤销，请手动重新授权"
-            }
+            },
+            "profilesLoadFailed": "无法读取已保存的服务器：{error}"
         },
         "statusBar": {
             "connected": "已连接",

@@ -1398,7 +1398,8 @@
                 "media": "Mediefokusert tjeneste: best for bilde- og videofiler",
                 "cloudinary": "Gratisnivået er begrenset til 25 kreditter per måned",
                 "fourshared": "Autoriser manuelt på nytt hvis tokenet tilbakekalles"
-            }
+            },
+            "profilesLoadFailed": "Kunne ikke lese de lagrede serverne dine: {error}"
         },
         "statusBar": {
             "connected": "Tilkoblet",

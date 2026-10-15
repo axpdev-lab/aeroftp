@@ -1398,7 +1398,8 @@
                 "media": "Mediaan keskittyvä palvelu: paras kuva- ja videotiedostoille",
                 "cloudinary": "Ilmainen taso on rajattu 25 krediittiin kuukaudessa",
                 "fourshared": "Valtuuta uudelleen manuaalisesti, jos token peruutetaan"
-            }
+            },
+            "profilesLoadFailed": "Tallennettuja palvelimia ei voitu lukea: {error}"
         },
         "statusBar": {
             "connected": "Yhdistetty",

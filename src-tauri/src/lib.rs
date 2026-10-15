@@ -15258,6 +15258,7 @@ async fn list_remote_folders_tree(
     if let Some(store) = credential_store::CredentialStore::from_cache() {
         provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
             provider,
+            config.server_profile_id.as_deref(),
             &config.server_profile,
             &store,
         )
@@ -15317,6 +15318,7 @@ async fn setup_aerocloud(
     local_folder: String,
     remote_folder: String,
     server_profile: String,
+    server_profile_id: Option<String>,
     sync_on_change: bool,
     sync_interval_secs: u64,
     protocol_type: Option<String>,
@@ -15328,6 +15330,7 @@ async fn setup_aerocloud(
         local_folder: std::path::PathBuf::from(&local_folder),
         remote_folder: remote_folder.clone(),
         server_profile,
+        server_profile_id: server_profile_id.filter(|id| !id.trim().is_empty()),
         sync_on_change,
         sync_interval_secs,
         protocol_type: protocol_type.unwrap_or_else(|| "ftp".to_string()),
@@ -15658,12 +15661,12 @@ async fn trigger_cloud_sync(
     let mut cfg = config;
     if let Some(ref s) = store {
         if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(s) {
-            if let Some(proto) = profiles
-                .iter()
-                .find(|p| {
-                    p.get("name").and_then(|v| v.as_str()) == Some(cfg.server_profile.as_str())
-                })
-                .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
+            if let Some(proto) = crypt_overlay_provider::select_aerocloud_profile(
+                &profiles,
+                cfg.server_profile_id.as_deref(),
+                &cfg.server_profile,
+            )
+            .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
             {
                 cfg.protocol_type = proto.to_string();
             }

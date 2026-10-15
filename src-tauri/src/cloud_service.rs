@@ -1916,6 +1916,7 @@ pub async fn sync_one_config(
 
     provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
         provider,
+        config.server_profile_id.as_deref(),
         &config.server_profile,
         store,
     )

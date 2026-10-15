@@ -1398,7 +1398,8 @@
                 "media": "Service axé sur les médias : idéal pour les images et les vidéos",
                 "cloudinary": "Le niveau gratuit est limité à 25 crédits par mois",
                 "fourshared": "Réautorisez manuellement si le jeton est révoqué"
-            }
+            },
+            "profilesLoadFailed": "Impossible de lire vos serveurs enregistrés : {error}"
         },
         "statusBar": {
             "connected": "Connecté",

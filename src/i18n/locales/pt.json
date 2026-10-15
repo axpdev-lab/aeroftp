@@ -1398,7 +1398,8 @@
                 "media": "Serviço focado em mídia: ideal para imagens e vídeos",
                 "cloudinary": "O nível gratuito é limitado a 25 créditos por mês",
                 "fourshared": "Autorize novamente de forma manual se o token for revogado"
-            }
+            },
+            "profilesLoadFailed": "Não foi possível ler os servidores guardados: {error}"
         },
         "statusBar": {
             "connected": "Conectado",

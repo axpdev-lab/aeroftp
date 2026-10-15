@@ -1398,7 +1398,8 @@
                 "media": "Dịch vụ tập trung vào đa phương tiện: phù hợp nhất cho tài sản hình ảnh và video",
                 "cloudinary": "Gói miễn phí giới hạn 25 tín dụng mỗi tháng",
                 "fourshared": "Hãy ủy quyền lại thủ công nếu token bị thu hồi"
-            }
+            },
+            "profilesLoadFailed": "Không thể đọc các máy chủ đã lưu của bạn: {error}"
         },
         "statusBar": {
             "connected": "Đã kết nối",

@@ -262,6 +262,38 @@ pub fn apply_cloudinary_profile_defaults(
     }
 }
 
+/// The username and secret held by a saved profile's `server_{id}` credential.
+/// The GUI stores either the bare password or a JSON object
+/// (`{username, password}`, or an `access_token` / `api_key` in place of the
+/// password); an object's empty or missing username falls back to the
+/// profile's. Shared by the MCP pool and AeroCloud, which both connect a
+/// profile without a form.
+pub fn parse_server_credential(raw: &str, profile_username: &str) -> (String, String) {
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(serde_json::Value::Object(obj)) => {
+            let username = obj
+                .get("username")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(profile_username)
+                .to_string();
+            let secret = obj
+                .get("password")
+                .and_then(|v| v.as_str())
+                .or_else(|| obj.get("access_token").and_then(|v| v.as_str()))
+                .or_else(|| obj.get("api_key").and_then(|v| v.as_str()))
+                .unwrap_or("")
+                .to_string();
+            (username, secret)
+        }
+        Ok(_) => (
+            profile_username.to_string(),
+            raw.trim_matches('"').to_string(),
+        ),
+        Err(_) => (profile_username.to_string(), raw.to_string()),
+    }
+}
+
 /// Filen Desktop local bridges (filen-desktop-webdav / filen-desktop-s3)
 /// authenticate to a loopback server whose credentials default to admin/admin
 /// unless the user changed them in Filen Desktop > Network Drive. The GUI applies
@@ -975,6 +1007,31 @@ mod tests {
         assert!(
             !extra.contains_key("webdavScheme"),
             "raw camelCase key must not leak into provider config"
+        );
+    }
+
+    #[test]
+    fn server_credential_reads_bare_and_structured_secrets() {
+        assert_eq!(
+            parse_server_credential("hunter2", "ale"),
+            ("ale".to_string(), "hunter2".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#"{"username":"bob","password":"pw"}"#, "ale"),
+            ("bob".to_string(), "pw".to_string()),
+            "a structured blob must not be sent whole as the password"
+        );
+        assert_eq!(
+            parse_server_credential(r#"{"username":"","access_token":"tok"}"#, "ale"),
+            ("ale".to_string(), "tok".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#"{"api_key":"key"}"#, "ale"),
+            ("ale".to_string(), "key".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#""quoted""#, "ale"),
+            ("ale".to_string(), "quoted".to_string())
         );
     }
 

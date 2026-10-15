@@ -1398,7 +1398,8 @@
                 "media": "Servei centrat en contingut multimèdia: ideal per a imatges i vídeos",
                 "cloudinary": "El nivell gratuït està limitat a 25 crèdits al mes",
                 "fourshared": "Torneu a autoritzar manualment si el token es revoca"
-            }
+            },
+            "profilesLoadFailed": "No s'han pogut llegir els servidors desats: {error}"
         },
         "statusBar": {
             "connected": "Connectat",

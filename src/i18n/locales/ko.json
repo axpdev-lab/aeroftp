@@ -1398,7 +1398,8 @@
                 "media": "미디어 중심 서비스: 이미지 및 동영상 자산에 가장 적합",
                 "cloudinary": "무료 등급은 월 25 크레딧으로 제한됩니다",
                 "fourshared": "토큰이 취소되면 수동으로 다시 인증하세요"
-            }
+            },
+            "profilesLoadFailed": "저장된 서버를 읽을 수 없습니다: {error}"
         },
         "statusBar": {
             "connected": "연결됨",

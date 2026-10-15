@@ -1398,7 +1398,8 @@
                 "media": "Meediale keskendunud teenus: sobib kõige paremini pildi- ja videofailidele",
                 "cloudinary": "Tasuta tase on piiratud 25 krediidiga kuus",
                 "fourshared": "Kui token tühistatakse, volitage käsitsi uuesti"
-            }
+            },
+            "profilesLoadFailed": "Salvestatud servereid ei õnnestunud lugeda: {error}"
         },
         "statusBar": {
             "connected": "Ühendatud",

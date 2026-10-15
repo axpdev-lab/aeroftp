@@ -31,6 +31,11 @@ pub struct CloudConfig {
     pub remote_folder: String,
     /// Name of the saved server profile to use
     pub server_profile: String,
+    /// Stable id of that profile. Names are not unique, so a config that
+    /// carries the id is resolved by it; `None` for a config written before
+    /// the id was stored, which keeps resolving by exact name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_profile_id: Option<String>,
     /// Sync interval in seconds (0 = disabled)
     pub sync_interval_secs: u64,
     /// Enable real-time sync on file changes
@@ -155,6 +160,7 @@ impl Default for CloudConfig {
             local_folder,
             remote_folder: "/cloud/".to_string(),
             server_profile: String::new(),
+            server_profile_id: None,
             sync_interval_secs: 86400, // 24 hours (watcher handles real-time, this is safety net)
             sync_on_change: true,
             sync_on_startup: false,

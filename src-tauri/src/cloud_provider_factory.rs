@@ -148,18 +148,28 @@ struct SavedCreds {
     password: String,
 }
 
-/// The saved profile an AeroCloud config names, matched by exact name: the
-/// selection the crypt overlay stack makes, so the connection and the
-/// encryption binding of a sync always come from the same profile.
+/// The saved profile an AeroCloud config names (by id, or by exact name for a
+/// legacy config): the selection the crypt overlay stack makes, so the
+/// connection and the encryption binding of a sync always come from the same
+/// profile.
 fn saved_profile(
     store: &credential_store::CredentialStore,
-    name: &str,
+    config: &CloudConfig,
 ) -> Result<Option<serde_json::Value>, String> {
-    if name.is_empty() {
+    let has_id = config
+        .server_profile_id
+        .as_deref()
+        .is_some_and(|id| !id.trim().is_empty());
+    if !has_id && config.server_profile.is_empty() {
         return Ok(None);
     }
     let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
-    Ok(crate::crypt_overlay_provider::select_profile_by_name(&profiles, name).cloned())
+    Ok(crate::crypt_overlay_provider::select_aerocloud_profile(
+        &profiles,
+        config.server_profile_id.as_deref(),
+        &config.server_profile,
+    )
+    .cloned())
 }
 
 /// The folder a saved profile opens in, which is the root AeroCloud works in:
@@ -214,18 +224,28 @@ fn profile_creds(
         .get("id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| format!("Profile '{}' has no id", name))?;
-    let password =
-        crate::user_partitions::resolve_active_credential(store, &format!("server_{}", id))
+    let profile_username = profile
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    // The vault credential may be the bare password or a structured blob
+    // (username plus password, access token or API key), read the way the MCP
+    // pool reads it; a legacy inline password is the fallback.
+    let (username, password) =
+        match crate::user_partitions::resolve_active_credential(store, &format!("server_{}", id))
             .ok()
             .flatten()
-            .map(|z| z.to_string())
-            .or_else(|| {
+        {
+            Some(raw) => crate::profile_loader::parse_server_credential(&raw, profile_username),
+            None => (
+                profile_username.to_string(),
                 profile
                     .get("password")
                     .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-            .unwrap_or_default();
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+        };
     let host = profile
         .get("server")
         .or_else(|| profile.get("host"))
@@ -238,11 +258,6 @@ fn profile_creds(
         Some(port) if !host.is_empty() && !host.contains(':') => format!("{}:{}", host, port),
         _ => host,
     };
-    let username = profile
-        .get("username")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
     Ok(SavedCreds {
         server,
         username,
@@ -309,7 +324,7 @@ async fn create_via_factory(
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
 
-    let profile = saved_profile(&store, &config.server_profile)?;
+    let profile = saved_profile(&store, config)?;
     let mut creds = match &profile {
         Some(profile) => profile_creds(&store, profile)?,
         // MUV-3: resolve_active_credential prefers the active user's per-user
@@ -403,7 +418,7 @@ async fn create_via_factory(
 /// has them; otherwise the typed token connects through the factory.
 async fn create_yandex(config: &CloudConfig) -> Result<Box<dyn StorageProvider>, String> {
     if let Some(store) = credential_store::CredentialStore::from_cache() {
-        let profile = saved_profile(&store, &config.server_profile)?;
+        let profile = saved_profile(&store, config)?;
         let profile_id = profile
             .as_ref()
             .and_then(|p| p.get("id").and_then(|v| v.as_str()).map(str::to_string))
@@ -473,7 +488,7 @@ fn oauth_app(config: &CloudConfig, id_key: &str, secret_key: &str) -> Result<OAu
 
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
-    let profile = saved_profile(&store, &config.server_profile)?
+    let profile = saved_profile(&store, config)?
         .ok_or_else(|| format!("No saved profile named '{}'", config.server_profile))?;
     let cred_key = crate::bridge_commands::oauth_client_cred_key(&config.protocol_type)
         .ok_or_else(|| format!("'{}' has no OAuth app", config.protocol_type))?;
@@ -852,6 +867,10 @@ mod tests {
                 enabled: true,
                 cloud_name: "live survey".to_string(),
                 server_profile: name.to_string(),
+                server_profile_id: profile
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
                 protocol_type: protocol.to_string(),
                 connection_params: serde_json::json!({}),
                 remote_folder: profile
@@ -868,7 +887,10 @@ mod tests {
             let outcome = tokio::time::timeout(Duration::from_secs(90), async {
                 let provider = create_cloud_provider(&config).await?;
                 let mut provider = crate::crypt_overlay_provider::build_aerocloud_overlay_stack(
-                    provider, name, &store,
+                    provider,
+                    config.server_profile_id.as_deref(),
+                    name,
+                    &store,
                 )
                 .await?;
                 let listed = provider

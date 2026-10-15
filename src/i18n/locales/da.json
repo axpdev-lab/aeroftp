@@ -1398,7 +1398,8 @@
                 "media": "Mediefokuseret tjeneste: bedst til billed- og videoaktiver",
                 "cloudinary": "Gratis niveau er begrænset til 25 kreditter pr. måned",
                 "fourshared": "Godkend manuelt igen, hvis tokenet tilbagekaldes"
-            }
+            },
+            "profilesLoadFailed": "Dine gemte servere kunne ikke læses: {error}"
         },
         "statusBar": {
             "connected": "Forbundet",

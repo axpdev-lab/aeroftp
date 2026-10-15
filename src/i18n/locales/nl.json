@@ -1398,7 +1398,8 @@
                 "media": "Mediagerichte dienst: het best voor afbeeldingen en video's",
                 "cloudinary": "Gratis niveau beperkt tot 25 credits per maand",
                 "fourshared": "Autoriseer handmatig opnieuw als het token is ingetrokken"
-            }
+            },
+            "profilesLoadFailed": "Je opgeslagen servers konden niet worden gelezen: {error}"
         },
         "statusBar": {
             "connected": "Verbonden",

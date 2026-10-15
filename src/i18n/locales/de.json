@@ -1398,7 +1398,8 @@
                 "media": "Medienorientierter Dienst: am besten für Bild- und Videodateien",
                 "cloudinary": "Kostenlose Stufe auf 25 Credits pro Monat begrenzt",
                 "fourshared": "Bei widerrufenem Token manuell neu autorisieren"
-            }
+            },
+            "profilesLoadFailed": "Ihre gespeicherten Server konnten nicht gelesen werden: {error}"
         },
         "statusBar": {
             "connected": "Verbunden",

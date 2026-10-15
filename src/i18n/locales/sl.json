@@ -1398,7 +1398,8 @@
                 "media": "Storitev, osredotočena na medije: najboljša za slike in videoposnetke",
                 "cloudinary": "Brezplačna raven je omejena na 25 kreditov na mesec",
                 "fourshared": "Če je token preklican, ročno znova avtorizirajte"
-            }
+            },
+            "profilesLoadFailed": "Shranjenih strežnikov ni bilo mogoče prebrati: {error}"
         },
         "statusBar": {
             "connected": "Povezano",

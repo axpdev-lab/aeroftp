@@ -1398,7 +1398,8 @@
                 "media": "Layanan berfokus media: terbaik untuk aset gambar dan video",
                 "cloudinary": "Tingkat gratis dibatasi hingga 25 kredit per bulan",
                 "fourshared": "Otorisasi ulang secara manual jika token dicabut"
-            }
+            },
+            "profilesLoadFailed": "Server tersimpan Anda tidak dapat dibaca: {error}"
         },
         "statusBar": {
             "connected": "Terhubung",

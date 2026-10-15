@@ -1398,7 +1398,8 @@
                 "media": "Medya odaklı hizmet: görsel ve video varlıkları için en uygunu",
                 "cloudinary": "Ücretsiz katman ayda 25 krediyle sınırlıdır",
                 "fourshared": "Token iptal edilirse yetkilendirmeyi elle yeniden yapın"
-            }
+            },
+            "profilesLoadFailed": "Kayıtlı sunucularınız okunamadı: {error}"
         },
         "statusBar": {
             "connected": "Bağlı",

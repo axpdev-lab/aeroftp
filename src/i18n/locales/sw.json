@@ -1398,7 +1398,8 @@
                 "media": "Huduma inayolenga midia: bora kwa picha na video",
                 "cloudinary": "Kiwango cha bure kimewekewa kikomo cha mikopo 25 kwa mwezi",
                 "fourshared": "Idhinisha tena kwa mkono ikiwa tokeni imebatilishwa"
-            }
+            },
+            "profilesLoadFailed": "Seva ulizohifadhi hazikuweza kusomwa: {error}"
         },
         "statusBar": {
             "connected": "Imeunganishwa",

@@ -1398,7 +1398,8 @@
                 "media": "Usluga usmjerena na medije: najbolja za slike i videozapise",
                 "cloudinary": "Besplatna razina ograničena je na 25 kredita mjesečno",
                 "fourshared": "Ručno ponovno autorizirajte ako je token opozvan"
-            }
+            },
+            "profilesLoadFailed": "Spremljeni poslužitelji nisu se mogli pročitati: {error}"
         },
         "statusBar": {
             "connected": "Povezano",

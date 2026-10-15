@@ -1398,7 +1398,8 @@
                 "media": "Uz multivides saturu orientēts pakalpojums: vislabāk piemērots attēliem un video",
                 "cloudinary": "Bezmaksas līmenis ierobežots līdz 25 kredītiem mēnesī",
                 "fourshared": "Ja pilnvara ir atsaukta, autorizējiet atkārtoti manuāli"
-            }
+            },
+            "profilesLoadFailed": "Neizdevās nolasīt saglabātos serverus: {error}"
         },
         "statusBar": {
             "connected": "Savienots",

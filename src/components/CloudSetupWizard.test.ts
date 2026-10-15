@@ -23,6 +23,7 @@ describe('profileRoot', () => {
 
     it('resolves the {username} template some WebDAV presets keep in the start path', () => {
         expect(profileRoot(profile({ initialPath: '/files/{username}/', username: 'ale' }))).toBe('/files/ale');
+        expect(profileRoot(profile({ initialPath: '/{username}/files/{username}', username: 'ale' }))).toBe('/ale/files/ale');
     });
 });
 

@@ -1398,7 +1398,8 @@
                 "media": "Mediefokuserad tjänst: bäst för bild- och videotillgångar",
                 "cloudinary": "Gratisnivån är begränsad till 25 krediter per månad",
                 "fourshared": "Auktorisera manuellt igen om token återkallas"
-            }
+            },
+            "profilesLoadFailed": "Dina sparade servrar kunde inte läsas: {error}"
         },
         "statusBar": {
             "connected": "Ansluten",

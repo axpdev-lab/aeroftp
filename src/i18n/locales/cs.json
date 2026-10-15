@@ -1398,7 +1398,8 @@
                 "media": "Služba zaměřená na média: nejvhodnější pro obrázky a videa",
                 "cloudinary": "Bezplatná úroveň je omezena na 25 kreditů měsíčně",
                 "fourshared": "Pokud je token odvolán, autorizujte ručně znovu"
-            }
+            },
+            "profilesLoadFailed": "Uložené servery se nepodařilo načíst: {error}"
         },
         "statusBar": {
             "connected": "Připojeno",

@@ -1838,7 +1838,8 @@
                 "media": "Servizio orientato ai contenuti multimediali: ideale per immagini e video",
                 "cloudinary": "Il piano gratuito è limitato a 25 crediti al mese",
                 "fourshared": "Riautorizza manualmente se il token viene revocato"
-            }
+            },
+            "profilesLoadFailed": "Impossibile leggere i server salvati: {error}"
         },
         "statusBar": {
             "connected": "Connesso",

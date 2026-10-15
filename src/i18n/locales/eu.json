@@ -1398,7 +1398,8 @@
                 "media": "Multimedian zentratutako zerbitzua: irudi eta bideo baliabideetarako onena",
                 "cloudinary": "Maila librea hilean 25 kreditura mugatuta dago",
                 "fourshared": "Berrezarri baimena eskuz tokena baliogabetzen bada"
-            }
+            },
+            "profilesLoadFailed": "Gordetako zerbitzariak ezin izan dira irakurri: {error}"
         },
         "statusBar": {
             "connected": "Konektatuta",

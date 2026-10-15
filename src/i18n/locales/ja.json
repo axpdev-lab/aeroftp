@@ -1398,7 +1398,8 @@
                 "media": "メディア特化型サービス: 画像や動画アセットに最適",
                 "cloudinary": "無料枠は月 25 クレジットまで",
                 "fourshared": "トークンが失効した場合は手動で再認可してください"
-            }
+            },
+            "profilesLoadFailed": "保存されたサーバーを読み取れませんでした: {error}"
         },
         "statusBar": {
             "connected": "接続済み",

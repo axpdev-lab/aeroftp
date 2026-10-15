@@ -1398,7 +1398,8 @@
                 "media": "Į mediją orientuota paslauga: geriausia vaizdų ir vaizdo įrašų ištekliams",
                 "cloudinary": "Nemokamas lygis apribotas 25 kreditais per mėnesį",
                 "fourshared": "Jei prieigos raktas atšauktas, autorizuokite iš naujo rankiniu būdu"
-            }
+            },
+            "profilesLoadFailed": "Nepavyko nuskaityti išsaugotų serverių: {error}"
         },
         "statusBar": {
             "connected": "Prisijungta",

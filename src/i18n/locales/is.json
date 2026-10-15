@@ -1398,7 +1398,8 @@
                 "media": "Þjónusta sem miðar að miðlum: best fyrir myndir og myndbönd",
                 "cloudinary": "Ókeypis þrep er takmarkað við 25 einingar á mánuði",
                 "fourshared": "Veittu heimild aftur handvirkt ef tákninu er afturkallað"
-            }
+            },
+            "profilesLoadFailed": "Ekki tókst að lesa vistuðu netþjónana þína: {error}"
         },
         "statusBar": {
             "connected": "Tengt",

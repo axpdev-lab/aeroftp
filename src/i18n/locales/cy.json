@@ -1398,7 +1398,8 @@
                 "media": "Gwasanaeth sy'n canolbwyntio ar gyfryngau: gorau ar gyfer asedau delwedd a fideo",
                 "cloudinary": "Haen am ddim wedi'i chyfyngu i 25 credyd y mis",
                 "fourshared": "Ail-awdurdodwch â llaw os caiff y tocyn ei ddirymu"
-            }
+            },
+            "profilesLoadFailed": "Doedd dim modd darllen eich gweinyddion wedi'u cadw: {error}"
         },
         "statusBar": {
             "connected": "Wedi cysylltu",
