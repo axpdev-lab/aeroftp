@@ -599,6 +599,16 @@ struct ClaimedTemp {
     _claim: std::fs::File,
 }
 
+#[cfg(unix)]
+impl Drop for ClaimedTemp {
+    fn drop(&mut self) {
+        // Closing our descriptor alone leaves the lock alive if a concurrent
+        // fork inherited the same open-file description before exec. The
+        // staging claim ends here even while that inherited copy still exists.
+        let _ = self._claim.unlock();
+    }
+}
+
 impl ClaimedTemp {
     /// Remove the temporary; the claim is released afterwards, with `self`.
     fn remove(self) {
@@ -4448,6 +4458,31 @@ mod tests {
         );
         drop(published);
         let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// A dup shares the same open-file description, as a descriptor inherited
+    /// across fork does. Closing only our copy must not prolong the claim until
+    /// a concurrent child execs or exits.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn dropping_a_temporary_claim_unlocks_even_an_inherited_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("claimed.bin");
+        let file = std::fs::File::create(&path).unwrap();
+        file.lock().unwrap();
+        let inherited = file.try_clone().unwrap();
+        let claim = ClaimedTemp {
+            path: path.clone(),
+            _claim: file,
+        };
+        let probe = std::fs::File::open(&path).unwrap();
+        assert!(probe.try_lock().is_err(), "setup must hold the real lock");
+        drop(claim);
+        assert!(
+            probe.try_lock().is_ok(),
+            "an inherited descriptor retained the claim"
+        );
+        drop(inherited);
     }
 
     #[tokio::test]
