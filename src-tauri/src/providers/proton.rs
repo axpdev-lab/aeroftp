@@ -552,6 +552,8 @@ fn stage_local_as_dest_in(
     let len = std::fs::metadata(local_path)
         .map_err(ProviderError::IoError)?
         .len();
+    std::fs::create_dir_all(scratch_root).map_err(ProviderError::IoError)?;
+    crate::util::scratch::protect_scratch_process(scratch_root).map_err(ProviderError::IoError)?;
     let staging = scratch_root.join(format!("aeroftp_proton_up_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&staging).map_err(ProviderError::IoError)?;
     let staged = staging.join(dest_name);
@@ -2161,10 +2163,16 @@ mod cli_sequence_tests {
             matches!(error, ProviderError::TransferFailed(_)),
             "{error:?}"
         );
+        // The liveness control file is permanent; an upload folder or payload
+        // must still be removed when copy preflight fails.
+        let leftovers: Vec<_> = std::fs::read_dir(scratch.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
         assert_eq!(
-            std::fs::read_dir(scratch.path()).unwrap().count(),
-            0,
-            "failed preflight left staging behind"
+            leftovers,
+            [std::ffi::OsString::from("aeroftp_staging_live.lock")],
+            "failed preflight left payload staging behind"
         );
         assert_eq!(file.metadata().unwrap().len(), len);
     }

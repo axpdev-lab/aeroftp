@@ -18259,6 +18259,15 @@ pub fn run() {
             // frontend events without threading a handle through every call.
             crate::app_events::register_app_handle(app.handle().clone());
 
+            // Remove staging leftovers of a crash or a killed transfer from
+            // the on-disk scratch folder: since #1199 the crypt and compress
+            // overlays, the remote vault and Proton stage there instead of
+            // the temporary folder, which a tmpfs cleared at reboot. Only
+            // entries older than STALE_STAGING_AGE go, and crypt staging leases
+            // protect active transfers even with a preserved old source mtime.
+            // One folder listing, off the startup path.
+            std::thread::spawn(crate::util::scratch::sweep_staging_on_startup);
+
             // Serve the frontend on the fixed loopback origin. `ui_server`
             // replaced tauri-plugin-localhost, whose tiny_http core could leave
             // a cold-start request unread until another connection closed (a
