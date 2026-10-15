@@ -1672,6 +1672,9 @@ mod tests {
 
     /// A writer that keeps no part (`AtomicFile`) must not leave an earlier
     /// part's record vouching for the bytes it writes, should it be killed.
+    /// Linux only: it replaces the stale part only where the locks tell it
+    /// from a live writer's; elsewhere it refuses the name and writes nothing.
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn a_writer_that_keeps_no_part_drops_an_earlier_record() {
         let dir = tempfile::tempdir().unwrap();
