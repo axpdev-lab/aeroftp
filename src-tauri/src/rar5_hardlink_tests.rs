@@ -52,10 +52,17 @@ async fn rar5_hardlinks_use_the_extraction_root_not_the_process_cwd() {
 
 async fn exercise_hardlinks(root: &Path) {
     let file_copy = reference_fixture(5, b"file.txt");
+    let mut nested = reference_fixture(4, b"dir\\f.tx");
+    assert_eq!(&nested[50..58], b"file.txt");
+    nested[50..58].copy_from_slice(b"dir/f.tx");
+    let mut crc = flate2::Crc::new();
+    crc.update(&nested[27..58]);
+    nested[23..27].copy_from_slice(&crc.sum().to_le_bytes());
     for (case, bytes, original, link) in [
         ("ascii", HARDLINK_RAR, "file.txt", "hardlink.txt"),
         ("unicode", UNICODE_RAR, "👋🌎.txt", "Ⓗⓐⓡⓓ Ⓛⓘⓝⓚ.txt"),
         ("copy", file_copy.as_slice(), "file.txt", "hardlink.txt"),
+        ("nested", nested.as_slice(), "dir/f.tx", "hardlink.txt"),
     ] {
         let archive = root.join(format!("{case}.rar"));
         std::fs::write(&archive, bytes).unwrap();
@@ -63,6 +70,7 @@ async fn exercise_hardlinks(root: &Path) {
         // both the archive's names and every component of the extraction root.
         let output = root.join(format!("{case}-dest-é"));
         std::fs::create_dir(&output).unwrap();
+        std::fs::create_dir_all(output.join(original).parent().unwrap()).unwrap();
         std::fs::write(output.join(original), b"previous destination file").unwrap();
         crate::extract_rar_core(
             archive.to_string_lossy().into_owned(),

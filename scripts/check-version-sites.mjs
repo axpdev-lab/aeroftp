@@ -207,6 +207,7 @@ const MANIFEST_RE = /(^|\/)(Cargo\.toml|package\.json|tauri\.conf\.json|snapcraf
 const MANIFEST_ACCEPTED = new Map([
   ['src-tauri/peer-l0/Cargo.toml', 'a spike sub-crate with its own version lifecycle, not shipped as the app'],
   ['tests/portal-chooser/fake-portal/Cargo.toml', 'a test fixture, never shipped'],
+  ['src-tauri/vendor/unrar/Cargo.toml', 'third-party unrar wrapper, retaining its upstream crate version and independent lifecycle'],
 ]);
 const manifestVersion = (rel) => {
   const text = read(rel);

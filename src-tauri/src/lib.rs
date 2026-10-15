@@ -9902,7 +9902,9 @@ fn materialize_rar_reference(
     if !is_safe_archive_entry(&target.to_string_lossy()) {
         return Err("Unsafe RAR reference target rejected".to_string());
     }
-    let source = base.join(target);
+    // WinRAR 5.0 stored backslashes in reference targets even on Unix. Match
+    // UnRAR's SlashToNative conversion after checking both separator styles.
+    let source = base.join(target.to_string_lossy().replace('\\', "/"));
     let metadata = std::fs::symlink_metadata(&source)
         .map_err(|e| format!("Failed to read RAR reference target: {}", e))?;
     let canonical_base = base
