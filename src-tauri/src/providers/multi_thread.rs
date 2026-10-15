@@ -662,7 +662,12 @@ impl Drop for SegmentedTemp {
 /// window has the length it asked for, the total is exactly right, and
 /// nothing downstream can tell. Reading the object before the windows start
 /// and again before publishing turns that into a refusal.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// A resumable download keeps one next to its part (see
+/// [`super::atomic_write::ResumableFile`]): the version the part was started
+/// from, so a resume against an object replaced in the meantime starts over
+/// instead of joining two versions.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RangeSourceFingerprint {
     size: u64,
     modified: Option<String>,
@@ -680,6 +685,62 @@ impl RangeSourceFingerprint {
                 .map(|tag| tag.trim().to_string())
                 .filter(|tag| !tag.is_empty()),
         }
+    }
+
+    /// What an HTTP answer to a download says about the object: its length,
+    /// from `Content-Range` on a `206` and from `Content-Length` on a `200`,
+    /// and its `ETag` and `Last-Modified`. `None` when the answer does not
+    /// give the length, which nothing else here can stand in for.
+    pub fn of_answer(response: &reqwest::Response) -> Option<Self> {
+        let headers = response.headers();
+        let size = if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+            let range = headers.get(reqwest::header::CONTENT_RANGE)?.to_str().ok()?;
+            parse_content_range(range)?.2?
+        } else {
+            response.content_length()?
+        };
+        let text = |name| {
+            headers
+                .get(name)
+                .and_then(|value: &HeaderValue| value.to_str().ok())
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
+        Some(Self {
+            size,
+            modified: text(reqwest::header::LAST_MODIFIED),
+            validator: text(reqwest::header::ETAG),
+        })
+    }
+
+    /// Whether this reading names one version of the object. Size alone does
+    /// not: a replacement of the same length passes it, so a part recorded
+    /// with nothing more is not resumed.
+    pub fn pins_a_version(&self) -> bool {
+        self.validator.is_some() || self.modified.is_some()
+    }
+
+    /// Why a part of `part_len` bytes, started from the version `recorded`,
+    /// cannot be resumed against the object as this reading finds it, or
+    /// `None` when it can. A part with no record, or a record that names no
+    /// version, is never resumed: nothing tells which version its bytes are.
+    pub fn refuses_part(&self, recorded: Option<&Self>, part_len: u64) -> Option<String> {
+        let Some(recorded) = recorded else {
+            return Some("it has no record of the version it was started from".to_string());
+        };
+        if !recorded.pins_a_version() {
+            return Some("its record names no version of the file".to_string());
+        }
+        if let Some(changed) = recorded.differs_from(self) {
+            return Some(format!("the file changed since: {changed}"));
+        }
+        if part_len > self.size {
+            return Some(format!(
+                "it holds {} bytes and the file has {}",
+                part_len, self.size
+            ));
+        }
+        None
     }
 
     /// The validator to pin ranged reads to, when the provider published one.

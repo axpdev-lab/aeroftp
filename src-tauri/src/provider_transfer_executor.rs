@@ -1197,16 +1197,15 @@ impl ProviderDownloadExecutor {
         let cancel_token = self.cancel_token.clone();
         let speed_meter = crate::transfer_speed::SpeedMeter::new();
 
-        let tmp_path = format!("{}.aerotmp", local_path);
+        // Only a part that recorded the version it was started from counts;
+        // the provider then checks that version against the file as it is now.
         let partial_offset = if resumes_from_the_temporary(
             attempt,
             provider.supports_resume(),
             crate::providers::atomic_write::inplace_active(),
         ) {
-            tokio::fs::metadata(&tmp_path)
+            crate::providers::atomic_write::resumable_part_len(std::path::Path::new(&local_path))
                 .await
-                .map(|m| m.len())
-                .unwrap_or(0)
         } else {
             0
         };

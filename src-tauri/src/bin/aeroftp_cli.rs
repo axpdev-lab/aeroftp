@@ -10578,73 +10578,48 @@ async fn download_with_resume(
     progress_cb: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError> {
     if cli.partial && provider.supports_resume() {
-        // Check for partial .aerotmp file from a previous interrupted download.
-        // HTTP providers use ResumableFile internally (reads .aerotmp),
-        // while FTP/Koofr write directly to the final path (with seek). In
-        // place the part is the destination itself, which the provider resumes:
-        // a `.aerotmp` there was left by an earlier download out of place, and
-        // its length is no offset into this one.
-        let tmp_path = format!("{}.aerotmp", local_path);
-        let offset = if cli.inplace {
-            0
-        } else {
-            std::fs::metadata(&tmp_path)
-                .map(|meta| meta.len())
-                .unwrap_or(0)
-        };
-        // Also check the final file itself (FTP resume writes there directly)
+        // Out of place the part is the `.aerotmp`, and only one that recorded
+        // the version it was started from: the provider checks that version
+        // against the file as it is now, then goes on from the part, publishes
+        // it when it already holds the whole file, or starts it over. A part
+        // with no record is removed here and the file downloaded whole.
+        if !cli.inplace {
+            let offset = ftp_client_gui_lib::providers::atomic_write::resumable_part_len(
+                Path::new(local_path),
+            )
+            .await;
+            if offset > 0 {
+                return provider
+                    .resume_download(remote_path, local_path, offset, progress_cb)
+                    .await;
+            }
+        }
+        // The destination itself. In place it is the part, which the provider
+        // goes on from. Out of place it is a finished file, never a part: one
+        // as long as the remote is taken as already there, and any other is
+        // downloaded again whole, because going on from its length appended
+        // the tail of the new file to the old one.
         let final_offset = std::fs::metadata(local_path)
             .map(|meta| meta.len())
             .unwrap_or(0);
-        // A byte offset alone cannot tell "interrupted" from "already done":
-        // asking for `Range: bytes=<size>-` on a complete file is answered
-        // with 416 by every HTTP backend, which used to surface as "file may
-        // have changed on server" (exit 4) when re-running `get --partial`
-        // over a finished download. Compare with the remote size first and
-        // decide like rclone does: complete is a no-op, longer-than-remote is
-        // stale and restarts, shorter resumes.
-        let remote_size = if offset > 0 || final_offset > 0 {
-            provider.size(remote_path).await.ok()
-        } else {
-            None
-        };
-        if offset > 0 {
-            match partial_resume_plan(offset, remote_size) {
-                ResumePlan::Complete => {
-                    // Published claimed: a part another download is still
-                    // writing is refused, not renamed into place.
-                    let _claim =
-                        ftp_client_gui_lib::providers::atomic_write::claim_temp_to_publish(
-                            Path::new(&tmp_path),
-                        )
-                        .map_err(ProviderError::IoError)?;
-                    tokio::fs::rename(&tmp_path, local_path)
-                        .await
-                        .map_err(ProviderError::IoError)?;
-                    return Ok(());
-                }
-                ResumePlan::Restart => {
-                    // A stale part goes; another download's is left alone,
-                    // and the download then fails on it.
-                    let _ = ftp_client_gui_lib::providers::atomic_write::remove_temp_unless_live(
-                        Path::new(&tmp_path),
-                    );
-                }
-                ResumePlan::Resume => {
-                    return provider
-                        .resume_download(remote_path, local_path, offset, progress_cb)
-                        .await;
-                }
-            }
-        } else if final_offset > 0 {
+        if final_offset > 0 {
+            // A byte offset alone cannot tell "interrupted" from "already
+            // done": asking for `Range: bytes=<size>-` on a complete file is
+            // answered with 416 by every HTTP backend, which used to surface
+            // as "file may have changed on server" (exit 4) when re-running
+            // `get --partial` over a finished download. Compare with the
+            // remote size first and decide like rclone does: complete is a
+            // no-op, longer-than-remote is stale and restarts, shorter resumes.
+            let remote_size = provider.size(remote_path).await.ok();
             match partial_resume_plan(final_offset, remote_size) {
                 ResumePlan::Complete => return Ok(()),
                 ResumePlan::Restart => {}
-                ResumePlan::Resume => {
+                ResumePlan::Resume if cli.inplace => {
                     return provider
                         .resume_download(remote_path, local_path, final_offset, progress_cb)
                         .await;
                 }
+                ResumePlan::Resume => {}
             }
         }
     }
@@ -84053,8 +84028,12 @@ mod tests {
         let segmented =
             ftp_client_gui_lib::providers::multi_thread::segmented_temp_path_for(&local);
         std::fs::write(&segmented, b"windows being written").unwrap();
-        let live =
-            ftp_client_gui_lib::providers::atomic_write::claim_temp_to_publish(&segmented).unwrap();
+        // A writer's claim is an exclusive lock on its temporary.
+        let live = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&segmented)
+            .unwrap();
+        live.try_lock().unwrap();
         discard_partial_sidecars(&local_str).await;
         assert!(
             segmented.exists(),
@@ -84842,10 +84821,20 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert!(printed.contains("\"hasCredential\":true"), "{printed}");
     }
 
-    /// Records the offset of every `resume_download`, and serves a 200-byte
-    /// file that supports resume.
+    /// Records the offset of every `resume_download` and counts whole
+    /// downloads, and serves a 200-byte file that supports resume.
     struct ResumeOffsetProbe {
         offsets: Arc<std::sync::Mutex<Vec<u64>>>,
+        wholes: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    impl ResumeOffsetProbe {
+        fn new() -> Self {
+            Self {
+                offsets: Arc::default(),
+                wholes: Arc::default(),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -84886,7 +84875,9 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             _local_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
-            Err(ProviderError::NotSupported("download".to_string()))
+            self.wholes
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
         }
         fn supports_resume(&self) -> bool {
             true
@@ -84962,10 +84953,8 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let local = dir.path().join("f.bin");
         std::fs::write(&local, vec![b'a'; 50]).unwrap();
         std::fs::write(dir.path().join("f.bin.aerotmp"), vec![b'b'; 100]).unwrap();
-        let offsets = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let mut provider = ResumeOffsetProbe {
-            offsets: Arc::clone(&offsets),
-        };
+        let mut provider = ResumeOffsetProbe::new();
+        let offsets = Arc::clone(&provider.offsets);
         let cli = Cli {
             partial: true,
             inplace: true,
@@ -84982,6 +84971,79 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         .await
         .unwrap();
         assert_eq!(*offsets.lock().unwrap(), vec![50]);
+    }
+
+    /// Run `get --partial` (out of place) of the probe's 200-byte file into
+    /// `local`, and tell the offsets resumed from and the whole downloads.
+    async fn partial_get_out_of_place(local: &Path) -> (Vec<u64>, usize) {
+        let mut provider = ResumeOffsetProbe::new();
+        let cli = Cli {
+            partial: true,
+            ..test_cli()
+        };
+        download_with_resume(
+            &mut provider,
+            "/f.bin",
+            local.to_str().unwrap(),
+            None,
+            &cli,
+            None,
+        )
+        .await
+        .unwrap();
+        let offsets = provider.offsets.lock().unwrap().clone();
+        (
+            offsets,
+            provider.wholes.load(std::sync::atomic::Ordering::SeqCst),
+        )
+    }
+
+    /// Requested 16 of #1202: `get --partial` goes on only from a part that
+    /// recorded the version it was started from, which the provider then
+    /// checks. A part with no record is any writer's leftover, and its length
+    /// was sent as the offset: FTP wrote the tail there into the destination.
+    #[tokio::test]
+    async fn a_partial_get_resumes_only_a_recorded_part() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        let temp = dir.path().join("f.bin.aerotmp");
+        std::fs::write(&temp, vec![b'b'; 100]).unwrap();
+        assert_eq!(partial_get_out_of_place(&local).await, (vec![], 1));
+        assert!(!temp.exists(), "a part with no record was kept");
+
+        let mut entry = RemoteEntry::directory(String::new(), "/f.bin".to_string());
+        entry.is_dir = false;
+        entry.size = 200;
+        entry.modified = Some("2026-10-15 10:00:00".to_string());
+        let version =
+            ftp_client_gui_lib::providers::multi_thread::RangeSourceFingerprint::of(&entry);
+        let mut part = ftp_client_gui_lib::providers::atomic_write::ResumableFile::open_for(
+            local.to_str().unwrap(),
+            &version,
+        )
+        .await
+        .unwrap();
+        part.write_all(&[b'b'; 100]).await.unwrap();
+        drop(part);
+        assert_eq!(partial_get_out_of_place(&local).await, (vec![100], 0));
+    }
+
+    /// Out of place the destination is a finished file, never a part. One
+    /// shorter than the remote was resumed from its length: HTTP providers
+    /// published the remote's tail alone, FTP appended it to the old file.
+    #[tokio::test]
+    async fn a_partial_get_never_goes_on_from_a_finished_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        std::fs::write(&local, vec![b'a'; 50]).unwrap();
+        assert_eq!(partial_get_out_of_place(&local).await, (vec![], 1));
+
+        std::fs::write(&local, vec![b'a'; 200]).unwrap();
+        assert_eq!(
+            partial_get_out_of_place(&local).await,
+            (vec![], 0),
+            "a destination as long as the remote is taken as already there"
+        );
     }
 
     /// What every `WorkerFake` a test hands out did, and how the fake should

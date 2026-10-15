@@ -63,7 +63,9 @@ pub fn scratch_dir_with_room(dir: &Path, bytes: u64) -> Result<PathBuf, String> 
 /// liveness: crypt uploads retain the source mtime and hold a staging lease.
 pub const STALE_STAGING_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-const DOWNLOAD_PART_SUFFIXES: [&str; 3] = [".aerotmp", ".aeroardtmp", ".aerosegtmp"];
+/// A download's part sidecars: the resumable part, the read-ahead and
+/// segmented temporaries, and the record of the version the part started from.
+const DOWNLOAD_PART_SUFFIXES: [&str; 4] = [".aerotmp", ".aeroardtmp", ".aerosegtmp", ".aerosrctmp"];
 
 fn open_process_lock(root: &Path) -> std::io::Result<std::fs::File> {
     let path = root.join("aeroftp_staging_live.lock");
@@ -613,7 +615,7 @@ mod tests {
         let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
         assert_eq!(stats.errors, 0);
         assert_eq!(stats.removed, 0);
-        assert_eq!(stats.kept_active, 3);
+        assert_eq!(stats.kept_active, parts.len() as u64);
         assert!(parts.iter().all(|part| part.exists()));
         drop(lease);
         assert!(parts.iter().all(|part| !part.exists()));
@@ -625,7 +627,7 @@ mod tests {
         }
         let stats = sweep_stale_staging(root.path(), STALE_STAGING_AGE);
         assert_eq!(stats.errors, 0);
-        assert_eq!(stats.removed, 3);
+        assert_eq!(stats.removed, parts.len() as u64);
         assert!(parts.iter().all(|part| !part.exists()));
     }
 

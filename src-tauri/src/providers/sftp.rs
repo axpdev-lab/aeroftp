@@ -2539,6 +2539,12 @@ impl StorageProvider for SftpProvider {
             }
         };
         let mut total_size = metadata.size.unwrap_or(0);
+        // The version a part resumed below must have been started from.
+        let mut source = RangeSourceFingerprint::of(&Self::metadata_to_entry(
+            String::new(),
+            full_path.clone(),
+            &metadata,
+        ));
         // The OPEN above is speculation, fired next to the STAT to overlap the
         // two round trips. Its failure is not the download's failure: the fresh
         // STAT can still select the pooled, read-ahead or pipelined path, and
@@ -2759,6 +2765,7 @@ impl StorageProvider for SftpProvider {
                         );
                         total_size = fresh.size();
                     }
+                    source = fresh;
                 }
             }
         }
@@ -2794,13 +2801,16 @@ impl StorageProvider for SftpProvider {
             let ended = &ended;
             let buffer_size = self.buffer_size;
             let download_limit_bps = self.download_limit_bps;
+            let source = &source;
             async move {
                 // Resumable local file: writes to `.aerotmp`, KEEPS the partial on
                 // cancel/error (drop) so a later re-download resumes, renames on commit.
+                // A part is gone on from only when it was started from the
+                // version the STAT above found, by its record.
                 let opened = if resume_in_place {
-                    super::atomic_write::ResumableFile::open_resume(local_path).await
+                    super::atomic_write::ResumableFile::open_resume_for(local_path, source).await
                 } else {
-                    super::atomic_write::ResumableFile::open(local_path).await
+                    super::atomic_write::ResumableFile::open_for(local_path, source).await
                 };
                 let mut resumable = opened.map_err(|e| {
                     ProviderError::TransferFailed(format!("Failed to create local file: {}", e))
@@ -2809,6 +2819,8 @@ impl StorageProvider for SftpProvider {
                 let mut resume_offset = resumable.offset();
                 // A partial larger than the current remote file is stale (the remote
                 // changed): discard it and start fresh rather than appending to bad data.
+                // Out of place the record has already settled it; in place the
+                // destination keeps no record, and its length is all there is.
                 if total_size > 0 && resume_offset > total_size {
                     resumable.discard().await.ok();
                     resumable = super::atomic_write::ResumableFile::open_fresh(local_path)
@@ -7404,6 +7416,8 @@ mod tests {
         data: Arc<Vec<u8>>,
         cap: usize,
         announce: bool,
+        /// The modification time STAT reports, when it reports one.
+        mtime: Option<u32>,
         first_cap: Option<usize>,
         open_limit: Option<usize>,
         open_now: usize,
@@ -7417,6 +7431,7 @@ mod tests {
                 data: Arc::new(data.to_vec()),
                 cap,
                 announce,
+                mtime: None,
                 first_cap: None,
                 open_limit: None,
                 open_now: 0,
@@ -7517,6 +7532,8 @@ mod tests {
                 attrs: russh_sftp::protocol::FileAttributes {
                     size: Some(self.data.len() as u64),
                     permissions: Some(0o100644),
+                    atime: self.mtime,
+                    mtime: self.mtime,
                     ..Default::default()
                 },
             })
@@ -7978,5 +7995,91 @@ mod tests {
             matches!(&outcome, Err(err) if err.is_connection_lost()),
             "{outcome:?}"
         );
+    }
+
+    /// What the download's STAT reads of `data` modified at `mtime`: the
+    /// version a part of it records.
+    fn sftp_version(data: &[u8], mtime: u32) -> RangeSourceFingerprint {
+        let attrs = russh_sftp::protocol::FileAttributes {
+            size: Some(data.len() as u64),
+            permissions: Some(0o100644),
+            atime: Some(mtime),
+            mtime: Some(mtime),
+            ..Default::default()
+        };
+        RangeSourceFingerprint::of(&SftpProvider::metadata_to_entry(
+            String::new(),
+            "/down.bin".to_string(),
+            &attrs,
+        ))
+    }
+
+    /// Download `/down.bin` from a server holding `data` modified at
+    /// `mtime`, over a part `part` of `recorded`, and tell what landed and
+    /// the offsets read.
+    async fn download_over_a_part(
+        data: &[u8],
+        mtime: u32,
+        recorded: &RangeSourceFingerprint,
+        part: &[u8],
+    ) -> (Vec<u8>, Vec<u64>) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let local = dir.path().join("down.bin");
+        let local = local.to_string_lossy().into_owned();
+        let mut left = super::super::atomic_write::ResumableFile::open_for(&local, recorded)
+            .await
+            .expect("part");
+        left.write_all(part).await.expect("part bytes");
+        drop(left);
+        let mut server = ReadCappingServer::new(data, 64 * 1024, false);
+        server.mtime = Some(mtime);
+        let reads = Arc::clone(&server.reads);
+        let mut provider = server.serve().await;
+        provider
+            .download("/down.bin", &local, None)
+            .await
+            .expect("download");
+        let offsets = reads
+            .lock()
+            .expect("read log")
+            .iter()
+            .map(|r| r.0)
+            .collect();
+        (std::fs::read(&local).expect("downloaded file"), offsets)
+    }
+
+    /// Requested 16 of #1202. SFTP downloads keep their part and go on from
+    /// it on the next download, GUI included. They did so against whatever
+    /// the server held by then: a file replaced in the meantime came out as
+    /// the old part joined to the new tail, and a part already as long as
+    /// the new file was published without a byte read.
+    #[tokio::test]
+    async fn an_sftp_part_goes_on_only_against_its_own_version() {
+        let v1 = pattern(4000);
+        let mut v2 = v1.clone();
+        v2[100..200].iter_mut().for_each(|b| *b ^= 0x55);
+        let at_v1 = 1_700_000_000;
+        let at_v2 = 1_700_000_100;
+        let recorded = sftp_version(&v1, at_v1);
+
+        let (landed, reads) = download_over_a_part(&v1, at_v1, &recorded, &v1[..1000]).await;
+        assert!(landed == v1, "a wrong file landed");
+        assert!(
+            reads.iter().all(|&offset| offset >= 1000),
+            "a part of the same version was read again: {reads:?}"
+        );
+
+        let (landed, reads) = download_over_a_part(&v1, at_v1, &recorded, &v1).await;
+        assert!(landed == v1, "a wrong file landed");
+        assert!(
+            reads.is_empty(),
+            "a whole part of the same version was read again"
+        );
+
+        let (landed, _) = download_over_a_part(&v2, at_v2, &recorded, &v1[..1000]).await;
+        assert!(landed == v2, "two versions were joined");
+
+        let (landed, _) = download_over_a_part(&v2, at_v2, &recorded, &v1).await;
+        assert!(landed == v2, "the old version was published unread");
     }
 }
