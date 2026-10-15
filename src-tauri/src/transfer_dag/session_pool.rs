@@ -192,20 +192,12 @@ impl TransferSessionPoolHandle {
     /// `clone_for_transfer()` workers from a retained connection spec. This
     /// handle only bounds how many run at once. Labelled `Ftp` (reusing the
     /// PD-Core-2 lease kind), never `HttpClone`, so capacity and metrics
-    /// tell the truth about the transport. Distinct from
-    /// [`Self::executor_managed_ftp`], the legacy GUI `FtpSessionPool`
-    /// adapter (no duplicate pool: a `SemaphoreSessionPool` is just the
-    /// concurrency gate, not a second stateful pool).
+    /// tell the truth about the transport. Distinct from [`Self::ftp`],
+    /// which adapts the GUI's stateful `FtpSessionPool` itself (no duplicate
+    /// pool on either side: a `SemaphoreSessionPool` is just the concurrency
+    /// gate, not a second stateful pool).
     pub fn ftp_connection(label: impl Into<String>, capacity: usize) -> Self {
         Self::new(SemaphoreSessionPool::with_capacity(
-            SessionLeaseKind::Ftp,
-            label,
-            capacity,
-        ))
-    }
-
-    pub fn executor_managed_ftp(label: impl Into<String>, capacity: usize) -> Self {
-        Self::new(ExecutorManagedSessionPool::new(
             SessionLeaseKind::Ftp,
             label,
             capacity,
@@ -250,7 +242,6 @@ pub struct TransferSessionLease {
 enum TransferSessionLeaseInner {
     Semaphore(SemaphoreSessionLease),
     Ftp(FtpPoolSessionLease),
-    ExecutorManaged(SessionLeaseInfo),
 }
 
 impl TransferSessionLease {
@@ -258,7 +249,6 @@ impl TransferSessionLease {
         match &self.inner {
             TransferSessionLeaseInner::Semaphore(lease) => &lease.info,
             TransferSessionLeaseInner::Ftp(lease) => &lease.info,
-            TransferSessionLeaseInner::ExecutorManaged(info) => info,
         }
     }
 
@@ -352,6 +342,11 @@ impl TransferSessionPool for SemaphoreSessionPool {
     }
 }
 
+/// One DAG checkout is the only wait a whole-file node gets. A timeout is
+/// tried this many times, the pre-#1221 default retry budget, so a busy pool
+/// does not fail the file after a single wait.
+const FTP_CHECKOUT_ATTEMPTS: u32 = 3;
+
 pub struct FtpSessionPoolAdapter {
     label: String,
     pool: Arc<FtpSessionPool>,
@@ -376,15 +371,33 @@ impl FtpSessionPoolAdapter {
 #[async_trait]
 impl TransferSessionPool for FtpSessionPoolAdapter {
     async fn acquire(&self) -> Result<TransferSessionLease, SessionPoolError> {
-        let lease = self.pool.acquire().await.map_err(|error| {
-            SessionPoolError::adapter(SessionLeaseKind::Ftp, &self.label, error)
-        })?;
-        Ok(TransferSessionLease {
-            inner: TransferSessionLeaseInner::Ftp(FtpPoolSessionLease {
-                info: SessionLeaseInfo::new(self.ids.next(), SessionLeaseKind::Ftp, &self.label),
-                lease: Some(lease),
-            }),
-        })
+        let mut attempt = 0u32;
+        loop {
+            attempt += 1;
+            match self.pool.acquire().await {
+                Ok(lease) => {
+                    return Ok(TransferSessionLease {
+                        inner: TransferSessionLeaseInner::Ftp(FtpPoolSessionLease {
+                            info: SessionLeaseInfo::new(
+                                self.ids.next(),
+                                SessionLeaseKind::Ftp,
+                                &self.label,
+                            ),
+                            lease: Some(lease),
+                        }),
+                    });
+                }
+                Err(error) => {
+                    let mapped =
+                        SessionPoolError::adapter(SessionLeaseKind::Ftp, &self.label, error);
+                    let retry = matches!(mapped, SessionPoolError::Timeout { .. })
+                        && attempt < FTP_CHECKOUT_ATTEMPTS;
+                    if !retry {
+                        return Err(mapped);
+                    }
+                }
+            }
+        }
     }
 
     fn label(&self) -> &str {
@@ -407,6 +420,11 @@ impl TransferSessionPool for FtpSessionPoolAdapter {
 impl FtpPoolSessionLease {
     pub fn info(&self) -> &SessionLeaseInfo {
         &self.info
+    }
+
+    /// The pool lease for the executor. `None` if it was already released.
+    pub fn into_inner(mut self) -> Option<FtpSessionLease> {
+        self.lease.take()
     }
 
     pub fn manager(&self) -> Option<Arc<tokio::sync::Mutex<crate::ftp::FtpManager>>> {
@@ -442,49 +460,6 @@ impl FtpPoolSessionLease {
             }),
             None => Ok(()),
         }
-    }
-}
-
-pub struct ExecutorManagedSessionPool {
-    kind: SessionLeaseKind,
-    label: String,
-    capacity: usize,
-    ids: LeaseIdSource,
-}
-
-impl ExecutorManagedSessionPool {
-    fn new(kind: SessionLeaseKind, label: impl Into<String>, capacity: usize) -> Self {
-        Self {
-            kind,
-            label: label.into(),
-            capacity: capacity.max(1),
-            ids: LeaseIdSource::new(),
-        }
-    }
-}
-
-#[async_trait]
-impl TransferSessionPool for ExecutorManagedSessionPool {
-    async fn acquire(&self) -> Result<TransferSessionLease, SessionPoolError> {
-        Ok(TransferSessionLease {
-            inner: TransferSessionLeaseInner::ExecutorManaged(SessionLeaseInfo::new(
-                self.ids.next(),
-                self.kind,
-                &self.label,
-            )),
-        })
-    }
-
-    fn label(&self) -> &str {
-        &self.label
-    }
-
-    fn kind(&self) -> SessionLeaseKind {
-        self.kind
-    }
-
-    fn capacity(&self) -> SessionPoolCapacity {
-        SessionPoolCapacity::new(self.kind, &self.label, self.capacity)
     }
 }
 
@@ -639,13 +614,87 @@ mod tests {
         assert_eq!(lease.info().label, "axpbuntu-remote");
     }
 
+    /// The FTP adapter reports the pool's real capacity and `acquire` really
+    /// gates on it: a pool that can never hand out a session fails with its
+    /// acquire timeout instead of returning instantly.
     #[tokio::test]
-    async fn executor_managed_ftp_lease_preserves_capacity_without_double_acquire() {
-        let pool = TransferSessionPoolHandle::executor_managed_ftp("ftp-batch", 3);
-        let lease = pool.acquire().await.unwrap();
+    async fn ftp_adapter_reports_pool_capacity_and_gates_acquire() {
+        let pool = Arc::new(FtpSessionPool::empty_for_test(50));
+        let handle = TransferSessionPoolHandle::ftp("ftp-batch", Arc::clone(&pool));
 
-        assert_eq!(pool.capacity().kind, SessionLeaseKind::Ftp);
-        assert_eq!(pool.capacity().max_leases, 3);
-        assert_eq!(lease.kind(), SessionLeaseKind::Ftp);
+        assert_eq!(handle.capacity().kind, SessionLeaseKind::Ftp);
+        assert_eq!(
+            handle.capacity().max_leases,
+            pool.total_sessions().max(1),
+            "capacity mirrors the pool's session count"
+        );
+
+        let started = std::time::Instant::now();
+        let error = handle
+            .acquire()
+            .await
+            .err()
+            .expect("an empty pool cannot hand out a lease");
+        assert!(
+            matches!(error, SessionPoolError::Timeout { .. }),
+            "an exhausted pool fails with its acquire timeout: {error}"
+        );
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(25),
+            "acquire must wait for a real session, not return a descriptive token"
+        );
+    }
+
+    /// A dead session is discarded inside the deadline, then a timeout is
+    /// retried. The file must not fail on the first health error, and the
+    /// broken session must not come back onto the queue.
+    #[tokio::test]
+    async fn ftp_adapter_retries_an_unhealthy_checkout_until_the_budget() {
+        let pool = Arc::new(FtpSessionPool::unhealthy_for_test(40));
+        let handle = TransferSessionPoolHandle::ftp("ftp-batch", Arc::clone(&pool));
+        let started = std::time::Instant::now();
+        let acquired = tokio::time::timeout(std::time::Duration::from_secs(2), handle.acquire())
+            .await
+            .expect("checkout must finish inside the retry budget");
+        let error = match acquired {
+            Err(error) => error,
+            Ok(_) => panic!("an unhealthy session is not a lease"),
+        };
+        assert!(
+            matches!(error, SessionPoolError::Timeout { .. }),
+            "a dead session must surface as the checkout timeout: {error}"
+        );
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(90),
+            "one health failure must not end the checkout: {:?}",
+            started.elapsed()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        assert_eq!(
+            pool.available_count().expect("pool mutex"),
+            0,
+            "a failed checkout must not requeue the session"
+        );
+    }
+
+    #[tokio::test]
+    async fn ftp_adapter_does_not_retry_a_closed_pool() {
+        let pool = Arc::new(FtpSessionPool::empty_for_test(500));
+        pool.close().await.expect("close");
+        let handle = TransferSessionPoolHandle::ftp("ftp-batch", pool);
+        let started = std::time::Instant::now();
+        let error = match handle.acquire().await {
+            Err(error) => error,
+            Ok(_) => panic!("a closed pool cannot hand out a lease"),
+        };
+        assert!(
+            matches!(error, SessionPoolError::Closed { .. }),
+            "closed is not a timeout: {error}"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(200),
+            "a closed pool must not be retried: {:?}",
+            started.elapsed()
+        );
     }
 }

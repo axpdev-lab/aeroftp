@@ -144,8 +144,17 @@ impl FtpSessionPool {
         })
     }
 
+    /// Check out one session that passes health and cwd reset before the deadline.
+    /// Checkout I/O shares that deadline. A failed session stays off the queue
+    /// until a background repair reconnects it.
     pub async fn acquire(&self) -> Result<FtpSessionLease, String> {
+        let deadline = tokio::time::Instant::now()
+            + Duration::from_millis(self.inner.config.acquire_timeout_ms);
         loop {
+            if tokio::time::Instant::now() >= deadline {
+                return Err("Timed out waiting for an FTP session lease".to_string());
+            }
+
             let notified = self.inner.notify.notified();
             tokio::pin!(notified);
 
@@ -163,20 +172,44 @@ impl FtpSessionPool {
             };
 
             if let Some(session) = session {
-                let lease = FtpSessionLease {
+                let mut lease = FtpSessionLease {
                     inner: self.inner.clone(),
                     session: Some(session),
                     released: false,
                 };
-                lease.ensure_healthy().await?;
-                lease.reset_state().await?;
-                return Ok(lease);
+                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+                if remaining.is_zero() {
+                    lease.discard_broken();
+                    return Err("Timed out waiting for an FTP session lease".to_string());
+                }
+                match tokio::time::timeout(remaining, lease.checkout()).await {
+                    Ok(Ok(())) => return Ok(lease),
+                    Ok(Err(error)) => {
+                        tracing::warn!(
+                            "FTP pooled session {:?} failed checkout ({error}); repairing it",
+                            lease.session_id()
+                        );
+                        lease.discard_broken();
+                        continue;
+                    }
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            "FTP pooled session {:?} checkout exceeded the acquire deadline",
+                            lease.session_id()
+                        );
+                        lease.discard_broken();
+                        return Err("Timed out waiting for an FTP session lease".to_string());
+                    }
+                }
             }
 
-            let timeout = Duration::from_millis(self.inner.config.acquire_timeout_ms);
-            tokio::time::timeout(timeout, notified)
-                .await
-                .map_err(|_| "Timed out waiting for an FTP session lease".to_string())?;
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err("Timed out waiting for an FTP session lease".to_string());
+            }
+            if tokio::time::timeout(remaining, notified).await.is_err() {
+                return Err("Timed out waiting for an FTP session lease".to_string());
+            }
         }
     }
 
@@ -219,6 +252,84 @@ impl FtpSessionPool {
                 config,
                 available: StdMutex::new(VecDeque::new()),
                 all_sessions: Vec::new(),
+                closed: AtomicBool::new(false),
+                notify: Notify::new(),
+            }),
+        }
+    }
+
+    /// One disconnected session plus a short acquire deadline. Checkout must
+    /// discard it and then time out, not return the health error at once.
+    #[cfg(test)]
+    pub(crate) fn unhealthy_for_test(acquire_timeout_ms: u64) -> Self {
+        let timeouts = crate::ftp::FtpTimeoutConfig {
+            connect_timeout: Duration::from_millis(20),
+            disconnect_timeout: Duration::from_millis(20),
+            command_timeout: Duration::from_millis(20),
+            ..crate::ftp::FtpTimeoutConfig::default()
+        };
+        let config = FtpPoolConfig {
+            connection: FtpConnectionSpec {
+                server: "127.0.0.1:1".to_string(),
+                username: "user".to_string(),
+                password: secrecy::SecretString::from("unused".to_string()),
+                initial_path: "/".to_string(),
+                timeouts,
+            },
+            pool_size: 1,
+            min_ready_sessions: 0,
+            acquire_timeout_ms,
+        }
+        .validated();
+        let session = PooledSession {
+            id: 0,
+            manager: Arc::new(Mutex::new(FtpManager::new())),
+        };
+        let mut available = VecDeque::new();
+        available.push_back(session.clone());
+        Self {
+            inner: Arc::new(FtpSessionPoolInner {
+                config,
+                available: StdMutex::new(available),
+                all_sessions: vec![session],
+                closed: AtomicBool::new(false),
+                notify: Notify::new(),
+            }),
+        }
+    }
+
+    /// One session whose connect hangs, with a short acquire deadline.
+    /// Checkout must stop at the deadline instead of the connect timeout.
+    #[cfg(test)]
+    pub(crate) fn blackhole_for_test(acquire_timeout_ms: u64) -> Self {
+        let timeouts = crate::ftp::FtpTimeoutConfig {
+            connect_timeout: Duration::from_secs(5),
+            ..crate::ftp::FtpTimeoutConfig::default()
+        };
+        let config = FtpPoolConfig {
+            connection: FtpConnectionSpec {
+                server: "192.0.2.1:1".to_string(),
+                username: "user".to_string(),
+                password: secrecy::SecretString::from("unused".to_string()),
+                initial_path: "/".to_string(),
+                timeouts,
+            },
+            pool_size: 1,
+            min_ready_sessions: 0,
+            acquire_timeout_ms,
+        }
+        .validated();
+        let session = PooledSession {
+            id: 0,
+            manager: Arc::new(Mutex::new(FtpManager::new())),
+        };
+        let mut available = VecDeque::new();
+        available.push_back(session.clone());
+        Self {
+            inner: Arc::new(FtpSessionPoolInner {
+                config,
+                available: StdMutex::new(available),
+                all_sessions: vec![session],
                 closed: AtomicBool::new(false),
                 notify: Notify::new(),
             }),
@@ -283,6 +394,11 @@ impl FtpSessionLease {
         self.session.as_ref().map(|session| session.manager.clone())
     }
 
+    async fn checkout(&self) -> Result<(), String> {
+        self.ensure_healthy().await?;
+        self.reset_state().await
+    }
+
     pub async fn ensure_healthy(&self) -> Result<(), String> {
         let manager = self
             .manager()
@@ -339,10 +455,10 @@ impl FtpSessionLease {
             self.released = true;
             self.return_to_pool_clean();
         } else {
-            // Reset failed: drop the session so the pool reopens a fresh one
-            // next time rather than reusing a dirty session.
             self.released = true;
-            self.disconnect_session().await;
+            if let Some(session) = self.session.take() {
+                schedule_repair(Arc::clone(&self.inner), session);
+            }
         }
         reset_result
     }
@@ -376,6 +492,16 @@ impl FtpSessionLease {
         }
     }
 
+    /// Keep the broken session off the queue. `Drop` would requeue it and the
+    /// next loop would pop it again. A background repair puts it back once it
+    /// reconnects.
+    fn discard_broken(&mut self) {
+        self.released = true;
+        if let Some(session) = self.session.take() {
+            schedule_repair(Arc::clone(&self.inner), session);
+        }
+    }
+
     fn spawn_disconnect(&self, session: PooledSession) {
         let manager = session.manager.clone();
         let session_id = session.id;
@@ -397,6 +523,72 @@ impl FtpSessionLease {
             );
         }
     }
+}
+
+fn schedule_repair(inner: Arc<FtpSessionPoolInner>, session: PooledSession) {
+    let Some(handle) = tokio::runtime::Handle::try_current().ok() else {
+        tracing::warn!(
+            "FTP pooled session {} dropped without a runtime to repair it",
+            session.id
+        );
+        return;
+    };
+    handle.spawn(async move {
+        let mut delay = Duration::from_millis(200);
+        loop {
+            if inner.closed.load(Ordering::Relaxed) {
+                let mut manager = session.manager.lock().await;
+                let _ = manager.disconnect().await;
+                return;
+            }
+            match reconnect_pooled(&inner.config, &session).await {
+                Ok(()) => {
+                    if inner.closed.load(Ordering::Relaxed) {
+                        let mut manager = session.manager.lock().await;
+                        let _ = manager.disconnect().await;
+                        return;
+                    }
+                    if let Ok(mut queue) = inner.available.lock() {
+                        queue.push_back(session);
+                        inner.notify.notify_one();
+                    }
+                    return;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "FTP pooled session {} repair failed ({error}); retrying",
+                        session.id
+                    );
+                    tokio::time::sleep(delay).await;
+                    delay = (delay * 2).min(Duration::from_secs(30));
+                }
+            }
+        }
+    });
+}
+
+async fn reconnect_pooled(config: &FtpPoolConfig, session: &PooledSession) -> Result<(), String> {
+    let mut manager = session.manager.lock().await;
+    let _ = manager.disconnect().await;
+    manager.set_timeout_config(config.connection.timeouts);
+    manager
+        .connect(&config.connection.server)
+        .await
+        .map_err(|error| format!("FTP pool reconnect failed: {error}"))?;
+    manager
+        .login(
+            &config.connection.username,
+            config.connection.password.expose_secret(),
+        )
+        .await
+        .map_err(|error| format!("FTP pool re-login failed: {error}"))?;
+    if !config.connection.initial_path.is_empty() {
+        manager
+            .change_dir(&config.connection.initial_path)
+            .await
+            .map_err(|error| format!("FTP pool reset path failed: {error}"))?;
+    }
+    Ok(())
 }
 
 impl Drop for FtpSessionLease {
@@ -509,5 +701,57 @@ mod tests {
         assert_eq!(config.pool_size, 8);
         assert_eq!(config.min_ready_sessions, 1);
         assert_eq!(config.acquire_timeout_ms, 30_000);
+    }
+
+    #[tokio::test]
+    async fn acquire_discards_unhealthy_session_and_waits_for_the_deadline() {
+        let pool = FtpSessionPool::unhealthy_for_test(80);
+        let started = std::time::Instant::now();
+        let acquired = tokio::time::timeout(std::time::Duration::from_secs(1), pool.acquire())
+            .await
+            .expect("a broken session must not be retried without a deadline");
+        let error = match acquired {
+            Err(error) => error,
+            Ok(_) => panic!("checkout of a dead session is not a lease"),
+        };
+        assert!(
+            error.contains("Timed out"),
+            "health failure must stay inside the deadline, not fail the checkout at once: {error}"
+        );
+        assert!(
+            started.elapsed() >= std::time::Duration::from_millis(40),
+            "acquire returned before the deadline: {:?}",
+            started.elapsed()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        assert_eq!(
+            pool.available_count().expect("pool mutex"),
+            0,
+            "a failed checkout must not requeue the session before it reconnects"
+        );
+        let _ = pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn acquire_bounds_checkout_io_by_the_deadline() {
+        let pool = FtpSessionPool::blackhole_for_test(50);
+        let started = std::time::Instant::now();
+        let acquired = tokio::time::timeout(std::time::Duration::from_secs(2), pool.acquire())
+            .await
+            .expect("checkout I/O must not run past the test cap");
+        let error = match acquired {
+            Err(error) => error,
+            Ok(_) => panic!("a blackholed connect is not a lease"),
+        };
+        assert!(
+            error.contains("Timed out"),
+            "checkout that overruns the deadline must time out: {error}"
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_millis(800),
+            "checkout ran past the acquire deadline: {elapsed:?}"
+        );
+        let _ = pool.close().await;
     }
 }

@@ -12,8 +12,8 @@ use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use crate::ftp_session_pool::FtpSessionPool;
-use crate::transfer_dag::TransferSessionPoolHandle;
+use crate::ftp_session_pool::{FtpSessionLease, FtpSessionPool};
+use crate::transfer_dag::{TransferSessionLease, TransferSessionPoolHandle};
 use crate::transfer_domain::{
     TransferEntry, TransferFailure, TransferFailureKind, TransferOutcome,
 };
@@ -24,6 +24,101 @@ use crate::transfer_settings::ResolvedTransferSettings;
 /// retries = attempts - 1). Removed on read via
 /// [`TransferExecutor::take_transfer_attempts`] so nothing accumulates.
 type AttemptCounts = std::sync::Mutex<std::collections::HashMap<String, u32>>;
+
+/// Real pool handle, so the DAG waits for a session before the governor job.
+fn executor_session_pool(label: &str, pool: &Arc<FtpSessionPool>) -> TransferSessionPoolHandle {
+    TransferSessionPoolHandle::ftp(label, Arc::clone(pool))
+}
+
+/// Health-check and cwd reset before an attempt. A failed check meters nothing.
+async fn prepare_lease(lease: &FtpSessionLease) -> Result<(), String> {
+    lease.ensure_healthy().await?;
+    lease.reset_state().await
+}
+
+/// Meter one attempt directly before its real transfer runs (first try
+/// counts as 1, so retries = attempts - 1): a cancel during backoff or
+/// mid-transfer still leaves an honest count behind, and a session that
+/// failed its readiness check before the attempt never touched the wire, so
+/// it meters nothing. Same convention as `note_transfer_attempt` in the
+/// provider executor.
+fn note_transfer_attempt(attempt_counts: &AttemptCounts, entry_id: &str, attempt: u32) {
+    attempt_counts
+        .lock()
+        .expect("attempt counts poisoned")
+        .insert(entry_id.to_string(), attempt);
+}
+
+/// Terminal outcome for a caller that never got a session (`execute()` on a
+/// closed or exhausted pool): the same file_start / file_error pair the
+/// retry loop emits around its attempts, with the acquire error as the
+/// failure. The DAG path reports a session-acquire failure itself and never
+/// calls the executor without a lease.
+fn fail_without_session(
+    app: &AppHandle,
+    entry: &TransferEntry,
+    direction: &str,
+    error: &str,
+    cancelled: bool,
+) -> TransferOutcome {
+    let verb = if direction == "download" {
+        "Downloading"
+    } else {
+        "Uploading"
+    };
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        app,
+        crate::TransferEvent {
+            event_type: "file_start".to_string(),
+            transfer_id: entry.id.clone(),
+            filename: entry.display_name.clone(),
+            direction: direction.to_string(),
+            message: Some(format!("{verb}: {}", entry.remote_path)),
+            progress: Some(crate::TransferProgress {
+                transfer_id: entry.id.clone(),
+                filename: entry.display_name.clone(),
+                transferred: 0,
+                total: entry.size,
+                percentage: 0,
+                speed_bps: 0,
+                eta_seconds: 0,
+                direction: direction.to_string(),
+                total_files: None,
+                path: None,
+            }),
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        },
+    );
+
+    let failure = if cancelled {
+        TransferFailure::new(
+            TransferFailureKind::Cancelled,
+            "Transfer cancelled by user",
+            false,
+        )
+    } else {
+        TransferFailure::from_raw_message(error)
+    };
+
+    crate::transfer_event_sink::emit_gui_transfer_event(
+        app,
+        crate::TransferEvent {
+            event_type: "file_error".to_string(),
+            transfer_id: entry.id.clone(),
+            filename: entry.display_name.clone(),
+            direction: direction.to_string(),
+            message: Some(failure.message.clone()),
+            progress: None,
+            path: Some(entry.remote_path.clone()),
+            delta_stats: None,
+            fallback_reason: None,
+        },
+    );
+
+    TransferOutcome::Failed(failure)
+}
 
 pub struct FtpDownloadExecutor {
     app: AppHandle,
@@ -48,50 +143,13 @@ impl FtpDownloadExecutor {
             attempt_counts: AttemptCounts::default(),
         }
     }
-}
 
-pub struct FtpUploadExecutor {
-    app: AppHandle,
-    pool: Arc<FtpSessionPool>,
-    runtime_settings: ResolvedTransferSettings,
-    cancel_token: CancellationToken,
-    attempt_counts: AttemptCounts,
-}
-
-impl FtpUploadExecutor {
-    pub fn new(
-        app: AppHandle,
-        pool: Arc<FtpSessionPool>,
-        runtime_settings: ResolvedTransferSettings,
-        cancel_token: CancellationToken,
-    ) -> Self {
-        Self {
-            app,
-            pool,
-            runtime_settings,
-            cancel_token,
-            attempt_counts: AttemptCounts::default(),
-        }
-    }
-}
-
-#[async_trait]
-impl TransferExecutor for FtpDownloadExecutor {
-    fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
-        TransferSessionPoolHandle::executor_managed_ftp(
-            "ftp-download-executor",
-            self.pool.total_sessions(),
-        )
-    }
-
-    fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
-        self.attempt_counts
-            .lock()
-            .expect("attempt counts poisoned")
-            .remove(entry_id)
-    }
-
-    async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
+    /// Retry against the lease the DAG already holds, then release it once.
+    async fn execute_with_lease(
+        &self,
+        entry: TransferEntry,
+        lease: FtpSessionLease,
+    ) -> TransferOutcome {
         let file_transfer_id = entry.id.clone();
 
         crate::transfer_event_sink::emit_gui_transfer_event(
@@ -122,6 +180,7 @@ impl TransferExecutor for FtpDownloadExecutor {
 
         let retry_policy = self.runtime_settings.retry_policy();
         let mut last_error = String::new();
+        let mut succeeded = false;
 
         for attempt in 0..=retry_policy.max_retries {
             if self.cancel_token.is_cancelled() {
@@ -151,125 +210,88 @@ impl TransferExecutor for FtpDownloadExecutor {
             let cancel_token = self.cancel_token.clone();
             let modified = entry.modified.clone();
 
-            let result = match acquire_metered_lease(
-                &self.pool,
-                &self.attempt_counts,
-                &entry.id,
-                attempt + 1,
-            )
-            .await
-            {
-                Ok(lease) => {
-                    let transfer_result = {
-                        let manager = lease.manager();
-                        async move {
-                            let manager = manager
-                                .ok_or("FTP session lease is no longer valid".to_string())?;
-                            let mut ftp = manager.lock().await;
-                            // Scale timeout based on file size: at least 2s per MB, minimum from settings
-                            let size_based_timeout = (file_size / (1024 * 1024)).max(1) * 2 + 30;
-                            let effective_timeout = self
-                                .runtime_settings
-                                .timeout_seconds
-                                .max(size_based_timeout);
-                            ftp.apply_transfer_timeout(effective_timeout);
+            let result = match prepare_lease(&lease).await {
+                Ok(()) => {
+                    note_transfer_attempt(&self.attempt_counts, &entry.id, attempt + 1);
+                    let manager = lease.manager();
+                    async move {
+                        let manager =
+                            manager.ok_or("FTP session lease is no longer valid".to_string())?;
+                        let mut ftp = manager.lock().await;
+                        // Scale timeout based on file size: at least 2s per MB, minimum from settings
+                        let size_based_timeout = (file_size / (1024 * 1024)).max(1) * 2 + 30;
+                        let effective_timeout = self
+                            .runtime_settings
+                            .timeout_seconds
+                            .max(size_based_timeout);
+                        ftp.apply_transfer_timeout(effective_timeout);
 
-                            let (parent_dir, remote_name) = split_remote_path(&remote_path);
-                            ftp.change_dir(&parent_dir).await.map_err(|e| {
-                                format!("Failed to change directory to {}: {}", parent_dir, e)
-                            })?;
+                        let (parent_dir, remote_name) = split_remote_path(&remote_path);
+                        ftp.change_dir(&parent_dir).await.map_err(|e| {
+                            format!("Failed to change directory to {}: {}", parent_dir, e)
+                        })?;
 
-                            let speed_meter = crate::transfer_speed::SpeedMeter::new();
-                            ftp.download_file_with_progress(
-                                &remote_name,
-                                &local_path,
-                                |transferred| {
-                                    if cancel_token.is_cancelled() {
-                                        return false;
-                                    }
+                        let speed_meter = crate::transfer_speed::SpeedMeter::new();
+                        ftp.download_file_with_progress(&remote_name, &local_path, |transferred| {
+                            if cancel_token.is_cancelled() {
+                                return false;
+                            }
 
-                                    let speed = speed_meter.bps(transferred);
-                                    let percentage = if file_size > 0 {
-                                        ((transferred as f64 / file_size as f64) * 100.0) as u8
-                                    } else {
-                                        0
-                                    };
-                                    let eta = if speed > 0 && file_size > transferred {
-                                        ((file_size - transferred) / speed) as u32
-                                    } else {
-                                        0
-                                    };
+                            let speed = speed_meter.bps(transferred);
+                            let percentage = if file_size > 0 {
+                                ((transferred as f64 / file_size as f64) * 100.0) as u8
+                            } else {
+                                0
+                            };
+                            let eta = if speed > 0 && file_size > transferred {
+                                ((file_size - transferred) / speed) as u32
+                            } else {
+                                0
+                            };
 
-                                    crate::transfer_event_sink::emit_gui_transfer_event(
-                                        &app,
-                                        crate::TransferEvent {
-                                            event_type: "progress".to_string(),
-                                            transfer_id: transfer_id.clone(),
-                                            filename: display_name.clone(),
-                                            direction: "download".to_string(),
-                                            message: None,
-                                            progress: Some(crate::TransferProgress {
-                                                transfer_id: transfer_id.clone(),
-                                                filename: display_name.clone(),
-                                                transferred,
-                                                total: file_size,
-                                                percentage,
-                                                speed_bps: speed,
-                                                eta_seconds: eta,
-                                                direction: "download".to_string(),
-                                                total_files: None,
-                                                path: None,
-                                            }),
-                                            path: Some(remote_path_for_progress.clone()),
-                                            delta_stats: None,
-                                            fallback_reason: None,
-                                        },
-                                    );
-
-                                    true
+                            crate::transfer_event_sink::emit_gui_transfer_event(
+                                &app,
+                                crate::TransferEvent {
+                                    event_type: "progress".to_string(),
+                                    transfer_id: transfer_id.clone(),
+                                    filename: display_name.clone(),
+                                    direction: "download".to_string(),
+                                    message: None,
+                                    progress: Some(crate::TransferProgress {
+                                        transfer_id: transfer_id.clone(),
+                                        filename: display_name.clone(),
+                                        transferred,
+                                        total: file_size,
+                                        percentage,
+                                        speed_bps: speed,
+                                        eta_seconds: eta,
+                                        direction: "download".to_string(),
+                                        total_files: None,
+                                        path: None,
+                                    }),
+                                    path: Some(remote_path_for_progress.clone()),
+                                    delta_stats: None,
+                                    fallback_reason: None,
                                 },
-                            )
-                            .await
-                            .map_err(|e| e.to_string())?;
-
-                            crate::preserve_remote_mtime(
-                                &local_path_for_mtime,
-                                modified.as_deref(),
                             );
-                            Ok::<(), String>(())
-                        }
-                    }
-                    .await;
 
-                    if let Err(release_error) = lease.release().await {
-                        warn!(
-                            "Failed to reset FTP lease after {}: {}",
-                            entry.remote_path, release_error
-                        );
-                    }
+                            true
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?;
 
-                    transfer_result
+                        crate::preserve_remote_mtime(&local_path_for_mtime, modified.as_deref());
+                        Ok::<(), String>(())
+                    }
+                    .await
                 }
                 Err(error) => Err(error),
             };
 
             match result {
                 Ok(()) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(
-                        &self.app,
-                        crate::TransferEvent {
-                            event_type: "file_complete".to_string(),
-                            transfer_id: file_transfer_id.clone(),
-                            filename: entry.display_name.clone(),
-                            direction: "download".to_string(),
-                            message: Some(format!("Downloaded: {}", entry.display_name)),
-                            progress: None,
-                            path: Some(entry.remote_path.clone()),
-                            delta_stats: None,
-                            fallback_reason: None,
-                        },
-                    );
-                    return TransferOutcome::Success;
+                    succeeded = true;
+                    break;
                 }
                 Err(error) => {
                     last_error = error;
@@ -295,6 +317,32 @@ impl TransferExecutor for FtpDownloadExecutor {
                     );
                 }
             }
+        }
+
+        // One release: the lease outlives every attempt.
+        if let Err(release_error) = lease.release().await {
+            warn!(
+                "Failed to reset FTP lease after {}: {}",
+                entry.remote_path, release_error
+            );
+        }
+
+        if succeeded {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &self.app,
+                crate::TransferEvent {
+                    event_type: "file_complete".to_string(),
+                    transfer_id: file_transfer_id.clone(),
+                    filename: entry.display_name.clone(),
+                    direction: "download".to_string(),
+                    message: Some(format!("Downloaded: {}", entry.display_name)),
+                    progress: None,
+                    path: Some(entry.remote_path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            return TransferOutcome::Success;
         }
 
         let failure = if self.cancel_token.is_cancelled()
@@ -329,12 +377,9 @@ impl TransferExecutor for FtpDownloadExecutor {
 }
 
 #[async_trait]
-impl TransferExecutor for FtpUploadExecutor {
+impl TransferExecutor for FtpDownloadExecutor {
     fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
-        TransferSessionPoolHandle::executor_managed_ftp(
-            "ftp-upload-executor",
-            self.pool.total_sessions(),
-        )
+        executor_session_pool("ftp-download-executor", &self.pool)
     }
 
     fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
@@ -345,6 +390,87 @@ impl TransferExecutor for FtpUploadExecutor {
     }
 
     async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
+        // Trait entry for a caller that does not already hold a lease.
+        match self.pool.acquire().await {
+            Ok(lease) => self.execute_with_lease(entry, lease).await,
+            Err(error) => fail_without_session(
+                &self.app,
+                &entry,
+                "download",
+                &error,
+                self.cancel_token.is_cancelled(),
+            ),
+        }
+    }
+
+    async fn execute_with_session(
+        &self,
+        entry: TransferEntry,
+        session_lease: TransferSessionLease,
+    ) -> TransferOutcome {
+        let lease = match session_lease.into_ftp() {
+            Ok(ftp_lease) => match ftp_lease.into_inner() {
+                Some(lease) => lease,
+                None => {
+                    warn!("FTP download executor got an already-released lease");
+                    return fail_without_session(
+                        &self.app,
+                        &entry,
+                        "download",
+                        "FTP session lease was already released",
+                        self.cancel_token.is_cancelled(),
+                    );
+                }
+            },
+            Err(other) => {
+                warn!(
+                    "FTP download executor received a {:?} session lease",
+                    other.kind()
+                );
+                drop(other);
+                return fail_without_session(
+                    &self.app,
+                    &entry,
+                    "download",
+                    "FTP executor received a non-FTP session lease",
+                    self.cancel_token.is_cancelled(),
+                );
+            }
+        };
+        self.execute_with_lease(entry, lease).await
+    }
+}
+
+pub struct FtpUploadExecutor {
+    app: AppHandle,
+    pool: Arc<FtpSessionPool>,
+    runtime_settings: ResolvedTransferSettings,
+    cancel_token: CancellationToken,
+    attempt_counts: AttemptCounts,
+}
+
+impl FtpUploadExecutor {
+    pub fn new(
+        app: AppHandle,
+        pool: Arc<FtpSessionPool>,
+        runtime_settings: ResolvedTransferSettings,
+        cancel_token: CancellationToken,
+    ) -> Self {
+        Self {
+            app,
+            pool,
+            runtime_settings,
+            cancel_token,
+            attempt_counts: AttemptCounts::default(),
+        }
+    }
+
+    /// Same held-lease retry loop as download.
+    async fn execute_with_lease(
+        &self,
+        entry: TransferEntry,
+        lease: FtpSessionLease,
+    ) -> TransferOutcome {
         let file_transfer_id = entry.id.clone();
         let file_size = if entry.size > 0 {
             entry.size
@@ -383,6 +509,7 @@ impl TransferExecutor for FtpUploadExecutor {
 
         let retry_policy = self.runtime_settings.retry_policy();
         let mut last_error = String::new();
+        let mut succeeded = false;
 
         for attempt in 0..=retry_policy.max_retries {
             if self.cancel_token.is_cancelled() {
@@ -409,121 +536,91 @@ impl TransferExecutor for FtpUploadExecutor {
             let local_path = entry.local_path.clone();
             let cancel_token = self.cancel_token.clone();
 
-            let result = match acquire_metered_lease(
-                &self.pool,
-                &self.attempt_counts,
-                &entry.id,
-                attempt + 1,
-            )
-            .await
-            {
-                Ok(lease) => {
-                    let transfer_result = {
-                        let manager = lease.manager();
-                        async move {
-                            let manager = manager
-                                .ok_or("FTP session lease is no longer valid".to_string())?;
-                            let mut ftp = manager.lock().await;
-                            // Scale timeout based on file size: at least 1s per MB, minimum from settings
-                            let size_based_timeout = (file_size / (1024 * 1024)).max(1) * 2 + 30;
-                            let effective_timeout = self
-                                .runtime_settings
-                                .timeout_seconds
-                                .max(size_based_timeout);
-                            ftp.apply_transfer_timeout(effective_timeout);
-                            let (parent_dir, remote_name) = split_remote_path(&remote_path);
-                            ftp.change_dir(&parent_dir).await.map_err(|e| {
-                                format!("Failed to change directory to {}: {}", parent_dir, e)
-                            })?;
+            let result = match prepare_lease(&lease).await {
+                Ok(()) => {
+                    note_transfer_attempt(&self.attempt_counts, &entry.id, attempt + 1);
+                    let manager = lease.manager();
+                    async move {
+                        let manager =
+                            manager.ok_or("FTP session lease is no longer valid".to_string())?;
+                        let mut ftp = manager.lock().await;
+                        // Scale timeout based on file size: at least 1s per MB, minimum from settings
+                        let size_based_timeout = (file_size / (1024 * 1024)).max(1) * 2 + 30;
+                        let effective_timeout = self
+                            .runtime_settings
+                            .timeout_seconds
+                            .max(size_based_timeout);
+                        ftp.apply_transfer_timeout(effective_timeout);
+                        let (parent_dir, remote_name) = split_remote_path(&remote_path);
+                        ftp.change_dir(&parent_dir).await.map_err(|e| {
+                            format!("Failed to change directory to {}: {}", parent_dir, e)
+                        })?;
 
-                            let speed_meter = crate::transfer_speed::SpeedMeter::new();
-                            ftp.upload_file_with_progress(
-                                &local_path,
-                                &remote_name,
-                                file_size,
-                                |transferred| {
-                                    if cancel_token.is_cancelled() {
-                                        return false;
-                                    }
+                        let speed_meter = crate::transfer_speed::SpeedMeter::new();
+                        ftp.upload_file_with_progress(
+                            &local_path,
+                            &remote_name,
+                            file_size,
+                            |transferred| {
+                                if cancel_token.is_cancelled() {
+                                    return false;
+                                }
 
-                                    let speed = speed_meter.bps(transferred);
-                                    let percentage = if file_size > 0 {
-                                        ((transferred as f64 / file_size as f64) * 100.0) as u8
-                                    } else {
-                                        0
-                                    };
-                                    let eta = if speed > 0 && file_size > transferred {
-                                        ((file_size - transferred) / speed) as u32
-                                    } else {
-                                        0
-                                    };
+                                let speed = speed_meter.bps(transferred);
+                                let percentage = if file_size > 0 {
+                                    ((transferred as f64 / file_size as f64) * 100.0) as u8
+                                } else {
+                                    0
+                                };
+                                let eta = if speed > 0 && file_size > transferred {
+                                    ((file_size - transferred) / speed) as u32
+                                } else {
+                                    0
+                                };
 
-                                    crate::transfer_event_sink::emit_gui_transfer_event(
-                                        &app,
-                                        crate::TransferEvent {
-                                            event_type: "progress".to_string(),
+                                crate::transfer_event_sink::emit_gui_transfer_event(
+                                    &app,
+                                    crate::TransferEvent {
+                                        event_type: "progress".to_string(),
+                                        transfer_id: transfer_id.clone(),
+                                        filename: display_name.clone(),
+                                        direction: "upload".to_string(),
+                                        message: None,
+                                        progress: Some(crate::TransferProgress {
                                             transfer_id: transfer_id.clone(),
                                             filename: display_name.clone(),
+                                            transferred,
+                                            total: file_size,
+                                            percentage,
+                                            speed_bps: speed,
+                                            eta_seconds: eta,
                                             direction: "upload".to_string(),
-                                            message: None,
-                                            progress: Some(crate::TransferProgress {
-                                                transfer_id: transfer_id.clone(),
-                                                filename: display_name.clone(),
-                                                transferred,
-                                                total: file_size,
-                                                percentage,
-                                                speed_bps: speed,
-                                                eta_seconds: eta,
-                                                direction: "upload".to_string(),
-                                                total_files: None,
-                                                path: None,
-                                            }),
-                                            path: Some(remote_path_for_progress.clone()),
-                                            delta_stats: None,
-                                            fallback_reason: None,
-                                        },
-                                    );
+                                            total_files: None,
+                                            path: None,
+                                        }),
+                                        path: Some(remote_path_for_progress.clone()),
+                                        delta_stats: None,
+                                        fallback_reason: None,
+                                    },
+                                );
 
-                                    true
-                                },
-                            )
-                            .await
-                            .map_err(|e| e.to_string())?;
+                                true
+                            },
+                        )
+                        .await
+                        .map_err(|e| e.to_string())?;
 
-                            Ok::<(), String>(())
-                        }
+                        Ok::<(), String>(())
                     }
-                    .await;
-
-                    if let Err(release_error) = lease.release().await {
-                        warn!(
-                            "Failed to reset FTP lease after {}: {}",
-                            entry.remote_path, release_error
-                        );
-                    }
-
-                    transfer_result
+                    .await
                 }
                 Err(error) => Err(error),
             };
 
             match result {
                 Ok(()) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(
-                        &self.app,
-                        crate::TransferEvent {
-                            event_type: "file_complete".to_string(),
-                            transfer_id: file_transfer_id.clone(),
-                            filename: entry.display_name.clone(),
-                            direction: "upload".to_string(),
-                            message: Some(format!("Uploaded: {}", entry.display_name)),
-                            progress: None,
-                            path: Some(entry.remote_path.clone()),
-                            delta_stats: None,
-                            fallback_reason: None,
-                        },
-                    );
-                    return TransferOutcome::Success;
+                    succeeded = true;
+                    break;
                 }
                 Err(error) => {
                     last_error = error;
@@ -549,6 +646,31 @@ impl TransferExecutor for FtpUploadExecutor {
                     );
                 }
             }
+        }
+
+        if let Err(release_error) = lease.release().await {
+            warn!(
+                "Failed to reset FTP lease after {}: {}",
+                entry.remote_path, release_error
+            );
+        }
+
+        if succeeded {
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &self.app,
+                crate::TransferEvent {
+                    event_type: "file_complete".to_string(),
+                    transfer_id: file_transfer_id.clone(),
+                    filename: entry.display_name.clone(),
+                    direction: "upload".to_string(),
+                    message: Some(format!("Uploaded: {}", entry.display_name)),
+                    progress: None,
+                    path: Some(entry.remote_path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            return TransferOutcome::Success;
         }
 
         let failure = if self.cancel_token.is_cancelled()
@@ -582,25 +704,69 @@ impl TransferExecutor for FtpUploadExecutor {
     }
 }
 
-/// Acquire a pool lease, metering the attempt only once the lease is in
-/// hand: a failed acquire never touched the wire, so it must not count as
-/// an attempt (mirrors `note_transfer_attempt` in the provider executor,
-/// which notes directly before the real transfer attempt).
-async fn acquire_metered_lease(
-    pool: &FtpSessionPool,
-    attempt_counts: &AttemptCounts,
-    entry_id: &str,
-    attempt: u32,
-) -> Result<crate::ftp_session_pool::FtpSessionLease, String> {
-    let lease = pool.acquire().await?;
-    // Meter every attempt actually made (first try included) before it runs,
-    // so a cancel during backoff or mid-transfer still leaves an honest
-    // count behind.
-    attempt_counts
-        .lock()
-        .expect("attempt counts poisoned")
-        .insert(entry_id.to_string(), attempt);
-    Ok(lease)
+#[async_trait]
+impl TransferExecutor for FtpUploadExecutor {
+    fn session_pool(&self, _max_concurrent: usize) -> TransferSessionPoolHandle {
+        executor_session_pool("ftp-upload-executor", &self.pool)
+    }
+
+    fn take_transfer_attempts(&self, entry_id: &str) -> Option<u32> {
+        self.attempt_counts
+            .lock()
+            .expect("attempt counts poisoned")
+            .remove(entry_id)
+    }
+
+    async fn execute(&self, entry: TransferEntry) -> TransferOutcome {
+        // Trait entry for a caller that does not already hold a lease.
+        match self.pool.acquire().await {
+            Ok(lease) => self.execute_with_lease(entry, lease).await,
+            Err(error) => fail_without_session(
+                &self.app,
+                &entry,
+                "upload",
+                &error,
+                self.cancel_token.is_cancelled(),
+            ),
+        }
+    }
+
+    async fn execute_with_session(
+        &self,
+        entry: TransferEntry,
+        session_lease: TransferSessionLease,
+    ) -> TransferOutcome {
+        let lease = match session_lease.into_ftp() {
+            Ok(ftp_lease) => match ftp_lease.into_inner() {
+                Some(lease) => lease,
+                None => {
+                    warn!("FTP upload executor got an already-released lease");
+                    return fail_without_session(
+                        &self.app,
+                        &entry,
+                        "upload",
+                        "FTP session lease was already released",
+                        self.cancel_token.is_cancelled(),
+                    );
+                }
+            },
+            Err(other) => {
+                warn!(
+                    "FTP upload executor received a {:?} session lease",
+                    other.kind()
+                );
+                drop(other);
+                return fail_without_session(
+                    &self.app,
+                    &entry,
+                    "upload",
+                    "FTP executor received a non-FTP session lease",
+                    self.cancel_token.is_cancelled(),
+                );
+            }
+        };
+        self.execute_with_lease(entry, lease).await
+    }
 }
 
 fn split_remote_path(remote_path: &str) -> (String, String) {
@@ -626,7 +792,8 @@ fn split_remote_path(remote_path: &str) -> (String, String) {
 
 #[cfg(test)]
 mod tests {
-    use super::{acquire_metered_lease, split_remote_path, AttemptCounts};
+    use super::{executor_session_pool, note_transfer_attempt, split_remote_path, AttemptCounts};
+    use std::sync::Arc;
 
     #[test]
     fn split_remote_path_extracts_parent_and_file() {
@@ -642,20 +809,51 @@ mod tests {
         assert_eq!(file, "file.txt");
     }
 
-    /// A pool that cannot hand out a lease (zero sessions, short acquire
-    /// timeout) must meter zero attempts: a failed acquire never touched
-    /// the wire.
+    /// An empty pool must time out. A no-wait token would return immediately.
     #[tokio::test]
-    async fn failed_pool_acquire_meters_no_attempt() {
-        let pool = crate::ftp_session_pool::FtpSessionPool::empty_for_test(50);
+    async fn executor_session_pool_handle_gates_on_the_real_pool() {
+        for label in ["ftp-download-executor", "ftp-upload-executor"] {
+            let pool = Arc::new(crate::ftp_session_pool::FtpSessionPool::empty_for_test(50));
+            let handle = executor_session_pool(label, &pool);
+
+            assert_eq!(
+                handle.capacity().max_leases,
+                pool.total_sessions().max(1),
+                "{label}: capacity mirrors the pool's session count"
+            );
+
+            let started = std::time::Instant::now();
+            let error = match handle.acquire().await {
+                Err(error) => error,
+                Ok(_) => panic!("{label}: an empty pool cannot hand out a lease"),
+            };
+            assert!(
+                matches!(error, crate::transfer_dag::SessionPoolError::Timeout { .. }),
+                "{label}: exhausted pool must time out: {error}"
+            );
+            assert!(
+                started.elapsed() >= std::time::Duration::from_millis(25),
+                "{label}: acquire must wait on the pool, not return a no-wait token"
+            );
+        }
+    }
+
+    /// Records the latest attempt. A readiness failure never reaches this point.
+    #[test]
+    fn note_transfer_attempt_records_the_latest_attempt() {
         let counts = AttemptCounts::default();
-
-        let result = acquire_metered_lease(&pool, &counts, "entry-1", 1).await;
-
-        assert!(result.is_err(), "an empty pool cannot hand out a lease");
+        note_transfer_attempt(&counts, "entry-1", 1);
+        note_transfer_attempt(&counts, "entry-1", 2);
+        assert_eq!(
+            counts
+                .lock()
+                .expect("attempt counts poisoned")
+                .remove("entry-1"),
+            Some(2)
+        );
         assert!(
             counts.lock().expect("attempt counts poisoned").is_empty(),
-            "a failed acquire meters nothing"
+            "the entry left nothing else behind"
         );
     }
 }

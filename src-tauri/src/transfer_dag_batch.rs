@@ -47,7 +47,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use futures_util::future::BoxFuture;
@@ -704,18 +704,28 @@ where
     metrics
 }
 
+/// Stays pending until `is_cancelled` is true, then completes with `false`.
+async fn wait_until_cancelled(is_cancelled: impl Fn() -> bool) -> bool {
+    loop {
+        if is_cancelled() {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 /// Session lease, then the governor job.
 ///
 /// Whole-file and multipart nodes both come through here, so the two gates
-/// are always taken in one order. `still_wanted` runs while the session lease
-/// is already held and before the governor job: a file that was cancelled in
-/// that window drops the session and takes no endpoint or disk slot.
+/// are always taken in one order. `is_cancelled` stays pending while the file
+/// should run. A stop drops the in-flight checkout, or the session just taken,
+/// and no governor job is acquired.
 async fn acquire_session_then_job(
     session_pool: &crate::transfer_dag::TransferSessionPoolHandle,
     governor: &crate::transfer_dag::GlobalTransferGovernor,
     endpoint: crate::transfer_dag::EndpointIdentity,
     disk_requests: impl IntoIterator<Item = DiskLeaseRequest>,
-    still_wanted: impl std::future::Future<Output = bool>,
+    is_cancelled: impl Fn() -> bool,
 ) -> Result<
     Option<(
         crate::transfer_dag::TransferSessionLease,
@@ -723,15 +733,79 @@ async fn acquire_session_then_job(
     )>,
     crate::transfer_dag::SessionPoolError,
 > {
-    let session = session_pool.acquire().await?;
-    if !still_wanted.await {
-        drop(session);
+    // The waiter is pending across a long checkout, so Stop does not sit
+    // through every timeout retry. The check after a successful checkout
+    // closes the gap while that waiter is asleep.
+    let mut acquire_fut = std::pin::pin!(session_pool.acquire());
+    let mut wanted_fut = std::pin::pin!(wait_until_cancelled(&is_cancelled));
+    let session = tokio::select! {
+        biased;
+        wanted = &mut wanted_fut => {
+            if !wanted {
+                return Ok(None);
+            }
+            acquire_fut.await?
+        }
+        result = &mut acquire_fut => result?,
+    };
+    if is_cancelled() {
         return Ok(None);
     }
     let job = governor
         .acquire_job(endpoint, TransferPriority::Background, disk_requests)
         .await;
     Ok(Some((session, job)))
+}
+
+/// The executor never runs when checkout fails, so the per-file pair is emitted here.
+fn emit_checkout_failure(
+    sink: &dyn TransferEventSink,
+    entry: &TransferEntry,
+    direction: TransferDirection,
+    failure: &TransferFailure,
+) {
+    let direction = match direction {
+        TransferDirection::Upload => "upload",
+        TransferDirection::Download => "download",
+    };
+    let verb = if direction == "download" {
+        "Downloading"
+    } else {
+        "Uploading"
+    };
+    sink.emit_transfer_event(crate::TransferEvent {
+        event_type: "file_start".to_string(),
+        transfer_id: entry.id.clone(),
+        filename: entry.display_name.clone(),
+        direction: direction.to_string(),
+        message: Some(format!("{verb}: {}", entry.remote_path)),
+        progress: Some(crate::TransferProgress {
+            transfer_id: entry.id.clone(),
+            filename: entry.display_name.clone(),
+            transferred: 0,
+            total: entry.size,
+            percentage: 0,
+            speed_bps: 0,
+            eta_seconds: 0,
+            direction: direction.to_string(),
+            total_files: None,
+            path: None,
+        }),
+        path: Some(entry.remote_path.clone()),
+        delta_stats: None,
+        fallback_reason: None,
+    });
+    sink.emit_transfer_event(crate::TransferEvent {
+        event_type: "file_error".to_string(),
+        transfer_id: entry.id.clone(),
+        filename: entry.display_name.clone(),
+        direction: direction.to_string(),
+        message: Some(failure.message.clone()),
+        progress: None,
+        path: Some(entry.remote_path.clone()),
+        delta_stats: None,
+        fallback_reason: None,
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -774,8 +848,8 @@ where
     // held only while this file's session is active, preserving file-level
     // parallelism across different endpoints and disks.
     let (session_lease, _job_lease) =
-        match acquire_session_then_job(session_pool, governor, endpoint, disk_requests, async {
-            !cancel.load(Ordering::Relaxed)
+        match acquire_session_then_job(session_pool, governor, endpoint, disk_requests, || {
+            cancel.load(Ordering::Relaxed)
         })
         .await
         {
@@ -790,6 +864,7 @@ where
                     format!("Transfer session acquisition failed: {error}"),
                     true,
                 );
+                emit_checkout_failure(sink.as_ref(), &entry, direction, &failure);
                 // Not counted in `active` yet (that happens once the session and
                 // the job lease are held), so there is nothing to take back.
                 account_outcome(
@@ -976,8 +1051,8 @@ where
                     governor,
                     endpoint,
                     [DiskLeaseRequest::read(entry.local_path.clone())],
-                    async {
-                        !multipart_should_stop(
+                    || {
+                        multipart_should_stop(
                             cancel,
                             executor.is_transfer_cancelled(),
                             state.is_begun(),
@@ -1856,6 +1931,109 @@ mod tests {
             size,
             modified: None,
         }
+    }
+
+    #[test]
+    fn checkout_failure_emits_file_start_then_file_error() {
+        struct Recording(std::sync::Mutex<Vec<TransferEvent>>);
+        impl TransferEventSink for Recording {
+            fn emit_transfer_event(&self, event: TransferEvent) {
+                self.0.lock().expect("events").push(event);
+            }
+        }
+
+        let sink = Recording(std::sync::Mutex::new(Vec::new()));
+        let failure = TransferFailure::new(
+            TransferFailureKind::Unknown,
+            "Transfer session acquisition failed: timed out",
+            true,
+        );
+        super::emit_checkout_failure(
+            &sink,
+            &entry("report.csv", 12),
+            super::TransferDirection::Download,
+            &failure,
+        );
+        let events = sink.0.lock().expect("events").clone();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event_type, "file_start");
+        assert_eq!(events[0].transfer_id, "report.csv");
+        assert_eq!(events[0].direction, "download");
+        assert_eq!(events[0].path.as_deref(), Some("/remote/report.csv"));
+        assert!(events[0].progress.is_some());
+        assert_eq!(events[1].event_type, "file_error");
+        assert_eq!(
+            events[1].message.as_deref(),
+            Some("Transfer session acquisition failed: timed out")
+        );
+    }
+
+    #[tokio::test]
+    async fn checkout_wait_stops_when_the_file_is_no_longer_wanted() {
+        struct NeverPool;
+
+        #[async_trait]
+        impl crate::transfer_dag::session_pool::TransferSessionPool for NeverPool {
+            async fn acquire(
+                &self,
+            ) -> Result<
+                crate::transfer_dag::TransferSessionLease,
+                crate::transfer_dag::SessionPoolError,
+            > {
+                std::future::pending::<()>().await;
+                unreachable!("pending checkout")
+            }
+
+            fn label(&self) -> &str {
+                "never"
+            }
+
+            fn kind(&self) -> crate::transfer_dag::SessionLeaseKind {
+                crate::transfer_dag::SessionLeaseKind::Ftp
+            }
+
+            fn capacity(&self) -> crate::transfer_dag::SessionPoolCapacity {
+                crate::transfer_dag::SessionPoolCapacity {
+                    kind: crate::transfer_dag::SessionLeaseKind::Ftp,
+                    label: "never".to_string(),
+                    max_leases: 1,
+                }
+            }
+        }
+
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = std::sync::Arc::clone(&cancel);
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+
+        let started = std::time::Instant::now();
+        let governor =
+            crate::transfer_dag::GlobalTransferGovernor::new(crate::transfer_dag::GovernorConfig {
+                buffer_bytes: 0,
+                bandwidth_bps: 0,
+                endpoint_slots: 4,
+                disk_device_slots: 4,
+            });
+        let result = super::acquire_session_then_job(
+            &crate::transfer_dag::TransferSessionPoolHandle::new(NeverPool),
+            &governor,
+            crate::transfer_dag::EndpointIdentity::new("ftp", "127.0.0.1", "test"),
+            std::iter::empty(),
+            || cancel.load(std::sync::atomic::Ordering::Relaxed),
+        )
+        .await
+        .expect("stopping a checkout is not a pool error");
+        assert!(
+            result.is_none(),
+            "a stopped file must not take the governor job"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(500),
+            "checkout kept waiting after stop: {:?}",
+            started.elapsed()
+        );
     }
 
     fn entry_with_local(id: &str, size: u64, local_path: &str) -> TransferEntry {
