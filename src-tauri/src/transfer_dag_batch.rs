@@ -50,6 +50,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use futures_util::future::BoxFuture;
 use tokio::sync::Mutex;
 
 use crate::transfer_dag::executor::{execute_dag, DagNodeRunner, NodeFuture, NodeOutcome};
@@ -81,6 +82,65 @@ struct MultipartFileRuntime {
     /// Held from AcquireResource through terminal commit/abort so individual
     /// part nodes cannot bypass the provider-job governor.
     governor_lease: Mutex<Option<crate::transfer_dag::GovernorJobLease>>,
+    /// Owns a second handle until complete or an awaited abort returns. The
+    /// state's take_for_abort consumes its handle before doing any wire I/O.
+    abort_guard: std::sync::Mutex<Option<MultipartAbortGuard>>,
+}
+
+impl MultipartFileRuntime {
+    fn disarm_abort_guard(&self) {
+        if let Some(mut guard) = self
+            .abort_guard
+            .lock()
+            .expect("abort guard poisoned")
+            .take()
+        {
+            guard.abort = None;
+        }
+    }
+}
+
+/// Batch uploads have no durable resume checkpoint: a destroyed graph must
+/// clean up its remote parts. Keep this owner separate from MultipartFileState,
+/// which the single-file runner also uses for intentionally resumable uploads.
+struct MultipartAbortGuard {
+    abort: Option<BoxFuture<'static, ()>>,
+}
+
+impl MultipartAbortGuard {
+    fn new<E>(
+        executor: &Arc<E>,
+        entry: &TransferEntry,
+        handle: &crate::providers::MultipartHandle,
+    ) -> Self
+    where
+        E: TransferExecutor + Send + Sync + 'static,
+    {
+        let executor = Arc::clone(executor);
+        let entry = entry.clone();
+        let handle = handle.clone();
+        Self {
+            abort: Some(Box::pin(async move {
+                executor.multipart_abort(&entry, handle).await;
+            })),
+        }
+    }
+}
+
+impl Drop for MultipartAbortGuard {
+    fn drop(&mut self) {
+        let Some(abort) = self.abort.take() else {
+            return;
+        };
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(abort);
+            }
+            Err(_) => tracing::warn!(
+                "Batch multipart upload dropped without a Tokio runtime; remote cleanup unavailable"
+            ),
+        }
+    }
 }
 
 enum SessionLeaseSlot {
@@ -479,6 +539,7 @@ where
             state,
             session_lease: Mutex::new(SessionLeaseSlot::Vacant),
             governor_lease: Mutex::new(None),
+            abort_guard: std::sync::Mutex::new(None),
         }))
     } else {
         None
@@ -817,9 +878,7 @@ async fn settle_file_after_graph_fault<E>(
     };
 
     let state = &runtime.state;
-    if let Some(handle) = state.take_for_abort().await {
-        ctx.executor.multipart_abort(entry, handle).await;
-    }
+    abort_multipart_file(&ctx.executor, entry, runtime).await;
     let lease_was_held = {
         let mut slot = runtime.session_lease.lock().await;
         let held = matches!(*slot, SessionLeaseSlot::Held(_));
@@ -967,7 +1026,7 @@ where
     }
 
     // Lazy begin once under the begin gate.
-    ensure_multipart_begun(executor, entry, state).await;
+    ensure_multipart_begun(executor, entry, runtime).await;
 
     if state.has_failure().await {
         return NodeOutcome::Completed;
@@ -1106,10 +1165,11 @@ where
 async fn ensure_multipart_begun<E>(
     executor: &Arc<E>,
     entry: &crate::transfer_domain::TransferEntry,
-    state: &MultipartFileState,
+    runtime: &MultipartFileRuntime,
 ) where
     E: TransferExecutor + Send + Sync + 'static,
 {
+    let state = &runtime.state;
     state
         .with_begin_gate(async {
             if !state.needs_begin().await || state.has_failure().await {
@@ -1124,6 +1184,10 @@ async fn ensure_multipart_begun<E>(
             }
             match executor.multipart_begin(entry, state.layout()).await {
                 Ok(handle) => {
+                    // Arm synchronously before install_handle can yield. A
+                    // dropped begin node must never lose a returned upload ID.
+                    *runtime.abort_guard.lock().expect("abort guard poisoned") =
+                        Some(MultipartAbortGuard::new(executor, entry, &handle));
                     state.install_handle(handle).await;
                 }
                 Err(failure) => {
@@ -1195,7 +1259,7 @@ where
         state.record_failure(cancelled_failure()).await;
     }
 
-    let outcome = decide_multipart_file_outcome(executor, &entry, &state).await;
+    let outcome = decide_multipart_file_outcome(executor, &entry, &runtime).await;
     // Capture the node outcome before moving `outcome` into accounting.
     let node_outcome = node_outcome_for_file_result(&outcome);
 
@@ -1247,15 +1311,14 @@ fn node_outcome_for_file_result(outcome: &TransferOutcome) -> NodeOutcome {
 async fn decide_multipart_file_outcome<E>(
     executor: &Arc<E>,
     entry: &crate::transfer_domain::TransferEntry,
-    state: &MultipartFileState,
+    runtime: &MultipartFileRuntime,
 ) -> TransferOutcome
 where
     E: TransferExecutor + Send + Sync + 'static,
 {
+    let state = &runtime.state;
     if state.has_failure().await {
-        if let Some(handle) = state.take_for_abort().await {
-            executor.multipart_abort(entry, handle).await;
-        }
+        abort_multipart_file(executor, entry, runtime).await;
         let failure = state
             .take_first_failure()
             .await
@@ -1275,9 +1338,7 @@ where
             retryable: false,
             retry_after_secs: None,
         };
-        if let Some(handle) = state.take_for_abort().await {
-            executor.multipart_abort(entry, handle).await;
-        }
+        abort_multipart_file(executor, entry, runtime).await;
         executor.multipart_emit_file_error(entry, &failure);
         return TransferOutcome::Failed(failure);
     }
@@ -1296,18 +1357,32 @@ where
     let parts = state.take_sorted_receipts().await;
     match executor.multipart_complete(entry, handle, parts).await {
         Ok(()) => {
+            runtime.disarm_abort_guard();
             state.clear_handle_after_complete().await;
             executor.multipart_emit_file_complete(entry);
             TransferOutcome::Success
         }
         Err(failure) => {
             // Complete-time failure keeps the handle available for one abort.
-            if let Some(handle) = state.take_for_abort().await {
-                executor.multipart_abort(entry, handle).await;
-            }
+            abort_multipart_file(executor, entry, runtime).await;
             executor.multipart_emit_file_error(entry, &failure);
             TransferOutcome::Failed(failure)
         }
+    }
+}
+
+async fn abort_multipart_file<E>(
+    executor: &Arc<E>,
+    entry: &TransferEntry,
+    runtime: &MultipartFileRuntime,
+) where
+    E: TransferExecutor + Send + Sync + 'static,
+{
+    if let Some(handle) = runtime.state.take_for_abort().await {
+        executor.multipart_abort(entry, handle).await;
+        // Stay armed throughout the await: destruction of this request must
+        // resend the abort even though the state no longer owns its handle.
+        runtime.disarm_abort_guard();
     }
 }
 
@@ -1399,6 +1474,14 @@ mod tests {
     type TypedPartFailMap =
         std::collections::HashMap<(String, u32), (TransferFailureKind, Option<u64>)>;
 
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum MultipartPause {
+        Begin,
+        Part,
+        Complete,
+        Abort,
+    }
+
     /// Scripted whole-file executor with optional multipart wire log.
     struct MockExecutor {
         fail: HashSet<String>,
@@ -1420,6 +1503,10 @@ mod tests {
         part_calls: AtomicUsize,
         complete_calls: AtomicUsize,
         abort_calls: AtomicUsize,
+        aborted_uploads: StdMutex<Vec<MultipartHandle>>,
+        pause_multipart: Option<MultipartPause>,
+        paused_once: AtomicBool,
+        pause_entered: tokio::sync::Notify,
         part_numbers: StdMutex<Vec<u32>>,
         part_byte_lens: StdMutex<Vec<u64>>,
         part_in_flight: AtomicUsize,
@@ -1461,6 +1548,10 @@ mod tests {
                 part_calls: AtomicUsize::new(0),
                 complete_calls: AtomicUsize::new(0),
                 abort_calls: AtomicUsize::new(0),
+                aborted_uploads: StdMutex::new(Vec::new()),
+                pause_multipart: None,
+                paused_once: AtomicBool::new(false),
+                pause_entered: tokio::sync::Notify::new(),
                 part_numbers: StdMutex::new(Vec::new()),
                 part_byte_lens: StdMutex::new(Vec::new()),
                 part_in_flight: AtomicUsize::new(0),
@@ -1519,6 +1610,15 @@ mod tests {
         fn with_multipart_wire(mut self) -> Self {
             self.multipart_wire = true;
             self
+        }
+
+        async fn pause_once_at(&self, stage: MultipartPause) {
+            if self.pause_multipart == Some(stage)
+                && !self.paused_once.swap(true, AtomicOrdering::SeqCst)
+            {
+                self.pause_entered.notify_one();
+                std::future::pending::<()>().await;
+            }
         }
 
         /// Hold every `execute` call on this barrier instead of the fixed
@@ -1622,6 +1722,7 @@ mod tests {
             entry: &TransferEntry,
             _layout: &MultipartLayout,
         ) -> Result<MultipartHandle, TransferFailure> {
+            self.pause_once_at(MultipartPause::Begin).await;
             if self.cancelled.load(Ordering::Relaxed) {
                 return Err(cancelled_failure());
             }
@@ -1646,6 +1747,7 @@ mod tests {
             part_number: u32,
             data: Vec<u8>,
         ) -> Result<UploadedPart, TransferFailure> {
+            self.pause_once_at(MultipartPause::Part).await;
             if self.cancelled.load(Ordering::Relaxed) {
                 return Err(cancelled_failure());
             }
@@ -1700,6 +1802,7 @@ mod tests {
             _handle: MultipartHandle,
             parts: Vec<UploadedPart>,
         ) -> Result<(), TransferFailure> {
+            self.pause_once_at(MultipartPause::Complete).await;
             if self.fail_complete_for.lock().unwrap().contains(&entry.id) {
                 return Err(TransferFailure::new(
                     TransferFailureKind::RemoteIo,
@@ -1717,7 +1820,9 @@ mod tests {
             Ok(())
         }
 
-        async fn multipart_abort(&self, _entry: &TransferEntry, _handle: MultipartHandle) {
+        async fn multipart_abort(&self, _entry: &TransferEntry, handle: MultipartHandle) {
+            self.pause_once_at(MultipartPause::Abort).await;
+            self.aborted_uploads.lock().unwrap().push(handle);
             self.abort_calls.fetch_add(1, AtomicOrdering::SeqCst);
         }
     }
@@ -2362,6 +2467,86 @@ mod tests {
 
     // ---------------- DAG-P1-03 multipart wire tests -------------------------
 
+    async fn wait_for_multipart_tasks(executor: &Arc<MockExecutor>) {
+        // Dropping nested JoinSets aborts their tasks asynchronously. Waiting
+        // for all executor owners also drains any Drop-scheduled abort.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while Arc::strong_count(executor) != 1 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("all node and abort tasks must release the executor");
+    }
+
+    async fn drop_multipart_batch_at(stage: MultipartPause) {
+        let (_dir, path) = write_temp_file(24);
+        let mut exec = MockExecutor::new(4)
+            .with_capabilities(multipart_caps(4, 8))
+            .with_multipart_wire();
+        exec.pause_multipart = Some(stage);
+        if stage == MultipartPause::Abort {
+            *exec.fail_part.lock().unwrap() = Some(("dropped".into(), 1));
+        }
+        let executor = Arc::new(exec);
+        let sink = Arc::new(CountingSink::default());
+        let task = tokio::spawn(execute_batch_dag(
+            Arc::clone(&sink) as Arc<dyn TransferEventSink>,
+            upload_batch(
+                vec![entry_with_local("dropped", 24, path.to_str().unwrap())],
+                4,
+            ),
+            Arc::clone(&executor),
+            Arc::new(AtomicBool::new(false)),
+            None,
+        ));
+        tokio::time::timeout(Duration::from_secs(5), executor.pause_entered.notified())
+            .await
+            .expect("the batch must reach the selected in-flight operation");
+        // Destroy the actual batch task, with neither cancellation flag set.
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        wait_for_multipart_tasks(&executor).await;
+        let begun = stage != MultipartPause::Begin;
+        assert_eq!(
+            executor.begin_calls.load(AtomicOrdering::SeqCst),
+            usize::from(begun)
+        );
+        assert_eq!(
+            executor.abort_calls.load(AtomicOrdering::SeqCst),
+            usize::from(begun)
+        );
+        assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
+        assert_eq!(sink.completed.load(AtomicOrdering::SeqCst), 0);
+        let aborted = executor.aborted_uploads.lock().unwrap();
+        if begun {
+            assert_eq!(aborted[0].upload_id, "up-dropped");
+            assert_eq!(aborted[0].remote_path, "/remote/dropped");
+        } else {
+            assert!(aborted.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_hard_drop_during_part_aborts_the_open_upload() {
+        drop_multipart_batch_at(MultipartPause::Part).await;
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_hard_drop_during_complete_aborts_the_open_upload() {
+        drop_multipart_batch_at(MultipartPause::Complete).await;
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_hard_drop_during_abort_resends_the_abort() {
+        drop_multipart_batch_at(MultipartPause::Abort).await;
+    }
+
+    #[tokio::test]
+    async fn multipart_batch_hard_drop_before_begin_has_nothing_to_abort() {
+        drop_multipart_batch_at(MultipartPause::Begin).await;
+    }
+
     #[tokio::test]
     async fn multipart_batch_one_begin_n_parts_one_complete_zero_aborts() {
         let chunk = 8 * 1024;
@@ -2387,6 +2572,7 @@ mod tests {
             None,
         )
         .await;
+        wait_for_multipart_tasks(&executor).await;
         assert_eq!(result.completed, 1);
         assert_eq!(result.failed, 0);
         assert_eq!(executor.begin_calls.load(AtomicOrdering::SeqCst), 1);
@@ -2563,6 +2749,7 @@ mod tests {
             None,
         )
         .await;
+        wait_for_multipart_tasks(&executor).await;
         assert_eq!(result.failed, 1);
         assert_eq!(result.completed, 1);
         assert_eq!(executor.abort_calls.load(AtomicOrdering::SeqCst), 1);
@@ -2667,6 +2854,7 @@ mod tests {
             None,
         )
         .await;
+        wait_for_multipart_tasks(&executor).await;
         assert_eq!(result.failed, 1);
         assert_eq!(executor.complete_calls.load(AtomicOrdering::SeqCst), 0);
         // complete was attempted (fail before increment) — check abort
@@ -2939,6 +3127,7 @@ mod tests {
             ),
             session_lease: Mutex::new(SessionLeaseSlot::Vacant),
             governor_lease: Mutex::new(None),
+            abort_guard: std::sync::Mutex::new(None),
         });
 
         let whole_outcome = run_whole_file_node(
