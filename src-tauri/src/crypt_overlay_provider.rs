@@ -2429,10 +2429,12 @@ pub async fn build_aerocloud_overlay_stack(
 
 /// The saved profile an AeroCloud config names: by its stable id when the
 /// config carries one, by exact name ([`select_profile_by_name`]) for a config
-/// written before the id was stored. Names are not unique (two profiles can
-/// share one), and the wrong match brings another account's credentials,
-/// tokens, root and crypt binding. An id that matches nothing returns `None`
-/// rather than falling back to the name, which could pick a different profile.
+/// written before the id was stored, then by that same value taken as an id
+/// (`aerocloud set --profile <id>` stores the raw value when it cannot open
+/// the vault). Names are not unique (two profiles can share one), and the
+/// wrong match brings another account's credentials, tokens, root and crypt
+/// binding. An explicit id that matches nothing returns `None` rather than
+/// falling back to the name, which could pick a different profile.
 /// Shared by the connection, the overlay and the CLI, so they never resolve a
 /// config to two different profiles.
 pub fn select_aerocloud_profile<'a>(
@@ -2444,7 +2446,11 @@ pub fn select_aerocloud_profile<'a>(
         Some(id) => profiles
             .iter()
             .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id)),
-        None => select_profile_by_name(profiles, profile_name),
+        None => select_profile_by_name(profiles, profile_name).or_else(|| {
+            profiles
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_name))
+        }),
     }
 }
 
@@ -6367,6 +6373,11 @@ mod tests {
         assert!(
             select_aerocloud_profile(&profiles, Some("srv_gone"), "NAS").is_none(),
             "a deleted profile must not fall back to another profile by name"
+        );
+        assert_eq!(
+            id(select_aerocloud_profile(&profiles, None, "srv_b")),
+            Some("srv_b".to_string()),
+            "a stored value that names no profile is tried as an id"
         );
     }
 

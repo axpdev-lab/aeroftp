@@ -286,11 +286,11 @@ pub fn parse_server_credential(raw: &str, profile_username: &str) -> (String, St
                 .to_string();
             (username, secret)
         }
-        Ok(_) => (
-            profile_username.to_string(),
-            raw.trim_matches('"').to_string(),
-        ),
-        Err(_) => (profile_username.to_string(), raw.to_string()),
+        // A JSON string is decoded, so an escaped quote stays a quote.
+        Ok(serde_json::Value::String(secret)) => (profile_username.to_string(), secret),
+        // Any other JSON scalar (a numeric password parses as a number) and
+        // anything that is not JSON is the bare secret itself.
+        Ok(_) | Err(_) => (profile_username.to_string(), raw.to_string()),
     }
 }
 
@@ -1032,6 +1032,16 @@ mod tests {
         assert_eq!(
             parse_server_credential(r#""quoted""#, "ale"),
             ("ale".to_string(), "quoted".to_string())
+        );
+        assert_eq!(
+            parse_server_credential(r#""a\"b""#, "ale"),
+            ("ale".to_string(), "a\"b".to_string()),
+            "an escaped quote in a JSON string is part of the secret"
+        );
+        assert_eq!(
+            parse_server_credential("12345", "ale"),
+            ("ale".to_string(), "12345".to_string()),
+            "a numeric password is the bare secret"
         );
     }
 
