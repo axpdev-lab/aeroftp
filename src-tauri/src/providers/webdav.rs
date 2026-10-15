@@ -5247,66 +5247,32 @@ impl StorageProvider for WebDavProvider {
         &mut self,
         remote_path: &str,
         local_path: &str,
-        offset: u64,
+        _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
 
-        let response = self
-            .send_replaying_digest(|| {
-                self.request(Method::GET, remote_path)
-                    .header("Range", format!("bytes={}-", offset))
-            })
-            .await?;
-
-        match response.status() {
-            StatusCode::PARTIAL_CONTENT => {
-                let content_len = response.content_length().unwrap_or(0);
-                let total_size = offset + content_len;
-                let mut resumable = super::atomic_write::ResumableFile::open_resume(local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                super::stream_response_to_resumable(
-                    response,
-                    &mut resumable,
-                    total_size,
-                    on_progress,
-                )
-                .await?;
-                resumable.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
-                Ok(())
-            }
-            StatusCode::OK => {
-                // Server ignored Range: restart from scratch
-                let total_size = response.content_length().unwrap_or(0);
-                let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                super::stream_response_to_resumable(response, &mut fresh, total_size, on_progress)
-                    .await?;
-                fresh.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
-                Ok(())
-            }
-            StatusCode::RANGE_NOT_SATISFIABLE => {
-                // A stale part goes; another download's is left alone.
-                let tmp = format!("{}.aerotmp", local_path);
-                let _ = super::atomic_write::remove_temp_unless_live(std::path::Path::new(&tmp));
-                Err(ProviderError::TransferFailed(
-                    "Range not satisfiable: file may have changed on server".to_string(),
-                ))
-            }
-            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
-            status => Err(ProviderError::TransferFailed(format!(
-                "Resume download failed: {}",
-                status
-            ))),
-        }
+        // Where to go on from is the part on disk and its record, not the
+        // offset the caller measured: see `HttpResume`.
+        let this = &*self;
+        super::resume_http_download(
+            local_path,
+            remote_path,
+            |range| async move {
+                this.send_replaying_digest(|| {
+                    let request = this.request(Method::GET, remote_path);
+                    match &range {
+                        Some(range) => request.header("Range", range.as_str()),
+                        None => request,
+                    }
+                })
+                .await
+            },
+            on_progress,
+        )
+        .await
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {

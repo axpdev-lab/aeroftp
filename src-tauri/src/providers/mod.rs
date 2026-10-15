@@ -3255,27 +3255,30 @@ impl ProviderFactory {
 // Resume Download Helpers
 // =========================================================================
 
-/// Stream an HTTP response body into a `ResumableFile`, tracking progress.
+/// The progress callback of a download. Lent as `&mut`, never `&`: the
+/// callback is `Send` but not `Sync`, and a shared borrow held across an await
+/// would make the download's future require `Sync` of it.
+type ProgressCallback = Option<Box<dyn Fn(u64, u64) + Send>>;
+
+/// Stream an HTTP answer into a part, tracking progress.
 ///
-/// This is the shared implementation used by all HTTP-based providers for resume
-/// downloads. The caller is responsible for:
-/// 1. Detecting the `.aerotmp` offset via `ResumableFile::open()`
-/// 2. Sending the HTTP request with `Range: bytes=<offset>-` header
-/// 3. Handling 200 (restart) vs 206 (resume) vs 416 (range error)
-/// 4. Passing the response and the `ResumableFile` to this function
+/// With `overlap`, the answer starts one byte before the part's end, and that
+/// byte must be the part's last one: it is compared, never written. `Ok(false)`
+/// when it differs (or the answer is empty), before anything is written.
 ///
 /// Progress reports `(transferred_total, total_size)` where `transferred_total`
-/// includes the pre-existing offset bytes.
-pub async fn stream_response_to_resumable(
+/// includes the bytes the part already held.
+async fn stream_answer_to_part(
     response: reqwest::Response,
-    resumable: &mut atomic_write::ResumableFile,
+    part: &mut atomic_write::ResumableFile,
     total_size: u64,
-    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
-) -> Result<(), ProviderError> {
+    mut overlap: Option<u8>,
+    on_progress: &mut ProgressCallback,
+) -> Result<bool, ProviderError> {
     use futures_util::StreamExt;
 
     let mut stream = response.bytes_stream();
-    let mut transferred = resumable.offset();
+    let mut transferred = part.offset();
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
@@ -3284,109 +3287,526 @@ pub async fn stream_response_to_resumable(
             chunk.len() as u64,
         )
         .await;
-        resumable
-            .write_all(&chunk)
+        let mut data = &chunk[..];
+        if let Some(expected) = overlap {
+            let Some((&first, rest)) = data.split_first() else {
+                continue;
+            };
+            if first != expected {
+                return Ok(false);
+            }
+            overlap = None;
+            data = rest;
+        }
+        part.write_all(data)
             .await
             .map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-        transferred += chunk.len() as u64;
-        if let Some(ref progress) = on_progress {
+        transferred += data.len() as u64;
+        if let Some(progress) = on_progress {
             progress(transferred, total_size);
         }
     }
 
-    Ok(())
+    Ok(overlap.is_none())
 }
 
-/// Perform a resumable HTTP GET download for any provider that uses reqwest.
+/// A resumable HTTP download, driven by the provider that sends its requests
+/// (each authenticates or signs its own): [`Self::range`] says what to ask
+/// for, [`Self::accept`] judges the answer against the part on disk and
+/// writes it.
 ///
-/// This handles the full lifecycle:
-/// 1. Check for existing `.aerotmp` partial file
-/// 2. Send GET with Range header if partial data exists
-/// 3. Handle 200 (fresh) / 206 (resume) / 416 (completed or range error)
-/// 4. Stream to `ResumableFile` and commit on success
+/// A part is gone on from only when the answer shows the file is still the
+/// version the part's record names (see
+/// [`atomic_write::ResumableFile`]); otherwise it is started over with a
+/// request for the whole file. A resume asks from the part's last byte, not
+/// after it: the answer is then a `206` that carries the file's length and
+/// validators even when the part already holds the whole file, where asking
+/// from its end is answered `416`, which names no version. The byte asked for
+/// twice must match the part's, a second check that costs one byte.
+struct HttpResume {
+    part: atomic_write::ResumableFile,
+}
+
+/// What [`HttpResume::accept`] made of an answer.
+enum HttpResumeStep {
+    /// The file is published.
+    Done,
+    /// The part could not be gone on from and was started over: send the
+    /// request again, for the whole file this time.
+    StartOver(Box<HttpResume>),
+}
+
+impl HttpResume {
+    /// Open the part a download of `local_path` goes on from, if any. Out of
+    /// place a part whose record names no version is started over here,
+    /// before a request is spent on it.
+    async fn open(local_path: &str) -> Result<Self, ProviderError> {
+        let mut part = atomic_write::ResumableFile::open_resume(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let unrecorded = !part
+            .recorded_source()
+            .is_some_and(|recorded| recorded.pins_a_version());
+        if part.offset() > 0 && !part.is_inplace() && unrecorded {
+            tracing::info!(
+                "partial download of {} started over: it has no record of the version it was started from",
+                local_path
+            );
+            part = part.start_over().await.map_err(ProviderError::IoError)?;
+        }
+        Ok(Self { part })
+    }
+
+    /// The `Range` header to send, `None` for the whole file.
+    fn range(&self) -> Option<String> {
+        let offset = self.part.offset();
+        (offset > 0).then(|| format!("bytes={}-", offset - 1))
+    }
+
+    /// Judge `response`, the answer to a request with [`Self::range`], and
+    /// write it. `what` names the file in a not-found error.
+    async fn accept(
+        self,
+        response: reqwest::Response,
+        what: &str,
+        on_progress: &mut ProgressCallback,
+    ) -> Result<HttpResumeStep, ProviderError> {
+        use reqwest::StatusCode;
+
+        let mut part = self.part;
+        let offset = part.offset();
+        let answer = multi_thread::RangeSourceFingerprint::of_answer(&response);
+        match response.status() {
+            StatusCode::PARTIAL_CONTENT if offset > 0 => {
+                let refusal = Self::refusal(&part, &response, answer.as_ref(), offset);
+                let overlap = match refusal {
+                    Some(why) => Err(why),
+                    None => match part.last_byte().await {
+                        Ok(byte) => Ok(byte),
+                        Err(e) => Err(format!("its last byte could not be read ({e})")),
+                    },
+                };
+                let started_over = match overlap {
+                    Ok(byte) => {
+                        let total = answer.as_ref().map_or(0, |a| a.size());
+                        if stream_answer_to_part(
+                            response,
+                            &mut part,
+                            total,
+                            Some(byte),
+                            on_progress,
+                        )
+                        .await?
+                        {
+                            Self::publish(part).await?;
+                            return Ok(HttpResumeStep::Done);
+                        }
+                        "the byte asked for twice is not the one the part holds".to_string()
+                    }
+                    Err(why) => why,
+                };
+                Self::start_over(part, &started_over).await
+            }
+            StatusCode::RANGE_NOT_SATISFIABLE if offset > 0 => {
+                Self::start_over(part, "the file is shorter than the part").await
+            }
+            StatusCode::OK => {
+                // The whole file: asked for, or a server that ignores ranges.
+                if offset > 0 {
+                    part = part.start_over().await.map_err(ProviderError::IoError)?;
+                }
+                if let Some(answer) = answer.as_ref() {
+                    part.record_source(answer).await;
+                }
+                let total = response.content_length().unwrap_or(0);
+                stream_answer_to_part(response, &mut part, total, None, on_progress).await?;
+                Self::publish(part).await?;
+                Ok(HttpResumeStep::Done)
+            }
+            StatusCode::NOT_FOUND => {
+                let _ = part.discard().await;
+                Err(ProviderError::NotFound(what.to_string()))
+            }
+            // Kept: the part is still good for a later attempt.
+            status => Err(ProviderError::TransferFailed(format!(
+                "Download failed with status: {}",
+                status
+            ))),
+        }
+    }
+
+    /// Why the `206` cannot extend `part`, or `None` when it can.
+    fn refusal(
+        part: &atomic_write::ResumableFile,
+        response: &reqwest::Response,
+        answer: Option<&multi_thread::RangeSourceFingerprint>,
+        offset: u64,
+    ) -> Option<String> {
+        let start = response
+            .headers()
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(multi_thread::parse_content_range)
+            .map(|(start, _, _)| start);
+        if start != Some(offset - 1) {
+            return Some("the server answered another range than the one asked".to_string());
+        }
+        let Some(answer) = answer else {
+            return Some("the answer does not give the file's length".to_string());
+        };
+        if part.is_inplace() {
+            // In place the destination is the part, as the caller measured
+            // it, and keeps no record: only its length is checked.
+            return (offset > answer.size())
+                .then(|| "the file is shorter than the part".to_string());
+        }
+        answer.refuses_part(part.recorded_source(), offset)
+    }
+
+    async fn start_over(
+        part: atomic_write::ResumableFile,
+        why: &str,
+    ) -> Result<HttpResumeStep, ProviderError> {
+        tracing::info!("partial download started over: {}", why);
+        let part = part.start_over().await.map_err(ProviderError::IoError)?;
+        Ok(HttpResumeStep::StartOver(Box::new(Self { part })))
+    }
+
+    async fn publish(part: atomic_write::ResumableFile) -> Result<(), ProviderError> {
+        part.commit().await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
+        })
+    }
+}
+
+/// Run an `HttpResume` with `send`, which sends the download request with
+/// the given `Range` header (none for the whole file). At most two requests:
+/// a resume, and the whole file when the part had to start over.
+pub async fn resume_http_download<S, Fut>(
+    local_path: &str,
+    what: &str,
+    send: S,
+    on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+) -> Result<(), ProviderError>
+where
+    S: Fn(Option<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::Response, ProviderError>>,
+{
+    let mut on_progress = on_progress;
+    let mut download = HttpResume::open(local_path).await?;
+    loop {
+        let resuming = download.range().is_some();
+        let response = send(download.range()).await?;
+        match download.accept(response, what, &mut on_progress).await? {
+            HttpResumeStep::Done => return Ok(()),
+            HttpResumeStep::StartOver(next) if resuming => download = *next,
+            HttpResumeStep::StartOver(_) => {
+                return Err(ProviderError::TransferFailed(
+                    "a download of the whole file was answered with a part of it".to_string(),
+                ))
+            }
+        }
+    }
+}
+
+/// Perform a resumable HTTP GET download for any provider that uses reqwest
+/// (see `HttpResume`).
 ///
-/// `build_request` is a closure that takes an optional `Range` header value
-/// (e.g. `"bytes=12345-"`) and returns a configured `reqwest::RequestBuilder`.
-/// This allows each provider to add its own auth headers.
+/// `build_request` takes an optional `Range` header value (e.g.
+/// `"bytes=12345-"`) and returns a configured `reqwest::RequestBuilder`, so
+/// each provider adds its own auth headers. It may be called twice: a resume,
+/// then the whole file when the part had to start over.
 pub async fn http_resumable_download<F>(
     local_path: &str,
     build_request: F,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError>
 where
-    F: FnOnce(Option<&str>) -> reqwest::RequestBuilder,
+    F: Fn(Option<&str>) -> reqwest::RequestBuilder,
 {
-    use reqwest::StatusCode;
-
-    let mut resumable = atomic_write::ResumableFile::open_resume(local_path)
-        .await
-        .map_err(ProviderError::IoError)?;
-
-    let offset = resumable.offset();
-    let range_header = if offset > 0 {
-        Some(format!("bytes={}-", offset))
-    } else {
-        None
-    };
-
-    let response = build_request(range_header.as_deref())
-        .send()
-        .await
-        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
-
-    match response.status() {
-        StatusCode::PARTIAL_CONTENT => {
-            // 206: server honored our Range: append to existing data
-            let content_len = response.content_length().unwrap_or(0);
-            let total_size = offset + content_len;
-            stream_response_to_resumable(response, &mut resumable, total_size, on_progress).await?;
-            resumable.commit().await.map_err(|e| {
-                ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-            })?;
-            Ok(())
-        }
-        StatusCode::OK => {
-            // 200: server ignored Range or fresh download: restart from scratch
-            if offset > 0 {
-                // We had partial data but server sent full content: discard and restart
-                let _ = resumable.discard().await;
-                let mut fresh = atomic_write::ResumableFile::open_fresh(local_path)
+    resume_http_download(
+        local_path,
+        local_path,
+        |range| {
+            let request = build_request(range.as_deref());
+            async move {
+                request
+                    .send()
                     .await
-                    .map_err(ProviderError::IoError)?;
-                let total_size = response.content_length().unwrap_or(0);
-                stream_response_to_resumable(response, &mut fresh, total_size, on_progress).await?;
-                fresh.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
-            } else {
-                let total_size = response.content_length().unwrap_or(0);
-                stream_response_to_resumable(response, &mut resumable, total_size, on_progress)
-                    .await?;
-                resumable.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
+                    .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
             }
-            Ok(())
+        },
+        on_progress,
+    )
+    .await
+}
+
+/// Requested 16 of #1202, through the shared HTTP resume: a part goes on
+/// only against the version it was started from.
+#[cfg(test)]
+mod http_resume_tests {
+    use super::*;
+    use std::path::Path;
+    use std::sync::{Arc, Mutex};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// The file a test server holds, and the `Range` of every request.
+    struct Served {
+        body: Vec<u8>,
+        tag: &'static str,
+        ignore_ranges: bool,
+        asked: Vec<Option<String>>,
+    }
+
+    fn v1() -> Vec<u8> {
+        (0..1000u32).map(|i| (i % 251) as u8).collect()
+    }
+
+    /// Another version of the same length, edited in the middle: the bytes a
+    /// resume asks for twice are the same as `v1`'s, so only the record can
+    /// tell the two apart.
+    fn v2() -> Vec<u8> {
+        let mut body = v1();
+        body[100..200].iter_mut().for_each(|b| *b ^= 0x55);
+        body
+    }
+
+    fn served(body: Vec<u8>, tag: &'static str) -> Arc<Mutex<Served>> {
+        Arc::new(Mutex::new(Served {
+            body,
+            tag,
+            ignore_ranges: false,
+            asked: Vec::new(),
+        }))
+    }
+
+    /// Answer `bytes=<start>-` with a 206 (416 past the end), anything else
+    /// with the whole file, always with the file's entity tag.
+    async fn serve(state: Arc<Mutex<Served>>) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let state = Arc::clone(&state);
+                tokio::spawn(async move {
+                    let mut request = Vec::new();
+                    let mut buf = [0u8; 1024];
+                    while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match socket.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => request.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    let text = String::from_utf8_lossy(&request).to_string();
+                    let range = text.lines().find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("range")
+                            .then(|| value.trim().to_string())
+                    });
+                    let (head, body) = {
+                        let mut state = state.lock().unwrap();
+                        state.asked.push(range.clone());
+                        let len = state.body.len();
+                        let start =
+                            range
+                                .as_deref()
+                                .filter(|_| !state.ignore_ranges)
+                                .and_then(|r| {
+                                    r.strip_prefix("bytes=")?.strip_suffix('-')?.parse().ok()
+                                });
+                        let (status, body) = match start {
+                            Some(start) if start >= len => (
+                                format!(
+                                    "416 Range Not Satisfiable\r\nContent-Range: bytes */{len}"
+                                ),
+                                Vec::new(),
+                            ),
+                            Some(start) => (
+                                format!(
+                                    "206 Partial Content\r\nContent-Range: bytes {start}-{}/{len}",
+                                    len - 1
+                                ),
+                                state.body[start..].to_vec(),
+                            ),
+                            None => ("200 OK".to_string(), state.body.clone()),
+                        };
+                        (
+                            format!(
+                                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nETag: {}\r\nLast-Modified: Wed, 15 Oct 2026 10:00:00 GMT\r\nConnection: close\r\n\r\n",
+                                body.len(),
+                                state.tag
+                            ),
+                            body,
+                        )
+                    };
+                    let _ = socket.write_all(head.as_bytes()).await;
+                    let _ = socket.write_all(&body).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+        format!("http://{addr}/f.bin")
+    }
+
+    async fn download(url: &str, local: &str) -> Result<(), ProviderError> {
+        let client = reqwest::Client::new();
+        http_resumable_download(
+            local,
+            |range| {
+                let request = client.get(url);
+                match range {
+                    Some(range) => request.header("Range", range),
+                    None => request,
+                }
+            },
+            None,
+        )
+        .await
+    }
+
+    /// Leave behind what an interrupted download of the file the server
+    /// holds now leaves: `bytes`, recorded as that version.
+    async fn leave_part(state: &Arc<Mutex<Served>>, url: &str, local: &str, bytes: &[u8]) {
+        let answer = reqwest::get(url).await.unwrap();
+        let version = multi_thread::RangeSourceFingerprint::of_answer(&answer).unwrap();
+        drop(answer);
+        state.lock().unwrap().asked.clear();
+        let mut part = atomic_write::ResumableFile::open_fresh(local)
+            .await
+            .unwrap();
+        part.record_source(&version).await;
+        part.write_all(bytes).await.unwrap();
+        part.file_mut().flush().await.unwrap();
+    }
+
+    struct Case {
+        dir: tempfile::TempDir,
+        state: Arc<Mutex<Served>>,
+        url: String,
+    }
+
+    impl Case {
+        async fn new() -> Self {
+            let state = served(v1(), "\"v1\"");
+            let url = serve(Arc::clone(&state)).await;
+            Self {
+                dir: tempfile::tempdir().unwrap(),
+                state,
+                url,
+            }
         }
-        StatusCode::RANGE_NOT_SATISFIABLE => {
-            // 416: offset past end: file may already be complete
-            // Discard partial and restart
-            let _ = resumable.discard().await;
-            Err(ProviderError::TransferFailed(
-                "Range not satisfiable: file may have changed on server".to_string(),
-            ))
+
+        fn local(&self) -> String {
+            self.dir.path().join("f.bin").to_str().unwrap().to_string()
         }
-        StatusCode::NOT_FOUND => {
-            let _ = resumable.discard().await;
-            Err(ProviderError::NotFound(local_path.to_string()))
+
+        async fn leave_part(&self, bytes: &[u8]) {
+            leave_part(&self.state, &self.url, &self.local(), bytes).await;
         }
-        status => {
-            // Keep partial data for retry
-            Err(ProviderError::TransferFailed(format!(
-                "Download failed with status: {}",
-                status
-            )))
+
+        fn replace(&self, body: Vec<u8>, tag: &'static str) {
+            let mut state = self.state.lock().unwrap();
+            state.body = body;
+            state.tag = tag;
         }
+
+        /// Download, and tell what was asked and what landed.
+        async fn run(&self) -> (Vec<Option<String>>, Vec<u8>) {
+            download(&self.url, &self.local()).await.unwrap();
+            let local = self.local();
+            assert!(
+                !Path::new(&format!("{local}.aerotmp")).exists(),
+                "the part outlived the download"
+            );
+            assert!(
+                !Path::new(&format!("{local}.aerosrctmp")).exists(),
+                "the record outlived the download"
+            );
+            let asked = std::mem::take(&mut self.state.lock().unwrap().asked);
+            (asked, std::fs::read(local).unwrap())
+        }
+    }
+
+    fn asked(ranges: &[Option<&str>]) -> Vec<Option<String>> {
+        ranges.iter().map(|r| r.map(str::to_string)).collect()
+    }
+
+    #[tokio::test]
+    async fn a_part_of_the_same_version_goes_on_from_its_last_byte() {
+        let case = Case::new().await;
+        case.leave_part(&v1()[..400]).await;
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[Some("bytes=399-")]));
+        assert!(landed == v1(), "a wrong file landed");
+    }
+
+    #[tokio::test]
+    async fn a_part_of_a_replaced_file_starts_over() {
+        let case = Case::new().await;
+        case.leave_part(&v1()[..400]).await;
+        case.replace(v2(), "\"v2\"");
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[Some("bytes=399-"), None]));
+        assert!(landed == v2(), "two versions were joined");
+    }
+
+    /// The case found first: a part already as long as the file was
+    /// published without a byte read, even when the file had been replaced.
+    #[tokio::test]
+    async fn a_whole_part_is_published_only_for_its_own_version() {
+        let case = Case::new().await;
+        case.leave_part(&v1()).await;
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[Some("bytes=999-")]));
+        assert!(landed == v1(), "a wrong file landed");
+
+        case.leave_part(&v1()).await;
+        case.replace(v2(), "\"v2\"");
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[Some("bytes=999-"), None]));
+        assert!(landed == v2(), "the old version was published");
+    }
+
+    #[tokio::test]
+    async fn a_part_with_no_record_is_not_asked_about() {
+        let case = Case::new().await;
+        std::fs::write(format!("{}.aerotmp", case.local()), &v2()[..400]).unwrap();
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[None]));
+        assert!(landed == v1(), "a wrong file landed");
+    }
+
+    /// The byte asked for twice is a second check, independent of the
+    /// record: a part whose bytes are not the version its record names.
+    #[tokio::test]
+    async fn a_part_whose_last_byte_differs_starts_over() {
+        let case = Case::new().await;
+        let mut wrong = v1()[..400].to_vec();
+        wrong[399] ^= 0xff;
+        case.leave_part(&wrong).await;
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[Some("bytes=399-"), None]));
+        assert!(landed == v1(), "a wrong file landed");
+    }
+
+    #[tokio::test]
+    async fn a_file_shorter_than_the_part_starts_it_over() {
+        let case = Case::new().await;
+        case.leave_part(&v1()[..400]).await;
+        case.replace(v2()[..300].to_vec(), "\"v3\"");
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[Some("bytes=399-"), None]));
+        assert!(landed[..] == v2()[..300], "a wrong file landed");
+    }
+
+    #[tokio::test]
+    async fn a_server_that_ignores_ranges_rewrites_the_part_whole() {
+        let case = Case::new().await;
+        case.leave_part(&v1()[..400]).await;
+        case.state.lock().unwrap().ignore_ranges = true;
+        let (requests, landed) = case.run().await;
+        assert_eq!(requests, asked(&[Some("bytes=399-")]));
+        assert!(landed == v1(), "a wrong file landed");
     }
 }
 

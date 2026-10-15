@@ -1772,71 +1772,45 @@ impl StorageProvider for AzureProvider {
         &mut self,
         remote_path: &str,
         local_path: &str,
-        offset: u64,
+        _offset: u64,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let blob_path = self.resolve_blob_path(remote_path);
         let url = self.blob_url(&blob_path);
 
-        let mut headers = HeaderMap::new();
-        let now = chrono::Utc::now()
-            .format("%a, %d %b %Y %H:%M:%S GMT")
-            .to_string();
-        headers.insert(
-            "x-ms-date",
-            HeaderValue::from_str(&now)
-                .map_err(|e| ProviderError::Other(format!("Invalid header value: {}", e)))?,
-        );
-        headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-        headers.insert(
-            "Range",
-            HeaderValue::from_str(&format!("bytes={}-", offset))
-                .map_err(|e| ProviderError::Other(format!("Invalid range header: {}", e)))?,
-        );
-
-        let resp = self
-            .send_with_auth_and_retry(reqwest::Method::GET, &url, headers, 0, None)
-            .await?;
-
-        match resp.status() {
-            reqwest::StatusCode::PARTIAL_CONTENT => {
-                let content_len = resp.content_length().unwrap_or(0);
-                let total_size = offset + content_len;
-                let mut resumable = super::atomic_write::ResumableFile::open_resume(local_path)
+        // Where to go on from is the part on disk and its record, not the
+        // offset the caller measured: see `HttpResume`.
+        let this = &*self;
+        let url = url.as_str();
+        super::resume_http_download(
+            local_path,
+            remote_path,
+            |range| async move {
+                let mut headers = HeaderMap::new();
+                let now = chrono::Utc::now()
+                    .format("%a, %d %b %Y %H:%M:%S GMT")
+                    .to_string();
+                headers.insert(
+                    "x-ms-date",
+                    HeaderValue::from_str(&now).map_err(|e| {
+                        ProviderError::Other(format!("Invalid header value: {}", e))
+                    })?,
+                );
+                headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+                if let Some(range) = range {
+                    headers.insert(
+                        "Range",
+                        HeaderValue::from_str(&range).map_err(|e| {
+                            ProviderError::Other(format!("Invalid range header: {}", e))
+                        })?,
+                    );
+                }
+                this.send_with_auth_and_retry(reqwest::Method::GET, url, headers, 0, None)
                     .await
-                    .map_err(ProviderError::IoError)?;
-                super::stream_response_to_resumable(resp, &mut resumable, total_size, progress)
-                    .await?;
-                resumable.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
-                Ok(())
-            }
-            reqwest::StatusCode::OK => {
-                // Server ignored Range: restart from scratch
-                let total_size = resp.content_length().unwrap_or(0);
-                let mut fresh = super::atomic_write::ResumableFile::open_fresh(local_path)
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                super::stream_response_to_resumable(resp, &mut fresh, total_size, progress).await?;
-                fresh.commit().await.map_err(|e| {
-                    ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
-                })?;
-                Ok(())
-            }
-            reqwest::StatusCode::RANGE_NOT_SATISFIABLE => {
-                // A stale part goes; another download's is left alone.
-                let tmp = format!("{}.aerotmp", local_path);
-                let _ = super::atomic_write::remove_temp_unless_live(std::path::Path::new(&tmp));
-                Err(ProviderError::TransferFailed(
-                    "Range not satisfiable: file may have changed on server".to_string(),
-                ))
-            }
-            status => Err(ProviderError::TransferFailed(format!(
-                "Resume download failed: {}",
-                status
-            ))),
-        }
+            },
+            progress,
+        )
+        .await
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {

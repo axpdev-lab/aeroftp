@@ -1573,6 +1573,16 @@ impl StorageProvider for KoofrProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        // Out of place this provider keeps no part: its downloads write
+        // through `AtomicFile`, which removes its temporary when it fails. An
+        // offset handed in out of place was measured on someone else's part
+        // (a crash leftover, another server's download), and writing the
+        // tail at it into the destination joined two files, or left a run of
+        // zeros where the destination was missing. In place the destination
+        // is the part, gone on from at `offset` as before.
+        if !super::atomic_write::inplace_active() {
+            return self.download(remote_path, local_path, on_progress).await;
+        }
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }

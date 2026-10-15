@@ -3414,13 +3414,11 @@ pub async fn provider_download_file(
 
     // Resume-aware download: if provider supports resume and a partial .aerotmp exists,
     // use resume_download to continue from where we left off. This avoids re-downloading
-    // data on S3/Azure (pay-per-GB) and all other HTTP-based providers.
-    let tmp_path = format!("{}.aerotmp", local_path);
+    // data on S3/Azure (pay-per-GB) and all other HTTP-based providers. Only a
+    // part that recorded the version it was started from counts; the provider
+    // then checks that version against the file as it is now.
     let partial_offset = if provider.supports_resume() {
-        tokio::fs::metadata(&tmp_path)
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0)
+        crate::providers::atomic_write::resumable_part_len(std::path::Path::new(&local_path)).await
     } else {
         0
     };

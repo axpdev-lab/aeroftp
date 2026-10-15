@@ -2181,6 +2181,16 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        // Out of place this provider keeps no part: its downloads write
+        // through `AtomicFile`, which removes its temporary when it fails. An
+        // offset handed in out of place was measured on someone else's part
+        // (a crash leftover, another server's download), and writing the
+        // tail at it into the destination joined two files, or left a run of
+        // zeros where the destination was missing. In place the destination
+        // is the part, gone on from at `offset` as before.
+        if !super::atomic_write::inplace_active() {
+            return self.download(remote_path, local_path, on_progress).await;
+        }
         self.redial_if_a_reply_is_pending().await?;
         use tokio::io::{AsyncSeekExt, AsyncWriteExt as _};
 
@@ -7718,6 +7728,43 @@ mod transfer_verdict_tests {
             .expect("the download must end");
             assert!(outcome.is_err(), "{reply:?} was read as success");
         }
+    }
+
+    /// Requested 16 of #1202: FTP keeps no part out of place, so an offset
+    /// handed to its resume was measured on someone else's `.aerotmp` (a
+    /// crash leftover, another server's download). The tail was written at
+    /// that offset into the destination: behind a run of zeros when the
+    /// destination was missing, over the old file when it was there. It is
+    /// downloaded whole instead.
+    #[tokio::test]
+    async fn an_ftp_resume_out_of_place_downloads_the_whole_file() {
+        let (port, log) = scripted_server(Script {
+            retr_payload: b"0123456789".to_vec(),
+            retr_reply: "226 done\r\n",
+            retr_reply_after_early_close: "426 Connection closed; transfer aborted.\r\n",
+            stor_reply: "226 done\r\n",
+            stor_stalls: false,
+            stor_abor_late: false,
+        })
+        .await;
+        let mut provider = connected(port).await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin");
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.resume_download("/f.bin", local.to_str().unwrap(), 4, None),
+        )
+        .await
+        .expect("the download must end")
+        .unwrap();
+        assert_eq!(std::fs::read(&local).unwrap(), b"0123456789");
+        assert!(
+            !log.lock()
+                .unwrap()
+                .iter()
+                .any(|line| line.starts_with("REST")),
+            "the download went on from an offset that is not its own"
+        );
     }
 
     /// The same for an upload: `451`, `452` and `552` after the data refuse

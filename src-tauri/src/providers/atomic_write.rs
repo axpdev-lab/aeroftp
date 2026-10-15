@@ -10,7 +10,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+use super::multi_thread::RangeSourceFingerprint;
 
 /// Global flag: when true, skip .aerotmp and write directly to the final path.
 /// Set via `set_inplace_mode(true)` from the CLI when --inplace is passed.
@@ -34,9 +36,114 @@ pub fn readahead_temp_path_for(final_path: &Path) -> PathBuf {
     PathBuf::from(temp)
 }
 
+/// The record a resumable part keeps of the version of the file it was
+/// started from: `<final>.aerosrctmp`, next to its `<final>.aerotmp`.
+pub fn part_record_path_for(final_path: &Path) -> PathBuf {
+    let mut record = final_path.as_os_str().to_owned();
+    record.push(".aerosrctmp");
+    PathBuf::from(record)
+}
+
+/// The record of the part at `temp`, when `temp` is a resumable part.
+fn record_of_part(temp: &Path) -> Option<PathBuf> {
+    (temp.extension()? == "aerotmp").then(|| temp.with_extension("aerosrctmp"))
+}
+
 /// True for local download sidecars that filesystem watchers must hide.
 pub fn is_download_temp_path(path: &str) -> bool {
-    path.ends_with(".aerotmp") || path.ends_with(".aeroardtmp") || path.ends_with(".aerosegtmp")
+    path.ends_with(".aerotmp")
+        || path.ends_with(".aeroardtmp")
+        || path.ends_with(".aerosegtmp")
+        || path.ends_with(".aerosrctmp")
+}
+
+/// What a part record holds. `format` lets a later layout be told from this
+/// one: a record of another format is no record, and its part starts over.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PartRecord {
+    format: u32,
+    source: RangeSourceFingerprint,
+}
+
+const PART_RECORD_FORMAT: u32 = 1;
+
+/// A record is a few hundred bytes; anything larger is not one.
+const PART_RECORD_MAX_BYTES: u64 = 64 * 1024;
+
+/// The version the record at `record` names, or `None` when there is no
+/// readable record there. Only a regular file is read: a symlink or a FIFO
+/// planted at the name is no record (and a FIFO would block the open).
+async fn read_part_record(record: &Path) -> Option<RangeSourceFingerprint> {
+    if !fs::symlink_metadata(record).await.ok()?.is_file() {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(record)
+        .await
+        .ok()?
+        .take(PART_RECORD_MAX_BYTES)
+        .read_to_end(&mut bytes)
+        .await
+        .ok()?;
+    let parsed: PartRecord = serde_json::from_slice(&bytes).ok()?;
+    (parsed.format == PART_RECORD_FORMAT).then_some(parsed.source)
+}
+
+/// Write the record at `record`. Whatever is at the name goes first and the
+/// record is then created new, so a symlink planted there is replaced, never
+/// written through.
+async fn write_part_record(record: &Path, source: &RangeSourceFingerprint) -> std::io::Result<()> {
+    remove_part_record(record).await;
+    let body = serde_json::to_vec(&PartRecord {
+        format: PART_RECORD_FORMAT,
+        source: source.clone(),
+    })
+    .map_err(std::io::Error::other)?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(record)
+        .await?;
+    file.write_all(&body).await?;
+    file.flush().await
+}
+
+/// Remove the record at `record`, if there is one.
+async fn remove_part_record(record: &Path) {
+    if let Err(e) = fs::remove_file(record).await {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            tracing::debug!("could not remove {}: {e}", record.display());
+        }
+    }
+}
+
+/// The length of the part a download of `final_path` goes on from: its
+/// `.aerotmp`, when that keeps a record of the version it was started from.
+/// The download then checks the record against the file as it is now, and
+/// starts over when they differ.
+///
+/// A part with no record is removed here, unless a live download holds it,
+/// and the length is 0. Such a part may be any writer's leftover (a crash, a
+/// download that never keeps parts, another server), so its length is no
+/// offset into this file; asking the server for the bytes after it joined
+/// two versions, or wrote a tail behind a run of zeros.
+pub async fn resumable_part_len(final_path: &Path) -> u64 {
+    let temp = AtomicFile::temp_path_for(final_path);
+    let Ok(meta) = fs::symlink_metadata(&temp).await else {
+        return 0;
+    };
+    if meta.is_file()
+        && read_part_record(&part_record_path_for(final_path))
+            .await
+            .is_some_and(|recorded| recorded.pins_a_version())
+    {
+        return meta.len();
+    }
+    let removed = tokio::task::spawn_blocking(move || remove_temp_unless_live(&temp)).await;
+    if let Ok(Err(e)) = removed {
+        tracing::debug!("a part with no record was kept: {e}");
+    }
+    0
 }
 
 /// How a download claims its temporary.
@@ -654,11 +761,12 @@ pub(crate) mod temp_claim {
             );
         }
 
-        /// The paths that discard or publish a part by name (`get --partial`,
-        /// a 416 answer, an interrupted delta attempt) remove a stale part,
-        /// leave a live writer's alone, and publish only a part nobody writes.
+        /// The paths that discard a part by name (a part with no record, an
+        /// interrupted delta attempt, a dropped transfer) remove a stale part
+        /// and leave a live writer's alone, and a resume claims only a part
+        /// nobody writes.
         #[test]
-        fn a_part_discarded_or_published_by_name_is_not_a_live_writers() {
+        fn a_part_discarded_or_resumed_by_name_is_not_a_live_writers() {
             let dir = tempfile::tempdir().unwrap();
             let temp = dir.path().join("f.bin.aerotmp");
             let live = create(&temp).unwrap();
@@ -669,14 +777,12 @@ pub(crate) mod temp_claim {
                 Some(ErrorKind::AlreadyExists)
             );
             assert_eq!(
-                super::super::claim_temp_to_publish(&temp)
-                    .err()
-                    .map(|e| e.kind()),
+                open_to_append(&temp).err().map(|e| e.kind()),
                 Some(ErrorKind::AlreadyExists)
             );
             assert!(temp.exists(), "a live writer's part was removed");
             drop(live);
-            let claim = super::super::claim_temp_to_publish(&temp).expect("a stale part");
+            let claim = open_to_append(&temp).expect("a stale part");
             drop(claim);
             super::super::remove_temp_unless_live(&temp).expect("a stale part goes");
             assert!(!temp.exists());
@@ -702,14 +808,16 @@ pub(crate) mod temp_claim {
 /// [`temp_claim`]). For the paths that discard a part by name: a stale part
 /// goes, another download's is left alone and refused.
 pub fn remove_temp_unless_live(temp: &Path) -> std::io::Result<()> {
-    temp_claim::remove_unless_live(temp)
-}
-
-/// Open the download temporary at `temp` to publish it by name, claimed:
-/// refused while another download writes it. The claim is held until the
-/// returned handle is dropped, which the caller does after its rename.
-pub fn claim_temp_to_publish(temp: &Path) -> std::io::Result<std::fs::File> {
-    temp_claim::open_to_append(temp)
+    temp_claim::remove_unless_live(temp)?;
+    // The part is gone: its record names nothing any more.
+    if let Some(record) = record_of_part(temp) {
+        if let Err(e) = std::fs::remove_file(&record) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                tracing::debug!("could not remove {}: {e}", record.display());
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Run a claim, which is filesystem work, off the async runtime.
@@ -759,7 +867,11 @@ impl AtomicFile {
                 .await?
         } else {
             let temp = temp_path.clone();
-            claimed(move || temp_claim::create(&temp)).await?
+            let file = claimed(move || temp_claim::create(&temp)).await?;
+            // This writer keeps no part to resume: a record left by an
+            // earlier one must not vouch for the bytes it writes.
+            remove_part_record(&part_record_path_for(&final_path)).await;
+            file
         };
 
         Ok(Self {
@@ -819,13 +931,24 @@ impl Drop for AtomicFile {
 /// On resume: detects existing `.aerotmp`, opens in append mode at the existing offset.
 /// On failure: keeps `.aerotmp` intact so the next download can resume from where it left off.
 /// On success: renames `.aerotmp` to the final path (same as `AtomicFile`).
+///
+/// Out of place a part keeps a record of the version of the file it was
+/// started from (`<final>.aerosrctmp`, see [`part_record_path_for`]). A resume
+/// goes on from the part only when the file still is that version: the bytes
+/// after the part belong to the version the server has now, and appending
+/// them to a part of an older one published a file made of two versions with
+/// every check green, or, when the part already had the new length, the old
+/// version itself without a byte read.
 pub struct ResumableFile {
     temp_path: PathBuf,
     final_path: PathBuf,
+    record_path: PathBuf,
     file: tokio::fs::File,
     committed: bool,
     /// Byte offset we are resuming from (0 = fresh download).
     offset: u64,
+    /// The version the part found on open was started from, by its record.
+    recorded: Option<RangeSourceFingerprint>,
     inplace: bool,
 }
 
@@ -846,6 +969,95 @@ impl ResumableFile {
     /// from.
     pub async fn open_resume(final_path: &str) -> Result<Self, std::io::Error> {
         Self::open_resume_in(final_path, inplace_active()).await
+    }
+
+    /// [`Self::open`] for a download of `source`: a part found out of place
+    /// is gone on from only when its record names the version `source` reads
+    /// now, and started over otherwise. See [`Self::bound_to`].
+    pub async fn open_for(
+        final_path: &str,
+        source: &RangeSourceFingerprint,
+    ) -> Result<Self, std::io::Error> {
+        Self::open_in(final_path, inplace_active())
+            .await?
+            .bound_to(source)
+            .await
+    }
+
+    /// [`Self::open_resume`] for a download of `source`, bound the same way.
+    pub async fn open_resume_for(
+        final_path: &str,
+        source: &RangeSourceFingerprint,
+    ) -> Result<Self, std::io::Error> {
+        Self::open_resume_in(final_path, inplace_active())
+            .await?
+            .bound_to(source)
+            .await
+    }
+
+    /// Keep the part this writer opened only if it was started from the
+    /// version `source` reads now, and record that version for a part that
+    /// starts now, before its first byte.
+    ///
+    /// In place the destination is the part and keeps no record: it goes on
+    /// as the caller measured it, as before.
+    pub async fn bound_to(mut self, source: &RangeSourceFingerprint) -> std::io::Result<Self> {
+        if self.inplace {
+            return Ok(self);
+        }
+        if self.offset > 0 {
+            if let Some(why) = source.refuses_part(self.recorded.as_ref(), self.offset) {
+                tracing::info!(
+                    "partial download {} started over: {}",
+                    self.temp_path.display(),
+                    why
+                );
+                self = self.start_over().await?;
+            }
+        }
+        if self.offset == 0 {
+            self.record_source(source).await;
+        }
+        Ok(self)
+    }
+
+    /// The version the part found on open was started from, as its record
+    /// names it; `None` for a fresh part, a part with no record, and in place.
+    pub fn recorded_source(&self) -> Option<&RangeSourceFingerprint> {
+        self.recorded.as_ref()
+    }
+
+    /// Record `source` as the version this part is started from. Called
+    /// before the first byte is written. A source that names no version is
+    /// not recorded, and a record that cannot be written leaves the part with
+    /// none: either way a later download starts the part over rather than
+    /// resume it blind.
+    pub async fn record_source(&mut self, source: &RangeSourceFingerprint) {
+        if self.inplace {
+            return;
+        }
+        self.recorded = None;
+        if !source.pins_a_version() {
+            remove_part_record(&self.record_path).await;
+            return;
+        }
+        match write_part_record(&self.record_path, source).await {
+            Ok(()) => self.recorded = Some(source.clone()),
+            Err(e) => tracing::debug!(
+                "{} not recorded, the part will not be resumed: {e}",
+                self.record_path.display()
+            ),
+        }
+    }
+
+    /// Discard this part and open a fresh one at the same name.
+    pub async fn start_over(self) -> std::io::Result<Self> {
+        let final_path = self.final_path.clone();
+        let inplace = self.inplace;
+        // A part that cannot be removed fails the fresh open below, which
+        // reports it.
+        let _ = self.discard().await;
+        Self::fresh_at(final_path, inplace).await
     }
 
     /// [`Self::open`] with the in-place mode given rather than read from the
@@ -909,8 +1121,14 @@ impl ResumableFile {
             Err(gone) if gone.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(temp_claim::name_too_long(e, &temp_path)),
         };
-        let (file, offset) = if let Some(resumed) = resumed {
-            resumed
+        let record_path = part_record_path_for(&final_path);
+        let (file, offset, recorded) = if let Some((file, offset)) = resumed {
+            let recorded = if inplace {
+                None
+            } else {
+                read_part_record(&record_path).await
+            };
+            (file, offset, recorded)
         } else {
             // Fresh: create new file
             let file = if inplace {
@@ -922,17 +1140,21 @@ impl ResumableFile {
                     .await?
             } else {
                 let temp = temp_path.clone();
-                claimed(move || temp_claim::create(&temp)).await?
+                let file = claimed(move || temp_claim::create(&temp)).await?;
+                remove_part_record(&record_path).await;
+                file
             };
-            (file, 0)
+            (file, 0, None)
         };
 
         Ok(Self {
             temp_path,
             final_path,
+            record_path,
             file,
             committed: false,
             offset,
+            recorded,
             inplace,
         })
     }
@@ -944,7 +1166,10 @@ impl ResumableFile {
 
     /// [`Self::open_fresh`] with the in-place mode given.
     async fn open_fresh_in(final_path: &str, inplace: bool) -> Result<Self, std::io::Error> {
-        let final_path_buf = PathBuf::from(final_path);
+        Self::fresh_at(PathBuf::from(final_path), inplace).await
+    }
+
+    async fn fresh_at(final_path_buf: PathBuf, inplace: bool) -> Result<Self, std::io::Error> {
         let temp_path = if inplace {
             final_path_buf.clone()
         } else {
@@ -969,15 +1194,19 @@ impl ResumableFile {
             // retry until the user removes it by hand: the claim replaces a
             // stale one, and refuses one another writer still holds.
             let temp = temp_path.clone();
-            claimed(move || temp_claim::create_fresh(&temp)).await?
+            let file = claimed(move || temp_claim::create_fresh(&temp)).await?;
+            remove_part_record(&part_record_path_for(&final_path_buf)).await;
+            file
         };
 
         Ok(Self {
             temp_path,
+            record_path: part_record_path_for(&final_path_buf),
             final_path: final_path_buf,
             file,
             committed: false,
             offset: 0,
+            recorded: None,
             inplace,
         })
     }
@@ -985,6 +1214,28 @@ impl ResumableFile {
     /// Byte offset of existing partial data (0 = fresh download).
     pub fn offset(&self) -> u64 {
         self.offset
+    }
+
+    /// Whether this writer writes the destination itself (`--inplace`).
+    pub fn is_inplace(&self) -> bool {
+        self.inplace
+    }
+
+    /// The last byte of the part found on open. Read through a handle of its
+    /// own: the writer's is append-only.
+    pub async fn last_byte(&self) -> std::io::Result<u8> {
+        use tokio::io::AsyncSeekExt;
+        let Some(at) = self.offset.checked_sub(1) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the part is empty",
+            ));
+        };
+        let mut file = fs::File::open(&self.temp_path).await?;
+        file.seek(std::io::SeekFrom::Start(at)).await?;
+        let mut byte = [0u8; 1];
+        file.read_exact(&mut byte).await?;
+        Ok(byte[0])
     }
 
     /// Write data to the temp file (appending after any existing partial data).
@@ -1005,6 +1256,10 @@ impl ResumableFile {
         self.file.shutdown().await?;
 
         if !self.inplace {
+            // The record goes first, while this writer still holds the part:
+            // after the rename the name is free, and a record removed then
+            // could be the next download's.
+            remove_part_record(&self.record_path).await;
             fs::rename(&self.temp_path, &self.final_path).await?;
         }
         self.committed = true;
@@ -1016,6 +1271,7 @@ impl ResumableFile {
         self.committed = true; // prevent Drop from running
         let _ = self.file.shutdown().await;
         if !self.inplace {
+            remove_part_record(&self.record_path).await;
             fs::remove_file(&self.temp_path).await
         } else {
             // In inplace mode, the temp file IS the final file: remove it
@@ -1287,5 +1543,172 @@ mod tests {
             ".aerosegtmp",
         );
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    /// A version of a remote file, as a provider's stat describes it.
+    fn version(size: u64, tag: Option<&str>, modified: Option<&str>) -> RangeSourceFingerprint {
+        let mut entry = crate::providers::RemoteEntry::directory(String::new(), String::new());
+        entry.is_dir = false;
+        entry.size = size;
+        entry.modified = modified.map(str::to_string);
+        if let Some(tag) = tag {
+            entry.metadata.insert("etag".to_string(), tag.to_string());
+        }
+        RangeSourceFingerprint::of(&entry)
+    }
+
+    /// Leave a part of `bytes` behind, started from `source`, as an
+    /// interrupted download does.
+    async fn leave_part(path: &str, source: &RangeSourceFingerprint, bytes: &[u8]) {
+        let mut part = ResumableFile::open_for(path, source).await.unwrap();
+        assert_eq!(part.offset(), 0);
+        part.write_all(bytes).await.unwrap();
+        part.file_mut().flush().await.unwrap();
+    }
+
+    /// Requested 16 of #1202: a part is gone on from only while the file is
+    /// the version it was started from. Replaced in the meantime, at the
+    /// length the part already had, the old resume published the old version
+    /// without reading a byte; at any other length it appended the new tail.
+    #[tokio::test]
+    async fn a_part_is_resumed_only_against_the_version_it_was_started_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let v1 = version(100, Some("\"v1\""), Some("2026-10-15 10:00:00"));
+        leave_part(path, &v1, &[b'a'; 40]).await;
+
+        let same = ResumableFile::open_for(path, &v1).await.unwrap();
+        assert_eq!(
+            same.offset(),
+            40,
+            "a part of the same version was not resumed"
+        );
+        drop(same);
+
+        let replaced = version(100, Some("\"v2\""), Some("2026-10-15 10:00:00"));
+        let mut fresh = ResumableFile::open_for(path, &replaced).await.unwrap();
+        assert_eq!(fresh.offset(), 0, "a part of a replaced file was resumed");
+        assert_eq!(fresh.recorded_source(), Some(&replaced));
+        fresh.write_all(b"new").await.unwrap();
+        fresh.commit().await.unwrap();
+        assert_eq!(std::fs::read(path).unwrap(), b"new");
+        assert!(
+            !part_record_path_for(Path::new(path)).exists(),
+            "the record outlived its part"
+        );
+    }
+
+    /// The other doors of the same check: a part with no record, a part of a
+    /// file that changed only its time, and a part longer than the file.
+    #[tokio::test]
+    async fn a_part_without_a_matching_record_starts_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let v1 = version(100, None, Some("2026-10-15 10:00:00"));
+
+        std::fs::write(format!("{path}.aerotmp"), [b'a'; 40]).unwrap();
+        let unrecorded = ResumableFile::open_for(path, &v1).await.unwrap();
+        assert_eq!(unrecorded.offset(), 0, "a part with no record was resumed");
+        drop(unrecorded);
+
+        leave_part(path, &v1, &[b'a'; 40]).await;
+        let touched = version(100, None, Some("2026-10-15 10:00:01"));
+        let part = ResumableFile::open_for(path, &touched).await.unwrap();
+        assert_eq!(
+            part.offset(),
+            0,
+            "a part of a file rewritten in place was resumed"
+        );
+        drop(part);
+
+        leave_part(path, &touched, &[b'a'; 40]).await;
+        let shrunk = version(30, None, Some("2026-10-15 10:00:01"));
+        let part = ResumableFile::open_for(path, &shrunk).await.unwrap();
+        assert_eq!(part.offset(), 0, "a part longer than the file was resumed");
+    }
+
+    /// Size alone names no version: a part recorded with nothing else would
+    /// accept any replacement of the same length, so none is recorded and
+    /// the part is not resumed.
+    #[tokio::test]
+    async fn a_source_that_names_no_version_leaves_no_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        let sized_only = version(100, None, None);
+        leave_part(path, &sized_only, &[b'a'; 40]).await;
+        assert!(!part_record_path_for(Path::new(path)).exists());
+        let part = ResumableFile::open_for(path, &sized_only).await.unwrap();
+        assert_eq!(part.offset(), 0);
+    }
+
+    /// The callers that measure a part before asking a provider to go on
+    /// from it count only a recorded one. A part with no record may be a
+    /// crash leftover of a download that keeps none, or another server's: FTP
+    /// wrote the tail at its length into the destination, behind a run of
+    /// zeros when the destination was missing. It is removed instead.
+    #[tokio::test]
+    async fn only_a_recorded_part_is_offered_for_a_resume() {
+        let dir = tempfile::tempdir().unwrap();
+        let final_path = dir.path().join("f.bin");
+        let temp = dir.path().join("f.bin.aerotmp");
+        std::fs::write(&temp, [b'a'; 40]).unwrap();
+        assert_eq!(resumable_part_len(&final_path).await, 0);
+        assert!(!temp.exists(), "a part with no record was kept");
+
+        let v1 = version(100, Some("\"v1\""), None);
+        leave_part(final_path.to_str().unwrap(), &v1, &[b'a'; 40]).await;
+        assert_eq!(resumable_part_len(&final_path).await, 40);
+        assert!(temp.exists());
+
+        remove_temp_unless_live(&temp).unwrap();
+        assert!(
+            !part_record_path_for(&final_path).exists(),
+            "a part removed by name left its record"
+        );
+    }
+
+    /// A writer that keeps no part (`AtomicFile`) must not leave an earlier
+    /// part's record vouching for the bytes it writes, should it be killed.
+    /// Linux only: it replaces the stale part only where the locks tell it
+    /// from a live writer's; elsewhere it refuses the name and writes nothing.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_writer_that_keeps_no_part_drops_an_earlier_record() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let path = path.to_str().unwrap();
+        leave_part(path, &version(100, Some("\"v1\""), None), &[b'a'; 40]).await;
+        let atomic = AtomicFile::new(path).await.unwrap();
+        assert!(!part_record_path_for(Path::new(path)).exists());
+        drop(atomic);
+    }
+
+    /// A symlink planted at the record's name is replaced, never written
+    /// through, and never read as a record.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_symlink_at_the_record_is_neither_followed_nor_trusted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let target = dir.path().join("victim");
+        std::fs::write(&target, b"untouched").unwrap();
+        let record = part_record_path_for(&path);
+        std::os::unix::fs::symlink(&target, &record).unwrap();
+
+        let v1 = version(100, Some("\"v1\""), None);
+        leave_part(path.to_str().unwrap(), &v1, &[b'a'; 40]).await;
+        assert_eq!(std::fs::read(&target).unwrap(), b"untouched");
+        assert!(!std::fs::symlink_metadata(&record).unwrap().is_symlink());
+
+        // The record just written reads back; the same bytes behind a
+        // symlink do not.
+        assert_eq!(read_part_record(&record).await, Some(v1.clone()));
+        std::fs::copy(&record, &target).unwrap();
+        std::fs::remove_file(&record).unwrap();
+        std::os::unix::fs::symlink(&target, &record).unwrap();
+        assert!(read_part_record(&record).await.is_none());
     }
 }
