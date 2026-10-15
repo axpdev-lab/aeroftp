@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-15",
+  "tracker": 1202,
+  "requested_item": 24,
+  "status": "PASS",
+  "ftps": [
+    {
+      "tls": "explicit",
+      "refusal": false,
+      "data_reset": false,
+      "exit": 0,
+      "stor_count": 1,
+      "bytes": 94208
+    },
+    {
+      "tls": "explicit",
+      "refusal": true,
+      "data_reset": false,
+      "exit": 4,
+      "stor_count": 1,
+      "bytes": 94208
+    },
+    {
+      "tls": "explicit",
+      "refusal": true,
+      "data_reset": true,
+      "exit": 4,
+      "stor_count": 1,
+      "bytes": 94208
+    },
+    {
+      "tls": "implicit",
+      "refusal": false,
+      "data_reset": false,
+      "exit": 0,
+      "stor_count": 1,
+      "bytes": 94208
+    },
+    {
+      "tls": "implicit",
+      "refusal": true,
+      "data_reset": false,
+      "exit": 4,
+      "stor_count": 1,
+      "bytes": 94208
+    },
+    {
+      "tls": "implicit",
+      "refusal": true,
+      "data_reset": true,
+      "exit": 4,
+      "stor_count": 1,
+      "bytes": 94208
+    }
+  ],
+  "onedrive": {
+    "cache_primed_by": "provider_list_versions -> resolve_path",
+    "external_client_recreated_path": true,
+    "original_provider_delete_succeeded": true,
+    "independent_stat_exit": 2,
+    "empty_owned_folder_removed": true,
+    "personal_recycle_bin_available_via_graph": false
+  },
+  "trash": {
+    "Box": {
+      "ambiguity_refused": true,
+      "intact_distinct_generations": 3,
+      "sizes": [
+        25,
+        25,
+        65536
+      ],
+      "exact_id_cleanup_completed": true
+    },
+    "kDrive": {
+      "ambiguity_refused": true,
+      "intact_distinct_generations": 3,
+      "sizes": [
+        25,
+        25,
+        65536
+      ],
+      "exact_id_cleanup_completed": true
+    }
+  },
+  "twake": [
+    {
+      "scenario": "twake-large.bin",
+      "success": true,
+      "bytes": [
+        0,
+        786432,
+        1835008,
+        2883584,
+        4194304,
+        5505024,
+        6815744,
+        8126464,
+        8388608
+      ],
+      "total": 8388608,
+      "terminal": [
+        "complete"
+      ],
+      "monotonic": true,
+      "total_reports": 1
+    },
+    {
+      "scenario": "twake-retry.bin",
+      "success": true,
+      "bytes": [
+        0,
+        524288
+      ],
+      "total": 524288,
+      "terminal": [
+        "complete"
+      ],
+      "monotonic": true,
+      "total_reports": 1
+    },
+    {
+      "scenario": "twake-refused.bin",
+      "success": false,
+      "bytes": [
+        0,
+        262144
+      ],
+      "total": 524288,
+      "terminal": [
+        "error"
+      ],
+      "monotonic": true,
+      "total_reports": 0
+    }
+  ],
+  "proton": {
+    "official_cli": "cli-drive@0.9.0+75612299",
+    "official_sdk": "js@0.22.2+75612299",
+    "initial_live_failure": "Link created upstream, urlAccess.url not recognized; parse diagnostic included policy payload",
+    "patched_live_rerun": {
+      "password_started_with_dash": true,
+      "official_cli": "0.9.0",
+      "exit": 0,
+      "url_valid": true,
+      "password_round_trip": true,
+      "upstream_password_matches": true,
+      "upstream_url_matches": true,
+      "expiration_present": true,
+      "link_revoked": true,
+      "unshared_status": "undefined (official CLI 0.9.0)",
+      "owned_file_removed": true,
+      "owned_file_and_empty_folder_removed": true,
+      "purged_file_after_uid_and_unique_name_check": true,
+      "purged_folder_after_uid_and_unique_name_check": true,
+      "owned_trash_cleanup": true,
+      "trash_addressing": "UID verified, unique name used; vendor CLI rejected UID paths"
+    },
+    "patched_cli_sha256": "5ea8654b2363ec90a55cfc807a4239aca83d3700f0a944dd360e689c2d64362f"
+  },
+  "twake_integrity": true,
+  "twake_owned_folder_removed": true,
+  "focused_validation": {
+    "proton_rust_tests_passed": 35,
+    "cargo_fmt_all_check": true,
+    "cli_build": true,
+    "python_syntax": true
+  }
+}
