@@ -160,14 +160,14 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-            <div {...modalDrag.panelProps} className="bg-[var(--bg-primary)] border border-[var(--border-primary)] rounded-lg shadow-xl w-[640px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div {...modalDrag.panelProps} className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg shadow-xl w-[640px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Header */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-primary)]">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
                     <div className="flex items-center gap-2">
                         <ArrowUpDown size={16} className="text-blue-400" />
                         <span className="font-medium text-sm">{t('vaultSync.title')}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-[var(--bg-secondary)] rounded" title={t('common.close')}><X size={16} /></button>
+                    <button onClick={onClose} className="p-1 hover:bg-[var(--color-bg-tertiary)] rounded" title={t('common.close')}><X size={16} /></button>
                 </div>
 
                 {/* Content */}
@@ -181,12 +181,12 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                     {/* Step: Select directory */}
                     {step === 'select_dir' && (
                         <div className="space-y-4">
-                            <p className="text-xs text-[var(--text-secondary)]">{t('vaultSync.description')}</p>
+                            <p className="text-xs text-[var(--color-text-secondary)]">{t('vaultSync.description')}</p>
                             <div className="flex items-center gap-2">
                                 <button onClick={handleSelectDir} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded">
                                     <Folder size={14} /> {t('vaultSync.selectDirectory')}
                                 </button>
-                                {localDir && <span className="text-xs text-[var(--text-secondary)] truncate flex-1">{localDir}</span>}
+                                {localDir && <span className="text-xs text-[var(--color-text-secondary)] truncate flex-1">{localDir}</span>}
                             </div>
                             {localDir && (
                                 <button onClick={handleCompare} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-500 text-white rounded">
@@ -198,7 +198,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
 
                     {/* Step: Comparing */}
                     {step === 'comparing' && (
-                        <div className="flex items-center justify-center py-8 gap-2 text-sm text-[var(--text-secondary)]">
+                        <div className="flex items-center justify-center py-8 gap-2 text-sm text-[var(--color-text-secondary)]">
                             <Loader2 size={18} className="animate-spin" /> {t('vaultSync.comparing')}
                         </div>
                     )}
@@ -207,7 +207,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                     {step === 'review' && comparison && (
                         <div className="space-y-3">
                             {/* Summary */}
-                            <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)]">
+                            <div className="flex items-center gap-3 text-xs text-[var(--color-text-secondary)]">
                                 <span className="text-blue-400">{comparison.vault_only.length} {t('vaultSync.vaultOnly')}</span>
                                 <span className="text-green-400">{comparison.local_only.length} {t('vaultSync.localOnly')}</span>
                                 <span className="text-yellow-400">{comparison.conflicts.length} {t('vaultSync.conflicts')}</span>
@@ -226,14 +226,14 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
 
                             {/* File list */}
                             {totalActions === 0 ? (
-                                <div className="text-xs text-[var(--text-secondary)] py-4 text-center">
+                                <div className="text-xs text-[var(--color-text-secondary)] py-4 text-center">
                                     <Check size={18} className="inline text-green-400 mr-1" /> {t('vaultSync.allInSync')}
                                 </div>
                             ) : (
-                                <div className="max-h-[40vh] overflow-y-auto border border-[var(--border-primary)] rounded">
+                                <div className="max-h-[40vh] overflow-y-auto border border-[var(--color-border)] rounded">
                                     <table className="w-full text-xs">
-                                        <thead className="sticky top-0 bg-[var(--bg-secondary)]">
-                                            <tr className="text-left text-[var(--text-secondary)]">
+                                        <thead className="sticky top-0 bg-[var(--color-bg-tertiary)]">
+                                            <tr className="text-left text-[var(--color-text-secondary)]">
                                                 <th className="px-2 py-1.5">{t('vaultSync.file')}</th>
                                                 <th className="px-2 py-1.5 w-20">{t('vaultSync.status')}</th>
                                                 <th className="px-2 py-1.5 w-28 text-center">{t('vaultSync.direction')}</th>
@@ -242,44 +242,44 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                                         </thead>
                                         <tbody>
                                             {comparison.vault_only.map(name => (
-                                                <tr key={name} className="border-t border-[var(--border-primary)] hover:bg-[var(--bg-secondary)]">
+                                                <tr key={name} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                                                     <td className="px-2 py-1 truncate max-w-[240px]" title={name}>{name}</td>
                                                     <td className="px-2 py-1">{statusLabel('vault_only')}</td>
                                                     <td className="px-2 py-1">
                                                         <div className="flex items-center justify-center gap-1">
                                                             {actionIcon(actions.get(name) || 'to_local')}
                                                             <select value={actions.get(name) || 'to_local'} onChange={e => setAction(name, e.target.value as 'to_vault' | 'to_local' | 'skip')}
-                                                                className="bg-transparent text-xs border border-[var(--border-primary)] rounded px-1 py-0.5">
+                                                                className="bg-transparent text-xs border border-[var(--color-border)] rounded px-1 py-0.5">
                                                                 <option value="to_local">{t('vaultSync.toLocal')}</option>
                                                                 <option value="skip">{t('vaultSync.skip')}</option>
                                                             </select>
                                                         </div>
                                                     </td>
-                                                    <td className="px-2 py-1 text-right text-[var(--text-secondary)]">{'\u2014'}</td>
+                                                    <td className="px-2 py-1 text-right text-[var(--color-text-secondary)]">{'\u2014'}</td>
                                                 </tr>
                                             ))}
                                             {comparison.local_only.map(name => (
-                                                <tr key={name} className="border-t border-[var(--border-primary)] hover:bg-[var(--bg-secondary)]">
+                                                <tr key={name} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                                                     <td className="px-2 py-1 truncate max-w-[240px]" title={name}>{name}</td>
                                                     <td className="px-2 py-1">{statusLabel('local_only')}</td>
                                                     <td className="px-2 py-1">
                                                         <div className="flex items-center justify-center gap-1">
                                                             {actionIcon(actions.get(name) || 'to_vault')}
                                                             <select value={actions.get(name) || 'to_vault'} onChange={e => setAction(name, e.target.value as 'to_vault' | 'to_local' | 'skip')}
-                                                                className="bg-transparent text-xs border border-[var(--border-primary)] rounded px-1 py-0.5">
+                                                                className="bg-transparent text-xs border border-[var(--color-border)] rounded px-1 py-0.5">
                                                                 <option value="to_vault">{t('vaultSync.toVault')}</option>
                                                                 <option value="skip">{t('vaultSync.skip')}</option>
                                                             </select>
                                                         </div>
                                                     </td>
-                                                    <td className="px-2 py-1 text-right text-[var(--text-secondary)]">{'\u2014'}</td>
+                                                    <td className="px-2 py-1 text-right text-[var(--color-text-secondary)]">{'\u2014'}</td>
                                                 </tr>
                                             ))}
                                             {comparison.conflicts.map(c => (
-                                                <tr key={c.name} className="border-t border-[var(--border-primary)] hover:bg-[var(--bg-secondary)]">
+                                                <tr key={c.name} className="border-t border-[var(--color-border)] hover:bg-[var(--color-bg-tertiary)]">
                                                     <td className="px-2 py-1">
                                                         <div className="truncate max-w-[240px]" title={c.name}>{c.name}</div>
-                                                        <div className="text-[10px] text-[var(--text-secondary)]">
+                                                        <div className="text-[10px] text-[var(--color-text-secondary)]">
                                                             V: {formatSize(c.vault_size)} | L: {formatSize(c.local_size)}
                                                         </div>
                                                     </td>
@@ -288,14 +288,14 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                                                         <div className="flex items-center justify-center gap-1">
                                                             {actionIcon(actions.get(c.name) || 'skip')}
                                                             <select value={actions.get(c.name) || 'skip'} onChange={e => setAction(c.name, e.target.value as 'to_vault' | 'to_local' | 'skip')}
-                                                                className="bg-transparent text-xs border border-[var(--border-primary)] rounded px-1 py-0.5">
+                                                                className="bg-transparent text-xs border border-[var(--color-border)] rounded px-1 py-0.5">
                                                                 <option value="to_vault">{t('vaultSync.toVault')}</option>
                                                                 <option value="to_local">{t('vaultSync.toLocal')}</option>
                                                                 <option value="skip">{t('vaultSync.skip')}</option>
                                                             </select>
                                                         </div>
                                                     </td>
-                                                    <td className="px-2 py-1 text-right text-[var(--text-secondary)]">
+                                                    <td className="px-2 py-1 text-right text-[var(--color-text-secondary)]">
                                                         {formatSize(Math.max(c.vault_size, c.local_size))}
                                                     </td>
                                                 </tr>
@@ -309,7 +309,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
 
                     {/* Step: Applying */}
                     {step === 'applying' && (
-                        <div className="flex items-center justify-center py-8 gap-2 text-sm text-[var(--text-secondary)]">
+                        <div className="flex items-center justify-center py-8 gap-2 text-sm text-[var(--color-text-secondary)]">
                             <Loader2 size={18} className="animate-spin" /> {t('vaultSync.applying')}
                         </div>
                     )}
@@ -320,7 +320,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                             <div className="flex items-center gap-2 text-green-400 text-sm">
                                 <Check size={18} /> {t('vaultSync.completed')}
                             </div>
-                            <div className="text-xs space-y-1 text-[var(--text-secondary)]">
+                            <div className="text-xs space-y-1 text-[var(--color-text-secondary)]">
                                 {result.to_vault > 0 && <p>{result.to_vault} {t('vaultSync.filesToVault')}</p>}
                                 {result.to_local > 0 && <p>{result.to_local} {t('vaultSync.filesToLocal')}</p>}
                                 {result.skipped > 0 && <p>{result.skipped} {t('vaultSync.filesSkipped')}</p>}
@@ -336,13 +336,13 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--border-primary)]">
+                <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--color-border)]">
                     {step === 'review' && totalActions > 0 && (
                         <button onClick={handleApply} className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded">
                             <ArrowUpDown size={14} /> {t('vaultSync.applySync')}
                         </button>
                     )}
-                    <button onClick={onClose} className="px-3 py-1.5 text-xs bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary,var(--bg-secondary))] rounded">
+                    <button onClick={onClose} className="px-3 py-1.5 text-xs bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] rounded">
                         {step === 'done' ? t('vaultSync.close') : t('vault.cancel')}
                     </button>
                 </div>
