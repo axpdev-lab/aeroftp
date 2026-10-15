@@ -223,8 +223,8 @@ import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
-import { DevToolsV2, PreviewFile, isPreviewable } from './components/DevTools';
-import { UniversalPreview, PreviewFileData, isPreviewable as isMediaPreviewable } from './components/Preview';
+import { DevToolsV2, isPreviewable } from './components/DevTools';
+import { UniversalPreview, isPreviewable as isMediaPreviewable } from './components/Preview';
 // GAP-1: legacy connected-remote sync engine, restored as a safety net
 // while the unified AeroSync modal absorbs delete/verify/journal/retry
 // (GAP-2..GAP-4). Reachable only via the Command Palette for now.
@@ -336,11 +336,11 @@ import { ProviderThumbnail } from './components/ProviderThumbnail';
 import {
   FolderUp, RefreshCw, FolderPlus, FolderOpen, FolderInput,
   Download, Upload, Pencil, Trash2, X, Loader2,
-  Folder, FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
-  Archive, Image, Video, Music, FileType, Code, Database, Clock,
+  FileText, Globe, HardDrive, Settings, Search, Eye, Link2, Unlink, Shield, ShieldOff, Cloud,
+  Archive, Image, FileType, Code, Database, Clock,
   Copy, Clipboard, ClipboardPaste, ClipboardList, Scissors, ExternalLink, List, LayoutGrid, CheckCircle2, AlertTriangle, Share2, Send, Info,
-  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, LogOut, PanelLeft, Rows3, Zap,
-  MoreHorizontal, Tag, Layers, Snowflake, Bot, Terminal, Star, MessageSquare, Package, FileSpreadsheet, Presentation, LinkIcon, GitCommit, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
+  Lock, LockOpen, Unlock, Server, XCircle, History, Users, FolderSync, Replace, PanelLeft, Rows3, Zap,
+  MoreHorizontal, Tag, Layers, Snowflake, Bot, Terminal, Star, MessageSquare, FileSpreadsheet, Presentation, LinkIcon, ArrowRight, ArrowRightLeft, Columns2, FileKey, KeyRound
 } from 'lucide-react';
 
 /**
@@ -428,14 +428,12 @@ const Github = ({ size = 24, className = '' }: { size?: number; className?: stri
   </svg>
 );
 import PanelSwitcher from './components/PanelSwitcher';
-import { PlacesSidebar } from './components/PlacesSidebar';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
 import { LocalFilePanel } from './components/LocalFilePanel';
 import { PanelDivider } from './components/PanelDivider';
 import { AeroFileTableHeader } from './components/AeroFileTableHeader';
 import {
-  type AeroFileLocalColId,
   type AeroFileRemoteColId,
   useAeroFileLocalColumns,
   useAeroFileRemoteColumns,
@@ -443,14 +441,13 @@ import {
 import { QuickLookOverlay } from './components/QuickLookOverlay';
 import DuplicateFinderDialog from './components/DuplicateFinderDialog';
 import DiskUsageTreemap from './components/DiskUsageTreemap';
-import { FileTagBadge } from './components/FileTagBadge';
 import { VaultIcon } from './components/icons/VaultIcon';
 import { DecryptingText } from './components/DecryptingText';
 import type { TrashItem, FolderSizeResult, LocalTab, MtpDeviceInfo, MtpSessionInfo, VolumeInfo } from './types/aerofile';
 import { debounceMtpDevicesChanged, listMtpDevices } from './utils/mtpListDevices';
 
 // Utilities
-import { formatBytes, formatSpeed, formatETA, formatDate, isWindowsDriveRoot, parentLocalPath } from './utils';
+import { formatBytes, formatDate, isWindowsDriveRoot, parentLocalPath } from './utils';
 
 import { useArchiveMeta } from './hooks/useArchiveMeta';
 import { formatArchiveCipher } from './utils/archiveCipher';
@@ -472,7 +469,7 @@ import { appendImportedProfiles } from './components/bridge/bridgeImportCommit';
 import { readSavedServerProfilesForWrite } from './utils/serverProfileStore';
 import { maskCredential } from './utils/maskCredential';
 import { getOpenWithDefaultRoute } from './utils/openWithDefault';
-import { createLocalEndpoint, createRemoteEndpoint } from './utils/panelEndpoints';
+import { createRemoteEndpoint } from './utils/panelEndpoints';
 import {
   MASTER_PASSWORD_CHANGED_EVENT,
   dispatchMasterPasswordChanged,
@@ -505,7 +502,7 @@ import { signatureOf } from './utils/thumbnailCache';
 import { loadOverwriteDestination } from './utils/overwriteDestination';
 import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './utils/fileBatchRouting';
 import type { FileBatchDirection, FileBatchSessionFlags, FolderTransferOutcome } from './utils/fileBatchRouting';
-import { SortableHeader, SortField, SortOrder } from './components/SortableHeader';
+import type { SortField, SortOrder } from './components/SortableHeader';
 import { FeatureBadge } from './components/FeatureBadge';
 import ActivityLogPanel from './components/ActivityLogPanel';
 import DebugPanel, {
@@ -515,7 +512,7 @@ import DebugPanel, {
   deactivateNetworkCapture,
 } from './components/DebugPanel';
 import DependenciesPanel from './components/DependenciesPanel';
-import { GoogleDriveLogo, DropboxLogo, OneDriveLogo, MegaLogo, BoxLogo, PCloudLogo, FilenLogo, FourSharedLogo, GitHubLogo, GitLabLogo, FeliCloudLogo, FileLuLogo, KDriveLogo, DrimeCloudLogo, YandexDiskLogo, KoofrLogo, JottacloudLogo, ZohoWorkDriveLogo, InternxtLogo, AzureLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
+import { MegaLogo, FourSharedLogo, GitLabLogo, PROVIDER_LOGOS } from './components/ProviderLogos';
 
 // Hooks (modularized from App.tsx - see architecture comment below)
 import { useTheme, Theme, getLogTheme, getMonacoTheme, getEffectiveTheme } from './hooks/useTheme';
@@ -688,7 +685,7 @@ const App: React.FC = () => {
   const {
     compactMode, showHiddenFiles, showToastNotifications, confirmBeforeDelete,
     warnSameNameEncrypted,
-    showStatusBar, defaultLocalPath, fontSize, fontFamily, doubleClickAction, rememberLastFolder, visibleColumns,
+    showStatusBar, defaultLocalPath, fontSize, fontFamily, doubleClickAction, rememberLastFolder,
     sortFoldersFirst, showFileExtensions, timeoutSeconds, maxConcurrentTransfers, retryCount,
     downloadSegments,
     sftpDownloadPreset, setSftpDownloadPreset,
@@ -696,7 +693,7 @@ const App: React.FC = () => {
     showActivityLog, showConnectionScreen,
     showSettingsPanel, setShowSettingsPanel, setShowConnectionScreen,
     setShowActivityLog,
-    setShowHiddenFiles, debugMode, setDebugMode,
+    debugMode, setDebugMode,
     setSwapPanels,
     setFontSize,
     cardLayout,
@@ -933,7 +930,6 @@ const App: React.FC = () => {
     // Only trigger App re-render on null↔non-null transitions (start/complete)
     if (wasActive !== isActive) setHasActiveTransfer(isActive);
   }, []);
-  const [isReconnecting, setIsReconnecting] = useState(false);  // FTP reconnection in progress
   const [scanningState, setScanningState] = useState<ScanningState>(INITIAL_SCANNING_STATE);
   const hasActivity = hasActiveTransfer;  // Track if upload/download in progress
   const [activePanel, setActivePanel] = useState<'remote' | 'local'>('remote');
@@ -1069,10 +1065,9 @@ const App: React.FC = () => {
   } | null>(null);
   const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: string[] } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
-  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean; isDir?: boolean } | null>(null);
+  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
   const [inlineRenameValue, setInlineRenameValue] = useState('');
   const inlineRenameRef = useRef<HTMLInputElement>(null);
-  const inlineRenameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Rubber-band (marquee) multi-selection + click-blank-to-deselect for the
   // REMOTE panel, mirroring the local panel (#270). The hook owns the empty
@@ -1735,7 +1730,7 @@ const App: React.FC = () => {
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
 
   // Sync Badge Helper - returns badge element if file is in cloud folder
-  const getSyncBadge = (filePath: string, fileModified: string | undefined, isLocal: boolean) => {
+  const getSyncBadge = (fileModified: string | undefined, isLocal: boolean) => {
     // Only show badges if cloud is active and we have cloud folder paths
     if (!isCloudActive || !cloudLastSync || !cloudLocalFolder || !cloudRemoteFolder) return null;
 
@@ -2235,7 +2230,7 @@ const App: React.FC = () => {
   }, [connectionParams.protocol, connectionParams.options?.verifyCert, connectionParams.server, activityLog, t]);
 
   // Auto-Update: handled by useAutoUpdate hook
-  const { updateAvailable, setUpdateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
+  const { updateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
   const [updateToastDismissed, setUpdateToastDismissed] = useState(false);
   const updateToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [updateDownload, setUpdateDownload] = useState<{
@@ -2285,13 +2280,13 @@ const App: React.FC = () => {
   // AeroCloud state + event listeners (extracted hook)
   const {
     showCloudPanel, setShowCloudPanel,
-    cloudSyncing, isCloudActive, setIsCloudActive,
+    cloudSyncing, isCloudActive,
     isCloudPaused,
-    cloudServerName, setCloudServerName,
-    cloudLastSync, setCloudLastSync,
+    cloudServerName,
+    cloudLastSync,
     cloudLocalFolder, setCloudLocalFolder,
     cloudRemoteFolder, setCloudRemoteFolder,
-    cloudPublicUrlBase, setCloudPublicUrlBase,
+    cloudPublicUrlBase,
   } = useCloudSync({
     activityLog, humanLog, t, checkForUpdate, isAppLocked,
     onSyncComplete: () => {
@@ -2745,7 +2740,7 @@ const App: React.FC = () => {
       if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
         const name = Array.from(selectedRemoteFiles)[0];
         const file = remoteFiles.find(f => f.name === name);
-        if (file && file.name !== '..') startInlineRename(file.path, file.name, true, file.is_dir);
+        if (file && file.name !== '..') startInlineRename(file.path, file.name, true);
       } else if (activePanel === 'local') {
         const panel = getActiveLocalState();
         if (panel.selection.size === 1) {
@@ -3910,7 +3905,6 @@ const App: React.FC = () => {
         console.warn('Keep-alive NOOP failed, attempting reconnect...', error);
 
         // FTP connection lost - attempt auto-reconnect
-        setIsReconnecting(true);
         humanLog.logRaw('activity.disconnect_start', 'DISCONNECT', {}, 'error');
         notify.info(t('toast.reconnecting'), t('toast.connectionLost'));
 
@@ -3927,8 +3921,6 @@ const App: React.FC = () => {
           humanLog.logRaw('activity.reconnect_error', 'DISCONNECT', {}, 'error');
           notify.error(t('toast.connectionLostTitle'), t('toast.connectionLostManual'));
           setIsConnected(false);
-        } finally {
-          setIsReconnecting(false);
         }
       }
     }, KEEP_ALIVE_INTERVAL);
@@ -4151,7 +4143,7 @@ const App: React.FC = () => {
           // menu's explicit "Lock vault" wipes it now (provider_clear... full).
           await invoke('provider_lock_crypt_overlay');
         } finally {
-          await loadRemoteFiles(undefined, true, true);
+          await loadRemoteFiles(undefined, true);
         }
       })();
       return;
@@ -4192,7 +4184,7 @@ const App: React.FC = () => {
           setCryptOverlayOwner({ savedServerId: savedId, sessionId: null });
           bindSessionCryptOverlay({ savedServerId: savedId }, vaultId, rearm.kind, rearm.scope);
           humanLog.logRaw('activity.overlay_unlocked', 'CONNECT', {}, 'success');
-          await loadRemoteFiles(undefined, true, true);
+          await loadRemoteFiles(undefined, true);
         } catch {
           // Cache miss (different connection, disconnect, or hard lock). The
           // profile's binding re-derives only the vault it describes: an overlay
@@ -4231,7 +4223,7 @@ const App: React.FC = () => {
       try {
         await invoke('provider_clear_crypt_overlay', { full: true });
       } finally {
-        await loadRemoteFiles(undefined, true, true);
+        await loadRemoteFiles(undefined, true);
       }
     })();
   };
@@ -4373,7 +4365,7 @@ const App: React.FC = () => {
                       t('aerocryptNative.legacyMarkerConnectBanner'),
                       t('aerocryptNative.legacyMarkerMigrated'),
                     );
-                    await loadRemoteFiles(undefined, true, true).catch(() => undefined);
+                    await loadRemoteFiles(undefined, true).catch(() => undefined);
                   } else {
                     humanLog.updateEntry(logId, {
                       status: 'success',
@@ -4467,26 +4459,6 @@ const App: React.FC = () => {
     ) ?? null,
     [unifiedPanelController.left, unifiedPanelController.right],
   );
-
-  const handleRemoteSort = (field: SortField) => {
-    const cur = remoteColumns.config.sort;
-    const colId = field as AeroFileRemoteColId;
-    if (cur && cur.colId === colId) {
-      remoteColumns.setSort({ colId, dir: cur.dir === 'asc' ? 'desc' : 'asc' });
-    } else {
-      remoteColumns.setSort({ colId, dir: 'asc' });
-    }
-  };
-
-  const handleLocalSort = (field: SortField) => {
-    const cur = localColumns.config.sort;
-    const colId = field as AeroFileLocalColId;
-    if (cur && cur.colId === colId) {
-      localColumns.setSort({ colId, dir: cur.dir === 'asc' ? 'desc' : 'asc' });
-    } else {
-      localColumns.setSort({ colId, dir: 'asc' });
-    }
-  };
 
   // === Local Path Tabs ===
   // Persist tabs to localStorage
@@ -4646,24 +4618,6 @@ const App: React.FC = () => {
       fileTags.loadTagsForFiles(paths);
     }
   }, [sortedLocalFiles, fileTags.loadTagsForFiles]);
-
-  // Quick Look toggle
-  const toggleQuickLook = useCallback(() => {
-    if (activePanel !== 'local') return;
-    if (quickLookOpen) {
-      setQuickLookOpen(false);
-      return;
-    }
-    const selected = [...selectedLocalFiles];
-    if (selected.length !== 1) return;
-    const fileName = selected[0];
-    const fileIndex = sortedLocalFiles.findIndex(f => f.name === fileName);
-    if (fileIndex === -1) return;
-    const file = sortedLocalFiles[fileIndex];
-    if (file.is_dir) return;
-    setQuickLookIndex(fileIndex);
-    setQuickLookOpen(true);
-  }, [activePanel, quickLookOpen, selectedLocalFiles, sortedLocalFiles]);
 
   // Recent paths persistence
   useEffect(() => {
@@ -5727,13 +5681,6 @@ const App: React.FC = () => {
         ? { vaultId: aeroCryptVaultId, prefix: 'aerocrypt_provider' as const }
         : null;
   };
-  // Phase 3 frontend migration: operation routing no longer dispatches to
-  // `${prefix}_*` commands. The live ProviderState slot is wrapped by
-  // provider_apply_crypt_overlay, so all browser/transfers use plain provider_*.
-  // Keep the precise return type until Phase 4 removes the legacy command layer.
-  const activeCryptOverlay = (): { vaultId: string; prefix: 'rclone_crypt_provider' | 'aerocrypt_provider' } | null => {
-    return null;
-  };
   // Single source of truth for path-bar and action gating. Routing is plain
   // provider_* now; this only says whether the active session owns an unlocked
   // overlay and the displayed path is inside its bound plaintext scope.
@@ -6028,7 +5975,7 @@ const App: React.FC = () => {
       throw e;
     }
     setLockedOverlayProfile(null);
-    void loadRemoteFiles(undefined, true, true);
+    void loadRemoteFiles(undefined, true);
   };
 
   // P3.3 / P3.3b: when a saved profile carries an encrypted-overlay binding,
@@ -6204,7 +6151,7 @@ const App: React.FC = () => {
         // raw provider view now so the panel is never left empty.
         if (overlaySuppressedRef.current) {
           overlaySuppressedRef.current = false;
-          void loadRemoteFiles(undefined, false, true);
+          void loadRemoteFiles(undefined, false);
         }
       }
     })();
@@ -6253,11 +6200,11 @@ const App: React.FC = () => {
         // opens on the Remote Path without bouncing into the scope. Only an empty
         // scope (whole-remote overlay) falls through to the legacy re-anchor.
         await smartReanchorOverlay(reloadScope, initialLandingOpts);
-        let reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
+        let reloaded = await loadRemoteFiles(undefined, undefined, null);
         if (!reloaded && !cancelled) {
           await new Promise((res) => setTimeout(res, 1500));
           await smartReanchorOverlay(reloadScope, initialLandingOpts);
-          reloaded = await loadRemoteFiles(undefined, undefined, undefined, null);
+          reloaded = await loadRemoteFiles(undefined, undefined, null);
         }
         // Rewrite the connect-time listing line to the overlay-anchored display
         // path (what the path-bar shows), now that the decrypted reload landed.
@@ -6354,7 +6301,7 @@ const App: React.FC = () => {
   // When the last remote listing started: a finished upload's own refresh
   // stands down if one started after it (see utils/deferredRefresh).
   const remoteRefreshStartedAtRef = useRef(0);
-  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, ignoreRcloneCrypt?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
+  const loadRemoteFiles = async (overrideProtocol?: string, silent?: boolean, overrideScopePath?: string | null): Promise<FileListResponse | null> => {
     remoteRefreshStartedAtRef.current = Date.now();
     // Cover every FOREGROUND listing (connect, manual refresh, provider re-list)
     // with the same spinner + freeze the drill-in navigation already uses, so a
@@ -6502,7 +6449,7 @@ const App: React.FC = () => {
   // Transfer Queue footer bar climbs on real bytes (folder queue items enqueue
   // lazily on file_start, so an item-count wave pegs the bar near 100%). #364.
   const [activeBatchSnapshot, setActiveBatchSnapshot] = useState<BatchProgressSnapshot | null>(null);
-  const { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows } = useTransferEvents({
+  const { pendingFileLogIds, registerFileBatchRows } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
     remoteRefreshStartedAt: () => remoteRefreshStartedAtRef.current,
@@ -9055,7 +9002,6 @@ const App: React.FC = () => {
       // Determine protocol (from cloud config, server profile, or default)
       const protocol = (cloudConfig.protocol_type || cloudServer.protocol || 'ftp') as ProviderType;
       const isProvider = usesProviderApi(protocol);
-      const isFtp = isFtpProtocol(protocol);
       const protocolLabel = connectionViaLabel({ protocol, providerId: cloudServer.providerId, options: cloudServer.options });
 
       // Build connection server string
@@ -12604,7 +12550,6 @@ const App: React.FC = () => {
       if (filesToUpload.length > 0) {
         const activeSession = sessions.find(s => s.id === activeSessionId);
         const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-        const isProvider = usesProviderApi(protocol);
         const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
         let batchCommitMessage: string | undefined;
 
@@ -13691,40 +13636,7 @@ const App: React.FC = () => {
     }
   };
 
-  const deleteLocalFile = (path: string) => {
-    const fileName = path.split(/[\\/]/).pop() || path;
-
-    const performDelete = async () => {
-      const logId = humanLog.logStart('DELETE', { filename: path });
-      const outcome = await trashLocalPaths([path], localTrashDeps());
-      if (outcome.removed.includes(path)) {
-        humanLog.logSuccess('DELETE', { filename: path }, logId);
-        notify.success(t('toast.deleted'), fileName);
-        await loadLocalFiles(currentLocalPath);
-      } else if (outcome.failed.length > 0) {
-        humanLog.logError('DELETE', { filename: path }, logId);
-        notify.error(t('toast.deleteFail'), outcome.failed[0].error);
-      } else {
-        // The user chose to keep it when asked: nothing happened, say so.
-        humanLog.updateEntry(logId, { status: 'success', message: t('trash.kept', { name: fileName }) });
-      }
-    };
-
-    // Check if confirmation is enabled
-    if (confirmBeforeDelete) {
-      setConfirmDialog({
-        message: t('dialog.deleteFile', { name: fileName }),
-        onConfirm: async () => {
-          setConfirmDialog(null);
-          await performDelete();
-        }
-      });
-    } else {
-      performDelete();
-    }
-  };
-
-  const renameFile = (path: string, currentName: string, isRemote: boolean, isDir?: boolean) => {
+  const renameFile = (path: string, currentName: string, isRemote: boolean) => {
     setInputDialog({
       title: t('common.rename'),
       defaultValue: currentName,
@@ -13796,10 +13708,10 @@ const App: React.FC = () => {
   };
 
   // Inline rename: start editing directly in the file list
-  const startInlineRename = (path: string, name: string, isRemote: boolean, isDir?: boolean) => {
+  const startInlineRename = (path: string, name: string, isRemote: boolean) => {
     if (name === '..') return;
     if (isRemote && connectionParams.protocol === 'immich') return;
-    setInlineRename({ path, name, isRemote, isDir });
+    setInlineRename({ path, name, isRemote });
     setInlineRenameValue(name);
     // Focus input after render
     setTimeout(() => {
@@ -13819,7 +13731,7 @@ const App: React.FC = () => {
   // Inline rename: commit the rename
   const commitInlineRename = async () => {
     if (!inlineRename) return;
-    const { path, name, isRemote, isDir } = inlineRename;
+    const { path, name, isRemote } = inlineRename;
     const newName = inlineRenameValue.trim();
 
     // Cancel if empty or unchanged
@@ -14100,7 +14012,7 @@ const App: React.FC = () => {
       { label: t('common.preview'), icon: <Eye size={14} />, action: () => openUniversalPreview(file, true, sortedRemoteFilesRef.current), disabled: count > 1 || file.is_dir || !isMediaPreviewable(file.name) },
       // Code files use DevTools source viewer
       { label: t('contextMenu.viewSource'), icon: <Code size={14} />, action: () => openDevToolsPreview(file, true), disabled: count > 1 || file.is_dir || !isPreviewable(file.name) },
-      { actionId: 'rename', label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true, file.is_dir), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
+      { actionId: 'rename', label: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? t('github.renameCommit') : t('common.rename'), icon: currentProtocol === 'github' ? <Github size={14} /> : currentProtocol === 'gitlab' ? <GitLabLogo size={14} /> : <Pencil size={14} />, action: () => renameFile(file.path, file.name, true), disabled: count > 1 || currentProtocol === 'immich', shortcut: (currentProtocol === 'github' || currentProtocol === 'gitlab') ? undefined : 'F2' },
       ...(count > 1 && currentProtocol !== 'immich' ? [{
         label: t('batchRename.title') || 'Batch Rename',
         icon: <Replace size={14} />,
@@ -15533,11 +15445,6 @@ const App: React.FC = () => {
       ...(file.is_dir ? directoryActionItems(file.path || `${currentLocalPath}/${file.name}`) : []),
     ];
 
-    // Helper: get paths for compression
-    const getCompressPaths = () => filesToUpload.map(name => {
-      const f = sortedLocalFiles.find(lf => lf.name === name);
-      return f ? f.path : `${currentLocalPath}/${name}`;
-    });
     const baseName = count === 1 ? file.name.replace(/\.[^/.]+$/, '') : 'archive';
 
     // Compress: opens CompressDialog with all format options
@@ -16436,7 +16343,7 @@ const App: React.FC = () => {
             if (activePanel === 'remote' && selectedRemoteFiles.size === 1) {
               const name = Array.from(selectedRemoteFiles)[0];
               const file = remoteFiles.find(f => f.name === name);
-              if (file) startInlineRename(file.path, file.name, true, file.is_dir);
+              if (file) startInlineRename(file.path, file.name, true);
             } else if (activePanel === 'local' && selectedLocalFiles.size === 1) {
               const name = Array.from(selectedLocalFiles)[0];
               const file = localFiles.find(f => f.name === name);
@@ -17451,7 +17358,7 @@ const App: React.FC = () => {
               lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
               void (async () => {
                 await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
-                await loadRemoteFiles(undefined, true, true);
+                await loadRemoteFiles(undefined, true);
               })();
             }}
           />
@@ -17479,7 +17386,7 @@ const App: React.FC = () => {
               lockSessionCryptOverlay({ sessionId: activeSessionId ?? undefined });
               void (async () => {
                 await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
-                await loadRemoteFiles(undefined, true, true);
+                await loadRemoteFiles(undefined, true);
               })();
             }}
           />
@@ -17567,7 +17474,7 @@ const App: React.FC = () => {
                       bannerOverlayParams(banner),
                       activeSessionId,
                     );
-                    await loadRemoteFiles(undefined, true, true);
+                    await loadRemoteFiles(undefined, true);
                     notify.success('Rclone Crypt', t('toolbar.aerocryptOverlayActive'));
                   } catch (err) {
                     notify.error('Rclone Crypt', String(err));
@@ -19223,7 +19130,7 @@ const App: React.FC = () => {
                                     onClick={(e) => {
                                       if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
                                         e.stopPropagation();
-                                        startInlineRename(file.path, file.name, true, file.is_dir);
+                                        startInlineRename(file.path, file.name, true);
                                       }
                                     }}
                                   >
@@ -19264,7 +19171,7 @@ const App: React.FC = () => {
                                   </span>
                                 )}
                                 {lockedFiles.has(file.path) && <span title={t('browser.locked')}><Lock size={12} className="text-orange-500" /></span>}
-                                {getSyncBadge(file.path, file.modified || undefined, false)}
+                                {getSyncBadge(file.modified || undefined, false)}
                               </td>
                               {orderedExtras.map((c) => {
                                 if (!visibility[c.id]) return null;
@@ -19508,7 +19415,7 @@ const App: React.FC = () => {
                                 onClick={(e) => {
                                   if (selectedRemoteFiles.size === 1 && selectedRemoteFiles.has(file.name) && file.name !== '..') {
                                     e.stopPropagation();
-                                    startInlineRename(file.path, file.name, true, file.is_dir);
+                                    startInlineRename(file.path, file.name, true);
                                   }
                                 }}
                               >

@@ -220,7 +220,7 @@ export interface LocalFilePanelProps {
   // --- Helpers ---
   iconProvider: IconProvider;
   displayName: (name: string, isDir: boolean) => string;
-  getSyncBadge: (filePath: string, fileModified: string | undefined, isLocal: boolean) => React.ReactNode;
+  getSyncBadge: (fileModified: string | undefined, isLocal: boolean) => React.ReactNode;
   /** AeroFile bridge-config recognition: returns the matching bridge source
    *  for a recognized third-party client config (rclone/WinSCP/...), else null. */
   getBridgeConfig?: (file: LocalFile) => BridgeSourceDescriptor | null;
@@ -1063,7 +1063,7 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
                     )}
                     <FileTagBadge tags={getTagsForFile(file.path)} />
                     {bridgeBadge(file)}
-                    {getSyncBadge(file.path, file.modified || undefined, true)}
+                    {getSyncBadge(file.modified || undefined, true)}
                   </td>
                   {orderedExtras.map((c) => visibility[c.id] ? renderFileExtra(c.id, file) : null)}
                 </tr>
