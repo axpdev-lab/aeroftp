@@ -21,7 +21,6 @@ import {
 import { useMarqueeSelection } from '../hooks/useMarqueeSelection';
 import { BreadcrumbBar } from './BreadcrumbBar';
 import { PlacesSidebar } from './PlacesSidebar';
-import { SortField, SortOrder } from './SortableHeader';
 import { AeroFileTableHeader } from './AeroFileTableHeader';
 import type { AeroFileLocalColId, AeroFileLocalTableColumns } from '../hooks/useAeroFileTableColumns';
 import { LargeIconsGrid } from './LargeIconsGrid';
@@ -96,7 +95,6 @@ export interface LocalFilePanelProps {
 
   // --- Navigation ---
   currentPath: string;
-  setCurrentPath: (path: string) => void;
   onNavigate: (path: string) => void;
   onRefresh: (path: string) => void;
   isPathCoherent: boolean;
@@ -119,14 +117,6 @@ export interface LocalFilePanelProps {
   setPreviewFile: (file: LocalFile | null) => void;
 
   // --- Sort & columns (Phase 5: lifted to useAeroFileLocalColumns hook) ---
-  /**
-   * Optional sort metadata. Kept as a back-compat prop so callers that still
-   * own their own sort state can pass it through. When `localColumns` is
-   * provided, the hook config is the source of truth and these are ignored.
-   */
-  sortField?: SortField;
-  sortOrder?: SortOrder;
-  onSort?: (field: SortField) => void;
   /** New unified columns hook result (visibility + order + widths + sort). */
   localColumns: AeroFileLocalTableColumns;
 
@@ -180,7 +170,6 @@ export interface LocalFilePanelProps {
 
   // --- File Actions ---
   onOpenUniversalPreview: (file: LocalFile, isRemote: boolean) => void;
-  onOpenDevToolsPreview: (file: LocalFile, isRemote: boolean) => void;
   onUploadFile: (path: string, name: string, isFolder: boolean) => void;
   onOpenInFileManager: (path: string) => void;
   // Open a local .aerovault file in the AeroVault modal (browse/open flow).
@@ -250,7 +239,6 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   endpointSelector,
   crossPanelTransfer,
   currentPath,
-  setCurrentPath,
   onNavigate,
   onRefresh,
   isPathCoherent,
@@ -304,7 +292,6 @@ export const LocalFilePanel: React.FC<LocalFilePanelProps> = ({
   onEmptyContextMenu,
   onPathContextMenu,
   onOpenUniversalPreview,
-  onOpenDevToolsPreview,
   onUploadFile,
   onOpenInFileManager,
   onOpenVault,

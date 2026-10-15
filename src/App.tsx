@@ -19489,7 +19489,6 @@ const App: React.FC = () => {
                   } : null}
                   className={isConnected && showRemotePanel ? (swapPanels ? 'order-1' : 'order-3') : undefined}
                   currentPath={currentLocalPath}
-                  setCurrentPath={setCurrentLocalPath}
                   onNavigate={changeLocalDirectory}
                   onRefresh={loadLocalFiles}
                   isPathCoherent={isLocalPathCoherent}
@@ -19542,7 +19541,6 @@ const App: React.FC = () => {
                   onEmptyContextMenu={showLocalEmptyContextMenu}
                   onPathContextMenu={showLocalPathContextMenu}
                   onOpenUniversalPreview={openUniversalPreview}
-                  onOpenDevToolsPreview={openDevToolsPreview}
                   onUploadFile={uploadFile}
                   onOpenInFileManager={openInFileManager}
                   onOpenVault={(path) => setShowVaultPanel({ mode: 'open', path })}
@@ -19605,7 +19603,6 @@ const App: React.FC = () => {
                     } : null}
                     className="border-l border-gray-200 dark:border-gray-700"
                     currentPath={currentLocalPath2}
-                    setCurrentPath={setCurrentLocalPath2}
                     onNavigate={changeLocalDirectory2}
                     onRefresh={loadLocalFiles2}
                     isPathCoherent
@@ -19654,7 +19651,6 @@ const App: React.FC = () => {
                     onEmptyContextMenu={(e) => { setActiveLocalPanelId('local2'); showLocalEmptyContextMenu(e, 'local2'); }}
                     onPathContextMenu={(e, p) => { setActiveLocalPanelId('local2'); showLocalPathContextMenu(e, p); }}
                     onOpenUniversalPreview={openUniversalPreview}
-                    onOpenDevToolsPreview={openDevToolsPreview}
                     onUploadFile={uploadFile}
                     onOpenInFileManager={openInFileManager}
                     onOpenVault={(path) => setShowVaultPanel({ mode: 'open', path })}
