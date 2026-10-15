@@ -11841,8 +11841,6 @@ dependencies = [
 [[package]]
 name = "unrar"
 version = "0.5.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92ec61343a630d2b50d13216dea5125e157d3fc180a7d3f447d22fe146b648fc"
 dependencies = [
  "bitflags 2.13.2",
  "regex",
