@@ -67,6 +67,85 @@ const SFTP_POOL_MAX_SESSIONS: u16 = 16;
 /// permit a very large numeric window.
 const SFTP_READAHEAD_JOB_BUFFER_BUDGET: u64 = 128 * 1024 * 1024;
 const SFTP_READAHEAD_JOB_MAX_HANDLES: usize = 256;
+/// What the SFTP read-ahead of the whole process may hold at once, in bytes:
+/// every chunk it has asked for and not yet written out, over every download
+/// and every connection. The window is sized per download, and a download
+/// that writes slower than it reads holds about twice its window: the chunks
+/// queued for the writer, and one more per reader waiting to queue its own
+/// (16 MiB at the default window). Downloads in parallel each did that on
+/// their own, so the budget above held for one file at a time: eight 64 MiB
+/// files at once to a destination writing 100 MB/s peaked at 299 to 318 MB
+/// of RSS, against 111 to 115 MB one at a time. A READ now takes its bytes
+/// from this budget before it is sent and gives them back once its chunk is
+/// written: the same eight files peaked at 203 to 218 MB, in the same 10.9 s
+/// (Docker OpenSSH, three rounds, 2026-10-16).
+///
+/// 64 MiB is what eight downloads, the most the GUI runs at once, keep in
+/// flight at the default window (8 x 32 x 256 KiB), so a download that
+/// writes as fast as it reads is not held back by it: with 50 ms of delay
+/// added, one file, eight files and the GUI's fast preset (eight streams of
+/// 16) took the same time as without the budget. 128 MiB changed nothing
+/// measurable: eight lagging downloads hold about that much.
+const SFTP_READAHEAD_PROCESS_BUDGET: u32 = 64 * 1024 * 1024;
+
+/// The bytes every SFTP read-ahead of the process shares (see
+/// [`SFTP_READAHEAD_PROCESS_BUDGET`]), or a budget of its own in a test.
+#[derive(Clone)]
+struct ReadaheadBudget {
+    permits: Arc<tokio::sync::Semaphore>,
+    bytes: u32,
+    /// The most bytes ever held at once.
+    #[cfg(test)]
+    peak: Arc<std::sync::atomic::AtomicU32>,
+}
+
+impl ReadaheadBudget {
+    fn new(bytes: u32) -> Self {
+        Self {
+            permits: Arc::new(tokio::sync::Semaphore::new(bytes as usize)),
+            bytes,
+            #[cfg(test)]
+            peak: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        }
+    }
+
+    /// The budget of the process.
+    fn process() -> &'static ReadaheadBudget {
+        static BUDGET: std::sync::OnceLock<ReadaheadBudget> = std::sync::OnceLock::new();
+        BUDGET.get_or_init(|| ReadaheadBudget::new(SFTP_READAHEAD_PROCESS_BUDGET))
+    }
+
+    /// Take `bytes` of the budget for one READ, waiting while other reads
+    /// hold it; they come back when the permit drops, after the chunk is
+    /// written. Never more than the whole budget, so a chunk larger than it
+    /// is still read, alone.
+    async fn take(
+        &self,
+        bytes: usize,
+        cancel: &CancellationToken,
+    ) -> Result<tokio::sync::OwnedSemaphorePermit, ProviderError> {
+        let wanted = u32::try_from(bytes)
+            .unwrap_or(u32::MAX)
+            .clamp(1, self.bytes);
+        let permit = tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(ProviderError::TransferFailed(
+                    SFTP_TRANSFER_CANCELLED.to_string(),
+                ));
+            }
+            permit = Arc::clone(&self.permits).acquire_many_owned(wanted) => permit
+                .map_err(|_| ProviderError::TransferFailed(
+                    "SFTP read-ahead budget closed".to_string(),
+                ))?,
+        };
+        #[cfg(test)]
+        self.peak.fetch_max(
+            self.bytes - self.permits.available_permits() as u32,
+            Ordering::SeqCst,
+        );
+        Ok(permit)
+    }
+}
 /// Read-ahead window used when nothing else asks for one. Measured on the
 /// Hetzner lab SFTP over a 53 ms link with a 300 MiB file (2026-09-07):
 /// serial reads 118 to 129 s, window 16: 38.8 s, window 32: 34.5 s, window
@@ -4899,6 +4978,7 @@ async fn sftp_readahead_range_into(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     fail_write: Arc<AtomicBool>,
     mark: Option<&RangeMark>,
+    budget: &ReadaheadBudget,
 ) -> Result<(), ProviderError> {
     if expected == 0 {
         return Ok(());
@@ -4923,6 +5003,7 @@ async fn sftp_readahead_range_into(
         on_progress,
         fail_write,
         mark,
+        budget,
     )
     .await;
     if let Some(handle) = raw_handle {
@@ -4951,6 +5032,7 @@ async fn readahead_range_on(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     fail_write: Arc<AtomicBool>,
     mark: Option<&RangeMark>,
+    budget: &ReadaheadBudget,
 ) -> Result<(), ProviderError> {
     use tokio::io::{AsyncSeekExt, AsyncWriteExt};
     let chunk = (chunk.max(4096)) as u64;
@@ -4982,6 +5064,13 @@ async fn readahead_range_on(
         return Err(ProviderError::TransferFailed(
             "Failed to open remote file (readahead): no handle".to_string(),
         ));
+    };
+    let first_held = match budget.take(first_want, cancel).await {
+        Ok(held) => held,
+        Err(e) => {
+            close_readers(readers, &sftp.ended).await;
+            return Err(e);
+        }
     };
     let first = tokio::select! {
         _ = cancel.cancelled() => Err(ProviderError::TransferFailed(
@@ -5060,7 +5149,12 @@ async fn readahead_range_on(
 
     // `eff_window` readers -> one writer. The writer owns `out` (no cursor race)
     // and is the sole caller of `on_progress`.
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<(u64, Vec<u8>)>(eff_window.max(2));
+    // Each chunk travels with the budget it holds, which the writer gives
+    // back once the chunk is written.
+    let (tx, mut rx) =
+        tokio::sync::mpsc::channel::<(u64, Vec<u8>, tokio::sync::OwnedSemaphorePermit)>(
+            eff_window.max(2),
+        );
     // Child token: an I/O error here must not cancel the caller's token.
     let work_cancel = cancel.child_token();
 
@@ -5073,6 +5167,7 @@ async fn readahead_range_on(
                 let tx = tx.clone();
                 let work_cancel = work_cancel.clone();
                 let next_chunk = next_chunk.clone();
+                let budget = budget.clone();
                 reader_tasks.push(async move {
                     let result: Result<(), ProviderError> = async {
                         loop {
@@ -5088,6 +5183,7 @@ async fn readahead_range_on(
                             let rel_off = j * chunk;
                             let abs_off = rest_start + rel_off;
                             let want = std::cmp::min(chunk, rest - rel_off) as usize;
+                            let held = budget.take(want, &work_cancel).await?;
                             let buf = tokio::select! {
                                 _ = work_cancel.cancelled() => {
                                     return Err(ProviderError::TransferFailed(
@@ -5110,7 +5206,7 @@ async fn readahead_range_on(
                                         SFTP_TRANSFER_CANCELLED.to_string(),
                                     ));
                                 }
-                                sent = tx.send((abs_off, buf)) => {
+                                sent = tx.send((abs_off, buf, held)) => {
                                     if sent.is_err() {
                                         // Writer went away; its error propagates.
                                         break;
@@ -5146,12 +5242,14 @@ async fn readahead_range_on(
             // arrive out of order within the window; `mark` follows the first
             // byte still missing, so a retry reads again only what is not in
             // the file (`pieces_ahead` holds what was written past a gap).
-            let mut first = Some((start, first));
+            let mut first = Some((start, first, first_held));
             let mut written_to = start;
             let mut pieces_ahead: std::collections::BTreeMap<u64, u64> =
                 std::collections::BTreeMap::new();
             loop {
-                let (abs_off, buf) = match first.take() {
+                // `_held` keeps the chunk's budget until the end of this
+                // iteration, after the write.
+                let (abs_off, buf, _held) = match first.take() {
                     Some(piece) => piece,
                     None => match rx.recv().await {
                         Some(piece) => piece,
@@ -5342,6 +5440,7 @@ async fn sftp_readahead_download(
         on_progress,
         fail_write,
         None,
+        ReadaheadBudget::process(),
     )
     .await?;
 
@@ -5870,6 +5969,7 @@ async fn sftp_read_one_range(
                 None,
                 Arc::clone(&worker.fail_readahead_write),
                 Some(mark),
+                ReadaheadBudget::process(),
             )
             .await;
             settle_range_attempt(&mut out, read).await?;
@@ -8158,30 +8258,60 @@ mod tests {
         grow_to: Option<usize>,
         cancel: &CancellationToken,
     ) -> Result<Vec<u8>, ProviderError> {
+        readahead_into_file_on(
+            provider,
+            size,
+            window,
+            cancel,
+            ReadaheadBudget::process(),
+            Arc::new(AtomicBool::new(false)),
+            grow_to,
+        )
+        .await
+    }
+
+    /// [`readahead_into_file_until`] holding `budget`, with a write that
+    /// fails when `fail_write` is set.
+    async fn readahead_into_file_on(
+        provider: &SftpProvider,
+        size: u64,
+        window: usize,
+        cancel: &CancellationToken,
+        budget: &ReadaheadBudget,
+        fail_write: Arc<AtomicBool>,
+        grow_to: Option<usize>,
+    ) -> Result<Vec<u8>, ProviderError> {
         use tokio::io::AsyncWriteExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("out.bin");
         let mut out = tokio::fs::File::create(&path).await.expect("output file");
         out.set_len(size).await.expect("output size");
         let reads = provider.readahead_session().await;
-        sftp_readahead_range_into(
-            provider.get_sftp().expect("session"),
-            reads.as_ref(),
-            "/down.bin",
-            0,
-            size,
-            &mut out,
-            256 * 1024,
-            window,
-            grow_to,
-            &Arc::new(AtomicU64::new(0)),
-            cancel,
-            size,
-            None,
-            Arc::new(AtomicBool::new(false)),
-            None,
+        // A budget that is never given back, or reads waiting on each other,
+        // fails here instead of holding the test run.
+        tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            sftp_readahead_range_into(
+                provider.get_sftp().expect("session"),
+                reads.as_ref(),
+                "/down.bin",
+                0,
+                size,
+                &mut out,
+                256 * 1024,
+                window,
+                grow_to,
+                &Arc::new(AtomicU64::new(0)),
+                cancel,
+                size,
+                None,
+                fail_write,
+                None,
+                budget,
+            ),
         )
-        .await?;
+        .await
+        .expect("the read-ahead never finished: a budget not given back, or reads waiting on each other")?;
         out.flush().await.expect("flush");
         drop(out);
         Ok(std::fs::read(&path).expect("read back"))
@@ -8462,6 +8592,150 @@ mod tests {
             "{cancelled:?}"
         );
         assert_eq!(live.load(Ordering::SeqCst), 0, "the handle was left open");
+    }
+
+    const BUDGET_CHUNK: u32 = 256 * 1024;
+
+    /// Every read-ahead of the process holds one budget: a READ takes its
+    /// chunk's bytes before it is sent and gives them back once the chunk is
+    /// written. A window of 8 under a budget of three chunks reads every byte,
+    /// holds the three (the first READ and two readers, before the writer has
+    /// written anything) and never more, and gives them all back. A budget
+    /// smaller than one chunk still reads, one chunk at a time.
+    #[tokio::test]
+    async fn the_readahead_holds_no_more_than_its_budget_and_gives_it_back() {
+        let data = pattern(5 * 1024 * 1024 + 99);
+        let mut wrong = Vec::new();
+        for (case, bytes, held_at_least) in [
+            ("three chunks", 3 * BUDGET_CHUNK, 2 * BUDGET_CHUNK),
+            ("half a chunk", BUDGET_CHUNK / 2, BUDGET_CHUNK / 2),
+        ] {
+            let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+            let (provider, _) = server.serve_with_readahead_channel().await;
+            let budget = ReadaheadBudget::new(bytes);
+            let got = readahead_into_file_on(
+                &provider,
+                data.len() as u64,
+                8,
+                &CancellationToken::new(),
+                &budget,
+                Arc::new(AtomicBool::new(false)),
+                None,
+            )
+            .await;
+            let peak = budget.peak.load(Ordering::SeqCst);
+            let back = budget.permits.available_permits();
+            if !matches!(&got, Ok(bytes) if *bytes == data) {
+                wrong.push(format!(
+                    "{case}: the bytes were not read back ({:?})",
+                    got.err()
+                ));
+            }
+            if peak > bytes || peak < held_at_least {
+                wrong.push(format!(
+                    "{case}: held at most {peak} bytes of {bytes}, expected at least {held_at_least}"
+                ));
+            }
+            if back != bytes as usize {
+                wrong.push(format!("{case}: {back} of {bytes} bytes given back"));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A read-ahead that ends early, on a write that fails or on a cancel,
+    /// gives back every byte it held: the budget is the process's, and what a
+    /// failed download kept would be missing for every download after it.
+    #[tokio::test]
+    async fn a_readahead_that_fails_or_is_cancelled_gives_its_budget_back() {
+        let data = pattern(3 * 1024 * 1024 + 5);
+        let mut wrong = Vec::new();
+        for (case, fail, cancelled) in [("failed write", true, false), ("cancel", false, true)] {
+            let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+            let (provider, _) = server.serve_with_readahead_channel().await;
+            let budget = ReadaheadBudget::new(4 * BUDGET_CHUNK);
+            let cancel = CancellationToken::new();
+            if cancelled {
+                cancel.cancel();
+            }
+            let ended = readahead_into_file_on(
+                &provider,
+                data.len() as u64,
+                8,
+                &cancel,
+                &budget,
+                Arc::new(AtomicBool::new(fail)),
+                None,
+            )
+            .await;
+            if ended.is_ok() {
+                wrong.push(format!("{case}: the read-ahead did not fail"));
+            }
+            let back = budget.permits.available_permits();
+            if back != (4 * BUDGET_CHUNK) as usize {
+                wrong.push(format!(
+                    "{case}: {back} of {} bytes given back",
+                    4 * BUDGET_CHUNK
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Two downloads holding one budget both finish: a reader waits only for
+    /// bytes a write will give back, and the writers never wait for the
+    /// budget, so neither download waits on the other for good.
+    #[tokio::test]
+    async fn parallel_readaheads_share_one_budget_and_both_finish() {
+        let first = pattern(4 * 1024 * 1024 + 3);
+        let second: Vec<u8> = pattern(3 * 1024 * 1024 + 11).into_iter().rev().collect();
+        let (one, _) = ReadCappingServer::new(&first, OPENSSH_MAX_WRITE, true)
+            .serve_with_readahead_channel()
+            .await;
+        let (two, _) = ReadCappingServer::new(&second, OPENSSH_MAX_WRITE, true)
+            .serve_with_readahead_channel()
+            .await;
+        let budget = ReadaheadBudget::new(3 * BUDGET_CHUNK);
+        let never = CancellationToken::new();
+        let both = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+            tokio::join!(
+                readahead_into_file_on(
+                    &one,
+                    first.len() as u64,
+                    8,
+                    &never,
+                    &budget,
+                    Arc::new(AtomicBool::new(false)),
+                    None,
+                ),
+                readahead_into_file_on(
+                    &two,
+                    second.len() as u64,
+                    8,
+                    &never,
+                    &budget,
+                    Arc::new(AtomicBool::new(false)),
+                    None,
+                ),
+            )
+        })
+        .await
+        .expect("two read-aheads on one budget waited on each other");
+        assert!(
+            matches!(&both.0, Ok(bytes) if *bytes == first),
+            "{:?}",
+            both.0.as_ref().err()
+        );
+        assert!(
+            matches!(&both.1, Ok(bytes) if *bytes == second),
+            "{:?}",
+            both.1.as_ref().err()
+        );
+        assert!(budget.peak.load(Ordering::SeqCst) <= 3 * BUDGET_CHUNK);
+        assert_eq!(
+            budget.permits.available_permits(),
+            (3 * BUDGET_CHUNK) as usize
+        );
     }
 
     /// A transfer whose future is dropped (a task aborted) never reaches the
