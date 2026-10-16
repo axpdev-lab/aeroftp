@@ -718,6 +718,54 @@ pub struct SshHandler {
     /// second SSH connection: U-02 closes the MITM hole that
     /// `SshHostKeyPolicy::AcceptAny` left open on the native leg.
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
+    /// Why the host key was refused, for `connect` to report. russh turns
+    /// every refusal into the same `UnknownKey` error, which says nothing
+    /// about a key that changed: the CLI printed "Unknown server key (check
+    /// hostname/port and verify the service is running)" for a possible
+    /// man-in-the-middle, and retried it twice.
+    host_key_refusal: Arc<std::sync::OnceLock<HostKeyRefusal>>,
+}
+
+/// Why [`SshHandler`] refused a server's host key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum HostKeyRefusal {
+    /// known_hosts holds a different key for the host, at this line.
+    Changed { line: usize },
+    /// known_hosts holds no key for the host, and unknown keys are not trusted.
+    NotSaved,
+    /// known_hosts could not be checked.
+    Unchecked(String),
+}
+
+impl HostKeyRefusal {
+    /// The error of a connect refused for this reason: what happened, and
+    /// what to do about it.
+    fn into_error(self, host: &str, port: u16) -> ProviderError {
+        // How known_hosts writes the host, which is what `ssh-keygen -R` takes.
+        let entry = if port == 22 {
+            host.to_string()
+        } else {
+            format!("[{host}]:{port}")
+        };
+        ProviderError::HostKeyRejected(match self {
+            Self::Changed { line } => format!(
+                "{host}:{port} presented a different key from the one saved for it in \
+                 ~/.ssh/known_hosts (line {line}). The server may have been reinstalled or \
+                 given a new key, or the connection may be intercepted: confirm the new key \
+                 with whoever runs the server, then remove the old one with \
+                 `ssh-keygen -R '{entry}'` and connect again"
+            ),
+            Self::NotSaved => format!(
+                "{host}:{port} has no key saved in ~/.ssh/known_hosts yet. Check its \
+                 fingerprint, then accept it in the app's connection dialog, or connect \
+                 with --trust-host-key from the command line"
+            ),
+            Self::Unchecked(why) => format!(
+                "the key of {host}:{port} could not be checked against \
+                 ~/.ssh/known_hosts: {why}"
+            ),
+        })
+    }
 }
 
 impl SshHandler {
@@ -726,13 +774,21 @@ impl SshHandler {
         port: u16,
         trust: bool,
         slot: Arc<std::sync::OnceLock<String>>,
+        refusal: Arc<std::sync::OnceLock<HostKeyRefusal>>,
     ) -> Self {
         Self {
             host: host.to_string(),
             port,
             trust_unknown_hosts: trust,
             host_key_sha256_hex: slot,
+            host_key_refusal: refusal,
         }
+    }
+
+    /// Refuse the server's key, recording why.
+    fn refuse(&self, why: HostKeyRefusal) -> Result<bool, russh::Error> {
+        let _ = self.host_key_refusal.set(why);
+        Ok(false)
     }
 
     /// Compute the SHA-256 hex digest of the SSH-wire-encoded public
@@ -836,7 +892,7 @@ impl Handler for SshHandler {
                         "SFTP: Host key for {} not pre-approved via TOFU dialog: rejecting",
                         self.host
                     );
-                    Ok(false)
+                    self.refuse(HostKeyRefusal::NotSaved)
                 }
             }
             Err(keys::Error::KeyChanged { line }) => {
@@ -845,7 +901,7 @@ impl Handler for SshHandler {
                     self.host,
                     line
                 );
-                Ok(false)
+                self.refuse(HostKeyRefusal::Changed { line })
             }
             Err(e) => {
                 // SEC: Reject on unknown errors: do not silently accept.
@@ -856,7 +912,7 @@ impl Handler for SshHandler {
                     self.host,
                     e
                 );
-                Ok(false)
+                self.refuse(HostKeyRefusal::Unchecked(e.to_string()))
             }
         }
     }
@@ -2266,6 +2322,7 @@ impl StorageProvider for SftpProvider {
 
         // Connect to SSH server
         let addr = format!("{}:{}", self.config.host, self.config.port);
+        let host_key_refusal = Arc::new(std::sync::OnceLock::new());
         let mut handle = client::connect(
             Arc::new(config),
             &addr,
@@ -2274,10 +2331,16 @@ impl StorageProvider for SftpProvider {
                 self.config.port,
                 self.config.trust_unknown_hosts,
                 self.host_key_sha256_hex.clone(),
+                host_key_refusal.clone(),
             ),
         )
         .await
-        .map_err(|e| ProviderError::ConnectionFailed(format!("ssh: {e}")))?;
+        .map_err(|e| match host_key_refusal.get() {
+            Some(refusal) => refusal
+                .clone()
+                .into_error(&self.config.host, self.config.port),
+            None => ProviderError::ConnectionFailed(format!("ssh: {e}")),
+        })?;
 
         tracing::info!("SFTP: SSH connection established, authenticating...");
 

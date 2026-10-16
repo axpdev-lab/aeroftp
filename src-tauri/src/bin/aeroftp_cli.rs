@@ -41,7 +41,7 @@
 //!   3  Permission denied
 //!   4  Transfer failed / partial
 //!   5  Invalid config / usage error
-//!   6  Authentication failed
+//!   6  Authentication failed (credentials, or the server's host key)
 //!   7  Not supported
 //!   8  The run stopped at a limit and NOTHING failed. One meaning, not two:
 //!      the run did what it could inside the limit it was given, and the
@@ -7598,7 +7598,7 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         | ProviderError::InvalidPath(_)
         | ProviderError::FileTooLarge(_)
         | ProviderError::RestrictedChar { .. } => 5,
-        ProviderError::AuthenticationFailed(_) => 6,
+        ProviderError::AuthenticationFailed(_) | ProviderError::HostKeyRejected(_) => 6,
         ProviderError::NotSupported(_) => 7,
         ProviderError::Timeout => 8,
         ProviderError::AlreadyExists(_) | ProviderError::DirectoryNotEmpty(_) => 9,
@@ -78897,6 +78897,25 @@ mod tests {
             let message = connect_failure_message(&failure);
             assert_eq!(message.matches("Connection failed").count(), 1, "{message}");
         }
+    }
+
+    /// A host key that differed from the saved one printed "Unknown server
+    /// key (check hostname/port and verify the service is running)", exit 1,
+    /// and was retried twice: advice for a server that is down, about a
+    /// possible man-in-the-middle. The provider's message says what to do; no
+    /// hint goes after it, and a retry would meet the same key.
+    #[test]
+    fn a_rejected_host_key_is_not_reported_as_a_server_that_is_down() {
+        let failure = ProviderError::HostKeyRejected(
+            "127.0.0.1:2231 presented a different key from the one saved for it".into(),
+        );
+        let message = connect_failure_message(&failure);
+        assert!(message.contains("Host key rejected"), "{message}");
+        assert!(!message.contains("service is running"), "{message}");
+        assert!(!message.contains("check credentials"), "{message}");
+        let code = provider_error_to_exit_code(&failure);
+        assert_eq!(code, 6);
+        assert!(!is_retryable_exit(code));
     }
 
     #[test]

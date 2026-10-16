@@ -2359,7 +2359,7 @@ given. See [MULTI-USER.md](./MULTI-USER.md) for the partition model.
 | 3 | Permission denied |
 | 4 | Transfer failed / partial |
 | 5 | Invalid config / usage error. Also a file larger than the provider accepts (a per-file size limit, as on OpenDrive's free plan): the same upload fails again, so it shares the code `--retries` does not repeat |
-| 6 | Authentication failed |
+| 6 | Authentication failed (credentials refused, or the server's host key rejected) |
 | 7 | Not supported |
 | 8 | Stopped at a limit and nothing failed. Which limit depends on the command: a timeout for most, the `--max-transfer` budget on `sync`, where a timeout that fails a transfer reports 4 instead. `--json` names a reached budget with `over_budget` |
 | 9 | Already exists / directory not empty (--immutable, --no-clobber) |

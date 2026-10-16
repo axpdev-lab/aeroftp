@@ -6490,6 +6490,9 @@ mod tests {
                 PE::Other(_) | PE::ParallelRefused(_) => true,
                 PE::NotConnected | PE::Cancelled | PE::Timeout => false,
                 PE::RestrictedChar { .. } => false,
+                // Our own sentence about the server's key, built before any
+                // file operation: there is never a server reply behind it.
+                PE::HostKeyRejected(_) => false,
             }
         }
 
@@ -6498,6 +6501,7 @@ mod tests {
             PE::NotConnected,
             PE::ConnectionFailed(reply.clone()),
             PE::AuthenticationFailed(reply.clone()),
+            PE::HostKeyRejected(reply.clone()),
             PE::NotFound(reply.clone()),
             PE::PermissionDenied(reply.clone()),
             PE::FileTooLarge(reply.clone()),
@@ -6525,7 +6529,7 @@ mod tests {
         ];
         assert_eq!(
             every_variant.len(),
-            24,
+            25,
             "the list stopped covering every variant; the match above is what fails the build, this only says how many were meant"
         );
 
