@@ -1639,12 +1639,16 @@ impl B2Provider {
         }
         // A folder move copies each name to the name with the prefix
         // replaced, then deletes the original: a name outside the prefix
-        // would be copied onto itself and its only version deleted.
+        // would be copied onto itself and its only version deleted, and a
+        // name listed twice copied twice and deleted twice, the second time
+        // on a version already gone.
         crate::sync_core::keys_under_prefix(
             prefix,
             files.iter().map(|(name, _, _, _)| name.clone()).collect(),
             "move",
         )?;
+        let mut seen = std::collections::HashSet::with_capacity(files.len());
+        files.retain(|(name, _, _, _)| seen.insert(name.clone()));
         Ok(files)
     }
 
@@ -6254,7 +6258,13 @@ mod tests {
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
         std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     ) {
-        provider_for_rename_on(destination_taken, delete_status, AfterDelete::Gone, false).await
+        provider_for_rename_on(
+            destination_taken,
+            delete_status,
+            AfterDelete::Gone,
+            FolderExtra::Nothing,
+        )
+        .await
     }
 
     /// What a name shows once the rename deleted the version it copied.
@@ -6268,15 +6278,26 @@ mod tests {
         NewerUpload,
     }
 
+    /// What the listing of the folder `d` holds besides `d/x.txt`.
+    #[derive(Clone, Copy, PartialEq)]
+    enum FolderExtra {
+        Nothing,
+        /// `d/late.txt`, once the first copy is made, as a file someone else
+        /// writes there during the rename.
+        LateFile,
+        /// `d/x.txt` a second time, as a defective listing would.
+        XNamedTwice,
+    }
+
     /// [`provider_for_rename`] on a bucket where a deleted version leaves
-    /// `after_delete` in view under its name. With `late_file`,
-    /// `d/late.txt` appears under the folder once the first copy is made, as
-    /// a file someone else writes there during the rename.
+    /// `after_delete` in view under its name, and the listing of `d` holds
+    /// `extra`. A version deleted once is gone: deleting it again fails, as
+    /// on B2.
     async fn provider_for_rename_on(
         destination_taken: bool,
         delete_status: u16,
         after_delete: AfterDelete,
-        late_file: bool,
+        extra: FolderExtra,
     ) -> (
         B2Provider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
@@ -6349,10 +6370,13 @@ mod tests {
                                 Some("d") | Some("d/") => {
                                     let mut files: Vec<serde_json::Value> =
                                         listed("d/x.txt", "x-id").into_iter().collect();
-                                    if late_file
+                                    if extra == FolderExtra::LateFile
                                         && copied_once.load(std::sync::atomic::Ordering::SeqCst)
                                     {
                                         files.extend(listed("d/late.txt", "late-id"));
+                                    }
+                                    if extra == FolderExtra::XNamedTwice {
+                                        files.extend(listed("d/x.txt", "x-id"));
                                     }
                                     files
                                 }
@@ -6373,8 +6397,17 @@ mod tests {
                         ),
                         "b2_delete_file_version" if delete_status == 200 => {
                             let name = body["fileName"].as_str().unwrap_or_default().to_string();
-                            deleted.lock().unwrap().insert(name);
-                            json(200, serde_json::json!({}))
+                            if deleted.lock().unwrap().insert(name) {
+                                json(200, serde_json::json!({}))
+                            } else {
+                                json(
+                                    400,
+                                    serde_json::json!({
+                                        "status": 400, "code": "file_not_present",
+                                        "message": "File not present",
+                                    }),
+                                )
+                            }
                         }
                         "b2_delete_file_version" => json(
                             delete_status,
@@ -6532,7 +6565,8 @@ mod tests {
     #[tokio::test]
     async fn a_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
         let (mut provider, ops, _) =
-            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, false).await;
+            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, FolderExtra::Nothing)
+                .await;
         provider.rename("/a.txt", "/b.txt").await.expect("rename");
         assert_eq!(
             ops.lock().unwrap().last().map(String::as_str),
@@ -7062,7 +7096,8 @@ mod tests {
     #[tokio::test]
     async fn a_file_uploaded_at_the_source_name_during_a_rename_stays_in_view() {
         let (mut provider, ops, _) =
-            provider_for_rename_on(false, 200, AfterDelete::NewerUpload, false).await;
+            provider_for_rename_on(false, 200, AfterDelete::NewerUpload, FolderExtra::Nothing)
+                .await;
         provider.rename("/a.txt", "/b.txt").await.expect("rename");
         assert!(
             !ops.lock().unwrap().iter().any(|op| op == "b2_hide_file"),
@@ -7078,7 +7113,8 @@ mod tests {
     #[tokio::test]
     async fn a_file_uploaded_over_a_renamed_name_in_a_folder_stays_in_view() {
         let (mut provider, ops, _) =
-            provider_for_rename_on(false, 200, AfterDelete::NewerUpload, false).await;
+            provider_for_rename_on(false, 200, AfterDelete::NewerUpload, FolderExtra::Nothing)
+                .await;
         provider.rename("/d", "/e").await.expect("folder rename");
         assert!(
             !ops.lock().unwrap().iter().any(|op| op == "b2_hide_file"),
@@ -7093,7 +7129,8 @@ mod tests {
     #[tokio::test]
     async fn a_file_written_under_the_folder_during_its_rename_is_not_hidden() {
         let (mut provider, _, _) =
-            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, true).await;
+            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, FolderExtra::LateFile)
+                .await;
         provider.rename("/d", "/e").await.expect("folder rename");
         let left: Vec<String> = provider
             .list_files_under("d/")
@@ -7105,11 +7142,37 @@ mod tests {
         assert_eq!(left, ["d/late.txt"]);
     }
 
+    /// A folder listing that names a file twice: the rename copied it twice
+    /// and deleted it twice, the second time on a version already gone, so
+    /// the folder was left under both names and the rename failed. Each name
+    /// is copied and deleted once.
+    #[tokio::test]
+    async fn a_folder_rename_moves_a_name_listed_twice_once() {
+        let (mut provider, ops, copies) =
+            provider_for_rename_on(false, 200, AfterDelete::Gone, FolderExtra::XNamedTwice).await;
+        provider.rename("/d", "/e").await.expect("folder rename");
+        let names: Vec<String> = copies
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|copy| copy["fileName"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert_eq!(names, ["e/x.txt"]);
+        let deletes = ops
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|op| *op == "b2_delete_file_version")
+            .count();
+        assert_eq!(deletes, 1, "{:?}", ops.lock().unwrap());
+    }
+
     /// The same for a folder: no file under the old prefix stays in view.
     #[tokio::test]
     async fn a_folder_rename_on_a_versioned_bucket_leaves_no_source_in_view() {
         let (mut provider, _, _) =
-            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, false).await;
+            provider_for_rename_on(false, 200, AfterDelete::OlderVersion, FolderExtra::Nothing)
+                .await;
         provider.rename("/d", "/e").await.expect("folder rename");
         let left = provider.list_files_under("d/").await.unwrap();
         assert!(left.is_empty(), "{left:?}");

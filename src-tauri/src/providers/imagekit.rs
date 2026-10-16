@@ -1763,10 +1763,12 @@ mod tests {
                 .all(|call| !call.contains(r#""folderPath":"/""#) && !call.contains("/other/")),
             "{outcome:?} {deletes:?}"
         );
-        assert!(outcome.is_err() || deletes.is_empty(), "{deletes:?}");
+        assert!(outcome.is_err(), "{deletes:?}");
     }
 
-    /// A search ends, and never reports what lies outside the folder searched.
+    /// A search ends, never reports what lies outside the folder searched,
+    /// and fails on a listing that names a folder it cannot follow, as on
+    /// one it cannot list.
     #[tokio::test]
     async fn a_find_never_follows_a_folder_outside_it() {
         let (mut provider, _) = provider_on_listings(STRAY_FOLDERS).await;
@@ -1776,10 +1778,7 @@ mod tests {
         )
         .await
         .expect("the search ends");
-        if let Ok(found) = &outcome {
-            let paths: Vec<&str> = found.iter().map(|e| e.path.as_str()).collect();
-            assert_eq!(paths, ["/tree/a.png"]);
-        }
+        assert!(outcome.is_err(), "{outcome:?}");
     }
 
     /// An ImageKit double holding the folder `/src/photos` (listed only

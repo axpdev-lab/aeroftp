@@ -43962,14 +43962,15 @@ async fn cmd_rmdir(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i3
     }
 }
 
-/// Whether a CLI walk (`rmdirs`, `cleanup`, `dedupe`) takes `child`, an
-/// entry the listing of `listed` named (see `sync_core::WalkScope::place`): a
-/// folder it `follows` is listed, any other entry acted on. An entry that
-/// points back at the folder being listed or above it, or outside the walk
-/// root, is not taken: it is counted in `scan_errors`, which makes the run
-/// partial, and named on stderr, since the walk did not see the tree that
-/// listing describes. A folder already listed is simply not listed again, so
-/// nothing under it is collected twice.
+/// Whether a CLI walk that deletes what it takes (`rmdirs`, `cleanup`,
+/// `dedupe`) takes `child`, an entry the listing of `listed` named (see
+/// `sync_core::WalkScope::place_to_delete`): a folder it `follows` is listed,
+/// any other entry acted on, and either must keep the letter case of the
+/// root. An entry that points back at the folder being listed or above it,
+/// or outside the walk root, is not taken: it is counted in `scan_errors`,
+/// which makes the run partial, and named on stderr, since the walk did not
+/// see the tree that listing describes. A folder already listed is simply
+/// not listed again, so nothing under it is collected twice.
 fn cli_walk_admits(
     scope: &mut ftp_client_gui_lib::sync_core::WalkScope,
     listed: &str,
@@ -43978,7 +43979,8 @@ fn cli_walk_admits(
     scan_errors: &mut u32,
     quiet: bool,
 ) -> bool {
-    match cli_walk_step(scope, listed, child, follows) {
+    let step = scope.place_to_delete(listed, child, follows);
+    match cli_walk_decision(step, listed, child, follows) {
         Ok(follow) => follow,
         Err(refusal) => {
             *scan_errors += 1;
@@ -44000,8 +44002,18 @@ fn cli_walk_step(
     child: &str,
     follows: bool,
 ) -> Result<bool, String> {
+    let step = scope.place(listed, child, follows);
+    cli_walk_decision(step, listed, child, follows)
+}
+
+fn cli_walk_decision(
+    step: ftp_client_gui_lib::sync_core::WalkStep,
+    listed: &str,
+    child: &str,
+    follows: bool,
+) -> Result<bool, String> {
     use ftp_client_gui_lib::sync_core::WalkStep;
-    match scope.place(listed, child, follows) {
+    match step {
         WalkStep::Follow => Ok(true),
         WalkStep::AlreadyListed => Ok(false),
         step => Err(format!(
@@ -89284,6 +89296,63 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         });
         assert_eq!(*deletes.lock().unwrap(), ["/root/x.aerotmp"]);
         assert_eq!(code, 4, "the folder it did not list makes the run partial");
+    }
+
+    /// `rmdirs` and `cleanup` delete, so they take a path only as the root
+    /// spells it, letter case included, as a recursive delete does: a
+    /// listing of `/root/d1` that names `/ROOT/d1/empty` and
+    /// `/ROOT/d1/x.aerotmp` (another folder on a case-sensitive store) had
+    /// both deleted. Neither is now, and the run is partial.
+    #[test]
+    fn delete_walks_take_a_path_only_as_the_root_spells_it() {
+        let listings: &[Listing<'static>] = &[
+            ("/root", &[("d1", "/root/d1", None)]),
+            (
+                "/root/d1",
+                &[
+                    ("empty", "/ROOT/d1/empty", None),
+                    ("x.aerotmp", "/ROOT/d1/x.aerotmp", Some(4)),
+                ],
+            ),
+            ("/ROOT/d1/empty", &[]),
+        ];
+        let remote = listed_remote(listings, &[]);
+        let rmdirs = Arc::clone(&remote.rmdir_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_rmdirs("memory://", "/root", true, &quiet_cli(), OutputFormat::Json).await
+        });
+        assert!(
+            rmdirs.lock().unwrap().is_empty(),
+            "{:?}",
+            rmdirs.lock().unwrap()
+        );
+        assert_eq!(
+            code, 4,
+            "rmdirs: the folder it refused makes the run partial"
+        );
+
+        let remote = listed_remote(listings, &[]);
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, || async {
+            cmd_cleanup(
+                "memory://",
+                "/root",
+                true,
+                "1h",
+                &quiet_cli(),
+                OutputFormat::Json,
+            )
+            .await
+        });
+        assert!(
+            deletes.lock().unwrap().is_empty(),
+            "{:?}",
+            deletes.lock().unwrap()
+        );
+        assert_eq!(
+            code, 4,
+            "cleanup: the orphan it refused makes the run partial"
+        );
     }
 
     /// `cleanup` deleted every `.aerotmp` a listing named, wherever its path

@@ -245,6 +245,23 @@ impl WalkScope {
         }
     }
 
+    /// [`WalkScope::place`] for a walk that deletes what it takes (a cleanup,
+    /// a dedupe, an empty-folder prune): the entry must also sit under a
+    /// spelling of the root with the letter case kept
+    /// ([`WalkScope::holds_as_spelled`]), as a recursive delete requires
+    /// ([`listing_to_remove`]). `place` ignores case so that a read does not
+    /// refuse a case-insensitive provider; a delete of `/X/a` on a
+    /// case-sensitive store, from a walk of `/x`, removes a file of another
+    /// folder. An entry that fails only that test is [`WalkStep::OutsideRoot`].
+    pub fn place_to_delete(&mut self, listed_dir: &str, path: &str, follows: bool) -> WalkStep {
+        match self.place(listed_dir, path, follows) {
+            WalkStep::Follow | WalkStep::AlreadyListed if !self.holds_as_spelled(path) => {
+                WalkStep::OutsideRoot
+            }
+            step => step,
+        }
+    }
+
     /// `path` sits strictly under a spelling of the root with the letter case
     /// kept. [`WalkScope::locate`] ignores case, so that a walk does not
     /// refuse a case-insensitive provider for spelling the root its own way;
@@ -850,6 +867,43 @@ mod tests {
         assert_eq!(
             scope.place("/root", "/elsewhere", true),
             WalkStep::OutsideRoot
+        );
+    }
+
+    /// A walk that deletes takes an entry only where its path keeps the case
+    /// of a spelling of the root, the root's listing included: a read takes
+    /// `/X/d/a` in a walk of `/x`, a delete refuses it.
+    #[test]
+    fn a_delete_walk_takes_only_what_is_under_the_root_as_spelled() {
+        let mut scope = WalkScope::new("/x");
+        assert_eq!(scope.place("/x/d", "/X/d/a", false), WalkStep::Follow);
+        assert_eq!(
+            scope.place_to_delete("/x/d", "/X/d/a", false),
+            WalkStep::OutsideRoot
+        );
+        assert_eq!(
+            scope.place_to_delete("/x/d", "/X/d/e", true),
+            WalkStep::OutsideRoot
+        );
+        assert_eq!(
+            scope.place_to_delete("/x/d", "/x/D/a", false),
+            WalkStep::Follow
+        );
+        assert_eq!(scope.place_to_delete("/x", "/x/d", true), WalkStep::Follow);
+        assert_eq!(
+            scope.place_to_delete("/x", "/x/d", true),
+            WalkStep::AlreadyListed
+        );
+        assert_eq!(
+            scope.place_to_delete("/x", "/keep", false),
+            WalkStep::OutsideRoot
+        );
+
+        let mut learned = WalkScope::new("/x");
+        learned.learn_root_listing(&[file("a", "/X/a")]);
+        assert_eq!(
+            learned.place_to_delete("/x", "/X/a", false),
+            WalkStep::Follow
         );
     }
 

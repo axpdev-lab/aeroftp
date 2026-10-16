@@ -2691,8 +2691,34 @@ fn walk_admits(
     scan_errors: &mut u32,
     tool: &str,
 ) -> bool {
+    let step = scope.place(listed, child, follows);
+    walk_takes(step, listed, child, scan_errors, tool)
+}
+
+/// [`walk_admits`] for a walk that deletes what it takes (`cleanup`,
+/// `dedupe`): the entry must also keep the letter case of the root
+/// ([`crate::sync_core::WalkScope::place_to_delete`]).
+fn delete_walk_admits(
+    scope: &mut crate::sync_core::WalkScope,
+    listed: &str,
+    child: &str,
+    follows: bool,
+    scan_errors: &mut u32,
+    tool: &str,
+) -> bool {
+    let step = scope.place_to_delete(listed, child, follows);
+    walk_takes(step, listed, child, scan_errors, tool)
+}
+
+fn walk_takes(
+    step: crate::sync_core::WalkStep,
+    listed: &str,
+    child: &str,
+    scan_errors: &mut u32,
+    tool: &str,
+) -> bool {
     use crate::sync_core::WalkStep;
-    match scope.place(listed, child, follows) {
+    match step {
         WalkStep::Follow => true,
         WalkStep::AlreadyListed => false,
         step => {
@@ -2866,7 +2892,7 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 for entry in entries {
                     if entry.is_dir {
                         if entry.is_walkable_dir()
-                            && walk_admits(
+                            && delete_walk_admits(
                                 &mut scope,
                                 &dir,
                                 &entry.path,
@@ -2878,7 +2904,7 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
                     } else if (entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp"))
-                        && walk_admits(
+                        && delete_walk_admits(
                             &mut scope,
                             &dir,
                             &entry.path,
@@ -3322,7 +3348,7 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 for e in entries {
                     if e.is_dir {
                         if e.is_walkable_dir()
-                            && walk_admits(
+                            && delete_walk_admits(
                                 &mut scope,
                                 &dir,
                                 &e.path,
@@ -3333,7 +3359,7 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                         {
                             dirs.push((e.path, depth + 1));
                         }
-                    } else if walk_admits(
+                    } else if delete_walk_admits(
                         &mut scope,
                         &dir,
                         &e.path,
@@ -6168,6 +6194,58 @@ mod tests {
             downloads,
             ..FakeBackend::sample()
         }
+    }
+
+    /// A listing of `/root/d1` that names its files under `/ROOT/d1`: on a
+    /// case-sensitive store that is another folder. A read takes them, as a
+    /// case-insensitive provider may spell a path its own way; a walk that
+    /// deletes must not.
+    fn other_case_backend() -> FakeBackend {
+        let mut tree = std::collections::HashMap::new();
+        tree.insert(
+            "/root".to_string(),
+            vec![entry("/root/a.txt", false, 4), entry("/root/d1", true, 0)],
+        );
+        tree.insert(
+            "/root/d1".to_string(),
+            vec![
+                entry("/ROOT/d1/a-copy.txt", false, 4),
+                entry("/ROOT/d1/c.aerotmp", false, 4),
+            ],
+        );
+        let downloads = std::collections::HashMap::from([
+            ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+            ("/ROOT/d1/a-copy.txt".to_string(), b"aaaa".to_vec()),
+            ("/ROOT/d1/c.aerotmp".to_string(), b"cccc".to_vec()),
+        ]);
+        FakeBackend {
+            tree,
+            downloads,
+            ..FakeBackend::sample()
+        }
+    }
+
+    /// `cleanup` and `dedupe` delete, so they take a path only as the root
+    /// spells it, letter case included, as a recursive delete does: the
+    /// orphan and the copy under `/ROOT/d1` were deleted from a walk of
+    /// `/root`. They are scan errors now and stay.
+    #[tokio::test]
+    async fn cleanup_and_dedupe_delete_nothing_a_listing_spells_in_another_case() {
+        let backend = Arc::new(other_case_backend());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let args = json!({"server": "srv", "path": "/root", "dry_run": false});
+        let report = cleanup(&ctx, &args).await.expect("cleanup runs");
+        assert!(backend.deleted.lock().unwrap().is_empty(), "{report}");
+        assert_eq!(report["orphans"], 0, "{report}");
+        assert_eq!(report["scan_errors"], 1, "{report}");
+
+        let backend = Arc::new(other_case_backend());
+        let ctx = test_ctx(Arc::clone(&backend));
+        let args = json!({"server": "srv", "path": "/root", "mode": "newest", "dry_run": false});
+        let report = dedupe(&ctx, &args).await.expect("dedupe runs");
+        assert!(backend.deleted.lock().unwrap().is_empty(), "{report}");
+        assert_eq!(report["duplicates_found"], 0, "{report}");
+        assert_eq!(report["scan_errors"], 2, "{report}");
     }
 
     /// What a walk of the root holds in each defective listing:
