@@ -134,6 +134,8 @@ pub mod lftp_import;
 pub mod linux_egl;
 #[cfg(target_os = "linux")]
 mod linux_rttime;
+#[cfg(target_os = "linux")]
+mod linux_window_corners;
 pub mod local_bridge;
 pub mod mobaxterm_import;
 pub mod panic_safe;
@@ -18628,21 +18630,30 @@ pub fn run() {
             // Linux: the compositor rounds only the windows it decorates, so
             // this borderless one had square corners, where Windows 11 rounds
             // them itself. A transparent window lets the page cut its own
-            // (`html.rounded-window` in styles.css, set by WindowResizeEdges).
-            // Only on a composited screen: without a compositor the
-            // transparent pixels would show black instead of the desktop.
+            // (`html.rounded-window` in styles.css, set by WindowResizeEdges),
+            // but only on a composited screen and with WebKit compositing on
+            // the GPU; see `linux_window_corners` for why each one matters.
             // AEROFTP_SQUARE_CORNERS=1 keeps the window opaque: the way out
             // for a driver that cannot draw a transparent window, where the
             // app itself might show nothing to switch it off from.
             #[cfg(target_os = "linux")]
-            let main_builder = if std::env::var_os("AEROFTP_SQUARE_CORNERS").is_none()
-                && gtk::gdk::Screen::default().is_some_and(|s| s.is_composited())
-            {
-                main_builder
-                    .transparent(true)
-                    .initialization_script("window.__AEROFTP_ROUNDED_CORNERS__ = true;")
-            } else {
-                main_builder
+            let main_builder = match linux_window_corners::decide(
+                std::env::var_os("AEROFTP_SQUARE_CORNERS").is_some(),
+                gtk::gdk::Screen::default().is_some_and(|s| s.is_composited()),
+                linux_window_corners::gpu_compositing(
+                    std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref(),
+                ),
+            ) {
+                linux_window_corners::Corners::Rounded => {
+                    info!("Main window: rounded corners (transparent window)");
+                    main_builder
+                        .transparent(true)
+                        .initialization_script("window.__AEROFTP_ROUNDED_CORNERS__ = true;")
+                }
+                linux_window_corners::Corners::Square(reason) => {
+                    info!("Main window: square corners, {reason}");
+                    main_builder
+                }
             };
             let main_builder = match portable::webview_data_dir() {
                 Some(dir) => main_builder.data_directory(dir),
