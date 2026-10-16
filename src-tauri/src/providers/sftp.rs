@@ -1857,12 +1857,23 @@ impl SftpProvider {
                 Some(session)
             }
             Err(e) => {
+                // A refusal is the server's answer for this connection and is
+                // remembered. A timeout or a dropped connection is not an
+                // answer: remembered, it would take the second channel away
+                // from every later download on the connection, so the next
+                // read-ahead asks again.
+                let refused = !e.is_recoverable();
                 tracing::info!(
-                    "SFTP: no second channel on {} for the read-ahead ({}); reading on the main session",
+                    "SFTP: no second channel on {} for the read-ahead ({}{}); reading on the main session",
                     self.config.host,
-                    e
+                    e,
+                    if refused { "" } else { ", asked again next time" }
                 );
-                *support = ReadaheadSupport::Absent;
+                *support = if refused {
+                    ReadaheadSupport::Absent
+                } else {
+                    ReadaheadSupport::Unasked
+                };
                 None
             }
         }
@@ -8358,6 +8369,48 @@ mod tests {
         assert!(
             max_open.load(Ordering::SeqCst) > 1,
             "the read-ahead did not read on the main session's handles"
+        );
+    }
+
+    /// A channel that could not be opened in time is not a refusal: the next
+    /// read-ahead asks again, and reads on its own channel once it opens.
+    #[tokio::test]
+    async fn a_transient_channel_failure_is_asked_again() {
+        let data = pattern(2 * 1024 * 1024 + 7);
+        let server = ReadCappingServer::new(&data, OPENSSH_MAX_WRITE, true);
+        let template = server.clone();
+        let max_open = Arc::clone(&server.max_open);
+        let mut provider = server.serve().await;
+        let asked = Arc::new(AtomicU64::new(0));
+        let counted = Arc::clone(&asked);
+        provider.readahead_opener = Some(Arc::new(move || {
+            let round = counted.fetch_add(1, Ordering::SeqCst);
+            let server = template.clone();
+            Box::pin(async move {
+                if round == 0 {
+                    return Err(ProviderError::Timeout);
+                }
+                let (client, end) = tokio::io::duplex(1 << 20);
+                russh_sftp::server::run(end, server).await;
+                ReadaheadSession::open(client)
+                    .await
+                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))
+            })
+        }));
+        for round in 1..=2 {
+            let got = download_bytes(&mut provider)
+                .await
+                .unwrap_or_else(|e| panic!("download {round}: {e:?}"));
+            assert!(got == data, "download {round}: the bytes differ");
+        }
+        assert_eq!(
+            asked.load(Ordering::SeqCst),
+            2,
+            "a timeout was remembered as a refusal"
+        );
+        assert!(
+            max_open.load(Ordering::SeqCst) > 1,
+            "the first download did not fall back"
         );
     }
 
