@@ -71,7 +71,9 @@ run() { # server scenario prefix -- cli args...
     [ "$before" != - ] && opened=$((after - before))
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%H:%M:%SZ)" "$server" "$scenario" \
         "$rc" "$ok" "$total" "$wall" "$rss" "$opened" | tee -a "$TSV"
-    if [ "$rc" != 0 ] || [ "$ok" != "$total" ]; then FAILED=$((FAILED + 1)); fi
+    # A run that checked no file (a prefix missing from the manifest, setup.sh
+    # not run) proves nothing and fails.
+    if [ "$rc" != 0 ] || [ "$total" = 0 ] || [ "$ok" != "$total" ]; then FAILED=$((FAILED + 1)); fi
 }
 
 for server in "${SERVERS[@]}"; do
