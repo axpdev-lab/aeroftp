@@ -710,7 +710,9 @@ impl GitHubProvider {
             };
         }
 
-        let entries = self.list(path).await?;
+        // Each child's path is built from a name the API gave: every one
+        // must be inside the folder before any of them is deleted.
+        let entries = crate::sync_core::listing_to_remove(&resolved, self.list(path).await?)?;
         for entry in entries {
             if entry.is_walkable_dir() {
                 Box::pin(self.delete_directory_recursive(&entry.path, commit_message)).await?;

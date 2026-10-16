@@ -16,7 +16,9 @@
 //!
 //! [`WalkScope`] is the one implementation of that rule. The shared scanner,
 //! the AeroAgent and MCP tools and the CLI walkers all ask it before they queue
-//! a folder.
+//! a folder, and a provider whose recursive delete lists a folder and deletes
+//! what the listing names asks [`listing_to_remove`] before it deletes any of
+//! it.
 //!
 //! # How paths are compared
 //!
@@ -57,7 +59,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use crate::providers::RemoteEntry;
+use crate::providers::{ProviderError, RemoteEntry};
 use std::collections::HashSet;
 
 /// How many spellings of the root a walk adopts from the root's listing. A
@@ -109,6 +111,9 @@ pub struct WalkScope {
     /// Identities ([`walk_path_key`]) of every folder listed or queued,
     /// spellings of the root included.
     visited: HashSet<String>,
+    /// Identities of the spellings of the root, letter case kept: what a
+    /// recursive delete compares (see [`WalkScope::holds_as_spelled`]).
+    identities: Vec<String>,
 }
 
 impl WalkScope {
@@ -130,6 +135,7 @@ impl WalkScope {
             suffix: kept.join("/"),
             spellings: vec![position],
             visited: HashSet::from([walk_path_key(root)]),
+            identities: vec![walk_path_key(root)],
         }
     }
 
@@ -152,7 +158,11 @@ impl WalkScope {
     /// the root the caller asked for.
     pub fn learn_root_spelling(&mut self, parent: &str) {
         let position = position_key(parent);
-        if self.spellings.contains(&position) || self.spellings.len() >= MAX_ROOT_SPELLINGS {
+        let identity = walk_path_key(parent);
+        let known = self.spellings.contains(&position);
+        if (known && self.identities.contains(&identity))
+            || self.spellings.len().max(self.identities.len()) >= MAX_ROOT_SPELLINGS
+        {
             return;
         }
         let agreement = agreement_key(parent);
@@ -160,8 +170,13 @@ impl WalkScope {
             || agreement == format!("/{}", self.suffix)
             || agreement.ends_with(&format!("/{}", self.suffix));
         if agrees {
-            self.spellings.push(position);
-            self.visited.insert(walk_path_key(parent));
+            if !known {
+                self.spellings.push(position);
+            }
+            if !self.identities.contains(&identity) {
+                self.identities.push(identity.clone());
+            }
+            self.visited.insert(identity);
         }
     }
 
@@ -169,7 +184,21 @@ impl WalkScope {
     /// `listed_dir` named. [`WalkStep::Follow`] also records it as listed, so
     /// a later listing that names it again gets [`WalkStep::AlreadyListed`].
     pub fn admit(&mut self, listed_dir: &str, child: &str) -> WalkStep {
-        let position = position_key(child);
+        match self.locate(listed_dir, child) {
+            WalkStep::Follow if !self.visited.insert(walk_path_key(child)) => {
+                WalkStep::AlreadyListed
+            }
+            step => step,
+        }
+    }
+
+    /// Where `path`, an entry the listing of `listed_dir` named, stands: the
+    /// answer [`WalkScope::admit`] gives, with nothing recorded and no
+    /// [`WalkStep::AlreadyListed`]. For an entry a walk acts on without
+    /// listing it, such as a file a recursive delete removes: it must be
+    /// strictly under the root too, or the delete reaches outside the folder.
+    pub fn locate(&self, listed_dir: &str, path: &str) -> WalkStep {
+        let position = position_key(path);
         let listed = position_key(listed_dir);
         if position == listed || is_strictly_under(&listed, &position) {
             return WalkStep::LoopsBack;
@@ -188,12 +217,186 @@ impl WalkScope {
         {
             return WalkStep::OutsideRoot;
         }
-        if self.visited.insert(walk_path_key(child)) {
-            WalkStep::Follow
-        } else {
-            WalkStep::AlreadyListed
+        WalkStep::Follow
+    }
+
+    /// `path` sits strictly under a spelling of the root with the letter case
+    /// kept. [`WalkScope::locate`] ignores case, so that a walk does not
+    /// refuse a case-insensitive provider for spelling the root its own way;
+    /// a delete must not take that liberty, since on a case-sensitive store
+    /// `/X/a` is not in `/x`.
+    pub fn holds_as_spelled(&self, path: &str) -> bool {
+        let identity = walk_path_key(path);
+        self.identities
+            .iter()
+            .any(|root| is_strictly_under(&identity, root))
+    }
+}
+
+/// The entries of `folder`'s listing that a recursive delete of `folder` may
+/// act on: each path once, every one strictly under `folder`. A listing that
+/// names an entry anywhere else (`folder` itself, one of its ancestors, or a
+/// path outside it) is refused whole, before anything in it is deleted.
+///
+/// A provider whose recursive delete lists a folder and deletes what the
+/// listing names deletes wherever the listing points. ImageKit named every
+/// folder `/`: `rm -r` of a folder went back to the account root, deleted the
+/// files there and never ended. Skipping such an entry would not do either: a
+/// delete that left part of the folder behind and answered `Ok` is a partial
+/// `rm -r` reported as a whole one, so the delete fails and says why.
+///
+/// An absolute `folder` is taken as the provider spells it, letter case
+/// included, so a listing of it must name its entries under it. A relative
+/// one is resolved by the provider against a base the caller does not know,
+/// and its spelling is learned from its own listing as
+/// [`WalkScope::learn_root_listing`] learns a walk root: a delete trusts a
+/// listing only as far as it has to.
+pub fn listing_to_remove(
+    folder: &str,
+    entries: Vec<RemoteEntry>,
+) -> Result<Vec<RemoteEntry>, ProviderError> {
+    let mut scope = WalkScope::new(folder);
+    if !folder.starts_with('/') {
+        scope.learn_root_listing(&entries);
+    }
+    let mut seen: HashSet<String> = HashSet::with_capacity(entries.len());
+    let mut kept = Vec::with_capacity(entries.len());
+    for entry in entries {
+        // Named twice, deleted once: a second delete of the same path fails
+        // on a path that is already gone.
+        if !seen.insert(walk_path_key(&entry.path)) {
+            continue;
+        }
+        match scope.locate(folder, &entry.path) {
+            WalkStep::Follow | WalkStep::AlreadyListed if scope.holds_as_spelled(&entry.path) => {
+                kept.push(entry)
+            }
+            WalkStep::Follow | WalkStep::AlreadyListed => {
+                return Err(refused_removal(folder, &entry.path, WalkStep::OutsideRoot))
+            }
+            step => return Err(refused_removal(folder, &entry.path, step)),
         }
     }
+    Ok(kept)
+}
+
+/// The error of a recursive delete of `folder` whose listing named `path`,
+/// which is not inside it (see [`listing_to_remove`]).
+pub fn refused_removal(folder: &str, path: &str, step: WalkStep) -> ProviderError {
+    let why = match step {
+        WalkStep::OutsideRoot => "outside it",
+        _ => "that folder or one above it",
+    };
+    ProviderError::ServerError(format!(
+        "refusing to delete {folder} recursively: its listing names {path:?}, which is {why} \
+         ({}); nothing listed there was deleted",
+        step.reason()
+    ))
+}
+
+/// The keys of a flat prefix listing that a recursive delete or move of the
+/// folder `prefix` acts on: each key once, every one starting with `prefix`.
+/// Object stores (S3, B2, Swift, a GitLab tree) name objects by literal keys,
+/// so the comparison is literal, case and dots included: `a/../b` listed
+/// under `a/` is a key of `a/`, as the store keeps it.
+///
+/// The store filters the listing by the prefix, and nothing else checked
+/// that it did. A key outside the prefix is refused whole, before anything
+/// is acted on: a delete would remove an object of another folder, and a
+/// move, whose new key replaces the prefix, would copy that object onto
+/// itself and then delete the only copy. `action` names what was refused
+/// (`delete`, `move`).
+pub fn keys_under_prefix(
+    prefix: &str,
+    keys: Vec<String>,
+    action: &str,
+) -> Result<Vec<String>, ProviderError> {
+    if let Some(stray) = keys.iter().find(|key| !key.starts_with(prefix)) {
+        return Err(ProviderError::ServerError(format!(
+            "refusing to {action} {prefix:?}: its listing names the key {stray:?}, which is \
+             outside it ({}); nothing listed there was changed",
+            WalkStep::OutsideRoot.reason()
+        )));
+    }
+    let mut seen: HashSet<String> = HashSet::with_capacity(keys.len());
+    Ok(keys
+        .into_iter()
+        .filter(|key| seen.insert(key.clone()))
+        .collect())
+}
+
+/// A provider's own recursive `find`: the walk scope of its root, and the
+/// paths it has already reported. A `find` that followed whatever folder a
+/// listing named searched the account root under ImageKit and never ended,
+/// and reported each file of a Swift folder once per level.
+#[derive(Debug, Clone)]
+pub struct FindWalk {
+    scope: WalkScope,
+    root_listed: bool,
+    reported: HashSet<String>,
+}
+
+/// One listing of a [`FindWalk`], sorted.
+#[derive(Debug, Default)]
+pub struct FoundListing {
+    /// The entries the search may report: each path once over the whole
+    /// walk, without the folders it refused.
+    pub entries: Vec<RemoteEntry>,
+    /// The folders to list next, each once over the whole walk.
+    pub follow: Vec<String>,
+    /// The folders the listing named outside the root, or on the folder
+    /// listed or above it, with the reason: the search did not go there, so
+    /// it did not see the whole tree.
+    pub refused: Vec<(String, WalkStep)>,
+}
+
+impl FindWalk {
+    /// A search of `root`. Its first listing must be the root's, so that a
+    /// root the provider spells differently is learned from it.
+    pub fn new(root: &str) -> Self {
+        Self {
+            scope: WalkScope::new(root),
+            root_listed: false,
+            reported: HashSet::new(),
+        }
+    }
+
+    /// Sort the listing of `listed`. Only folders that are not symlinks are
+    /// followed ([`RemoteEntry::is_walkable_dir`]), as before.
+    pub fn sort(&mut self, listed: &str, entries: Vec<RemoteEntry>) -> FoundListing {
+        if !self.root_listed {
+            self.scope.learn_root_listing(&entries);
+            self.root_listed = true;
+        }
+        let mut sorted = FoundListing::default();
+        for entry in entries {
+            if entry.is_walkable_dir() {
+                match self.scope.admit(listed, &entry.path) {
+                    WalkStep::Follow => sorted.follow.push(entry.path.clone()),
+                    WalkStep::AlreadyListed => {}
+                    step => {
+                        sorted.refused.push((entry.path.clone(), step));
+                        continue;
+                    }
+                }
+            }
+            if self.reported.insert(walk_path_key(&entry.path)) {
+                sorted.entries.push(entry);
+            }
+        }
+        sorted
+    }
+}
+
+/// The error of a provider `find` under `root` whose listing of `listed`
+/// named the folder `path` outside the root or back on itself, for a `find`
+/// that fails when a folder cannot be listed.
+pub fn refused_search(root: &str, listed: &str, path: &str, step: WalkStep) -> ProviderError {
+    ProviderError::ServerError(format!(
+        "cannot search {root}: the listing of {listed} names the folder {path:?}, which is \
+         outside the folder searched or back on it ({})",
+        step.reason()
+    ))
 }
 
 /// The identity of a remote path for a walk: rooted, repeated slashes
@@ -502,6 +705,175 @@ mod tests {
         let mut account = WalkScope::new("disk:/");
         account.learn_root_listing(&[dir("x", "/x")]);
         assert_eq!(account.admit("disk:/", "/x"), WalkStep::Follow);
+    }
+
+    fn paths(entries: &[RemoteEntry]) -> Vec<&str> {
+        entries.iter().map(|entry| entry.path.as_str()).collect()
+    }
+
+    /// A recursive delete acts on a listing only when everything in it is
+    /// inside the folder: a folder spelled `/` (ImageKit), the folder listed
+    /// inside itself as a folder or as a file (Swift's marker), its parent,
+    /// another folder and a file of another folder each refuse the listing
+    /// whole. A path named twice is acted on once.
+    #[test]
+    fn a_removal_listing_holds_only_what_is_inside_the_folder() {
+        let kept = listing_to_remove(
+            "/x",
+            vec![
+                file("a.txt", "/x/a.txt"),
+                dir("d", "/x/d"),
+                file("a.txt", "/x//a.txt/"),
+                dir("deep", "/x/d/deep"),
+            ],
+        )
+        .expect("everything is inside /x");
+        assert_eq!(paths(&kept), ["/x/a.txt", "/x/d", "/x/d/deep"]);
+
+        for (stray, reason) in [
+            (dir("d1", "/"), "loops_back"),
+            (dir("x", "/x"), "loops_back"),
+            (file("x", "/x/"), "loops_back"),
+            (dir("up", "/x/d/../.."), "loops_back"),
+            (dir("y", "/y"), "outside_root"),
+            (file("b.txt", "/y/b.txt"), "outside_root"),
+            (file("x2", "/x2/a"), "outside_root"),
+        ] {
+            let path = stray.path.clone();
+            let err = listing_to_remove("/x", vec![file("a.txt", "/x/a.txt"), stray])
+                .expect_err(&format!("{path} is not inside /x"));
+            let message = err.to_string();
+            assert!(message.contains(reason), "{path}: {message}");
+            assert!(message.contains("/x"), "{path}: {message}");
+        }
+    }
+
+    /// A relative folder is resolved by the provider against a base the
+    /// caller does not know, so its spelling is learned from its listing,
+    /// letter case included. An absolute one is not: a listing of `/x` that
+    /// names `/base/x/a`, or `/X/a`, names a path outside it. Repo-relative
+    /// children of an absolute folder (GitHub) are inside it.
+    #[test]
+    fn a_removal_listing_learns_the_spelling_of_a_relative_folder_only() {
+        let kept = listing_to_remove(
+            "www",
+            vec![file("a", "/home/u/www/a"), dir("css", "/home/u/www/css")],
+        )
+        .expect("the listing names how the provider spells www");
+        assert_eq!(kept.len(), 2);
+        assert!(listing_to_remove("www", vec![dir("v", "/home/u/v")]).is_err());
+
+        let err = listing_to_remove("/x", vec![file("a", "/base/x/a")]).unwrap_err();
+        assert!(err.to_string().contains("outside_root"), "{err}");
+
+        assert_eq!(
+            listing_to_remove("/src", vec![file("a.rs", "src/a.rs")])
+                .unwrap()
+                .len(),
+            1
+        );
+        let err = listing_to_remove("/photos", vec![file("a.jpg", "/Photos/a.jpg")]).unwrap_err();
+        assert!(err.to_string().contains("outside_root"), "{err}");
+        assert_eq!(
+            listing_to_remove("docs", vec![file("a", "/home/u/Docs/a")])
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    /// `locate` answers as `admit` does and records nothing.
+    #[test]
+    fn locating_an_entry_records_nothing() {
+        let mut scope = WalkScope::new("/x");
+        assert_eq!(scope.locate("/x", "/x/d"), WalkStep::Follow);
+        assert_eq!(scope.locate("/x", "/x/d"), WalkStep::Follow);
+        assert_eq!(scope.admit("/x", "/x/d"), WalkStep::Follow);
+        assert_eq!(scope.admit("/x", "/x/d"), WalkStep::AlreadyListed);
+        assert_eq!(scope.locate("/x", "/x/d"), WalkStep::Follow);
+        assert_eq!(scope.locate("/x/d", "/x"), WalkStep::LoopsBack);
+        assert_eq!(scope.locate("/x/d", "/y"), WalkStep::OutsideRoot);
+    }
+
+    /// A flat listing is acted on only when every key starts with the
+    /// prefix, compared as the literal string the store keeps; a key named
+    /// twice is acted on once.
+    #[test]
+    fn a_prefix_listing_holds_only_keys_under_the_prefix() {
+        let keys = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            keys_under_prefix("x/", keys(&["x/", "x/a", "x/../b", "x/a"]), "delete").unwrap(),
+            ["x/", "x/a", "x/../b"]
+        );
+        for stray in ["y/a", "X/a", "x", "/x/a", ""] {
+            let err = keys_under_prefix("x/", keys(&["x/a", stray]), "move").unwrap_err();
+            let message = err.to_string();
+            assert!(
+                message.contains("outside_root") && message.contains("move"),
+                "{stray:?}: {message}"
+            );
+        }
+        assert_eq!(
+            keys_under_prefix("", keys(&["a", "b/c"]), "delete").unwrap(),
+            ["a", "b/c"]
+        );
+    }
+
+    /// A provider `find` follows each folder inside the root once, refuses a
+    /// folder spelled `/`, the folder listed inside itself and a folder
+    /// outside the root, and reports each path once. A symlinked folder is
+    /// reported and not followed.
+    #[test]
+    fn a_find_walk_stays_inside_its_root_and_reports_each_path_once() {
+        let mut walk = FindWalk::new("/x");
+        let mut link = dir("link", "/x/link");
+        link.is_symlink = true;
+        let root = walk.sort(
+            "/x",
+            vec![
+                file("a.txt", "/x/a.txt"),
+                dir("d", "/x/d"),
+                dir("d", "/x/d/"),
+                file("a.txt", "/x//a.txt"),
+                dir("up", "/"),
+                dir("y", "/y"),
+                link,
+            ],
+        );
+        assert_eq!(paths(&root.entries), ["/x/a.txt", "/x/d", "/x/link"]);
+        assert_eq!(root.follow, ["/x/d"]);
+        assert_eq!(
+            root.refused,
+            [
+                ("/".to_string(), WalkStep::LoopsBack),
+                ("/y".to_string(), WalkStep::OutsideRoot)
+            ]
+        );
+
+        let below = walk.sort(
+            "/x/d",
+            vec![
+                dir("d", "/x/d"),
+                file("b", "/x/d/b"),
+                file("a.txt", "/x/a.txt"),
+            ],
+        );
+        assert_eq!(paths(&below.entries), ["/x/d/b"]);
+        assert!(below.follow.is_empty());
+        assert_eq!(below.refused, [("/x/d".to_string(), WalkStep::LoopsBack)]);
+
+        let err = refused_search("/x", "/x/d", "/x/d", WalkStep::LoopsBack).to_string();
+        assert!(err.contains("loops_back") && err.contains("/x/d"), "{err}");
+    }
+
+    /// A relative search root learns how the provider spells it from its
+    /// first listing, so the walk does not refuse the whole tree.
+    #[test]
+    fn a_find_walk_of_a_relative_root_learns_its_spelling() {
+        let mut walk = FindWalk::new("www");
+        let root = walk.sort("www", vec![dir("css", "/home/u/www/css")]);
+        assert_eq!(root.follow, ["/home/u/www/css"]);
+        assert!(root.refused.is_empty());
     }
 
     /// Providers that clean the root before they list it: Koofr, Jottacloud,

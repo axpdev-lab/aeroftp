@@ -1421,18 +1421,17 @@ impl StorageProvider for CloudinaryProvider {
         let mut dirs = Vec::new();
 
         while let Some(dir) = stack.pop() {
-            let subfolders = self.list_subfolders(&dir).await?;
-            for sf in subfolders {
-                let subpath = if sf.path.is_empty() {
-                    if dir.is_empty() {
-                        sf.name.clone()
-                    } else {
-                        format!("{}/{}", dir, sf.name)
-                    }
-                } else {
-                    sf.path
-                };
-                stack.push(subpath);
+            // The listing gives each subfolder's own path: every one must be
+            // under `dir` before anything in `dir` is deleted, or the delete
+            // goes wherever the listing points.
+            let subfolders = self
+                .list_subfolders(&dir)
+                .await?
+                .iter()
+                .map(|sf| folder_to_entry(sf, &dir))
+                .collect();
+            for folder in crate::sync_core::listing_to_remove(&format!("/{dir}"), subfolders)? {
+                stack.push(folder.path.trim_matches('/').to_string());
             }
             let files = self.list_files(&dir).await?;
             for f in files {
@@ -1622,25 +1621,37 @@ impl StorageProvider for CloudinaryProvider {
             return Err(ProviderError::NotConnected);
         }
         let root = self.resolve_path(path);
+        let mut walk = crate::sync_core::FindWalk::new(&root);
         let mut stack = vec![root.trim_matches('/').to_string()];
         let mut matches = Vec::new();
         while let Some(dir) = stack.pop() {
-            let subfolders = self.list_subfolders(&dir).await?;
-            for sf in &subfolders {
-                let subpath = if sf.path.is_empty() {
-                    if dir.is_empty() {
-                        sf.name.clone()
-                    } else {
-                        format!("{}/{}", dir, sf.name)
-                    }
-                } else {
-                    sf.path.clone()
-                };
-                stack.push(subpath);
-                if super::matches_find_pattern(&sf.name, pattern) {
-                    matches.push(folder_to_entry(sf, &dir));
-                }
+            let listed = format!("/{dir}");
+            let subfolders = self
+                .list_subfolders(&dir)
+                .await?
+                .iter()
+                .map(|sf| folder_to_entry(sf, &dir))
+                .collect();
+            // A subfolder the search cannot follow fails it, as a folder it
+            // cannot list does: either way it did not see the whole tree.
+            let sorted = walk.sort(&listed, subfolders);
+            if let Some((folder, step)) = sorted.refused.first() {
+                return Err(crate::sync_core::refused_search(
+                    &root, &listed, folder, *step,
+                ));
             }
+            stack.extend(
+                sorted
+                    .follow
+                    .iter()
+                    .map(|folder| folder.trim_matches('/').to_string()),
+            );
+            matches.extend(
+                sorted
+                    .entries
+                    .into_iter()
+                    .filter(|folder| super::matches_find_pattern(&folder.name, pattern)),
+            );
             let files = self.list_files(&dir).await?;
             let dynamic = self.dynamic_folders();
             let unique = names_listed_once(&files, dynamic);
@@ -2582,6 +2593,143 @@ mod tests {
         provider.connected = true;
         provider.api_base_override = Some(format!("http://{addr}"));
         (provider, renames)
+    }
+
+    /// A fixed-folder Cloudinary double whose folder listings are given
+    /// whole: each `(folder key, JSON array of subfolders)` in `subfolders`
+    /// (any other folder holds none), and the image public ids in `images`,
+    /// listed by prefix. Returns a provider on it and every DELETE, as
+    /// `DELETE <path>?<query>`.
+    async fn provider_on_folder_listings(
+        subfolders: &'static [(&'static str, &'static str)],
+        images: &'static [&'static str],
+    ) -> (CloudinaryProvider, CloudinaryCalls) {
+        use axum::response::IntoResponse;
+        use std::sync::Arc;
+        let deletes: CloudinaryCalls = Arc::default();
+        let seen = Arc::clone(&deletes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    if req.method() == axum::http::Method::DELETE {
+                        let query = urlencoding::decode(&query).unwrap_or_default().into_owned();
+                        let public_id = query.rsplit('=').next().unwrap_or("").to_string();
+                        seen.lock().unwrap().push(format!("DELETE {path}?{query}"));
+                        return axum::Json(
+                            serde_json::json!({ "deleted": { public_id: "deleted" } }),
+                        )
+                        .into_response();
+                    }
+                    if path == "/resources/by_asset_folder" {
+                        return (
+                            axum::http::StatusCode::BAD_REQUEST,
+                            r#"{"error":{"message":"Unknown parameter asset_folder"}}"#,
+                        )
+                            .into_response();
+                    }
+                    if path == "/folders" || path.starts_with("/folders/") {
+                        let key = urlencoding::decode(path.trim_start_matches("/folders"))
+                            .unwrap_or_default()
+                            .trim_matches('/')
+                            .to_string();
+                        let listed = subfolders
+                            .iter()
+                            .find(|(folder, _)| *folder == key)
+                            .map_or("[]", |(_, json)| *json);
+                        return (
+                            [("content-type", "application/json")],
+                            format!(r#"{{"folders":{listed}}}"#),
+                        )
+                            .into_response();
+                    }
+                    let prefix = url::form_urlencoded::parse(query.as_bytes())
+                        .find(|(k, _)| k == "prefix")
+                        .map(|(_, v)| v.into_owned())
+                        .unwrap_or_default();
+                    let listed: Vec<serde_json::Value> = if path == "/resources/image" {
+                        images
+                            .iter()
+                            .filter(|id| id.starts_with(&prefix))
+                            .map(|id| {
+                                serde_json::json!({
+                                    "asset_id": format!("AID_{id}"), "public_id": id,
+                                    "format": "jpg", "bytes": 3, "resource_type": "image",
+                                    "type": "upload",
+                                })
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    axum::Json(serde_json::json!({ "resources": listed })).into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = CloudinaryProvider::new(CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, deletes)
+    }
+
+    /// The images `keep` (at the root), `tree/a` and `other/o`, and the
+    /// listing of `tree` naming one subfolder whose path points elsewhere:
+    /// back at `tree` itself, at the root, or at `other`.
+    const STRAY_SUBFOLDERS: [&[(&str, &str)]; 3] = [
+        &[("tree", r#"[{"name":"tree","path":"tree"}]"#)],
+        &[("tree", r#"[{"name":"up","path":"tree/.."}]"#)],
+        &[("tree", r#"[{"name":"other","path":"other"}]"#)],
+    ];
+    const STRAY_IMAGES: &[&str] = &["keep", "tree/a", "other/o"];
+
+    /// A recursive delete walks the folder paths the listing gives; one
+    /// that is not under the folder must not take the delete there. It
+    /// fails instead of reporting a partial delete as done.
+    #[tokio::test]
+    async fn a_recursive_delete_never_follows_a_folder_outside_it() {
+        for subfolders in STRAY_SUBFOLDERS {
+            let (mut provider, deletes) =
+                provider_on_folder_listings(subfolders, STRAY_IMAGES).await;
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.rmdir_recursive("/tree"),
+            )
+            .await
+            .expect("the delete ends");
+            let deletes = deletes.lock().unwrap().clone();
+            assert!(outcome.is_err(), "{subfolders:?}: {deletes:?}");
+            assert!(
+                deletes
+                    .iter()
+                    .all(|call| !call.ends_with("=keep") && !call.contains("other")),
+                "{subfolders:?}: {deletes:?}"
+            );
+        }
+    }
+
+    /// A search fails on a folder it cannot follow, as on one it cannot
+    /// list, and never ends up outside the folder searched.
+    #[tokio::test]
+    async fn a_find_never_follows_a_folder_outside_it() {
+        for subfolders in STRAY_SUBFOLDERS {
+            let (mut provider, _) = provider_on_folder_listings(subfolders, STRAY_IMAGES).await;
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.find("/tree", "*"),
+            )
+            .await
+            .expect("the search ends");
+            assert!(outcome.is_err(), "{subfolders:?}: {outcome:?}");
+        }
     }
 
     /// A replace of a file onto a folder took the public id of an image

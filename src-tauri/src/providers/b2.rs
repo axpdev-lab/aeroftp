@@ -1637,6 +1637,14 @@ impl B2Provider {
                 _ => break,
             }
         }
+        // A folder move copies each name to the name with the prefix
+        // replaced, then deletes the original: a name outside the prefix
+        // would be copied onto itself and its only version deleted.
+        crate::sync_core::keys_under_prefix(
+            prefix,
+            files.iter().map(|(name, _, _, _)| name.clone()).collect(),
+            "move",
+        )?;
         Ok(files)
     }
 
@@ -3431,9 +3439,16 @@ impl StorageProvider for B2Provider {
                 }
                 Err(e) => return Err(e),
             };
-            for f in &resp.files {
+            // Every name on the page must be under the prefix before any of
+            // them is hidden: a name outside it is another folder's file.
+            let page = crate::sync_core::keys_under_prefix(
+                &prefix,
+                resp.files.iter().map(|f| f.file_name.clone()).collect(),
+                "delete",
+            )?;
+            for file_name in &page {
                 // Per-file 404 is not an error (concurrent delete/hide).
-                let r = self.do_hide_file(&f.file_name).await;
+                let r = self.do_hide_file(file_name).await;
                 match r {
                     Ok(_) => {}
                     Err(ProviderError::NotFound(_)) => {}
@@ -6661,6 +6676,106 @@ mod tests {
         provider.bucket_id = "bucket".into();
         provider.connected = true;
         (provider, ops)
+    }
+
+    /// A B2 double holding `d/x.txt` and `other/keep.txt` whose listing of the
+    /// prefix `d/` also names `other/keep.txt`, as a defective listing might;
+    /// every other listing is filtered by its prefix. Hides, copies and
+    /// deletes are recorded as `op fileName`, and a delete or hide takes the
+    /// file away. Returns the provider and the record.
+    async fn provider_on_a_listing_that_leaks_a_name(
+    ) -> (B2Provider, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::sync::{Arc, Mutex};
+        let changes: Arc<Mutex<Vec<String>>> = Arc::default();
+        let names: Arc<Mutex<Vec<String>>> =
+            Arc::new(Mutex::new(vec!["d/x.txt".into(), "other/keep.txt".into()]));
+        let seen = Arc::clone(&changes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (seen, names) = (Arc::clone(&seen), Arc::clone(&names));
+                async move {
+                    let op = req
+                        .uri()
+                        .path()
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
+                    let body: serde_json::Value = serde_json::from_slice(
+                        &axum::body::to_bytes(req.into_body(), 1 << 16)
+                            .await
+                            .unwrap(),
+                    )
+                    .unwrap_or_default();
+                    let name = body["fileName"].as_str().unwrap_or_default().to_string();
+                    let mut names = names.lock().unwrap();
+                    let reply = match op.as_str() {
+                        "b2_list_file_names" => {
+                            let prefix = body["prefix"].as_str().unwrap_or("");
+                            let files: Vec<serde_json::Value> = names
+                                .iter()
+                                .filter(|n| prefix == "d/" || n.starts_with(prefix))
+                                .map(|n| {
+                                    serde_json::json!({
+                                        "fileId": format!("id-{n}"), "fileName": n,
+                                        "action": "upload", "contentLength": 3,
+                                        "uploadTimestamp": 1_700_000_000_000i64,
+                                    })
+                                })
+                                .collect();
+                            serde_json::json!({ "files": files, "nextFileName": null })
+                        }
+                        "b2_copy_file" => {
+                            seen.lock().unwrap().push(format!("copy {name}"));
+                            names.push(name.clone());
+                            serde_json::json!({
+                                "fileId": "copy-id", "fileName": name, "contentLength": 3,
+                            })
+                        }
+                        "b2_hide_file" | "b2_delete_file_version" => {
+                            seen.lock().unwrap().push(format!("{op} {name}"));
+                            if let Some(at) = names.iter().position(|n| *n == name) {
+                                names.remove(at);
+                            }
+                            serde_json::json!({ "fileId": "f", "fileName": name })
+                        }
+                        _ => serde_json::json!({}),
+                    };
+                    axum::response::Response::builder()
+                        .status(200)
+                        .header("content-type", "application/json")
+                        .body(axum::body::Body::from(reply.to_string()))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.api_url = format!("http://{addr}");
+        provider.auth_token = SecretString::new("token".to_string().into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        (provider, changes)
+    }
+
+    /// A recursive delete and a folder move act only on names under the
+    /// folder's prefix: a listing of `d/` that names `other/keep.txt` had the
+    /// delete hide it and the move copy it onto itself and delete its
+    /// version. Both fail before they touch it.
+    #[tokio::test]
+    async fn a_folder_delete_or_move_never_acts_on_a_name_outside_the_prefix() {
+        let (mut provider, changes) = provider_on_a_listing_that_leaks_a_name().await;
+        let outcome = provider.rmdir_recursive("/d").await;
+        let changes = changes.lock().unwrap().clone();
+        assert!(outcome.is_err(), "{changes:?}");
+        assert!(changes.is_empty(), "{changes:?}");
+
+        let (mut provider, changes) = provider_on_a_listing_that_leaks_a_name().await;
+        let outcome = provider.rename("/d", "/e").await;
+        let changes = changes.lock().unwrap().clone();
+        assert!(outcome.is_err(), "{changes:?}");
+        assert!(changes.is_empty(), "{changes:?}");
     }
 
     /// A token can expire anywhere in a long folder rename. Each step renews

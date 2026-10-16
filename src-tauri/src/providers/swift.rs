@@ -1815,7 +1815,13 @@ impl StorageProvider for SwiftProvider {
             if entries.is_empty() {
                 break;
             }
-            let names: Vec<String> = entries.into_iter().filter_map(|entry| entry.name).collect();
+            // Every name must be under the prefix before any is deleted: a
+            // listing that ignored `prefix` would name other folders' objects.
+            let names = crate::sync_core::keys_under_prefix(
+                &format!("{prefix}/"),
+                entries.into_iter().filter_map(|entry| entry.name).collect(),
+                "delete",
+            )?;
             let last_name = names.last().cloned().unwrap_or_default();
             if last_name.as_str() <= marker.as_str() {
                 return Err(ProviderError::ServerError(
@@ -2417,6 +2423,28 @@ mod tests {
             log.iter()
                 .any(|r| r.0 == "DELETE" && r.1 == "/v1/AUTH_a/my%20box/d/"),
             "the folder marker goes last, once the pages are deleted: {log:?}"
+        );
+    }
+
+    /// A listing of the prefix `d/` that names an object outside it, as a
+    /// listing that ignored `prefix` would, had the recursive delete remove
+    /// that object. The delete fails before it deletes anything.
+    #[tokio::test]
+    async fn a_recursive_delete_never_deletes_an_object_outside_the_prefix() {
+        let (mut p, log) = provider_on_storage(
+            &[],
+            serde_json::json!([
+                { "name": "d/a.txt", "bytes": 1 },
+                { "name": "other/keep.txt", "bytes": 1 },
+            ]),
+        )
+        .await;
+        let outcome = p.rmdir_recursive("/d").await;
+        let log = log.lock().unwrap().clone();
+        assert!(outcome.is_err(), "{log:?}");
+        assert!(
+            log.iter().all(|r| r.0 == "GET"),
+            "nothing is deleted: {log:?}"
         );
     }
 

@@ -21,7 +21,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 use sha1::Sha1;
 use sha2::{Digest, Sha512};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -3073,11 +3073,20 @@ impl StorageProvider for FilenProvider {
         // This is inherently slow for large directory trees. Consider caching the decrypted
         // directory tree for faster subsequent searches.
         let mut results = Vec::new();
-        let mut dirs_to_scan = vec![if path == "." || path.is_empty() {
-            self.current_path.clone()
+        let (root, root_uuid) = if path == "." || path.is_empty() {
+            (self.current_path.clone(), self.current_folder_uuid.clone())
         } else {
-            Self::normalize_path(path)
-        }];
+            (
+                Self::normalize_path(path),
+                self.resolve_folder_uuid(path).await?,
+            )
+        };
+        let mut walk = crate::sync_core::FindWalk::new(&root);
+        // Each folder is listed by the uuid its parent's listing gave, and a
+        // path built from names cannot tell a folder that lists itself (or an
+        // ancestor) by uuid: the uuids listed so far can.
+        let mut listed_uuids: HashSet<String> = HashSet::from([root_uuid]);
+        let mut dirs_to_scan = vec![root.clone()];
 
         let max_depth = 10;
         let mut depth = 0;
@@ -3088,14 +3097,39 @@ impl StorageProvider for FilenProvider {
 
             for dir in &dirs_to_scan {
                 let entries = self.list(dir).await?;
-                for entry in entries {
-                    if crate::providers::matches_find_pattern(&entry.name, pattern) {
-                        results.push(entry.clone());
+                let uuids: HashMap<String, String> = entries
+                    .iter()
+                    .filter(|entry| entry.is_dir)
+                    .filter_map(|entry| {
+                        Some((entry.path.clone(), entry.metadata.get("uuid")?.clone()))
+                    })
+                    .collect();
+                // A folder the search cannot follow fails it, as a folder it
+                // cannot list does: either way it did not see the whole tree.
+                let sorted = walk.sort(dir, entries);
+                if let Some((folder, step)) = sorted.refused.first() {
+                    return Err(crate::sync_core::refused_search(&root, dir, folder, *step));
+                }
+                for folder in sorted.follow {
+                    if let Some(uuid) = uuids.get(&folder) {
+                        if !listed_uuids.insert(uuid.clone()) {
+                            return Err(crate::sync_core::refused_search(
+                                &root,
+                                dir,
+                                &folder,
+                                crate::sync_core::WalkStep::LoopsBack,
+                            ));
+                        }
                     }
-                    if entry.is_walkable_dir() && results.len() < 500 {
-                        next_dirs.push(entry.path.clone());
+                    if results.len() < 500 {
+                        next_dirs.push(folder);
                     }
                 }
+                results.extend(
+                    sorted.entries.into_iter().filter(|entry| {
+                        crate::providers::matches_find_pattern(&entry.name, pattern)
+                    }),
+                );
                 if results.len() >= 500 {
                     break;
                 }
@@ -3754,6 +3788,122 @@ mod tests {
             if message == "folder access denied"),
             "{outcome:?}"
         );
+    }
+
+    /// One folder of a [`listing_gateway`]: its uuid, then its folders and
+    /// its files, each `(uuid, name)`.
+    type Listing = (
+        &'static str,
+        &'static [(&'static str, &'static str)],
+        &'static [(&'static str, &'static str)],
+    );
+
+    /// A gateway double answering `dir/content` for each folder uuid in
+    /// `listings` with its folders and files; any other uuid lists empty.
+    /// Returns a connected provider pointed at it.
+    async fn listing_gateway(
+        listings: &'static [Listing],
+    ) -> (FilenProvider, tokio::task::JoinHandle<()>) {
+        use axum::{routing::post, Json, Router};
+        let app = Router::new().route(
+            "/v3/dir/content",
+            post(move |Json(body): Json<serde_json::Value>| async move {
+                let (folders, files) = listings
+                    .iter()
+                    .find(|(uuid, _, _)| Some(*uuid) == body["uuid"].as_str())
+                    .map_or((&[][..], &[][..]), |(_, folders, files)| (*folders, *files));
+                let seal = |plain: String| {
+                    FilenProvider::encrypt_metadata_with_key(&plain, TEST_MASTER_KEY).unwrap()
+                };
+                let folders: Vec<serde_json::Value> = folders
+                    .iter()
+                    .map(|(uuid, name)| {
+                        serde_json::json!({
+                            "uuid": uuid, "parent": "p", "timestamp": 1_700_000_000u64,
+                            "name": seal(serde_json::json!({ "name": name }).to_string()),
+                        })
+                    })
+                    .collect();
+                let uploads: Vec<serde_json::Value> = files
+                    .iter()
+                    .map(|(uuid, name)| {
+                        let meta = serde_json::json!({
+                            "name": name, "size": 3, "mime": "text/plain",
+                            "key": "k".repeat(32), "lastModified": 1_700_000_000_000u64,
+                        });
+                        serde_json::json!({
+                            "uuid": uuid, "metadata": seal(meta.to_string()), "bucket": "b",
+                            "region": "r", "parent": "p", "timestamp": 1_700_000_000u64,
+                            "chunks": 1, "size": 3,
+                        })
+                    })
+                    .collect();
+                Json(serde_json::json!({
+                    "status": true,
+                    "data": { "folders": folders, "uploads": uploads },
+                }))
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        (provider, server)
+    }
+
+    /// A search walks folder paths built from decrypted names, and each
+    /// folder is listed by the uuid its parent's listing gave. A name that
+    /// resolves outside the folder searched, or a folder whose listing names
+    /// the folder itself by uuid, must not take the search there: it fails,
+    /// as it fails on a folder it cannot list.
+    #[tokio::test]
+    async fn find_never_leaves_its_folder() {
+        const ROOT: Listing = (
+            "root-uuid-test",
+            &[("A", "a"), ("Y", "y")],
+            &[("K", "keep.txt")],
+        );
+        const D: Listing = ("D", &[], &[("B", "b.txt")]);
+        const Y: Listing = ("Y", &[], &[("YF", "y.txt")]);
+        const CASES: [&[Listing]; 3] = [
+            &[
+                ROOT,
+                ("A", &[("D", "d"), ("Y", "../y")], &[("F", "f.txt")]),
+                D,
+                Y,
+            ],
+            &[
+                ROOT,
+                ("A", &[("D", "d"), ("A", "again")], &[("F", "f.txt")]),
+                D,
+                Y,
+            ],
+            &[
+                ROOT,
+                (
+                    "A",
+                    &[("D", "d"), ("root-uuid-test", "up/../..")],
+                    &[("F", "f.txt")],
+                ),
+                D,
+                Y,
+            ],
+        ];
+        for listings in CASES {
+            let (mut provider, server) = listing_gateway(listings).await;
+            let outcome = provider.find("/a", "*.txt").await;
+            server.abort();
+            assert!(outcome.is_err(), "{:?}: {outcome:?}", listings[1]);
+        }
+
+        let (mut provider, server) =
+            listing_gateway(&[ROOT, ("A", &[("D", "d")], &[("F", "f.txt")]), D, Y]).await;
+        let found = provider.find("/a", "*.txt").await.expect("a plain tree");
+        server.abort();
+        let mut paths: Vec<&str> = found.iter().map(|e| e.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["/a/d/b.txt", "/a/f.txt"]);
     }
 
     /// A connect with an API key whose master-keys request gets no answer is a

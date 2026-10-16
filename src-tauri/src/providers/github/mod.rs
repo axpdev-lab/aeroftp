@@ -1558,9 +1558,13 @@ impl StorageProvider for GitHubProvider {
             Some(GitHubVirtualPath::ReleaseTag(tag)) => {
                 return delete_release(&mut self.client, &self.owner, &self.repo, &tag).await;
             }
-            _ => {}
+            // An asset lists as itself: it is deleted, not walked.
+            Some(GitHubVirtualPath::ReleaseAsset { .. }) => return self.delete(path).await,
+            None => {}
         }
-        let entries = self.list(path).await?;
+        // Each child's path is built from a name the API gave: every one
+        // must be inside the folder before any of them is deleted.
+        let entries = crate::sync_core::listing_to_remove(&resolved, self.list(path).await?)?;
         for entry in entries {
             if entry.is_walkable_dir() {
                 // Box the recursive future to avoid infinite type.
