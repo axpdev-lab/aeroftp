@@ -66,13 +66,15 @@ if not args.inside:
         parser.error(f'GUI binary missing: {binary}')
     runtime = Path(tempfile.mkdtemp(prefix='afdl-'))
     runtime.chmod(0o700)
+    # A PATH entry can be an NVM shell wrapper that breaks with an isolated HOME.
+    node_binary = Path(subprocess.check_output(['node', '-p', 'process.execPath'], text=True).strip()).resolve()
     # Declare every inherited input: env-i semantics, no owner Wayland/X11,
     # keyring, library override, compositor flag or Mesa override leaks in.
     clean = {
         'HOME': str(root / 'home'), 'XDG_CONFIG_HOME': str(root / 'config'),
         'XDG_CACHE_HOME': str(root / 'cache'), 'XDG_DATA_HOME': str(root / 'data'),
         'XDG_RUNTIME_DIR': str(runtime), 'XDG_DATA_DIRS': '/usr/local/share:/usr/share',
-        'PATH': f'{root}/stub-bin:{Path(shutil.which("node")).parent}:/usr/local/bin:/usr/bin:/bin',
+        'PATH': f'{root}/stub-bin:{node_binary.parent}:/usr/local/bin:/usr/bin:/bin',
         'LANG': 'C.UTF-8', 'NO_AT_BRIDGE': '1', 'GTK_IM_MODULE': 'gtk-im-context-simple',
         'AEROFTP_GUI_TEST_ROOT': str(root), 'AEROFTP_GUI_CHECKOUT': str(CHECKOUT),
         'INSPECTOR_PORT': str(args.inspector_port),
