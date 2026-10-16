@@ -4793,7 +4793,7 @@ impl Drop for RawReadHandle {
 enum ChunkReader<'a> {
     /// A handle of the main session: one READ in flight, into a buffer
     /// allocated before the READ goes out.
-    File(russh_sftp::client::fs::File),
+    File(Box<russh_sftp::client::fs::File>),
     /// The shared handle of the read-ahead's own session: each reply arrives
     /// in a buffer of its own.
     Raw(&'a RawReadHandle),
@@ -4830,7 +4830,7 @@ impl ChunkReader<'_> {
     /// by its owner.
     async fn close(self, ended: &CancellationToken) {
         if let Self::File(file) = self {
-            close_sftp_file(file, ended).await;
+            close_sftp_file(*file, ended).await;
         }
     }
 }
@@ -4952,7 +4952,7 @@ async fn readahead_range_on(
         None => open_readahead_handles(sftp, full_path, eff_window, cancel)
             .await?
             .into_iter()
-            .map(ChunkReader::File)
+            .map(|file| ChunkReader::File(Box::new(file)))
             .collect(),
     };
 
@@ -5028,7 +5028,10 @@ async fn readahead_range_on(
                 Some(handle) => readers
                     .extend(std::iter::repeat_with(|| ChunkReader::Raw(handle)).take(missing)),
                 None => match open_readahead_handles(sftp, full_path, missing, cancel).await {
-                    Ok(more) => readers.extend(more.into_iter().map(ChunkReader::File)),
+                    Ok(more) => readers.extend(
+                        more.into_iter()
+                            .map(|file| ChunkReader::File(Box::new(file))),
+                    ),
                     Err(e) if is_transfer_cancellation(&e) => {
                         close_readers(readers, &sftp.ended).await;
                         return Err(e);
