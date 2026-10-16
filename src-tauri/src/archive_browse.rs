@@ -53,7 +53,10 @@ pub async fn list_zip(
             .map_err(|e| format!("Failed to read entry {}: {}", i, e))?;
 
         let encrypted = raw.encrypted();
-        let name = raw.name().to_string();
+        let name = raw
+            .name()
+            .map_err(|e| format!("Failed to read entry {} name: {}", i, e))?
+            .into_owned();
         let is_dir = name.ends_with('/');
         let size = raw.size();
         let compressed = raw.compressed_size();
@@ -94,7 +97,10 @@ pub async fn list_zip(
                 let entry = archive
                     .by_index_decrypt(i, pwd.expose_secret().as_bytes())
                     .map_err(|e| format!("Invalid password or corrupt archive: {}", e))?;
-                if !entry.name().ends_with('/') {
+                let name = entry
+                    .name()
+                    .map_err(|e| format!("Invalid password or corrupt archive: {}", e))?;
+                if !name.ends_with('/') {
                     break;
                 }
             }

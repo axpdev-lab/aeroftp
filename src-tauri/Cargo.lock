@@ -1711,6 +1711,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
+name = "constant_time_eq"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9eb6feb175df65d0a3ccd3e73484e940d0ac664e8034f0519fd49a93db3071d9"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5610,18 +5619,12 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "lzma-rust2"
-version = "0.16.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca93e534d1142d1d0dcca6d25fe302508a5dfb40b302802904577725ea0b695b"
-dependencies = [
- "sha2 0.11.0",
-]
-
-[[package]]
-name = "lzma-rust2"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fde178a3caf126c440fa15628147772d8ee590a39477d711353fbe2e58a73a5b"
+dependencies = [
+ "sha2 0.11.0",
+]
 
 [[package]]
 name = "lzma-sys"
@@ -9664,7 +9667,7 @@ dependencies = [
  "crc32fast",
  "getrandom 0.4.3",
  "js-sys",
- "lzma-rust2 0.21.0",
+ "lzma-rust2",
  "ppmd-rust",
  "sha2 0.11.0",
  "wasm-bindgen",
@@ -13522,27 +13525,28 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "8.6.0"
+version = "9.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d04a6b5381502aa6087c94c669499eb1602eb9c5e8198e534de571f7154809b"
+checksum = "c2d98561b612a84ae525331a7a094429ef8a5772514ed507ff6db5f54badc971"
 dependencies = [
  "aes 0.9.3",
  "bzip2",
- "constant_time_eq 0.4.2",
+ "constant_time_eq 0.6.1",
  "crc32fast",
  "deflate64",
  "flate2",
  "getrandom 0.4.3",
  "hmac 0.13.0",
  "indexmap 2.14.2",
- "lzma-rust2 0.16.5",
+ "lzma-rust2",
  "memchr",
+ "nix 0.31.3",
  "pbkdf2 0.13.0",
  "sha1 0.11.0",
  "typed-path 0.12.3",
  "zeroize",
  "zopfli",
- "zstd 0.13.3",
+ "zstd 0.14.2",
 ]
 
 [[package]]

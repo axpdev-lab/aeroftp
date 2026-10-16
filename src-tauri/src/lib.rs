@@ -7839,7 +7839,10 @@ async fn extract_archive(
         // ZIP Slip protection: use the single shared guard (rejects traversal,
         // absolute paths, drive prefixes, empty names and null bytes) instead of a
         // divergent inline copy. (CLAUDE-AV-B1-03)
-        let entry_name = file.name().to_string();
+        let entry_name = file
+            .name()
+            .map_err(|e| format!("Failed to read file name from archive: {}", e))?
+            .into_owned();
         if !is_safe_archive_entry(&entry_name) {
             continue;
         }
@@ -20472,7 +20475,7 @@ mod compress_store_tests {
         let (mut saw_stored, mut saw_deflated) = (false, false);
         for i in 0..zip.len() {
             let mut e = zip.by_index(i).unwrap();
-            let name = e.name().to_string();
+            let name = e.name().unwrap().into_owned();
             if name.contains("random") {
                 assert_eq!(
                     e.compression(),
@@ -23571,9 +23574,13 @@ mod secval_b_tests {
         let f = std::fs::File::open(&archive).unwrap();
         let mut za = zip::ZipArchive::new(f).unwrap();
         let entry = za.by_index(0).unwrap();
-        assert_eq!(entry.name(), name, "zip crate returns the raw name");
+        assert_eq!(
+            entry.name().unwrap(),
+            name,
+            "zip crate returns the raw name"
+        );
         let zip_crate_says = entry.enclosed_name();
-        let guard_says = is_safe_archive_entry(entry.name());
+        let guard_says = is_safe_archive_entry(&entry.name().unwrap());
         drop(entry);
         eprintln!("zip enclosed_name = {zip_crate_says:?}; is_safe_archive_entry = {guard_says}");
 

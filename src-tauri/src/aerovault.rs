@@ -344,7 +344,10 @@ fn read_all_entries(
         let entry = archive
             .by_index_decrypt(i, pwd.expose_secret().as_bytes())
             .map_err(|e| format!("Failed to decrypt entry: {}", e))?;
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| format!("Failed to read entry name: {}", e))?
+            .into_owned();
         if name == META_ENTRY {
             continue;
         }

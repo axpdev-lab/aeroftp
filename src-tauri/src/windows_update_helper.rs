@@ -228,12 +228,15 @@ fn stage_portable_artifact(zip_path: &Path) -> Result<StagedPortable, String> {
         // Defensive: reject path traversal in the ZIP. The portable ZIP we
         // ship has flat entries only — anything with `..` or absolute paths
         // is a tampered artifact.
-        let name = entry.name();
+        let name = entry
+            .name()
+            .map_err(|e| format!("Failed to read ZIP entry {i} name: {e}"))?
+            .into_owned();
         if name.contains("..") || name.starts_with('/') || name.starts_with('\\') {
             return Err(format!("ZIP entry rejects traversal: {name}"));
         }
 
-        let target = stage_dir.join(name);
+        let target = stage_dir.join(&name);
         if entry.is_dir() {
             std::fs::create_dir_all(&target)
                 .map_err(|e| format!("Failed to create dir from ZIP: {e}"))?;
