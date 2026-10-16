@@ -174,7 +174,9 @@ impl TransferError {
             ProviderError::Timeout => TransferErrorKind::Timeout,
             ProviderError::Cancelled => TransferErrorKind::Cancelled,
             ProviderError::NotConnected => TransferErrorKind::NotConnected,
-            ProviderError::AuthenticationFailed(_) => TransferErrorKind::Auth,
+            ProviderError::AuthenticationFailed(_) | ProviderError::HostKeyRejected(_) => {
+                TransferErrorKind::Auth
+            }
             ProviderError::NotFound(_) => TransferErrorKind::NotFound,
             ProviderError::PermissionDenied(_) => TransferErrorKind::PermissionDenied,
             ProviderError::FileTooLarge(_) => TransferErrorKind::FileTooLarge,

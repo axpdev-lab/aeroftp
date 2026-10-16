@@ -2159,6 +2159,13 @@ pub enum ProviderError {
     #[error("Authentication failed: {0}")]
     AuthenticationFailed(String),
 
+    /// The server's host key was refused: it differs from the one saved for
+    /// the host, or the host has none saved and it was not accepted. A
+    /// decision about who the server is, not a server that is down: the
+    /// message says what to check, and a retry meets the same key.
+    #[error("Host key rejected: {0}")]
+    HostKeyRejected(String),
+
     #[error("Path not found: {0}")]
     NotFound(String),
 
