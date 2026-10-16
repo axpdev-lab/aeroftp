@@ -89,7 +89,7 @@ function fixture(mode: Mode, options: {
   const context = {
     fetchBucketEncryption: vi.fn(), quotaVersionRef: version, quotaConnectionRef: connection,
     sessions: [{ id: 'session-A', connectionParams: params }], activeSessionId: 'session-A',
-    connectionParams: params, invoke, loadSavedServerProfiles: profiles,
+    connectionParams: params, liveConnectionParams: params, invoke, loadSavedServerProfiles: profiles,
     resolveLiveProfile: () => profile, persistQuotaToProfile: persist,
     supportsStorageQuota: () => mode !== 'no quota API',
     effectiveManualCap: () => undefined,

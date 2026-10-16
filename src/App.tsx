@@ -541,7 +541,8 @@ import { useFaviconDetection } from './hooks/useFaviconDetection';
 import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
-import { activeProviderId, isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
+import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
+import { resolveLiveConnectionParams } from './utils/liveConnection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -909,7 +910,21 @@ const App: React.FC = () => {
   // Bind labels to the exact committed listing. Cached tabs, locks and plain
   // listings must never reuse another listing's decrypted anchor labels.
   const [remoteBreadcrumb, setRemoteBreadcrumb] = useState<Pick<FileListResponse, 'files' | 'current_path' | 'breadcrumb_labels'> | null>(null);
+  // The connection FORM (Quick Connect, Edit). Not the live connection: a
+  // connect from a saved profile resets it for the next "Add New Server", and
+  // the servers screen can fill it with another profile while a session stays
+  // open. Code that runs in a session reads `liveConnectionParams` below.
   const [connectionParams, setConnectionParams] = useState<ConnectionParams>({ server: '', username: '', password: '' });
+  // Multi-Session Tabs (Hybrid Cache Architecture)
+  const [sessions, setSessions] = useState<FtpSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  // The params of the connection on screen: the active session's, else the
+  // form (before a connect, during one from the servers screen, and on the
+  // AeroCloud tab, which has no session). See resolveLiveConnectionParams.
+  const liveConnectionParams = useMemo(
+    () => resolveLiveConnectionParams(sessions, activeSessionId, connectionParams),
+    [sessions, activeSessionId, connectionParams],
+  );
   const [quickConnectDirs, setQuickConnectDirs] = useState({ remoteDir: '', localDir: '' });
   const [loading, setLoading] = useState(false);
   // Per-panel directory-listing loading flags. Drive the overlay spinner that
@@ -1207,17 +1222,17 @@ const App: React.FC = () => {
   }, [isConnected, rcloneCryptVaultId]);
   useEffect(() => {
     if (!isConnected || rcloneCryptVaultId || rcloneCryptImportBanner) return;
-    const opts = (connectionParams.options ?? {}) as Record<string, unknown>;
+    const opts = (liveConnectionParams.options ?? {}) as Record<string, unknown>;
     if (opts.rcloneCryptEnabled !== true) return;
     const password = typeof opts.rcloneCryptPassword === 'string' ? opts.rcloneCryptPassword : '';
     if (!password) return;
-    const sessionKey = `${connectionParams.server || ''}:${connectionParams.protocol || ''}:${connectionParams.username || ''}`;
+    const sessionKey = `${liveConnectionParams.server || ''}:${liveConnectionParams.protocol || ''}:${liveConnectionParams.username || ''}`;
     if (rcloneCryptBannerHandledRef.current === sessionKey) return;
     rcloneCryptBannerHandledRef.current = sessionKey;
     setRcloneCryptImportBanner({
       serverName: typeof opts.rcloneCryptOverlayName === 'string'
         ? (opts.rcloneCryptOverlayName as string)
-        : (connectionParams.server || 'remote'),
+        : (liveConnectionParams.server || 'remote'),
       password,
       salt: typeof opts.rcloneCryptPassword2 === 'string' ? (opts.rcloneCryptPassword2 as string) : undefined,
       filenameEncryption: typeof opts.rcloneCryptFilenameEncryption === 'string'
@@ -1228,7 +1243,7 @@ const App: React.FC = () => {
         : true,
       initialPath: typeof opts.rcloneCryptRemote === 'string' ? (opts.rcloneCryptRemote as string) : undefined,
     });
-  }, [isConnected, connectionParams.options, connectionParams.server, connectionParams.protocol, connectionParams.username, rcloneCryptVaultId, rcloneCryptImportBanner]);
+  }, [isConnected, liveConnectionParams.options, liveConnectionParams.server, liveConnectionParams.protocol, liveConnectionParams.username, rcloneCryptVaultId, rcloneCryptImportBanner]);
   useEffect(() => {
     if (!isConnected) {
       rcloneCryptBannerHandledRef.current = null;
@@ -1555,10 +1570,6 @@ const App: React.FC = () => {
   // File Tags (Finder-style color labels)
   const fileTags = useFileTags();
 
-  // Multi-Session Tabs (Hybrid Cache Architecture)
-  const [sessions, setSessions] = useState<FtpSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-
   // Set of saved-profile ids that currently have at least one open session in
   // the tab strip. Passed down to IntroHub so the per-server health indicator
   // can pulse for the connected ones (issue #222: the green dot was only a
@@ -1791,11 +1802,11 @@ const App: React.FC = () => {
   // Check if local path is coherent with the connected remote server
   // Returns true if they match (or we can't determine), false if mismatch
   const isLocalPathCoherent = React.useMemo(() => {
-    if (!isConnected || !connectionParams.server || !currentLocalPath) return true;
+    if (!isConnected || !liveConnectionParams.server || !currentLocalPath) return true;
 
     // Extract server name without 'ftp.' prefix and port
     // e.g., "ftp.example.com:21" -> "example"
-    const serverHost = connectionParams.server.split(':')[0]; // Remove port
+    const serverHost = liveConnectionParams.server.split(':')[0]; // Remove port
     const serverName = serverHost.replace(/^ftp\./, '').replace(/^www\./, ''); // Remove ftp./www.
     const serverBase = serverName.split('.')[0]; // Get first part (e.g., "example" from "example.com")
 
@@ -1821,7 +1832,7 @@ const App: React.FC = () => {
 
     // Default: assume coherent if we can't determine otherwise
     return true;
-  }, [isConnected, connectionParams.server, currentLocalPath]);
+  }, [isConnected, liveConnectionParams.server, currentLocalPath]);
 
   // Sync navigation path mismatch: detect when local/remote paths diverge
   // Debounced: during sync navigation one panel moves first, the other follows
@@ -2214,23 +2225,23 @@ const App: React.FC = () => {
   }, [activityLog.entries, activityLogFilterTypes, activityLogShowCloudSync]);
 
   useEffect(() => {
-    const protocol = connectionParams.protocol;
+    const protocol = liveConnectionParams.protocol;
     const isFtpFamily = protocol === 'ftp' || protocol === 'ftps';
-    const insecureEnabled = isFtpFamily && connectionParams.options?.verifyCert === false;
+    const insecureEnabled = isFtpFamily && liveConnectionParams.options?.verifyCert === false;
 
     if (insecureEnabled && !insecureCertPreviouslyEnabledRef.current) {
       activityLog.log(
         'INFO',
         t('activity.insecure_cert_enabled', {
           protocol: (protocol || 'ftp').toUpperCase(),
-          server: connectionParams.server || '-'
+          server: liveConnectionParams.server || '-'
         }),
         'success'
       );
     }
 
     insecureCertPreviouslyEnabledRef.current = insecureEnabled;
-  }, [connectionParams.protocol, connectionParams.options?.verifyCert, connectionParams.server, activityLog, t]);
+  }, [liveConnectionParams.protocol, liveConnectionParams.options?.verifyCert, liveConnectionParams.server, activityLog, t]);
 
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
@@ -3294,7 +3305,7 @@ const App: React.FC = () => {
       // Resolved here, as the quota read does it: the session is state on the
       // component, not something this scope inherits.
       const activeSession = sessions.find(s => s.id === activeSessionId);
-      const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+      const liveCp = freshSessionParams || liveConnectionParams;
       const profileId = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId)?.id;
       void persistBucketEncryptionToProfile(profileId, read);
     } catch (e) {
@@ -3322,14 +3333,14 @@ const App: React.FC = () => {
     // freshSessionParams provides enriched options (infinicloudNode) immediately after connect,
     // before the session state is updated by React
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const opts = freshSessionParams?.options || activeSession?.connectionParams?.options || connectionParams.options;
-    const pid = freshSessionParams?.providerId || activeSession?.providerId || connectionParams.providerId;
+    const opts = freshSessionParams?.options || liveConnectionParams.options;
+    const pid = freshSessionParams?.providerId || liveConnectionParams.providerId;
     if (pid === 'infinicloud' && opts?.apiKey && opts?.infinicloudNode) {
       try {
         const quota = await invoke<{ total: number; used: number; available: number }>('infinicloud_quota', {
           node: opts.infinicloudNode,
-          username: freshSessionParams?.username || connectionParams.username || activeSession?.connectionParams?.username || '',
-          password: freshSessionParams?.password || connectionParams.password || activeSession?.connectionParams?.password || '',
+          username: freshSessionParams?.username || liveConnectionParams.username || '',
+          password: freshSessionParams?.password || liveConnectionParams.password || '',
           apiKey: opts.apiKey,
         });
         if (version === quotaVersionRef.current) {
@@ -3340,7 +3351,7 @@ const App: React.FC = () => {
         // written onto a different profile's card across open sessions.
         const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
         if (version !== quotaVersionRef.current) return;
-        const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+        const liveCp = freshSessionParams || liveConnectionParams;
         const profileId = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId)?.id;
         void persistQuotaToProfile(profileId, { used: quota.used, total: quota.total, usedSource: 'api' });
       } catch (e) {
@@ -3359,7 +3370,7 @@ const App: React.FC = () => {
         // open session's.
         const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
         if (version !== quotaVersionRef.current) return;
-        const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+        const liveCp = freshSessionParams || liveConnectionParams;
         const prof = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId);
         const profileId = prof?.id;
         // A user-set manual cap is a TRUE override and wins even over an
@@ -3453,7 +3464,7 @@ const App: React.FC = () => {
       try {
         const all = await loadSavedServerProfiles();
         if (version !== quotaVersionRef.current) return;
-        const liveCp = freshSessionParams || activeSession?.connectionParams || connectionParams;
+        const liveCp = freshSessionParams || liveConnectionParams;
         const prof = resolveLiveProfile(all, liveCp, activeSession, freshSessionParams?.savedServerId);
         if (prof) {
           const q = prof.lastQuota;
@@ -3537,8 +3548,8 @@ const App: React.FC = () => {
     const connection = scanOptions?.connection ?? quotaConnectionRef.current;
     const connectionChanged = () => connection !== quotaConnectionRef.current;
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const cp = scanOptions?.connectionParams || activeSession?.connectionParams || connectionParams;
-    const opts = cp.options || connectionParams.options;
+    const cp = scanOptions?.connectionParams || liveConnectionParams;
+    const opts = cp.options;
     // Resolve the saved profile against the LIVE connection identity (see
     // resolveLiveProfile). A stale connectionParams.savedServerId must
     // never win here: it caused the scanned `used` to be written onto a
@@ -3802,7 +3813,7 @@ const App: React.FC = () => {
   const handleQuotaAfterTransfer = (info: { direction: string; bytes: number }) => {
     if (info.direction !== 'upload') return;
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     if (protocol && supportsStorageQuota(protocol as ProviderType)) {
       if (quotaRefreshTimer.current) window.clearTimeout(quotaRefreshTimer.current);
       quotaRefreshTimer.current = window.setTimeout(() => {
@@ -3832,7 +3843,7 @@ const App: React.FC = () => {
     // delta is never written onto a different profile's card. Only adjust
     // when a scan/manual baseline already exists: never fabricate a `used`
     // for a profile that never produced one.
-    const cp = activeSession?.connectionParams || connectionParams;
+    const cp = liveConnectionParams;
     void (async () => {
       try {
         const all = await loadSavedServerProfiles();
@@ -3871,15 +3882,14 @@ const App: React.FC = () => {
     } else {
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
     }
-  }, [isConnected, connectionParams.protocol]);
+  }, [isConnected, liveConnectionParams.protocol]);
 
   // Keep-Alive: Send periodic pings to prevent connection timeout
   // FTP uses NOOP, providers use provider_keep_alive
   useEffect(() => {
     if (!isConnected) return;
 
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     const isProvider = usesProviderApi(protocol);
 
     const KEEP_ALIVE_INTERVAL = 60000; // 60 seconds
@@ -3907,7 +3917,7 @@ const App: React.FC = () => {
 
         try {
           await invoke('reconnect_ftp');
-          humanLog.logRaw('activity.reconnect_success', 'CONNECT', { server: connectionParams.server }, 'success');
+          humanLog.logRaw('activity.reconnect_success', 'CONNECT', { server: liveConnectionParams.server }, 'success');
           notify.success(t('toast.reconnected'), t('toast.ftpRestored'));
           const response = await invoke<{ files: RemoteFile[]; current_path: string }>('list_files');
           setRemoteFiles(response.files);
@@ -3924,7 +3934,7 @@ const App: React.FC = () => {
 
     return () => clearInterval(keepAliveInterval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, connectionParams.server, connectionParams.protocol, activeSessionId]);
+  }, [isConnected, liveConnectionParams.server, liveConnectionParams.protocol, activeSessionId]);
 
   // Display file name (strip extension when setting is off)
   const displayName = (name: string, isDir: boolean) => {
@@ -4390,23 +4400,23 @@ const App: React.FC = () => {
   const activeUnifiedRemoteProfile = useMemo(() => {
     if (!isConnected) return null;
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol || 'ftp') as ProviderType;
+    const protocol = (liveConnectionParams.protocol || 'ftp') as ProviderType;
+    // The id and `saved` come from the same place: with a session open, its
+    // own ids only (the form's savedServerId can be stale, see
+    // resolveLiveProfile); without one, the form is the connection.
     return {
-      id: connectionParams.savedServerId
-        || activeSession?.connectionParams?.savedServerId
+      id: liveConnectionParams.savedServerId
         || activeSession?.savedServerId
         || activeSession?.serverId
-        || connectionParams.server
+        || liveConnectionParams.server
         || 'active-remote',
-      name: activeSession?.serverName || connectionParams.displayName || connectionParams.server || 'Remote',
+      name: activeSession?.serverName || liveConnectionParams.displayName || liveConnectionParams.server || 'Remote',
       protocol,
-      providerId: connectionParams.providerId || activeSession?.providerId,
+      providerId: liveConnectionParams.providerId || activeSession?.providerId,
       initialPath: activeSession?.serverInitialPath || quickConnectDirs.remoteDir,
-      // From the session, not the global connectionParams, whose
-      // savedServerId can be stale (see resolveLiveProfile).
       saved: !!(activeSession?.savedServerId || activeSession?.connectionParams?.savedServerId),
     };
-  }, [isConnected, sessions, activeSessionId, connectionParams, quickConnectDirs.remoteDir]);
+  }, [isConnected, sessions, activeSessionId, liveConnectionParams, quickConnectDirs.remoteDir]);
 
   // Z.3.1: shared model for the visual dual-panel slots. Existing UX still
   // renders through the mature local/remote components; this controller gives
@@ -4521,7 +4531,7 @@ const App: React.FC = () => {
   // SITE commands travel on the FTP control connection (discussion #1109):
   // offered on a connected FTP/FTPS session only. Computed here, ahead of the
   // command palette that lists it.
-  const canSendSiteCommand = siteCommandAvailable(isConnected, sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol, connectionParams.protocol);
+  const canSendSiteCommand = siteCommandAvailable(isConnected, liveConnectionParams.protocol);
   // The native-menu handler reads the committed value: a render React
   // discards must not move it.
   useLayoutEffect(() => { canSendSiteCommandRef.current = canSendSiteCommand; }, [canSendSiteCommand]);
@@ -4677,7 +4687,7 @@ const App: React.FC = () => {
     currentLocalPath2,
     isDualLocalAeroFileMode,
     isConnected,
-    connectionParams,
+    connectionParams: liveConnectionParams,
   });
 
   function handleSidebarNavigate(path: string) {
@@ -4945,7 +4955,7 @@ const App: React.FC = () => {
       try { await invoke('provider_disconnect'); } catch { /* ignore */ }
     })();
     // Step the remote panel out only when this was an MTP session.
-    if (connectionParams.protocol === 'mtp') {
+    if (liveConnectionParams.protocol === 'mtp') {
       setIsConnected(false);
       setRemoteFiles([]);
       setCurrentRemotePath('/');
@@ -4955,7 +4965,7 @@ const App: React.FC = () => {
       setShowRemotePanel(false);
       setShowConnectionScreen(true);
       setActivePanel('local');
-      const name = connectionParams.server || deviceId;
+      const name = liveConnectionParams.server || deviceId;
       // One activity line, typed DISCONNECT. Toast raised directly rather than
       // through `notify`, which would log a second, INFO-typed copy of the same
       // sentence.
@@ -4965,8 +4975,8 @@ const App: React.FC = () => {
       }
     }
   }, [
-    connectionParams.protocol,
-    connectionParams.server,
+    liveConnectionParams.protocol,
+    liveConnectionParams.server,
     humanLog,
     showToastNotifications,
     toast,
@@ -6325,9 +6335,9 @@ const App: React.FC = () => {
     }
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
-      // Use override protocol if provided, then connectionParams, then active session (most robust)
-      const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+      // The override when a connect passes the protocol it is opening, else
+      // the live connection's.
+      const protocol = (overrideProtocol || liveConnectionParams.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
       logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
@@ -6406,7 +6416,7 @@ const App: React.FC = () => {
       // Gvfs-backed MTP: mount vanishes on unplug; raw IO error is useless.
       // Card "connected" ends; attach-dot is driven separately by device list.
       if (
-        connectionParams.protocol === 'mtp'
+        liveConnectionParams.protocol === 'mtp'
         && mtpGvfsMountPathRef.current
         && (isGvfsMtpPath(mtpGvfsMountPathRef.current)
           || /not found|no such file|not a directory|not connected|not available/i.test(String(error)))
@@ -6465,7 +6475,7 @@ const App: React.FC = () => {
     onBatchProgress: setActiveBatchSnapshot,
     onScanningUpdate: setScanningState,
     onTransferComplete: handleQuotaAfterTransfer,
-    maxChannels: (connectionParams.protocol && isFtpProtocol(connectionParams.protocol as ProviderType))
+    maxChannels: (liveConnectionParams.protocol && isFtpProtocol(liveConnectionParams.protocol as ProviderType))
       ? TRANSFER_SPEED_PRESETS[sessionTransferSpeedPreset].channels
       : maxConcurrentTransfers,
   });
@@ -6530,7 +6540,7 @@ const App: React.FC = () => {
 
   // Check provider capabilities after connection (for context menu features)
   const refreshProviderCaps = async () => {
-    const protocol = connectionParams.protocol;
+    const protocol = liveConnectionParams.protocol;
     if (!protocol || ['ftp', 'ftps', 'sftp'].includes(protocol)) {
       // FTP/SFTP don't use provider_* capability commands
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
@@ -6619,7 +6629,7 @@ const App: React.FC = () => {
     loadLocalFiles2,
     activeSessionId,
     sessions: sessions as Array<{ id: string; connectionParams?: { protocol?: string } }>,
-    connectionParams,
+    connectionParams: liveConnectionParams,
     onCrossPanelDrop: async (files, fromRemote, targetDir) => {
       await crossPanelDropRef.current?.(files, fromRemote, targetDir);
     },
@@ -6756,18 +6766,21 @@ const App: React.FC = () => {
     return params;
   };
 
-  const getActiveProviderProtocol = (): ProviderType | undefined => {
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    return (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
-  };
+  // Stable while the live protocol is: the GitHub Actions poll below lists it
+  // as a dependency, and a new function on every render restarted its
+  // interval on every render.
+  const getActiveProviderProtocol = useCallback(
+    (): ProviderType | undefined => liveConnectionParams.protocol,
+    [liveConnectionParams.protocol],
+  );
 
   const activeTransferProtocol = getActiveProviderProtocol();
   const supportsFtpTransferPresets = !!activeTransferProtocol && isFtpProtocol(activeTransferProtocol);
   // The SITE dialog names the session it talks to: the saved profile's name
-  // and the host, read from the active session (connectionParams holds the
-  // Quick Connect form, which is empty when a saved profile was opened).
+  // and the host of the live connection (connectionParams holds the Quick
+  // Connect form, which is empty when a saved profile was opened).
   const activeSiteSession = sessions.find(s => s.id === activeSessionId);
-  const siteSessionLabel = [...new Set([activeSiteSession?.serverName, activeSiteSession?.connectionParams?.server || connectionParams.server].filter(Boolean))]
+  const siteSessionLabel = [...new Set([activeSiteSession?.serverName, liveConnectionParams.server].filter(Boolean))]
     .concat((activeTransferProtocol || '').toUpperCase())
     .filter(Boolean)
     .join(' · ');
@@ -7181,7 +7194,7 @@ const App: React.FC = () => {
       setHasActiveGitHubActions(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSessionId, connectionParams.protocol, isConnected]);
+  }, [activeSessionId, liveConnectionParams.protocol, isConnected]);
 
   // Poll GitHub Actions status every 60s when connected to GitHub
   useEffect(() => {
@@ -7196,8 +7209,7 @@ const App: React.FC = () => {
   }, [isConnected, getActiveProviderProtocol]);
 
   const switchGitHubBranch = useCallback(async (branch: string) => {
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const baseParams = normalizeProviderConnectionParams((connectionParams.protocol ? connectionParams : activeSession?.connectionParams || connectionParams));
+    const baseParams = normalizeProviderConnectionParams(liveConnectionParams);
     const nextParams: ConnectionParams = {
       ...baseParams,
       options: {
@@ -7255,7 +7267,7 @@ const App: React.FC = () => {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
       setLoading(false);
     }
-  }, [activeSessionId, connectionParams, currentRemotePath, notify, refreshGitHubContext, sessions, t]);
+  }, [activeSessionId, liveConnectionParams, currentRemotePath, notify, refreshGitHubContext, t]);
 
   const requestGitHubBatchCommitMessage = useCallback((
     files: { local: string; remote: string }[],
@@ -7296,7 +7308,7 @@ const App: React.FC = () => {
 
     void refreshGitHubContext(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSessionId, connectionParams.protocol, isConnected, refreshGitHubContext]);
+  }, [activeSessionId, liveConnectionParams.protocol, isConnected, refreshGitHubContext]);
 
   const logConnectionSteps = async (
     server: string,
@@ -8176,7 +8188,7 @@ const App: React.FC = () => {
     quotaVersionRef.current++;
     quotaConnectionRef.current++;
     setStorageQuota(null);
-    const logId = humanLog.logStart('DISCONNECT', { server: connectionParams.server });
+    const logId = humanLog.logStart('DISCONNECT', { server: liveConnectionParams.server });
     // The SITE transcript and history live in memory for the session only, and
     // a disconnect closes every tab (Close All included), so all of them go.
     sessions.forEach(session => forgetSiteSession(session.id));
@@ -8237,7 +8249,7 @@ const App: React.FC = () => {
         const msgKey = reason === 'tab-close' ? 'toast.disconnectedTabClosed'
           : reason === 'close-all' ? 'toast.disconnectedAllClosed'
             : 'toast.disconnectedFrom';
-        toast.info(t('toast.disconnectedTitle'), t(msgKey, { server: connectionParams.server }));
+        toast.info(t('toast.disconnectedTitle'), t(msgKey, { server: liveConnectionParams.server }));
       }
     } catch (error) {
       humanLog.logError('DISCONNECT', {}, logId);
@@ -9119,11 +9131,15 @@ const App: React.FC = () => {
       if (isConnected) {
         logger.debug('Already connected, checking if same server...');
 
-        const currentServer = connectionParams.server;
+        // The live connection, not the form: after a saved-profile connect the
+        // form is empty, and the servers screen can fill it with another
+        // profile. The account is part of "same": one host can serve several.
+        const currentServer = liveConnectionParams.server;
         const isSameServer = currentServer === cloudServerString
-          && connectionParams.protocol === protocol;
+          && liveConnectionParams.protocol === protocol
+          && (liveConnectionParams.username || '') === connParams.username;
 
-        logger.debug(`Current: ${currentServer} (${connectionParams.protocol}), Cloud: ${cloudServerString} (${protocol}), Same: ${isSameServer}`);
+        logger.debug(`Current: ${currentServer} (${liveConnectionParams.protocol}), Cloud: ${cloudServerString} (${protocol}), Same: ${isSameServer}`);
 
         // Save current session state before switching
         const capturedSessionId = activeSessionId;
@@ -9177,6 +9193,12 @@ const App: React.FC = () => {
           } finally {
             setLoading(false);
           }
+        } else {
+          // Same backend kept. The AeroCloud tab has no session of its own, so
+          // with the tab deselected the form state is what names its
+          // connection (resolveLiveConnectionParams): give it the cloud's
+          // params, as the reconnect above does.
+          setConnectionParams(connParams);
         }
 
         // Ensure panels are visible (user might have been in local-only mode)
@@ -9291,9 +9313,10 @@ const App: React.FC = () => {
     setRemoteListReason(listingReason(resolveTargetDisplayPath(currentRemoteDisplayPath, path, plainPath)));
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
-      // Use override protocol if provided, then connectionParams, then active session (most robust)
+      // The override when a connect passes the protocol it is opening, else
+      // the live connection's.
       const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = (overrideProtocol || connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+      const protocol = (overrideProtocol || liveConnectionParams.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
@@ -9553,8 +9576,7 @@ const App: React.FC = () => {
 
     // Navigation Sync: mirror to remote panel if enabled
     if (isSyncNavigation && syncBasePaths && isConnected) {
-      const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+      const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
 
       const relativePath = path.startsWith(syncBasePaths.local)
@@ -9632,9 +9654,12 @@ const App: React.FC = () => {
     // `runCrossProfileTransfer`. The legacy CrossProfilePanel modal stays
     // available as a fallback (and as the only path when there is no
     // selection, since the modal lets the user pick paths interactively).
+    // The source is the live connection's profile. With a session open that
+    // is the session's own id: the form's savedServerId can be stale (see
+    // resolveLiveProfile) and would name another profile as the source.
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const sourceProfileId = connectionParams.savedServerId
-      || activeSession?.connectionParams?.savedServerId
+    const sourceProfileId = liveConnectionParams.savedServerId
+      || activeSession?.savedServerId
       || null;
     const sourceFiles = remoteFiles.filter(f => selectedRemoteFiles.has(f.name));
     if (
@@ -9681,7 +9706,7 @@ const App: React.FC = () => {
     isConnected,
     sessions,
     activeSessionId,
-    connectionParams.savedServerId,
+    liveConnectionParams.savedServerId,
     activeUnifiedRemoteProfile,
     currentRemotePath,
     remoteFiles,
@@ -9714,8 +9739,7 @@ const App: React.FC = () => {
   // Handle sync nav dialog actions
   const handleSyncNavCreateFolder = async () => {
     if (!syncNavDialog) return;
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = (connectionParams.protocol || activeSession?.connectionParams?.protocol) as ProviderType | undefined;
+    const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
     const isProviderConn = usesProviderApi(protocol);
     try {
       if (syncNavDialog.isRemote) {
@@ -9772,8 +9796,7 @@ const App: React.FC = () => {
   // checkOverwrite and resetOverwriteSettings provided by useOverwriteCheck hook
 
   const getOverwriteDestination = (direction: FileBatchDirection, path: string) => {
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     return loadOverwriteDestination({
       direction,
       path,
@@ -9827,9 +9850,8 @@ const App: React.FC = () => {
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
 
-    // Check if we're using a Provider (get protocol from active session as fallback)
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    // Check if we're using a Provider (protocol of the live connection)
+    const protocol = liveConnectionParams.protocol;
     const isProvider = usesProviderApi(protocol);
     const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
     // True only when the file or folder actually landed: a "cut" paste deletes
@@ -9986,9 +10008,8 @@ const App: React.FC = () => {
     // True only when the file or folder actually landed (see downloadFile).
     let completed = false;
     try {
-      // Check if we're using a Provider (get protocol from active session as fallback)
-      const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+      // Check if we're using a Provider (protocol of the live connection)
+      const protocol = liveConnectionParams.protocol;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
@@ -10618,8 +10639,7 @@ const App: React.FC = () => {
 
   // Circuit breaker: attempt reconnection during batch transfer
   const attemptBatchReconnect = async (): Promise<boolean> => {
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     const isProvider = usesProviderApi(protocol);
 
     circuitBreaker.markReconnecting();
@@ -10674,8 +10694,7 @@ const App: React.FC = () => {
 
   // Resume batch after pause: attempt connection verify first
   const resumeBatch = async () => {
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     const isProvider = usesProviderApi(protocol);
 
     // Lightweight connection verify: warn on failure but still resume (CB will catch next error)
@@ -12061,8 +12080,7 @@ const App: React.FC = () => {
           for (const file of landed) {
             try {
               if (sourceIsRemote) {
-                const activeSession = sessions.find(s => s.id === activeSessionId);
-                const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+                const protocol = liveConnectionParams.protocol;
                 if (usesProviderApi(protocol)) {
                   await invoke('provider_delete_file', { path: file.path });
                 } else {
@@ -12089,8 +12107,7 @@ const App: React.FC = () => {
     else {
       if (operation === 'cut') {
         // Move files to target directory
-        const activeSession = sessions.find(s => s.id === activeSessionId);
-        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const protocol = liveConnectionParams.protocol;
         const useProvider = usesProviderApi(protocol) && protocol !== 'sftp';
         const isAeroVaultOverlay = targetIsRemote && !!aeroVaultOverlaySession?.sessionId;
 
@@ -12249,8 +12266,7 @@ const App: React.FC = () => {
     direction: FileBatchDirection,
     options: { cut?: boolean } = {},
   ): FileBatchSessionFlags => {
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     return {
       aeroVaultOverlay: !!aeroVaultOverlaySession?.sessionId,
       gitHostUpload: direction === 'upload' && (protocol === 'github' || protocol === 'gitlab'),
@@ -12268,7 +12284,7 @@ const App: React.FC = () => {
   ): Promise<FileBatchResult> => {
     const isDownload = direction === 'download';
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     const isProvider = usesProviderApi(protocol);
     const result: FileBatchResult = {
       sent: 0, completed: 0, failed: 0, skipped: 0, aborted: false, staged: false, succeededSources: [],
@@ -12553,8 +12569,7 @@ const App: React.FC = () => {
       }).filter(Boolean) as { path: string; file: LocalFile }[];
 
       if (filesToUpload.length > 0) {
-        const activeSession = sessions.find(s => s.id === activeSessionId);
-        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const protocol = liveConnectionParams.protocol;
         const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
         let batchCommitMessage: string | undefined;
 
@@ -13293,9 +13308,8 @@ const App: React.FC = () => {
     const performDelete = async () => {
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
-      // Get protocol from active session as fallback (outside loop for efficiency)
-      const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+      // Protocol of the live connection (outside loop for efficiency)
+      const protocol = liveConnectionParams.protocol;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
@@ -13577,8 +13591,7 @@ const App: React.FC = () => {
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
   const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
     const fileName = path.split(/[\\/]/).pop() || path;
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const protocol = liveConnectionParams.protocol;
     const isGitHubRepoMode = (protocol === 'github' && !path.startsWith('/.github-releases')) || protocol === 'gitlab';
 
     if (!isDir && isGitHubRepoMode && !commitMessage && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown') {
@@ -13662,9 +13675,8 @@ const App: React.FC = () => {
           const newPath = parentDir + '/' + newName;
 
           if (isRemote) {
-            // Get protocol from active session as fallback
-            const activeSession = sessions.find(s => s.id === activeSessionId);
-            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+            // Protocol of the live connection
+            const protocol = liveConnectionParams.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
@@ -13715,7 +13727,7 @@ const App: React.FC = () => {
   // Inline rename: start editing directly in the file list
   const startInlineRename = (path: string, name: string, isRemote: boolean) => {
     if (name === '..') return;
-    if (isRemote && connectionParams.protocol === 'immich') return;
+    if (isRemote && liveConnectionParams.protocol === 'immich') return;
     setInlineRename({ path, name, isRemote });
     setInlineRenameValue(name);
     // Focus input after render
@@ -13758,8 +13770,7 @@ const App: React.FC = () => {
       const newPath = parentDir + '/' + newName;
 
       if (isRemote) {
-        const activeSession = sessions.find(s => s.id === activeSessionId);
-        const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+        const protocol = liveConnectionParams.protocol;
         const isProvider = usesProviderApi(protocol);
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
@@ -13859,8 +13870,7 @@ const App: React.FC = () => {
         const newPath = parentDir + '/' + newName;
 
         if (isRemote) {
-          const activeSession = sessions.find(s => s.id === activeSessionId);
-          const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+          const protocol = liveConnectionParams.protocol;
           const isProvider = usesProviderApi(protocol);
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
@@ -13924,9 +13934,8 @@ const App: React.FC = () => {
         const logId = humanLog.logStart('MKDIR', { foldername: name, isRemote });
         try {
           if (isRemote) {
-            // Get protocol from active session as fallback
-            const activeSession = sessions.find(s => s.id === activeSessionId);
-            const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+            // Protocol of the live connection
+            const protocol = liveConnectionParams.protocol;
             const isProvider = usesProviderApi(protocol);
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
@@ -13981,11 +13990,11 @@ const App: React.FC = () => {
     const downloadLabel = count > 1 ? t('contextMenu.downloadCount', { count }) : t('common.download');
     const filesToUse = Array.from(selection);
 
-    // Get protocol from active session as fallback (for context menu operations)
+    // The live connection's facts (for context menu operations)
     const activeSession = sessions.find(s => s.id === activeSessionId);
-    const currentProtocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-    const currentServer = connectionParams.server || activeSession?.connectionParams?.server;
-    const currentUsername = connectionParams.username || activeSession?.connectionParams?.username;
+    const currentProtocol = liveConnectionParams.protocol;
+    const currentServer = liveConnectionParams.server;
+    const currentUsername = liveConnectionParams.username;
     const filePrivacy = (file.permissions || '').toLowerCase();
     const isFileLuContext = currentProtocol === 'filelu' && count === 1;
     const isFileLuPrivate = isFileLuContext && filePrivacy === 'private';
@@ -14403,7 +14412,7 @@ const App: React.FC = () => {
     const hasNativeShareLink = currentProtocol && supportsNativeShareLink(currentProtocol);
     if (hasNativeShareLink) {
       // Resolve share link icon from provider logo map (supports S3/WebDAV sub-providers)
-      const shareProviderId = connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId;
+      const shareProviderId = liveConnectionParams.providerId;
       const shareIcon = (() => {
         // Try sub-provider first (e.g. mega-s4, felicloud, backblaze)
         if (shareProviderId) {
@@ -15126,7 +15135,7 @@ const App: React.FC = () => {
     }
 
     const count = selection.size;
-    const _activeProto = connectionParams.protocol || sessions.find(s => s.id === activeSessionId)?.connectionParams?.protocol;
+    const _activeProto = liveConnectionParams.protocol;
     const isGitHub = _activeProto === 'github' || _activeProto === 'gitlab';
     const uploadLabel = isGitHub
       ? (count > 1 ? t('github.commitFiles', { count }) : t('github.commit'))
@@ -15830,8 +15839,7 @@ const App: React.FC = () => {
     e.stopPropagation();
     setSelectedRemoteFiles(new Set());
 
-    const activeSession = sessions.find(s => s.id === activeSessionId);
-    const currentProtocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+    const currentProtocol = liveConnectionParams.protocol;
 
     const items: ContextMenuItem[] = [
       {
@@ -16037,9 +16045,8 @@ const App: React.FC = () => {
     if (file.is_dir) {
       // Use file.path for providers (WebDAV/S3) that need absolute paths
       // file.name works for FTP which handles relative paths
-      // Get protocol from active session as fallback
-      const activeSession = sessions.find(s => s.id === activeSessionId);
-      const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+      // Protocol of the live connection
+      const protocol = liveConnectionParams.protocol;
       const isProvider = usesProviderApi(protocol);
       const targetPath = isProvider ? file.path : file.name;
       await changeRemoteDirectory(targetPath);
@@ -17632,7 +17639,7 @@ const App: React.FC = () => {
         )}
         {showNextcloudTrash && (
           <NextcloudTrashManager
-            providerName={(connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId) === 'felicloud' ? 'Felicloud' : 'Nextcloud'}
+            providerName={(liveConnectionParams.providerId) === 'felicloud' ? 'Felicloud' : 'Nextcloud'}
             onClose={() => setShowNextcloudTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
@@ -18625,7 +18632,7 @@ const App: React.FC = () => {
                             .map((f) => ({ name: f.name, path: `${base}${f.name}` }));
                         }}
                         rootIcon={(() => {
-                          const protocol = connectionParams.protocol || 'ftp';
+                          const protocol = liveConnectionParams.protocol || 'ftp';
                           switch (protocol) {
                             case 's3': return <Cloud size={14} />;
                             case 'webdav': return <Server size={14} />;
@@ -18813,7 +18820,7 @@ const App: React.FC = () => {
                     )}
                     {isConnected && (() => {
                       const proto = getActiveProviderProtocol();
-                      const activeProviderId = connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId;
+                      const activeProviderId = liveConnectionParams.providerId;
                       const isAzure = proto === 'azure' || (proto === 's3' && activeProviderId === 'azure');
                       const trashMap: Record<string, () => void> = {
                         zohoworkdrive: () => setShowZohoTrash(true),
@@ -18848,7 +18855,7 @@ const App: React.FC = () => {
                       }
                       // Nextcloud trash API only works on Nextcloud/FeliCloud WebDAV servers
                       if (proto === 'webdav') {
-                        const pid = connectionParams.providerId || sessions.find(s => s.id === activeSessionId)?.providerId;
+                        const pid = liveConnectionParams.providerId;
                         if (pid === 'nextcloud' || pid === 'felicloud') {
                           handler = () => setShowNextcloudTrash(true);
                         }
@@ -19887,21 +19894,21 @@ const App: React.FC = () => {
           onClearFile={() => setDevToolsPreviewFile(null)}
           editorTheme={getMonacoTheme(theme, isDark)}
           appTheme={getEffectiveTheme(theme, isDark)}
-          providerType={connectionParams.protocol}
+          providerType={liveConnectionParams.protocol}
           isConnected={isConnected}
           selectedFiles={Array.from(selectedRemoteFiles)}
-          serverHost={connectionParams.server}
-          serverPort={connectionParams.port}
-          serverUser={connectionParams.username}
+          serverHost={liveConnectionParams.server}
+          serverPort={liveConnectionParams.port}
+          serverUser={liveConnectionParams.username}
           activeFilePanel={activePanel}
           isCloudConnection={isCloudActive}
-          sshConnection={isConnected && connectionParams.protocol === 'sftp' ? {
-            host: connectionParams.server.split(':')[0],
-            port: connectionParams.port || 22,
-            username: connectionParams.username,
-            password: connectionParams.password || undefined,
-            privateKeyPath: connectionParams.options?.private_key_path,
-            keyPassphrase: connectionParams.options?.key_passphrase,
+          sshConnection={isConnected && liveConnectionParams.protocol === 'sftp' ? {
+            host: liveConnectionParams.server.split(':')[0],
+            port: liveConnectionParams.port || 22,
+            username: liveConnectionParams.username,
+            password: liveConnectionParams.password || undefined,
+            privateKeyPath: liveConnectionParams.options?.private_key_path,
+            keyPassphrase: liveConnectionParams.options?.key_passphrase,
           } : null}
           onCheckHostKey={checkSftpHostKey}
           onFileMutation={(target) => {
@@ -19955,9 +19962,8 @@ const App: React.FC = () => {
               />
             ) : undefined}
             connectionSecurity={isConnected ? (() => {
-              const activeSession = sessions.find(s => s.id === activeSessionId);
-              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
-              const opts = connectionParams.options ?? activeSession?.connectionParams?.options;
+              const protocol = liveConnectionParams.protocol;
+              const opts = liveConnectionParams.options;
               const verifyCert = opts?.verifyCert ?? true;
               if (protocol === 'ftp') {
                 const tlsMode = opts?.tlsMode ?? 'explicit';
@@ -19971,16 +19977,15 @@ const App: React.FC = () => {
               }
               // A3-03: WebDAV over HTTP is insecure: credentials sent in plaintext
               if (protocol === 'webdav') {
-                const server = connectionParams.server || activeSession?.connectionParams?.server || '';
+                const server = liveConnectionParams.server || '';
                 if (server.startsWith('http://')) return 'insecure' as const;
               }
               return 'secure' as const;
             })() : undefined}
             secureProtocol={isConnected ? (() => {
-              const activeSession = sessions.find(s => s.id === activeSessionId);
-              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+              const protocol = liveConnectionParams.protocol;
               if (protocol === 'ftp') {
-                const tlsMode = connectionParams.options?.tlsMode ?? activeSession?.connectionParams?.options?.tlsMode ?? 'explicit';
+                const tlsMode = liveConnectionParams.options?.tlsMode ?? 'explicit';
                 if (tlsMode === 'none') return undefined;
                 return 'TLS';
               }
@@ -19990,9 +19995,9 @@ const App: React.FC = () => {
               return 'HTTPS';
             })() : undefined}
             serverInfo={isConnected ? (() => {
-              // Get protocol from active session as fallback
+              // Protocol of the live connection
               const activeSession = sessions.find(s => s.id === activeSessionId);
-              const protocol = connectionParams.protocol || activeSession?.connectionParams?.protocol;
+              const protocol = liveConnectionParams.protocol;
               if (protocol === 'googledrive') return 'Google Drive';
               if (protocol === 'dropbox') return 'Dropbox';
               if (protocol === 'onedrive') return 'OneDrive';
@@ -20003,7 +20008,7 @@ const App: React.FC = () => {
               if (protocol === 'mega') return 'MEGA';
               if (protocol === 's3') {
                 // Show bucket name or short hostname instead of full URL
-                const s3Server = connectionParams.server || activeSession?.connectionParams?.server || '';
+                const s3Server = liveConnectionParams.server || '';
                 try {
                   const url = new URL(s3Server.startsWith('http') ? s3Server : `https://${s3Server}`);
                   const host = url.hostname;
@@ -20013,8 +20018,8 @@ const App: React.FC = () => {
                   return `S3: ${host.length > 30 ? host.slice(0, 27) + '...' : host}`;
                 } catch { return 'S3'; }
               }
-              const server = connectionParams.server || activeSession?.connectionParams?.server;
-              const username = connectionParams.username || activeSession?.connectionParams?.username;
+              const server = liveConnectionParams.server;
+              const username = liveConnectionParams.username;
               // For WebDAV-based protocols, extract hostname from full URL
               if (protocol === 'webdav' && server) {
                 try {
@@ -20072,7 +20077,7 @@ const App: React.FC = () => {
             onScanUsed={() => { void scanUsedStorage(); }}
             onCancelUsedScan={cancelUsedStorageScan}
             usedScanStatus={usedScanStatus}
-            usedScanNote={isFilenDesktopBridge(activeProviderId(sessions.find(s => s.id === activeSessionId)?.providerId, connectionParams.providerId))
+            usedScanNote={isFilenDesktopBridge(liveConnectionParams.providerId)
               ? t('statusBar.filenBridgeAccountTotal')
               : undefined}
           />
@@ -20087,9 +20092,10 @@ const App: React.FC = () => {
             onClose={() => setShowDebugPanel(false)}
             isConnected={isConnected}
             connectionParams={{
-              server: connectionParams?.server || '',
-              username: connectionParams?.username || '',
-              protocol: connectionParams?.protocol || 'sftp',
+              server: liveConnectionParams.server || '',
+              username: liveConnectionParams.username || '',
+              // No default: an unknown protocol shows as unknown ('-').
+              protocol: liveConnectionParams.protocol,
             }}
             currentRemotePath={currentRemotePath}
             appTheme={getEffectiveTheme(theme, isDark)}

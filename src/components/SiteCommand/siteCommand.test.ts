@@ -48,12 +48,6 @@ describe('SITE command availability', () => {
             expect(siteCommandAvailable(true, other)).toBe(false);
         }
     });
-
-    it('follows the active session, not the Quick Connect form', () => {
-        expect(siteCommandAvailable(true, 'sftp', 'ftp')).toBe(false);
-        expect(siteCommandAvailable(true, 'ftps', 'webdav')).toBe(true);
-        expect(siteCommandAvailable(true, undefined, 'ftp')).toBe(true);
-    });
 });
 
 describe('SITE session memory', () => {

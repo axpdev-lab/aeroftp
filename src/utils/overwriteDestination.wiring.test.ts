@@ -71,6 +71,7 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
   const context = {
     invoke, checkOverwrite, loadOverwriteDestination: resolveDestination, resetOverwriteSettings,
     sessions: [{ id: 'A', connectionParams: { protocol } }], activeSessionId: 'A', connectionParams: { protocol },
+    liveConnectionParams: { protocol },
     usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
     localFiles: direction === 'upload' ? [file('a.bin', 100)] : panel,
     remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,

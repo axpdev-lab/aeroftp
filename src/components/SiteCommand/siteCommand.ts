@@ -22,12 +22,12 @@ export interface SiteCommandReport {
 
 /**
  * Whether the SITE entries are active: a connected session whose protocol is
- * FTP or FTPS. The active session's own protocol wins over the Quick Connect
- * form, which can hold another protocol while a saved session is open.
- * Everywhere else (no session, SFTP, cloud providers) the entries are off.
+ * FTP or FTPS. `protocol` is the live connection's (App.tsx passes
+ * `liveConnectionParams.protocol`, where the active session wins over the
+ * Quick Connect form: see resolveLiveConnectionParams). Everywhere else (no
+ * connection, SFTP, cloud providers) the entries are off.
  */
-export function siteCommandAvailable(isConnected: boolean, sessionProtocol?: string, formProtocol?: string): boolean {
-    const protocol = sessionProtocol || formProtocol;
+export function siteCommandAvailable(isConnected: boolean, protocol?: string): boolean {
     return isConnected && (protocol === 'ftp' || protocol === 'ftps');
 }
 
