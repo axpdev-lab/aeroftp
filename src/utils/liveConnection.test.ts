@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ConnectionParams } from '../types';
-import { resolveLiveConnectionParams } from './liveConnection';
+import { isSameConnection, resolveLiveConnectionParams } from './liveConnection';
 
 const EMPTY_FORM: ConnectionParams = { server: '', username: '', password: '' };
 
@@ -67,5 +67,69 @@ describe('resolveLiveConnectionParams', () => {
         // An id that names no tab is no active session: it must not erase
         // what the app is connected with.
         expect(resolveLiveConnectionParams([{ id: 's1', connectionParams: webdav }], 'gone', sftp)).toBe(sftp);
+    });
+});
+
+describe('isSameConnection', () => {
+    const s3: ConnectionParams = {
+        server: 's3.example.test',
+        username: 'AKIAEXAMPLE',
+        password: 'secret',
+        protocol: 's3',
+        options: { bucket: 'photos', region: 'eu-west-1', endpoint: 'https://s3.example.test' },
+        savedServerId: 'profile-photos',
+    };
+
+    it('is false for another bucket on the same host and account', () => {
+        // The AeroCloud case: a host, protocol and username check took the
+        // live session for the cloud profile and synced on the wrong bucket.
+        const otherBucket = { ...s3, options: { ...s3.options, bucket: 'backups' }, savedServerId: 'profile-backups' };
+        expect(isSameConnection(s3, otherBucket)).toBe(false);
+    });
+
+    it('is false for every option that chooses the storage', () => {
+        const differing: Array<Record<string, unknown>> = [
+            { region: 'us-east-1' },
+            { endpoint: 'https://other.example.test' },
+            { container: 'archive' },
+            { githubBranch: 'release' },
+            { drive_id: '42' },
+            { roleArn: 'arn:aws:iam::123456789012:role/other' },
+            { pathStyle: true },
+        ];
+        for (const change of differing) {
+            const target = { ...s3, options: { ...s3.options, ...change } };
+            expect(isSameConnection(s3, target), JSON.stringify(change)).toBe(false);
+        }
+    });
+
+    it('is false for another protocol, host, port or account', () => {
+        expect(isSameConnection(s3, { ...s3, protocol: 'webdav' })).toBe(false);
+        expect(isSameConnection(s3, { ...s3, server: 's3.other.test' })).toBe(false);
+        expect(isSameConnection(sftp, { ...sftp, port: 2222 })).toBe(false);
+        expect(isSameConnection(s3, { ...s3, username: 'AKIAOTHER' })).toBe(false);
+    });
+
+    it('is true for the same target opened with another password, profile or one-shot code', () => {
+        const live = {
+            ...s3,
+            password: 'rotated',
+            savedServerId: 'profile-duplicate',
+            options: { ...s3.options, roleMfaTokenCode: '123456', sessionToken: 'tok', session_expires_at: 1 },
+        };
+        expect(isSameConnection(live, s3)).toBe(true);
+    });
+
+    it('reads a server spelled host:port with that port as the host', () => {
+        // My Servers keeps host and port apart; AeroCloud builds host:port.
+        const live: ConnectionParams = { ...sftp, server: 'sftp.example.test', port: 2222 };
+        const cloud: ConnectionParams = { ...sftp, server: 'sftp.example.test:2222', port: 2222 };
+        expect(isSameConnection(live, cloud)).toBe(true);
+    });
+
+    it('reads absent, null and empty option values as the same absence', () => {
+        const live = { ...webdav, options: { webdavScheme: undefined, accountName: '' } } as unknown as ConnectionParams;
+        const target = { ...webdav, options: { accountName: null } } as unknown as ConnectionParams;
+        expect(isSameConnection(live, target)).toBe(true);
     });
 });

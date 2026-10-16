@@ -542,7 +542,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { resolveLiveConnectionParams } from './utils/liveConnection';
+import { isSameConnection, resolveLiveConnectionParams } from './utils/liveConnection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
 // aborts an in-progress connection (Esc / "still connecting" Cancel). The
@@ -6333,11 +6333,13 @@ const App: React.FC = () => {
       setRemoteListLoading(true);
       setRemoteListReason(listingReason(overrideScopePath || currentRemotePath));
     }
+    // The protocol of this listing: the override when a connect passes the
+    // protocol it is opening (the session it replaces is still the active one
+    // until the connect creates its own), else the live connection's. The
+    // error path below reads it too.
+    const protocol = (overrideProtocol || liveConnectionParams.protocol) as ProviderType | undefined;
     try {
       // Check if we're connected to a Provider (OAuth, S3, WebDAV)
-      // The override when a connect passes the protocol it is opening, else
-      // the live connection's.
-      const protocol = (overrideProtocol || liveConnectionParams.protocol) as ProviderType | undefined;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
       logger.debug('[loadRemoteFiles] protocol:', protocol, 'isProvider:', isProvider, 'override:', overrideProtocol);
@@ -6416,7 +6418,7 @@ const App: React.FC = () => {
       // Gvfs-backed MTP: mount vanishes on unplug; raw IO error is useless.
       // Card "connected" ends; attach-dot is driven separately by device list.
       if (
-        liveConnectionParams.protocol === 'mtp'
+        protocol === 'mtp'
         && mtpGvfsMountPathRef.current
         && (isGvfsMtpPath(mtpGvfsMountPathRef.current)
           || /not found|no such file|not a directory|not connected|not available/i.test(String(error)))
@@ -8123,7 +8125,7 @@ const App: React.FC = () => {
         // Pass protocol explicitly to avoid stale state from previous provider session
         await changeRemoteDirectory(ftpResolvedRemoteDir, effectiveParams.protocol || 'ftp');
       } else {
-        ftpResponse = await loadRemoteFiles();
+        ftpResponse = await loadRemoteFiles(effectiveParams.protocol || 'ftp');
       }
       // Both branches absorb an aborted listing (changeRemoteDirectory returns
       // void, loadRemoteFiles returns null), so the epoch is what stops us from
@@ -9133,13 +9135,14 @@ const App: React.FC = () => {
 
         // The live connection, not the form: after a saved-profile connect the
         // form is empty, and the servers screen can fill it with another
-        // profile. The account is part of "same": one host can serve several.
-        const currentServer = liveConnectionParams.server;
-        const isSameServer = currentServer === cloudServerString
-          && liveConnectionParams.protocol === protocol
-          && (liveConnectionParams.username || '') === connParams.username;
+        // profile. "Same" is the whole target, not the host: one host serves
+        // several accounts, and one S3 account several buckets.
+        const isSameServer = isSameConnection(
+          normalizeProviderConnectionParams(liveConnectionParams),
+          normalizeProviderConnectionParams(connParams),
+        );
 
-        logger.debug(`Current: ${currentServer} (${liveConnectionParams.protocol}), Cloud: ${cloudServerString} (${protocol}), Same: ${isSameServer}`);
+        logger.debug(`Current: ${liveConnectionParams.server} (${liveConnectionParams.protocol}), Cloud: ${cloudServerString} (${protocol}), Same: ${isSameServer}`);
 
         // Save current session state before switching
         const capturedSessionId = activeSessionId;
@@ -18206,7 +18209,7 @@ const App: React.FC = () => {
                     // Pass the protocol explicitly to avoid using stale state from previous session
                     await connectScope.step(() => changeRemoteDirectory(ftpResolvedInitialPath, params.protocol || 'ftp'));
                   } else {
-                    savedFtpResponse = await connectScope.step(() => loadRemoteFiles());
+                    savedFtpResponse = await connectScope.step(() => loadRemoteFiles(params.protocol || 'ftp'));
                   }
                   if (savedFtpResponse) {
                     logListingComplete(savedFtpResponse.current_path || '/', savedFtpResponse.files?.length || 0);

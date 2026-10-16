@@ -105,3 +105,75 @@ describe('in-session readers use the live connection, not the connection form', 
         expect(APP.match(/protocol\s*(\|\||\?\?)\s*'sftp'/g) ?? []).toEqual([]);
     });
 });
+
+/** A function, or a call that wraps one (`asConnectPhase(async () => ...)`, `useCallback(...)`). */
+function isFunctionLike(node: unknown): boolean {
+    if (!isNode(node)) return false;
+    if (node.type === 'ArrowFunctionExpression' || node.type === 'FunctionExpression') return true;
+    return node.type === 'CallExpression' && ((node.arguments as Node[]) ?? []).some(isFunctionLike);
+}
+
+/** The name of a function-valued node: a const, a function declaration or a JSX handler prop. */
+function functionName(node: Node, parent: Node | null): string | null {
+    if (node.type === 'VariableDeclarator' && isFunctionLike(node.init)) return contextName(node, parent);
+    if (node.type === 'FunctionDeclaration') return contextName(node, parent);
+    if (node.type === 'JSXAttribute' && isFunctionLike((node.value as Node | null)?.expression)) return contextName(node, parent);
+    return null;
+}
+
+const calleeName = (node: Node) => (node.callee as Node).type === 'Identifier' ? (node.callee as unknown as { name: string }).name : null;
+
+interface Listing { fn: string; line: number; protocolArg: string | null }
+
+/**
+ * Every `loadRemoteFiles` call in a function that opens a connection (calls
+ * `runConnect`), with the source of its first argument.
+ */
+function connectListings(): { connectFunctions: string[]; listings: Listing[] } {
+    const program = parseAst(APP, { lang: 'tsx' }, 'App.tsx') as unknown as Node;
+    const connecting = new Set<string>();
+    const calls: Listing[] = [];
+    const visit = (node: Node, parent: Node | null, fns: string[]) => {
+        const name = functionName(node, parent);
+        const next = name ? [...fns, name] : fns;
+        if (node.type === 'CallExpression' && next.length > 0) {
+            if (calleeName(node) === 'runConnect') connecting.add(next[next.length - 1]);
+            if (calleeName(node) === 'loadRemoteFiles') {
+                const first = ((node.arguments as Node[]) ?? [])[0];
+                const protocolArg = first && !(first.type === 'Identifier' && (first as unknown as { name: string }).name === 'undefined')
+                    ? APP.slice(first.start, first.end)
+                    : null;
+                for (const fn of next) calls.push({ fn, line: lineOf(node.start), protocolArg });
+            }
+        }
+        for (const value of Object.values(node)) {
+            if (Array.isArray(value)) value.filter(isNode).forEach(child => visit(child, node, next));
+            else if (isNode(value)) visit(value, node, next);
+        }
+    };
+    visit(program, null, []);
+    return { connectFunctions: [...connecting].sort(), listings: calls.filter(call => connecting.has(call.fn)) };
+}
+
+describe('a connect lists the connection it opens', () => {
+    /**
+     * A connect lists before it creates its session tab, so the tab it
+     * replaces is still the active session and `liveConnectionParams` is
+     * still that tab's. A listing there that does not pass the protocol it is
+     * opening takes the old session's: an FTP connect from the servers screen
+     * over an S3 session listed through the provider API.
+     */
+    it('passes the connecting protocol to every listing in a function that opens a connection', () => {
+        const { connectFunctions, listings } = connectListings();
+        expect(connectFunctions, 'the scan finds the connect flows').toEqual(expect.arrayContaining(['connectToFtpImpl', '<IntroHub onSavedServerConnect>']));
+        expect(listings.length, 'the connect flows list the remote folder').toBeGreaterThan(0);
+        const unnamed = listings.filter(call => !call.protocolArg).map(call => `App.tsx:${call.line} in ${call.fn}`);
+        expect(unnamed).toEqual([]);
+    });
+
+    it('decides whether AeroCloud can keep the live backend on the whole target', () => {
+        const at = APP.indexOf('const isSameServer');
+        expect(at, 'the AeroCloud reuse check exists').toBeGreaterThan(-1);
+        expect(APP.slice(at, APP.indexOf(';', at))).toMatch(/^const isSameServer = isSameConnection\(/);
+    });
+});
