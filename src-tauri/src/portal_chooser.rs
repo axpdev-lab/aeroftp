@@ -46,14 +46,27 @@ pub fn chooser_unavailable_reason() -> Option<String> {
 
 #[cfg(target_os = "linux")]
 pub fn chooser_unavailable_reason() -> Option<String> {
+    chooser_unavailable_reason_with(
+        std::env::var("GTK_USE_PORTAL").ok().as_deref(),
+        portal_is_reachable,
+    )
+}
+
+/// Keep the environment read at the boundary so tests can exercise the choice
+/// without changing process-wide state or querying the user's session bus.
+#[cfg(target_os = "linux")]
+fn chooser_unavailable_reason_with(
+    gtk_use_portal: Option<&str>,
+    probe: impl FnOnce() -> Option<bool>,
+) -> Option<String> {
     // A user who set GTK_USE_PORTAL=0 has deliberately asked for the in-process
     // chooser. It is their call and it does work, so nothing here applies. Only
     // an explicit "0" counts: `lib.rs` sets "1" when the variable is absent.
-    if std::env::var("GTK_USE_PORTAL").as_deref() == Ok("0") {
+    if gtk_use_portal == Some("0") {
         return None;
     }
 
-    match portal_is_reachable() {
+    match probe() {
         Some(true) => None,
         Some(false) => Some("portal-missing".to_string()),
         // The bus could not be questioned. Say nothing rather than accuse the
@@ -169,41 +182,38 @@ pub const CHOOSER_CHECKED_LOG: &str = "chooser checked: presentable";
 mod tests {
     use super::*;
 
-    /// Held by every test that writes or depends on `GTK_USE_PORTAL`.
-    ///
-    /// The test harness runs tests on several threads, so "restored immediately
-    /// after" is not on its own enough: a concurrent test reading the variable can
-    /// land inside the window where it is set. `portal_chooser.rs` is the only
-    /// place in the crate that reads it during a test run (`lib.rs` writes it once
-    /// at startup, which no test reaches), so serialising the tests in this module
-    /// is what makes the claim true rather than merely likely.
-    #[cfg(target_os = "linux")]
-    static PORTAL_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// Take the guard, surviving a poisoned lock: a panic in one test must fail
-    /// that test, not turn every later one into a different failure.
-    #[cfg(target_os = "linux")]
-    fn lock_portal_env() -> std::sync::MutexGuard<'static, ()> {
-        PORTAL_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// The user override wins on every platform, and short-circuits before any
+    /// The user override wins and short-circuits before any
     /// bus traffic. Pinned because getting this wrong would nag exactly the
     /// users who chose the other chooser on purpose.
     #[test]
     #[cfg(target_os = "linux")]
     fn an_explicit_opt_out_reports_no_problem() {
-        let _guard = lock_portal_env();
-        // SAFETY: the guard above keeps every other reader of this variable in the
-        // crate out for the duration, and the value is restored before it drops.
-        let previous = std::env::var_os("GTK_USE_PORTAL");
-        unsafe { std::env::set_var("GTK_USE_PORTAL", "0") };
-        let reason = chooser_unavailable_reason();
-        match previous {
-            Some(v) => unsafe { std::env::set_var("GTK_USE_PORTAL", v) },
-            None => unsafe { std::env::remove_var("GTK_USE_PORTAL") },
-        }
+        let reason = chooser_unavailable_reason_with(Some("0"), || {
+            panic!("an explicit opt-out must not query the bus")
+        });
         assert_eq!(reason, None, "GTK_USE_PORTAL=0 is a deliberate choice");
+    }
+
+    /// Absence and every other value keep the portal check enabled. A missing
+    /// portal is the only verdict that warns; an inconclusive bus stays quiet.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn only_an_explicit_zero_bypasses_the_portal_check() {
+        for setting in [None, Some("1"), Some(""), Some("00"), Some("false")] {
+            for (reachable, expected) in [
+                (Some(true), None),
+                (Some(false), Some("portal-missing".to_string())),
+                (None, None),
+            ] {
+                let mut probed = false;
+                let reason = chooser_unavailable_reason_with(setting, || {
+                    probed = true;
+                    reachable
+                });
+                assert!(probed, "setting {setting:?} must query the bus");
+                assert_eq!(reason, expected, "setting {setting:?}, bus {reachable:?}");
+            }
+        }
     }
 
     /// On the platforms with a guaranteed native picker there is nothing to
@@ -221,20 +231,11 @@ mod tests {
     /// The pin is `block_on`, and it acts at **compile time**: it only accepts a
     /// future, so making `chooser_unavailable` synchronous again stops this test
     /// building instead of failing an assertion someone can delete. The verdict
-    /// itself belongs to the four tests around this one, so what is asserted here
+    /// itself belongs to the tests around this one, so what is asserted here
     /// is the other half: the wrapper only logs, it does not change the answer.
-    ///
-    /// Deliberately a blocking `#[test]` driving its own runtime rather than a
-    /// `#[tokio::test]` that awaits. Both readings must see the same
-    /// `GTK_USE_PORTAL`, so the guard has to span them, and holding a
-    /// `std::sync::MutexGuard` across an `.await` is `clippy::await_holding_lock`
-    /// for a real reason: the future can be parked on one worker and resumed on
-    /// another while the guard sits there. `block_on` keeps the whole exchange on
-    /// this thread, so the lock is held only while this thread runs.
     #[test]
     #[cfg(target_os = "linux")]
     fn the_command_stays_off_the_main_thread() {
-        let _guard = lock_portal_env();
         let rt = tokio::runtime::Runtime::new().expect("test runtime");
         let from_command = rt.block_on(chooser_unavailable());
         assert_eq!(
@@ -244,7 +245,7 @@ mod tests {
         );
     }
 
-    /// The same pin on the platforms where there is no environment to serialise.
+    /// The same pin on the platforms with native pickers.
     #[test]
     #[cfg(not(target_os = "linux"))]
     fn the_command_stays_off_the_main_thread() {
