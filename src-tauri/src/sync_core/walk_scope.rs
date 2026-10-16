@@ -214,6 +214,18 @@ pub fn walk_path_key(path: &str) -> String {
     }
 }
 
+/// Keep the first of the items that share a path identity ([`walk_path_key`])
+/// and drop the rest; returns how many were dropped. A walk lists each folder
+/// once, so a path met twice comes from a defective listing; a dedupe that
+/// kept both would group a file with itself and delete it as its own
+/// duplicate, which removes the only copy.
+pub fn retain_first_per_path<T>(items: &mut Vec<T>, path: impl Fn(&T) -> &str) -> usize {
+    let before = items.len();
+    let mut seen: HashSet<String> = HashSet::with_capacity(before);
+    items.retain(|item| seen.insert(walk_path_key(path(item))));
+    before - items.len()
+}
+
 /// The parent a listing entry names: the entry's path without its last
 /// segment, when that segment is the entry's own name. An entry whose path
 /// does not end in its name (ImageKit's `/` for every folder) names nothing.
@@ -424,6 +436,19 @@ mod tests {
         assert_eq!(listed_parent("photos", "/"), None);
         assert_eq!(listed_parent("a.txt", "/x/a.txt").as_deref(), Some("/x"));
         assert_eq!(listed_parent("a.txt", "/a.txt").as_deref(), Some("/"));
+    }
+
+    #[test]
+    fn a_path_met_twice_is_kept_once() {
+        let mut files = vec![
+            ("/a/x.txt", 1),
+            ("a/x.txt", 2),
+            ("/a//x.txt/", 3),
+            ("/a/X.txt", 4),
+            ("/b/x.txt", 5),
+        ];
+        assert_eq!(retain_first_per_path(&mut files, |file| file.0), 2);
+        assert_eq!(files, [("/a/x.txt", 1), ("/a/X.txt", 4), ("/b/x.txt", 5)]);
     }
 
     /// The default roots: everything under the account root is under them,

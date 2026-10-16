@@ -2598,6 +2598,33 @@ async fn touch(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     }))
 }
 
+/// Whether a remote walk lists `child`, a folder the listing of `listed`
+/// named (see [`crate::sync_core::WalkScope`]). A folder that points back at
+/// the folder being listed or above it, or outside the walk root, is counted
+/// in `scan_errors`: what it holds went unseen. A folder already listed is
+/// simply not listed again, so nothing under it is collected twice.
+fn walk_admits(
+    scope: &mut crate::sync_core::WalkScope,
+    listed: &str,
+    child: &str,
+    scan_errors: &mut u32,
+    tool: &str,
+) -> bool {
+    use crate::sync_core::WalkStep;
+    match scope.admit(listed, child) {
+        WalkStep::Follow => true,
+        WalkStep::AlreadyListed => false,
+        step => {
+            *scan_errors += 1;
+            tracing::warn!(
+                "{tool}: not listing {child:?}, named in the listing of {listed}: {}",
+                step.reason()
+            );
+            false
+        }
+    }
+}
+
 async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let root = normalize_path_arg(args, "path", "/");
@@ -2609,6 +2636,7 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut orphans: Vec<(String, u64)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(root.clone(), 0)];
     let mut scan_errors: u32 = 0;
+    let mut scope = crate::sync_core::WalkScope::new(&root);
 
     while let Some((dir, depth)) = dirs.pop() {
         if depth >= MAX_BFS_DEPTH {
@@ -2620,9 +2648,20 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         crate::ai_core::tools::check_cancelled(ctx)?;
         match backend.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for entry in entries {
                     if entry.is_dir {
-                        if entry.is_walkable_dir() {
+                        if entry.is_walkable_dir()
+                            && walk_admits(
+                                &mut scope,
+                                &dir,
+                                &entry.path,
+                                &mut scan_errors,
+                                "cleanup",
+                            )
+                        {
                             dirs.push((entry.path.clone(), depth + 1));
                         }
                     } else if entry.name.ends_with(".aerotmp") || entry.path.ends_with(".aerotmp") {
@@ -2637,6 +2676,7 @@ async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         }
     }
 
+    crate::sync_core::retain_first_per_path(&mut orphans, |(path, _)| path.as_str());
     let total_bytes: u64 = orphans.iter().map(|(_, s)| *s).sum();
 
     if dry_run || orphans.is_empty() {
@@ -3070,6 +3110,7 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut files: Vec<(String, u64, Option<String>)> = Vec::new();
     let mut dirs: Vec<(String, usize)> = vec![(root.clone(), 0)];
     let mut scan_errors: u32 = 0;
+    let mut scope = crate::sync_core::WalkScope::new(&root);
     while let Some((dir, depth)) = dirs.pop() {
         if depth >= MAX_BFS_DEPTH || files.len() >= MAX_BFS_ENTRIES {
             continue;
@@ -3077,9 +3118,14 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
         crate::ai_core::tools::check_cancelled(ctx)?;
         match backend.list(&dir).await {
             Ok(entries) => {
+                if depth == 0 {
+                    scope.learn_root_listing(&entries);
+                }
                 for e in entries {
                     if e.is_dir {
-                        if e.is_walkable_dir() {
+                        if e.is_walkable_dir()
+                            && walk_admits(&mut scope, &dir, &e.path, &mut scan_errors, "dedupe")
+                        {
                             dirs.push((e.path, depth + 1));
                         }
                     } else {
@@ -3092,6 +3138,16 @@ async fn dedupe(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 tracing::debug!("dedupe: failed to list {}: {}", dir, e);
             }
         }
+    }
+
+    // A file is never its own duplicate: whatever a listing did, each path is
+    // grouped once, so the copies a group deletes are always other files.
+    let repeated =
+        crate::sync_core::retain_first_per_path(&mut files, |(path, _, _)| path.as_str());
+    if repeated > 0 {
+        tracing::warn!(
+            "dedupe: {repeated} path(s) were listed more than once and are counted once"
+        );
     }
 
     let mut hash_errors: u32 = 0;
@@ -5737,6 +5793,157 @@ mod tests {
                 out.is_err() && msg.contains("denied"),
                 "{tool} read ~/.ssh: {msg}"
             );
+        }
+    }
+
+    /// Swift's old listing: `/root/d1` held `d1` again at `/root/d1`, the
+    /// folder inside itself. One copy of each file, `c.aerotmp` included.
+    fn self_listing_backend() -> FakeBackend {
+        let mut tree = std::collections::HashMap::new();
+        tree.insert(
+            "/root".to_string(),
+            vec![entry("/root/a.txt", false, 4), entry("/root/d1", true, 0)],
+        );
+        tree.insert(
+            "/root/d1".to_string(),
+            vec![
+                entry("/root/d1", true, 0),
+                entry("/root/d1/b.txt", false, 4),
+                entry("/root/d1/c.aerotmp", false, 4),
+            ],
+        );
+        let downloads = std::collections::HashMap::from([
+            ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+            ("/root/d1/b.txt".to_string(), b"bbbb".to_vec()),
+            ("/root/d1/c.aerotmp".to_string(), b"cccc".to_vec()),
+        ]);
+        FakeBackend {
+            tree,
+            downloads,
+            ..FakeBackend::sample()
+        }
+    }
+
+    /// ImageKit's old listing: every folder with the path `/`, at the account
+    /// root. One copy of each file.
+    fn root_spelled_folders_backend() -> FakeBackend {
+        let mut folder = entry("/", true, 0);
+        folder.name = "d1".to_string();
+        let mut tree = std::collections::HashMap::new();
+        tree.insert(
+            "/".to_string(),
+            vec![
+                entry("/a.txt", false, 4),
+                folder,
+                entry("/c.aerotmp", false, 4),
+            ],
+        );
+        let downloads = std::collections::HashMap::from([
+            ("/a.txt".to_string(), b"aaaa".to_vec()),
+            ("/c.aerotmp".to_string(), b"cccc".to_vec()),
+        ]);
+        FakeBackend {
+            tree,
+            downloads,
+            ..FakeBackend::sample()
+        }
+    }
+
+    /// A folder whose listing names files of its parent again: the walk has
+    /// no reason to refuse the folder, so only the tool itself can keep a file
+    /// from being grouped with itself (dedupe) or deleted twice (cleanup).
+    fn cross_listing_backend() -> FakeBackend {
+        let mut tree = std::collections::HashMap::new();
+        tree.insert(
+            "/root".to_string(),
+            vec![entry("/root/a.txt", false, 4), entry("/root/d1", true, 0)],
+        );
+        tree.insert(
+            "/root/d1".to_string(),
+            vec![
+                entry("/root/a.txt", false, 4),
+                entry("/root/c.aerotmp", false, 4),
+            ],
+        );
+        tree.get_mut("/root")
+            .unwrap()
+            .push(entry("/root/c.aerotmp", false, 4));
+        let downloads = std::collections::HashMap::from([
+            ("/root/a.txt".to_string(), b"aaaa".to_vec()),
+            ("/root/c.aerotmp".to_string(), b"cccc".to_vec()),
+        ]);
+        FakeBackend {
+            tree,
+            downloads,
+            ..FakeBackend::sample()
+        }
+    }
+
+    /// A listing that names a folder inside itself, or every folder as `/`,
+    /// sent the walk through the same files again and again, and dedupe found
+    /// each file to be a duplicate of itself: with `dry_run: false` it deleted
+    /// the only copy. Each folder is now listed once, the looping one is
+    /// counted as a scan error, each path is grouped once whatever the
+    /// listings say, and a tree of single copies loses nothing.
+    #[tokio::test]
+    async fn dedupe_deletes_nothing_when_a_listing_loops_over_single_copies() {
+        for (backend, root, scanned, scan_errors) in [
+            (self_listing_backend(), "/root", 3, 1),
+            (root_spelled_folders_backend(), "/", 2, 1),
+            (cross_listing_backend(), "/root", 2, 0),
+        ] {
+            let backend = Arc::new(backend);
+            let ctx = test_ctx(Arc::clone(&backend));
+            let args = json!({"server": "srv", "path": root, "mode": "newest", "dry_run": false});
+            let report = dedupe(&ctx, &args).await.expect("dedupe runs");
+            assert!(
+                backend.deleted.lock().unwrap().is_empty(),
+                "{root}: the only copies were deleted: {report}"
+            );
+            assert_eq!(report["duplicates_found"], 0, "{root}: {report}");
+            assert_eq!(report["scanned"], scanned, "{root}: {report}");
+            assert_eq!(report["scan_errors"], scan_errors, "{root}: {report}");
+        }
+
+        // A real second copy under the looping folder is still found, once.
+        let mut backend = self_listing_backend();
+        backend
+            .tree
+            .get_mut("/root/d1")
+            .unwrap()
+            .push(entry("/root/d1/a-copy.txt", false, 4));
+        backend
+            .downloads
+            .insert("/root/d1/a-copy.txt".to_string(), b"aaaa".to_vec());
+        let backend = Arc::new(backend);
+        let ctx = test_ctx(Arc::clone(&backend));
+        let args = json!({"server": "srv", "path": "/root", "mode": "newest", "dry_run": false});
+        let report = dedupe(&ctx, &args).await.expect("dedupe runs");
+        assert_eq!(report["duplicates_found"], 1, "{report}");
+        assert_eq!(backend.deleted.lock().unwrap().len(), 1, "{report}");
+    }
+
+    /// The same two listings sent cleanup through the same orphan once per
+    /// level: it deleted it, then failed or deleted it again for every repeat.
+    /// It is deleted once, and the looping folder is a scan error.
+    #[tokio::test]
+    async fn cleanup_deletes_each_orphan_once_when_a_listing_loops() {
+        for (backend, root, orphan, scan_errors) in [
+            (self_listing_backend(), "/root", "/root/d1/c.aerotmp", 1),
+            (root_spelled_folders_backend(), "/", "/c.aerotmp", 1),
+            (cross_listing_backend(), "/root", "/root/c.aerotmp", 0),
+        ] {
+            let backend = Arc::new(backend);
+            let ctx = test_ctx(Arc::clone(&backend));
+            let args = json!({"server": "srv", "path": root, "dry_run": false});
+            let report = cleanup(&ctx, &args).await.expect("cleanup runs");
+            assert_eq!(
+                *backend.deleted.lock().unwrap(),
+                [orphan],
+                "{root}: {report}"
+            );
+            assert_eq!(report["orphans"], 1, "{root}: {report}");
+            assert_eq!(report["scan_errors"], scan_errors, "{root}: {report}");
         }
     }
 }

@@ -29,4 +29,4 @@ pub use scan::{
     LocalEntry, RemoteEntry, ScanBound, ScanBoundaries, ScanCompleteness, ScanOptions, SkippedLink,
     UnseenPath,
 };
-pub use walk_scope::{walk_path_key, WalkScope, WalkStep};
+pub use walk_scope::{retain_first_per_path, walk_path_key, WalkScope, WalkStep};
