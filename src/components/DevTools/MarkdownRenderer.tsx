@@ -390,11 +390,15 @@ function useMarkdownComponents(editorFilePath?: string, editorFileName?: string)
                 </div>
             );
         },
-        th({ children }) {
-            return <th className="border border-gray-700 bg-gray-800 px-2 py-1 text-left font-medium">{children}</th>;
+        // `style` carries the alignment a GFM column declares (`:---:`,
+        // `---:`). Dropping it put every column on the left; inline it wins
+        // over `text-left`, which stays the default for a column that
+        // declares nothing.
+        th({ children, style }) {
+            return <th className="border border-gray-700 bg-gray-800 px-2 py-1 text-left font-medium" style={style}>{children}</th>;
         },
-        td({ children }) {
-            return <td className="border border-gray-700 px-2 py-1">{children}</td>;
+        td({ children, style }) {
+            return <td className="border border-gray-700 px-2 py-1" style={style}>{children}</td>;
         },
         // Blockquote
         blockquote({ children }) {
