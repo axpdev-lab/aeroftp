@@ -49,7 +49,8 @@
 //! every entry whose path ends in its own name names its parent, which is the
 //! root. [`WalkScope::learn_root_listing`] adopts such a parent as another
 //! spelling of the root when it agrees with what the caller asked for (it is
-//! that path, or ends with it, case aside; any parent for `/` or `~`). A
+//! that path, or ends with it, case aside, a leading namespace such as
+//! Yandex's `disk:` set aside; any parent for `/`, `~` or `disk:/`). A
 //! folder that listed itself does not teach anything: its parent is the
 //! root's parent, which never ends with the root.
 
@@ -102,8 +103,8 @@ pub struct WalkScope {
     /// caller's, then those adopted from the root's listing.
     spellings: Vec<String>,
     /// The lower-cased segments an adopted spelling must end with: the
-    /// caller's root without a leading `~`. Empty for `/` and `~`, which any
-    /// spelling agrees with.
+    /// caller's root without a leading `~` or namespace (`disk:`). Empty for
+    /// `/`, `~` and `disk:/`, which any spelling agrees with.
     suffix: String,
     /// Identities ([`walk_path_key`]) of every folder listed or queued,
     /// spellings of the root included.
@@ -114,10 +115,13 @@ impl WalkScope {
     /// A walk of `root`, which counts as listed.
     pub fn new(root: &str) -> Self {
         let position = position_key(root);
-        let mut segments = position.split('/').filter(|segment| !segment.is_empty());
+        let agreement = agreement_key(root);
+        let mut segments = agreement.split('/').filter(|segment| !segment.is_empty());
         let mut kept: Vec<&str> = Vec::new();
         if let Some(first) = segments.next() {
-            if first != "~" {
+            // `~` and a namespace such as Yandex's `disk:` name where the
+            // root stands, not a folder its children are spelled under.
+            if first != "~" && !first.ends_with(':') {
                 kept.push(first);
             }
         }
@@ -151,9 +155,10 @@ impl WalkScope {
         if self.spellings.contains(&position) || self.spellings.len() >= MAX_ROOT_SPELLINGS {
             return;
         }
+        let agreement = agreement_key(parent);
         let agrees = self.suffix.is_empty()
-            || position == format!("/{}", self.suffix)
-            || position.ends_with(&format!("/{}", self.suffix));
+            || agreement == format!("/{}", self.suffix)
+            || agreement.ends_with(&format!("/{}", self.suffix));
         if agrees {
             self.spellings.push(position);
             self.visited.insert(walk_path_key(parent));
@@ -246,6 +251,19 @@ pub fn listed_parent(name: &str, path: &str) -> Option<String> {
 /// being listed or above it": its identity with `\` read as `/`, lower-cased.
 fn position_key(path: &str) -> String {
     walk_path_key(&path.replace('\\', "/")).to_lowercase()
+}
+
+/// The form two spellings of the root are compared in: the position, with
+/// the spaces around each segment set aside, since several providers trim
+/// the path they are given before they list it.
+fn agreement_key(path: &str) -> String {
+    let position = position_key(path);
+    let segments: Vec<&str> = position
+        .split('/')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    format!("/{}", segments.join("/"))
 }
 
 /// `child` sits below `ancestor`, both as [`position_key`] returns them.
@@ -467,5 +485,41 @@ mod tests {
             );
             assert_eq!(scope.admit(root, "/"), WalkStep::LoopsBack, "{root:?}");
         }
+    }
+
+    /// A root may name its namespace first: Yandex takes `disk:/x` and lists
+    /// the children of that folder as `/x/...`. `disk:` is not a folder, so
+    /// the root's listing teaches the plain spelling, and `disk:/` agrees with
+    /// any parent, as `/` does.
+    #[test]
+    fn a_root_that_names_its_namespace_learns_the_plain_spelling() {
+        let mut folder = WalkScope::new("disk:/x");
+        folder.learn_root_listing(&[dir("c", "/x/c")]);
+        assert_eq!(folder.admit("disk:/x", "/x/c"), WalkStep::Follow);
+        assert_eq!(folder.admit("disk:/x", "/x"), WalkStep::LoopsBack);
+        assert_eq!(folder.admit("disk:/x", "/y"), WalkStep::OutsideRoot);
+
+        let mut account = WalkScope::new("disk:/");
+        account.learn_root_listing(&[dir("x", "/x")]);
+        assert_eq!(account.admit("disk:/", "/x"), WalkStep::Follow);
+    }
+
+    /// Providers that clean the root before they list it: Koofr, Jottacloud,
+    /// Drime, kDrive, Internxt, FileLu, Twake and 4shared trim the spaces
+    /// around it, and 4shared drops a `..` segment instead of going up. The
+    /// listing spells the cleaned root, which still agrees with the caller's.
+    #[test]
+    fn a_root_the_provider_cleans_before_listing_is_learned() {
+        for root in ["/x ", " /x", "/x /", "x "] {
+            let mut scope = WalkScope::new(root);
+            scope.learn_root_listing(&[dir("c", "/x/c")]);
+            assert_eq!(scope.admit(root, "/x/c"), WalkStep::Follow, "{root:?}");
+            assert_eq!(scope.admit(root, "/y"), WalkStep::OutsideRoot, "{root:?}");
+        }
+
+        let mut dotted = WalkScope::new("/a/../b");
+        dotted.learn_root_listing(&[dir("c", "/a/b/c")]);
+        assert_eq!(dotted.admit("/a/../b", "/a/b/c"), WalkStep::Follow);
+        assert_eq!(dotted.admit("/a/../b", "/a/c"), WalkStep::OutsideRoot);
     }
 }
