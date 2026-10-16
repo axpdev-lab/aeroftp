@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Normalize only this fixture window; GNOME may maximize its initial geometry.
+const { getCurrentWindow } = await import('/node_modules/@tauri-apps/api/window.js');
+const win = getCurrentWindow();
+const before = { maximized: await win.isMaximized(), fullscreen: await win.isFullscreen() };
+if (before.fullscreen) await win.setFullscreen(false);
+if (before.maximized) await win.unmaximize();
+await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+return { before, maximized: await win.isMaximized(), fullscreen: await win.isFullscreen(), rounded: document.documentElement.classList.contains('rounded-window') };

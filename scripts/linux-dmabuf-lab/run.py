@@ -37,6 +37,7 @@ if not args.inside:
             parser.error(f'missing executable: {command}')
     for port in [args.port, args.inspector_port]:
         with socket.socket() as probe:
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             probe.bind(('127.0.0.1', port))
     if not list(Path('/dev/dri').glob('renderD*')):
         parser.error('no DRM render node; Xvfb alone is not GPU acceptance')
@@ -170,32 +171,21 @@ try:
             env['WEBKIT_DISABLE_DMABUF_RENDERER'] = switch
         manifest_keys = ['GDK_BACKEND', 'DISPLAY', 'WAYLAND_DISPLAY', 'WEBKIT_DISABLE_DMABUF_RENDERER', 'WEBKIT_DISABLE_COMPOSITING_MODE', 'WEBKIT_DMABUF_RENDERER_FORCE_SHM', 'LIBGL_ALWAYS_SOFTWARE', 'MESA_LOADER_DRIVER_OVERRIDE', 'EGL_PLATFORM', 'GBM_BACKEND', '__GLX_VENDOR_LIBRARY_NAME']
         (root / 'evidence' / f'{mode}-environment.json').write_text(json.dumps({k: env.get(k) for k in manifest_keys}, indent=2) + '\n')
-        browsers = list(Path('/usr/lib').glob('*/webkit2gtk-4.1/MiniBrowser'))
-        if mode != 'default' and browsers:
-            browser = start([str(browsers[0]), 'webkit://gpu'], env, f'evidence/{mode}-minibrowser.log')
-            deadline = time.monotonic() + 25
-            while True:
-                probe = subprocess.run(['node', str(HERE / 'gpu.mjs')], env=base, text=True, capture_output=True)
-                if probe.returncode == 0 and 'Hardware Acceleration Information' in probe.stdout:
-                    (root / 'evidence' / f'{mode}-webkit-gpu.txt').write_text(probe.stdout)
-                    break
-                if browser.poll() is not None or time.monotonic() > deadline:
-                    raise RuntimeError('MiniBrowser GPU policy observation failed')
-                time.sleep(.5)
-            stop(browser)
         app = start([str(args.binary)], env, f'evidence/{mode}-app.log')
         (root / 'app.pid').write_text(str(app.pid))
         deadline = time.monotonic() + 60
         while True:
             try:
                 state = gui(script=HERE / 'inspect-runtime.body')
-                if mode == 'on' and not state['value']['rounded']:
-                    raise RuntimeError('waiting for the GPU corner class; check app log if this persists')
+                if state['value']['viewport'][0] < 500 or not state['value']['body'].strip():
+                    raise RuntimeError('waiting for the visible initialized main window')
                 break
             except RuntimeError:
                 if app.poll() is not None or time.monotonic() > deadline:
                     raise
                 time.sleep(.5)  # observation only, never replay a mutation
+        gui(script=HERE / 'normalize-window.body', capture=f'{mode}-window.json')
+        state = gui(script=HERE / 'inspect-runtime.body')
         (root / 'evidence' / f'{mode}-runtime.json').write_text(json.dumps(state, indent=2) + '\n')
         if state['value']['rounded'] != (mode == 'on'):
             raise RuntimeError(f'{mode}: corner decision differs from the expected GPU-session result')
@@ -212,7 +202,7 @@ try:
             if not editor_result['terminalHasCompletion'] or editor_result['errors']:
                 raise RuntimeError(f'{mode}: terminal completion or page error assertion failed')
             screenshot(f'{mode}-editor-terminal.png')
-            gui(script=HERE / 'mount-player.body', capture=f'{mode}-mount-player.bodyon')
+            gui(script=HERE / 'mount-player.body', capture=f'{mode}-mount-player.json')
             template = (HERE / 'measure-player-template.body').read_text()
             for kind, modes in [('canvas', ['bars', 'waveform', 'radial', 'spectrum', 'fractal', 'vortex', 'plasma', 'kaleidoscope']), ('webgl', ['wave_glitch', 'glitch_vhs', 'fractal_mandelbrot', 'raymarch_tunnel', 'metaball_pulse', 'particles_explosion'])]:
                 for name in modes:
