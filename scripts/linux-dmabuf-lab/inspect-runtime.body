@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// DEV-only component rendering workload, never imported by application code.
+return {href:location.href,controller:!!window.__aeroftpController,locked:window.__aeroftpController?.state().locked,rounded:document.documentElement.classList.contains('rounded-window'),viewport:[innerWidth,innerHeight],body:document.body.innerText.slice(0,3500),buttons:Array.from(document.querySelectorAll('button')).map(e=>({text:e.textContent,title:e.title})).slice(0,30)};
