@@ -95,6 +95,16 @@ impl WalkStep {
             WalkStep::OutsideRoot => "outside_root",
         }
     }
+
+    /// The same reason in words, to follow "the listing of X names it, but".
+    pub fn explain(self) -> &'static str {
+        match self {
+            WalkStep::Follow => "it is followed",
+            WalkStep::AlreadyListed => "it was already listed",
+            WalkStep::LoopsBack => "it is that folder or one above it",
+            WalkStep::OutsideRoot => "it is outside the path being walked",
+        }
+    }
 }
 
 /// The walk root, the folders a walk has listed, and the rule that decides

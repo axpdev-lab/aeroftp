@@ -918,7 +918,8 @@ struct DeletePreview {
     files: u64,
     directories: u64,
     bytes: u64,
-    /// The walk hit a cap, so `bytes`/`files` are a LOWER BOUND.
+    /// The walk hit a cap, or met a folder it would not list (see
+    /// [`walk_admits`]), so `bytes`/`files` do not cover the whole tree.
     truncated: bool,
 }
 
@@ -982,6 +983,14 @@ async fn preview_delete(
     let mut bytes = 0u64;
     let mut truncated = false;
     let mut queue: Vec<(String, usize)> = vec![(path.to_string(), 0)];
+    // The preview totals what sits under `path`, each path once. A listing
+    // that named a folder inside itself, or every folder as `/`, sent it
+    // round the same folder to its depth cap, and one that named a folder
+    // outside `path` added what that folder holds. A folder it does not
+    // follow leaves the totals `truncated`.
+    let mut scope = crate::sync_core::WalkScope::new(path);
+    let mut counted: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut refused: u32 = 0;
 
     while let Some((dir, depth)) = queue.pop() {
         if depth >= DELETE_PREVIEW_MAX_DEPTH
@@ -990,7 +999,11 @@ async fn preview_delete(
             truncated = true;
             continue;
         }
-        for entry in backend.list(&dir).await.map_err(ToolError::Exec)? {
+        let listing = backend.list(&dir).await.map_err(ToolError::Exec)?;
+        if depth == 0 {
+            scope.learn_root_listing(&listing);
+        }
+        for entry in listing {
             if (files + directories) as usize >= DELETE_PREVIEW_MAX_ENTRIES {
                 truncated = true;
                 break;
@@ -999,18 +1012,29 @@ async fn preview_delete(
             // symlink-to-dir would open a cur/parent cycle and inflate the
             // total.
             if entry.is_symlink {
-                files += 1;
+                if counted.insert(crate::sync_core::walk_path_key(&entry.path)) {
+                    files += 1;
+                }
                 continue;
             }
             if entry.is_dir {
-                directories += 1;
-                queue.push((entry.path, depth + 1));
-            } else {
+                if walk_admits(
+                    &mut scope,
+                    &dir,
+                    &entry.path,
+                    &mut refused,
+                    "delete preview",
+                ) {
+                    directories += 1;
+                    queue.push((entry.path, depth + 1));
+                }
+            } else if counted.insert(crate::sync_core::walk_path_key(&entry.path)) {
                 files += 1;
                 bytes = bytes.saturating_add(entry.size);
             }
         }
     }
+    truncated |= refused > 0;
 
     Ok(DeletePreview {
         files,
@@ -1620,6 +1644,12 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     // summed in-place so memory stays bounded by tree breadth.
     let mut queue: std::collections::VecDeque<(String, usize)> = std::collections::VecDeque::new();
     queue.push_back((root.clone(), 0));
+    // Each folder under the root is listed once and each file counted once
+    // (see `walk_admits`); a folder the walk does not follow leaves the
+    // figure truncated, like one it could not list.
+    let mut scope = crate::sync_core::WalkScope::new(&root);
+    let mut counted: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut refused: u32 = 0;
 
     while let Some((dir, depth)) = queue.pop_front() {
         if depth > MAX_QUOTA_SCAN_DEPTH {
@@ -1636,6 +1666,9 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                 continue;
             }
         };
+        if depth == 0 {
+            scope.learn_root_listing(&entries);
+        }
         dir_count += 1;
         for entry in entries {
             visited += 1;
@@ -1649,8 +1682,10 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                 continue;
             }
             if entry.is_dir {
-                queue.push_back((entry.path, depth + 1));
-            } else {
+                if walk_admits(&mut scope, &dir, &entry.path, &mut refused, "storage scan") {
+                    queue.push_back((entry.path, depth + 1));
+                }
+            } else if counted.insert(crate::sync_core::walk_path_key(&entry.path)) {
                 // saturating_add: entry.size is fully server-controlled
                 // (SFTP attrs, WebDAV getcontentlength, S3 Size). A hostile
                 // server returning sizes near u64::MAX must not overflow
@@ -1665,6 +1700,7 @@ async fn storage_quota(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
             break;
         }
     }
+    truncated |= refused > 0;
 
     let used_percent = if api_total > 0 {
         (used_bytes as f64 / api_total as f64) * 100.0
@@ -1900,6 +1936,12 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let mut total_files: usize = 0;
     let mut truncated = false;
     let mut errors: Vec<Value> = Vec::new();
+    // Each path under the root is shown once. A folder that points back at
+    // the folder listed or above it, or outside the root, gets no row (its
+    // path is not under the root) and is named in `errors`; one already
+    // shown is not shown or listed again.
+    let mut scope = crate::sync_core::WalkScope::new(&root);
+    let mut shown: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     while let Some((dir, depth)) = queue.pop_front() {
         if depth > max_depth {
@@ -1913,11 +1955,40 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 continue;
             }
         };
+        if depth == 0 {
+            scope.learn_root_listing(&listing);
+        }
         for entry in listing {
             total_visited += 1;
             if entries.len() >= max_entries {
                 truncated = true;
                 break;
+            }
+            if entry.is_walkable_dir() {
+                use crate::sync_core::WalkStep;
+                match scope.admit(&dir, &entry.path) {
+                    WalkStep::Follow => {}
+                    WalkStep::AlreadyListed => continue,
+                    step => {
+                        tracing::warn!(
+                            "tree: not listing {:?}, named in the listing of {dir}: {}",
+                            entry.path,
+                            step.reason()
+                        );
+                        errors.push(json!({
+                            "path": entry.path,
+                            "error": format!(
+                                "not listed: the listing of {dir} names it, but {}",
+                                step.explain()
+                            ),
+                            "reason": step.reason(),
+                        }));
+                        continue;
+                    }
+                }
+            }
+            if !shown.insert(crate::sync_core::walk_path_key(&entry.path)) {
+                continue;
             }
             if entry.is_dir {
                 total_dirs += 1;
@@ -1941,7 +2012,8 @@ async fn tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
                 entries.push(entry_v);
             }
             // Reported with `is_dir: true`, but a symlink-to-dir is never
-            // walked (GAP-A02): a link to `..` would never terminate.
+            // walked (GAP-A02): a link to `..` would never terminate. A
+            // walkable folder reaching here was admitted above.
             if entry.is_walkable_dir() && depth + 1 < max_depth + 1 {
                 queue.push_back((entry.path, depth + 1));
             }
@@ -2625,6 +2697,134 @@ fn walk_admits(
     }
 }
 
+/// Files a sync scan found, by path relative to the folder scanned: size and
+/// modification time (seconds on the local side, the provider's text on the
+/// remote one).
+type LocalFiles = std::collections::HashMap<String, (u64, Option<i64>)>;
+type RemoteFiles = std::collections::HashMap<String, (u64, Option<String>)>;
+
+/// The files under `local_path` a sync would read, and whether the walk read
+/// all of it. `sync_doctor` and `reconcile` answer from this scan, so a
+/// folder or file the walk could not read is counted in `list_errors` and a
+/// folder at the depth cap marks it truncated, as `aeroftp-cli sync-doctor`
+/// and `reconcile` report it: a file never seen would otherwise read as
+/// missing on this side.
+fn scan_local_files(
+    local_path: &std::path::Path,
+    exclude: &crate::sync_exclude::ExcludeMatcher,
+) -> (LocalFiles, crate::sync_core::ScanCompleteness) {
+    let relative_of = |path: &std::path::Path| {
+        path.strip_prefix(local_path)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let mut files = LocalFiles::new();
+    let mut completeness = crate::sync_core::ScanCompleteness::default();
+    for entry in walkdir::WalkDir::new(local_path)
+        .follow_links(false)
+        .max_depth(MAX_BFS_DEPTH)
+        .into_iter()
+        .filter_entry(|e| e.depth() == 0 || !exclude.is_excluded(&relative_of(e.path())))
+    {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                completeness.list_errors += 1;
+                tracing::debug!("local scan: cannot read {:?}: {error}", error.path());
+                continue;
+            }
+        };
+        if entry.file_type().is_dir() && entry.depth() == MAX_BFS_DEPTH {
+            // Not entered: what it holds is unseen.
+            completeness.truncated = true;
+            continue;
+        }
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let rel = relative_of(entry.path());
+        if rel.is_empty() || exclude.is_excluded(&rel) {
+            continue;
+        }
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                completeness.list_errors += 1;
+                tracing::debug!("local scan: cannot stat {rel}: {error}");
+                continue;
+            }
+        };
+        let mtime_secs = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs() as i64);
+        files.insert(rel, (metadata.len(), mtime_secs));
+    }
+    (files, completeness)
+}
+
+/// The files under `remote_dir` a sync would read, each path once, and
+/// whether the walk read all of it. Only folders strictly under `remote_dir`
+/// are listed, each once ([`walk_admits`]). A folder the walk could not list
+/// or did not follow is counted in `list_errors`, and a cap reached marks
+/// the scan truncated.
+async fn scan_remote_files(
+    ctx: &dyn ToolCtx,
+    backend: &dyn RemoteBackend,
+    remote_dir: &str,
+    exclude: &crate::sync_exclude::ExcludeMatcher,
+    tool: &str,
+) -> Result<(RemoteFiles, crate::sync_core::ScanCompleteness), ToolError> {
+    let mut files = RemoteFiles::new();
+    let mut completeness = crate::sync_core::ScanCompleteness::default();
+    let mut scope = crate::sync_core::WalkScope::new(remote_dir);
+    let mut refused: u32 = 0;
+    let mut queue: Vec<(String, usize)> = vec![(remote_dir.to_string(), 0)];
+    while let Some((dir, depth)) = queue.pop() {
+        if depth >= MAX_BFS_DEPTH {
+            completeness.truncated = true;
+            continue;
+        }
+        if files.len() >= MAX_BFS_ENTRIES {
+            completeness.truncated = true;
+            break;
+        }
+        crate::ai_core::tools::check_cancelled(ctx)?;
+        let entries = match backend.list(&dir).await {
+            Ok(entries) => entries,
+            Err(error) => {
+                completeness.list_errors += 1;
+                tracing::debug!("{tool}: cannot list {dir}: {error}");
+                continue;
+            }
+        };
+        if depth == 0 {
+            scope.learn_root_listing(&entries);
+        }
+        for e in entries {
+            let rel = e
+                .path
+                .strip_prefix(remote_dir)
+                .unwrap_or(&e.path)
+                .trim_start_matches('/');
+            if e.is_dir {
+                if e.is_walkable_dir()
+                    && !exclude.is_excluded_entry(rel, &e.name)
+                    && walk_admits(&mut scope, &dir, &e.path, &mut refused, tool)
+                {
+                    queue.push((e.path.clone(), depth + 1));
+                }
+            } else if !rel.is_empty() && !exclude.is_excluded_entry(rel, &e.name) {
+                files.insert(rel.to_string(), (e.size, e.modified.clone()));
+            }
+        }
+    }
+    completeness.list_errors += refused as usize;
+    Ok((files, completeness))
+}
+
 async fn cleanup(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let server = normalize_server(args)?;
     let root = normalize_path_arg(args, "path", "/");
@@ -2932,89 +3132,50 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             reason,
         })?;
 
-    // Local scan (walkdir).
-    let mut local_files: usize = 0;
-    let mut local_bytes: u64 = 0;
-    for entry in walkdir::WalkDir::new(local_path)
-        .follow_links(false)
-        .max_depth(MAX_BFS_DEPTH)
-        .into_iter()
-        .filter_entry(|e| {
-            e.depth() == 0
-                || !exclude_matchers.is_excluded(
-                    &e.path()
-                        .strip_prefix(local_path)
-                        .unwrap_or(e.path())
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                )
-        })
-    {
-        let Ok(entry) = entry else { continue };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let relative = entry
-            .path()
-            .strip_prefix(local_path)
-            .unwrap_or(entry.path())
-            .to_string_lossy()
-            .replace('\\', "/");
-        if exclude_matchers.is_excluded(&relative) {
-            continue;
-        }
-        local_files += 1;
-        local_bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
-    }
+    // Both scans say whether they read the whole tree: counts from a scan
+    // that missed part of it are partial, and the report says so.
+    let (local_map, local_scan) = scan_local_files(local_path, &exclude_matchers);
+    let local_files = local_map.len();
+    let local_bytes = local_map
+        .values()
+        .fold(0u64, |sum, (size, _)| sum.saturating_add(*size));
 
-    // Remote scan (BFS).
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let remote_root_ok = backend.list(&remote_dir).await.is_ok();
-    let mut remote_files: usize = 0;
-    let mut remote_bytes: u64 = 0;
-    if remote_root_ok {
-        let mut queue: Vec<(String, usize)> = vec![(remote_dir.clone(), 0)];
-        while let Some((dir, depth)) = queue.pop() {
-            if depth >= MAX_BFS_DEPTH || remote_files >= MAX_BFS_ENTRIES {
-                break;
-            }
-            crate::ai_core::tools::check_cancelled(ctx)?;
-            if let Ok(entries) = backend.list(&dir).await {
-                for e in entries {
-                    if e.is_dir {
-                        if e.is_walkable_dir()
-                            && !exclude_matchers.is_excluded_entry(
-                                e.path
-                                    .strip_prefix(remote_dir.as_str())
-                                    .unwrap_or(&e.path)
-                                    .trim_start_matches('/'),
-                                &e.name,
-                            )
-                        {
-                            queue.push((e.path.clone(), depth + 1));
-                        }
-                    } else {
-                        let relative = e
-                            .path
-                            .strip_prefix(&remote_dir)
-                            .unwrap_or(&e.path)
-                            .trim_start_matches('/')
-                            .to_string();
-                        if exclude_matchers.is_excluded_entry(&relative, &e.name) {
-                            continue;
-                        }
-                        remote_files += 1;
-                        remote_bytes += e.size;
-                    }
-                }
-            }
-        }
-    }
+    let (remote_map, remote_scan) = if remote_root_ok {
+        scan_remote_files(
+            ctx,
+            backend.as_ref(),
+            &remote_dir,
+            &exclude_matchers,
+            "sync_doctor",
+        )
+        .await?
+    } else {
+        (
+            RemoteFiles::new(),
+            crate::sync_core::ScanCompleteness::default(),
+        )
+    };
+    let remote_files = remote_map.len();
+    let remote_bytes = remote_map
+        .values()
+        .fold(0u64, |sum, (size, _)| sum.saturating_add(*size));
+    let scans = [("local", &local_scan), ("remote", &remote_scan)];
+    let scans_complete = scans.iter().all(|(_, scan)| scan.is_complete());
 
     let mut checks = vec![
         json!({"name": "local_path_exists", "ok": true, "path": local_dir}),
         json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote_dir}),
     ];
+    for (side, scan) in scans {
+        checks.push(json!({
+            "name": format!("{side}_scan_complete"),
+            "ok": scan.is_complete(),
+            "errors": scan.list_errors,
+            "truncated": scan.truncated,
+        }));
+    }
     if !exclude.is_empty() {
         checks.push(json!({"name": "exclude_patterns", "ok": true, "count": exclude.len()}));
     }
@@ -3037,7 +3198,16 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     if !remote_root_ok {
         risks.push("remote path could not be listed".to_string());
     }
-    if local_files == 0 && remote_files == 0 {
+    for (side, scan) in scans {
+        if !scan.is_complete() {
+            risks.push(format!(
+                "the {side} scan did not read the whole tree ({} error(s){}); the file counts are partial",
+                scan.list_errors,
+                if scan.truncated { ", truncated" } else { "" }
+            ));
+        }
+    }
+    if local_files == 0 && remote_files == 0 && scans_complete {
         risks.push("both sides are empty; sync will be a no-op".to_string());
     }
 
@@ -3058,7 +3228,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
 
     Ok(json!({
         "server": server,
-        "status": if remote_root_ok { "ok" } else { "attention" },
+        "status": if remote_root_ok && scans_complete { "ok" } else { "attention" },
         "summary": {
             "direction": direction,
             "local_files": local_files,
@@ -3068,6 +3238,12 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             "delete": delete,
             "track_renames": track_renames,
             "checksum": checksum,
+            "local_scan_incomplete": !local_scan.is_complete(),
+            "local_scan_errors": local_scan.list_errors,
+            "local_scan_truncated": local_scan.truncated,
+            "remote_scan_incomplete": !remote_scan.is_complete(),
+            "remote_scan_errors": remote_scan.list_errors,
+            "remote_scan_truncated": remote_scan.truncated,
         },
         "checks": checks,
         "risks": risks,
@@ -3487,95 +3663,19 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
 
     let started = std::time::Instant::now();
 
-    // Local scan: rel_path → (size, mtime_secs).
-    let mut local_map: std::collections::HashMap<String, (u64, Option<i64>)> =
-        std::collections::HashMap::new();
-    for entry in walkdir::WalkDir::new(local_path)
-        .follow_links(false)
-        .max_depth(MAX_BFS_DEPTH)
-        .into_iter()
-        .filter_entry(|e| {
-            e.depth() == 0
-                || !exclude_matchers.is_excluded(
-                    &e.path()
-                        .strip_prefix(local_path)
-                        .unwrap_or(e.path())
-                        .to_string_lossy()
-                        .replace('\\', "/"),
-                )
-        })
-    {
-        let Ok(entry) = entry else { continue };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let rel = entry
-            .path()
-            .strip_prefix(local_path)
-            .unwrap_or(entry.path())
-            .to_string_lossy()
-            .replace('\\', "/");
-        if rel.is_empty() {
-            continue;
-        }
-        if exclude_matchers.is_excluded(&rel) {
-            continue;
-        }
-        let metadata = match entry.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let mtime_secs = metadata
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64);
-        local_map.insert(rel, (metadata.len(), mtime_secs));
-    }
-
-    // Remote scan: BFS via RemoteBackend.list.
+    // Both scans say whether they read the whole tree: a comparison against
+    // a scan that missed part of it is `partial`, not a verdict, since a file
+    // never seen reads as missing on that side.
+    let (local_map, local_scan) = scan_local_files(local_path, &exclude_matchers);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
-    let mut remote_map: std::collections::HashMap<String, (u64, Option<String>)> =
-        std::collections::HashMap::new();
-    let mut queue: Vec<(String, usize)> = vec![(remote_dir.clone(), 0)];
-    while let Some((dir, depth)) = queue.pop() {
-        if depth >= MAX_BFS_DEPTH || remote_map.len() >= MAX_BFS_ENTRIES {
-            break;
-        }
-        let entries = match backend.list(&dir).await {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        for e in entries {
-            if e.is_dir {
-                if e.is_walkable_dir()
-                    && !exclude_matchers.is_excluded_entry(
-                        e.path
-                            .strip_prefix(remote_dir.as_str())
-                            .unwrap_or(&e.path)
-                            .trim_start_matches('/'),
-                        &e.name,
-                    )
-                {
-                    queue.push((e.path.clone(), depth + 1));
-                }
-            } else {
-                let rel = e
-                    .path
-                    .strip_prefix(&remote_dir)
-                    .unwrap_or(&e.path)
-                    .trim_start_matches('/')
-                    .to_string();
-                if rel.is_empty() {
-                    continue;
-                }
-                if exclude_matchers.is_excluded_entry(&rel, &e.name) {
-                    continue;
-                }
-                remote_map.insert(rel, (e.size, e.modified));
-            }
-        }
-    }
+    let (remote_map, remote_scan) = scan_remote_files(
+        ctx,
+        backend.as_ref(),
+        &remote_dir,
+        &exclude_matchers,
+        "reconcile",
+    )
+    .await?;
 
     // Compare.
     let mut matches_g: Vec<Value> = Vec::new();
@@ -3681,8 +3781,9 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     let suggested_next_command =
         suggest_sync_command(&server, &local_dir, &remote_dir, " --dry-run --json");
 
-    let status = if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty()
-    {
+    let status = if !local_scan.is_complete() || !remote_scan.is_complete() {
+        "partial"
+    } else if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty() {
         "ok"
     } else {
         "differences_found"
@@ -3693,6 +3794,12 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         "differ_count": differ_g.len(),
         "missing_remote_count": missing_remote_g.len(),
         "missing_local_count": missing_local_g.len(),
+        "local_scan_incomplete": !local_scan.is_complete(),
+        "local_scan_errors": local_scan.list_errors,
+        "local_scan_truncated": local_scan.truncated,
+        "remote_scan_incomplete": !remote_scan.is_complete(),
+        "remote_scan_errors": remote_scan.list_errors,
+        "remote_scan_truncated": remote_scan.truncated,
         "elapsed_secs": elapsed,
         "checksum": checksum,
         "checksum_hashed": checksum_hashed,
@@ -5944,6 +6051,405 @@ mod tests {
             );
             assert_eq!(report["orphans"], 1, "{root}: {report}");
             assert_eq!(report["scan_errors"], scan_errors, "{root}: {report}");
+        }
+    }
+
+    /// A listing that names a folder twice: the walk lists it once, and
+    /// nothing under it is counted twice.
+    fn twice_named_backend() -> FakeBackend {
+        let mut tree = std::collections::HashMap::new();
+        tree.insert(
+            "/root".to_string(),
+            vec![
+                entry("/root/a.txt", false, 4),
+                entry("/root/d1", true, 0),
+                entry("/root/d1", true, 0),
+            ],
+        );
+        tree.insert(
+            "/root/d1".to_string(),
+            vec![entry("/root/d1/b.txt", false, 4)],
+        );
+        FakeBackend {
+            tree,
+            ..FakeBackend::sample()
+        }
+    }
+
+    /// A listing of `/root` that names `/elsewhere`, a folder outside it with
+    /// a big file a walk of `/root` must never reach.
+    fn outside_root_backend() -> FakeBackend {
+        let mut tree = std::collections::HashMap::new();
+        tree.insert(
+            "/root".to_string(),
+            vec![entry("/root/a.txt", false, 4), entry("/elsewhere", true, 0)],
+        );
+        tree.insert(
+            "/elsewhere".to_string(),
+            vec![entry("/elsewhere/big.bin", false, 1000)],
+        );
+        FakeBackend {
+            tree,
+            ..FakeBackend::sample()
+        }
+    }
+
+    /// What a walk of the root holds in each defective listing:
+    /// (case, backend, root, files, bytes, folders listed with the root,
+    /// folders refused). Only a folder that loops back or sits outside the
+    /// root is refused; one named twice is listed once, which loses nothing.
+    #[allow(clippy::type_complexity)]
+    fn defective_listings() -> Vec<(&'static str, FakeBackend, &'static str, u64, u64, u64, u64)> {
+        vec![
+            (
+                "a folder listed inside itself",
+                self_listing_backend(),
+                "/root",
+                3,
+                12,
+                2,
+                1,
+            ),
+            (
+                "every folder listed as /",
+                root_spelled_folders_backend(),
+                "/",
+                2,
+                8,
+                1,
+                1,
+            ),
+            (
+                "a folder named twice",
+                twice_named_backend(),
+                "/root",
+                2,
+                8,
+                2,
+                0,
+            ),
+            (
+                "a file named twice",
+                cross_listing_backend(),
+                "/root",
+                2,
+                8,
+                2,
+                0,
+            ),
+            (
+                "a folder outside the root",
+                outside_root_backend(),
+                "/root",
+                1,
+                4,
+                1,
+                1,
+            ),
+        ]
+    }
+
+    /// A delete preview totals what a recursive delete of the folder removes:
+    /// each path under it once. A listing that looped sent the preview round
+    /// the same folder up to its depth cap, and one that named a folder
+    /// outside added what that folder holds. A folder it does not follow
+    /// makes the totals `truncated`.
+    #[tokio::test]
+    async fn a_delete_preview_counts_each_path_under_the_folder_once() {
+        for (case, mut backend, root, files, bytes, dirs, refused) in defective_listings() {
+            backend.stats.insert(root.to_string(), (true, 0));
+            let preview = preview_delete(&backend, root, true).await.unwrap();
+            assert_eq!(
+                (preview.files, preview.bytes, preview.directories),
+                (files, bytes, dirs),
+                "{case}: {preview:?}"
+            );
+            assert_eq!(preview.truncated, refused > 0, "{case}: {preview:?}");
+            assert!(
+                !backend.touched_anything(),
+                "{case}: a preview deletes nothing"
+            );
+        }
+    }
+
+    /// The same for the used-storage scan: each path under the root counted
+    /// once, nothing from outside it, and a folder it does not follow makes
+    /// the figure `scan_truncated`.
+    #[tokio::test]
+    async fn a_storage_scan_counts_each_path_under_the_root_once() {
+        for (case, backend, root, files, bytes, dirs, refused) in defective_listings() {
+            let ctx = test_ctx(Arc::new(backend));
+            let args = json!({"server": "srv", "scan": true, "path": root});
+            let report = storage_quota(&ctx, &args).await.expect("the scan runs");
+            assert_eq!(report["scan_files"], files, "{case}: {report}");
+            assert_eq!(report["used_bytes"], bytes, "{case}: {report}");
+            assert_eq!(report["scan_dirs"], dirs, "{case}: {report}");
+            assert_eq!(report["scan_truncated"], refused > 0, "{case}: {report}");
+        }
+    }
+
+    /// A tree shows each path under the root once. A folder it does not
+    /// follow gets no row (its path is not under the root, or names a folder
+    /// already shown) and is named in `errors` with the reason.
+    #[tokio::test]
+    async fn a_tree_shows_each_path_under_the_root_once() {
+        for (case, backend, root, files, _, dirs, refused) in defective_listings() {
+            let ctx = test_ctx(Arc::new(backend));
+            let args = json!({"server": "srv", "path": root, "max_depth": 5});
+            let report = tree(&ctx, &args).await.expect("the tree runs");
+            let rows: Vec<&str> = report["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|row| row["path"].as_str().unwrap())
+                .collect();
+            let unique: std::collections::HashSet<&str> = rows.iter().copied().collect();
+            assert_eq!(
+                unique.len(),
+                rows.len(),
+                "{case}: a path shown twice: {rows:?}"
+            );
+            assert_eq!(rows.len() as u64, files + dirs - 1, "{case}: {rows:?}");
+            assert!(
+                rows.iter().all(
+                    |row| crate::sync_core::WalkScope::new(root).locate(root, row)
+                        != crate::sync_core::WalkStep::OutsideRoot
+                ),
+                "{case}: a row outside {root}: {rows:?}"
+            );
+            assert_eq!(report["total_files"], files, "{case}: {report}");
+            assert_eq!(report["total_dirs"], dirs - 1, "{case}: {report}");
+            let errors = report["errors"].as_array().unwrap();
+            assert_eq!(errors.len() as u64, refused, "{case}: {report}");
+            for error in errors {
+                let text = error["error"].as_str().unwrap();
+                assert!(text.contains("names it"), "{case}: {error}");
+            }
+        }
+    }
+
+    /// `sync_doctor` counts what a sync would read on each side, and must say
+    /// when that count is partial. A folder it does not follow is counted
+    /// like a folder it could not list: the remote scan is incomplete, the
+    /// status asks for attention, and a risk says the counts are partial.
+    #[tokio::test]
+    async fn sync_doctor_counts_each_remote_path_once_and_says_when_it_did_not() {
+        for (case, backend, root, files, bytes, _, refused) in defective_listings() {
+            let local = tempfile::tempdir().expect("tempdir");
+            let ctx = test_ctx(Arc::new(backend));
+            let args = json!({
+                "server": "srv",
+                "local_dir": local.path().to_string_lossy(),
+                "remote_dir": root,
+            });
+            let report = sync_doctor(&ctx, &args).await.expect("the doctor runs");
+            let summary = &report["summary"];
+            assert_eq!(summary["remote_files"], files, "{case}: {report}");
+            assert_eq!(summary["remote_bytes"], bytes, "{case}: {report}");
+            assert_eq!(
+                summary["remote_scan_incomplete"],
+                refused > 0,
+                "{case}: {report}"
+            );
+            assert_eq!(summary["remote_scan_errors"], refused, "{case}: {report}");
+            assert_eq!(summary["remote_scan_truncated"], false, "{case}: {report}");
+            assert_eq!(summary["local_scan_incomplete"], false, "{case}: {report}");
+            let expected = if refused > 0 { "attention" } else { "ok" };
+            assert_eq!(report["status"], expected, "{case}: {report}");
+            let partial = report["risks"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|risk| risk.as_str().unwrap().contains("partial"));
+            assert_eq!(partial, refused > 0, "{case}: {report}");
+        }
+    }
+
+    /// `reconcile` compares only what sits under the remote folder, and a
+    /// comparison against a scan that missed part of the tree is `partial`,
+    /// not a verdict: a file it never saw would read as missing.
+    #[tokio::test]
+    async fn reconcile_compares_each_remote_path_once_and_says_when_it_did_not() {
+        for (case, backend, root, files, _, _, refused) in defective_listings() {
+            let local = tempfile::tempdir().expect("tempdir");
+            let ctx = test_ctx(Arc::new(backend));
+            let args = json!({
+                "server": "srv",
+                "local_dir": local.path().to_string_lossy(),
+                "remote_dir": root,
+            });
+            let report = reconcile(&ctx, &args).await.expect("reconcile runs");
+            let summary = &report["summary"];
+            assert_eq!(summary["missing_local_count"], files, "{case}: {report}");
+            assert_eq!(
+                summary["remote_scan_incomplete"],
+                refused > 0,
+                "{case}: {report}"
+            );
+            assert_eq!(summary["remote_scan_errors"], refused, "{case}: {report}");
+            assert_eq!(summary["remote_scan_truncated"], false, "{case}: {report}");
+            assert_eq!(summary["local_scan_incomplete"], false, "{case}: {report}");
+            let expected = if refused > 0 {
+                "partial"
+            } else {
+                "differences_found"
+            };
+            assert_eq!(report["status"], expected, "{case}: {report}");
+        }
+    }
+
+    /// A folder the remote cannot list was skipped in silence: the doctor
+    /// answered `ok` and reconcile gave a verdict on a tree it had not read.
+    /// Both now say the remote scan is incomplete.
+    #[tokio::test]
+    async fn sync_doctor_and_reconcile_say_when_a_remote_folder_could_not_be_listed() {
+        let unlistable = || {
+            let mut tree = std::collections::HashMap::new();
+            tree.insert(
+                "/root".to_string(),
+                vec![entry("/root/a.txt", false, 4), entry("/root/gone", true, 0)],
+            );
+            Arc::new(FakeBackend {
+                tree,
+                ..FakeBackend::sample()
+            })
+        };
+        let local = tempfile::tempdir().expect("tempdir");
+        let args = json!({
+            "server": "srv",
+            "local_dir": local.path().to_string_lossy(),
+            "remote_dir": "/root",
+        });
+
+        let doctor = sync_doctor(&test_ctx(unlistable()), &args).await.unwrap();
+        assert_eq!(doctor["status"], "attention", "{doctor}");
+        assert_eq!(
+            doctor["summary"]["remote_scan_incomplete"], true,
+            "{doctor}"
+        );
+        assert_eq!(doctor["summary"]["remote_scan_errors"], 1, "{doctor}");
+        assert_eq!(doctor["summary"]["remote_files"], 1, "{doctor}");
+
+        let reconciled = reconcile(&test_ctx(unlistable()), &args).await.unwrap();
+        assert_eq!(reconciled["status"], "partial", "{reconciled}");
+        assert_eq!(
+            reconciled["summary"]["remote_scan_incomplete"], true,
+            "{reconciled}"
+        );
+        assert_eq!(
+            reconciled["summary"]["remote_scan_errors"], 1,
+            "{reconciled}"
+        );
+    }
+
+    /// The same for a local folder the walk cannot read: its files are not
+    /// counted, and the report says the local scan is incomplete.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn sync_doctor_and_reconcile_say_when_a_local_folder_could_not_be_read() {
+        use std::os::unix::fs::PermissionsExt;
+        let local = tempfile::tempdir().expect("tempdir");
+        let locked = local.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(locked.join("x.txt"), b"x").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let readable = std::fs::read_dir(&locked).is_ok();
+        let args = json!({
+            "server": "srv",
+            "local_dir": local.path().to_string_lossy(),
+            "remote_dir": "/root",
+        });
+        let doctor = sync_doctor(&test_ctx(Arc::new(FakeBackend::sample())), &args).await;
+        let reconciled = reconcile(&test_ctx(Arc::new(FakeBackend::sample())), &args).await;
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        if readable {
+            // Running as root: nothing is unreadable, so there is nothing to see.
+            return;
+        }
+        let doctor = doctor.unwrap();
+        assert_eq!(doctor["status"], "attention", "{doctor}");
+        assert_eq!(doctor["summary"]["local_scan_incomplete"], true, "{doctor}");
+        assert_eq!(doctor["summary"]["local_scan_errors"], 1, "{doctor}");
+        assert_eq!(
+            doctor["summary"]["remote_scan_incomplete"], false,
+            "{doctor}"
+        );
+        let reconciled = reconciled.unwrap();
+        assert_eq!(reconciled["status"], "partial", "{reconciled}");
+        assert_eq!(
+            reconciled["summary"]["local_scan_incomplete"], true,
+            "{reconciled}"
+        );
+        assert_eq!(
+            reconciled["summary"]["local_scan_errors"], 1,
+            "{reconciled}"
+        );
+    }
+
+    /// A provider may spell the root its own way: a relative root resolved
+    /// against the home folder, another letter case, Yandex's `disk:`
+    /// namespace, spaces trimmed. Its listing then names the children under
+    /// that spelling, and every walk still reads the whole tree: two files,
+    /// one in a subfolder, nothing refused.
+    #[tokio::test]
+    async fn a_root_the_provider_spells_its_own_way_is_walked_whole() {
+        for (root, spelled) in [
+            ("docs", "/home/u/docs"),
+            ("/Docs", "/docs"),
+            ("disk:/docs", "/docs"),
+            ("/docs ", "/docs"),
+        ] {
+            let backend = || {
+                let mut tree = std::collections::HashMap::new();
+                tree.insert(
+                    root.to_string(),
+                    vec![
+                        entry(&format!("{spelled}/a.txt"), false, 4),
+                        entry(&format!("{spelled}/sub"), true, 0),
+                    ],
+                );
+                tree.insert(
+                    format!("{spelled}/sub"),
+                    vec![entry(&format!("{spelled}/sub/b.txt"), false, 4)],
+                );
+                let mut backend = FakeBackend {
+                    tree,
+                    ..FakeBackend::sample()
+                };
+                backend.stats.insert(root.to_string(), (true, 0));
+                Arc::new(backend)
+            };
+
+            let preview = preview_delete(backend().as_ref(), root, true)
+                .await
+                .unwrap();
+            assert_eq!((preview.files, preview.truncated), (2, false), "{root:?}");
+
+            let args = json!({"server": "srv", "scan": true, "path": root});
+            let quota = storage_quota(&test_ctx(backend()), &args).await.unwrap();
+            assert_eq!(quota["scan_files"], 2, "{root:?}: {quota}");
+            assert_eq!(quota["scan_truncated"], false, "{root:?}: {quota}");
+
+            let args = json!({"server": "srv", "path": root});
+            let shown = tree(&test_ctx(backend()), &args).await.unwrap();
+            assert_eq!(shown["total_files"], 2, "{root:?}: {shown}");
+            assert_eq!(shown["errors"], json!([]), "{root:?}: {shown}");
+
+            let local = tempfile::tempdir().expect("tempdir");
+            let args = json!({
+                "server": "srv",
+                "local_dir": local.path().to_string_lossy(),
+                "remote_dir": root,
+            });
+            let doctor = sync_doctor(&test_ctx(backend()), &args).await.unwrap();
+            assert_eq!(doctor["summary"]["remote_files"], 2, "{root:?}: {doctor}");
+            assert_eq!(doctor["status"], "ok", "{root:?}: {doctor}");
+            let reconciled = reconcile(&test_ctx(backend()), &args).await.unwrap();
+            assert_eq!(reconciled["summary"]["missing_local_count"], 2, "{root:?}");
+            assert_eq!(
+                reconciled["status"], "differences_found",
+                "{root:?}: {reconciled}"
+            );
         }
     }
 }
