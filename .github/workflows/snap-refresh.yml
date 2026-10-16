@@ -357,6 +357,16 @@ jobs:
           }
           sudo snap remove --purge aeroftp || true
 
+      - name: Gate G5 - the desktop portal lets the snap reach the network
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+        run: |
+          set -euo pipefail
+          sudo snap install --dangerous "$SNAP_FILE"
+          trap 'sudo snap remove --purge aeroftp || true' EXIT
+          ./ci-tools/scripts/snap-portal-check.sh aeroftp
+
       - name: Gate G3 - confined GUI readiness under Xvfb
         shell: bash
         env:

@@ -1079,6 +1079,23 @@ jobs:
           sudo snap remove --purge aeroftp || true
 
       # ----------------------------------------------------------------------
+      # Gate G5 - the desktop portal must let the snap reach the network. The
+      # UI loads from http://127.0.0.1 and, inside a snap, GLib asks the portal
+      # how to reach it; the portal refuses a snap without network-status and
+      # the window shows that error instead of the app (4.2.1 to 4.2.3). G3
+      # cannot see it: the runner has no portal, so the lookup never happens.
+      # ----------------------------------------------------------------------
+      - name: Gate G5 - the desktop portal lets the snap reach the network
+        shell: bash
+        env:
+          SNAP_FILE: ${{ steps.snap-check.outputs.snap }}
+        run: |
+          set -euo pipefail
+          sudo snap install --dangerous "$SNAP_FILE"
+          trap 'sudo snap remove --purge aeroftp || true' EXIT
+          ./scripts/snap-portal-check.sh aeroftp
+
+      # ----------------------------------------------------------------------
       # Gate G3 - launch the actual confined GUI on a disposable X server.
       # This checks the frontend readiness log, not merely process liveness,
       # and catches missing EGL/GLVND wiring such as issue #462.

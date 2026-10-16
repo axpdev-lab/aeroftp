@@ -128,6 +128,12 @@ apps:
       - removable-media
       - network
       - network-bind
+      # The UI loads from http://127.0.0.1, and inside a snap GLib asks the
+      # desktop portal how to reach it (ProxyResolver). The portal answers a
+      # snap only when it plugs network-status; without it the lookup fails
+      # with "This call is not available inside the sandbox" and the window
+      # shows that error instead of the app. Gate G5 checks it.
+      - network-status
       - desktop
       - desktop-legacy
       - wayland
