@@ -37,19 +37,17 @@ if not args.inside:
             parser.error(f'missing executable: {command}')
     for port in [args.port, args.inspector_port]:
         with socket.socket() as probe:
+            # Match reusable server sockets: TIME_WAIT is not a live listener.
             probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            probe.bind(('127.0.0.1', port))
+            try:
+                probe.bind(('127.0.0.1', port))
+            except OSError as error:
+                parser.error(f'port {port} is unavailable: {error}')
     if not list(Path('/dev/dri').glob('renderD*')):
         parser.error('no DRM render node; Xvfb alone is not GPU acceptance')
-    root = args.root.absolute() if args.root else Path(tempfile.mkdtemp(prefix='aeroftp-dmabuf-lab-'))
-    if root.exists() and (root.is_symlink() or any(root.iterdir())):
+    root = args.root.absolute() if args.root else None
+    if root is not None and root.exists() and (root.is_symlink() or any(root.iterdir())):
         parser.error('--root must be new or empty and must not be a symlink')
-    root.mkdir(parents=True, exist_ok=True)
-    for name in ['home', 'config', 'cache', 'data', 'evidence', 'stub-bin']:
-        (root / name).mkdir()
-    stub = root / 'stub-bin/ibus-daemon'
-    stub.write_text('#!/bin/sh\nexec sleep infinity\n')
-    stub.chmod(0o755)
     target = Path(os.environ.get('CARGO_TARGET_DIR', CHECKOUT / 'src-tauri/target')).absolute()
     binary = (args.binary or target / 'debug/aeroftp').absolute()
     if not args.skip_build:
@@ -65,10 +63,18 @@ if not args.inside:
         checked(['cargo', 'build', '--manifest-path', str(CHECKOUT / 'src-tauri/Cargo.toml'), '--bin', 'aeroftp'], cwd=CHECKOUT, env=build_env)
     if not binary.is_file():
         parser.error(f'GUI binary missing: {binary}')
-    runtime = Path(tempfile.mkdtemp(prefix='afdl-'))
-    runtime.chmod(0o700)
     # A PATH entry can be an NVM shell wrapper that breaks with an isolated HOME.
     node_binary = Path(subprocess.check_output(['node', '-p', 'process.execPath'], text=True).strip()).resolve()
+    # Allocate fixture storage only after the build/binary preflight succeeds.
+    root = root or Path(tempfile.mkdtemp(prefix='aeroftp-dmabuf-lab-'))
+    root.mkdir(parents=True, exist_ok=True)
+    for name in ['home', 'config', 'cache', 'data', 'evidence', 'stub-bin']:
+        (root / name).mkdir()
+    stub = root / 'stub-bin/ibus-daemon'
+    stub.write_text('#!/bin/sh\nexec sleep infinity\n')
+    stub.chmod(0o755)
+    runtime = Path(tempfile.mkdtemp(prefix='afdl-'))
+    runtime.chmod(0o700)
     # Declare every inherited input: env-i semantics, no owner Wayland/X11,
     # keyring, library override, compositor flag or Mesa override leaks in.
     clean = {

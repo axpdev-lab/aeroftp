@@ -22,6 +22,8 @@ python3 scripts/linux-dmabuf-lab/run.py \
 
 The fixture directory must be new or empty. Startup logs, manifest, native screenshots, native controller receipts, page timing, application CPU/RSS and available per-process DRM counters remain under its `evidence/` folder; session/compositor/Vite diagnostics remain alongside it. The driver stops only the process groups it started and removes its private runtime directory.
 
+Each measured controller call has a 60-second outer timeout. A timeout writes its partial output and process snapshot to the evidence receipt and exits with status 124, so a stuck inspector does not leave the measurement waiting indefinitely.
+
 Variants are explicitly recorded in `*-environment.json`. A clean environment prevents inherited `GDK_BACKEND`, WebKit flags, Mesa overrides, display names or EGL settings from affecting the result:
 
 | Variant | GDK_BACKEND | WAYLAND_DISPLAY | DISPLAY | WEBKIT_DISABLE_DMABUF_RENDERER | WEBKIT_DISABLE_COMPOSITING_MODE |

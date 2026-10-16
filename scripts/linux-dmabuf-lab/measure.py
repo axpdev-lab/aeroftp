@@ -35,10 +35,21 @@ def snapshot():
 name,script=sys.argv[1:3];before=snapshot();t=time.monotonic()
 env=os.environ|{'AEROFTP_GUI_TEST_ROOT':str(G),'INSPECTOR_PORT':os.environ['INSPECTOR_PORT']}
 cmd=['node',str(pathlib.Path(os.environ['AEROFTP_GUI_CHECKOUT'])/'scripts/gui-controller-dev.mjs'),'--js',script]
-p=subprocess.run(cmd,env=env,text=True,capture_output=True);elapsed=time.monotonic()-t;after=snapshot()
+try:
+ p=subprocess.run(cmd,env=env,text=True,capture_output=True,timeout=60)
+except subprocess.TimeoutExpired as error:
+ # TimeoutExpired may contain bytes even when text=True was requested.
+ stdout=error.stdout or ''
+ stderr=error.stderr or ''
+ if isinstance(stdout,bytes):stdout=stdout.decode('utf-8',errors='replace')
+ if isinstance(stderr,bytes):stderr=stderr.decode('utf-8',errors='replace')
+ p=subprocess.CompletedProcess(cmd,124,stdout,stderr+'\nController timed out after 60 seconds')
+elapsed=time.monotonic()-t;after=snapshot()
 try:result=json.loads(p.stdout)
-except Exception:result={'stdout':p.stdout}
-result.update(exit_code=p.returncode,stderr=p.stderr,elapsed_seconds=elapsed,cpu_core_percent=(after['cpu_ticks']-before['cpu_ticks'])/os.sysconf('SC_CLK_TCK')/elapsed*100,rss_bytes_after=after['rss_bytes'],gpu_engine_ns={k:v-before['engines'].get(k,0) for k,v in after['engines'].items()},processes=after['processes'])
+except json.JSONDecodeError:result={'stdout':p.stdout}
+if not isinstance(result,dict):result={'stdout':p.stdout}
+cpu_percent=(after['cpu_ticks']-before['cpu_ticks'])/os.sysconf('SC_CLK_TCK')/elapsed*100 if elapsed>0 else 0.0
+result.update(exit_code=p.returncode,stderr=p.stderr,elapsed_seconds=elapsed,cpu_core_percent=cpu_percent,rss_bytes_after=after['rss_bytes'],gpu_engine_ns={k:v-before['engines'].get(k,0) for k,v in after['engines'].items()},processes=after['processes'])
 (G/'evidence'/f'{name}.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps({k:v for k,v in result.items() if k!='processes'}))
 sys.exit(p.returncode)
