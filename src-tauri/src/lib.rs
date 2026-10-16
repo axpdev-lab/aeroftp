@@ -3093,6 +3093,12 @@ async fn clear_update_marker(app: AppHandle) -> Result<(), String> {
 /// launch path when the process died between the two renames, and only a
 /// hidden `.backup` to restore by hand. `rename` is the final step, a
 /// parameter so a test can look at the files at that moment.
+///
+/// The staged name is fixed and sits in the AppImage's folder, which another
+/// user may be able to write. Whatever is already there is removed (a link
+/// itself, not what it points to), and the copy goes only into a file this
+/// call creates: `create_new` fails on anything placed there in between, so
+/// a planted link can never receive the update or its executable bit.
 fn replace_file_in_place(
     source: &Path,
     target: &Path,
@@ -3108,20 +3114,37 @@ fn replace_file_in_place(
     let staged = parent.join(format!(".{}.update", name));
 
     let installed = (|| {
-        std::fs::copy(source, &staged)
+        match std::fs::remove_file(&staged) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "Failed to clear a stale AppImage update: {}",
+                    error
+                ))
+            }
+        }
+        let mut staged_file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staged)
             .map_err(|error| format!("Failed to stage AppImage update: {}", error))?;
+        let mut downloaded = std::fs::File::open(source)
+            .map_err(|error| format!("Failed to read the AppImage update: {}", error))?;
+        std::io::copy(&mut downloaded, &mut staged_file)
+            .map_err(|error| format!("Failed to stage AppImage update: {}", error))?;
+        // Through the handle this call created, never through the name.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755))
+            staged_file
+                .set_permissions(std::fs::Permissions::from_mode(0o755))
                 .map_err(|error| format!("Failed to set AppImage permissions: {}", error))?;
         }
-        // Opened for writing: Windows flushes only a handle with write access.
-        std::fs::OpenOptions::new()
-            .write(true)
-            .open(&staged)
-            .and_then(|file| file.sync_all())
+        staged_file
+            .sync_all()
             .map_err(|error| format!("Failed to flush the AppImage update: {}", error))?;
+        drop(staged_file);
         rename(&staged, target)
             .map_err(|error| format!("Failed to install new AppImage: {}", error))
     })();
@@ -23313,6 +23336,37 @@ mod appimage_swap_tests {
         })
         .expect("installed");
         assert_eq!(renames.get(), 1);
+    }
+
+    /// The staged name is fixed and sits in the AppImage's folder, which
+    /// another user may be able to write. A link planted there sent the copy,
+    /// and then the executable bit, to the file it pointed at.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_at_the_staged_name_is_never_written_through() {
+        use std::os::unix::fs::PermissionsExt;
+        let fs = install();
+        let elsewhere = tempfile::tempdir().expect("temp dir");
+        let victim = elsewhere.path().join("victim.txt");
+        std::fs::write(&victim, b"someone else's file").expect("victim");
+        std::fs::set_permissions(&victim, std::fs::Permissions::from_mode(0o644)).expect("mode");
+        std::os::unix::fs::symlink(&victim, fs.dir.join(".AeroFTP.AppImage.update")).expect("link");
+        replace_file_in_place(&fs.source, &fs.target, |from, to| std::fs::rename(from, to))
+            .expect("installed");
+        assert_eq!(
+            std::fs::read(&victim).expect("victim"),
+            b"someone else's file"
+        );
+        let mode = std::fs::metadata(&victim)
+            .expect("meta")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o644);
+        assert_eq!(
+            std::fs::read(&fs.target).expect("read"),
+            b"new appimage, longer"
+        );
+        assert_eq!(names_in(&fs.dir), vec!["AeroFTP.AppImage".to_string()]);
     }
 
     #[test]
