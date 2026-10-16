@@ -14,4 +14,6 @@ while(performance.now()-start<12000) {
 }
 frameTimes.sort((a,b)=>a-b);
 const rows=Array.from(document.querySelectorAll('#row56-terminal .xterm-rows>div')).map(x=>x.textContent);
-return {durationMs:performance.now()-start,frames,fps:frames/12,p50:frameTimes[Math.floor(frameTimes.length*.5)],p95:frameTimes[Math.floor(frameTimes.length*.95)],over33ms:frameTimes.filter(x=>x>33.4).length,modelLines:editor.getModel().getLineCount(),terminalRows:rows,terminalHasCompletion:rows.some(x=>x.includes('ROW56_TERMINAL_DONE')),xtermCanvases:document.querySelectorAll('#row56-terminal canvas').length,errors:window.__row56.errors};
+const durationMs=performance.now()-start;
+editor.revealLineInCenter(720);editor.setPosition({lineNumber:720,column:8});
+return {durationMs,frames,fps:frames/(durationMs/1000),p50:frameTimes[Math.floor(frameTimes.length*.5)],p95:frameTimes[Math.floor(frameTimes.length*.95)],over33ms:frameTimes.filter(x=>x>33.4).length,modelLines:editor.getModel().getLineCount(),terminalRows:rows,terminalHasCompletion:rows.some(x=>x.includes('ROW56_TERMINAL_DONE')),xtermCanvases:document.querySelectorAll('#row56-terminal canvas').length,errors:window.__row56.errors};

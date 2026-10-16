@@ -189,12 +189,16 @@ try:
         while True:
             try:
                 state = gui(script=HERE / 'inspect-runtime.body')
+                if mode == 'on' and not state['value']['rounded']:
+                    raise RuntimeError('waiting for the GPU corner class; check app log if this persists')
                 break
             except RuntimeError:
                 if app.poll() is not None or time.monotonic() > deadline:
                     raise
                 time.sleep(.5)  # observation only, never replay a mutation
         (root / 'evidence' / f'{mode}-runtime.json').write_text(json.dumps(state, indent=2) + '\n')
+        if state['value']['rounded'] != (mode == 'on'):
+            raise RuntimeError(f'{mode}: corner decision differs from the expected GPU-session result')
         if state.get('value', {}).get('locked'):
             base['AEROFTP_GUI_TEST_MASTER'] = 'dmabuf-artificial-fixture'
             gui('--unlock', capture=f'{mode}-unlock.json')
@@ -204,6 +208,9 @@ try:
         if mode != 'default':
             gui(script=HERE / 'mount-editor-terminal.body', capture=f'{mode}-mount-editor.json')
             checked(['python3', str(HERE / 'measure.py'), f'{mode}-editor-terminal', str(HERE / 'exercise-editor-terminal.body')], env=base)
+            editor_result = json.loads((root / 'evidence' / f'{mode}-editor-terminal.json').read_text())['value']
+            if not editor_result['terminalHasCompletion'] or editor_result['errors']:
+                raise RuntimeError(f'{mode}: terminal completion or page error assertion failed')
             screenshot(f'{mode}-editor-terminal.png')
             gui(script=HERE / 'mount-player.body', capture=f'{mode}-mount-player.bodyon')
             template = (HERE / 'measure-player-template.body').read_text()
@@ -212,6 +219,13 @@ try:
                     script = root / 'measure-current.body'
                     script.write_text(template.replace('KIND', json.dumps(kind)).replace('MODE', json.dumps(name)))
                     checked(['python3', str(HERE / 'measure.py'), f'{mode}-{kind}-{name}', str(script)], env=base)
+                    receipt = json.loads((root / 'evidence' / f'{mode}-{kind}-{name}.json').read_text())['value']
+                    if receipt['newErrors'] or receipt['contextLostEvents']:
+                        raise RuntimeError(f'{mode}/{kind}/{name}: page errors or lost GPU context')
+                    if kind == 'webgl' and (receipt['glError'] != 0 or not receipt['programLinked'] or not all(receipt['shaderCompiled'] or [])):
+                        raise RuntimeError(f'{mode}/{kind}/{name}: shader or GL assertion failed')
+                    if kind == 'canvas' and not receipt['pixelSummary']['colouredPixels']:
+                        raise RuntimeError(f'{mode}/{kind}/{name}: no coloured canvas content')
                     screenshot(f'{mode}-{kind}-{name}.png')
             gui(script=HERE / 'dispose-bench.body')
         gui('--finish', capture=f'{mode}-finish.json')

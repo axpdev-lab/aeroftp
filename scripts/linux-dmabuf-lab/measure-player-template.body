@@ -16,4 +16,5 @@ const program=g?.getParameter(g.CURRENT_PROGRAM);const programLinked=program?g.g
 const renderedText=document.querySelector("#row56-player").innerText;
 let pixelSummary=null;
 if(kind==='canvas') {const data=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let min=255,max=0,coloured=0;for(let i=0;i<data.length;i+=4){min=Math.min(min,data[i],data[i+1],data[i+2]);max=Math.max(max,data[i],data[i+1],data[i+2]);if(Math.max(data[i],data[i+1],data[i+2])-Math.min(data[i],data[i+1],data[i+2])>25)coloured++;}pixelSummary={min,max,colouredPixels:coloured};}
-return {kind,mode,frames,fps:frames/6,p50:delta[Math.floor(delta.length*.5)],p95:delta[Math.floor(delta.length*.95)],over33ms:delta.filter(x=>x>33.4).length,canvas:[c.width,c.height],glError,programLinked,shaderCompiled,renderedText,contextLost:lost,contextLostEvents:window.__row56.lost.count,pixelSummary,newErrors:window.__row56.errors.slice(errorsBefore)};
+const durationMs=performance.now()-start;
+return {kind,mode,frames,durationMs,fps:frames/(durationMs/1000),p50:delta[Math.floor(delta.length*.5)],p95:delta[Math.floor(delta.length*.95)],over33ms:delta.filter(x=>x>33.4).length,canvas:[c.width,c.height],glError,programLinked,shaderCompiled,renderedText,contextLost:lost,contextLostEvents:window.__row56.lost.count,pixelSummary,newErrors:window.__row56.errors.slice(errorsBefore)};

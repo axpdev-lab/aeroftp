@@ -24,10 +24,11 @@ def snapshot():
     except OSError:continue
     vals=dict(line.split(':',1) for line in lines if ':' in line)
     cid=vals.get('drm-client-id')
-    if cid is None or (pid,cid) in clients:continue
-    clients.add((pid,cid))
+    client=(vals.get('drm-driver'),vals.get('drm-pdev'),cid)
+    if cid is None or client in clients:continue
+    clients.add(client)
     for k,v in vals.items():
-     if k.startswith('drm-engine-'):engines[k]=engines.get(k,0)+int(v.strip().split()[0])
+     if k.startswith('drm-engine-') and not k.startswith('drm-engine-capacity-'):engines[k]=engines.get(k,0)+int(v.strip().split()[0])
   except OSError:pass
  return dict(cpu_ticks=cpu,rss_bytes=rss,engines=engines,processes=sorted(names))
 
