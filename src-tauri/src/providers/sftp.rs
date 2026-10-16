@@ -5216,6 +5216,26 @@ fn first_reader_cause(results: Vec<Result<(), ProviderError>>) -> Result<(), Pro
     cancelled.map_or(Ok(()), Err)
 }
 
+/// The error of a range worker whose connection did not get through.
+///
+/// The download's own connection did, to the same server with the same key,
+/// so a refusal now is most likely the server's limit on connections being
+/// set up at once: Dropbear lets five authenticate from one address and
+/// closes the rest during the handshake, OpenSSH's `MaxStartups` starts
+/// dropping at ten. Sixteen ranges dial together, and the download failed
+/// whole (Dropbear: 5 runs in 5 at 16 connections, 2026-10-16). As a lost
+/// connection the range is asked again from its mark once the others are in
+/// (`write_range_resuming`, backoff 1, 2, 4 s); a refused key or host key is
+/// left as it is.
+fn range_worker_refused(error: ProviderError) -> ProviderError {
+    match error {
+        ProviderError::ConnectionFailed(why) => {
+            ProviderError::ConnectionLost(format!("the server refused another connection ({why})"))
+        }
+        other => other,
+    }
+}
+
 /// What a transfer of this module reports when it was cancelled, by the
 /// caller or by a sibling reader that failed.
 const SFTP_TRANSFER_CANCELLED: &str = "Transfer cancelled by user";
@@ -5741,7 +5761,10 @@ async fn sftp_download_one_range(
     worker.buffer_size = buffer_size;
     worker.compression_enabled = compression_enabled;
     worker.connection_spec = Some(spec);
-    worker.ensure_connected().await?;
+    worker
+        .ensure_connected()
+        .await
+        .map_err(range_worker_refused)?;
 
     let read = sftp_read_one_range(
         &worker,
@@ -7312,6 +7335,20 @@ mod tests {
         .expect("the resumed upload hung after the server went away");
         let err = outcome.expect_err("a resumed upload cut in the middle cannot succeed");
         assert!(err.is_connection_lost(), "{err:?}");
+    }
+
+    /// A range whose connection the server refused is asked again (see
+    /// `range_worker_refused`); a refused key is not.
+    #[test]
+    fn a_refused_range_connection_is_retried_and_a_refused_key_is_not() {
+        let refused = range_worker_refused(ProviderError::ConnectionFailed(
+            "ssh: Disconnected".to_string(),
+        ));
+        assert!(refused.is_recoverable(), "{refused:?}");
+        let key = range_worker_refused(ProviderError::AuthenticationFailed(
+            "key rejected".to_string(),
+        ));
+        assert!(!key.is_recoverable(), "{key:?}");
     }
 
     /// Read-ahead readers report their cause, not the cancellation it caused
