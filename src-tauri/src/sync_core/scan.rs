@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use super::walk_scope::{listed_parent, WalkScope, WalkStep, MAX_ROOT_SPELLINGS};
 use crate::provider_transfer_executor::ProviderListSessionModel;
 use crate::providers::{ProviderError, StorageProvider};
 use crate::transfer_dag::{
@@ -399,7 +400,9 @@ pub struct SkippedLink {
 pub struct UnseenPath {
     /// The path, relative to the scan root.
     pub rel_path: String,
-    /// Why it was not seen: `depth_limit`, `list_error` or `unreadable`.
+    /// Why it was not seen: `depth_limit`, `list_error` or `unreadable`; or,
+    /// for a folder a listing named that the walk did not list (see
+    /// [`WalkStep::reason`]), `loops_back`, `outside_root` or `already_listed`.
     pub reason: &'static str,
     /// Whether the path stands where a directory does, for the same reason
     /// [`SkippedLink::is_dir`] carries it: only the walk knows, and a consumer
@@ -1112,6 +1115,7 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
         rel_prefix: String::new(),
         depth: 0,
     }]);
+    let mut scope = WalkScope::new(remote_root);
     let mut join_set = JoinSet::new();
     let mut in_flight = 0usize;
     // Back-dated by one interval, so the first listing to land is reported at
@@ -1202,11 +1206,22 @@ pub async fn scan_remote_tree_with_provider_lock_checked(
                         results.push(file);
                     }
                 }
+                learn_root_spellings(&mut scope, &batch.root_spellings);
                 for dir in batch.dirs {
                     if cap_spent(files_seen, boundaries.len(), dirs_seen, count_dirs) >= cap {
                         // Dropping a queued directory drops its whole subtree.
                         completeness.truncated = true;
                         break;
+                    }
+                    if !admit_scan_dir(
+                        &mut scope,
+                        &batch.listed_dir,
+                        &dir,
+                        &mut boundaries,
+                        &mut completeness,
+                        cap.saturating_sub(files_seen),
+                    ) {
+                        continue;
                     }
                     dirs_seen += 1;
                     queue.push_back(dir);
@@ -1310,6 +1325,7 @@ async fn scan_remote_tree_locked(
         rel_prefix: String::new(),
         depth: 0,
     }]);
+    let mut scope = WalkScope::new(remote_root);
     while let Some(dir) = queue.pop_front() {
         if scan_cancelled(&cancel) {
             record_cancelled(&mut completeness, &mut boundaries);
@@ -1416,6 +1432,7 @@ async fn scan_remote_tree_locked(
                         results.push(file);
                     }
                 }
+                learn_root_spellings(&mut scope, &batch.root_spellings);
                 for dir in batch.dirs {
                     if opts.count_dirs_against_cap
                         && cap_spent(files_seen, boundaries.len(), dirs_seen, true) >= cap
@@ -1424,6 +1441,16 @@ async fn scan_remote_tree_locked(
                         completeness.truncated = true;
                         boundaries.unbounded.get_or_insert("entry_cap");
                         break;
+                    }
+                    if !admit_scan_dir(
+                        &mut scope,
+                        &batch.listed_dir,
+                        &dir,
+                        &mut boundaries,
+                        &mut completeness,
+                        cap.saturating_sub(files_seen),
+                    ) {
+                        continue;
                     }
                     dirs_seen += 1;
                     queue.push_back(dir);
@@ -1524,6 +1551,55 @@ fn record_unseen(
     }
 }
 
+/// Adopt the spellings of the scan root its own listing named (see
+/// [`WalkScope::learn_root_listing`]). Only the root's batch carries any.
+fn learn_root_spellings(scope: &mut WalkScope, spellings: &[String]) {
+    for spelling in spellings {
+        scope.learn_root_spelling(spelling);
+    }
+}
+
+/// Whether the walk lists `dir`, a folder the listing of `listed_dir` named
+/// (see [`WalkScope`]). A folder it does not list is a part of the tree it did
+/// not see: the listing named it, so a sync must not read what it holds as
+/// absent. It is counted as a listing failure, which makes the scan incomplete
+/// for every caller that gates a delete on that, and named as an unseen path
+/// with the reason, so a run is bounded around it. That holds for a folder
+/// already listed too: the walk builds relative paths from names, so the same
+/// folder reached again stands at another relative path, which the walk then
+/// leaves unseen.
+fn admit_scan_dir(
+    scope: &mut WalkScope,
+    listed_dir: &str,
+    dir: &RemoteScanDir,
+    boundaries: &mut ScanBoundaries,
+    completeness: &mut ScanCompleteness,
+    room: usize,
+) -> bool {
+    let step = scope.admit(listed_dir, &dir.abs_dir);
+    if step == WalkStep::Follow {
+        return true;
+    }
+    tracing::warn!(
+        "[scan_remote_tree] not listing {} (path {:?} in the listing of {}): {}",
+        dir.rel_prefix,
+        dir.abs_dir,
+        listed_dir,
+        step.reason()
+    );
+    completeness.list_errors += 1;
+    record_unseen(
+        boundaries,
+        completeness,
+        &dir.rel_prefix,
+        step.reason(),
+        // The listing typed it a folder: only folders are walked.
+        Some(true),
+        room,
+    );
+    false
+}
+
 #[derive(Debug, Clone)]
 struct RemoteScanDir {
     abs_dir: String,
@@ -1532,6 +1608,12 @@ struct RemoteScanDir {
 }
 
 struct RemoteScanBatch {
+    /// The directory listed, as the walk asked the provider for it.
+    listed_dir: String,
+    /// For the scan root only: the parents its entries name (see
+    /// [`listed_parent`]), from which the walk learns how the provider spells
+    /// the root. Empty for every other directory.
+    root_spellings: Vec<String>,
     files: Vec<RemoteEntry>,
     dirs: Vec<RemoteScanDir>,
     skipped_links: Vec<SkippedLink>,
@@ -1581,6 +1663,8 @@ fn spawn_remote_scan_task(
         if scan_cancelled(&cancel) {
             drop(session_lease);
             return Ok(RemoteScanBatch {
+                listed_dir: dir.abs_dir.clone(),
+                root_spellings: Vec::new(),
                 files: Vec::new(),
                 dirs: Vec::new(),
                 skipped_links: Vec::new(),
@@ -1718,6 +1802,21 @@ async fn scan_remote_dir(
     let mut skipped_links = Vec::new();
     let mut cancelled = false;
     let mut links_over_budget = false;
+    let mut root_spellings: Vec<String> = Vec::new();
+    if dir.depth == 0 {
+        // Every entry counts, filtered or not: this is evidence of how the
+        // provider spells the root, not a row.
+        for entry in &entries {
+            if root_spellings.len() >= MAX_ROOT_SPELLINGS {
+                break;
+            }
+            if let Some(parent) = listed_parent(&entry.name, &entry.path) {
+                if !root_spellings.contains(&parent) {
+                    root_spellings.push(parent);
+                }
+            }
+        }
+    }
 
     for entry in entries {
         if scan_cancelled(cancel) {
@@ -1812,6 +1911,8 @@ async fn scan_remote_dir(
     }
 
     Ok(RemoteScanBatch {
+        listed_dir: dir.abs_dir.clone(),
+        root_spellings,
         files,
         dirs,
         skipped_links,
@@ -4050,5 +4151,210 @@ pub(crate) mod tests {
             "pool-tree",
             "the caller gets its own provider back, not the placeholder"
         );
+    }
+
+    /// [`walk_tree_with`] from `root` instead of `/root`, bounded in time: a
+    /// walk that loops must fail the test, not hang it.
+    async fn walk_tree_at(
+        tree: WalkTreeProvider,
+        root: &str,
+    ) -> (Vec<RemoteEntry>, ScanCompleteness, ScanBoundaries) {
+        let pool = tree.pool;
+        let holder: Arc<Mutex<Option<Box<dyn StorageProvider>>>> =
+            Arc::new(Mutex::new(Some(Box::new(tree))));
+        let model =
+            crate::provider_transfer_executor::resolve_provider_list_session_model(&holder, 1)
+                .await;
+        assert_eq!(model.is_clone_pool(), pool);
+        let opts = ScanOptions {
+            disable_recursive_fastpath: true,
+            ..ScanOptions::default()
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            scan_remote_tree_with_provider_lock_checked(holder, root, &opts, &model, None, None),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("the walk of {root} (pool={pool}) never finished"))
+    }
+
+    fn sorted_rows(rows: &[RemoteEntry]) -> Vec<&str> {
+        let mut paths: Vec<&str> = rows.iter().map(|row| row.rel_path.as_str()).collect();
+        paths.sort_unstable();
+        paths
+    }
+
+    fn named_folder(rel_path: &str, reason: &'static str) -> UnseenPath {
+        UnseenPath {
+            rel_path: rel_path.to_string(),
+            reason,
+            is_dir: Some(true),
+        }
+    }
+
+    /// ImageKit's old listing gave every folder the path `/`. The walk followed
+    /// it back to the account root from every folder, under a new relative
+    /// prefix each time, and with two such folders a level it never finished.
+    /// A folder that points at the root or above it is not walked; what it
+    /// holds went unseen, so it is named and the scan is incomplete.
+    #[tokio::test]
+    async fn a_folder_spelled_as_the_account_root_is_not_walked_and_is_reported() {
+        use crate::providers::RemoteEntry as Listed;
+        let file = |name: &str, path: &str| Listed::file(name.to_string(), path.to_string(), 1);
+        let folder = |name: &str, path: &str| Listed::directory(name.to_string(), path.to_string());
+        for pool in [false, true] {
+            let at_root = WalkTreeProvider::new(
+                std::collections::HashMap::from([(
+                    "/".to_string(),
+                    vec![
+                        file("a.txt", "/a.txt"),
+                        folder("d1", "/"),
+                        folder("d2", "/"),
+                    ],
+                )]),
+                pool,
+            );
+            let below = WalkTreeProvider::new(
+                std::collections::HashMap::from([
+                    (
+                        "/".to_string(),
+                        vec![file("top.txt", "/top.txt"), folder("root", "/root")],
+                    ),
+                    (
+                        "/root".to_string(),
+                        vec![
+                            file("a.txt", "/root/a.txt"),
+                            folder("d1", "/"),
+                            folder("d2", "/"),
+                        ],
+                    ),
+                ]),
+                pool,
+            );
+            for (tree, root) in [(at_root, "/"), (below, "/root")] {
+                let (rows, completeness, boundaries) = walk_tree_at(tree, root).await;
+                assert_eq!(sorted_rows(&rows), ["a.txt"], "{root} pool={pool}");
+                assert_eq!(completeness.list_errors, 2, "{root} pool={pool}");
+                assert!(!completeness.is_complete());
+                let mut unseen = boundaries.unseen.clone();
+                unseen.sort_by(|a, b| a.rel_path.cmp(&b.rel_path));
+                assert_eq!(
+                    unseen,
+                    [
+                        named_folder("d1", "loops_back"),
+                        named_folder("d2", "loops_back")
+                    ],
+                    "{root} pool={pool}"
+                );
+                assert_eq!(boundaries.unbounded, None, "{root} pool={pool}");
+            }
+        }
+    }
+
+    /// Swift listed every folder inside itself: the listing of `/root/d1` held
+    /// `d1` again, with the path `/root/d1`. The walk went down that same
+    /// folder to its depth limit, returning its files once per level under a
+    /// longer relative path. The folder is walked once, and the entry that
+    /// named it inside itself is reported.
+    #[tokio::test]
+    async fn a_folder_listed_inside_itself_is_walked_once_and_reported() {
+        use crate::providers::RemoteEntry as Listed;
+        let file = |name: &str, path: &str| Listed::file(name.to_string(), path.to_string(), 1);
+        let folder = |name: &str, path: &str| Listed::directory(name.to_string(), path.to_string());
+        for pool in [false, true] {
+            let tree = WalkTreeProvider::new(
+                std::collections::HashMap::from([
+                    (
+                        "/root".to_string(),
+                        vec![file("a.txt", "/root/a.txt"), folder("d1", "/root/d1")],
+                    ),
+                    (
+                        "/root/d1".to_string(),
+                        vec![folder("d1", "/root/d1"), file("b.txt", "/root/d1/b.txt")],
+                    ),
+                ]),
+                pool,
+            );
+            let (rows, completeness, boundaries) = walk_tree_at(tree, "/root").await;
+            assert_eq!(sorted_rows(&rows), ["a.txt", "d1/b.txt"], "pool={pool}");
+            assert_eq!(completeness.list_errors, 1, "pool={pool}");
+            assert!(!completeness.truncated, "no depth limit was reached");
+            assert_eq!(
+                boundaries.unseen,
+                [named_folder("d1/d1", "loops_back")],
+                "pool={pool}"
+            );
+        }
+    }
+
+    /// A folder a listing names again under its own parent (a provider that
+    /// lists one folder in two places) is walked once; the second place is a
+    /// relative path the walk did not see, so it is named.
+    #[tokio::test]
+    async fn a_folder_named_twice_is_walked_once_and_the_second_place_is_reported() {
+        use crate::providers::RemoteEntry as Listed;
+        let file = |name: &str, path: &str| Listed::file(name.to_string(), path.to_string(), 1);
+        let folder = |name: &str, path: &str| Listed::directory(name.to_string(), path.to_string());
+        for pool in [false, true] {
+            let tree = WalkTreeProvider::new(
+                std::collections::HashMap::from([
+                    (
+                        "/root".to_string(),
+                        vec![folder("a", "/root/a"), folder("b", "/root/b")],
+                    ),
+                    ("/root/a".to_string(), vec![folder("c", "/root/a/c")]),
+                    ("/root/b".to_string(), vec![folder("c", "/root/a/c/")]),
+                    (
+                        "/root/a/c".to_string(),
+                        vec![file("x.txt", "/root/a/c/x.txt")],
+                    ),
+                ]),
+                pool,
+            );
+            let (rows, completeness, boundaries) = walk_tree_at(tree, "/root").await;
+            assert_eq!(sorted_rows(&rows).len(), 1, "pool={pool}: {rows:?}");
+            assert_eq!(completeness.list_errors, 1, "pool={pool}");
+            assert_eq!(boundaries.unseen.len(), 1, "pool={pool}");
+            assert_eq!(boundaries.unseen[0].reason, "already_listed", "pool={pool}");
+        }
+    }
+
+    /// The guard must not refuse a root the provider spells differently from
+    /// the caller: SFTP resolves `www` against its working directory and lists
+    /// absolute children, and a case-insensitive provider answers in its own
+    /// case. Every folder is walked and the scan is complete.
+    #[tokio::test]
+    async fn a_root_the_provider_spells_differently_is_walked_whole() {
+        use crate::providers::RemoteEntry as Listed;
+        let file = |name: &str, path: &str| Listed::file(name.to_string(), path.to_string(), 1);
+        let folder = |name: &str, path: &str| Listed::directory(name.to_string(), path.to_string());
+        for pool in [false, true] {
+            for (root, base) in [("www", "/home/u/www"), ("/photos", "/Photos")] {
+                let tree = WalkTreeProvider::new(
+                    std::collections::HashMap::from([
+                        (
+                            root.to_string(),
+                            vec![
+                                file("a.txt", &format!("{base}/a.txt")),
+                                folder("css", &format!("{base}/css")),
+                            ],
+                        ),
+                        (
+                            format!("{base}/css"),
+                            vec![file("s.css", &format!("{base}/css/s.css"))],
+                        ),
+                    ]),
+                    pool,
+                );
+                let (rows, completeness, boundaries) = walk_tree_at(tree, root).await;
+                assert_eq!(
+                    sorted_rows(&rows),
+                    ["a.txt", "css/s.css"],
+                    "{root} pool={pool}"
+                );
+                assert!(completeness.is_complete(), "{root} pool={pool}");
+                assert_eq!(boundaries, ScanBoundaries::default(), "{root} pool={pool}");
+            }
+        }
     }
 }

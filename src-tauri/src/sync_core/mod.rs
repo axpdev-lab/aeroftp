@@ -16,6 +16,7 @@
 pub mod compare;
 pub mod mtime;
 pub mod scan;
+pub mod walk_scope;
 
 pub use crate::sync::{
     sync_tree_core, ConflictMode, DeltaPolicy, DeltaSavingsSummary, DeltaTransferStats,
@@ -28,3 +29,4 @@ pub use scan::{
     LocalEntry, RemoteEntry, ScanBound, ScanBoundaries, ScanCompleteness, ScanOptions, SkippedLink,
     UnseenPath,
 };
+pub use walk_scope::{walk_path_key, WalkScope, WalkStep};
