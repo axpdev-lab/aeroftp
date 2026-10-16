@@ -22976,7 +22976,9 @@ mod archive_meta_tests {
     }
 }
 
-#[cfg(test)]
+// The AppImage runtime exists on Linux only, and these are its paths: on
+// Windows `/home/...` is not absolute, so every case would read `None`.
+#[cfg(all(test, target_os = "linux"))]
 mod appimage_install_format_tests {
     use super::running_appimage;
     use std::ffi::OsStr;
