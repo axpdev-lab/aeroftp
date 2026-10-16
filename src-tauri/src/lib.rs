@@ -18634,8 +18634,9 @@ pub fn run() {
             // this borderless one had square corners, where Windows 11 rounds
             // them itself. A transparent window lets the page cut its own
             // (`html.rounded-window` in styles.css, set by WindowResizeEdges),
-            // but only on a composited screen and with WebKit compositing on
-            // the GPU; see `linux_window_corners` for why each one matters.
+            // but only on a composited screen and with WebKit rendering on the
+            // GPU, which the DMA-BUF renderer switch set above also turns off;
+            // see `linux_window_corners` for why each one matters.
             // AEROFTP_SQUARE_CORNERS=1 keeps the window opaque: the way out
             // for a driver that cannot draw a transparent window, where the
             // app itself might show nothing to switch it off from.
@@ -18645,6 +18646,7 @@ pub fn run() {
                 gtk::gdk::Screen::default().is_some_and(|s| s.is_composited()),
                 linux_window_corners::gpu_compositing(
                     std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").as_deref(),
+                    std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").as_deref(),
                 ),
             ) {
                 linux_window_corners::Corners::Rounded => {
