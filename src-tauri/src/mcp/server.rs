@@ -376,8 +376,19 @@ impl McpServerCore {
             // specific server (tools/list, resources/*, etc.).
             let _permit = profile_mutex.lock().await;
 
-            let response_future =
-                process_request(req, profiles, vault_error, pool, rate_limiter, notifier);
+            // Boxed: this task runs on a tokio worker (2 MiB of stack), and
+            // a debug build copies an unboxed request future into the frame
+            // of every layer that wraps it (this task, the cancellation
+            // select, the warnings scope). That alone took most of the
+            // stack, and the first `tools/list` aborted the server.
+            let response_future = Box::pin(process_request(
+                req,
+                profiles,
+                vault_error,
+                pool,
+                rate_limiter,
+                notifier,
+            ));
 
             let (answer, untaken) = answer_unless_cancelled(&token, response_future).await;
             if let Some(resp) = answer {
@@ -540,8 +551,16 @@ async fn process_request(
                 }));
             }
 
-            let exec_future =
-                tools::execute_tool(tool_name, &args, &pool, &rate_limiter, notifier.as_ref());
+            // Boxed for the same reason as the request around it: the
+            // executor's state covers every tool, and inline it would make
+            // each request future that size.
+            let exec_future = Box::pin(tools::execute_tool(
+                tool_name,
+                &args,
+                &pool,
+                &rate_limiter,
+                notifier.as_ref(),
+            ));
             Some(answer_tool_call(id, tool_name, exec_future, mcp_tool_timeout()).await)
         }
 
