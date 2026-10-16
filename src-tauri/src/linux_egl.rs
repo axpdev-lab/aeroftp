@@ -16,9 +16,16 @@
 //!
 //! The question has to be asked before any GTK/WebKit initialization: by the
 //! time WebKit is up it has already read the variable.
+//!
+//! It also has to be asked about the platform GTK is going to open. EGL's
+//! default display is EGL's own guess, which Mesa makes X11 when
+//! `EGL_PLATFORM` is unset: inside the Flatpak on a Wayland desktop there is
+//! no X11 at all, so the default display failed to initialize while the
+//! Wayland one GTK and WebKit really use worked, and WebKit was sent to
+//! software compositing on a machine with a working GPU.
 
-use std::ffi::{c_void, CString};
-use std::path::PathBuf;
+use std::ffi::{c_void, CString, OsStr};
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use log::{info, warn};
@@ -72,11 +79,91 @@ pub(crate) fn decide(
     }
 }
 
+/// The windowing platform GTK will open, which is the one WebKit asks EGL for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SessionPlatform {
+    Wayland,
+    X11,
+}
+
+impl SessionPlatform {
+    fn egl_platform(self) -> EglEnum {
+        match self {
+            SessionPlatform::Wayland => EGL_PLATFORM_WAYLAND_KHR,
+            SessionPlatform::X11 => EGL_PLATFORM_X11_KHR,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            SessionPlatform::Wayland => "Wayland",
+            SessionPlatform::X11 => "X11",
+        }
+    }
+}
+
+/// GDK's own choice, made the way GDK 3 makes it: the backends `GDK_BACKEND`
+/// lists, in order (unset or `*` means every backend, Wayland before X11),
+/// and the first one whose display server is there. `None` when neither is:
+/// GTK cannot start then either, and EGL keeps its default display.
+pub(crate) fn session_platform(
+    gdk_backend: Option<&OsStr>,
+    wayland_available: bool,
+    x11_available: bool,
+) -> Option<SessionPlatform> {
+    let requested = gdk_backend
+        .and_then(OsStr::to_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("*");
+    for backend in requested.split(',').map(str::trim) {
+        let candidates: &[SessionPlatform] = match backend {
+            "*" => &[SessionPlatform::Wayland, SessionPlatform::X11],
+            "wayland" => &[SessionPlatform::Wayland],
+            "x11" => &[SessionPlatform::X11],
+            _ => &[],
+        };
+        for &platform in candidates {
+            let available = match platform {
+                SessionPlatform::Wayland => wayland_available,
+                SessionPlatform::X11 => x11_available,
+            };
+            if available {
+                return Some(platform);
+            }
+        }
+    }
+    None
+}
+
+/// Whether GDK would find a Wayland server: `WAYLAND_DISPLAY`, or the
+/// `wayland-0` socket `wl_display_connect` falls back to without it.
+fn wayland_available() -> bool {
+    std::env::var_os("WAYLAND_DISPLAY").is_some_and(|name| !name.is_empty())
+        || std::env::var_os("XDG_RUNTIME_DIR")
+            .is_some_and(|dir| Path::new(&dir).join("wayland-0").exists())
+}
+
+/// Whether GDK would find an X server: `XOpenDisplay` reads `DISPLAY`.
+fn x11_available() -> bool {
+    std::env::var_os("DISPLAY").is_some_and(|name| !name.is_empty())
+}
+
+/// What the startup log calls the display the probe asked about.
+fn display_name(platform: Option<SessionPlatform>) -> &'static str {
+    platform.map_or("EGL's default display", SessionPlatform::name)
+}
+
 /// Resolve the WebKit compositing mode for this process. Call once, before GTK
 /// or WebKit touch anything.
 pub fn configure_webkit_compositing() {
     let sentinel = sentinel_path();
     let previous_probe_crashed = sentinel.as_ref().is_some_and(|p| p.exists());
+    let platform = session_platform(
+        std::env::var_os("GDK_BACKEND").as_deref(),
+        wayland_available(),
+        x11_available(),
+    );
 
     let decision = decide(
         std::env::var_os(DISABLE_COMPOSITING).is_some(),
@@ -87,7 +174,7 @@ pub fn configure_webkit_compositing() {
             if let Some(path) = sentinel.as_ref() {
                 let _ = std::fs::write(path, SENTINEL_NOTE);
             }
-            let outcome = probe_egl();
+            let outcome = probe_egl(platform);
             // Removed on success and on a graceful failure alike. Only a crash
             // can leave it behind, which is the whole point of it.
             if let Some(path) = sentinel.as_ref() {
@@ -106,7 +193,10 @@ pub fn configure_webkit_compositing() {
         ),
         Decision::Accelerated => (
             false,
-            "WebKit accelerated compositing enabled: EGL is usable on this display".to_string(),
+            format!(
+                "WebKit accelerated compositing enabled: EGL is usable on {}",
+                display_name(platform)
+            ),
         ),
         Decision::Software(reason) => {
             // Same startup contract as the sibling WebKit variables set around
@@ -124,7 +214,13 @@ pub fn configure_webkit_compositing() {
                     ),
                 )
             } else {
-                (false, format!("WebKit software compositing: {reason}"))
+                (
+                    false,
+                    format!(
+                        "WebKit software compositing: {reason} (asked about {})",
+                        display_name(platform)
+                    ),
+                )
             }
         }
     };
@@ -170,8 +266,11 @@ const EGL_RENDERABLE_TYPE: EglInt = 0x3040;
 const EGL_OPENGL_ES2_BIT: EglInt = 0x0004;
 const EGL_CONTEXT_CLIENT_VERSION: EglInt = 0x3098;
 const EGL_OPENGL_ES_API: EglEnum = 0x30A0;
+const EGL_PLATFORM_X11_KHR: EglEnum = 0x31D5;
+const EGL_PLATFORM_WAYLAND_KHR: EglEnum = 0x31D8;
 
 type FnGetDisplay = unsafe extern "C" fn(*mut c_void) -> EglDisplay;
+type FnGetPlatformDisplay = unsafe extern "C" fn(EglEnum, *mut c_void, *const isize) -> EglDisplay;
 type FnInitialize = unsafe extern "C" fn(EglDisplay, *mut EglInt, *mut EglInt) -> EglBoolean;
 type FnBindApi = unsafe extern "C" fn(EglEnum) -> EglBoolean;
 type FnChooseConfig = unsafe extern "C" fn(
@@ -189,7 +288,7 @@ type FnTerminate = unsafe extern "C" fn(EglDisplay) -> EglBoolean;
 /// Ask EGL for what WebKit's compositor will ask it for: a display it can
 /// initialize, a renderable config, and a GL ES 2 context. Anything short of
 /// all three is a blank window waiting to happen.
-fn probe_egl() -> Result<(), &'static str> {
+fn probe_egl(platform: Option<SessionPlatform>) -> Result<(), &'static str> {
     // SAFETY: every pointer is checked before use, every symbol is resolved by
     // name from a handle we opened, and the display is terminated on all paths.
     unsafe {
@@ -221,9 +320,21 @@ fn probe_egl() -> Result<(), &'static str> {
             dlsym(handle, "eglTerminate").ok_or("libEGL is missing eglTerminate")?,
         );
 
-        // NULL is EGL_DEFAULT_DISPLAY: let GLVND pick the platform the session
-        // is actually running, exactly as WebKit does.
-        let display = get_display(std::ptr::null_mut());
+        // The platform GTK will open, with EGL_DEFAULT_DISPLAY (NULL) as the
+        // native display: EGL_KHR_platform_wayland and _x11 both define it as
+        // "connect to the default server", the one GTK connects to. Without
+        // a platform (no display server, or an EGL older than 1.5) EGL's
+        // default display is the only question left to ask.
+        let get_platform_display = dlsym(handle, "eglGetPlatformDisplay")
+            .map(|symbol| std::mem::transmute::<*mut c_void, FnGetPlatformDisplay>(symbol));
+        let display = match (platform, get_platform_display) {
+            (Some(platform), Some(get_platform_display)) => get_platform_display(
+                platform.egl_platform(),
+                std::ptr::null_mut(),
+                std::ptr::null(),
+            ),
+            _ => get_display(std::ptr::null_mut()),
+        };
         if display.is_null() {
             return Err("EGL offers no display for this session");
         }
@@ -340,7 +451,60 @@ mod tests {
     #[test]
     #[ignore = "needs a real libEGL and display; verdict is machine-specific"]
     fn the_real_probe_answers_instead_of_crashing() {
-        println!("EGL probe verdict: {:?}", probe_egl());
+        let platform = session_platform(
+            std::env::var_os("GDK_BACKEND").as_deref(),
+            wayland_available(),
+            x11_available(),
+        );
+        println!(
+            "EGL probe verdict on {}: {:?}",
+            display_name(platform),
+            probe_egl(platform)
+        );
+    }
+
+    #[test]
+    fn the_probe_asks_about_the_platform_gtk_opens() {
+        use SessionPlatform::{Wayland, X11};
+        fn backend(value: &str) -> Option<&OsStr> {
+            Some(OsStr::new(value))
+        }
+        // A Wayland desktop, natively (Xwayland too) or in the Flatpak (no X11).
+        assert_eq!(session_platform(None, true, true), Some(Wayland));
+        assert_eq!(session_platform(None, true, false), Some(Wayland));
+        assert_eq!(session_platform(backend("*"), true, true), Some(Wayland));
+        assert_eq!(session_platform(backend(""), true, true), Some(Wayland));
+        // An X11 session.
+        assert_eq!(session_platform(None, false, true), Some(X11));
+        // GDK_BACKEND is followed in its order: the snap sets x11.
+        assert_eq!(session_platform(backend("x11"), true, true), Some(X11));
+        assert_eq!(
+            session_platform(backend("x11,wayland"), true, true),
+            Some(X11)
+        );
+        assert_eq!(
+            session_platform(backend("x11,wayland"), true, false),
+            Some(Wayland)
+        );
+        assert_eq!(
+            session_platform(backend(" wayland , x11 "), false, true),
+            Some(X11)
+        );
+        assert_eq!(
+            session_platform(backend("broadway,*"), true, true),
+            Some(Wayland)
+        );
+        // Nothing GTK could open: EGL's default display is all that is left.
+        assert_eq!(session_platform(None, false, false), None);
+        assert_eq!(session_platform(backend("wayland"), false, true), None);
+        assert_eq!(session_platform(backend("broadway"), true, true), None);
+    }
+
+    #[test]
+    fn the_log_names_the_display_it_asked_about() {
+        assert_eq!(display_name(Some(SessionPlatform::Wayland)), "Wayland");
+        assert_eq!(display_name(Some(SessionPlatform::X11)), "X11");
+        assert_eq!(display_name(None), "EGL's default display");
     }
 
     #[test]
